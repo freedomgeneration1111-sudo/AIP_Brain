@@ -3469,6 +3469,7 @@ More integration work (loader dispatch for "review"/"re_synthesize" node types i
 - Fixed loader dispatch logic so string node types "review" and "re_synthesize" are handled before the strict Enum cast.
 - Smoke test confirmed: YAML with `type: review` now loads and instantiates ReviewNode.
 - Improved ReviewNode + ReSynthesizeNode to prefer the Phase 2 versioned/queryable stores (4.3/4.4) when injected via context (graceful fallback to older stores).
+- Added `test_loads_yaml_with_review_node` in `tests/test_workflow_engine.py` — proves the loader + new nodes integrate with the existing engine machinery.
 
 Continuing the careful extension of the existing engine to full spec compliance for 4.5.
 

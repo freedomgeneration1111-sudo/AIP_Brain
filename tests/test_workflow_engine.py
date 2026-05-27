@@ -578,3 +578,30 @@ def test_parallel_context_inherits_budget_and_autonomy_protocols_3_12():
     assert child.get_protocol("autonomy_gate") is gate
     # Shadow budget copied at fork time (per existing invariant)
     assert child.budget_remaining == 1000
+
+# --- CHUNK-4.5 smoke test for new node types (additive) ---
+
+def test_loads_yaml_with_review_node():
+    """CHUNK-4.5: The engine/loader should accept workflows using the new review node type."""
+    from aip.orchestration.workflow.loader import load_workflow_from_yaml
+    import tempfile, os
+
+    yaml_content = """
+name: minimal_review_test
+nodes:
+  - id: review_step
+    type: review
+    artifact_id: test_artifact
+"""
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "test_review.yaml")
+        with open(path, "w") as f:
+            f.write(yaml_content)
+
+        definition = load_workflow_from_yaml(path)
+        assert len(definition.nodes) == 1
+        assert definition.nodes[0].node_id == "review_step"
+        # The node class should be our extended one
+        from aip.orchestration.workflow.node import ReviewNode
+        assert isinstance(definition.nodes[0], ReviewNode)
