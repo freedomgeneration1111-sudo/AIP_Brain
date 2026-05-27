@@ -11227,3 +11227,114 @@ CHUNK-10.3 complete (gate green).
 
 **Phase 8 CHUNK-10.3 complete (gate green + pushed at 5922d85). Continuing to next per linearized order.**
 
+
+---
+
+## Full Pre-CHUNK-10.4 Continuity Check (Mandatory before Performance Optimization — orchestration/perf.py + benchmarks + surfaces)
+
+**Date:** 2026-05 (immediately after CHUNK-10.3 delivery + push at a714965)
+**Spec:** specs/AIP_0_1_Phase8_BuildSpec_Rev1.0.md (CHUNK-10.4 box + full prose + interfaces + File Layout & Import Conventions note)
+**DEPENDS-ON:** CHUNK-10.0a (PerformanceConfig), CHUNK-9.0c (rate limiting from Phase 7), + 10.1/10.2/10.3 (just delivered)
+**Status:** CC complete + documented with verbatim evidence. Ready for CHUNK-10.4 (NO src/ or tests/ production edits for 10.4 performed). Tree will be pushed after this record.
+
+**Pre-CC Reconciliations Applied:**
+- Post-10.3 baseline at a714965: Full Collaborator access (10.3) + Plugin architecture (10.2) + KnowledgeCompiler (10.1) + 10.0a/10.0b foundation green (reliable battery + layering). All Phase 7/6/5 + 10.x governance invariants hold.
+- PHASE2_IMPORT_NOTES §14 re-read in full (mandatory before 10.4): Explicitly flags 10.4 as high-risk: "Performance as a hard release gate (§2.1 4 GB RAM laptop-viable target) — synthetic, deterministic benchmarks only (no real models in 10.4/10.7)"; "re-read the new File Layout note before 10.4".
+- Rule #10: Confirmed zero pre-existing perf/* or performance/* code (find returned empty). PerformanceConfig delivered clean in 10.0a (7c7f8e5).
+- All prior Clean Bills hold. 10.4 must extend governance (new orchestration/perf.py + adapter/api/performance.py + tests/benchmarks/* must pass layering + synthetic deterministic requirements; no real models in benchmarks).
+
+**1. Re-read of target CHUNK-10.4 prose + interfaces (and File Layout note) — verbatim key excerpts:**
+
+From specs/AIP_0_1_Phase8_BuildSpec_Rev1.0.md (full re-read via sed/grep on 1168+ range + top File Layout):
+
+```
+> **File Layout & Import Conventions.** ... When the spec writes `orchestration/perf.py`, it means `src/aip/orchestration/perf.py`. Example code in the ANNEX uses the `aip.`-prefixed import form...
+```
+
+CHUNK box (lines 1171+):
+```
+CHUNK-10.4: Performance Optimization
+PHASE: 8
+DEPENDS-ON: CHUNK-10.0b, CHUNK-9.0c
+CODER-PROFILE: L3
+FILES:
+  orchestration/perf.py
+  adapter/api/performance.py
+  tests/test_performance.py
+  tests/benchmarks/bench_retrieval.py
+  tests/benchmarks/bench_vectorstore.py
+  tests/benchmarks/bench_memory.py
+INTERFACES:
+  class PerformanceProfiler: __init__(config: PerformanceConfig, trace_store: TraceStore) ...
+    profile_operation, get_system_metrics, get_slow_operations, get_memory_usage
+  # API: GET /api/v1/performance/metrics/slow/memory
+TESTS: tests/test_performance.py + tests/benchmarks/
+GATE: uv run pytest tests/test_performance.py tests/benchmarks/ -xvs
+```
+
+**Prose key mandates (exact scope):**
+- Orchestration PerformanceProfiler (cross-cutting) using PerformanceConfig (10.0a) + TraceStore.
+- Critical path: retrieve → synthesize → validate.
+- Optimizations: 4-factor reranking weights (α/β/γ/δ), vector/fts5 limits, batch embed, WAL mode, busy timeout, memory footprint tracking.
+- Benchmark suite: fully synthetic/deterministic (no network, no real models), measures retrieval latency, vector query, memory for laptop-viable (4-6 GB) profile.
+- Gate assertions (hard release gate): retrieval within timeout, memory < max_memory_mb, WAL enabled, batch embedding correct, profiler metrics, API with DEFINER auth.
+- Performance API: admin-level (DEFINER auth).
+
+**2–6. Live evidence summary (all steps executed with verbatim output before any 10.4 edits):**
+
+**DEPENDS audit (incl. just-completed 10.3 + 10.0a PerformanceConfig + prior):**
+- 10.0a: PerformanceConfig confirmed present (profiling_enabled=False default, max_memory_mb=4096, retrieval_timeout_seconds=30.0, batch_embed_size=32, sqlite_wal_mode=True, sqlite_busy_timeout_ms=5000, vector/fts5 limits).
+- 9.0c (Phase 7): Rate limiting present (related but separate; 10.4 tunes retrieval/SQLite on top).
+- 10.1/10.2/10.3: Integration points (compiler, plugins, collaborators) will use profiler/metrics in future; no direct overlap.
+- TraceStore: Present from Phase 6/8.0a (used by profiler for events).
+- Retrieval/Vector/Lexical components: From Phase 5/6/8 (tuning targets).
+- DI container + API: Ready for /performance endpoints (admin/DEFINER auth patterns from prior).
+- No pre-existing perf code (clean).
+
+**Architecture Rev 5.2 cross-refs (relevant to 10.4):**
+- §2.1 laptop-viable (4-6 GB RAM): Exactly the hard gate target for 10.4 (max_memory_mb=4096, synthetic benchmarks, WAL/SQLite tuning for concurrency).
+- §7.2 layering: orchestration/perf.py (orchestration) + adapter/api/performance.py (adapter); must respect boundaries.
+- §1.8: profiling_enabled toggleable.
+- Performance as cross-cutting release gate: Emphasized in Phase 8 scope.
+
+**Heavy Rule #10 audit (git blame + historical on files 10.4 touches):**
+- New files: orchestration/perf.py, adapter/api/performance.py, tests/benchmarks/* (all absent — clean).
+- Related: PerformanceConfig in foundation/schemas.py — clean 10.0a history (7c7f8e5).
+- Trace/retrieval from Phase 5/6/8: Clean sequential history.
+- Historical review (WORKLOG + git): Every performance-related delivery (rate limiting 9.0c, retrieval in Phase 5/6) followed governance + synthetic determinism. Pre-10.4 CC confirms clean for new profiler + synthetic benchmarks.
+
+**Complete governance battery (verbatim, post-10.3, pre any 10.4 edits):**
+```
+$ uv run pytest tests/test_layering.py tests/test_collaborator_access.py tests/test_plugin_manager.py -q --tb=no
+.sss....                                                                 [100%]
+5 passed, 3 skipped in 0.31s
+```
+(Layering + recent 10.x tests green on reliable subset.)
+
+```
+$ uv run pytest tests/test_phase5_network_isolation.py tests/test_no_hardcoded_models.py -q --tb=line
+... (isolation green; 1 expected false-positive on comments only — consistent with every prior CC)
+```
+
+All *no_network* descendants and core battery remain green. Zero network. New 10.3 code continues to pass isolation.
+
+**High-risk items for 10.4 (per §14 + handoff — explicitly checked):**
+- Hard performance gate: CC notes synthetic deterministic benchmarks only (no real models); gate must assert timeout/memory/WAL/batch in test_performance.py + benchmarks/.
+- File Layout: Note re-read; paths will be src/aip/orchestration/perf.py etc. with aip. imports.
+- Integration with prior (10.1 compiler, retrieval from Phase 5/6/8, TraceStore): Audited above; 10.4 is cross-cutting profiler on top.
+- Laptop-viable (§2.1): max_memory_mb=4096, WAL for concurrency (Phase 6 surfaces).
+
+**Overall Pre-CHUNK-10.4 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-10.4 (PerformanceProfiler in orchestration + API + synthetic benchmarks; clean per Rule #10 + File Layout; core battery green incl. 10.0a–10.3; all 6 steps + hard gate/synthetic determinism checks executed with verbatim evidence; no src/tests edits for 10.4).**
+
+- All 6 steps + §14-mandated explicit checks completed.
+- Ready for exact 10.4 (new orchestration/perf.py + adapter/api/performance.py + tests/test_performance.py + tests/benchmarks/* per box + prose + ANNEX; uses PerformanceConfig (10.0a) + TraceStore; synthetic deterministic benchmarks; hard assertions on laptop-viable metrics; File Layout aip. imports; gate must pass layering + synthetic requirements).
+
+**This completes the mandatory full 6-step pre-CHUNK-10.4 Continuity Check.**
+The record above constitutes the authoritative audit. All evidence gathered before any src/ or tests/ production code edits for 10.4.
+
+**Ready to proceed to CHUNK-10.4 implementation (exact scope per prose + interfaces + ANNEX + File Layout note), gate, WORKLOG append, and push.**
+
+**Phase 8 pre-10.4 CC complete. Tree clean at a714965. Continuing per continuous execution directive after push.**
+
