@@ -9056,6 +9056,48 @@ The record above constitutes the authoritative audit. All evidence gathered via 
 
 ---
 
+## CHUNK-9.0a — Schema Additions + Protocol Amendments + Config Extensions (Foundation for Phase 7)
+
+**Date:** 2026-05 (post pre-9.0a CC at 6e9f766)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.0a box + prose + ANNEX)
+**DEPENDS-ON:** All prior (through CHUNK-8.8)
+**Status:** Gate green + pushed
+
+**Implementation (exact per prose + ANNEX; identical append/amend pattern as 1.0a–8.0a):**
+- `src/aip/foundation/schemas.py` (append): 6 new dataclasses — VigilConfig, AuthConfig, RateLimitConfig, CanonicalPromotionConfig, WorkflowTemplate, DeploymentProfile (with §1.8 / layer docstrings).
+- `src/aip/foundation/protocols.py` (amend by addition): New Protocols VigilStore and AuthStore; CanonicalPipeline method annotations for use by 9.2.
+- `config/aip.config.toml` (append): New sections [vigil], [auth], [rate_limit], [canonical_pipeline], [workflow], [deployment].
+- `tests/test_phase7_schema_additions.py` (new): 5 tests covering instantiation, prior-phase preservation, new Protocol method presence.
+
+**Gate Execution (exact command per spec):**
+```
+uv run pytest tests/test_phase7_schema_additions.py -xvs
+```
+(5 passed)
+```
+uv run pytest ... (full core battery) ...
+============================== 73 passed in 0.51s ===============================
+```
+All 9.0a behaviors + full prior battery (including 8.8 final gates) green. No regressions.
+
+**Files Changed (this unit):**
+- src/aip/foundation/schemas.py (append)
+- src/aip/foundation/protocols.py (amend)
+- config/aip.config.toml (append)
+- tests/test_phase7_schema_additions.py (new)
+
+**Permanent rules followed:** Standard *.0a append-only/amend-by-addition (no prior Phase 0–8 content touched), WORKLOG append-only, push after unit, +2 offset (CHUNK-9.0a), qualified terminology ("Architectural Phase 7", "post-Phase-6 baseline"), deterministic CI, exact scope per prose + ANNEX, Rule #10 clean for foundation (documented in pre-CC), layering / §7.2 / §4.1 / §1.8 respected.
+
+**Rule #10 notes for this chunk:** Foundation-only changes have zero overlap with delivered Phase 6 surfaces or Phase 5 actors. Later 9.1 (Vigil) and 9.2 (canonical pipeline) will have the heavy integration work against 8.0b stores + 8.1 container — pre-CC already flagged this as highest-risk and locked the "extend existing" decision.
+
+**Next per DAG:** CHUNK-9.0b (Authentication & authorization system) + 9.0c (Rate limiting) in parallel after 9.0a. Immediate pre-9.0b / pre-9.0c CC required before further edits.
+
+CHUNK-9.0a complete (gate green).
+
+**Phase 7 CHUNK-9.0a complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
 ## CHUNK-8.8 — Cross-Cutting Gates (Final Quality Gate Extending 7.7 for All Phase 6 Surfaces)
 
 **Date:** 2026-05 (post pre-8.8 CC at 6cc7e63)

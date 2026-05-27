@@ -470,3 +470,47 @@ class EmbeddingProvider(Protocol):
     async def embed(self, text: str) -> list[float]:
         """Embed a single text string and return the vector."""
         ...
+
+
+# --- Phase 7 additions (append only) ---
+
+
+@runtime_checkable
+class VigilStore(Protocol):
+    """Protocol for Vigil actor storage needs (canonical health, entity consistency).
+
+    Per Phase 7: Vigil is read-only; it detects and reports, never modifies autonomously.
+    """
+
+    async def list_stale_canonicals(self, max_age_seconds: int) -> list[dict]:
+        """Return canonical artifacts that have not been re-evaluated recently."""
+        ...
+
+    async def record_vigil_event(self, event: dict) -> None:
+        """Record a Vigil detection/audit event (trace-friendly)."""
+        ...
+
+
+@runtime_checkable
+class AuthStore(Protocol):
+    """Protocol for authentication/authorization storage.
+
+    Phase 7 scope: single-DEFINER + API keys for non-interactive access.
+    """
+
+    async def get_definer_identity(self) -> dict | None:
+        """Return the single DEFINER identity (or None if not configured)."""
+        ...
+
+    async def validate_api_key(self, key: str) -> dict | None:
+        """Validate an API key and return associated identity info."""
+        ...
+
+    async def create_session(self, identity: dict) -> str:
+        """Create a session and return session token."""
+        ...
+
+
+# CanonicalPipeline methods (amendments to be used by 9.2 orchestration component)
+# These are added as loose method stubs for the pipeline to use existing stores via the container.
+# In practice they will be called on the injected stores.

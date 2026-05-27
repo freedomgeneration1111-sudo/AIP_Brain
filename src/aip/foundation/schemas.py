@@ -521,3 +521,77 @@ class ReviewQueueEntry:
     review_type: str = "definer"  # definer / adversarial
     evaluation_scores: list[dict] = field(default_factory=list)
     created_at: str = ""  # REQUIRED — ISO 8601
+
+
+# --- Phase 7 additions (append only) ---
+from dataclasses import dataclass, field
+from typing import Literal
+
+
+@dataclass
+class VigilConfig:
+    """Configuration for the Vigil actor (compiled knowledge maintenance).
+
+    Per §3: Vigil — last missing orchestration actor.
+    Per §16.1 / §1.8: monitors canonical corpus health and triggers re-evaluation on model slot changes.
+    """
+    enabled: bool = True
+    stale_canonical_check_interval_seconds: int = 3600
+    model_slot_change_audit: bool = True
+    entity_consistency_check: bool = True
+
+
+@dataclass
+class AuthConfig:
+    """Configuration for the authentication system.
+
+    Per §1.7: enforces DEFINER sovereignty at the identity level.
+    Phase 7 scope: single-DEFINER with API key support for non-interactive access (CLI/MCP).
+    """
+    session_secret_key: str = "change-me-in-production"
+    api_key_enabled: bool = True
+    session_timeout_minutes: int = 60
+    rate_limit_per_ip: int = 100
+
+
+@dataclass
+class RateLimitConfig:
+    """Token-bucket rate limiting configuration.
+
+    Per Phase 7 scope: prevents any single surface (Beast cadence, MCP, chat) from starving others.
+    Configurable per §1.8.
+    """
+    enabled: bool = True
+    requests_per_minute: int = 60
+    burst_size: int = 10
+    per_definer: bool = True
+    per_ip: bool = True
+
+
+@dataclass
+class CanonicalPromotionConfig:
+    """Configuration for the canonical promotion pipeline.
+
+    Per §1.6 / §9.3: drives REVIEWED→APPROVED→CANONICAL lifecycle with multi-stage verification.
+    """
+    auto_promote_on_approval: bool = False  # requires explicit DEFINER gate in 9.2
+    require_vigil_health_check: bool = True
+    indexing_enabled: bool = True  # LexicalStore + VectorStore sync
+
+
+@dataclass
+class WorkflowTemplate:
+    """Extended workflow template definition (beyond Workflow 0.1)."""
+    name: str
+    version: str = "1.0"
+    description: str = ""
+    path: str = ""  # relative to workflows/
+
+
+@dataclass
+class DeploymentProfile:
+    """Deployment profile (laptop-viable vs production)."""
+    name: str  # "laptop" | "production"
+    vector_backend: str
+    model_providers: dict = field(default_factory=dict)
+    docker_compose_profile: str = ""
