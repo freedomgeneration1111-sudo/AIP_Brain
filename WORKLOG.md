@@ -8078,6 +8078,26 @@ GATE: uv run pytest tests/test_phase5_integration.py -xvs
 
 **Ready to proceed to CHUNK-7.6 implementation (exact scope per prose), gate, WORKLOG append, and push.**
 
+## CHUNK-7.6 — Integration Test (Full Self-Improvement Cycle)
+
+**Date:** 2026-05 (post pre-7.6 CC at 45ef1f3)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.6 box + prose)
+**DEPENDS-ON:** CHUNK-7.3, 7.4, 7.5, 6.5
+**Status:** Gate green + pushed
+
+**Implementation (exact per prose):** 
+- `tests/test_phase5_integration.py` (new): Six scenarios (classification → ACE → prevention, router optimization, Beast maintenance, budget enforcement, stale audit) on top of the 6.5 pipeline + 7.3–7.5 actors. All CI mode.
+
+**Gate:** 60 passed (new integration tests + full prior battery + layering).
+
+**Files:** tests/test_phase5_integration.py (new).
+
+**Permanent rules:** Exact scope (test-only extension of 6.5), push, +2 offset, etc.
+
+CHUNK-7.6 complete (gate green).
+
+**Phase 5 CHUNK-7.6 complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
+
 CC complete. Next per linearized DAG: CHUNK-7.6 implementation.
 
 ---
