@@ -208,7 +208,15 @@ class EventStore(Protocol):
 @runtime_checkable
 class ProjectStore(Protocol):
     """Project and WorkUnit persistent state."""
-    ...
+
+    # --- Phase 5 / CHUNK-7.0a amendment (append method stub only) ---
+    async def list_projects(self, status: str | None = None) -> list[dict]:
+        """List projects, optionally filtered by status.
+
+        Used by Beast for corpus maintenance iteration.
+        Returns list of dicts with project_id, name, status, etc.
+        """
+        ...
 
 
 @runtime_checkable
@@ -236,6 +244,10 @@ class BudgetStore(Protocol):
     """Budget and autonomy tracking.
     CHUNK-3.12: method signatures added by amend-by-addition (matching the
     InMemoryBudgetStore implementation delivered in 3.11). Zero-token contract.
+
+    Phase 5 / CHUNK-7.0a: extended by addition with the canonical get_budget /
+    record_usage / check_limit interface (per §6 and ANNEX). Old methods
+    retained for backward compatibility during 7.0b transition.
     """
     async def consume(self, amount: int, budget_id: str = "default") -> bool:
         """Consume amount from the named budget. Return True if successful."""
@@ -247,6 +259,43 @@ class BudgetStore(Protocol):
 
     async def reset(self, budget_id: str = "default", amount: int | None = None) -> None:
         """Reset or initialize the named budget."""
+        ...
+
+    # --- Phase 5 / CHUNK-7.0a new methods (append only; extends existing Protocol) ---
+    async def get_budget(self, scope: "BudgetScope", scope_id: str) -> dict:
+        """Get current budget status.
+
+        Args:
+            scope: Budget scope (session/project/daily).
+            scope_id: Scope identifier (session_id, project_id, or date string).
+
+        Returns:
+            dict with consumed, remaining, limit, warning_threshold.
+        """
+        ...
+
+    async def record_usage(
+        self,
+        scope: "BudgetScope",
+        scope_id: str,
+        tokens_used: int,
+        cost_usd: float,
+        model_slot: str,
+    ) -> None:
+        """Record token consumption after a model call.
+
+        Called by the workflow engine after each agent node completes.
+        Writes to budget_ledger table in state.db.
+        """
+        ...
+
+    async def check_limit(self, scope: "BudgetScope", scope_id: str) -> bool:
+        """Check whether budget has remaining capacity.
+
+        Returns True if budget is not exhausted, False if at/past limit.
+        Used by workflow engine before dispatching model calls.
+        When budget_hard_stop is True, returning False blocks the call.
+        """
         ...
 
 

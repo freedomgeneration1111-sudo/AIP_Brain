@@ -7379,3 +7379,62 @@ CC complete. Next per linearized DAG: CHUNK-7.0a implementation (then immediate 
 ---
 
 **Phase 5 pre-7.0a CC complete. Tree clean at 3f48db0. Continuing per continuous execution directive after push.**
+
+## CHUNK-7.0a — Schema Additions + Protocol Amendments + Config Extensions (Phase 5 Foundation)
+
+**Date:** 2026-05 (post full pre-7.0a CC at cea3ea3; first production edit of Architectural Phase 5)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.0a box + prose + complete ANNEX)
+**DEPENDS-ON:** CHUNK-6.0a, CHUNK-5.0a (per box); Rule #10 extended all prior + repo 3.x partials
+**Status:** Gate green + pushed
+
+**Pre-CC Summary (from just-completed record at cea3ea3):**
+- Full 6-step Continuity Check executed and appended before *any* src/tests edits.
+- Post-Phase-4 Clean Bill ("Phase 4 complete." at f2bb46c) + 5.8 partial non-blocking confirmed.
+- Rule #10: Detailed reconciliations for budget (old sig vs new methods: extend existing BudgetStore Protocol by addition), sexton/ (9.4k-line 3.4 foundation stub: extend in-place, no parallel actors/ path), session/engine, protocols pre-existence, config, trace/routing roots. All "extend existing rather than replace".
+- Governance baseline green (layering, phase4_gate 16/16, 41 schema tests, hardcode clean).
+- Zero Phase 5 types pre-edit. Tree clean, pushed.
+
+**Implementation (strict scope per prose + ANNEX — append-only / amend-by-addition):**
+- `src/aip/foundation/schemas.py`: Appended (after DomainCoherenceResult) the exact Phase 5 block: `# --- Phase 5 additions...`, BudgetScope alias, and all 6 dataclasses (SextonConfig, AcePlaybookEntry with §1.8 model_gen_assumption, BudgetConfig, RoutingWeight, BeastCadenceConfig, FailureClassification with §1.8) + docstrings matching ANNEX. Removed one redundant inner `from dataclasses` line post-edit (harmless duplicate from ANNEX literal paste; no behavior change).
+- `src/aip/foundation/protocols.py`: 
+  - Amended ProjectStore (minimal) by addition of `list_projects` stub (exact ANNEX text + comment).
+  - Extended existing BudgetStore (the repo 3.x one) by addition of the 3 new methods (get_budget, record_usage, check_limit) + docstrings + Phase 5 comment explaining the extension for compat (per pre-CC Rule #10 decision; old consume/remaining/reset preserved).
+- `tests/test_phase5_schema_additions.py` (new): Created with exact ANNEX skeleton (13 tests covering all new dataclasses, §1.8 fields on Ace/FailureClassification, BudgetStore/ProjectStore method presence, prior Phase 0-4 enums/dataclasses/protocols preserved). 
+  - Import style reconciliation (bare "foundation.*" in spec ANNEX → `aip.foundation.*` to match all delivered phaseN_schema_additions.py tests from 2/3/4; required for import success and gate green).
+  - One assertion tweak in test_phase0_..._enums_still_work: `FailureType.C` (ANNEX shorthand, assuming enum) → `"C" in FailureType.__args__` (exact pattern from delivered test_phase2_schema_additions.py, since FailureType is Literal post-4.0a). Minimal, non-substantive, keeps "existing still work" intent.
+- `config/aip.config.toml`: Appended (end of file) the exact 5 sections from ANNEX prose: [sexton], [ace_playbook], [router], [budget], [beast] with all defaults.
+- No other files touched. No deletions, no reorders, no prior phase edits. Layering respected (foundation only).
+- All new types carry model_gen_assumption per §1.8 (AcePlaybookEntry + FailureClassification).
+
+**Gate Execution (exact command per spec):**
+```
+uv run pytest tests/test_phase5_schema_additions.py -xvs
+...
+============================== 13 passed in 0.06s ===============================
+```
+(Plus combined verification with layering + phase4_gate for no-regression: 30 passed total.)
+
+Full post-edit governance (live):
+- `uv run pytest tests/test_layering.py tests/test_phase4_gate.py tests/test_phase5_schema_additions.py -xvs`: **30 passed** (layering 1/1, phase4_gate 16/16 unchanged, new 13/13). No regressions on §7.2, §4.1, prior schemas.
+- Hardcode scan (re-run): still clean.
+- Tree: clean except the 7.0a changes.
+
+**Files Changed (this unit):**
+- src/aip/foundation/schemas.py (append-only Phase 5 block)
+- src/aip/foundation/protocols.py (amend ProjectStore + extend BudgetStore)
+- tests/test_phase5_schema_additions.py (new, per ANNEX)
+- config/aip.config.toml (append-only 5 sections)
+
+**Permanent rules followed:** append-only / amend-by-addition on schemas + protocols (Phase 5 block after Phase 4), WORKLOG append-only (this entry), push after unit, +2 offset (CHUNK-7.0a exclusively), qualified terminology ("Architectural Phase 5", "CHUNK-7.0a", "repo 3.x partial"), deterministic CI (zero network, ci_mode compatible), exact scope per prose + ANNEX (no gold-plating), Rule #10 reconciliations applied and documented (import style, FailureType Literal, BudgetStore extension), layering / §1.8 / §4.1 / §7.2 respected. 5.8 partial untouched.
+
+**Rule #10 notes for this chunk (in addition to pre-CC):** 
+- All reconciliations from pre-7.0a CC honored in the edits (BudgetStore extended in-place; sexton/ untouched in 7.0a as schema-only; no actors/ parallel created).
+- Spec ANNEX used "foundation.*" shorthand — reconciled to delivered `aip.foundation.*` pattern from 4.x/5.x tests (extend existing test conventions).
+- Duplicate import from ANNEX paste: removed as hygiene (no scope change).
+- FailureType assertion: aligned to actual Literal usage in repo (extend phase2 test pattern).
+
+**Next per DAG:** 7.0b (budget system — after this + 5.7). Immediate pre-7.0b CC required before any further edits.
+
+CHUNK-7.0a complete (gate green).
+
+**Phase 5 CHUNK-7.0a complete (gate green + pushed at <hash>). Continuing to next per linearized order.**

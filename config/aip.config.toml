@@ -14,3 +14,38 @@ weight_frequency     = 0.10
 [embedding]
 provider = "fake"
 # model = "sentence-transformers/all-MiniLM-L6-v2"  # example for real local provider
+
+# --- Phase 5 additions (append only) ---
+# Per CHUNK-7.0a ANNEX + prose: all Sexton/ACE/router/budget/beast params
+# toggleable per §1.8. Defaults match the spec.
+
+[sexton]
+classification_batch_size = 50
+classification_interval_seconds = 300     # 5 minutes
+audit_on_slot_change = true
+max_unclassified_before_alert = 10
+
+[ace_playbook]
+db_path = "db/ace_playbook.db"
+auto_derive = true                        # Sexton auto-derives entries from classifications
+min_confidence = 0.70                     # minimum Sexton confidence to auto-promote entry
+
+[router]
+default_exploration_weight = 0.10
+min_sample_count = 10                     # need at least 10 routing_outcomes before adjusting weights
+weight_decay = 0.95                       # exponential decay for old routing outcomes
+domain_overrides = {}                     # per-domain exploration_weight overrides
+
+[budget]
+session_token_limit = 500000
+project_token_limit = 5000000
+daily_token_limit = 10000000
+budget_warning_threshold = 0.80
+budget_hard_stop = true
+
+[beast]
+corpus_reindex_interval_seconds = 3600    # 1 hour
+entity_maintenance_interval_seconds = 1800  # 30 minutes
+health_check_interval_seconds = 60
+max_reindex_batch_size = 1000
+

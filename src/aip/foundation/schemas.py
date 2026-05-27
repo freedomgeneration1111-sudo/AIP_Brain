@@ -306,3 +306,108 @@ class DomainCoherenceResult:
     domain: str = ""
     violations: list[str] = field(default_factory=list)
     evaluation_scores: list[EvaluationScore] = field(default_factory=list)
+
+
+# --- Phase 5 additions (append only) ---
+from typing import Literal
+
+
+# Type alias for budget scoping
+BudgetScope = Literal["session", "project", "daily"]
+
+
+@dataclass
+class SextonConfig:
+    """Configuration for the Sexton failure classification actor.
+
+    Per §16.1: Sexton reads trace_events and classifies failures A-F.
+    Per §1.8: Sexton audits stale model assumptions on slot changes.
+    """
+    classification_batch_size: int = 50
+    classification_interval_seconds: int = 300
+    audit_on_slot_change: bool = True
+    max_unclassified_before_alert: int = 10
+
+
+@dataclass
+class AcePlaybookEntry:
+    """A single procedural intervention rule in the ACE Playbook.
+
+    Per §8.1: procedural intervention rules, loaded at session start.
+    Per §16.1: curated by Sexton.
+    Per §1.8: every rule must carry model_gen_assumption.
+    Per Appendix E Type B: "Add or strengthen playbook entry."
+    """
+    entry_id: str
+    domain: str
+    failure_type: str  # A-F per Appendix E
+    intervention: str
+    condition: str  # Jinja2 expression
+    model_gen_assumption: str | None = None
+    source_trace_ids: list[str] = field(default_factory=list)
+    confidence: float = 0.0
+    created_at: str = ""
+    deprecated_at: str | None = None
+    deprecated_reason: str | None = None
+
+
+@dataclass
+class BudgetConfig:
+    """Token budget configuration.
+
+    Per §6: BudgetStore Protocol required.
+    Per §11.1: parallel nodes inherit parent budget.
+    Per §1.8: all limits toggleable via config.
+    """
+    session_token_limit: int = 500000
+    project_token_limit: int = 5000000
+    daily_token_limit: int = 10000000
+    budget_warning_threshold: float = 0.80
+    budget_hard_stop: bool = True
+
+
+@dataclass
+class RoutingWeight:
+    """A single domain x model routing weight.
+
+    Per §4.3: default routing uses highest-weight model for domain.
+    Per §4.3: exploration_weight controls probability of non-optimal routing.
+    Per §16.1: Sexton recommends exploration_weight adjustments per domain.
+    """
+    model_slot: str
+    domain: str
+    weight: float = 0.5
+    exploration_weight: float = 0.10
+    sample_count: int = 0
+    updated_at: str = ""
+
+
+@dataclass
+class BeastCadenceConfig:
+    """Configuration for the Beast maintenance actor.
+
+    Per §3: Beast — cadence / corpus / entity maintenance.
+    Per §5.10: state.db stores cadence_state.
+    """
+    corpus_reindex_interval_seconds: int = 3600
+    entity_maintenance_interval_seconds: int = 1800
+    health_check_interval_seconds: int = 60
+    max_reindex_batch_size: int = 1000
+
+
+@dataclass
+class FailureClassification:
+    """Sexton's classification output for a single trace event.
+
+    Per §16.1: Sexton assigns appropriate Type A-F label.
+    Per §5.9: writes back to trace_events.failure_type.
+    Per §1.8: every classification carries model_gen_assumption.
+    """
+    trace_event_id: int
+    failure_type: str  # A-F per Appendix E
+    confidence: float = 0.0
+    rationale: str = ""
+    model_slot_used: str = "sexton"
+    tokens_consumed: int = 0
+    model_gen_assumption: str | None = None
+    classified_at: str = ""  # REQUIRED — ISO 8601
