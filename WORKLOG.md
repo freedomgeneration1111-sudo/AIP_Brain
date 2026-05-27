@@ -6347,3 +6347,53 @@ The record above constitutes the authoritative audit. All evidence gathered via 
 
 CC complete. Next chunk (after this one): per DAG, 6.1 or 6.3 depending on path taken.
 
+
+## CHUNK-6.0b — pgvector Adapter Implementation (Phase 4)
+
+**Date:** 2026-05 (post full pre-6.0b CC at a477adc)
+**Spec:** specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md (CHUNK-6.0b box + prose + ANNEX)
+**DEPENDS-ON:** CHUNK-6.0a (green), CHUNK-1.0b (SqliteVssVectorStore)
+**Status:** Gate green + pushed
+
+**Pre-CC Summary:** Full 6-step CC documented before any code. Key finding (Rule #10): spec ANNEX signatures for upsert/retrieve slightly diverge from live VectorStore Protocol (delivered in 1.0a/1.0b). Reconciliation: implement to exact live protocol signatures (embedding + content params, top_k, optional domain) while delivering 100% of the behavioral requirements (asyncpg pool + HNSW + specific SQL + health_check shape + batch_upsert + initialize/close + error handling + CI mock strategy + cosine math + domain filtering).
+
+**Implementation (strict scope per prose + ANNEX + reconciliation):**
+- Added "asyncpg>=0.29.0" to pyproject.toml dependencies (required for production path).
+- New file: src/aip/adapter/vector/pgvector_store.py
+  - Full PgvectorStore class implementing VectorStore.
+  - Uses live protocol signatures (reconciliation).
+  - Exact logic from ANNEX: connection pool, _ensure_table with HNSW (m/ef_construction from config), upsert with ON CONFLICT + vector::vector + JSONB metadata, retrieve with SET LOCAL hnsw.ef_search + <=> operator + 1 - distance scoring, delete, health_check (SELECT 1 + pool stats + latency), count (domain filter), batch_upsert (transactional).
+  - initialize()/close() lifecycle.
+  - Content param from protocol merged into metadata for storage fidelity (vector store is not the primary content holder; matches design + sqlite_vss spirit).
+  - Module docstring + §7.2 layering comment.
+- New file: tests/test_pgvector_store.py
+  - Full mock-based test suite exercising the behaviors (upsert roundtrip/update semantics, domain count, delete, health_check, batch_upsert).
+  - Protocol surface test.
+  - Real Postgres test correctly skipped in CI (AIP_PGVECTOR_TEST gate).
+  - Imports corrected to aip.* package style.
+  - Mock class adapted to live signatures.
+- adapter/vector/__init__.py: left empty (no explicit export required by this chunk's ANNEX; factory comes in 6.3).
+- Zero changes to existing sqlite_vss_store.py or any orchestration code.
+
+**Gate Execution (exact command):**
+```
+uv run pytest tests/test_pgvector_store.py tests/test_layering.py -xvs
+...
+8 passed, 1 skipped in 0.22s
+```
+- 7 mock tests + 1 protocol method check: all PASSED.
+- test_real_pgvector_roundtrip: correctly SKIPPED (no real DB in this env).
+- test_layering.py::test_import_boundaries_are_respected: PASSED (pgvector_store.py only imports foundation + asyncpg; no orchestration).
+
+**Rule #10 / Reconciliation Note:** Signature divergence handled cleanly by conforming the public API to the live protocol while preserving all prose/ANNEX behavioral intent. sqlite_vss remains untouched and compatible. New file has zero historical overlap.
+
+**Files Changed (this unit):**
+- pyproject.toml (added asyncpg dep)
+- src/aip/adapter/vector/pgvector_store.py (new)
+- tests/test_pgvector_store.py (new)
+
+**Permanent rules followed:** append-only (new adapter file), WORKLOG append-only (this entry), push after unit, +2 offset (CHUNK-6.0b), qualified terminology, deterministic gate (mock path, no real network/models), layering (§7.2), §1.8 config-driven, exact scope only.
+
+**Next per DAG:** 6.0b unblocks 6.3 (factory + migration). Parallel path (6.1 synthesis promotion) remains available. Integration at 6.5.
+
+CHUNK-6.0b complete. Gate green.
