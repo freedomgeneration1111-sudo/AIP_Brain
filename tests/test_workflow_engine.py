@@ -366,3 +366,46 @@ async def test_workflow_definition_finally_and_on_error():
     assert "main" in execution
     assert "compensate" in execution
     assert "finally" in execution
+
+@pytest.mark.asyncio
+async def test_high_level_workflow_engine_api():
+    """Smoke test that the new high-level WorkflowEngine facade works for both general and Workflow 0.1 paths."""
+    from aip.orchestration.workflow.engine import WorkflowEngine
+
+    class FakeVS:
+        async def retrieve(self, query_vector, domain=None, top_k=10):
+            return []
+
+    async def fake_embed(text):
+        return [0.0] * 768
+
+    engine = WorkflowEngine(
+        vector_store=FakeVS(),
+        embed_fn=fake_embed,
+    )
+
+    # General workflow path (simple linear YAML)
+    import tempfile
+    from pathlib import Path
+
+    simple_wf = """
+nodes:
+  - id: start
+    type: script
+    code: "hello"
+  - id: think
+    type: agent
+    model_slot: synthesis
+    prompt: "Summarize: {{ previous }}"
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(simple_wf)
+        path = f.name
+
+    result = await engine.run_workflow(path)
+    assert result is not None
+    Path(path).unlink()
+
+    # Workflow 0.1 convenience path
+    result2 = await engine.run_workflow_01(query="Test query", domain="test")
+    assert result2 is not None

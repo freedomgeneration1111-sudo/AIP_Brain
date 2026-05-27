@@ -1489,3 +1489,25 @@ This adds pragmatic, first-class support for the common "try / on_error / finall
 High usability win that completes the "usable engine" story after the foundation work. Safe and high-value next step. Keep it focused on a thin, clean facade.
 
 **Status:** Continuity Check complete. Proceeding to implementation.
+
+**Implementation for CHUNK-2.12:**
+- Created `workflow/engine.py` with a clean, high-level `WorkflowEngine` class.
+- Provides simple `run_workflow(yaml_path, variables=...)` for general YAML workflows.
+- Provides `run_workflow_01(query, domain)` as the easiest way to execute a standard synthesis session.
+- Handles common defaults (fake_embed, safe no-op stores) while allowing full protocol injection for advanced use.
+- Added a smoke test demonstrating the simplified public API for both paths.
+- Minor robustness fix in the facade for missing stores.
+
+This gives consumers of the workflow engine a much nicer on-ramp while preserving full access to the low-level primitives for power users.
+
+**Pushed:** Yes
+
+**Status:** Complete
+
+---
+
+**Phase 2 Status (Updated)**
+
+With 2.1–2.12 the L5 YAML Workflow Engine now has both a powerful low-level foundation and a clean, usable public API.
+
+The engine is in a very good state for real usage and further extension.
