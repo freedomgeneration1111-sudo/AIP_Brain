@@ -3301,6 +3301,85 @@ After gate green: update WORKLOG, commit, push, continue the series.
 
 **Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-4.4.
 
+---
+
+## Task ID: 4.1-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-4.1: Review Node (remapped Phase 2 / Architectural Phase 2 series)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK (from AIP_0_1_Phase2_BuildSpec_Rev1.2.md):**
+- CHUNK-4.1 implements the review node that transitions GENERATED → REVIEWED | REJECTED per §9.3.
+- DEPENDS-ON: CHUNK-4.0b (ECS graph + GuardrailedEcsStore), CHUNK-1.4 (adversarial_eval stub), CHUNK-1.5 (definer_gate stub).
+- FILES:
+  - `orchestration/review.py`
+  - `tests/test_review_node.py`
+- Core function: `review_artifact(...) -> ReviewVerdict`
+- Two modes (controlled by config.review.mode):
+  - "automated": Uses eval_fn (L3b-style) + configurable thresholds.
+  - "definer": Calls into DEFINER gate path (CHUNK-1.5).
+- Performs ECS transitions using the guardrails from 4.0b.
+- Records review events to EventStore (now queryable after 4.4).
+- Writes trace events.
+- Uses ReviewContext / ReviewVerdict from 4.0a.
+
+**2-5. Dependencies, prior work, Architecture, current state:**
+- DEPENDS-ON: 4.0b (just completed), 1.4 and 1.5 (Phase 1 stubs, long complete).
+- Current repo state:
+  - `orchestration/nodes/definer_gate.py` exists (Phase 1 AUTO_APPROVE_STUB with SynthesisOutput + Validation + EvalResult signature).
+  - `orchestration/nodes/adversarial_eval.py` exists (Phase 1 L3b stub).
+  - `orchestration/nodes/commit.py` exists and performs ECS transitions.
+  - No `orchestration/review.py` exists yet.
+- Historical repo 2.x: Had engine and commit paths that called definer_gate in the old single-turn Workflow 0.1 model. The review concept was not yet the full ECS review node.
+- Repo 3.x (L4/Sexton): No direct overlap with the review orchestrator.
+- Per PHASE2_IMPORT_NOTES.md: `orchestration/review.py` under 4.1 is marked “Not implemented”. The engine (4.5) is noted as “Partial — repo 2.x has mechanics but not full spec compliance”.
+
+**6. Reconciliation & Remediation Rules:**
+- This is new orchestration code (`orchestration/review.py`).
+- There is interface evolution between the Phase 1 definer_gate/adversarial_eval (tied to the old single-turn pipeline) and the Phase 2 review node (tied to the new ECS lifecycle + ReviewVerdict).
+- The spec's ANNEX shows the review node calling helper functions that, in CI, return deterministic fixtures. The prose indicates future integration with the existing 1.5 gate.
+- Existing call sites to the old definer_gate (from repo 2.x engine) are not broken by delivering this new review node; they will be updated or replaced when we reach the full engine integration chunks (4.5/4.7).
+- Follows Process Rule #10: we document the partial overlap with repo 2.x engine work and plan to extend/reconcile at integration time rather than rewrite.
+
+**Additional checks:**
+- §7.2 layering: Lives in orchestration/, will import from foundation (schemas, protocols) and possibly adapter — compliant.
+- Zero-token in automated path: Depends on the eval_fn passed in (deterministic in CI).
+- §1.8: Will need to ensure any new review heuristics carry model_gen_assumption when implemented in later phases.
+- The review node makes heavy use of the new 4.0a types and the 4.0b guardrails — all of which are now present.
+
+**Conclusion of Continuity Check:**
+No blockers. This is the first major orchestration chunk in the 4.x series. It correctly depends on the foundation work we have delivered (4.0a/b, 4.3/4.4). The interface evolution with Phase 1 stubs is expected and will be reconciled during engine integration. All remediation controls satisfied.
+
+**Spec Delta / Numbering Note:**
+Executed against the remapped Phase 2 BuildSpec Rev 1.2 (CHUNK-4.x series).
+
+**FILES (per spec):**
+- `orchestration/review.py` (new)
+- `tests/test_review_node.py` (new)
+
+**GATE (per spec):**
+`uv run pytest tests/test_review_node.py tests/test_layering.py -xvs`
+
+After gate green: update WORKLOG, commit, push, continue the series.
+
+**Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-4.1.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/review.py` with `review_artifact` and helpers exactly per the spec ANNEX (automated + definer modes, ReviewContext assembly, ECS transitions via guardrails, event + trace logging).
+- Created `tests/test_review_node.py` with the core test cases from the spec using fake stores.
+- Gate executed: `uv run pytest tests/test_review_node.py tests/test_layering.py -xvs` → **3/3 PASSED** (core review behavior + layering).
+- This is the first major orchestration chunk in the 4.x series. It correctly wires the foundation work from 4.0a/b + 4.3/4.4.
+- Interface evolution with Phase 1 definer_gate/adversarial_eval noted in the CC; will be reconciled at engine integration time.
+
+**Gate result:** Gate green.
+
+**Status:** Complete
+**Pushed:** (next commit)
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/adapter/event_store_queryable.py` with `QueryableEventStore` exactly per the spec ANNEX (SQLite-backed append-only events table, full query support returning `list[Event]`).
 - Created `tests/test_event_store_query.py` with the exact test cases from the spec (query by artifact_id, by event_type, combined filters, limit, descending order, empty results).
