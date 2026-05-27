@@ -963,3 +963,27 @@ This completes the ability for workflows to pause at structured DEFINER gates (a
 **Pushed:** Yes
 
 **Status:** Complete
+
+**Implementation for CHUNK-2.4 (initial):**
+- Updated SequentialRunner with basic parallel branch execution using asyncio.gather.
+- Each parallel child receives a properly forked WorkflowContext (budget and variables inherited from parent, per Architecture invariant).
+- ParallelNode now has working child execution wiring.
+- More advanced error aggregation, result merging, and budget accounting can be refined in follow-up increments.
+
+This brings the engine to having functional support for all five node types defined in the Architecture.
+
+**Status:** Initial implementation complete. More rigorous testing and refinement to follow.
+
+**Implementation for CHUNK-2.3:**
+- Refined DialogNode to integrate cleanly with the Phase 1 definer_gate (via direct callable or context protocol injection).
+- It always emits a structured "workflow.dialog.paused" event with decision state.
+- Returns `paused=True` when the gate does not auto-approve (or no gate is provided).
+- Updated SequentialRunner to stop execution when a dialog node reports it is paused.
+- Added dedicated test coverage for the pause + event behavior.
+- Verified end-to-end with smoke tests.
+
+This fulfills the core dialog node contract from Architecture §11.1 ("structured DEFINER gate; pauses, emits event before resuming") while reusing the solid Phase 1 DEFINER sovereignty logic.
+
+**Pushed:** Yes (after the Continuity Check push)
+
+**Status:** Complete
