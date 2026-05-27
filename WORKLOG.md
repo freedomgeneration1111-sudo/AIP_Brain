@@ -9326,6 +9326,66 @@ CC complete. Next per linearized DAG: 9.3 implementation (after push).
 
 ---
 
+## Full Pre-CHUNK-9.4 Continuity Check (Mandatory before Web UI Scaffold)
+
+**Date:** 2026-05 (immediately after 9.3 push at 21a661d)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.4 box + prose)
+**DEPENDS-ON:** 9.0b, 9.0c, 8.1 (FastAPI app + existing REST API)
+**Status:** CC complete + documented. Ready for CHUNK-9.4 (no src/ or tests/ production edits for 9.4 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-9.3 baseline: All prior 9.0-9.3 + full Phase 6 surfaces + Phase 5 actors green on core battery (21+ passed reliable subset). The Phase 6 REST API (8.1-8.6) is now fully exercised by CLI (9.0b/8.2), Chat (8.3), Review (8.4/9.2), MCP (8.5), Admin/Memory (8.6), and the new workflows (9.3).
+- Rule #10: No pre-existing static/ or HTMX code in adapter/api/ (confirmed clean). Target `adapter/api/static/` does not exist. Clean for the minimal server-rendered HTMX scaffold. The 8.1 app already has static file serving capability — we extend it, we do not replace.
+- All prior Clean Bills hold.
+
+**1. Re-read of target CHUNK-9.4 (from Phase 7 SSOT):**
+
+```
+CHUNK-9.4: Web UI Scaffold
+PHASE: 7
+DEPENDS-ON: CHUNK-9.0b, CHUNK-9.0c, CHUNK-8.1
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~4,000 tokens
+FILES:
+  adapter/api/static/ (minimal HTML+HTMX)
+  tests/test_web_ui.py
+INTERFACES:
+  Minimal server-rendered pages (project overview, review queue, chat, admin) consuming the Phase 6 REST API.
+  NOT a full SPA.
+TESTS: tests/test_web_ui.py
+GATE: uv run pytest tests/test_web_ui.py -xvs
+```
+
+**Prose key mandates (exact scope):** Minimal HTML+HTMX dashboard served by the 8.1 FastAPI app. Pages for project overview, review queue, chat interface, admin console. Purely consumes the existing Phase 6 REST API (no new backend logic). Proves the REST surface is complete and usable. Server-rendered, not client-side SPA. Auth (9.0b) + rate limiting (9.0c) apply.
+
+**2–6. (Live evidence summary):**
+- DEPENDS (9.0b auth + 9.0c rate limiting middleware + 8.1 app + full Phase 6 REST endpoints) present and green.
+- No pre-existing UI code (Rule #10 clean).
+- Governance: core battery green (21+ passed reliable subset).
+- Rule #10: Clean. Pure frontend scaffold on the delivered 8.1 app + Phase 6 API. No duplication of any backend logic.
+- Arch cross-refs: §3 (surfaces prove the REST API), §7.2 (adapter layer), §2.1 (laptop-viable). The UI is explicitly "NOT a full SPA" per spec — just enough HTMX to demonstrate the API.
+
+**Overall Pre-CHUNK-9.4 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-9.4 (minimal HTMX dashboard proving Phase 6 REST API completeness; clean per Rule #10; core battery green).**
+
+- All 6 steps executed.
+- Ready for exact 9.4 (adapter/api/static/ + minimal pages + test per ANNEX).
+
+**This completes the mandatory full Continuity Check for CHUNK-9.4.**
+
+The record above constitutes the authoritative audit. All evidence gathered before any src/ or tests/ edits for 9.4.
+
+**Ready to proceed to CHUNK-9.4 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: 9.4 implementation (after push).
+
+---
+
+**Phase 7 pre-9.4 CC complete. Tree clean at 21a661d. Continuing per continuous execution directive after push.**
+
+---
+
 ## CHUNK-9.3 — Extended Workflow Templates (Incremental Update, Red-Team, Corpus Maintenance + Registry)
 
 **Date:** 2026-05 (post pre-9.3 CC at b6b737d)
