@@ -199,3 +199,32 @@ The Phase 3 spec describes embedding integration, L4 trajectory regulation, and 
 **No gap audit required for 6.0a:** No prior 6.x code exists in repo (clean slate for new series). Historical overlaps only possible on shared files (schemas.py, protocols.py, config/aip.config.toml, existing nodes) — Rule #10 reconciliation applies on first touch.
 
 **Status:** Phase 4 spec successfully imported. PHASE2_IMPORT_NOTES.md (now covering through Phase 4) updated. Ready for mandatory full CC on CHUNK-6.0a before any production code.
+
+---
+
+## 10. Phase 5 Import Record (Appended for CHUNK-7.x resumption)
+
+**Date:** 2026-05 (post-Phase-4 completion)
+**Action:** Copied `AIP_0_1_Phase5_BuildSpec.md` (Spec Rev 1.0, 86KB) from `/home/moses/Downloads/` into `specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md` following the exact remediation import pattern used for Phase 2/3/4.
+
+**Remapping:** Per permanent +2 offset policy (established in remediation and reinforced in every subsequent CC): Architectural Phase 5 → **CHUNK-7.x series**. All future references use CHUNK-7.0a–7.7. Terminology rules remain in force.
+
+**Key notes from Phase 5 spec (mandatory for all 7.x CCs):**
+- Linearized order: 7.0a (schema/protocol/config) → 7.0b (budget) → 7.1 (Sexton classification) → 7.2 (ACE Playbook) → 7.3 (stale rule audit) → 7.4 (Adaptive router) → 7.5 (Beast) → 7.6 (integration) → 7.7 (final gate).
+- Heavy emphasis on **Rule 10 / Repo overlap reconciliation** because substantial partial work from repo 3.x already exists in `orchestration/sexton/`, `orchestration/budget.py`, `orchestration/session.py`, etc. Extend existing rather than replace.
+- CHUNK-7.0a is the first chunk: identical append-only/amend-by-addition pattern on `foundation/schemas.py` + `foundation/protocols.py` as all prior 0.0a/1.0a/4.0a/5.0a/6.0a chunks.
+- New Protocols (BudgetStore) and amendments (ProjectStore.list_projects, EntityStore methods) follow the ANNEX exactly.
+- All new types (AcePlaybookEntry, FailureClassification, etc.) **must** carry `model_gen_assumption` per §1.8.
+- Sexton/Beast/Router are orchestration-layer only; strict Protocol injection; no direct adapter storage imports.
+- Post-Phase-4 Clean Bill ("Phase 4 complete" at f2bb46c) is the new baseline. 5.8 partial remains non-blocking.
+- Continuous execution directive applies: after initial pre-7.0a CC, proceed through the full linearized order without repeated "go" signals, only pausing for genuine user input needs.
+
+**High-risk areas flagged for every CC:**
+- Existing `orchestration/sexton/` and `orchestration/budget.py` partials (detailed reconciliation required on first touch of 7.0a/7.0b/7.1).
+- Budget enforcement hooks into the CHUNK-4.5 YAML engine and SessionManager.
+- Router wrapping of ModelSlotResolver (must be transparent).
+- Actor placement vs. existing directory structure.
+- All governance gates (layering, no-network, schema, hardcode scans) must stay green.
+
+**Status:** Phase 5 spec successfully imported. PHASE2_IMPORT_NOTES.md extended. Comprehensive handoff prompt written at `PHASE5_HANDOFF_PROMPT.md`. Repo tree clean and pushed (f2bb46c). Ready for mandatory full pre-CHUNK-7.0a Continuity Check before any Phase 5 production code.
+
