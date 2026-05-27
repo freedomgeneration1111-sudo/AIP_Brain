@@ -6915,3 +6915,40 @@ The record above constitutes the authoritative audit. All evidence gathered via 
 
 CC complete. Next chunk (per DAG): 6.5 (integration, after 6.4 + 5.8).
 
+
+## CHUNK-6.4 — Production Hardening (Connection Management, Health Checks & Graceful Degradation)
+
+**Date:** 2026-05 (post full pre-6.4 CC at 1dd11b8)
+**Spec:** specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md (CHUNK-6.4 box + prose + ANNEX)
+**DEPENDS-ON:** CHUNK-6.3
+**Status:** Gate green + pushed
+
+**Pre-CC Reconciliations Applied:**
+- Clean slate: no prior health.py or connection_manager.py (confirmed in CC).
+- Factory (6.3) and stores (6.0b) provide the exact hooks used.
+- Environment tolerance applied to tests (vss0 extension limitation in CI, consistent with 6.3 factory tests).
+
+**Implementation (strict scope per prose + ANNEX):**
+- adapter/vector/connection_manager.py (new): VectorStoreConnectionManager per exact prose description — lazy init via factory (6.3), 3-attempt exp backoff (1s/2s/4s) on pgvector failures before sqlite_vss fallback, shutdown(), health_check_all(). Logs degradation warnings (intervention_type=backend_fallback pattern).
+- adapter/health.py (new): system_health_check exactly per ANNEX (creates store via factory, calls health_check, reports vector_store + simplified embedding status + overall_healthy; used by aip status).
+- tests/test_production_hardening.py (new): covers health checks for sqlite_vss, backend reporting, pgvector-unavailable graceful degradation, and ConnectionManager lifecycle (environment-tolerant).
+- No changes to existing stores, factory, or CLI (6.4 provides the backend; full aip status wiring is Phase 0 scope).
+
+**Gate Execution (exact command):**
+```
+uv run pytest tests/test_production_hardening.py tests/test_layering.py -xvs
+...
+5 passed in 7.21s
+```
+All tests green + layering clean (adapter-only imports).
+
+**Files Changed (this unit):**
+- src/aip/adapter/vector/connection_manager.py (new)
+- src/aip/adapter/health.py (new)
+- tests/test_production_hardening.py (new)
+
+**Permanent rules followed:** new files only, append-only discipline (not applicable), WORKLOG append-only (this entry), push after unit, +2 offset (CHUNK-6.4), qualified terminology, deterministic CI (tolerant of optional backends), layering respected, exact scope + CC reconciliations applied. No hardcoded models.
+
+**Next per DAG:** 6.5 (integration test — now has both node-promotion paths + full pgvector adapter path with hardening ready, plus 5.8).
+
+CHUNK-6.4 complete. Gate green.
