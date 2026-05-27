@@ -9205,6 +9205,44 @@ CC complete. Next per linearized DAG: 9.1 implementation (after push).
 
 ---
 
+## CHUNK-9.1 — Vigil Actor (Last §3 Orchestration Actor — Read-Only Canonical Health)
+
+**Date:** 2026-05 (post pre-9.1 CC at 3518cc3)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.1 box + prose + ANNEX)
+**DEPENDS-ON:** CHUNK-9.0a, 9.0b, 7.1, 8.0b
+**Status:** Gate green + pushed (Vigil + SqliteVigilStore; read-only; creates trace events for Sexton on stale canonicals; core battery green)
+
+**Implementation (exact per prose + ANNEX):**
+- `src/aip/orchestration/actors/vigil.py` (new): Vigil class (check_canonical_health, detect_stale_canonicals, detect_entity_inconsistencies, on_model_slot_change per §1.8, run on cadence). Read-only. Creates trace events (node_type="vigil") for Sexton.
+- `src/aip/adapter/vigil/sqlite_vigil_store.py` (new): SqliteVigilStore implementing VigilStore (health table + vigil_checks log).
+- `src/aip/adapter/vigil/__init__.py` + update to orchestration/actors/__init__.py (new).
+- `tests/test_vigil.py` (new): Design invariants (read-only), layering, trace event creation for Sexton.
+
+**Gate Execution (exact command per spec):**
+```
+uv run pytest tests/test_vigil.py -xvs
+```
+(plus layering)
+4 passed on exact gate + layering. Core reliable battery green at 15 passed.
+
+**Files Changed (this unit):**
+- src/aip/orchestration/actors/vigil.py (new)
+- src/aip/adapter/vigil/ (new package + store)
+- tests/test_vigil.py (new)
+- Minor __init__ updates
+
+**Permanent rules followed:** Read-only constraint (Appendix D + Process Rule 12) strictly enforced in code. Complementary to Sexton (7.1) and Beast (7.5). Creates trace events so Sexton can classify. No direct modification of canonicals. Layering / §7.2 / §1.8 / §16.1 respected.
+
+**Rule #10 notes for this chunk:** Pre-CC confirmed clean (only 9.0a foundation stubs existed). No historical Vigil impl to reconcile. Integrates via delivered 8.0b Canonical/Entity stores + 7.1 Sexton + 9.0a/b types exactly as designed.
+
+**Next per DAG:** 9.2 (Canonical promotion pipeline) after 9.0b + 9.0a + 8.4.
+
+CHUNK-9.1 complete (gate green).
+
+**Phase 7 CHUNK-9.1 complete (Vigil actor delivered; core battery green; pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
 ## CHUNK-9.0b — Authentication & Authorization System
 
 **Date:** 2026-05 (post pre-9.0b/9.0c CC at 9292406)
