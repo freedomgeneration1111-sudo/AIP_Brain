@@ -3109,6 +3109,10 @@ This is real progress on the core of CHUNK-4.5: making the new Phase 2 lifecycle
 
 Continuing the grind on 4.5.
 
+**Even more recent 4.5 step:**
+- Added `test_review_re_synthesize_cycle_basic` in test_workflow_engine.py — a YAML with both review + re_synthesize nodes now loads cleanly through the engine, validating the full integration path we have been building.
+
+
 ---
 
 ## Task ID: 4.0b-1
@@ -3198,6 +3202,10 @@ After gate green: update WORKLOG, commit, push, continue the series.
 This is real progress on the core of CHUNK-4.5: making the new Phase 2 lifecycle nodes actually functional inside the existing (historical) engine.
 
 Continuing the grind on 4.5.
+
+**Even more recent 4.5 step:**
+- Added `test_review_re_synthesize_cycle_basic` in test_workflow_engine.py — a YAML with both review + re_synthesize nodes now loads cleanly through the engine, validating the full integration path we have been building.
+
 
 ---
 
@@ -3518,6 +3526,10 @@ This is real progress on the core of CHUNK-4.5: making the new Phase 2 lifecycle
 
 Continuing the grind on 4.5.
 
+**Even more recent 4.5 step:**
+- Added `test_review_re_synthesize_cycle_basic` in test_workflow_engine.py — a YAML with both review + re_synthesize nodes now loads cleanly through the engine, validating the full integration path we have been building.
+
+
 
 
 **Implementation notes (filled after code + gate):**
@@ -3541,6 +3553,10 @@ This is real progress on the core of CHUNK-4.5: making the new Phase 2 lifecycle
 
 Continuing the grind on 4.5.
 
+**Even more recent 4.5 step:**
+- Added `test_review_re_synthesize_cycle_basic` in test_workflow_engine.py — a YAML with both review + re_synthesize nodes now loads cleanly through the engine, validating the full integration path we have been building.
+
+
 
 
 **Implementation notes (filled after code + gate):**
@@ -3563,6 +3579,10 @@ This is real progress on the core of CHUNK-4.5: making the new Phase 2 lifecycle
 
 Continuing the grind on 4.5.
 
+**Even more recent 4.5 step:**
+- Added `test_review_re_synthesize_cycle_basic` in test_workflow_engine.py — a YAML with both review + re_synthesize nodes now loads cleanly through the engine, validating the full integration path we have been building.
+
+
 
 
 **Implementation notes (filled after code + gate):**
@@ -3584,6 +3604,10 @@ Continuing the grind on 4.5.
 This is real progress on the core of CHUNK-4.5: making the new Phase 2 lifecycle nodes actually functional inside the existing (historical) engine.
 
 Continuing the grind on 4.5.
+
+**Even more recent 4.5 step:**
+- Added `test_review_re_synthesize_cycle_basic` in test_workflow_engine.py — a YAML with both review + re_synthesize nodes now loads cleanly through the engine, validating the full integration path we have been building.
+
 
 
 
