@@ -1193,3 +1193,43 @@ This makes it much easier and more explicit to pass data (retrieval results, syn
 **Pushed:** Yes
 
 **Status:** Complete
+
+---
+
+## Task ID: 2.8-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-2.8: End-to-End Workflow 0.1 Execution + Polish
+
+**Continuity Check (performed before writing any code):**
+
+**1. Why this chunk now?**
+- We now have solid support for all core node types + persistence + data flow (2.1–2.7).
+- The ultimate goal of Phase 2 is to be able to express and run Workflow 0.1 (the synthesis session pipeline defined in Architecture Appendix F) as a real, executable YAML workflow.
+- We need to ensure the engine can actually wire the sophisticated Phase 1 nodes (retrieve, structural_validate, adversarial_eval, definer_gate, commit) into a coherent end-to-end flow, and provide a clean high-level API for it.
+
+**2. Current state:**
+- AgentNode can call real retrieve + synthesis (2.5).
+- Dialog nodes integrate with the Phase 1 definer_gate (2.3).
+- We have persistence for pause/resume.
+- Data flow between nodes is reasonable (2.7).
+- The low-level building blocks are there, but there is no "Workflow 0.1 Runner" or standard way to express the canonical synthesis session pipeline yet.
+
+**3. Scope for this chunk:**
+- Define a standard way (or example) to express Workflow 0.1 as YAML using the nodes we have.
+- Create a high-level convenience runner / executor that wires the Phase 1 components with sensible defaults (fake_embed when no real embedder is provided, etc.).
+- Polish any rough edges discovered while trying to run a full synthesis session (variable naming, context passing to the definer gate, etc.).
+- Add an end-to-end test that runs a minimal but realistic Workflow 0.1 and produces a committed artifact.
+
+**4. Constraints:**
+- Must continue to respect all Phase 1 layering, protocol injection, and determinism rules.
+- Should not require a real vector store or embedding model for the test (use fakes where appropriate).
+
+**5. Risks / Open questions:**
+- How much of "the full Workflow 0.1" do we need to express in this foundation chunk vs. leaving as documentation/example for later?
+- Scope creep risk — keep it focused on "make a full synthesis session runnable end-to-end with the current engine."
+
+**Conclusion of Continuity Check:**
+High-value closing chunk for the current Phase 2 foundation. Safe to proceed. This will validate that all the previous chunks actually compose into something useful.
+
+**Status:** Continuity Check complete. Proceeding to implementation.
