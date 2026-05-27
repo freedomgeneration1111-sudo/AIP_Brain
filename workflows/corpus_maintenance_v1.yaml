@@ -1,0 +1,27 @@
+# corpus_maintenance_v1.yaml
+# CHUNK-9.3: Comprehensive corpus maintenance (more thorough than Beast cadence)
+template_id: corpus_maintenance_v1
+name: Corpus Maintenance
+description: Scans for orphans, verifies indexing, cleans stale FTS5 entries
+trigger: weekly_or_manual
+domains: ["*"]
+model_gen_assumption: "Over time, indexes drift; periodic full maintenance keeps the corpus healthy"
+
+nodes:
+  - id: scan_orphans
+    type: corpus_scan
+    params:
+      check: orphans
+
+  - id: verify_indexing
+    type: corpus_scan
+    params:
+      check: indexing  # VectorStore + LexicalStore coverage for canonicals
+
+  - id: clean_stale_fts
+    type: fts_maintenance
+
+  - id: report
+    type: report
+    params:
+      include: ["orphans", "indexing_gaps", "cleaned_entries"]

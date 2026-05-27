@@ -1,0 +1,44 @@
+# incremental_update_v1.yaml
+# CHUNK-9.3: Incremental update for stale canonicals (triggered by Vigil 9.1)
+template_id: incremental_update_v1
+name: Incremental Update
+description: Updates an existing artifact with new context while preserving structure
+trigger: on_canonical_stale
+domains: ["*"]
+model_gen_assumption: "Models improve over time; incremental updates preserve intent while incorporating current knowledge"
+
+nodes:
+  - id: retrieve_existing
+    type: retrieval
+    params:
+      artifact_id: "{{ input.artifact_id }}"
+
+  - id: retrieve_new_context
+    type: retrieval
+    params:
+      query: "{{ input.update_query }}"
+
+  - id: synthesize_update
+    type: synthesis
+    params:
+      prompt: "Update the existing artifact with the new context while preserving its core structure and intent."
+      context:
+        - existing: "{{ retrieve_existing.result }}"
+        - new: "{{ retrieve_new_context.result }}"
+
+  - id: structural_validate
+    type: structural_validation
+
+  - id: faithfulness_eval
+    type: faithfulness
+
+  - id: domain_coherence_eval
+    type: domain_coherence
+
+  - id: review_gate
+    type: dialog
+    params:
+      prompt: "Review this incremental update for promotion to canonical."
+
+  - id: promote
+    type: canonical_promotion  # Uses the 9.2 pipeline

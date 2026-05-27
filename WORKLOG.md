@@ -9326,6 +9326,44 @@ CC complete. Next per linearized DAG: 9.3 implementation (after push).
 
 ---
 
+## CHUNK-9.3 — Extended Workflow Templates (Incremental Update, Red-Team, Corpus Maintenance + Registry)
+
+**Date:** 2026-05 (post pre-9.3 CC at b6b737d)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.3 box + prose)
+**DEPENDS-ON:** 9.0a, 9.0b, 4.5
+**Status:** Gate green + pushed (three new YAML templates + WorkflowRegistry discovery; core battery green)
+
+**Implementation (exact per prose + ANNEX):**
+- `workflows/incremental_update_v1.yaml` (new): Incremental update for stale canonicals (Vigil trigger).
+- `workflows/adversarial_redteam_v1.yaml` (new): Adversarial resilience scoring.
+- `workflows/corpus_maintenance_v1.yaml` (new): Orphan/index/FTS cleanup.
+- `src/aip/orchestration/workflow_registry.py` (new): Discovers templates via frontmatter/metadata, list/get/load.
+- `tests/test_extended_workflows.py` (new): Registry discovery + engine compatibility + layering.
+
+**Gate Execution (exact command per spec):**
+```
+uv run pytest tests/test_extended_workflows.py -xvs
+```
+(plus layering)
+4 passed on exact gate + layering. Core reliable battery green at 21 passed.
+
+**Files Changed (this unit):**
+- workflows/ (three new YAMLs)
+- src/aip/orchestration/workflow_registry.py (new)
+- tests/test_extended_workflows.py (new)
+
+**Permanent rules followed:** Pure YAML configuration + thin registry on the delivered 4.5 engine. Each template carries model_gen_assumption. incremental_update is the natural trigger for 9.1 Vigil on stale canonicals. Layering / §11.1 respected.
+
+**Rule #10 notes for this chunk:** Pre-CC confirmed clean. No duplication of 9.2 pipeline logic — the new workflows *use* it.
+
+**Next per DAG:** 9.4 (Web UI scaffold) after 9.0b + 9.0c + 8.1.
+
+CHUNK-9.3 complete (gate green).
+
+**Phase 7 CHUNK-9.3 complete (Extended workflow templates delivered; core battery green; pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
 ## CHUNK-9.2 — Canonical Promotion Pipeline (The Missing Driver for Full REVIEWED→APPROVED→CANONICAL)
 
 **Date:** 2026-05 (post pre-9.2 CC at 285d45b)

@@ -1,0 +1,30 @@
+# adversarial_redteam_v1.yaml
+# CHUNK-9.3: Adversarial red-team evaluation for canonical resilience
+template_id: adversarial_redteam_v1
+name: Adversarial Red-Team
+description: Generates adversarial challenges and scores canonical resilience
+trigger: manual_or_vigil_degraded
+domains: ["*"]
+model_gen_assumption: "Even high-faithfulness canonicals can have hidden weaknesses under adversarial pressure"
+
+nodes:
+  - id: load_canonical
+    type: retrieval
+    params:
+      artifact_id: "{{ input.artifact_id }}"
+
+  - id: generate_challenges
+    type: adversarial_generation
+    params:
+      count: 5
+
+  - id: score_resilience
+    type: adversarial_scoring
+    params:
+      canonical: "{{ load_canonical.result }}"
+      challenges: "{{ generate_challenges.result }}"
+
+  - id: review_findings
+    type: dialog
+    params:
+      prompt: "Review the adversarial findings and decide on remediation."
