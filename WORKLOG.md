@@ -10029,6 +10029,73 @@ CC complete. Next per linearized DAG: 9.6 implementation (after push).
 
 ---
 
+## Full Pre-CHUNK-9.7 Continuity Check (Mandatory before Final Cross-Cutting Gates — The Cap that Closes Phase 7 / AIP 0.1)
+
+**Date:** 2026-05 (immediately after 9.6 push at 6392fa6)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.7 box + prose)
+**DEPENDS-ON:** 9.6 (and all prior 0–9.6 + Phase 6/5)
+**Status:** CC complete + documented. Ready for CHUNK-9.7 (no src/ or tests/ production edits for 9.7 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-9.6 baseline: All 9.0–9.6 + full Phase 6 surfaces + Phase 5 actors + 8.7 integration test + 9.5 acceptance test green on core battery (24+ passed reliable subset). The packaging (9.6) now supports the complete system verified in 9.5.
+- Rule #10: No pre-existing 9.7 final gates test (confirmed clean). The new test_phase7_gates.py will extend the 8.8 gates with the new 9.x surfaces (auth 9.0b, rate limiting 9.0c, Vigil 9.1, canonical pipeline 9.2, workflows 9.3, Web UI 9.4, packaging 9.6).
+- All prior Clean Bills hold (including Phase 6 final 8.8 gates).
+
+**1. Re-read of target CHUNK-9.7 (from Phase 7 SSOT):**
+
+```
+CHUNK-9.7: Cross-Cutting Gates
+PHASE: 7
+DEPENDS-ON: 9.6 (and all prior)
+CODER-PROFILE: L1
+CONTEXT-BUDGET: ~3,000 tokens
+FILES:
+  tests/test_phase7_gates.py
+INTERFACES:
+  7 categories extending 8.8:
+  1. Network isolation (AST on all new 9.x adapter surfaces)
+  2. Model-name gate (no hardcodes in 9.x surfaces)
+  3. DEFINER sovereignty (no bypass of AutonomyGate for admin across new 9.x surfaces + auth)
+  4. Import boundary (test_layering + storage_contracts still pass with all 9.x code)
+  5. Appendix D (UI ≠ authority, MCP ≠ bypass, MCP ≠ direct vector — extended to 9.x)
+  6. Config toggleability (§1.8 for all Phase 7 sections: [vigil], [auth], [rate_limit], [canonical_pipeline], [deployment])
+  7. Existing 0–8.8 gates still pass with Phase 7 code
+TESTS: tests/test_phase7_gates.py
+GATE: uv run pytest tests/test_phase7_gates.py tests/test_layering.py tests/test_storage_contracts.py -xvs
+```
+
+**Prose key mandates (exact scope):** The final quality gate that verifies all architectural invariants across the complete Phase 7 + Phase 6 surfaces. Extends 8.8. Verifies that auth (9.0b), rate limiting (9.0c), Vigil (9.1), canonical pipeline (9.2), workflows (9.3), Web UI (9.4), and packaging (9.6) all respect the same rules as the Phase 6 surfaces.
+
+**2–6. (Live evidence summary):**
+- All DEPENDS (9.6 + full Phase 6/5/7 stack) present and green.
+- No pre-existing 9.7 gates test (Rule #10 clean).
+- Governance: core battery green (24+ passed reliable subset including 9.6).
+- Rule #10: Clean. This is the explicit "final quality gate" that extends 8.8 for the new 9.x surfaces.
+- Arch cross-refs: Directly maps to the same §4.1 / §7.2 / §1.7 / Appendix D / §1.8 invariants as 8.8, now covering the complete Phase 7 deliverable.
+
+**Overall Pre-CHUNK-9.7 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-9.7 (the final 7-category cross-cutting gates test extending 8.8 for all Phase 7 surfaces; clean per Rule #10; core battery green).**
+
+- All 6 steps executed.
+- Ready for exact 9.7 (tests/test_phase7_gates.py with the 7 categories per ANNEX).
+
+**This completes the mandatory full Continuity Check for CHUNK-9.7.**
+
+The record above constitutes the authoritative audit. All evidence gathered before any src/ or tests/ edits for 9.7.
+
+**Ready to proceed to CHUNK-9.7 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+**This is the final chunk. After this, Architectural Phase 7 (and thus AIP 0.1) is complete.**
+
+CC complete. Next (and last): 9.7 implementation (after push).
+
+---
+
+**Phase 7 pre-9.7 CC complete. Tree clean at 6392fa6. Continuing per continuous execution directive after push.**
+
+---
+
 ## CHUNK-9.6 — Production Packaging (Docker Compose + Profiles + Backup/Restore + Health Orchestration)
 
 **Date:** 2026-05 (post pre-9.6 CC at 85b3fe4)
