@@ -596,3 +596,48 @@ The two cross-cutting determinism gates (1.7) are now green.
 **Final position:** 1.0a ✓ → 1.0b ✓ → 1.1 ✓ → 1.2 ✓ → 1.3 ✓ → 1.4 ✓ → 1.5 ✓ → 1.6 ✓ → **1.7 ✓ (COMPLETE)**
 
 All Phase 1 work units per Rev 1.3 have been executed following the strict Continuity Check process before every chunk.
+
+---
+
+## Task ID: Phase1-Green-Gate
+
+**Agent:** Grok Build  
+**Task:** Deliver the full Phase 1 aggregate green gate as defined at the end of Rev 1.3
+
+**Work Log:**
+- Created the two missing tests required by the spec's aggregate gate:
+  - `tests/test_layering.py` — enforces §7.2 import boundaries (foundation isolated, orchestration only imports from foundation, etc.).
+  - `tests/test_trace_schema.py` — validates trace_events table schema + FailureType/OutcomeType consistency.
+- Ran the exact aggregate command listed in the Rev 1.3 "Phase 1 Green Gate Summary":
+
+  uv run pytest \
+    tests/test_schema_additions.py \
+    tests/test_sqlite_vss_store.py \
+    tests/test_retrieve_for_synthesis.py \
+    tests/test_structural_validate.py \
+    tests/test_synthesis_node.py \
+    tests/test_adversarial_eval.py \
+    tests/test_definer_gate.py \
+    tests/test_commit_node.py \
+    tests/test_no_network.py \
+    tests/test_no_hardcoded_models.py \
+    tests/test_layering.py \
+    tests/test_trace_schema.py \
+    -xvs
+
+- Result: **53 passed, 6 skipped** (the skips are the expected sqlite_vss tests when the extension is not present — allowed by the spec).
+- Zero unexpected failures or errors.
+
+This completes the formal Phase 1 green gate as defined in the single source of truth.
+
+**Pushed:** Yes
+
+**Status:** Complete — Phase 1 green gate achieved per Rev 1.3
+
+---
+
+**Phase 1 Status (Final)**
+
+All numbered CHUNKS (1.0a through 1.7) + the full aggregate green gate required by the spec have been delivered, each preceded by a documented Continuity Check.
+
+The build is now in the state the spec defines as ready for Phase 2.
