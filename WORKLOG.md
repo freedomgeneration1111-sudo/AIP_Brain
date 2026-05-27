@@ -8491,3 +8491,67 @@ All 8.0b behaviors (FTS5 search/rank, DEFINER sovereignty, gate escalation rules
 CHUNK-8.0b complete (gate green).
 
 **Phase 6 CHUNK-8.0b complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
+## Full Pre-CHUNK-8.1 Continuity Check (Mandatory before FastAPI Scaffold + DI Container + Project/Session REST)
+
+**Date:** 2026-05 (immediately after CHUNK-8.0b gate green + push at f1de3b0)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.1 box + prose, lines 995+)
+**DEPENDS-ON:** CHUNK-8.0b (Lexical/Canonical/Entity/AutonomyGate adapters now delivered), CHUNK-5.7 (SessionManager), CHUNK-6.3 (ProjectStore.list_projects + health surfaces), plus full Phase 5 actor layer (Sexton, Beast, AdaptiveRouter, ACE Playbook, BudgetManager) for the AipContainer wiring
+**Status:** CC complete + documented. Ready for CHUNK-8.1 (no src/ or tests/ production edits for 8.1 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-8.0b baseline: 4 new adapter packages (lexical/canonical/entity/autonomy) + test_remaining_adapters green at 51 passed full battery. 8.0a foundation + all Phase 5 delivered actors (orchestration/actors/beast.py, sexton/{sexton,sexton_audit}.py, router.py, ace_playbook.py, budget.py + engine wiring) are the stable surface composition targets.
+- Tree clean at f1de3b0 (post-8.0b push); no pre-existing adapter/api/, adapter/cli/, or FastAPI files anywhere (confirmed by find + Rule #10 audit). New work will be strictly new files at spec locations.
+- All prior Clean Bills + 8.0a/8.0b hold. 5.8 partial non-blocking.
+- Continuous execution: this is the immediate next CC after 8.0b per linearized DAG (API scaffold is the convergence point for parallel surface paths per spec DAG diagram).
+
+**1. Re-read of target CHUNK-8.1 (from Phase 6 SSOT):**
+
+```
+CHUNK-8.1: FastAPI Application Scaffold + Project & Session REST API
+PHASE: 6
+DEPENDS-ON: CHUNK-8.0b, CHUNK-5.7, CHUNK-6.3
+CODER-PROFILE: L3
+CONTEXT-BUDGET: ~6,000 tokens
+FILES:
+  adapter/api/app.py (FastAPI app factory + DI container)
+  adapter/api/routes/projects.py
+  adapter/api/routes/sessions.py
+  adapter/api/routes/health.py
+  adapter/api/dependencies.py (Protocol injection)
+  adapter/api/__init__.py
+  tests/test_api_projects_sessions.py
+INTERFACES:
+  def create_app(config: dict) -> FastAPI: ...
+  class AipContainer: ... (long list: vector_store, ecs_store, ..., lexical_store, canonical_store, autonomy_gate, model_provider, ..., session_manager, budget_manager, adaptive_router, sexton, beast, ace_playbook)
+  GET /api/v1/health → {status, vector_backend, model_slots, uptime_seconds}
+  Projects CRUD (POST /projects goes through AutonomyGate write)
+  Sessions (POST creates session + loads ACE playbook per §8.1)
+TESTS: tests/test_api_projects_sessions.py
+GATE: uv run pytest tests/test_api_projects_sessions.py tests/test_layering.py -xvs
+```
+
+**Prose key mandates:** Lifespan that calls initialize() on all 8.0b + prior adapters + wires them into AipContainer (the single source of truth for surfaces). FastAPI + CORS from SurfaceConfig. Dependencies via Depends(get_container) — no route ever imports concrete adapters directly. Health is public (no gate). Projects POST and config writes go through AutonomyGate. Session creation loads ACE Playbook. All per §7.2 / §1.7 / §8.1. Existing Phase 0-5 tests must continue to pass.
+
+**2–6. (Live evidence):** DEPENDS present and green (8.0b adapters 51-pass battery, Phase 5 actors + SessionManager/ProjectStore from prior phases, 6.0b VectorStore). No 8.1 files (adapter/api/ or FastAPI/Click code) — clean slate confirmed. Governance 51 passed (layering + all phaseX schema + phase4_gate + remaining_adapters). Rule #10: full audit of newly delivered 8.0b adapters (they are the correct extension of 8.0a Protocols; no overlap/conflict with Phase 5 partials in adapter/ like budget_store_sqlite.py or vector/*). The AipContainer will be the integration point that finally wires the complete Phase 5 actor layer (Sexton/Beast/Router/ACE/Budget) + 8.0b stores into surfaces — highest-risk integration per handoff, but 8.1 itself is scaffold only. Arch §3 / §7.2 / §1.7 alignments (DI container + import boundaries + AutonomyGate on privileged routes) confirmed in prose. Post-8.0b Clean Bill holds.
+
+**Overall Pre-CHUNK-8.1 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-8.1 (FastAPI scaffold + AipContainer wiring all Phase 5 actors + 8.0b adapters + first REST surfaces; clean new paths per Rule #10; 51 passed baseline).**
+
+- All 6 steps executed with direct evidence.
+- Ready for exact 8.1 (adapter/api/ package + test per ANNEX).
+
+**This completes the mandatory full Continuity Check for CHUNK-8.1.**
+
+The record above constitutes the authoritative audit. All evidence gathered before any src/ or tests/ edits for 8.1.
+
+**Ready to proceed to CHUNK-8.1 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-8.1 implementation (after push).
+
+---
+
+**Phase 6 pre-8.1 CC complete. Tree clean at f1de3b0. Continuing per continuous execution directive after push.**
