@@ -886,3 +886,54 @@ This adds the first real control-flow capability to the workflow engine while ke
 **Pushed:** Yes
 
 **Status:** Complete
+
+**Implementation for CHUNK-2.3:**
+- Enhanced DialogNode to properly integrate with the Phase 1 definer_gate (via direct callable or context protocol "definer_gate").
+- It emits a structured "workflow.dialog.paused" event containing the decision (or pending state).
+- The node returns paused=True when it needs to wait for DEFINER input (non-approve or no gate provided).
+- Updated SequentialRunner to stop execution cleanly when a dialog reports pause.
+- Verified with smoke test that events are emitted and the runner halts as expected.
+
+This fulfills the core dialog node contract from Architecture §11.1 ("pauses, emits event before resuming") while reusing the solid DEFINER gate logic from Phase 1 CHUNK-1.5.
+
+**Pushed:** Yes (pending background tasks)
+
+**Status:** Complete
+
+---
+
+## Task ID: 2.4-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-2.4: Parallel Node Execution + Budget Inheritance
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of requirements:**
+- Architecture §11.1: "parallel    concurrent node execution; inherits parent budget"
+- Invariant: "parallel nodes inherit the parent workflow's budget."
+
+**2. Current state:**
+- WorkflowContext already has a `fork_for_parallel()` method (added in 2.1) that copies variables and budget.
+- We have a ParallelNode placeholder.
+- The runner is still purely sequential.
+
+**3. Scope for this chunk:**
+- Implement actual concurrent execution for ParallelNode (using asyncio.gather for a simple first version).
+- Ensure each branch gets its own forked context with shared budget tracking (or proper inheritance accounting).
+- The parent runner waits for all parallel branches to complete.
+- Keep it simple — no complex dependency graphs between parallel children yet.
+
+**4. Constraints:**
+- Must respect the "no direct storage imports" rule (use injected protocols via context).
+- Must be careful with shared mutable state between parallel branches (use separate forked contexts).
+- Budget consumption in parallel branches should be tracked against the parent/inherited budget.
+
+**5. Risks:**
+- True concurrent budget tracking can be tricky; for this foundation chunk we can start with "best effort" inheritance and note that sophisticated accounting can be refined later.
+- Error handling across parallel branches needs thought.
+
+**Conclusion:**
+Safe and high-value next increment. Parallel support completes the core node type coverage for the engine foundation.
+
+**Status:** Continuity Check complete. Proceeding to implementation.
