@@ -5505,3 +5505,161 @@ This is the capstone test for the Phase 2 (4.x) series. It is now feasible becau
 
 
 
+
+---
+
+## Task ID: 5.6-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.6: Context Reset Protocol (implements §10.2 six-step reset)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK (from AIP_0_1_Phase3_BuildSpec_Rev1.1.md):**
+- CHUNK-5.6 implements the full six-step Context Reset Protocol from Architecture §10.2.
+- DEPENDS-ON: CHUNK-5.5 (the regulator that decides when to trigger reset).
+- FILES:
+  - `orchestration/trajectory/context_reset.py`
+  - `tests/test_context_reset.py`
+- Core deliverables:
+  - `execute_context_reset(...)` — the full six-step protocol (progress summary, commit, log, surface to DEFINER, fresh SessionContext).
+  - `inject_deterministic_recovery(...)` — lighter-weight corrective instruction for cases that don't warrant full reset (e.g., Type E streak or moderate signals).
+- Explicitly uses the new Phase 3 types (SessionContext, TrajectorySignal) and the stores (including versioned ArtifactStore from 4.3 and queryable EventStore from 4.4).
+- In CI: deterministic fixtures for the progress summary and recovery instructions. Real model calls for summary are deferred (Phase 4+).
+
+**2. Re-read of DEPENDS-ON chunks:**
+- CHUNK-5.5 (just completed): The regulator that applies the 2-of-3 rule and produces the signals + recommendation that 5.6 consumes.
+- Prior 5.x foundation (5.0a–5.4): All the signals, SessionContext, ModelSlotConfig, resolver, embedding client, and the three detectors are now available.
+
+**3-5. Revision log, Architecture, prior deliverables, current state:**
+- Architecture Rev 5.2 §10.2 exactly matches the six steps in the spec prose.
+- Current repo state: 
+  - `orchestration/l4/reset.py` (from historical 3.x work) has `ResetRecommendation` structure and some logging.
+  - `orchestration/sexton/sexton.py` already has some awareness of "context_reset" events (from 3.x/4.x work).
+  - No `orchestration/trajectory/context_reset.py` or `execute_context_reset` implementation exists yet.
+- Per PHASE2_IMPORT_NOTES.md gap audit (which the remediation process treats as applying to the 5.x series as well): `orchestration/trajectory/context_reset.py` under the equivalent of 5.6 is "Not implemented".
+- Historical repo 3.x L4 work (TrajectoryMonitor, L4ResetCoordinator) provides the detection side; 5.6 is the execution side of the protocol. They are designed to compose.
+
+**6. Reconciliation with remediation rules (PHASE2_IMPORT_NOTES.md Rule #10 and Process Rules):**
+- This is new production code in `orchestration/trajectory/context_reset.py`.
+- The only "overlap" is the existing `ResetRecommendation` dataclass and some Sexton awareness of context_reset events. We can extend/reuse the dataclass rather than duplicate.
+- The instruction in the remediation notes ("extend existing code to meet the spec rather than replacing it") applies here: we should integrate with the existing L4 reset structures where they exist, rather than creating a parallel incompatible system.
+- All new logic lives in the correct layer (orchestration/trajectory).
+
+**Additional checks:**
+- §7.2 layering: Lives in orchestration/, imports from foundation protocols and schemas. Correct.
+- Zero-token in the deterministic path: Yes (fixtures for summary and recovery instructions).
+- §1.8: The recovery templates and instructions are derived from Appendix E failure types; the function itself does not introduce new model-generated heuristics, so no new model_gen_assumption tagging required on the function (the signals it receives already carry it).
+
+**Conclusion of Continuity Check:**
+No blockers. This is the execution half of the L4 intervention system. It composes cleanly with the detection/regulator work from 5.5 and the foundation from 5.0a–5.4. The historical 3.x L4 structures (ResetRecommendation) provide a natural extension point rather than a conflict.
+
+**Spec Delta / Numbering Note:**
+This work is executed against the remapped Phase 3 BuildSpec Rev 1.1 (CHUNK-5.x series) after completing the core of the remapped Phase 2 (4.x) series.
+
+**FILES (per spec):**
+- `orchestration/trajectory/context_reset.py` (new)
+- `tests/test_context_reset.py` (new)
+
+**GATE (per spec):**
+`uv run pytest tests/test_context_reset.py -xvs`
+
+After gate green: update WORKLOG, commit, push, continue the Phase 3 series.
+
+**Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-5.6.
+
+---
+
+**Resumption Verification CC for CHUNK-5.6 (after prior-session partial files discovered, before completion edits + gate)**
+
+**Date of resumption CC:** 2026 (current grind session)
+**Trigger:** Git status showed uncommitted `src/aip/orchestration/trajectory/context_reset.py` + `tests/test_context_reset.py` + modified WORKLOG; last commit was 5.5; no 5.6 gate results or impl notes in log yet. "continue" from user requires completing this open chunk per rules.
+
+**1. Re-read of target CHUNK (Phase3 BuildSpec Rev1.1 § CHUNK-5.6):**
+- Full prose + ANNEX re-read (lines ~1978–2148+).
+- Interfaces, 6-step description, deterministic fixture summary, recovery templates, gate text ("(f) ECS transitions are recorded") all confirmed.
+- ANNEX body for execute_context_reset + inject matches delivered code line-for-line (including unused ecs param, no intervention_* kwargs in write calls, async on both funcs).
+- Note: ANNEX is illustrative; prose + explicit gate verification list are authoritative for required observable behavior.
+
+**2. Re-read of DEPENDS-ON (CHUNK-5.5):**
+- Regulator (src/aip/orchestration/l4/regulator.py) uses historical ResetRecommendation + TrajectorySignal from foundation (5.0a). Produces recs with action="context_reset" but does not call execute/inject from trajectory/ yet. Separation of detection (5.5) vs execution (5.6) is per design; wiring deferred to 5.8 integration per linearized order. No breakage or violated dep.
+
+**3. Revision Log cross-check:**
+- Remapping, +2 offset, S2 append-only preserved. No deltas affecting 5.6 since original CC. PHASE2_IMPORT_NOTES §3/§5 reconciliation applies.
+
+**4. Architecture Rev 5.2 cross-refs:**
+- §10.2 six-step protocol (detect→summary→commit→log→surface→fresh) → matches.
+- §1.8 model_gen_assumption: signals carry it; recovery templates are static (no new generated heuristics).
+- §7.2: new trajectory/ under orchestration/ is correct layer for L4b execution (not foundation, not adapter).
+- §5.9 TraceStore + intervention fields, EventStore surfacing, EcsStore as sole transition path.
+- §9.3 / 4.0b ecs_graph: VALID_TRANSITIONS exist for commit side (used by 4.1/4.2).
+- Zero-token / no-hardcode / config-driven: det path uses only fixtures + templates. Good.
+
+**5. Consistency with prior delivered chunks:**
+- 5.0a: SessionContext (with last_reset_at), TrajectorySignal (D/E/F, model_gen_assumption) — exact match in impl/test.
+- 4.3/4.4/5.0a protocol amends: ArtifactStore.write, Trace/EventStore.write_event, EcsStore.transition all present and used in analogous 4.x code (re_synthesize, review).
+- Historical l4/reset.py + sexton.py: already emit "context_reset" / intervention_type events (extendable via **kwargs passthrough pattern). 5.6 provides canonical execute path using new foundation types.
+- 4.0b Guardrailed + ecs_graph: transition calls validated inside impls; fakes in tests accept the sig.
+- No conflicts with 5.0b/5.1 (model/embedding) — this chunk is pure L4 orchestration.
+- Rule #10 (PHASE2_IMPORT_NOTES mandatory overlap check in every CC): Only new files under orchestration/trajectory/ (allowed for 5.6 per gap audit + FILES). No redeclaration of protocols/schemas. Historical l4/ files untouched. Append-only discipline on foundation preserved. No violation.
+
+**6. Current on-disk state vs. spec:**
+- context_reset.py (141 LOC) + test: structurally complete per ANNEX. Imports correct (aip. prefix for src layout).
+- **Gaps vs. full prose + gate desc (must close before green gate + WORKLOG close):**
+  - `inject_deterministic_recovery` declared `async` (per spec/ANNEX) but test calls it synchronously without await → current gate: 1 pass, 1 TypeError "coroutine not awaited".
+  - ecs_store param accepted but body never calls .transition() (prose step 3 + gate item (f) explicitly require "An ECS transition is recorded" + test coverage).
+  - write_event calls (trace + event) omit `intervention_applied=1`, `intervention_type="context_reset"` (prose step 4/5 + historical l4/reset.py + Sexton expectation via **kwargs).
+  - Test fakes (FakeTraceStore.write_event, FakeEventStore, FakeEcsStore) lack **kwargs / full sig → will reject added kwargs.
+  - No `__init__.py` in trajectory/ (package not import-clean like peers; though direct import works).
+  - test lacks asserts for ECS list and intervention fields (incomplete vs. gate verification list in prose).
+- Partial files were created after the original CC but before any gate or WORKLOG impl notes. No production code was written *after* this resumption CC (this log entry precedes all edits below).
+
+**Conclusion of Resumption CC:**
+Chunk 5.6 is the current open unit. Prior CC was sound; partial delivery is faithful to ANNEX but incomplete vs. authoritative prose/gate requirements. All gaps are isolated to the two chunk-owned files (no foundation or prior chunk changes). Deterministic, zero-token, layering, append-only all preserved in fix plan.
+
+**Fix plan (minimal, exact scope):**
+- Append this verification to WORKLOG (done).
+- Edit only `orchestration/trajectory/context_reset.py` + `tests/test_context_reset.py` + add `orchestration/trajectory/__init__.py` (new, minimal exports).
+- Add ecs_store.transition call (using summary_id + valid states from ecs_graph per 4.x patterns, e.g. GENERATED→REVIEWED).
+- Pass intervention_* kwargs on trace/event writes (matching prose + l4/reset.py pattern).
+- Fix fakes to accept **kwargs for future-proofing.
+- Make test_inject async + await (to match declared interface).
+- Add missing asserts for (f) + intervention fields.
+- Run exact gate + layering/zero-token as full check.
+- Append impl notes + gate result here.
+- Commit + push.
+- Advance to 5.7 CC.
+
+No blockers. Ready for completion edits.
+
+**Status:** Resumption CC documented. Proceeding to minimal fixes for gate-green completion of CHUNK-5.6.
+
+---
+
+**Implementation notes (filled after code + gate for CHUNK-5.6):**
+
+- Created `src/aip/orchestration/trajectory/__init__.py` (minimal package init exporting the two public functions; required for clean imports and consistency with other orchestration subpackages).
+- Amended `src/aip/orchestration/trajectory/context_reset.py` (additive only):
+  - Added `intervention_applied=1, intervention_type="context_reset"` kwargs to trace_store.write_event (matches prose step 4 + historical l4/reset.py + Sexton expectation via **kwargs passthrough).
+  - Added explicit `await ecs_store.transition(...)` call after progress summary write (using summary_id as artifact, GENERATED→REVIEWED valid per ecs_graph + 4.x re_synthesize/review patterns). Satisfies prose step 3 + gate verification item (f).
+  - No other logic changes; body remains deterministic fixture + static templates (zero tokens).
+- Amended `tests/test_context_reset.py` (additive):
+  - Made fakes robust (`**kwargs` on write_event/transition) so they accept full protocol calls from 4.x/5.x amends.
+  - Converted `test_inject_deterministic_recovery` to `@pytest.mark.asyncio` + `await` (required to match the `async def` declared in spec interfaces/ANNEX).
+  - Added explicit asserts for ECS transitions recorded and intervention fields on trace (completes coverage of gate prose list items (d)+(f)).
+- All changes limited to the two FILES declared for CHUNK-5.6. No foundation, no historical l4/, no protocol redeclarations (S2 preserved). §7.2 clean (orchestration/trajectory only imports foundation).
+
+**Gate executed (exact per spec + resumption CC):**
+`uv run pytest tests/test_context_reset.py -xvs`
+- Result: **2/2 PASSED** (both tests now green; execute covers full protocol + ECS + intervention; inject covers deterministic recovery templates).
+- Additional governance: `uv run pytest tests/test_layering.py -q` → **1/1 PASSED** (no §7.2 layering violation from new package or imports).
+
+**Gate result:** Gate green.
+
+**Rule #10 / overlap re-check during fixes:** Only touched new trajectory/ files owned by 5.6. Historical l4/regulator + l4/reset + sexton left untouched (they can consume the new execute_ functions in future 5.7/5.8 wiring). Append-only on all prior chunks and foundation upheld.
+
+**Status:** CHUNK-5.6 complete.
+
+This finishes the context reset protocol execution side (complements 5.5 regulator + historical L4 detection). Continuing the Phase 3 grind per linearized order (next natural: CHUNK-5.7 Multi-turn Session Context).
+
+**Pushed:** (pending commit below)
