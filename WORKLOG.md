@@ -7559,6 +7559,128 @@ CC complete. Next per linearized DAG: CHUNK-7.0b implementation.
 
 **Phase 5 pre-7.0b CC complete. Tree clean at 0a073b8. Continuing per continuous execution directive after push.**
 
+---
+
+## Full Pre-CHUNK-7.1 Continuity Check (Mandatory before Phase 5 Sexton Failure Classification Actor)
+
+**Date:** 2026-05 (immediately after CHUNK-7.0b gate green + push at 9c8331f)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.1 box + prose + gate verification list, lines 1002–1046+)
+**DEPENDS-ON:** CHUNK-7.0a (SextonConfig, FailureClassification, model_gen_assumption requirement), CHUNK-5.0b (ModelSlotResolver + "sexton" slot), CHUNK-6.2 (L3a nodes + trace data patterns)
+**Status:** CC complete + documented. Ready for CHUNK-7.1 (no src/ or tests/ production edits for 7.1 performed during this CC; only reads, scans, test runs, and this append to WORKLOG).
+
+**Pre-CC Reconciliations Applied:**
+- Authoritative baseline now includes full 7.0a + 7.0b (schemas/protocols/config extensions, BudgetManager + SqliteBudgetStore, engine wiring, all gates 37+ passed, pushed at 9c8331f).
+- Post-Phase-4 Clean Bill + "Phase 4 complete." + 5.8 partial non-blocking remain in force and untouched.
+- PHASE2_IMPORT_NOTES.md §10 re-read (and handoff high-risk section): explicit warning on the pre-existing `orchestration/sexton/` partial (the highest-risk Rule #10 surface for 7.1/7.3). "Extend the real delivered files; do not create parallel wrong-path implementations."
+- Continuous execution: 7.0b done; this is the immediate next pre-chunk CC per linearized order.
+- All prior budget/Protocol extensions (7.0a/7.0b) are additive and do not affect Sexton (which depends on TraceStore/EventStore + resolver).
+
+**1. Re-read of target CHUNK-7.1 (from Phase 5 SSOT specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md:1002+):**
+
+```
+CHUNK-7.1: Sexton Failure Classification
+PHASE: 5
+DEPENDS-ON: CHUNK-7.0a, CHUNK-5.0b, CHUNK-6.2
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~5,000 tokens
+FILES:
+  orchestration/actors/sexton.py
+  tests/test_sexton_classification.py
+INTERFACES:
+  class Sexton:
+      def __init__(self, config: SextonConfig, model_resolver: ModelSlotResolver, trace_store: TraceStore, event_store: EventStore) -> None: ...
+      async def classify_failures(self) -> list[FailureClassification]: ...
+      async def classify_trace_event(self, trace_event_id: int) -> FailureClassification: ...
+      async def count_unclassified(self) -> int: ...
+      async def run_classification_cycle(self) -> None: ...
+TESTS: tests/test_sexton_classification.py
+GATE: uv run pytest tests/test_sexton_classification.py tests/test_layering.py -xvs
+```
+
+**Prose key mandates (core of Phase 5):**
+- Sexton is an orchestration-layer actor receiving SextonConfig (7.0a), ModelSlotResolver (for "sexton" slot per §4.1), TraceStore, EventStore via injection. **Never imports adapter implementations directly.**
+- Uses the `sexton` model slot (Qwen3-Coder local) for classification calls.
+- `classify_failures`: queries unclassified failures (`outcome='failure' AND failure_type IS NULL`) via TraceStore, builds prompt with full Appendix E taxonomy + trace data, calls resolver.call("sexton", ...), parses to FailureClassification (with mandatory model_gen_assumption per §1.8), writes back via TraceStore (not direct SQL), returns list of FailureClassification.
+- Additional methods: classify_trace_event (single), count_unclassified (with alert threshold from config), run_classification_cycle (cadence entrypoint with EventStore logging).
+- **CI mode**: When resolver in ci_mode, use deterministic fixtures derived from node_type/outcome (L3a failure → C, L4 → D, etc.). Preserves determinism.
+- Writing back: exclusively through TraceStore.write_event.
+- Gate verifies instantiation, full flow, FailureClassification + §1.8 tagging, alerts, CI determinism, layering (no adapter imports), no regression on existing tests.
+
+**2. Re-read of all DEPENDS-ON (current post-7.0b reality):**
+- **CHUNK-7.0a**: Delivered SextonConfig + FailureClassification (with model_gen_assumption). Phase5 schema test green. Sexton in 7.1 must use these exactly.
+- **CHUNK-5.0b**: ModelSlotResolver (adapter/model_slot_resolver.py) — Sexton must route all model calls through it with slot name "sexton". Resolver supports ci_mode for deterministic tests. Already used by 6.1/6.2 promoted nodes.
+- **CHUNK-6.2**: Promoted L3a nodes (adversarial/faithfulness/domain_coherence) + trace data patterns. 7.1 reads the trace_events they (and L4) produce.
+- **CHUNK-4.5/5.7/6.x**: Engine, SessionManager, EventStore/TraceStore usage patterns. Sexton integrates at the trace layer without mutating live workflow state (per Appendix D: classification ≠ resolution; effects at next session via playbook).
+- Existing foundation (Phase 0/1/3): TraceStore (query_events / write_event), EventStore, the deterministic foundation in the pre-existing sexton/ partial.
+
+All DEPENDS-ON deliverables are present, importable, and previously gated green.
+
+**3. Cross-check against post-7.0b / post-Phase-4 Clean Bills:**
+- Git at 9c8331f (7.0b) after 5a65575 (pre-7.0b CC). All prior 6.x + 7.0a/7.0b green.
+- 5.8 partial unchanged/non-blocking.
+- 7.0a/7.0b CC reconciliations (BudgetStore extension, engine wiring) are orthogonal to Sexton (which does not touch budget in 7.1 scope).
+- No new violations introduced by 7.0a/7.0b that affect 7.1 surfaces.
+
+**4. Rule #10 / Repo overlap reconciliation check (highest scrutiny per handoff + PHASE2_IMPORT_NOTES §10):**
+- **Target surfaces for 7.1:** orchestration/actors/sexton.py (spec path), tests/test_sexton_classification.py (new), possible sexton_audit.py (actually 7.3).
+- **Historical record (git + tree + all prior WORKLOG + handoff):**
+  - Existing delivered artifact: `src/aip/orchestration/sexton/sexton.py` (236 lines, commit df95c999 / CHUNK-3.4 foundation stub per Architecture Rev 5.2 §16.1).
+    - Current API: class Sexton(trace_store: TraceStore only); async classify_recent_failures(limit) → list[dict]; internal deterministic _classify per Appendix E; extra foundation stubs (derive_intervention_rule, audit_model_gen_assumption, derive_ace_rules, etc.); in-memory _playbook dict; zero tokens; explicit "All access via injected protocol only" and "model_gen_assumption per §1.8" comments.
+    - No ModelSlotResolver, no FailureClassification (uses raw dicts + direct write_event), no SextonConfig, no "sexton" slot, no run_classification_cycle / count_unclassified / classify_trace_event as specified.
+  - Directory reality: `orchestration/sexton/` exists with __init__.py + sexton.py. **No `orchestration/actors/` directory exists at all** (confirmed by ls).
+  - Related: TraceStore (Phase 1/3) has query/write paths; EventStore exists; ModelSlotResolver (5.0b) is the mandatory resolution mechanism for all model calls in Phase 4+ nodes.
+  - 7.0a/7.0b added: SextonConfig + FailureClassification (schemas), extended BudgetStore (unrelated to 7.1), no changes to sexton/ dir.
+- **Overlaps identified + "extend existing rather than replace" decisions (non-blocking, append-only where possible):**
+  - **The sexton/sexton.py partial (highest risk, explicitly flagged in handoff and every 7.x CC note):** This is the real delivered foundation for Sexton (CHUNK-3.4 delta, deterministic Appendix E classification + TraceStore injection + §1.8 comments). Spec writes "orchestration/actors/sexton.py".
+    **Reconciliation (extend the real delivered artifact):** For CHUNK-7.1, **extend this exact file in place** (`src/aip/orchestration/sexton/sexton.py`). Add the required 7.1 interface (new __init__ params for config + model_resolver + event_store, the four new async methods, production of FailureClassification objects with model_gen_assumption, "sexton" slot usage via resolver in non-CI path, CI-mode deterministic fixtures matching the spec examples, run_classification_cycle as main cadence entrypoint). Preserve and layer on top of its existing classify_recent_failures + _classify deterministic logic (use it as the CI-mode / fallback implementation). Do **not** create a parallel `orchestration/actors/sexton.py` (would duplicate code, break any existing imports of the delivered Sexton, and violate "extend existing rather than replace"). If future 7.3 needs sexton_audit.py, place it in the same delivered `sexton/` directory or as a sibling module under orchestration/ (path reconciliation documented here and in 7.3 CC). Update any internal references/imports within the sexton/ package to stay self-contained. This honors the literal "real delivered files" instruction in the handoff and all prior Rule #10 practice (e.g., 6.6 path fixes, 7.0b engine extension).
+  - **No other pre-existing 7.1 code:** Confirmed by tree audit + find (no actors/, no test_sexton_classification.py, no pre-7.1 Sexton using resolver or FailureClassification).
+  - **TraceStore / EventStore usage:** Already support the query/write patterns needed. Extend usage only (no changes to the stores themselves in 7.1 scope).
+  - **ModelSlotResolver integration:** New dependency for 7.1 (from 5.0b). Sexton becomes a consumer exactly like the 6.1/6.2 promoted nodes — transparent and correct per §4.1 / §7.2.
+  - **Result:** Clean, reconcilable via extension of the single real delivered sexton/sexton.py artifact. The spec path "actors/" is treated as logical/ shorthand (consistent with prior path reconciliations in 6.x). No Rule #10 blocker. Decision explicitly documented for all future 7.x CCs that touch Sexton (especially 7.3 stale audit).
+
+**5. Architecture Rev 5.2 cross-references:**
+- §16.1 (Sexton as harness maintenance actor, failure classification A–F per Appendix E, model slot "sexton", stale rule audit in 7.3): Core of 7.1 prose.
+- Appendix E (taxonomy A–F + intervention recommendations): Must be in the classification prompt + deterministic fixtures.
+- §1.8 (model_gen_assumption on every classification + rule): Mandatory on FailureClassification outputs.
+- §4.1 / §7.2 (no hardcodes; orchestration uses resolver + Protocols only; adapter never imported by actors): Enforced in gate and code.
+- §3 (three-layer actor model): Sexton is the harness-maintenance actor.
+- Aligns 100% with 7.1 prose and 7.0a FailureClassification.
+
+**6. Other findings + state verification (live in this CC):**
+- **Governance battery (live, post-7.0b):** `uv run pytest tests/test_layering.py tests/test_phase4_gate.py tests/test_phase5_schema_additions.py tests/test_budget_system.py -q`: **All green** (37+ from 7.0b + prior; phase5_schema 13/13, budget 9/9, phase4_gate 16/16, layering 1/1). No regressions from 7.0a/7.0b.
+- **Hardcode model name scan (live, focused on sexton/ + new 7.0a/7.0b surfaces):** NONE (sexton/ is pure deterministic foundation with no model name strings; new 7.0a/7.0b files are schema/config only or use resolver slots).
+- **File / tree audit (live):** 
+  - No `orchestration/actors/` directory.
+  - Existing `orchestration/sexton/sexton.py` (236 lines, 3.4 foundation): minimal Sexton(trace_store only), classify_recent_failures (deterministic), extra foundation stubs, explicit protocol-only + §1.8 comments. Ready for extension.
+  - No pre-existing test_sexton_classification.py or any 7.1 code.
+  - 7.0a (SextonConfig/FailureClassification) and 7.0b (Budget*) present and green.
+- **Git state (live):** HEAD 9c8331f, clean. Blames on sexton/ confirm 3.4 origin; no touches from 6.x/7.0a/7.0b.
+- **5.8 partial:** Unchanged, non-blocking.
+- **Environment / determinism:** Ready for ci_mode fixtures in 7.1 tests (matching 5.0b/6.1/6.2 pattern).
+- **High-risk areas (handoff):** The sexton/ partial was the single largest overlap; reconciled above via "extend the real delivered file". No other 7.1 surfaces pre-exist. Layering and §4.1 will be enforced in the 7.1 gate.
+
+**Overall Pre-CHUNK-7.1 Continuity Check Result:**
+
+**Clean Bill of Health for baseline + readiness for CHUNK-7.1 (with explicit Rule #10 path reconciliation for the delivered sexton/ partial).**
+
+- All 6 steps executed with direct live evidence (spec re-reads of 7.1 prose + verification list, deep inspection + API diff of the 236-line delivered sexton/sexton.py, git blame, tree audit confirming no actors/ dir,  full governance battery green post-7.0b, hardcode clean, DEPENDS cross-checks).
+- Post-7.0b / post-Phase-4 Clean Bills + 5.8 non-blocking status hold.
+- Rule #10: The pre-existing `orchestration/sexton/sexton.py` (the only real delivered Sexton foundation) will be extended in place for the 7.1 interface. The spec's "orchestration/actors/sexton.py" path is a logical shorthand; we follow the literal handoff instruction to extend real delivered artifacts and avoid parallel wrong-path code. All other overlaps (resolver integration, TraceStore usage, 7.0a types) are additive and clean.
+- Permanent rules, +2 offset (CHUNK-7.1), layering, §1.8 tagging on FailureClassification, §4.1 slot resolution via resolver, deterministic CI, and Architecture Rev 5.2 §16.1 / Appendix E alignments confirmed.
+- Zero 7.1 production code written. Tree clean at 9c8331f. Ready for exact-scope 7.1 implementation (extend the delivered sexton/sexton.py with the required interface + resolver + FailureClassification + CI fixtures + cadence methods per prose + ANNEX), gate, WORKLOG append, and push.
+
+**This completes the mandatory full Continuity Check for CHUNK-7.1.**
+
+The record above constitutes the authoritative audit. All evidence gathered via tool execution before any src/ or tests/ edits for 7.1.
+
+**Ready to proceed to CHUNK-7.1 implementation (exact scope per prose + verification list — extend the real delivered `orchestration/sexton/sexton.py` with the 7.1 Sexton interface, model slot usage, FailureClassification output, deterministic CI fixtures, etc.; new test per ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-7.1 implementation.
+
+---
+
+**Phase 5 pre-7.1 CC complete. Tree clean at 9c8331f. Continuing per continuous execution directive after push.**
+
 ## CHUNK-7.0b — Token Budget System (Phase 5 Resource Governance)
 
 **Date:** 2026-05 (post full pre-7.0b CC at 5a65575)
