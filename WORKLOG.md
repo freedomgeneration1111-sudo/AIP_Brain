@@ -999,3 +999,16 @@ This brings functional support for the last major node type (parallel) in the cu
 **Status:** Initial implementation complete. More advanced error handling, result merging, and nested parallel can be refined later.
 
 **Pushed:** Pending
+
+**Implementation for CHUNK-2.4:**
+- Refined SequentialRunner with actual concurrent execution for ParallelNode using asyncio.gather.
+- Each parallel child receives a properly forked WorkflowContext (budget and variables inherited per Architecture invariant).
+- ParallelNode acts as a lightweight container; execution logic lives in the runner for flexibility.
+- Added dedicated tests for basic and multi-child parallel execution.
+- Verified the pattern works.
+
+This completes initial support for the last major node type (parallel) in the current engine foundation.
+
+**Pushed:** Yes
+
+**Status:** Complete

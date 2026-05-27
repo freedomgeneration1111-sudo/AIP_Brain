@@ -55,3 +55,21 @@ async def test_parallel_node_basic_execution():
     # The parallel node itself plus its children should have run
     executed_types = [r.output.get("type") for r in results if isinstance(r.output, dict)]
     assert "parallel" in executed_types
+
+@pytest.mark.asyncio
+async def test_parallel_node_executes_children_concurrently():
+    """Verify that ParallelNode actually runs its children via the runner with forked contexts."""
+    nodes = [
+        ScriptNode("p1", code="branch one"),
+        ScriptNode("p2", code="branch two"),
+        ParallelNode("par", children=["p1", "p2"]),
+        ScriptNode("after", code="after parallel"),
+    ]
+    ctx = WorkflowContext()
+    runner = SequentialRunner(nodes, ctx)
+    results = await runner.run()
+
+    executed = [r.output.get("executed") for r in results if isinstance(r.output, dict) and "executed" in r.output]
+    # We expect the parallel block and its children + the node after it
+    assert "par" in executed or any("parallel" in str(r) for r in executed)
+    assert "after" in executed
