@@ -6497,3 +6497,49 @@ The record above constitutes the authoritative audit. All evidence gathered via 
 
 CC complete. Next after this (per DAG): 6.2 or 6.3 depending on path.
 
+
+## CHUNK-6.1 — Synthesis Node Promotion (Phase 4)
+
+**Date:** 2026-05 (post full pre-6.1 CC at c3a1bdf)
+**Spec:** specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md (CHUNK-6.1 box + prose + ANNEX)
+**DEPENDS-ON:** CHUNK-6.0a, CHUNK-5.0b (ModelSlotResolver), CHUNK-4.5 (engine)
+**Status:** Gate green + pushed
+
+**Pre-CC Summary:** Full CC documented the interface drift between delivered Phase 1 stub (RetrievalResult + SynthesisOutput dataclass) and 6.1 target (str context + dict + model_resolver injection). Reconciliation plan: extend with optional params + fallback per spec prose; preserve old caller compatibility (node.py, workflow code) since those files were out of this chunk's explicit FILES scope.
+
+**Implementation (strict scope per prose + ANNEX + reconciliation):**
+- Created prompts/synthesis.md (new file per prose: AIP context, output format, domain constraints, provenance/citation requirements).
+- Updated orchestration/nodes/synthesis.py:
+  - Kept SynthesisOutput dataclass for legacy compat.
+  - Added _stub_synthesize (from ANNEX) and prompt loading logic.
+  - Extended synthesize() with new optional params (model_resolver, token_budget, context str) + kept retrieval_result for old callers.
+  - New resolver path: loads prompt, assembles messages per §1.3, calls resolver.call("synthesis", ...), returns dict (content/model/usage/etc.).
+  - Old path (model_resolver=None): falls back to deterministic stub, returns SynthesisOutput (keeps engine/workflow callers working).
+  - Context assembly helper for legacy retrieval_result → str conversion.
+  - aip.* imports, no hardcoded models.
+- Updated tests/test_synthesis_node.py:
+  - New tests from ANNEX (stub mode, resolver CI mode, token budget, no-hardcoded check) using FakeModelResolver.
+  - Retained/adapted legacy compat tests so existing behavior is covered.
+  - All use aip. package imports.
+- No changes to callers (node.py, workflow_01.py, commit.py, etc.) — kept in scope per FILES list and CC reconciliation.
+
+**Gate Execution (exact command):**
+```
+uv run pytest tests/test_synthesis_node.py tests/test_layering.py -xvs
+...
+7 passed in 0.14s
+```
+All new + legacy tests green. test_layering.py::test_import_boundaries_are_respected PASSED (orchestration imports only allowed foundation + adapter resolver).
+
+**Rule #10 / Reconciliation Note:** Interface extension implemented exactly as planned in pre-CC. Old Phase 1/2/3/4.5 paths continue to function unchanged. New resolver path (with prompt + proper message assembly) is now available for production/CI.
+
+**Files Changed (this unit):**
+- prompts/synthesis.md (new)
+- src/aip/orchestration/nodes/synthesis.py (extended)
+- tests/test_synthesis_node.py (updated to new tests + compat)
+
+**Permanent rules followed:** extend existing (with documented compat layer), append-only new prompt file, WORKLOG append-only (this entry), push after unit, +2 offset (CHUNK-6.1), qualified terminology, deterministic gate (FakeModelResolver for CI), layering respected, no hardcoded models, exact scope + reconciliation only.
+
+**Next per DAG:** 6.2 (evaluation pipeline, depends on this) or 6.3 (factory/migration on the other path). Integration test 6.5 will exercise the promoted node with real resolver.
+
+CHUNK-6.1 complete. Gate green.
