@@ -2478,4 +2478,59 @@ After gate green: update, commit, push, continue.
 
 **Status:** Complete
 
-**Pushed:** (pending this work unit)
+**Pushed:** Yes (commit 8cae5ea)
+
+---
+
+## Task ID: 3.11-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-3.11: Budget and Autonomy Tracking Foundation (Spec Delta per Architecture §12 and related L6 sections)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target scope:**
+- Architecture has a dedicated section for L6 / Budget / Project-Ops.
+- BudgetStore protocol already exists in foundation/protocols.py (stub).
+- After the heavy L4/Sexton/embedding work (3.1–3.10), the natural next major layer per the Architecture is Budget and Autonomy (critical for long-running workflows, parallel nodes, DEFINER sovereignty, etc.).
+- The current system has no real budget tracking or autonomy enforcement yet.
+
+**2-5. DEPENDS-ON etc.:**
+- Builds on Phase 2 workflow engine (parallel nodes already mention budget inheritance as future).
+- Reuses WorkflowContext (which already has budget_remaining field).
+- Ties to DEFINER sovereignty (CHUNK-1.5) and L6.
+
+**6. Scope (minimal foundation):**
+- Implement a minimal BudgetStore (in-memory or simple) that tracks budgets.
+- Wire basic budget consumption in the WorkflowContext / SequentialRunner for agent nodes and parallel.
+- Add autonomy gate stub (two-phase as per Architecture).
+- Test basic consumption and blocking.
+- Out of scope: full L6 project ops, real persistence, complex autonomy escalation, Beast cadence.
+
+**Conclusion:**
+The L4/Sexton/embedding foundation is now solid. Moving to Budget/Autonomy is the correct next major section in the Architecture to keep the build systematic.
+
+**Spec Delta Declaration:**
+CHUNK-3.11 provides the minimal Budget and Autonomy Tracking foundation so workflows can respect budgets and autonomy rules.
+
+**FILES:**
+- (amend) foundation/protocols.py if needed (BudgetStore is already stubbed)
+- New or amend in orchestration/ for budget manager / autonomy gate
+- Updates to workflow engine/context/runner for consumption
+- New test file or extension of workflow tests
+
+**INTERFACES:**
+- Minimal BudgetStore implementation + consumption in context.
+
+**TESTS:**
+- Basic budget consumption, exhaustion, and blocking tests.
+
+**GATE:**
+The usual combined + workflow engine tests.
+
+After gate green: update, commit, push, continue the autonomous chain.
+
+**Implementation notes (to be filled after execution):**
+- [empty until implemented in next autonomous step]
+
+**Status:** Continuity Check + Spec Delta documented for CHUNK-3.11. Continuing autonomously per user directive.
