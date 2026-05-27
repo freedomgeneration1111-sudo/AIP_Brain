@@ -1732,3 +1732,133 @@ After gate green + log update: commit + push. Then await next short command for 
 **Status:** Complete
 
 **Pushed:** Yes — commit 6ec0783 (pushed to origin/main)
+
+---
+
+## Task ID: 3.2-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-3.2: L4 Context Reset Protocol Foundation (Spec Delta per Architecture Rev 5.2 §10.2, building directly on CHUNK-3.1 detection)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target scope (Architecture Rev 5.2 §10.2 + §10.1 / Appendix E / §5.9):**
+- §10.2 Context Reset Protocol (the *response* path, explicitly out-of-scope for 3.1 foundation detection):
+  1. Detect context anxiety (failure_type F) or degeneration (failure_type D).  [now provided by TrajectoryMonitor from 3.1]
+  2. Instruct model to produce progress summary.
+  3. Commit progress summary to Provisional Store / artifact record.
+  4. Log reset event to trace_events with intervention_type=context_reset.
+  5. Surface to DEFINER.
+  6. Start fresh session with progress summary as seed.
+- L4 writes: node_type=L4, intervention_applied=1, intervention_type (context_reset | trajectory_correction), using existing TraceStore.write_event surface (extended via **kwargs to reach §5.9 columns).
+- Detection remains the 2-of-3 / D/F signals; reset coordinator consumes monitor output.
+- Sexton (§16.1) remains downstream consumer of classified failures (not in this chunk).
+- All decision / logging logic must stay deterministic + zero-token. The model "instruct" (step 2) and fresh session start are caller responsibilities (via L5 agent node / WorkflowEngine public API).
+- §5.9 schema already supports the required fields (intervention_* columns validated by test_trace_schema.py).
+
+**2. DEPENDS-ON verification:**
+- CHUNK-3.1: TrajectoryMonitor + TrajectorySignal + TraceStore.get_recent_events (amend-by-addition) + all fakes/noops updated. The reset coordinator will consume the monitor via injection.
+- All prior: Phase 2 L5 (WorkflowContext.protocols dict, get_protocol, WorkflowEngine/Workflow01Runner injection model, event emission), Phase 1 nodes (trace writes with failure_type), CHUNK-0.7 / test_trace_schema.py (full §5.9 + intervention fields), test_layering.py (§7.2).
+- TraceStore protocol (write_event + get_recent_events) — any extension for reset logging must be additive only.
+- WorkflowContext (protocols injection, no direct store construction invariant from §11).
+- No changes permitted to foundation/schemas.py unless an explicit new dataclass is required by the declared ANNEX (prefer local dataclasses in l4/ for foundation phase).
+
+**3. Revision Log cross-check (all D/F/R/P + Phase 2 + 3.1):**
+- No L4 reset logic or coordinator exists yet.
+- Current TraceStore.write_event signature (from CHUNK-1.0a) is the minimal 5-param form; all real call sites and fakes use **kw or *a,**k . This allows passing intervention_applied / intervention_type / failure_detail without protocol change for 3.2 (additive extension of signature can be considered in later L4b if typed safety required).
+- 3.1 already tagged all signals with model_gen_assumption per §1.8. Any new reset heuristics/thresholds in 3.2 must do the same.
+- "No workflow node may import a storage class directly" — L4 coordinator must receive stores exclusively via WorkflowContext.protocols or explicit injection in its constructor. Never construct inside l4/.
+- All prior chunks preserved additive discipline on protocols.py.
+
+**4. Architecture cross-references checked:**
+- §10.2 full protocol steps + tie-back to §10.1 signals.
+- §1.8: Every L4 trigger / reset condition tagged model_gen_assumption; designed as toggleable harness component.
+- §5.9 + Appendix E: failure_type D/F primary for reset trigger; intervention_type written at step 4; node_type=L4.
+- §7.2: All new code in orchestration/l4/ (orchestration may depend on foundation protocols only). test_layering.py + internal ast check will enforce.
+- §9.1 / 7.3: Core detection + reset decision logic zero-token / deterministic (no LLM inside coordinator). The "instruct model" step is explicitly delegated to the L5 execution layer.
+- §11 L5 invariants: protocol injection only; Workflow YAML source-controlled; L4 components injectable as protocols["trajectory_monitor"] or equivalent.
+- §16.1 Sexton: reads the intervention events post-write; 3.2 produces the events for it.
+
+**5. Consistency with actually delivered artifacts (post-3.1):**
+- TrajectoryMonitor.detect(...) returns signals with evidence + model_gen_assumption; already exercised with synthetic D/F events.
+- WorkflowContext.protocols dict + get_protocol() ready for supplying "trajectory_monitor" (test in 3.1 used ctx-like dict).
+- Engine / workflow_01 _NoopTraceStore and fakes already carry get_recent_events (additive).
+- trace.db + test_trace_schema.py validate intervention_* columns and A–F values.
+- test_layering.py covers all orchestration/*.py (l4/ included); 3.1 monitor passes.
+- No direct sqlite or storage construction in orchestration/l4/ or nodes.
+- Retrieval/synthesis nodes already demonstrate correct trace_store.write_event usage for failure_type A.
+- Zero production L4 reset code; 3.1 stayed strictly within declared "detection only" scope.
+
+**6. Scope decision for this chunk (no deviation):**
+- Declare as explicit spec delta (identical justification to 3.1): Rev 1.3 notes L4 trajectory regulation only as "(Phase 3)" with no ANNEX or CHUNK definitions. All L4 work continues under Architecture Rev 5.2 §10 as spec delta, following the same process used for the entire L5 foundation (2.1–2.13) and 3.1.
+- Minimal foundation for the *response path* (builds directly on 3.1 detection):
+  - New package surface or additive extension in orchestration/l4/ for reset coordination.
+  - L4ResetCoordinator (or equivalent) that accepts injected TrajectoryMonitor + trace_store + artifact_store (and optionally others), exposes deterministic method(s) to evaluate monitor signals and, when  D/F/combined conditions met, log the intervention event (step 4) with proper node_type=L4 + intervention_type + intervention_applied.
+  - Surfaces a structured recommendation (signals + recommended_action="request_progress_summary" + evidence) so caller (WorkflowEngine, script node, or external) can execute steps 2/3/5/6 using existing L5 paths (no new model-calling logic inside L4).
+  - Default auto-wiring of a TrajectoryMonitor (wrapping the trace_store) into WorkflowContext / engine run methods when not supplied (additive, backward safe).
+  - One dedicated deterministic test file (test_l4_context_reset.py) covering signal → log intervention flow, injection safety, §1.8 tagging on any new heuristics, zero-token guarantee, and correct use of **kwargs for intervention fields.
+  - Minor additive updates to existing fakes/noops if they must record intervention fields for tests.
+  - Gate must include new test + re-run of test_l4_trajectory_monitor.py + test_layering.py + test_trace_schema.py.
+- Explicitly out of scope for 3.2: performing the model call for progress summary (step 2), actual provisional commit mechanics beyond using injected ArtifactStore.write, DEFINER UI/dialog surface (step 5 — use existing emit_event or return value), starting fresh session (L5 caller concern), full Sexton classification, advanced entropy/citation metrics, any changes to schemas.py, any non-additive protocol changes, any direct DB or storage construction.
+- This chunk makes the §10.2 protocol *executable* from the L5 engine while preserving all determinism, injection, and zero-token rules.
+
+**Risks noted:**
+- Protocol write_event surface is minimal; extra fields pass via **kw today. If concrete trace writer impls (supplied by app layer) do not yet persist intervention_* columns, logged events may be incomplete — mitigated by requiring only the test fakes + documented contract; real writers already target full §5.9 schema per 0.BOOTSTRAP.
+- Scope creep into model execution: strictly prevented by surfacing intent only.
+
+**Conclusion of Continuity Check:**
+Fully compliant with all permanent process rules, Rev 1.3 (L4 as Phase 3 delta), Architecture Rev 5.2 §10 + cross-refs (§1.8, §5.9, §7.2, §9.1, §11, Appendix E), layering, injection model, append-only discipline, and zero-token doctrine. 3.1 deliverables provide exactly the detection surface needed; no gaps or contradictions found in delivered artifacts. Safe to declare scoped spec delta for 3.2. No blockers. Ready for implementation on next short user command.
+
+**Status:** Continuity Check complete. Declaring spec delta scope. Awaiting short user command ("go", "continue") to execute CHUNK-3.2 implementation + gate + push.
+
+**Spec Delta Declaration (logged before any L4 reset production code):**
+This CHUNK-3.2 exists to materialize the response half of the Context Reset Protocol described in Architecture Rev 5.2 §10.2, consuming the detection foundation from CHUNK-3.1. Exact deliverables below are the binding scope (derived strictly from the cited Architecture sections + prior delivered contracts + permanent process rules). All future L4 work follows append-only / amend-by-addition on any touched foundation or orchestration files.
+
+**FILES (for 3.2):**
+- orchestration/l4/reset.py (new — L4ResetCoordinator / recommendation types + logging of intervention events; or additive extension to monitor.py if minimal surface fits — decision during impl must stay smallest)
+- (additive) minor updates to orchestration/workflow/engine.py and workflow_01.py for default monitor + coordinator wiring into protocols
+- (additive if needed) updates to fakes in tests/test_l4_trajectory_monitor.py, test_retrieve_for_synthesis.py, and noops
+- tests/test_l4_context_reset.py (new — fully deterministic, injection-only, exercises signal → intervention log path)
+- No changes to foundation/protocols.py or schemas.py expected (raw dicts + **kwargs sufficient for foundation)
+- Gate re-runs existing L4 + cross-cutting tests
+
+**INTERFACES (minimal, per Architecture §10.2 + §5.9 + L5 injection + 3.1 monitor contract):**
+- In l4/reset.py (or monitor extension):
+  @dataclass
+  class ResetRecommendation:
+      session_id: str
+      signals: list[TrajectorySignal]
+      action: str  # "context_reset" | "trajectory_correction"
+      reason: str
+      model_gen_assumption: str | None
+  class L4ResetCoordinator:
+      def __init__(self, trajectory_monitor: TrajectoryMonitor, trace_store: TraceStore, artifact_store: ArtifactStore | None = None, ...): ...
+      async def check_and_log_reset(self, session_id: str) -> list[ResetRecommendation]: ...
+      # Pure deterministic decision + logging via injected stores only.
+      # Never performs model calls. Surfaces intent for caller to execute steps 2/3/5/6.
+- All L4 components receive stores exclusively via constructor injection or WorkflowContext.get_protocol (never direct import/construction).
+- Intervention logging example contract:
+  await trace_store.write_event(
+      session_id=...,
+      node_type="L4",
+      failure_type=signal_evidence_failure or None,
+      outcome="intervention",
+      detail=...,
+      intervention_applied=1,
+      intervention_type="context_reset",
+      # other §5.9 columns via ** or future additive sig
+  )
+
+**TESTS:**
+- tests/test_l4_context_reset.py (covers detection consumption, deterministic logging of intervention fields, injection safety, §1.8 tagging, zero model/network calls, layering double-check)
+- Must pass (re-run): tests/test_l4_trajectory_monitor.py, tests/test_layering.py, tests/test_trace_schema.py
+
+**GATE:**
+`uv run pytest tests/test_l4_context_reset.py tests/test_l4_trajectory_monitor.py tests/test_layering.py tests/test_trace_schema.py -xvs`
+
+After gate green + log update for implementation: commit + push. Then await next short command for 3.3+ (e.g. Sexton foundation, tighter engine integration, or L4b anxiety metrics).
+
+**Implementation notes (to be filled only after user command + code + gate):**
+- [empty until execution]
+
+**Status:** Continuity Check + Spec Delta documented. No production code written. Awaiting user "go".
