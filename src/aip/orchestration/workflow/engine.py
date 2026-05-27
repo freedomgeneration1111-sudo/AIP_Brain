@@ -60,6 +60,7 @@ class WorkflowEngine:
         config: dict[str, Any] | None = None,
         budget_store: Any | None = None,
         autonomy_gate: Any | None = None,
+        budget_manager: Any | None = None,  # CHUNK-7.0b: optional full manager for enforcement hooks
         # Future: instance_store, etc.
     ):
         self.vector_store = vector_store
@@ -77,6 +78,8 @@ class WorkflowEngine:
         self.budget_store = budget_store or InMemoryBudgetStore()
         # CHUNK-3.12: AutonomyGate default (L6 foundation wiring, parallel to budget)
         self.autonomy_gate = autonomy_gate or SimpleAutonomyGate()
+        # CHUNK-7.0b: BudgetManager (with config + store) for engine-enforced budget checks
+        self.budget_manager = budget_manager
 
     async def run_workflow(
         self,
@@ -145,6 +148,8 @@ class WorkflowEngine:
             "l4_coordinator": coordinator,
             # CHUNK-3.11 Budget
             "budget_store": self.budget_store,
+            # CHUNK-7.0b: full BudgetManager (if provided) for enforcement
+            "budget_manager": self.budget_manager,
             # CHUNK-3.12 Autonomy
             "autonomy_gate": self.autonomy_gate,
         }

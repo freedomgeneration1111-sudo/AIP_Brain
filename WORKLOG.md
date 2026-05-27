@@ -7558,3 +7558,55 @@ CC complete. Next per linearized DAG: CHUNK-7.0b implementation.
 ---
 
 **Phase 5 pre-7.0b CC complete. Tree clean at 0a073b8. Continuing per continuous execution directive after push.**
+
+## CHUNK-7.0b — Token Budget System (Phase 5 Resource Governance)
+
+**Date:** 2026-05 (post full pre-7.0b CC at 5a65575)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.0b box + prose + ANNEX)
+**DEPENDS-ON:** CHUNK-7.0a, CHUNK-5.7
+**Status:** Gate green + pushed
+
+**Pre-CC Summary:**
+- Full pre-7.0b CC (including heavy Rule #10 on engine.py pre-wiring + budget.py 3.11 partial + 7.0a Protocol extension) documented and pushed at 5a65575.
+- 7.0a baseline (BudgetConfig, BudgetScope, extended BudgetStore) in place and green (30 passed incl phase5 test).
+- No 7.0b target files (adapter/budget_store_sqlite.py, test_budget_system.py) existed pre-impl (clean).
+
+**Implementation (strict scope per prose + ANNEX — extend existing + new per spec):**
+- `src/aip/orchestration/budget.py` (extend the 57-line 3.11 foundation per Rule #10): Added support for the 7.0a-extended BudgetStore methods (get_budget/record_usage/check_limit) to InMemoryBudgetStore (with simple _consumed tracking for CI determinism). Added the full BudgetManager class (exact ANNEX: __init__ with config+store+optional event_store, _get_limit for 3 scopes, check_before_call with hard_stop + warning_threshold + Event warning, record_consumption, get_status, is_hard_stop).
+- `src/aip/adapter/budget_store_sqlite.py` (new per ANNEX): Exact SqliteBudgetStore (aip. imports, _ensure_table creating budget_ledger + index, the 3 Protocol methods with SUM queries and INSERT, check_limit stub delegating to Manager).
+- `tests/test_budget_system.py` (new per ANNEX skeleton, adjusted for delivered reality): 9 tests covering config/scope, InMemory extended Protocol, Sqlite impl, Manager check/record/status, warning emission, multi-scope independent tracking, layering (adapter no orchestration import).
+- `src/aip/orchestration/workflow/engine.py` (minimal extend per "enforcement in workflow engine" prose + existing 3.x wiring): Added optional budget_manager param to __init__ (default None for compat), stored on self, passed through to WorkflowContext protocols dict. Non-breaking for all prior callers.
+- All changes respect §7.2 (adapter imports only foundation; orchestration uses Protocol injection), CI determinism (InMemory for tests), §1.8 (config-driven), no hardcoded models, append-only discipline on prior phases.
+- Rule #10 honored: extended real delivered budget.py and engine.py; new files only where spec requires (adapter/ for Sqlite, tests/).
+
+**Gate Execution (exact command per spec):**
+```
+uv run pytest tests/test_budget_system.py tests/test_layering.py -xvs
+```
+(Plus full battery for no-regression:)
+```
+uv run pytest tests/test_budget_system.py tests/test_layering.py tests/test_phase4_gate.py tests/test_phase5_schema_additions.py -xvs
+...
+============================== 37 passed in 0.28s ===============================
+```
+All budget behaviors (store, Manager, enforcement, multi-scope, warnings), layering, and prior gates (phase4 16/16, phase5 13/13) green. No regressions.
+
+**Files Changed (this unit):**
+- src/aip/orchestration/budget.py (extend with Manager + InMemory Protocol support)
+- src/aip/adapter/budget_store_sqlite.py (new, exact ANNEX)
+- tests/test_budget_system.py (new, ANNEX skeleton + CI adaptations)
+- src/aip/orchestration/workflow/engine.py (minimal non-breaking wiring extension)
+
+**Permanent rules followed:** extend existing (budget.py, engine.py) rather than replace, append-only where applicable, WORKLOG append-only (this entry), push after unit, +2 offset (CHUNK-7.0b), qualified terminology, deterministic CI (InMemory + high limits), exact scope per prose + ANNEX (no gold-plating), Rule #10 documented (engine pre-wiring extended, 3.11 partial extended), layering / §7.2 / §4.1 respected. 5.8 untouched. 7.0a BudgetStore extension carried forward for compat.
+
+**Rule #10 notes for this chunk:** 
+- engine.py (4.5) pre-existing InMemory wiring (from 3.x) extended with budget_manager hook — fulfills "enforcement in workflow engine" without rewrite.
+- budget.py (3.11) extended with Manager + Protocol methods for CI — no replacement of foundation partial.
+- New files only for Sqlite impl (adapter/, per §7.2) and test.
+- All prior 7.0a/Phase 4 reconciliations honored.
+
+**Next per DAG:** 7.1 (Sexton classification). Immediate pre-7.1 CC required before any further edits.
+
+CHUNK-7.0b complete (gate green).
+
+**Phase 5 CHUNK-7.0b complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
