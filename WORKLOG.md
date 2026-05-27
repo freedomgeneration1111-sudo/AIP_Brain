@@ -3125,7 +3125,35 @@ Continuing the grind on 4.5.
 - Created `tests/test_phase2_integration.py` — structural end-to-end validation that the full modern lifecycle YAML loads and the engine accepts it.
 - This closes the core of Phase 2 (4.x series) from a wiring perspective.
 
-Next natural: 4.8 (final network/model-name gate extension) or deeper 4.5 work if needed before moving to Phase 3 (5.x).
+---
+
+## Task ID: 4.8-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-4.8: Network Isolation and Model-Name Gate (Phase 2 Extension)
+
+**Continuity Check:**
+- Simple test-only extension of the existing CHUNK-1.7 gates to cover the new Phase 2 code (review, re-synthesis, engine extensions, etc.).
+- DEPENDS-ON: 4.7.
+- No production code changes expected — only additional test assertions in a Phase 2 specific test file.
+- Per notes: Extends the existing no-network/no-hardcoded gates.
+
+**Conclusion:** Low risk, test-only chunk. Ready to implement.
+
+**Status:** CC complete. Ready for 4.8.
+
+**Implementation notes (filled after code + gate):**
+- Created `tests/test_phase2_no_network.py` — extends the existing no-network / no-hardcoded gates to cover all new Phase 2 (4.x) code.
+- Gate: **2/2 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-4.8 complete.
+
+**Phase 2 (remapped 4.x series) core is now complete.**
+Next: Big Continuity Check + move into Phase 3 (CHUNK-5.x).
+
+
 
 
 ---
@@ -3261,7 +3289,35 @@ Continuing the grind on 4.5.
 - Created `tests/test_phase2_integration.py` — structural end-to-end validation that the full modern lifecycle YAML loads and the engine accepts it.
 - This closes the core of Phase 2 (4.x series) from a wiring perspective.
 
-Next natural: 4.8 (final network/model-name gate extension) or deeper 4.5 work if needed before moving to Phase 3 (5.x).
+---
+
+## Task ID: 4.8-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-4.8: Network Isolation and Model-Name Gate (Phase 2 Extension)
+
+**Continuity Check:**
+- Simple test-only extension of the existing CHUNK-1.7 gates to cover the new Phase 2 code (review, re-synthesis, engine extensions, etc.).
+- DEPENDS-ON: 4.7.
+- No production code changes expected — only additional test assertions in a Phase 2 specific test file.
+- Per notes: Extends the existing no-network/no-hardcoded gates.
+
+**Conclusion:** Low risk, test-only chunk. Ready to implement.
+
+**Status:** CC complete. Ready for 4.8.
+
+**Implementation notes (filled after code + gate):**
+- Created `tests/test_phase2_no_network.py` — extends the existing no-network / no-hardcoded gates to cover all new Phase 2 (4.x) code.
+- Gate: **2/2 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-4.8 complete.
+
+**Phase 2 (remapped 4.x series) core is now complete.**
+Next: Big Continuity Check + move into Phase 3 (CHUNK-5.x).
+
+
 
 
 ---
@@ -3654,7 +3710,35 @@ Continuing the grind on 4.5.
 - Created `tests/test_phase2_integration.py` — structural end-to-end validation that the full modern lifecycle YAML loads and the engine accepts it.
 - This closes the core of Phase 2 (4.x series) from a wiring perspective.
 
-Next natural: 4.8 (final network/model-name gate extension) or deeper 4.5 work if needed before moving to Phase 3 (5.x).
+---
+
+## Task ID: 4.8-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-4.8: Network Isolation and Model-Name Gate (Phase 2 Extension)
+
+**Continuity Check:**
+- Simple test-only extension of the existing CHUNK-1.7 gates to cover the new Phase 2 code (review, re-synthesis, engine extensions, etc.).
+- DEPENDS-ON: 4.7.
+- No production code changes expected — only additional test assertions in a Phase 2 specific test file.
+- Per notes: Extends the existing no-network/no-hardcoded gates.
+
+**Conclusion:** Low risk, test-only chunk. Ready to implement.
+
+**Status:** CC complete. Ready for 4.8.
+
+**Implementation notes (filled after code + gate):**
+- Created `tests/test_phase2_no_network.py` — extends the existing no-network / no-hardcoded gates to cover all new Phase 2 (4.x) code.
+- Gate: **2/2 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-4.8 complete.
+
+**Phase 2 (remapped 4.x series) core is now complete.**
+Next: Big Continuity Check + move into Phase 3 (CHUNK-5.x).
+
+
 
 
 ---
@@ -3723,7 +3807,35 @@ Continuing the grind on 4.5.
 - Created `tests/test_phase2_integration.py` — structural end-to-end validation that the full modern lifecycle YAML loads and the engine accepts it.
 - This closes the core of Phase 2 (4.x series) from a wiring perspective.
 
-Next natural: 4.8 (final network/model-name gate extension) or deeper 4.5 work if needed before moving to Phase 3 (5.x).
+---
+
+## Task ID: 4.8-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-4.8: Network Isolation and Model-Name Gate (Phase 2 Extension)
+
+**Continuity Check:**
+- Simple test-only extension of the existing CHUNK-1.7 gates to cover the new Phase 2 code (review, re-synthesis, engine extensions, etc.).
+- DEPENDS-ON: 4.7.
+- No production code changes expected — only additional test assertions in a Phase 2 specific test file.
+- Per notes: Extends the existing no-network/no-hardcoded gates.
+
+**Conclusion:** Low risk, test-only chunk. Ready to implement.
+
+**Status:** CC complete. Ready for 4.8.
+
+**Implementation notes (filled after code + gate):**
+- Created `tests/test_phase2_no_network.py` — extends the existing no-network / no-hardcoded gates to cover all new Phase 2 (4.x) code.
+- Gate: **2/2 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-4.8 complete.
+
+**Phase 2 (remapped 4.x series) core is now complete.**
+Next: Big Continuity Check + move into Phase 3 (CHUNK-5.x).
+
+
 
 
 ---
@@ -3791,7 +3903,35 @@ Continuing the grind on 4.5.
 - Created `tests/test_phase2_integration.py` — structural end-to-end validation that the full modern lifecycle YAML loads and the engine accepts it.
 - This closes the core of Phase 2 (4.x series) from a wiring perspective.
 
-Next natural: 4.8 (final network/model-name gate extension) or deeper 4.5 work if needed before moving to Phase 3 (5.x).
+---
+
+## Task ID: 4.8-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-4.8: Network Isolation and Model-Name Gate (Phase 2 Extension)
+
+**Continuity Check:**
+- Simple test-only extension of the existing CHUNK-1.7 gates to cover the new Phase 2 code (review, re-synthesis, engine extensions, etc.).
+- DEPENDS-ON: 4.7.
+- No production code changes expected — only additional test assertions in a Phase 2 specific test file.
+- Per notes: Extends the existing no-network/no-hardcoded gates.
+
+**Conclusion:** Low risk, test-only chunk. Ready to implement.
+
+**Status:** CC complete. Ready for 4.8.
+
+**Implementation notes (filled after code + gate):**
+- Created `tests/test_phase2_no_network.py` — extends the existing no-network / no-hardcoded gates to cover all new Phase 2 (4.x) code.
+- Gate: **2/2 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-4.8 complete.
+
+**Phase 2 (remapped 4.x series) core is now complete.**
+Next: Big Continuity Check + move into Phase 3 (CHUNK-5.x).
+
+
 
 
 ---
@@ -3859,7 +3999,35 @@ Continuing the grind on 4.5.
 - Created `tests/test_phase2_integration.py` — structural end-to-end validation that the full modern lifecycle YAML loads and the engine accepts it.
 - This closes the core of Phase 2 (4.x series) from a wiring perspective.
 
-Next natural: 4.8 (final network/model-name gate extension) or deeper 4.5 work if needed before moving to Phase 3 (5.x).
+---
+
+## Task ID: 4.8-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-4.8: Network Isolation and Model-Name Gate (Phase 2 Extension)
+
+**Continuity Check:**
+- Simple test-only extension of the existing CHUNK-1.7 gates to cover the new Phase 2 code (review, re-synthesis, engine extensions, etc.).
+- DEPENDS-ON: 4.7.
+- No production code changes expected — only additional test assertions in a Phase 2 specific test file.
+- Per notes: Extends the existing no-network/no-hardcoded gates.
+
+**Conclusion:** Low risk, test-only chunk. Ready to implement.
+
+**Status:** CC complete. Ready for 4.8.
+
+**Implementation notes (filled after code + gate):**
+- Created `tests/test_phase2_no_network.py` — extends the existing no-network / no-hardcoded gates to cover all new Phase 2 (4.x) code.
+- Gate: **2/2 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-4.8 complete.
+
+**Phase 2 (remapped 4.x series) core is now complete.**
+Next: Big Continuity Check + move into Phase 3 (CHUNK-5.x).
+
+
 
 
 ---
