@@ -214,3 +214,24 @@ def test_config_model_dump_fallback():
         retrieve_for_synthesis("query", "test", store, fake_embed, trace, FakeAipConfig())
     )
     assert result.status == "OK"
+
+
+def test_ace_rules_boost_procedural_hits():
+    """CHUNK-3.8: Passing ace_rules from Sexton should have observable effect (boost for procedural)."""
+    # Rule suggesting procedural match for certain content
+    ace_rule = {
+        "failure_type": "B",
+        "recommended_action": "add_or_retrieve_ace_playbook_entry",
+        "node_type_pattern": "test",
+    }
+
+    store = FakeVectorStore(hits=[_chunk("procedural test content", 0.70), _chunk("unrelated", 0.80)])
+    trace = FakeTraceStore()
+    result = asyncio.run(
+        retrieve_for_synthesis("query", "test", store, fake_embed, trace, _default_config(), ace_rules=[ace_rule])
+    )
+    assert result.status == "OK"
+    # The procedural hit (id "procedural test content") should have been boosted by the rule
+    # and now rank first (0.70 + 0.15 = 0.85 > 0.80)
+    assert "procedural test content" in result.hits[0].content
+    assert result.hits[0].score > 0.80

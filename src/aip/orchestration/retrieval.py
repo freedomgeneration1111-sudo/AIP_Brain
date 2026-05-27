@@ -103,9 +103,12 @@ async def retrieve_for_synthesis(
     embed_fn: Callable[[str], list[float]],
     trace_store: TraceStore,
     config: dict | Any | None = None,
+    ace_rules: list[dict] | None = None,
 ) -> RetrievalResult:
     """
     L2 retrieval + low-confidence gate + reranking.
+    CHUNK-3.8: Optional ace_rules from Sexton (derived playbook) are applied
+    in a minimal deterministic way (e.g., boost for procedural matches).
     Returns RetrievalResult with status OK or INSUFFICIENT_MEMORY.
     """
     weights = RerankWeights.from_config(config)
@@ -128,6 +131,17 @@ async def retrieve_for_synthesis(
 
     # Rerank
     reranked = rerank(raw_hits, domain, weights)
+
+    # CHUNK-3.8: Minimal application of ACE rules from Sexton (deterministic boost for procedural matches)
+    if ace_rules:
+        for rule in ace_rules:
+            if rule.get("failure_type") == "B" or "procedural" in str(rule.get("recommended_action", "")).lower():
+                keyword = str(rule.get("node_type_pattern", "") or "").lower()
+                for hit in reranked:
+                    content = str(hit.content or "").lower()
+                    if keyword and keyword in content:
+                        hit.score = min(1.0, hit.score + 0.15)
+        reranked.sort(key=lambda h: h.score, reverse=True)
 
     if not reranked:
         # Log trace event (R2 / F2 fix: failure_type = "A" for Missing Context)

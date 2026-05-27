@@ -244,7 +244,12 @@ class Workflow01Runner:
         # the L4 coordinator (emitting the standard event for DEFINER surface)
         # and optionally Sexton for classification of recent events.
         # This is the runtime node-level integration pattern for the full L4/Sexton stack.
-        await run_l4_and_sexton_check(ctx, session_id=f"wf01-{id(self)}", also_run_sexton=True)
+        l4_sexton_result = await run_l4_and_sexton_check(ctx, session_id=f"wf01-{id(self)}", also_run_sexton=True)
+
+        # CHUNK-3.8 demo wiring (additive): the derived rules from Sexton can now be
+        # passed to retrieve_for_synthesis (see retrieval.py) for procedural boost.
+        # In a real node this would happen inside the synthesis/retrieval step.
+        # (ace_rules = l4_sexton_result.get("sexton_classifications") or similar)
 
         # For a real Workflow 0.1 we would want a proper graph runner.
         # For this foundation chunk we use the SequentialRunner + the fact that

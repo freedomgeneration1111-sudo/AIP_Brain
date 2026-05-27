@@ -2349,7 +2349,13 @@ The usual combined L4 + Sexton + retrieval + layering + trace gate.
 
 After gate green: update, commit, push, continue.
 
-**Implementation notes (to be filled after execution):**
-- [empty until next short command]
+**Implementation notes (filled after code + gate):**
+- Amended `orchestration/retrieval.py` (additive) to accept `ace_rules: list[dict] | None = None` and apply a minimal deterministic boost for procedural matches from the rules (CHUNK-3.8 integration of Sexton-derived playbook).
+- Added demo wiring comment in `workflow_01.py`.
+- Added `test_ace_rules_boost_procedural_hits` in `tests/test_retrieve_for_synthesis.py` (verifies observable effect of passing rules).
+- The new test passes; the combined gate (L4 + Sexton + retrieval + layering + trace) is green.
+- All changes additive, deterministic, zero-token.
 
-**Status:** Continuity Check + Spec Delta documented for CHUNK-3.8. Awaiting short command to implement.
+**Status:** Complete
+
+**Pushed:** (pending this work unit)
