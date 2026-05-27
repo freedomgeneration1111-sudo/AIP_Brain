@@ -347,6 +347,21 @@ No blockers. The logic is simple and the required inputs are ready. Implementati
 **Status:** Continuity Check complete. Proceeding to implementation.
 
 **Implementation:**
+- Created `src/aip/orchestration/nodes/commit.py`
+  - `commit_artifact(...)` with strict "approve" check
+  - Uses exact `actor="definer_gate"` and `reason="DEFINER approved"` (P2)
+  - Records ECS transition via event_store (R3)
+  - Deterministic artifact_id generation
+  - Raises `CommitBlockedError` on non-approve decisions
+- Created `tests/test_commit_node.py` with 7 tests (covers P2, R3, blocking, determinism, happy path).
+- Gate: `PYTHONPATH=src uv run python -m pytest tests/test_commit_node.py -xvs` → **7/7 PASSED**.
+- Note: Full spec gate references the still-missing `test_layering.py`.
+
+**Pushed:** Yes (next commit)
+
+**Status:** Complete
+
+**Implementation:**
 - Created `src/aip/orchestration/nodes/definer_gate.py` with the exact decision logic from the Rev 1.3 ANNEX:
   - AUTO_APPROVE_STUB only (raises for anything else).
   - If not validation_result.passed → "revise"
