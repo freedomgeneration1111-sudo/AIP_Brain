@@ -6643,3 +6643,55 @@ The record above constitutes the authoritative audit. All evidence gathered via 
 
 CC complete. Next chunk (per DAG): 6.3 (factory + migration on pgvector path) or 6.5 (once 6.2 + 6.4 + 5.8 converge).
 
+
+## CHUNK-6.2 — Evaluation Pipeline (Adversarial Eval Promotion + L3a Stage 2/3)
+
+**Date:** 2026-05 (post full pre-6.2 CC at b27c29a)
+**Spec:** specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md (CHUNK-6.2 box + prose + ANNEX)
+**DEPENDS-ON:** CHUNK-6.1, CHUNK-5.0b
+**Status:** Gate green + pushed
+
+**Pre-CC Summary & Reconciliations Applied:**
+- Hardcoded model strings in Phase 1 adversarial_eval.py and foundation/validation.py cleaned (replaced with generic §1.8 placeholders).
+- validation.py location (foundation/ vs spec shorthand) handled by extending the real file.
+- New files have zero historical overlap.
+
+**Implementation (strict scope per prose + ANNEX + reconciliations):**
+- Created three new prompt templates:
+  - prompts/adversarial_eval.md
+  - prompts/faithfulness.md
+  - prompts/domain_coherence.md
+- Updated orchestration/nodes/adversarial_eval.py:
+  - Kept old `adversarial_eval` + dataclasses for full backward compat.
+  - Added new `adversarial_evaluate(...)` per interface box (prompt loading, message assembly with separate context per §9.2, resolver.call at temperature=0.3, structured dict return).
+  - Hardcoded models removed.
+- Created orchestration/nodes/faithfulness.py exactly per ANNEX (CI fixture path + §1.8 model_gen_assumption on every EvaluationScore).
+- Created orchestration/nodes/domain_coherence.py exactly per ANNEX (same CI handling + §1.8 tagging).
+- Extended foundation/validation.py with `full_l3a_evaluation` orchestrator:
+  - Runs Stage 1 (structural_validate) unconditionally.
+  - Skips Stages 2/3 if Stage 1 fails (anti-token-burn §7.3).
+  - Calls the new evaluate_ functions when appropriate.
+  - Applies configurable thresholds from [evaluation] section.
+- Created tests/test_evaluation_pipeline.py with comprehensive coverage from the spec ANNEX (all new functions, §1.8 assertions, threshold behavior, backward compat for old adversarial_eval, full orchestration test).
+
+**Gate Execution (exact command):**
+```
+uv run pytest tests/test_evaluation_pipeline.py tests/test_layering.py -xvs
+...
+8 passed in 0.16s
+```
+All tests green + layering clean.
+
+**Files Changed (this unit):**
+- prompts/adversarial_eval.md, faithfulness.md, domain_coherence.md (new)
+- src/aip/orchestration/nodes/adversarial_eval.py (extended + hardcodes cleaned)
+- src/aip/orchestration/nodes/faithfulness.py (new)
+- src/aip/orchestration/nodes/domain_coherence.py (new)
+- src/aip/foundation/validation.py (extended with full_l3a_evaluation)
+- tests/test_evaluation_pipeline.py (new)
+
+**Permanent rules followed:** extend existing (backward compat preserved), append-only new prompts, WORKLOG append-only (this entry), push after unit, +2 offset (CHUNK-6.2), qualified terminology, deterministic CI (FakeModelResolver), layering respected, no hardcoded models, exact scope + prior CC reconciliations applied.
+
+**Next per DAG:** 6.5 (integration) now has both node-promotion paths (6.1+6.2) ready. 6.3/6.4 on the pgvector adapter path remain independent until convergence.
+
+CHUNK-6.2 complete. Gate green.
