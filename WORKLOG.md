@@ -240,6 +240,66 @@ All succeeded. The types Rev 1.3 expects to be present before CHUNK-1.0a now exi
 
 ---
 
+## Task ID: 1.6-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-1.6: Commit stub — artifact write + ECS transition + event_log record
+
+**Continuity Check (performed before writing any code for this chunk):**
+
+**1. Re-read of target CHUNK (Rev 1.3):**
+- CHUNK-1.6 is the final step before an artifact becomes canonical.
+- DEPENDS-ON includes CHUNK-1.5 (DefinerDecision).
+- Core responsibilities:
+  - Write artifact content + metadata to ArtifactStore
+  - Call ecs_store.transition(...) with the **P2 fix** parameters: `actor="definer_gate"` and `reason="DEFINER approved"`
+  - Record the ECS transition in the event log (R3 requirement)
+  - Generate deterministic artifact_id (same inputs → same ID)
+  - On DefinerDecision.action == "reject" → raise CommitBlockedError
+  - On "revise" or other non-approve → block commit
+
+**2. Review of upstream deliverables (especially 1.5, 1.3, 1.0a):**
+- We have DefinerDecision from 1.5 with .action, .reason, .approved_by.
+- We have SynthesisOutput from 1.3 (content, model info, etc.).
+- From 1.0a we added the required method signatures to the Protocols:
+  - ArtifactStore.write(id, content, metadata) and .read(id)
+  - EventStore.write_event(...)
+  - EcsStore.transition(..., actor, reason, ...)
+- The P2 and R3 fixes were explicitly added to support this exact chunk.
+
+**3. Revision Log items directly relevant to this chunk:**
+- **P2**: "ecs_store.transition call missing actor and reason params required by Phase 0 contract and §1.7 sovereignty"
+  - This was fixed in 1.0a and the CHUNK-1.6 implementation must use them.
+- **R3**: "ECS transition not recorded in event_log"
+  - Must explicitly log the transition via event_store.
+- These fixes were made precisely because earlier versions of this chunk would have failed without them.
+
+**4. Current repo state & constraints:**
+- All required store interfaces exist (from 1.0a protocol amendments).
+- We have working fake stores from previous tests (1.0a, 1.5, etc.).
+- Recurring issue: `test_layering.py` still missing from the official gate.
+- No network or hardcoded models in this chunk (good).
+- The commit function must be importable from orchestration layer while respecting boundaries.
+
+**5. Risks / Observations:**
+- Risk: Must not auto-approve on "revise" decisions. The logic must strictly check for "approve".
+- Observation: The function signature in the spec typically takes the DefinerDecision (or its action) plus the synthesis output.
+- Positive: This chunk is mostly orchestration glue between things we have already built and tested. Low risk of breaking new ground.
+
+**Conclusion of Continuity Check:**
+Clear path forward. Implementation must:
+- Accept SynthesisOutput + DefinerDecision (or equivalent)
+- Use the exact actor/reason values required by P2
+- Record the event per R3
+- Enforce the sovereignty rule (only "approve" proceeds to write + transition)
+- Produce deterministic artifact IDs
+
+No blocking issues.
+
+**Status:** Continuity Check complete. Proceeding to implementation.
+
+---
+
 ## Task ID: 1.5-1
 
 **Agent:** Grok Build  
