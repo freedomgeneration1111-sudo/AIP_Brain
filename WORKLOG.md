@@ -2178,4 +2178,58 @@ After gate green: update WORKLOG, commit, push, continue.
 
 **Status:** Complete
 
-**Pushed:** (pending this work unit)
+**Pushed:** Yes (commit 95de19b)
+
+---
+
+## Task ID: 3.6-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-3.6: L4/Sexton Runtime Integration in Workflow Nodes (Spec Delta)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target scope:**
+- Current state after 3.5: L4 (with L4b) produces high-quality signals and the coordinator can be called from the runner entry point. Sexton can classify events.
+- Gap: No individual workflow nodes (Agent, Script, Dialog, etc.) yet call the l4_coordinator or react to "l4_reset_recommended" events. Sexton is not invoked at runtime inside any pipeline.
+- Next logical step: Make the L4/Sexton stack actually executable from within running nodes so that trajectory checks and classification happen as part of normal synthesis flow (not just at workflow start).
+
+**2-5. DEPENDS-ON etc.:**
+- Builds directly on 3.3 (activation helper), 3.4 (Sexton), 3.5 (L4b).
+- Reuses existing ScriptNode + context.emit_event + DialogNode machinery.
+- No new protocols needed for foundation.
+
+**6. Scope:**
+- Minimal integration chunk:
+  - Provide a small reusable ScriptNode-compatible helper or pattern (additive to l4 package) that nodes can use to call l4_coordinator + optionally invoke Sexton on recent events.
+  - Demonstrate usage inside the reference Workflow 0.1 (e.g., after synthesis or before definer_gate).
+  - Add basic test coverage that a node can trigger L4 check + Sexton classification in one flow.
+- Out of scope: Full automatic invocation on every node, persistent Sexton state, UI for Sexton output.
+
+**Conclusion:**
+With the core L4 detection (including L4b) and Sexton classification now solid, the highest-value next step is making them callable from within actual workflow nodes so the full stack participates in real synthesis sessions.
+
+**Spec Delta Declaration:**
+CHUNK-3.6 provides the minimal runtime integration layer so L4 (with L4b) and Sexton can be invoked from within workflow nodes.
+
+**FILES:**
+- (amend) orchestration/l4/ (add a small integration helper module or methods)
+- (additive) demonstration usage in workflow_01.py or a node example
+- (additive) updates to relevant integration tests
+- No new protocols
+
+**INTERFACES:**
+- A thin helper, e.g. async def run_l4_and_sexton_check(context, session_id) that calls both the coordinator and Sexton.
+
+**TESTS:**
+- Extension of existing workflow integration tests to exercise node-level call + Sexton.
+
+**GATE:**
+The usual combined L4 + Sexton + layering + trace gate.
+
+After gate green: update, commit, push, continue.
+
+**Implementation notes (to be filled after execution):**
+- [empty until next short command]
+
+**Status:** Continuity Check + Spec Delta documented for CHUNK-3.6. Awaiting short command to implement.
