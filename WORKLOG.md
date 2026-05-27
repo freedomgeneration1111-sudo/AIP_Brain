@@ -2299,4 +2299,57 @@ After gate green: update, commit, push, continue.
 
 **Status:** Complete
 
-**Pushed:** (pending this work unit)
+**Pushed:** Yes (commit c3207d4)
+
+---
+
+## Task ID: 3.8-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-3.8: Integration of Derived ACE Playbook Rules into L2 Retrieval (Spec Delta per Architecture Rev 5.2 §8 and §16.1)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target scope:**
+- After 3.7, Sexton can derive basic ACE rules from classified failures.
+- The key missing piece is using those rules in the actual L2 retrieval (retrieve_for_synthesis), where procedural memory (ACE playbook) is supposed to be applied per the Architecture.
+- This makes the derived rules "live" for the system.
+
+**2-5. DEPENDS-ON etc.:**
+- Builds on 3.7 (derivation), previous retrieval (1.1), and Sexton integration (3.6).
+- The retrieval already has the structure for weights and config; we can extend it to accept/use rules from Sexton.
+
+**6. Scope:**
+- Minimal integration:
+  - Extend retrieve_for_synthesis or add a helper to accept/apply ACE rules (e.g., boost scores or filter for procedural matches).
+  - Wire it in the reference workflow or engine so that derived rules from Sexton can be passed in.
+  - Test that rules affect retrieval behavior in a deterministic way.
+- Out of scope: Full promotion workflow, complex rule matching, persistence of the playbook.
+
+**Conclusion:**
+The derivation (3.7) is only useful if the rules are consumed by retrieval. This chunk closes that loop for the foundation.
+
+**Spec Delta Declaration:**
+CHUNK-3.8 integrates the ACE rules produced by Sexton into the L2 retrieval path so they become actionable.
+
+**FILES:**
+- (amend) orchestration/retrieval.py — support for ACE rules in retrieve_for_synthesis
+- (additive) wiring in workflow_01 or engine
+- (additive) updates to test_retrieve_for_synthesis.py and integration tests
+- No new protocols (reuse existing)
+
+**INTERFACES:**
+- retrieve_for_synthesis(..., ace_rules: list[dict] | None = None)
+
+**TESTS:**
+- Test that providing rules changes retrieval output in expected ways.
+
+**GATE:**
+The usual combined L4 + Sexton + retrieval + layering + trace gate.
+
+After gate green: update, commit, push, continue.
+
+**Implementation notes (to be filled after execution):**
+- [empty until next short command]
+
+**Status:** Continuity Check + Spec Delta documented for CHUNK-3.8. Awaiting short command to implement.
