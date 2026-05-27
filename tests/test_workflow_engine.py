@@ -73,3 +73,31 @@ async def test_parallel_node_executes_children_concurrently():
     # We expect the parallel block and its children + the node after it
     assert "par" in executed or any("parallel" in str(r) for r in executed)
     assert "after" in executed
+
+@pytest.mark.asyncio
+async def test_agent_node_wires_to_phase1_synthesis(monkeypatch):
+    """Smoke test that AgentNode now calls the real Phase 1 retrieve + synthesis path via protocols."""
+    from aip.orchestration.workflow.node import AgentNode
+    from aip.foundation.schemas import Chunk, RetrievalResult
+
+    # Fake minimal vector store
+    class FakeVS:
+        async def retrieve(self, query_vector, domain=None, top_k=10):
+            return [Chunk(id="c1", content="test context", score=0.9, domain=domain)]
+
+    async def fake_embed(text):
+        return [0.1] * 768
+
+    nodes = [AgentNode("research", model_slot="synthesis", prompt_template="Research: {{query}}")]
+    ctx = WorkflowContext(
+        variables={"query": "What is the capital of France?"},
+        protocols={
+            "vector_store": FakeVS(),
+            "embed_fn": fake_embed,
+        }
+    )
+    runner = SequentialRunner(nodes, ctx)
+    results = await runner.run()
+
+    assert results[0].success
+    assert hasattr(results[0].output, "content")  # Should be a real SynthesisOutput

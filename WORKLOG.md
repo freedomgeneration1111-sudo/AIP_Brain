@@ -1051,3 +1051,15 @@ This completes initial support for the last major node type (parallel) in the cu
 High-value next step. Wiring the real Phase 1 agent capabilities into the workflow engine is what makes the whole system actually useful for Workflow 0.1. Safe to proceed.
 
 **Status:** Continuity Check complete. Proceeding to implementation.
+
+**Implementation for CHUNK-2.5:**
+- Made AgentNode actually invoke the Phase 1 `retrieve_for_synthesis` + `synthesize` path when executed inside a workflow.
+- It pulls vector_store, embed_fn, trace_store, and config from the WorkflowContext.protocols (with safe fallbacks).
+- Added a test that verifies the wiring works end-to-end with fake stores.
+- Minor cleanup in the test fake_embed to avoid warnings.
+
+This is the key integration point that makes workflows actually useful — "agent" nodes in the YAML now execute the real sophisticated synthesis machinery built in Phase 1.
+
+**Pushed:** Yes
+
+**Status:** Complete

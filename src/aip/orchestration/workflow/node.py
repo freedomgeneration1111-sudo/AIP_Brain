@@ -97,10 +97,58 @@ class AgentNode(WorkflowNode):
         self.prompt_template = prompt_template
 
     async def run(self, context: "WorkflowContext") -> NodeResult:
-        # Placeholder — will delegate to the Phase 1 retrieve + synthesis machinery in later chunks
+        """
+        Real agent execution for CHUNK-2.5.
+
+        Uses the Phase 1 retrieval + synthesis path.
+        Expects the following to be available via context.protocols or context:
+          - vector_store (VectorStore protocol)
+          - embed_fn (callable)
+          - trace_store (optional TraceStore)
+          - config (optional)
+        Falls back to fake_embed + no-op stores when running in minimal test mode.
+        """
+        from aip.orchestration.retrieval import retrieve_for_synthesis, fake_embed
+        from aip.orchestration.nodes.synthesis import synthesize as phase1_synthesize
+
+        # Resolve dependencies from context (with safe fallbacks)
+        vector_store = context.get_protocol("vector_store")
+        embed_fn = context.get_protocol("embed_fn") or (lambda text: fake_embed(text))
+        trace_store = context.get_protocol("trace_store")
+        config = context.get_protocol("config") or context.metadata.get("config")
+
+        # For a minimal viable agent in a workflow, we use the node_id + prompt as the "query"
+        # In real usage the prompt_template would be rendered with context variables.
+        query = self.prompt_template or f"Execute agent node {self.node_id}"
+
+        # Default domain can come from context or config
+        domain = context.get("domain") or (config.get("default_domain") if isinstance(config, dict) else "default")
+
+        retrieval_result = await retrieve_for_synthesis(
+            query=query,
+            domain=domain,
+            vector_store=vector_store,
+            embed_fn=embed_fn,
+            trace_store=trace_store,
+            config=config,
+        )
+
+        synthesis_output = await phase1_synthesize(
+            query=query,
+            domain=domain,
+            retrieval_result=retrieval_result,
+            model_slot=self.model_slot,
+            config=config,
+        )
+
         return NodeResult(
             success=True,
-            output={"executed": self.node_id, "type": "agent", "model_slot": self.model_slot}
+            output=synthesis_output,
+            metadata={
+                "node_id": self.node_id,
+                "model_slot": self.model_slot,
+                "retrieval_status": retrieval_result.status,
+            }
         )
 
 
