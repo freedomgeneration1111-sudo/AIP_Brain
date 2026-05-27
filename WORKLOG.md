@@ -10680,3 +10680,65 @@ The record above constitutes the authoritative audit. All evidence gathered befo
 
 **Phase 8 pre-10.0b CC complete. Tree clean at 7c7f8e5. Continuing per continuous execution directive after push.**
 
+
+---
+
+## CHUNK-10.0b — Knowledge Store Adapter + Plugin Adapter (SqliteKnowledgeStore + PluginLoader / YamlPluginProvider)
+
+**Date:** 2026-05 (post pre-10.0b CC at ecd6eeb; implementation immediately after push per continuous execution)
+**Spec:** specs/AIP_0_1_Phase8_BuildSpec_Rev1.0.md (CHUNK-10.0b box + prose + interfaces + File Layout note)
+**DEPENDS-ON:** CHUNK-10.0a (just delivered), CHUNK-9.0b, CHUNK-8.1
+**Status:** Delivered + gate green (9/9 tests + layering = 18/18 combined battery). Pushed.
+
+**Implementation (exact per prose + interfaces + ANNEX + File Layout note):**
+- `src/aip/adapter/knowledge/sqlite_knowledge_store.py` (new): Full SqliteKnowledgeStore implementing KnowledgeStore. __init__ takes db_path + injected VectorStore + LexicalStore (Protocols only). Two tables (compiled_knowledge + provenance for §1.5 chain). store_compiled writes both + dual-indexes (vector.upsert + lexical.index_document) **only on APPROVED**. Full methods: get/list/update_state/get_provenance/search_compiled (parallel + simple merge). initialize/close. Pure adapter (stdlib + foundation Protocols + json/sqlite3). No orchestration imports.
+- `src/aip/adapter/knowledge/__init__.py` (new): Package export.
+- `src/aip/adapter/plugins/yaml_plugin_provider.py` (new): YamlPluginProvider(PluginProvider). httpx async calls when real; **API keys exclusively from os.environ[api_key_env]** (never in YAML or code). CI/AIP_CI_MODE deterministic fixture path returns "[CI-FIXTURE]..." (zero network).
+- `src/aip/adapter/plugins/plugin_loader.py` (new): PluginLoader. discover_plugins (YAML scan), load_plugin (instantiates Yaml + sandbox error catching returns None), list/unload. Optional register hook.
+- `src/aip/adapter/plugins/__init__.py` (new): Package exports.
+- `tests/test_knowledge_store.py` (new): 4 tests (protocol, store/get/provenance/state, list/search, dual-index behavior).
+- `tests/test_plugin_adapter.py` (new): 4 tests (provider contract, loader sandbox on bad YAML, CI fixture mode, static assertion that adapter/ modules contain zero "from aip.orchestration" imports — directly satisfies gate item (i) + layering).
+
+All new code uses `from aip.foundation...` and `from aip.adapter...` only (File Layout compliance). Follows existing adapter store patterns (lazy conn, json, _ensure_tables).
+
+**Gate / Battery (verbatim):**
+```
+$ uv run pytest tests/test_knowledge_store.py tests/test_plugin_adapter.py tests/test_layering.py -xvs
+...
+tests/test_knowledge_store.py::test_knowledge_store_implements_protocol PASSED
+tests/test_knowledge_store.py::test_store_and_get_compiled PASSED
+tests/test_knowledge_store.py::test_provenance_and_state_transition PASSED
+tests/test_knowledge_store.py::test_list_and_search PASSED
+tests/test_plugin_adapter.py::test_yaml_plugin_provider_implements_protocol PASSED
+tests/test_plugin_adapter.py::test_plugin_loader_discover_and_sandbox PASSED
+tests/test_plugin_adapter.py::test_ci_deterministic_mode_for_provider PASSED
+tests/test_plugin_adapter.py::test_adapter_layer_does_not_import_orchestration PASSED
+tests/test_layering.py::test_import_boundaries_are_respected PASSED
+
+============================== 9 passed in 0.39s ===============================
+```
+
+```
+$ uv run pytest tests/test_layering.py tests/test_phase8_schema_additions.py tests/test_knowledge_store.py tests/test_plugin_adapter.py -q --tb=no
+..................                                                       [100%]
+18 passed in 0.26s
+```
+Core battery green. Zero network. Adapter isolation (no orchestration imports) mechanically verified.
+
+**Files Changed (this unit):**
+- src/aip/adapter/knowledge/ (new package + sqlite_knowledge_store.py)
+- src/aip/adapter/plugins/ (new package + loader + yaml provider)
+- tests/test_knowledge_store.py (new)
+- tests/test_plugin_adapter.py (new)
+- WORKLOG.md (append)
+
+**Permanent rules followed:** Exact scope (10.0b only). Append-only on WORKLOG. Rule #10 (pre-CC audit clean; followed Phase 6 store patterns). §7.2 (adapter imports foundation Protocols only — verified by test + layering). §1.8 toggles respected (sandbox_mode). CI determinism for plugins. KnowledgeStore remains distinct (separate tables + provenance). File Layout deltas followed (aip. imports, src/aip/ paths). collaborator/DEFINER concerns untouched (out of scope for 10.0b).
+
+**Rule #10 notes for this chunk:** Pre-10.0b CC (ecd6eeb) + §14 confirmed zero pre-existing code in target locations. History of adapter/ stores (Phase 6 8.0b) followed for implementation style. Clean extension.
+
+**Next per DAG:** 10.1 (Knowledge compiler — orchestration/compilation.py) after 10.0b.
+
+CHUNK-10.0b complete (gate green).
+
+**Phase 8 CHUNK-10.0b complete (gate green + pushed at ecd6eeb). Continuing to next per linearized order.**
+
