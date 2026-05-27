@@ -137,3 +137,58 @@ class Sexton:
     def audit_model_gen_assumption(self, rule_id: str) -> str | None:
         """Stub for §1.8 stale rule audit."""
         return None
+
+    def derive_ace_rules(self, classified_events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """
+        Minimal deterministic ACE playbook derivation (CHUNK-3.7 foundation).
+
+        For each classified failure event, produces a basic intervention rule stub.
+        Every rule carries an explicit model_gen_assumption per §1.8.
+        In a later chunk these would be persisted, reviewed, and promoted to the
+        live ACE playbook used by L2 retrieval etc.
+        """
+        rules: list[dict] = []
+        seen: set[str] = set()
+
+        for ev in classified_events:
+            ft = ev.get("failure_type")
+            if not ft or ft in ("", None):
+                continue
+
+            node = ev.get("node_type", "unknown")
+            key = f"{ft}_{node}"
+            if key in seen:
+                continue
+            seen.add(key)
+
+            rule = {
+                "rule_id": f"ace_{key}_{len(rules)}",
+                "failure_type": ft,
+                "node_type_pattern": node,
+                "condition": f"failure_type == '{ft}' and node_type matches '{node}'",
+                "recommended_action": self._default_action_for(ft),
+                "source_event_count": 1,
+                "model_gen_assumption": (
+                    f"Rule derived directly from observed classified failure (type {ft}) "
+                    f"in node {node}. Encodes the assumption that this pattern of "
+                    f"failure will recur under similar conditions and benefits from "
+                    f"the listed intervention. Per Architecture §16.1 and §1.8. "
+                    f"Audit on model slot upgrade."
+                ),
+            }
+            rules.append(rule)
+
+        return rules
+
+    def _default_action_for(self, failure_type: str) -> str:
+        if failure_type == "A":
+            return "strengthen_contract_rule_or_improve_retrieval"
+        if failure_type == "B":
+            return "add_or_retrieve_ace_playbook_entry"
+        if failure_type == "C":
+            return "apply_structural_validation_or_repair"
+        if failure_type in ("D", "F"):
+            return "trigger_context_reset_or_l4_intervention"
+        if failure_type == "E":
+            return "require_verify_step_before_commit"
+        return "log_and_audit"

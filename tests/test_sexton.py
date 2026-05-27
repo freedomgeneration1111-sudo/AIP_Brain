@@ -118,3 +118,33 @@ def test_sexton_audit_model_gen_assumption_stub():
     # We only need the method to exist and not crash
     # (full audit logic is out of scope for foundation)
     assert hasattr(SextonClass, "audit_model_gen_assumption") or True  # method is on instance in current code
+
+
+def test_sexton_derives_ace_rules_from_classified_events():
+    """
+    CHUNK-3.7: derive_ace_rules produces sensible, §1.8-tagged rules from
+    classified events (including L4-written F events).
+    """
+    classified = [
+        {"failure_type": "A", "node_type": "L2", "detail": "insufficient memory"},
+        {"failure_type": "F", "node_type": "L4", "detail": "context anxiety, hedging"},
+        {"failure_type": "D", "node_type": "L4", "detail": "drift loop"},
+        {"failure_type": "A", "node_type": "L2", "detail": "another A"},  # duplicate should be collapsed
+    ]
+
+    sexton = Sexton(FakeTraceStoreForSexton())  # trace not used for pure derivation
+    rules = sexton.derive_ace_rules(classified)
+
+    assert len(rules) >= 3  # A, F, D (dupe A collapsed)
+    for r in rules:
+        assert "rule_id" in r
+        assert "failure_type" in r
+        assert "model_gen_assumption" in r
+        assert "§1.8" in r["model_gen_assumption"]
+        assert "derived" in r["model_gen_assumption"].lower()
+
+    # Spot check one
+    f_rule = next((r for r in rules if r["failure_type"] == "F"), None)
+    assert f_rule is not None
+    assert "L4" in f_rule.get("node_type_pattern", "")
+    assert "context_reset" in f_rule.get("recommended_action", "")

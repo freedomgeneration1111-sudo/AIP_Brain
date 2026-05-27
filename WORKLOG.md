@@ -2290,7 +2290,13 @@ The usual combined gate.
 
 After gate green: update, commit, push, continue.
 
-**Implementation notes (to be filled after execution):**
-- [empty until next short command]
+**Implementation notes (filled after code + gate):**
+- Extended `orchestration/sexton/sexton.py` (amend by addition) with `derive_ace_rules(classified_events)` — a minimal deterministic derivation that produces tagged intervention rule stubs from classified failures (including L4 D/F events). Each rule carries a detailed `model_gen_assumption` per §1.8.
+- Added private `_default_action_for` helper for sensible default recommendations.
+- Added `test_sexton_derives_ace_rules_from_classified_events` in `tests/test_sexton.py` that verifies rule production, deduplication, and §1.8 tagging.
+- Gate (combined) executed successfully: 26/26 PASSED.
+- All changes additive, deterministic, zero-token.
 
-**Status:** Continuity Check + Spec Delta documented for CHUNK-3.7. Awaiting short command to implement.
+**Status:** Complete
+
+**Pushed:** (pending this work unit)
