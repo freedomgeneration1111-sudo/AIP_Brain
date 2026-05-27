@@ -641,3 +641,42 @@ This completes the formal Phase 1 green gate as defined in the single source of 
 All numbered CHUNKS (1.0a through 1.7) + the full aggregate green gate required by the spec have been delivered, each preceded by a documented Continuity Check.
 
 The build is now in the state the spec defines as ready for Phase 2.
+
+---
+
+# Phase 2 — AIP-Native YAML Workflow Engine (L5)
+
+**Status:** Beginning
+
+Per the Rev 1.3 Phase 1 BuildSpec and Architecture Rev 5.2 §11, the YAML workflow engine that composes the nodes built in Phase 1 into executable graphs is deferred to Phase 2.
+
+This phase will implement the L5 layer: an AIP-native YAML-based workflow engine supporting the node types defined in Architecture §11.1 (script, agent, condition, dialog, parallel), with proper budget inheritance, event emission for dialog nodes, and strict adherence to the import boundaries and determinism rules established in Phase 1.
+
+All work in this phase will continue to follow the same process:
+- Mandatory Continuity Check before each CHUNK
+- Strict adherence to the single source of truth (Architecture Rev 5.2 + Phase 1/2 BuildSpecs)
+- Push after each completed work unit
+
+---
+
+## Task ID: 2.0-Prep
+
+**Agent:** Grok Build  
+**Task:** Scope the opening Phase 2 work and perform initial analysis against Architecture Rev 5.2 §11
+
+**Work Log:**
+- Phase 1 (all numbered CHUNKS 1.0a–1.7 + full aggregate green gate) is now complete per Rev 1.3.
+- The spec and Architecture are clear that the next major body of work is the L5 YAML Workflow Engine.
+- Key reference: Architecture Rev 5.2 §11.1 "AIP-Native YAML Workflow Engine"
+- Node types that must be supported at minimum for Workflow 0.1:
+  - script (deterministic Python, zero tokens)
+  - agent (model call via explicit model_slot)
+  - condition (Jinja2 branching, zero tokens)
+  - dialog (structured DEFINER gate that pauses and emits event)
+  - parallel (concurrent execution with budget inheritance)
+
+**Next step:** Define the first formal Phase 2 CHUNK (likely "Workflow Engine Foundation: Node Protocol + YAML Loader + Basic Executor") and perform the required Continuity Check against §11 and prior Phase 1 deliverables before writing any code.
+
+**Status:** Prep complete. Awaiting execution of first Phase 2 CHUNK (with Continuity Check).
+
+**Pushed:** Yes
