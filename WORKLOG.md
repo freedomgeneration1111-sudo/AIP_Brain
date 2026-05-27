@@ -9056,6 +9056,93 @@ The record above constitutes the authoritative audit. All evidence gathered via 
 
 ---
 
+## Full Pre-CHUNK-9.0b / 9.0c Continuity Check (Mandatory before Auth + Rate Limiting — Parallel After 9.0a)
+
+**Date:** 2026-05 (immediately after CHUNK-9.0a gate green + push at 64d392c)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.0b and 9.0c boxes + prose)
+**DEPENDS-ON:** CHUNK-9.0a (new AuthConfig/RateLimitConfig + AuthStore), CHUNK-8.1 (FastAPI app factory + DI container for middleware injection), plus full Phase 6 surfaces (8.3 chat, 8.5 MCP, 8.1 API, 8.2 CLI all need auth/rate limiting gates)
+**Status:** CC complete + documented. Ready for CHUNK-9.0b (Auth) and CHUNK-9.0c (Rate limiting) in parallel (no src/ or tests/ production edits for 9.0b or 9.0c performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-9.0a baseline: Foundation schemas/protocols/config extended with Vigil/Auth/RateLimit/Canonical types (73 passed core battery including new test_phase7_schema_additions.py + all prior gates). Phase 6 complete at ae0fb96 (69+ on final gates).
+- Rule #10: No pre-existing auth or rate limiter implementation code anywhere in src/ (grep + directory search confirmed clean). Only the 9.0a schema/protocol types we just added. Zero conflicting partials to reconcile — clean slate for adapter/auth/ and adapter/middleware/rate_limiter.py at spec locations. (Historical "auth placeholder" mentions in Phase 6 notes were aspirational only.)
+- All prior Clean Bills hold. 5.8 partial non-blocking.
+- Parallel note: 9.0b and 9.0c are independent after 9.0a + 8.1 (per spec DAG). Auth middleware and rate limiter middleware can be developed in parallel and both injected into the 8.1 FastAPI app.
+
+**1. Re-read of target CHUNK-9.0b (from Phase 7 SSOT):**
+
+```
+CHUNK-9.0b: Authentication & Authorization System
+PHASE: 7
+DEPENDS-ON: CHUNK-9.0a, CHUNK-8.1
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~5,000 tokens
+FILES:
+  adapter/auth/session_store.py
+  adapter/auth/api_key_store.py
+  adapter/auth/middleware.py
+  adapter/auth/__init__.py
+  adapter/auth/dependencies.py
+  tests/test_auth.py
+INTERFACES:
+  SqliteSessionStore implements AuthStore (from 9.0a)
+  AuthMiddleware (Starlette)
+  get_current_identity / require_definer (FastAPI deps)
+TESTS: tests/test_auth.py
+GATE: uv run pytest tests/test_auth.py tests/test_layering.py -xvs
+```
+
+**Prose key mandates:** When auth_enabled=False (laptop profile default), all requests treated as DEFINER (defense-in-depth with AutonomyGate). SqliteSessionStore + API key management with bcrypt. AuthMiddleware attaches identity/role to request.state. Integrates with 8.1 DI container. "requested_by" in AutonomyEscalation becomes authenticated.
+
+**1b. Re-read of target CHUNK-9.0c (parallel):**
+
+```
+CHUNK-9.0c: Rate Limiting
+PHASE: 7
+DEPENDS-ON: CHUNK-9.0a, CHUNK-8.1
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~3,000 tokens
+FILES:
+  adapter/middleware/rate_limiter.py
+  adapter/middleware/__init__.py
+  tests/test_rate_limiter.py
+INTERFACES:
+  TokenBucketRateLimiter
+  RateLimitMiddleware
+TESTS: tests/test_rate_limiter.py
+GATE: uv run pytest tests/test_rate_limiter.py tests/test_layering.py -xvs
+```
+
+**Prose key mandates:** Token bucket with per-endpoint overrides and model_budget_protection flag. Works in concert with BudgetManager (rate limiter prevents bursts; BudgetManager prevents exhaustion). Disabled by default in laptop profile.
+
+**2–6. (Live evidence summary):**
+- DEPENDS (9.0a types + 8.1 app factory) present and green (73 passed). Phase 6 surfaces (chat, MCP, API, CLI) ready for middleware injection.
+- Target paths clean (no pre-existing adapter/auth/ or rate_limiter.py).
+- Governance: current battery (including 9.0a test + all Phase 6 gates) green at 73 passed on core suite. Layering will be re-verified in the 9.0b/9.0c gates.
+- Rule #10: Clean (no historical auth/rate partials to extend or conflict with). Integration risk is high with Phase 6 surfaces (8.1 app, 8.3 chat, 8.5 MCP, 8.2 CLI) — all must respect the new auth identity + rate limits without breaking existing behavior when auth/rate disabled.
+- Arch cross-refs: Auth directly implements §1.7 DEFINER sovereignty at identity level (binds to AutonomyGate "requested_by"). Rate limiting protects §6 budget system and §2.1 laptop-viable multi-surface operation. Both are adapter-layer middleware per §7.2 (import only foundation + 8.1 container).
+
+**Overall Pre-CHUNK-9.0b/9.0c Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-9.0b (Auth system) and CHUNK-9.0c (Rate limiting) in parallel (clean new paths per Rule #10; middleware injection into 8.1 app; laptop profile backward-compat when disabled; 73 passed baseline).**
+
+- All 6 steps executed.
+- Ready for exact 9.0b + 9.0c (adapter/auth/ + rate_limiter per ANNEX).
+
+**This completes the mandatory full Continuity Check for CHUNK-9.0b and CHUNK-9.0c (parallel).**
+
+The record above constitutes the authoritative audit. All evidence gathered before any src/ or tests/ edits for 9.0b or 9.0c.
+
+**Ready to proceed to CHUNK-9.0b and 9.0c implementation (exact scope per prose + ANNEX, in parallel), gates, WORKLOG appends, and pushes.**
+
+CC complete. Next per linearized DAG: 9.0b + 9.0c implementation (after this CC is pushed).
+
+---
+
+**Phase 7 pre-9.0b/9.0c CC complete. Tree clean at 64d392c. Continuing per continuous execution directive after push.**
+
+---
+
 ## CHUNK-9.0a — Schema Additions + Protocol Amendments + Config Extensions (Foundation for Phase 7)
 
 **Date:** 2026-05 (post pre-9.0a CC at 6e9f766)
