@@ -8979,6 +8979,83 @@ CC complete. Next (and last): CHUNK-8.8 implementation (after push).
 
 ---
 
+## Full Pre-CHUNK-9.0a Continuity Check (Mandatory before Architectural Phase 7 Schema/Protocol/Config)
+
+**Date:** 2026-05 (immediately after Phase 7 spec import + PHASE2_IMPORT_NOTES.md §13 extension; current HEAD ae0fb96)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.0a box + prose + ANNEX; imported this session from /home/moses/Downloads/)
+**DEPENDS-ON:** All Phase 6 (8.0a–8.8) + Phase 5 (7.0a–7.7) + earlier foundations (complete actor layer + surfaces now delivered)
+**Status:** CC complete + documented. Ready for CHUNK-9.0a (no src/ or tests/ production edits for 9.0a performed during this CC).
+
+**Pre-CC Reconciliations Applied (per handoff mandatory first actions + standing rules):**
+- Phase 6 complete at ae0fb96 (CHUNK-8.8 final gates green; 69+ passed core battery; "Architectural Phase 6 is now complete" declared in commit message).
+- WORKLOG.md on disk contains detailed records only through ~8.1 (later 8.2–8.8 records live primarily in commit messages, exactly as occurred with Phase 5 records in prior session).
+- PHASE2_IMPORT_NOTES.md contains the Phase 6 Import Record (§12) but no separate "Phase 6 Completion Record" section in the file (completion was declared in the final commit).
+- Phase 7 spec verified in Downloads (AIP_0_1_Phase7_BuildSpec.md, Rev 1.0, 100971 bytes); imported exactly per pattern to specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md; "Phase 7 Import Record" appended as new §13 in PHASE2_IMPORT_NOTES.md.
+- Permanent +2 offset now in its fifth application: Architectural Phase 7 → **CHUNK-9.x series**. The Phase 7 spec itself already uses CHUNK-9.0a–9.8 in its outline (no remapping required inside the document).
+- All prior Clean Bills (through Phase 6 final gate) hold. 5.8 partial remains non-blocking.
+
+**1. Re-read of target CHUNK-9.0a (from newly imported Phase 7 SSOT):**
+
+```
+CHUNK-9.0a: Schema Additions + Protocol Amendments + Config Extensions
+PHASE: 7
+DEPENDS-ON: CHUNK-8.0a (and all prior)
+CODER-PROFILE: L1
+CONTEXT-BUDGET: ~4,000 tokens
+FILES:
+  foundation/schemas.py (append only)
+  foundation/protocols.py (amend by addition)
+INTERFACES:
+  @dataclass class VigilConfig: ...
+  @dataclass class AuthConfig: ...
+  @dataclass class RateLimitConfig: ...
+  @dataclass class CanonicalPromotionConfig: ...
+  @dataclass class WorkflowTemplate: ...
+  @dataclass class DeploymentProfile: ...
+  VigilStore (new Protocol)
+  AuthStore (new Protocol)
+  CanonicalPipeline Protocol method amendments
+  Config extensions in aip.config.toml ([vigil], [auth], [rate_limit], [canonical_pipeline], [workflow], [deployment])
+TESTS: tests/test_phase7_schema_additions.py
+GATE: uv run pytest tests/test_phase7_schema_additions.py -xvs
+```
+
+**Prose key mandates (critical note):** Identical append-only/amend-by-addition pattern as every prior *.0a (1.0a through 8.0a). No existing Phase 0–6 code deleted or rewritten. Phase 7 components span layers but 9.0a is pure foundation + config (L1). Vigil is read-only (monitors/reports; does not autonomously modify). Auth/rate limiting are adapter middleware.
+
+**Full ANNEX re-read (via extraction):** Standard 6 new dataclasses + 2 new Protocols (VigilStore, AuthStore) + CanonicalPipeline amendments + config sections ([vigil], [auth], [rate_limit], [canonical_pipeline], etc.) + test skeleton verifying §1.8 model_gen_assumption where applicable, prior phase preservation, and Protocol method presence.
+
+**2–6. (Live evidence summary from tool execution before any 9.0a src/tests edits):**
+- **DEPENDS-ON verification:** Complete Phase 6 surfaces (8.1–8.7) + 8.0b adapters + full Phase 5 actor layer (Sexton 7.1, Beast 7.5, AdaptiveRouter 7.4, ACE Playbook 7.2, BudgetManager 7.0b, etc.) + all prior foundations are present and green (69 passed on full core battery including 8.8 gates).
+- **Target file audit (no pre-existing Phase 7 content):** No VigilConfig/AuthConfig/RateLimitConfig/etc., no VigilStore/AuthStore, no new config sections in the relevant files. Clean append/amend locations (schemas.py ends after Phase 6 types; protocols.py has the expected Phase 6 stubs; config ends after Phase 6 sections).
+- **Governance / state verification:** Full battery `uv run pytest tests/test_layering.py ... tests/test_phase6_gates.py -q` → **69 passed**. All prior gates (layering, network isolation, model-name, schema preservation, storage contracts) remain green with the complete Phase 6 deliverable.
+- **Rule #10 / Repo overlap (full audit vs delivered Phase 6 + Phase 5):** No pre-existing Phase 7 schema/Protocol elements in foundation. The only potential historical overlaps are repo 3.x partial Vigil or canonical scaffolding (explicitly called out in the Phase 7 spec's "Repo State Reconciliation" section). Decision: extend any real delivered partials (if found during 9.1/9.2) rather than replace; 9.0a itself has zero conflict. Complete Phase 6 surfaces (especially 8.0b Canonical/Entity stores, 8.1 container, 8.4 review paths) are the primary integration surface for later 9.x chunks — documented as highest-risk area.
+- **Architecture Rev 5.2 / Phase1 SSOT cross-refs:** Phase 7 spec itself is primary (Vigil as last §3 actor, auth for §1.7 sovereignty, canonical pipeline for §1.6/§9.3, full §22 verification). §7.2 layering and §4.1 named slots explicitly reinforced. No violation of prior invariants.
+- **Import boundaries / determinism / §1.8:** 9.0a is pure foundation + config (L1). All new types with model_gen_assumption where required per spec. CI deterministic by construction.
+
+**Overall Pre-CHUNK-9.0a Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-9.0a (standard foundation append/amend on schemas + protocols (inside existing structure per Rule #10), config append; post-Phase-6 complete baseline at ae0fb96 with 69 passed core battery; clean for 9.0a with documented Rule #10 path for later Vigil/canonical work).**
+
+- All 6 steps executed with direct tool evidence.
+- Discrepancies (WORKLOG/import notes file content vs commit messages) explicitly documented (consistent with Phase 5/6 experience).
+- Ready for exact-scope 9.0a implementation (no gold-plating; only prose+ANNEX).
+
+**This completes the mandatory full Continuity Check for CHUNK-9.0a.**
+
+The record above constitutes the authoritative audit. All evidence gathered via tool execution (reads, pytest 69 passed, git commands, grep, blame, ls, spec extraction) **before any src/ or tests/ production edits for 9.0a**.
+
+**Ready to proceed to CHUNK-9.0a implementation (exact scope per prose + ANNEX), gate, WORKLOG append (this entry already), commit + push, then immediate pre-9.0b CC per linearized DAG and continuous execution directive.**
+
+**Permanent rules followed in this CC:** +2 offset / qualified terminology (CHUNK-9.x, Architectural Phase 7, post-Phase-6 baseline), append-only discipline (on docs + future foundation), full Rule #10 (heavy on complete Phase 6 surfaces + Phase 5 actor layer), import boundaries noted, no hardcoded models, determinism verified, push after unit (next), spec as law.
+
+**Next per DAG (after push):** CHUNK-9.0a implementation. Then pre-9.0b CC immediately.
+
+---
+
+**Phase 7 pre-9.0a CC complete. Tree has import docs changes only (clean on src/tests). Continuing per continuous execution directive after push.**
+
+---
+
 ## CHUNK-8.8 — Cross-Cutting Gates (Final Quality Gate Extending 7.7 for All Phase 6 Surfaces)
 
 **Date:** 2026-05 (post pre-8.8 CC at 6cc7e63)

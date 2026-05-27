@@ -274,3 +274,34 @@ The Phase 3 spec describes embedding integration, L4 trajectory regulation, and 
 
 ---
 
+## 13. Phase 7 Import Record (Appended for CHUNK-9.x resumption)
+
+**Date:** 2026-05 (current resumption session, immediately after Phase 6 completion at ae0fb96)
+**Action:** Copied `AIP_0_1_Phase7_BuildSpec.md` (Spec Rev 1.0, 100971 bytes) from `/home/moses/Downloads/` into `specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md` following the exact remediation import pattern used for all prior phases. No remapping edits needed inside the spec — it was authored anticipating the permanent +2 offset (CHUNK-9.x for Architectural Phase 7).
+
+**Remapping:** Per permanent +2 offset policy (now in its fourth application): Architectural Phase 7 → **CHUNK-9.x series**. All future references use CHUNK-9.0a–9.8 exclusively. Terminology rules remain in force: "Architectural Phase 7", "CHUNK-9.x", "post-Phase-6 baseline". Never bare "Phase 7".
+
+**Key notes from Phase 7 spec (mandatory for all 9.x CCs):**
+- Phase 7 is the capstone: Vigil actor (last missing §3 orchestration component), real auth system, rate limiting, canonical promotion pipeline, extended workflow templates, minimal HTMX web UI scaffold, full §22 acceptance verification, and production packaging (Docker Compose for laptop-viable + production profiles).
+- Linearized order begins with 9.0a (schema/protocol/config L1 for VigilConfig/AuthConfig/RateLimitConfig/CanonicalPromotionConfig + new Protocols VigilStore/AuthStore + amendments).
+- Heavy Rule #10 emphasis expected: now-augmented overlaps with complete Phase 6 surfaces (8.1–8.7 API/CLI/Chat/Review/MCP/Admin/Memory + 8.0b adapters) + full Phase 5 actor layer. "Extend existing rather than replace" remains non-negotiable.
+- CHUNK-9.0a follows the identical append-only/amend-by-addition pattern on foundation/schemas.py + foundation/protocols.py + config/aip.config.toml as every prior *.0a.
+- New types must carry `model_gen_assumption` per §1.8 where applicable.
+- Vigil (9.1) will be the orchestration-layer actor that monitors canonical corpus health, triggers re-evaluation on model slot changes, and maintains entity consistency — using the delivered 8.0b CanonicalStore/EntityStore + 8.1 container.
+- Canonical promotion pipeline (9.2) will drive the full REVIEWED→APPROVED→CANONICAL lifecycle using AutonomyGate + EcsStore + CanonicalStore + indexing into LexicalStore/VectorStore.
+- Full §22 acceptance test (9.5) is the final verification that the entire system (all prior phases + Phase 7 deliverables) meets the architectural acceptance criteria.
+- Post-Phase-6 Clean Bill (final gate at ae0fb96 / 69+ passed core battery) is the new baseline. All Phase 6 governance invariants carry forward and must be extended by 9.8.
+
+**High-risk areas flagged for every 9.x CC (per established pattern + Phase 7 scope):**
+- Integration with now-complete Phase 6 surfaces (highest risk for 9.0b auth/rate limiting middleware, 9.4 web UI, 9.5 acceptance tests).
+- Vigil actor overlaps with delivered 8.0b Canonical/Entity stores and 8.1 DI container.
+- Canonical pipeline must not duplicate or bypass existing 8.0b/8.4 review/approve paths.
+- Auth system must integrate cleanly with existing AutonomyGate without creating bypasses.
+- Rate limiting must respect budget system and not starve Beast cadence / MCP / chat.
+- All new modules must pass the full extended gate suite (layering, no-network, model-name, hardcode scans, etc.).
+- Rule #10 on every chunk against the now-very-substantial delivered surface + actor codebase.
+
+**Status:** Phase 7 spec successfully imported as Rev1.0. PHASE2_IMPORT_NOTES.md extended with this record. Repository at HEAD ae0fb96 (Phase 6 complete). Ready for mandatory full 6-step pre-CHUNK-9.0a Continuity Check (with extreme Rule #10 emphasis on complete Phase 6 surfaces + Phase 5 actor layer + all prior reconciliations) **before any src/ or tests/ edits**.
+
+---
+
