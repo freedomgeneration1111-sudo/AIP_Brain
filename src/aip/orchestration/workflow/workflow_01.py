@@ -30,7 +30,7 @@ from aip.orchestration.workflow.runner import SequentialRunner
 
 # L4 wiring (CHUNK-3.2 additive, backward safe)
 from aip.orchestration.l4.monitor import TrajectoryMonitor
-from aip.orchestration.l4.reset import L4ResetCoordinator, check_l4_and_surface_if_needed
+from aip.orchestration.l4.reset import L4ResetCoordinator, check_l4_and_surface_if_needed, run_l4_and_sexton_check
 
 
 
@@ -239,13 +239,12 @@ class Workflow01Runner:
 
         ctx = WorkflowContext(protocols=protocols, metadata={"config": self.config})
 
-        # CHUNK-3.3 L4 activation point (additive)
-        # Calls the reusable helper which invokes the injected coordinator
-        # and emits "l4_reset_recommended" event via ctx if intervention is warranted.
-        # This demonstrates step 5 ("Surface to DEFINER") of the §10.2 protocol
-        # inside the reference Workflow 0.1 pipeline. The event can be consumed
-        # by DialogNode / definer_gate for human review.
-        await check_l4_and_surface_if_needed(ctx, session_id=f"wf01-{id(self)}")
+        # CHUNK-3.3 / 3.6 L4 + Sexton activation point (additive)
+        # Uses the 3.6 thin helper (run_l4_and_sexton_check) which invokes both
+        # the L4 coordinator (emitting the standard event for DEFINER surface)
+        # and optionally Sexton for classification of recent events.
+        # This is the runtime node-level integration pattern for the full L4/Sexton stack.
+        await run_l4_and_sexton_check(ctx, session_id=f"wf01-{id(self)}", also_run_sexton=True)
 
         # For a real Workflow 0.1 we would want a proper graph runner.
         # For this foundation chunk we use the SequentialRunner + the fact that

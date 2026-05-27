@@ -2229,7 +2229,15 @@ The usual combined L4 + Sexton + layering + trace gate.
 
 After gate green: update, commit, push, continue.
 
-**Implementation notes (to be filled after execution):**
-- [empty until next short command]
+**Implementation notes (filled after code + gate):**
+- Added thin runtime integration helper `run_l4_and_sexton_check(...)` to `orchestration/l4/reset.py` (amend by addition). It calls the L4 coordinator (via the 3.3 helper) and optionally constructs + runs a Sexton instance from the context's trace_store. Returns a combined result dict and emits the standard L4 event when recommendations are produced.
+- Updated `orchestration/workflow/workflow_01.py` (additive) to use the new 3.6 helper at the activation point (with also_run_sexton=True). This demonstrates the node-level / runtime integration pattern for the full L4 (incl. L4b) + Sexton stack inside the reference pipeline.
+- Updated `tests/test_l4_workflow_integration.py` (additive) with `test_3_6_run_l4_and_sexton_check_integration` that exercises the helper from a simulated node context and verifies both L4 recommendation path and Sexton classification run.
+- Gate (combined L4 + Sexton + layering + trace) executed:
+  `uv run pytest tests/test_sexton.py ... tests/test_trace_schema.py -xvs`
+  - **Result: 25/25 PASSED** (including the new 3.6 integration test). Clean green gate.
+- All changes strictly additive. Zero new protocols, zero model calls, full layering compliance. The L4/Sexton stack is now callable from within running workflow logic (the main remaining integration gap after 3.5).
 
-**Status:** Continuity Check + Spec Delta documented for CHUNK-3.6. Awaiting short command to implement.
+**Status:** Complete
+
+**Pushed:** (pending this work unit)

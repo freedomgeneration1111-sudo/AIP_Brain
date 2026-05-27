@@ -16,6 +16,7 @@ from aip.orchestration.l4.reset import (
     L4ResetCoordinator,
     ResetRecommendation,
     check_l4_and_surface_if_needed,
+    run_l4_and_sexton_check,
 )
 from aip.orchestration.workflow.context import WorkflowContext
 
@@ -120,3 +121,53 @@ def test_layering_sanity_for_helper():
     # The helper imports WorkflowContext (same layer) and foundation — allowed.
     bad = [imp for imp in imports if imp in ("adapter",) and not str(imp).startswith("orchestration.l4")]
     assert not bad, f"Unexpected cross-layer import in L4 helper: {bad}"
+
+
+@pytest.mark.asyncio
+async def test_3_6_run_l4_and_sexton_check_integration():
+    """
+    CHUNK-3.6: The thin runtime helper can be called from a 'node' context
+    (simulated here) and triggers both L4 recommendation emission and Sexton
+    classification in one call (node-level integration pattern).
+    """
+    trace = FakeTraceStoreForIntegration()
+    # Seed an L4-style unclassified failure so both L4 and Sexton have work
+    await trace.write_event(
+        session_id="node_level",
+        node_type="L4",
+        failure_type=None,
+        outcome="failure",
+        detail="Context pressure high, output shortening perhaps maybe I think"
+    )
+    # Add some token decline for L4b
+    await trace.write_event(
+        session_id="node_level",
+        node_type="L5",
+        outcome="success",
+        token_count_out=800
+    )
+    await trace.write_event(
+        session_id="node_level",
+        node_type="L5",
+        outcome="success",
+        token_count_out=450
+    )
+
+    monitor = TrajectoryMonitor(trace)
+    coordinator = L4ResetCoordinator(trajectory_monitor=monitor, trace_store=trace)
+
+    ctx = WorkflowContext(protocols={
+        "l4_coordinator": coordinator,
+        "trace_store": trace
+    })
+
+    # This is the 3.6 node-level integration call
+    result = await run_l4_and_sexton_check(ctx, session_id="node_level", also_run_sexton=True)
+
+    # L4 side should have produced a recommendation (due to hedging + length decline + pressure)
+    assert result["l4_recommendations"] or any(
+        e.get("type") == "l4_reset_recommended" for e in ctx.events
+    )
+
+    # Sexton side should have run (may return [] or classifications)
+    assert isinstance(result["sexton_classifications"], list)

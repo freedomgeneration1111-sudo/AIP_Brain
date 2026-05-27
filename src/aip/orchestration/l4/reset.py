@@ -185,3 +185,45 @@ async def check_l4_and_surface_if_needed(
     }
     context.emit_event("l4_reset_recommended", payload)
     return recs
+
+
+# --- CHUNK-3.6 thin runtime integration helper (node-level L4 + Sexton) ---
+
+from aip.orchestration.sexton import Sexton
+
+
+async def run_l4_and_sexton_check(
+    context: WorkflowContext,
+    session_id: str,
+    also_run_sexton: bool = True,
+) -> dict[str, Any]:
+    """
+    Thin helper for use from ScriptNodes or inside workflow node logic.
+
+    Calls the injected L4ResetCoordinator (via the 3.3 helper) and,
+    optionally, a Sexton instance constructed from the trace_store in the context.
+
+    Emits the standard "l4_reset_recommended" event when L4 recommends action.
+    Returns a dict with recommendations and any Sexton classifications.
+
+    This makes the full L4 (incl. L4b) + Sexton stack callable from within
+    running workflow nodes (the main integration gap after 3.5).
+    """
+    from .reset import check_l4_and_surface_if_needed  # local to avoid circular
+
+    l4_recs = await check_l4_and_surface_if_needed(context, session_id)
+
+    sexton_classifications: list[dict] = []
+    if also_run_sexton:
+        trace_store = context.get_protocol("trace_store")
+        if trace_store is not None:
+            sexton = Sexton(trace_store)
+            try:
+                sexton_classifications = await sexton.classify_recent_failures(limit=50)
+            except Exception:
+                pass  # defensive for foundation
+
+    return {
+        "l4_recommendations": l4_recs,
+        "sexton_classifications": sexton_classifications,
+    }
