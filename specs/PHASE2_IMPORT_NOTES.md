@@ -244,3 +244,33 @@ The Phase 3 spec describes embedding integration, L4 trajectory regulation, and 
 
 **Status:** Phase 5 complete. Comprehensive Phase 6 handoff prompt created at `PHASE6_HANDOFF_PROMPT.md`. Repository is in a clean, fully pushed state ready for a new session to begin Phase 6 work.
 
+---
+
+## 12. Phase 6 Import Record (Appended for CHUNK-8.x resumption)
+
+**Date:** 2026-05 (current resumption session, immediately after Phase 5 completion docs + PHASE6_HANDOFF_PROMPT.md)
+**Action:** Copied `AIP_0_1_Phase6_BuildSpec.md` (Spec Rev 1.0, 100861 bytes) from `/home/moses/Downloads/` into `specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md` following the exact remediation import pattern used for Phase 2 Rev 1.2, Phase 3 Rev 1.1, Phase 4 Rev 1.0, and Phase 5 Rev 1.0 (authoritative SSOT now in specs/, documented here). No remapping edits needed inside the spec — it was authored with the permanent +2 offset (CHUNK-8.x) already applied.
+
+**Remapping:** Per permanent +2 offset policy (established in remediation, reinforced in every CC, and explicitly called out in the Phase 6 handoff prompt): Architectural Phase 6 → **CHUNK-8.x series**. All future references (CCs, WORKLOG, commits, code comments) use CHUNK-8.0a–8.8 exclusively. Terminology rules from §4 remain in force: "Architectural Phase 6", "CHUNK-8.x", "post-Phase-5 baseline". Never bare "Phase 6".
+
+**Key notes from Phase 6 spec (mandatory for all 8.x CCs):**
+- Linearized DAG order (with parallel groups): 8.0a (schema/protocol/config L1) → 8.0b (remaining adapters: FTS5 LexicalStore, CanonicalStore, EntityStore, AutonomyGateImpl) → 8.1 (FastAPI scaffold + Project/Session/Artifact REST) → parallel surfaces 8.2 (CLI), 8.3 (Chat WS), 8.4 (Review Queue + Artifact Browser), 8.5 (MCP server), 8.6 (Admin Console + Memory Inspector) → 8.7 (full surface-to-backend integration) → 8.8 (cross-cutting gates extending 7.7).
+- Groups C–D parallel pair; E–H independent paths after scaffold (8.1); all converge at 8.7.
+- CHUNK-8.0a is the first chunk: identical append-only/amend-by-addition pattern on `foundation/schemas.py` + `foundation/protocols.py` + `config/aip.config.toml` as 1.0a/4.0a/5.0a/6.0a/7.0a. New types (McpToolDef, AutonomyEscalation, etc.) **must** carry `model_gen_assumption` per §1.8 where model-based.
+- New/Amended Protocols: AutonomyGate (new from §6: check/escalate/audit_log), LexicalStore (new full: search/index/delete), CanonicalStore + EntityStore method additions (read/write/list). All per ANNEX exact signatures.
+- Surfaces layer (CLI, REST, Chat, MCP, Review, Admin) is strictly **adapter** per §7.2 and import boundaries. Must compose Phase 5 delivered actor layer (Sexton, Beast, AdaptiveRouter, ACE Playbook, BudgetManager) + foundation Protocols via injection; never bypass AutonomyGate (§1.7, Appendix D "MCP ≠ bypass", "UI ≠ authority").
+- Post-Phase-5 Clean Bill of Health (completion record §11 above, final gate at 2a6aef2 / 60+ passed) is the new baseline. 5.8 partial remains non-blocking. Phase 6 gates must extend the full Phase 5 battery (layering, no-network, model-name, schema, hardcode scans).
+- Continuous execution directive (per handoff): after this session's pre-8.0a CC documented + pushed, proceed autonomously through entire linearized 8.x order. Only stop for the four explicit stop conditions (genuine user input needs, blocker, etc.).
+
+**High-risk areas flagged for every 8.x CC (per Phase 6 handoff prompt):**
+1. **Integration with delivered Phase 5 actor layer (highest risk):** MCP servers / CLI / API must expose and invoke Sexton (classification + ACE curation), Beast (cadence maintenance), Adaptive Router (budget-aware routing), ACE Playbook loading, BudgetManager enforcement. All surfaces must route privileged actions through AutonomyGate.
+2. **Governance invariants:** Every new Phase 6 module (even adapter) must pass the full extended gate suite from 7.7 (test_layering.py, test_phase2_no_network.py + descendants, schema tests, hardcode scans, file audits). Determinism in CI absolute — zero network.
+3. **Rule #10 on every chunk:** Before touching any file, full audit of historical code including the now-complete Phase 5 delivered surface (`orchestration/actors/`, `orchestration/router.py`, `orchestration/ace_playbook.py`, `orchestration/sexton/`, `orchestration/budget.py`, engine extensions, etc.). Prefer "extend existing rather than replace". 8.0a touches only foundation (low overlap risk), but later chunks high.
+4. **Import boundaries (§7.2) strictly in force:** Adapter (Phase 6) may import foundation + orchestration Protocols, but surfaces compose actors only through clean injection + AutonomyGate. No direct storage bypass.
+5. **No hardcoded model names (§4.1):** All model references through named slots. Config-driven per §1.8.
+6. **Environment:** All new surfaces (esp MCP stdio, CLI, FastAPI) must be fully testable in CI mode with zero network calls.
+
+**Status:** Phase 6 spec successfully imported. PHASE2_IMPORT_NOTES.md extended with this authoritative record. PHASE6_HANDOFF_PROMPT.md already present (docs commit 9de400b). Repository in clean state at HEAD 9de400b. Ready for mandatory full 6-step pre-CHUNK-8.0a Continuity Check (heavy Rule #10 emphasis on post-Phase-5 actor layer + cross-ref to Arch Rev 5.2 §3/§16/§22) **before any src/ or tests/ edits**.
+
+---
+

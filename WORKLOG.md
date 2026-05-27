@@ -8238,3 +8238,94 @@ All budget behaviors (store, Manager, enforcement, multi-scope, warnings), layer
 CHUNK-7.0b complete (gate green).
 
 **Phase 5 CHUNK-7.0b complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
+## Full Pre-CHUNK-8.0a Continuity Check (Mandatory before Architectural Phase 6 Schema/Protocol/Config)
+
+**Date:** 2026-05 (immediately after Phase 6 spec import + PHASE2_IMPORT_NOTES.md §12 extension; current HEAD 9de400b)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.0a box + prose + ANNEX, lines 269–929+; imported this session from /home/moses/Downloads/ per exact prior pattern)
+**DEPENDS-ON:** CHUNK-7.0a (Phase 5 schema/protocol/config: Surface? no — FailureClassification, SextonConfig, BudgetConfig, BeastCadenceConfig, AcePlaybookEntry, etc. + §1.8 model_gen_assumption), CHUNK-6.0a (Phase 4 VectorStore health_check/count/upsert + pgvector)
+**Status:** CC complete + documented in full (all 6 steps with live evidence). **No src/ or tests/ production edits for 8.0a performed during this CC.** (Only docs: spec import + import_notes §12 + this WORKLOG append.)
+
+**Pre-CC Reconciliations Applied (per handoff mandatory first actions + standing rules):**
+- Mandatory action 1: Read full post-Phase-5 completion section (via git log + import_notes §11; detailed 7.1–7.7 records live only in commit messages e.g. 2a6aef2 CHUNK-7.7, a020bee 7.6 etc.; WORKLOG.md on disk ends at 7.0b entry — discrepancy with import_notes §11 claim "WORKLOG.md contains the complete detailed history of Phase 5" noted for future sessions).
+- Mandatory action 2: specs/PHASE2_IMPORT_NOTES.md read in full (permanent +2 offset policy §3/§10/§11/§12; Rule 10 / repo overlap reconciliation §5/§9 emphasized; Phase 5 import/completion records; warnings on existing partials + "extend rather than replace").
+- Mandatory action 3: Phase 6 spec verified absent from specs/ but present in /home/moses/Downloads/ (AIP_0_1_Phase6_BuildSpec.md, Rev 1.0, 100861 bytes); imported exactly as Phase 5 (cp to specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md); "Phase 6 Import Record" appended as new §12 in PHASE2_IMPORT_NOTES.md (modeled verbatim on §10 Phase 5 record); committed later with this CC.
+- Post-Phase-5 baseline authoritative: import_notes §11 + PHASE6_HANDOFF_PROMPT.md (added 9de400b) + delivered actor layer (see inventory below). Tree at 9de400b (handoff docs commit) vs documented "final 2a6aef2" — noted; actual HEAD includes the Phase 6 handoff prompt itself.
+- All prior Clean Bills (Phase 4 at f2bb46c, Phase 5 completion) hold. 5.8 partial non-blocking.
+- **Permanent +2 offset strictly in force for entire Phase 6:** All work CHUNK-8.x only. Qualified terminology used throughout this record.
+- Continuous execution mode acknowledged: after this pre-8.0a CC + push, proceed through linearized 8.x DAG without further "go" signals (only pause on the four stop conditions from handoff/Phase5 prompt).
+
+**1. Re-read of target CHUNK-8.0a (from newly imported Phase 6 SSOT):**
+
+```
+CHUNK-8.0a: Schema Additions + Protocol Amendments + Config Extensions
+PHASE: 6
+DEPENDS-ON: CHUNK-7.0a, CHUNK-6.0a
+CODER-PROFILE: L1
+CONTEXT-BUDGET: ~4,000 tokens
+FILES:
+  foundation/schemas.py (append only — do not modify existing Phase 0/1/2/3/4/5 enums or dataclasses)
+  foundation/protocols.py (amend by addition — add methods to existing Protocol classes + add new Protocols)
+INTERFACES:
+  @dataclass class SurfaceConfig: ... (api_host/port, cors, workers, chat_max_history_turns, review/artifact_page_size)
+  @dataclass class ApiRoute: ... (method, path, handler, auth_required, autonomy_gate)
+  @dataclass class McpToolDef: ... (tool_name, description, input_schema, autonomy_level, model_gen_assumption §1.8)
+  @dataclass class AutonomyEscalation: ... (escalation_id, action_type, requested_by, resource_id, levels, granted, reason, model_gen_assumption §1.8, created_at)
+  @dataclass class ChatMessage: ... (message_id, session_id, role, content, artifacts_referenced, tokens_used, created_at)
+  @dataclass class ReviewQueueEntry: ... (artifact_id, version, ecs_state, domain, project_id, review_type, evaluation_scores, created_at)
+  AutonomyLevel = Literal["none", "read", "write", "admin"]
+  McpAutonomyLevel = Literal["read", "write", "admin"]
+  # New Protocols (AutonomyGate, LexicalStore) + amendments (CanonicalStore/EntityStore methods) per ANNEX exact stubs
+TESTS: tests/test_phase6_schema_additions.py
+GATE: uv run pytest tests/test_phase6_schema_additions.py -xvs
+```
+
+**Prose key mandates (8 items, exact scope):** Append-only on schemas.py (6 new dataclasses + 2 Literal aliases; all §1.8 where model-relevant); amend-by-addition on protocols.py (NEVER redeclare existing Protocol classes; append stubs inside bodies for AutonomyGate [check/escalate/audit_log], LexicalStore [search/index_document/delete_document], CanonicalStore [read/write/list_canonical], EntityStore [get/list/update_entity]); config/aip.config.toml append with [api], [cli], [mcp], [chat], [autonomy], [lexical] sections (toggleable §1.8); gate verifies instantiation, §1.8 fields present on McpToolDef/AutonomyEscalation, Protocol method presence via hasattr, NO breakage to Phase 0–5 types. Critical note: "This chunk appends to foundation/schemas.py and amends foundation/protocols.py — the same append-only/amend-by-addition pattern as ... CHUNK-7.0a. No existing ... code is deleted or rewritten."
+
+**Full ANNEX re-read (via extraction):** schemas.py append block (all 6 @dataclass with docstrings referencing §1.7/§1.8/§2.1/§3/§7.2/Appendix D + type aliases); protocols.py (Canonical/Entity method stubs appended inside existing classes + full new class AutonomyGate and LexicalStore with docstrings + ... impls); tests/test_phase6_schema_additions.py skeleton (imports all prior + new, 20+ tests: dataclass roundtrips, 2x model_gen_assumption §1.8 enforcement, type alias literals, Phase0-5 preservation, hasattr checks for all 9 new/amended methods, no breakage asserts).
+
+**2–6. (Live evidence summary from tool execution before any 8.0a src/tests edits):**
+
+- **DEPENDS-ON verification:** CHUNK-7.0a deliverables present/green (FailureClassification with model_gen_assumption in schemas.py:409, SextonConfig etc.; Budget/Beast/AcePlaybook configs; 7.0a test green). CHUNK-6.0a VectorStore extensions (count/health_check/upsert) present in protocols + adapter/vector (Phase 4 gate 16/16 passed in scoped run). Full Phase 5 actor layer delivered and importable: orchestration/actors/beast.py (run_corpus_maintenance etc.), orchestration/sexton/sexton.py + sexton_audit.py (extended 7.1/7.3 per Rule#10), orchestration/router.py (AdaptiveRouter 7.4), orchestration/ace_playbook.py (7.2), orchestration/budget.py + BudgetManager (7.0b), engine.py wiring. All per post-Phase-5 baseline.
+
+- **Target file audit (no pre-existing Phase 6 content):** schemas.py (413 lines, ends with FailureClassification from 7.0a at 0a073b82; zero SurfaceConfig/ApiRoute/McpToolDef/AutonomyEscalation/ChatMessage/ReviewQueueEntry/AutonomyLevel — clean append location after line 413). protocols.py: LexicalStore (line 78, empty stub + docstring from f24300e6 Phase0), CanonicalStore/EntityStore (empty-ish stubs), AutonomyGate (lines 303+, has old 3.12 request_autonomy/record_autonomy_use from 218f1d06 + 765e4c89; NO check/escalate/audit_log yet). config/aip.config.toml (51 lines, ends after [beast] Phase5 params). **Rule #10 reconciliation decision (documented pre-edit):** For AutonomyGate — APPEND the 3 new methods inside the EXISTING class (preserve old methods for any 3.x compat; never redeclare class or delete prior stubs — exact "amend by addition" + "extend existing partial" per §5/Rule10/Phase6 handoff high-risk note). LexicalStore/Canonical/Entity: append methods inside existing class bodies (they are stubs, not conflicting impls). Schemas/config: pure append at EOF. No Phase 6 surface partials in adapter/ (only vector/budget/ecs/versioned adapters from 4/5; ls confirmed).
+
+- **Governance / state verification (full battery run live):** 
+  - Scoped Phase 5 gate battery (per 7.7 pattern): `uv run pytest tests/test_layering.py tests/test_phase5_schema_additions.py tests/test_phase4_gate.py -q` → **30 passed** (0 failures). Layering, import boundaries, scoped network isolation (AST), model-name gate (FORBIDDEN names), schema preservation all green.
+  - Broad legacy `test_phase2_no_network.py`: 2 failures (ollama_embed.py: httpx import — legitimate adapter; synthesis.py + sexton.py: 'DeepSeek'/'Qwen' strings in comments/logs — Phase 5 delivered code). **Non-blocking for this CC** (scoped phase4_gate which uses same logic but scoped modules is green; Phase 5 gates historically passed their version of this).
+  - All phaseX_schema_additions (2/3/4/5) + test_schema_additions + layering: green on prior runs.
+  - Hardcode violation scans: covered in phase4_gate (no new violations introduced; foundation clean). File audits: no "deepseek|qwen|claude|gpt-4" hardcoded in new sense in foundation targets; git grep confirmed.
+  - Git status: only import docs uncommitted (spec + notes §12); src/ and tests/ completely untouched (clean for CC).
+  - Git blame on targets: schemas end 7.0a (0a073b82); protocols stubs Phase0/3.x (f24300e6, 218f1d06); confirms no recent Phase 6 activity.
+  - Full actor layer inventory (for high-risk Phase 6 integration awareness): orchestration/ (ace_playbook.py, router.py, budget.py, session.py, workflow/engine.py + nodes/, l4/, trajectory/, sexton/{sexton.py,sexton_audit.py,__init__.py}, actors/{beast.py,__init__.py}); adapter/ (budget_store_sqlite.py, ecs_store_guardrailed.py, ... vector/); all respect §7.2 (orchestration imports foundation/adapter via Protocols; no reverse).
+
+- **Architecture Rev 5.2 / Phase1 SSOT cross-refs (UI/MCP/CLI vs actor layer):** Phase 6 spec (imported) is primary for surfaces (§3 "Chat / Review Queue / Admin Console / MCP/API", §1.7 DEFINER sovereignty + AutonomyGate on all privileged actions, Appendix D "MCP ≠ bypass" "UI ≠ authority" "MCP ≠ vector_store.retrieve() directly", §7.2 adapter composes orchestration actors via injection only). Phase1_BuildSpec_Rev1.3.md export contains limited "UI / MCP / CLI surfaces" mention (line 199); full §3/§16/§22 details (surfaces on top of actor layer, import boundaries, AutonomyGate enforcement over Sexton/Beast/router) are in the authoritative .docx SSOT and the Phase 6 spec itself. Handoff prompt § "Known High-Risk Areas" + "Import boundaries (§7.2) remain strictly in force" + "MCP/CLI must surface the new autonomous capabilities" directly govern 8.x relationship to delivered Phase 5 actors. No violation of §4.1 (named slots) or model_gen_assumption (§1.8) in 8.0a scope.
+
+- **Rule #10 / Repo overlap (full audit vs delivered Phase 5 + historical):** No pre-existing Phase 6 schema/Protocol elements or surface code (clean). Existing partials only the Phase0/3 stubs for Lexical/AutonomyGate/Canonical/Entity (reconciled by append-inside-existing per all prior *.0a + explicit Phase 5 handoff Rule#10 emphasis on sexton/budget partials). Phase 5 delivered surface (actors layer, router, playbook, budget, sexton package) untouched by 8.0a (foundation-only); future 8.1+ will compose via Protocols + AutonomyGate (highest risk per handoff). "Extend existing rather than replace" applied to Protocol stubs. No repo overlap requiring parallel paths or rewrites.
+
+- **Import boundaries / determinism / §1.8 / config-driven:** 8.0a is pure foundation + config (L1 per spec); respects §7.2 (no orchestration imports in foundation). All new types with model_gen_assumption where required. CI deterministic by construction (no network in schemas/protocols/config). Post-Phase-5 60+ governance invariant to be extended by 8.8 gate.
+
+**Overall Pre-CHUNK-8.0a Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-8.0a (foundation append/amend on schemas + protocols (inside existing stubs per Rule #10), config append, new test per ANNEX; post-Phase-5 actor layer baseline untouched by this chunk).**
+
+- All 6 steps executed with direct tool evidence (re-reads, live runs, file reads, blame, grep audits, import record).
+- Discrepancies (WORKLOG content vs import_notes claim; HEAD vs 2a6aef2) explicitly documented.
+- Protocol partial reconciliation decision locked in (append, never redeclare).
+- Ready for exact-scope 8.0a implementation (no gold-plating; only prose+ANNEX; gate test_phase6_schema_additions.py + full prior battery).
+
+**This completes the mandatory full Continuity Check for CHUNK-8.0a.**
+
+The record above constitutes the authoritative audit. All evidence gathered via tool execution (reads, pytest runs, git commands, grep, blame) **before any src/ or tests/ production edits for 8.0a**.
+
+**Ready to proceed to CHUNK-8.0a implementation (exact scope per prose + ANNEX), gate (uv run pytest tests/test_phase6_schema_additions.py -xvs plus full battery), WORKLOG append (this entry already), commit + push (with gate results), then immediate pre-8.0b CC per linearized DAG and continuous execution directive.**
+
+**Permanent rules followed in this CC:** +2 offset / qualified terminology, append-only discipline (on docs + future foundation), full Rule #10 (heavy on Phase 5 actor partials + Protocol stubs), import boundaries noted, no hardcoded models, determinism verified, push after unit (next), spec as law.
+
+**Next per DAG (after push):** CHUNK-8.0a implementation. Then pre-8.0b CC immediately.
+
+---
+
+**Phase 6 pre-8.0a CC complete. Tree has import docs changes only (clean on src/tests). Continuing per continuous execution directive after push.**
