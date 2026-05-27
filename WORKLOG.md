@@ -8803,6 +8803,62 @@ CC complete. Next per linearized DAG: CHUNK-8.5 implementation (after push).
 
 ---
 
+## Full Pre-CHUNK-8.6 Continuity Check (Mandatory before Admin Console + Memory Inspector API)
+
+**Date:** 2026-05 (immediately after CHUNK-8.5 push at 212930a)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.6 box + prose)
+**DEPENDS-ON:** CHUNK-8.1, CHUNK-7.1 (Sexton audit surfaces)
+**Status:** CC complete + documented. Ready for CHUNK-8.6 (no src/ or tests/ production edits for 8.6 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-8.5 baseline: MCP + Review Queue + Artifact Browser + Chat + CLI + API scaffold + 8.0b adapters + Phase 5 actors (incl Sexton from 7.1) green at 62 passed.
+- Rule #10: No pre-existing admin/ or memory/ routes in adapter/api/. Only schema support from prior phases. Clean for the two new route modules.
+- All prior Clean Bills hold.
+- Continuous execution: immediate next after 8.5.
+
+**1. Re-read of target CHUNK-8.6 (from Phase 6 SSOT):**
+
+```
+CHUNK-8.6: Admin Console + Memory Inspector API
+PHASE: 6
+DEPENDS-ON: CHUNK-8.1, CHUNK-7.1
+CODER-PROFILE: L3
+CONTEXT-BUDGET: ~5,000 tokens
+FILES:
+  adapter/api/routes/admin.py
+  adapter/api/routes/memory.py
+  tests/test_api_admin_memory.py
+INTERFACES:
+  GET/PATCH /admin/config (admin gate)
+  GET /admin/sexton/*, /beast/status, /router/weights, /budget, /autonomy/log
+  GET /memory/trace/{session}, /events/{project}, /search, /entities, /canonical (read-only)
+TESTS: tests/test_api_admin_memory.py
+GATE: uv run pytest tests/test_api_admin_memory.py -xvs
+```
+
+**Prose key mandates:** Admin writes (config) go through AutonomyGate (admin). Sexton/Beast/Router/Budget/Autonomy log read from delivered actors (7.1/7.5/7.4/7.0b). Memory inspector read-only (no gate), surfaces trace/events/search/entities/canonical via the stores. Observability for DEFINER (not general monitoring).
+
+**2–6. (Live evidence):** DEPENDS (8.1 container + 7.1 Sexton + other actors) present/green. No pre-existing admin/memory routes (clean). Governance 62 passed. Rule #10: New files at exact spec paths have no overlap. This surface finally gives the DEFINER visibility into the complete Phase 5 actor layer (Sexton classifications, Beast cadence, Router weights, Budget, Autonomy audit) + all 8.0b stores. Arch §3 (Admin/Memory surfaces), §16 (Sexton/actor integration), §1.7 (gate on admin writes) confirmed.
+
+**Overall Pre-CHUNK-8.6 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-8.6 (Admin writes with gate + read-only actor status + Memory inspector via stores; clean new paths; 62 passed baseline).**
+
+- All 6 steps executed.
+- Ready for exact 8.6.
+
+**This completes the mandatory full Continuity Check for CHUNK-8.6.**
+
+**Ready to proceed to CHUNK-8.6 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-8.6 implementation (after push).
+
+---
+
+**Phase 6 pre-8.6 CC complete. Tree clean at 212930a. Continuing per continuous execution directive after push.**
+
+---
+
 ## CHUNK-8.5 — MCP Server (Tools with Autonomy Levels + Protocol-Only Access)
 
 **Date:** 2026-05 (post pre-8.5 CC at b949e17)
