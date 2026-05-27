@@ -351,7 +351,13 @@ class ReSynthesizeNode(WorkflowNode):
         config = context.get_protocol("config")
 
         artifact_id = context.get("artifact_id") or self.config.get("artifact_id")
-        rejection = context.get("review_verdict")  # Expected from previous review node
+
+        # Robust lookup for the previous review verdict (from 4.1 ReviewNode)
+        rejection = (
+            context.get("review_verdict")
+            or (context.get("previous", {}) or {}).get("review_verdict")
+            or (context.get("last_result") or {}).get("review_verdict")
+        )
 
         if not artifact_id or not rejection:
             return NodeResult(success=False, error="ReSynthesizeNode requires artifact_id and review_verdict in context")

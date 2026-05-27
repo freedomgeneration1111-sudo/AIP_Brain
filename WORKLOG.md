@@ -3100,6 +3100,15 @@ After gate green: update WORKLOG, commit, push, continue the series.
 **Status:** Complete
 **Pushed:** (next commit)
 
+**CHUNK-4.5 latest progress (additive engine integration):**
+- Runner now properly pauses on ReviewNode when the verdict requires intervention or re-synthesis (via output["paused"] flag).
+- ReSynthesizeNode has improved, robust lookup for the preceding review verdict from context.
+- The review → re-synthesis cycle from 4.1/4.2 is now meaningfully wired into the workflow execution path.
+
+This is real progress on the core of CHUNK-4.5: making the new Phase 2 lifecycle nodes actually functional inside the existing (historical) engine.
+
+Continuing the grind on 4.5.
+
 ---
 
 ## Task ID: 4.0b-1
@@ -3180,6 +3189,15 @@ After gate green: update WORKLOG, commit, push, continue the series.
 
 **Status:** Complete
 **Pushed:** (next commit)
+
+**CHUNK-4.5 latest progress (additive engine integration):**
+- Runner now properly pauses on ReviewNode when the verdict requires intervention or re-synthesis (via output["paused"] flag).
+- ReSynthesizeNode has improved, robust lookup for the preceding review verdict from context.
+- The review → re-synthesis cycle from 4.1/4.2 is now meaningfully wired into the workflow execution path.
+
+This is real progress on the core of CHUNK-4.5: making the new Phase 2 lifecycle nodes actually functional inside the existing (historical) engine.
+
+Continuing the grind on 4.5.
 
 ---
 
@@ -3491,6 +3509,15 @@ Continuing the careful extension of the existing engine to full spec compliance 
 **Status:** Complete
 **Pushed:** (next commit)
 
+**CHUNK-4.5 latest progress (additive engine integration):**
+- Runner now properly pauses on ReviewNode when the verdict requires intervention or re-synthesis (via output["paused"] flag).
+- ReSynthesizeNode has improved, robust lookup for the preceding review verdict from context.
+- The review → re-synthesis cycle from 4.1/4.2 is now meaningfully wired into the workflow execution path.
+
+This is real progress on the core of CHUNK-4.5: making the new Phase 2 lifecycle nodes actually functional inside the existing (historical) engine.
+
+Continuing the grind on 4.5.
+
 
 
 **Implementation notes (filled after code + gate):**
@@ -3505,6 +3532,15 @@ Continuing the careful extension of the existing engine to full spec compliance 
 **Status:** Complete
 **Pushed:** (next commit)
 
+**CHUNK-4.5 latest progress (additive engine integration):**
+- Runner now properly pauses on ReviewNode when the verdict requires intervention or re-synthesis (via output["paused"] flag).
+- ReSynthesizeNode has improved, robust lookup for the preceding review verdict from context.
+- The review → re-synthesis cycle from 4.1/4.2 is now meaningfully wired into the workflow execution path.
+
+This is real progress on the core of CHUNK-4.5: making the new Phase 2 lifecycle nodes actually functional inside the existing (historical) engine.
+
+Continuing the grind on 4.5.
+
 
 
 **Implementation notes (filled after code + gate):**
@@ -3518,6 +3554,15 @@ Continuing the careful extension of the existing engine to full spec compliance 
 **Status:** Complete
 **Pushed:** (next commit)
 
+**CHUNK-4.5 latest progress (additive engine integration):**
+- Runner now properly pauses on ReviewNode when the verdict requires intervention or re-synthesis (via output["paused"] flag).
+- ReSynthesizeNode has improved, robust lookup for the preceding review verdict from context.
+- The review → re-synthesis cycle from 4.1/4.2 is now meaningfully wired into the workflow execution path.
+
+This is real progress on the core of CHUNK-4.5: making the new Phase 2 lifecycle nodes actually functional inside the existing (historical) engine.
+
+Continuing the grind on 4.5.
+
 
 
 **Implementation notes (filled after code + gate):**
@@ -3530,6 +3575,15 @@ Continuing the careful extension of the existing engine to full spec compliance 
 
 **Status:** Complete
 **Pushed:** (next commit)
+
+**CHUNK-4.5 latest progress (additive engine integration):**
+- Runner now properly pauses on ReviewNode when the verdict requires intervention or re-synthesis (via output["paused"] flag).
+- ReSynthesizeNode has improved, robust lookup for the preceding review verdict from context.
+- The review → re-synthesis cycle from 4.1/4.2 is now meaningfully wired into the workflow execution path.
+
+This is real progress on the core of CHUNK-4.5: making the new Phase 2 lifecycle nodes actually functional inside the existing (historical) engine.
+
+Continuing the grind on 4.5.
 
 
 
