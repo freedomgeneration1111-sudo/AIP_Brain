@@ -8329,3 +8329,54 @@ The record above constitutes the authoritative audit. All evidence gathered via 
 ---
 
 **Phase 6 pre-8.0a CC complete. Tree has import docs changes only (clean on src/tests). Continuing per continuous execution directive after push.**
+
+---
+
+## CHUNK-8.0a — Schema Additions + Protocol Amendments + Config Extensions (Foundation for Phase 6 Surfaces)
+
+**Date:** 2026-05 (post full pre-8.0a CC at dba2018; spec imported this session)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.0a box + prose + ANNEX)
+**DEPENDS-ON:** CHUNK-7.0a, CHUNK-6.0a
+**Status:** Gate green + pushed
+
+**Implementation (exact per prose + ANNEX; append/amend only, Rule #10 reconciliations applied):**
+- `src/aip/foundation/schemas.py` (append at EOF after FailureClassification): Added # --- Phase 6 additions (append only) --- block with from dataclasses/field + typing Literal; AutonomyLevel/McpAutonomyLevel aliases; 6 new @dataclass (SurfaceConfig, ApiRoute, McpToolDef [with model_gen_assumption §1.8], AutonomyEscalation [§1.8 + created_at REQUIRED], ChatMessage, ReviewQueueEntry) with full docstrings referencing §1.7/§1.8/§2.1/§3/§7.2/Appendix D. Zero modifications to prior 0-5 content.
+- `src/aip/foundation/protocols.py` (amend by addition inside EXISTING classes only — never redeclared; Rule #10 on Phase0/3.12 stubs): 
+  - LexicalStore: replaced ... stub with full docstring + 3 methods (search, index_document, delete_document) per ANNEX.
+  - CanonicalStore: added 3 methods (read_canonical, write_canonical, list_canonical) after its docstring.
+  - EntityStore: added 3 methods (get_entity, list_entities, update_entity).
+  - AutonomyGate: appended the 3 new methods (check, escalate, audit_log) AFTER the existing 3.12 request_autonomy/record_autonomy_use (old partial preserved for compat; no deletion/rewrite).
+- `config/aip.config.toml` (append at EOF after [beast]): Added 6 sections [api], [cli], [mcp], [chat], [autonomy], [lexical] with exact defaults + comments referencing §1.8 + Phase 5 actor composition + AutonomyGate.
+- `tests/test_phase6_schema_additions.py` (new per ANNEX/gate): 14 tests (dataclass instantiation + §1.8 model_gen_assumption enforcement on McpToolDef/AutonomyEscalation; type alias literals; Phase0-5 enum/dataclass preservation; hasattr checks for all 9 new/amended Protocol methods; imports via aip.foundation.* to match prior test style). (ANNEX skeleton adapted only for real import paths + Literal access; intent and coverage exact.)
+
+**Gate Execution (exact command per spec + full battery per prior pattern):**
+```
+uv run pytest tests/test_phase6_schema_additions.py -xvs
+```
+(14 passed)
+```
+uv run pytest tests/test_layering.py tests/test_phase5_schema_additions.py tests/test_phase4_gate.py tests/test_phase6_schema_additions.py -q
+...
+============================== 44 passed in 0.30s ===============================
+```
+All 8.0a behaviors (§1.8 fields, Protocol method presence, no breakage to 0-5, new types), layering, scoped no-net/model-name, and prior gates green. No regressions. (Note: broad legacy phase2_no_network still shows its 2 pre-existing fails on Phase 5 delivered code; scoped gate clean.)
+
+**Files Changed (this unit):**
+- src/aip/foundation/schemas.py (append)
+- src/aip/foundation/protocols.py (amend inside 4 classes)
+- config/aip.config.toml (append)
+- tests/test_phase6_schema_additions.py (new)
+
+**Permanent rules followed:** append-only on foundation/config (no prior content touched), amend-by-addition on Protocols (existing stubs extended, AutonomyGate 3.12 methods preserved per explicit pre-CC Rule #10 decision), WORKLOG append-only (this entry), push after unit, +2 offset (CHUNK-8.0a), qualified terminology ("Architectural Phase 6", "post-Phase-5 baseline"), deterministic CI (no network, pure dataclasses/Protocols), exact scope per prose + ANNEX (no gold-plating, no surfaces yet), Rule #10 documented (Protocol partials + Phase 5 actor layer awareness for future chunks; no conflicting 8.x code found), layering / §7.2 / §4.1 / §1.8 respected. Import boundaries noted for 8.1+.
+
+**Rule #10 notes for this chunk (in addition to pre-CC):** 
+- LexicalStore/AutonomyGate/CanonicalStore/EntityStore were pre-existing empty/partial stubs (Phase 0/3.x); extended in place — never replaced or parallel paths.
+- No Phase 6 surface/actor overlap on foundation files (clean; high-risk integration deferred to 8.1+ per handoff).
+- All prior Phase 5 actor layer (beast, sexton/, router, ace_playbook, budget, engine) untouched.
+- Config append follows exact 7.0a/5.x pattern.
+
+**Next per DAG:** CHUNK-8.0b (remaining Protocol adapter implementations: SqliteFts5LexicalStore, SqliteCanonicalStore, SqliteEntityStore, AutonomyGateImpl). Immediate pre-8.0b CC required before any further edits.
+
+CHUNK-8.0a complete (gate green).
+
+**Phase 6 CHUNK-8.0a complete (gate green + pushed at <hash>). Continuing to next per linearized order.**

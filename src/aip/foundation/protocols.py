@@ -76,14 +76,81 @@ class VectorStore(Protocol):
 # Other Phase 0 protocols as empty runtime_checkable stubs
 @runtime_checkable
 class LexicalStore(Protocol):
-    """SQLite FTS5 lexical search."""
-    ...
+    """Full-text search abstraction per §6.
+
+    Abstracts SQLite FTS5 so that orchestration and adapter code
+    never import sqlite3 directly for search operations.
+
+    Per §8.1: supports domain-filtered retrieval.
+    Per §2.1: laptop-viable, local-only.
+    """
+
+    async def search(
+        self,
+        query: str,
+        domain: str | None = None,
+        limit: int = 10,
+    ) -> list["Chunk"]:
+        """Full-text search for documents matching query.
+
+        Returns Chunk results with score = FTS5 rank.
+        Optionally filtered by domain.
+        """
+        ...
+
+    async def index_document(
+        self,
+        doc_id: str,
+        content: str,
+        domain: str,
+        metadata: dict,
+    ) -> None:
+        """Add or update a document in the FTS5 index.
+
+        Idempotent — re-indexing the same doc_id updates content.
+        """
+        ...
+
+    async def delete_document(self, doc_id: str) -> None:
+        """Remove a document from the FTS5 index.
+
+        Per Appendix D: "Supersession ≠ deletion" — but stale
+        FTS5 entries should be cleaned up.
+        """
+        ...
 
 
 @runtime_checkable
 class CanonicalStore(Protocol):
     """DEFINER-approved durable artifact store."""
-    ...
+
+    # --- Phase 6 amendments (append method stubs only) ---
+    async def read_canonical(self, artifact_id: str) -> dict | None:
+        """Read a canonical artifact by ID.
+
+        Returns None if no canonical version exists.
+        Canonical artifacts are DEFINER-approved per §1.6.
+        """
+        ...
+
+    async def write_canonical(
+        self, artifact_id: str, content: dict, approved_by: str
+    ) -> None:
+        """Write a canonical artifact.
+
+        Only called after DEFINER approval (ECS APPROVED state).
+        approved_by must be "definer" — enforced by AutonomyGate.
+        """
+        ...
+
+    async def list_canonical(
+        self, domain: str | None = None
+    ) -> list[dict]:
+        """List canonical artifacts, optionally filtered by domain.
+
+        Returns list of dicts with artifact_id, domain, approved_by, created_at.
+        """
+        ...
 
 
 @runtime_checkable
@@ -169,7 +236,32 @@ class TraceStore(Protocol):
 @runtime_checkable
 class EntityStore(Protocol):
     """Entity and operations store."""
-    ...
+
+    # --- Phase 6 amendments (append method stubs only) ---
+    async def get_entity(self, entity_id: str) -> dict | None:
+        """Get an entity by ID.
+
+        Returns None if entity does not exist.
+        """
+        ...
+
+    async def list_entities(
+        self, entity_type: str | None = None
+    ) -> list[dict]:
+        """List entities, optionally filtered by type.
+
+        Returns list of dicts with entity_id, entity_type, name, metadata.
+        """
+        ...
+
+    async def update_entity(
+        self, entity_id: str, updates: dict
+    ) -> None:
+        """Update entity fields.
+
+        updates is a dict of field→value pairs to apply.
+        """
+        ...
 
 
 @runtime_checkable
@@ -312,6 +404,42 @@ class AutonomyGate(Protocol):
 
     async def record_autonomy_use(self, level: int, context: dict[str, Any]) -> None:
         """Record that the given autonomy level was used (for audit / Sexton)."""
+        ...
+
+    # --- Phase 6 amendments (append method stubs only — AutonomyGate partial from CHUNK-3.12 preserved per Rule #10) ---
+    async def check(
+        self,
+        action_type: str,
+        resource_id: str,
+        requested_level: "AutonomyLevel",
+        requested_by: str,
+    ) -> "AutonomyEscalation":
+        """Check whether an action is allowed at the current autonomy level.
+
+        Returns an AutonomyEscalation record with granted=True/False.
+        Does not block — use escalate() for blocking gate.
+        """
+        ...
+
+    async def escalate(
+        self,
+        action_type: str,
+        resource_id: str,
+        requested_level: "AutonomyLevel",
+        requested_by: str,
+    ) -> "AutonomyEscalation":
+        """Request autonomy escalation for an action.
+
+        Blocks until DEFINER approves if escalation_requires_definer is True.
+        Returns an AutonomyEscalation record with the resolution.
+        """
+        ...
+
+    async def audit_log(self, limit: int = 100) -> list["AutonomyEscalation"]:
+        """Return recent autonomy escalation records for audit.
+
+        Used by admin console and DEFINER review.
+        """
         ...
 
 

@@ -49,3 +49,42 @@ entity_maintenance_interval_seconds = 1800  # 30 minutes
 health_check_interval_seconds = 60
 max_reindex_batch_size = 1000
 
+# --- Phase 6 additions (append only) ---
+# Per CHUNK-8.0a ANNEX + prose: all surface (api/cli/mcp/chat/autonomy/lexical) params
+# toggleable per §1.8. Defaults match the spec. Surfaces compose Phase 5 actor layer
+# via Protocols + AutonomyGate (no bypass per §1.7 / Appendix D).
+
+[api]
+host = "127.0.0.1"
+port = 8000
+cors_origins = ["http://localhost:3000"]
+workers = 1
+chat_max_history_turns = 50
+review_page_size = 20
+artifact_page_size = 20
+
+[cli]
+color = true
+pager = true
+output_format = "table"              # table / json / yaml
+
+[mcp]
+enabled = true
+transport = "stdio"                   # stdio / sse
+max_concurrent_tools = 5
+
+[chat]
+system_prompt_path = "prompts/chat_system.md"
+max_context_turns = 50
+auto_summarize_at = 40               # trigger summarization at this turn count
+
+[autonomy]
+default_level = "read"               # default autonomy for new sessions
+escalation_requires_definer = true    # admin actions require DEFINER approval
+audit_retention_days = 90
+model_gen_assumption = "Models should not autonomously escalate to admin actions"
+
+[lexical]
+db_path = "db/lexical.db"
+fts5_tokenizer = "unicode61"
+

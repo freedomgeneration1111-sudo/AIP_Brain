@@ -411,3 +411,113 @@ class FailureClassification:
     tokens_consumed: int = 0
     model_gen_assumption: str | None = None
     classified_at: str = ""  # REQUIRED — ISO 8601
+
+
+# --- Phase 6 additions (append only) ---
+from dataclasses import dataclass, field
+from typing import Literal
+
+
+# Type aliases for autonomy levels
+AutonomyLevel = Literal["none", "read", "write", "admin"]
+McpAutonomyLevel = Literal["read", "write", "admin"]
+
+
+@dataclass
+class SurfaceConfig:
+    """Configuration for AIP surfaces (API, CLI, Chat, MCP).
+
+    Per §1.8: all parameters toggleable via config.
+    Per §2.1: surfaces must respect laptop-viable hardware profile.
+    Per §7.2: surfaces are adapter-layer, composing Foundation and Orchestration.
+    """
+    api_host: str = "127.0.0.1"
+    api_port: int = 8000
+    api_cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:3000"])
+    api_workers: int = 1
+    chat_max_history_turns: int = 50
+    review_page_size: int = 20
+    artifact_page_size: int = 20
+
+
+@dataclass
+class ApiRoute:
+    """A single REST API route definition.
+
+    Per §1.7: autonomy_gate=True routes enforce DEFINER sovereignty.
+    Per §7.2: all routes are adapter-layer compositions.
+    """
+    method: str
+    path: str
+    handler: str
+    auth_required: bool = False
+    autonomy_gate: bool = False
+
+
+@dataclass
+class McpToolDef:
+    """A single MCP tool definition.
+
+    Per §3: MCP/API surface.
+    Per Appendix D: "MCP ≠ bypass", "MCP ≠ vector_store.retrieve() directly."
+    Per §1.8: model_gen_assumption tags what model limitation this tool compensates for.
+    """
+    tool_name: str
+    description: str
+    input_schema: dict = field(default_factory=dict)
+    autonomy_level: McpAutonomyLevel = "read"
+    model_gen_assumption: str | None = None
+
+
+@dataclass
+class AutonomyEscalation:
+    """A single autonomy escalation request and its resolution.
+
+    Per §1.7: "No UI, workflow, Beast cadence, MCP call, or queued task
+    may bypass the DEFINER gates."
+    Per §1.8: model_gen_assumption tags what assumption this escalation encodes.
+    """
+    escalation_id: str
+    action_type: str
+    requested_by: str
+    resource_id: str
+    current_level: AutonomyLevel = "none"
+    requested_level: AutonomyLevel = "read"
+    granted: bool = False
+    reason: str = ""
+    model_gen_assumption: str | None = None
+    created_at: str = ""  # REQUIRED — ISO 8601
+
+
+@dataclass
+class ChatMessage:
+    """A single chat message in the DEFINER conversation surface.
+
+    Per §3: Chat surface is the primary DEFINER interaction point.
+    Per §1.3: context is assembled from explicit stores, not long chat history.
+    """
+    message_id: str
+    session_id: str
+    role: str  # user / assistant / system
+    content: str = ""
+    artifacts_referenced: list[str] = field(default_factory=list)
+    tokens_used: int = 0
+    created_at: str = ""  # REQUIRED — ISO 8601
+
+
+@dataclass
+class ReviewQueueEntry:
+    """A single entry in the review queue surface.
+
+    Per §3: Review Queue surface.
+    Per §9.3: ECS transitions REVIEWED→APPROVED or REVIEWED→FAILED.
+    Per §1.7: canonical promotion requires DEFINER approval.
+    """
+    artifact_id: str
+    artifact_version: int = 1
+    ecs_state: str = "GENERATED"
+    domain: str = ""
+    project_id: str = ""
+    review_type: str = "definer"  # definer / adversarial
+    evaluation_scores: list[dict] = field(default_factory=list)
+    created_at: str = ""  # REQUIRED — ISO 8601
