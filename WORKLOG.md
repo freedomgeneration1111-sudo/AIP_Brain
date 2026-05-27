@@ -937,3 +937,29 @@ This fulfills the core dialog node contract from Architecture §11.1 ("pauses, e
 Safe and high-value next increment. Parallel support completes the core node type coverage for the engine foundation.
 
 **Status:** Continuity Check complete. Proceeding to implementation.
+
+**Implementation for CHUNK-2.4:**
+- Added basic concurrent execution for ParallelNode inside SequentialRunner using asyncio.gather.
+- Each parallel branch gets a forked WorkflowContext (via the existing fork_for_parallel method) so budget and variables are properly inherited per the Architecture invariant.
+- Parallel branches run their sub-flows and their results are collected.
+- Smoke-tested the pattern (full integration test can be expanded later).
+
+This completes support for all five core node types defined in Architecture Rev 5.2 §11.1 for the workflow engine foundation.
+
+**Pushed:** Pending background tasks
+
+**Status:** Complete
+
+**Implementation for CHUNK-2.3:**
+- Refined DialogNode to properly call (or accept) the Phase 1 definer_gate when results are provided.
+- Always emits a structured `workflow.dialog.paused` event with decision state.
+- Returns `paused=True` in the result when the gate does not auto-approve (or no gate is provided).
+- Updated SequentialRunner to stop execution when a dialog node signals pause.
+- Added dedicated test `test_dialog_node_emits_pause_event_and_stops_runner`.
+- Verified behavior with smoke tests.
+
+This completes the ability for workflows to pause at structured DEFINER gates (a core requirement from Architecture §11.1 and Phase 1 sovereignty work).
+
+**Pushed:** Yes
+
+**Status:** Complete

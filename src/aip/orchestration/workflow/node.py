@@ -148,37 +148,35 @@ class DialogNode(WorkflowNode):
         """
         Execute the dialog / DEFINER gate.
 
-        If a gate_callable is provided (or can be retrieved from context),
-        it is invoked. The result determines whether we pause or continue.
+        If a gate_callable is provided (or can be retrieved from context as 'definer_gate'),
+        it is invoked with the provided synthesis/validation/eval results.
 
-        Per spec: dialog nodes must produce an event before "resuming".
+        Per Architecture §11.1: dialog nodes must produce an event before resuming.
+        The runner will stop when this node returns paused=True.
         """
-        # Try to get a gate from context protocols if not directly provided
         gate = self.gate_callable or context.get_protocol("definer_gate")
 
         decision = None
-        if gate and self.synthesis_output and self.validation_result and self.eval_result:
+        if gate is not None and all([self.synthesis_output, self.validation_result, self.eval_result]):
             try:
                 decision = await gate(
                     self.synthesis_output,
                     self.validation_result,
                     self.eval_result,
                 )
-            except Exception as e:
-                decision = None  # fall through to pause
+            except Exception:
+                decision = None
 
-        # Default behavior for this chunk: emit event and pause
-        # (real decision logic can be injected via gate_callable)
         event_payload = {
             "node_id": self.node_id,
             "prompt": self.prompt,
-            "decision": decision.action if decision else "pending",
-            "reason": getattr(decision, "reason", None) if decision else None,
+            "decision": getattr(decision, "action", "pending") if decision else "pending",
+            "reason": getattr(decision, "reason", None) if decision else "Dialog node reached - awaiting DEFINER input",
         }
 
         context.emit_event("workflow.dialog.paused", event_payload)
 
-        paused = decision is None or decision.action != "approve"
+        paused = decision is None or getattr(decision, "action", None) != "approve"
 
         return NodeResult(
             success=True,
@@ -186,7 +184,7 @@ class DialogNode(WorkflowNode):
                 "executed": self.node_id,
                 "type": "dialog",
                 "paused": paused,
-                "decision": decision.action if decision else "pending",
+                "decision": getattr(decision, "action", "pending") if decision else "pending",
             },
             metadata={"event_emitted": True},
         )
@@ -200,5 +198,11 @@ class ParallelNode(WorkflowNode):
         self.children = children
 
     async def run(self, context: "WorkflowContext") -> NodeResult:
-        # Real parallel execution in a later chunk
-        return NodeResult(success=True, output={"executed": self.node_id, "type": "parallel", "children": self.children})
+        """
+        Placeholder for CHUNK-2.4.
+        Real implementation will fork contexts and run children concurrently.
+        """
+        return NodeResult(
+            success=True,
+            output={"executed": self.node_id, "type": "parallel", "children": self.children}
+        )
