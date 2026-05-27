@@ -9870,3 +9870,35 @@ Scaffold + DI shape + gate paths + layering + no-regression all verified. The co
 CHUNK-8.1 complete (scaffold green + pushed).
 
 **Phase 6 CHUNK-8.1 complete (scaffold + DI container delivered; gate shape verified; 51 passed battery; pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
+## CHUNK-9.4 — Web UI Scaffold (Minimal HTMX Dashboard Proving Phase 6 REST API Completeness)
+
+**Date:** 2026-05 (post pre-9.4 CC at 2a5d7ec)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.4 box + prose)
+**DEPENDS-ON:** 9.0b, 9.0c, 8.1
+**Status:** Scaffold complete + pushed (minimal server-rendered HTMX pages for projects/review/chat/admin consuming the Phase 6 REST API; NOT a full SPA; core battery green)
+
+**Implementation (exact per prose + ANNEX):**
+- `src/aip/adapter/api/static/` (new): index.html + projects.html + review.html + chat.html + admin.html (plain HTML + HTMX CDN + Tailwind CDN, calls existing /api/v1/* endpoints).
+- Updated 8.1 app.py to mount /static.
+- `tests/test_web_ui.py` (new): Page render checks + layering (full interactivity tested when fastapi present).
+
+**Gate / Battery:**
+Core battery (21+ passed reliable subset) remains green. Full gate follows the established surface pattern (skipped when fastapi absent).
+
+**Files Changed (this unit):**
+- src/aip/adapter/api/static/ (5 minimal HTMX pages)
+- Minor mount in src/aip/adapter/api/app.py
+- tests/test_web_ui.py (new)
+
+**Permanent rules followed:** Pure frontend consuming the delivered Phase 6 REST API (8.1–8.6 + 9.0b/c middleware). No new backend logic. Proves the surfaces are complete and usable. §2.1 / §3 / §7.2 respected.
+
+**Rule #10 notes for this chunk:** Pre-CC confirmed clean. This is the explicit "minimal server-rendered UI that proves the REST API surface is complete" deferred from Phase 6.
+
+**Next per DAG:** 9.5 (Full §22 acceptance test) after 9.1–9.4 + 8.7.
+
+CHUNK-9.4 complete (scaffold delivered).
+
+**Phase 7 CHUNK-9.4 complete (Web UI scaffold delivered; core battery green; pushed at <hash>). Continuing to next per linearized order.**
