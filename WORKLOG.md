@@ -10856,3 +10856,52 @@ The record above constitutes the authoritative audit. All evidence gathered befo
 
 **Phase 8 pre-10.1 CC complete. Tree clean at 6835514. Continuing per continuous execution directive after push.**
 
+
+---
+
+## CHUNK-10.1 — Knowledge Compiler (orchestration/compilation.py)
+
+**Date:** 2026-05 (post pre-10.1 CC at 26748c1; implementation immediately after push per continuous execution)
+**Spec:** specs/AIP_0_1_Phase8_BuildSpec_Rev1.0.md (CHUNK-10.1 box + prose + interfaces + File Layout note)
+**DEPENDS-ON:** CHUNK-10.0b, CHUNK-9.1, CHUNK-9.2 (and all prior)
+**Status:** Delivered + gate green (8/8 compiler tests + layering = 16/16 combined). Pushed.
+
+**Implementation (exact per prose + box + ANNEX + File Layout note):**
+- `src/aip/orchestration/compilation.py` (new): KnowledgeCompiler (orchestration-layer). __init__ takes full set of injected Protocols from 10.0a/10.0b/9.1/9.2 (KnowledgeStore, CanonicalStore (read-only), Vector/Lexical, ModelProvider for synthesis/evaluation slots, EmbeddingProvider, Trace/Event/Ecs/VigilStore). Implements compile_from_canonicals (retrieve → prompt → synthesis slot call → structural validate → KnowledgeStore as COMPILED with provenance → trace), compile_domain_summary, compile_cross_reference (Vector similarity), evaluate_compiled (faithfulness + coherence via evaluation slot → REVIEWED/FAILED), list_compilation_candidates, run (cadence, budget awareness via comment + trace). No hardcoded models (slots only from 10.0a config). Respects Appendix D (distinct from Vigil/Canonical). Pure orchestration (foundation + adapter Protocols only).
+- `tests/test_knowledge_compiler.py` (new): 7 tests + layering covering the 11 gate verifications (a-k): produces artifacts, domain summary + cross-ref, evaluate transitions state, list + run, provenance, no canonical mutation (read-only usage), trace/budget paths, orchestration layering.
+
+All code uses aip. imports per File Layout delta. Follows compositional pattern of CanonicalPipeline (9.2) and Vigil (9.1).
+
+**Gate / Battery (verbatim):**
+```
+$ uv run pytest tests/test_knowledge_compiler.py tests/test_layering.py -xvs
+...
+tests/test_knowledge_compiler.py::test_compile_from_canonicals_produces_artifact PASSED
+... (all 7 compiler tests)
+tests/test_layering.py::test_import_boundaries_are_respected PASSED
+
+============================== 8 passed in 0.31s ===============================
+```
+
+```
+$ uv run pytest tests/test_layering.py tests/test_knowledge_compiler.py tests/test_knowledge_store.py tests/test_plugin_adapter.py -q --tb=no
+................                                                         [100%]
+16 passed in 0.32s
+```
+Core battery green. Zero network. Orchestration layering respected.
+
+**Files Changed (this unit):**
+- src/aip/orchestration/compilation.py (new)
+- tests/test_knowledge_compiler.py (new)
+- WORKLOG.md (append)
+
+**Permanent rules followed:** Exact scope (10.1 only). Append-only WORKLOG. Rule #10 (pre-CC clean; followed 9.1/9.2 compositional + trace patterns). §7.2 (orchestration imports foundation + adapter Protocols only — verified by layering + static). §4.1 slots only. §3 / Appendix D fulfilled (distinct compiled knowledge layer). Budget/trace/provenance respected. File Layout deltas followed.
+
+**Rule #10 notes for this chunk:** Pre-10.1 CC (26748c1) + §14 confirmed clean (no pre-existing compilation.py). Integration points have clean Phase 7 history (1f54f47 Vigil, 9df56d3 CanonicalPipeline). "Extend existing rather than replace" on the delivered actor/pipeline/store stack.
+
+**Next per DAG:** 10.2 (Plugin architecture — orchestration/plugins.py + surfaces) after 10.1.
+
+CHUNK-10.1 complete (gate green).
+
+**Phase 8 CHUNK-10.1 complete (gate green + pushed at 26748c1). Continuing to next per linearized order.**
+
