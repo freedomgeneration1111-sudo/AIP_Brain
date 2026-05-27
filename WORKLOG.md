@@ -6543,3 +6543,103 @@ All new + legacy tests green. test_layering.py::test_import_boundaries_are_respe
 **Next per DAG:** 6.2 (evaluation pipeline, depends on this) or 6.3 (factory/migration on the other path). Integration test 6.5 will exercise the promoted node with real resolver.
 
 CHUNK-6.1 complete. Gate green.
+
+## Full Pre-CHUNK-6.2 Continuity Check (Mandatory before Evaluation Pipeline)
+
+**Date:** 2026-05 (immediately after CHUNK-6.1 gate green + push at fbd1fc0)
+**Scope:** Full 6-step Continuity Check per permanent rules before any production code for CHUNK-6.2. Authoritative baselines: post-Phase-3 Clean Bill, all prior 6.x CCs and completion records, SSOT Phase 4 Rev1.0, PHASE2_IMPORT_NOTES, Architecture Rev 5.2.
+**Next Chunk Selection:** Per linearized build order ("... → 6.1 → 6.2 ..."), after completing 6.1 on the node promotion path, the next is CHUNK-6.2 (Evaluation Pipeline — adversarial eval promotion + L3a Stage 2/3). The pgvector path (6.3) remains parallel and independent until 6.5.
+
+**1. Re-read of target CHUNK-6.2 (from SSOT specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md:1233+):**
+
+```
+CHUNK-6.2: Evaluation Pipeline — Adversarial Eval Promotion + L3a Stage 2/3
+PHASE: 4
+DEPENDS-ON: CHUNK-6.1, CHUNK-5.0b
+CODER-PROFILE: L3
+CONTEXT-BUDGET: ~5,000 tokens
+FILES:
+  orchestration/nodes/adversarial_eval.py (update from stub)
+  orchestration/nodes/faithfulness.py (new)
+  orchestration/nodes/domain_coherence.py (new)
+  orchestration/validation.py (extend with Stage 2/3 orchestration)
+  tests/test_evaluation_pipeline.py (new)
+INTERFACES:
+  ... (adversarial_evaluate, evaluate_faithfulness, evaluate_domain_coherence, full_l3a_evaluation)
+TESTS: tests/test_evaluation_pipeline.py
+GATE: uv run pytest tests/test_evaluation_pipeline.py tests/test_layering.py -xvs
+```
+
+**Prose summary (key mandates):**
+- Promote Phase 1 adversarial_eval stub to use ModelSlotResolver + skeptic prompt (L3b).
+- Deliver L3a Stage 2 (faithfulness) and Stage 3 (domain coherence) as new nodes using evaluation slot.
+- Orchestrate full L3a (Stage 1 deterministic + 2/3 model-based) in validation layer; skip 2/3 if Stage 1 fails (anti-token-burn).
+- New prompt templates in prompts/ (adversarial_eval.md, faithfulness.md, domain_coherence.md).
+- All EvaluationScore carry model_gen_assumption per §1.8.
+- Thresholds from config [evaluation].
+- Backward compat for old adversarial_eval signature.
+- No hardcoded models.
+- Gate includes full pipeline + layering.
+
+**ANNEX:** Detailed new files for faithfulness.py and domain_coherence.py (with CI fixture handling), test suite using FakeModelResolver, and implied updates to adversarial_eval.py and validation.py.
+
+**2. Re-read of all DEPENDS-ON (current reality):**
+
+- **CHUNK-6.1 (just completed at fbd1fc0):** Synthesis node now supports model_resolver path + dict return (with compat layer). Prompts/synthesis.md exists.
+- **CHUNK-5.0b (ModelSlotResolver):** Fully available with ci_mode support.
+- Current adversarial_eval.py: Still pure Phase 1 stub (takes SynthesisOutput + ValidationResult, returns EvalResult with deterministic scores and hardcoded model names in DEFAULT_EVAL_CRITERIA — "deepseek-v3-0324 or qwen3-4b").
+- No faithfulness.py, domain_coherence.py, or test_evaluation_pipeline.py yet.
+- validation.py lives in foundation/ (not orchestration/ as spec shorthand assumes) — contains structural_validate and rules.
+- Governance note: Post-6.1 run showed phase3_network_gate failures on hardcoded models (originating from this Phase 1 adversarial stub).
+
+**3. Cross-check against prior CCs + Clean Bill + 5.8 plan:**
+
+- All prior Clean Bills (post-Phase-3 through 6.1) hold.
+- 5.8 partial (integration test fidelity) untouched.
+- 6.1 promotion of synthesis enables the "synthesis output" input for 6.2 adversarial/L3a stages.
+- Governance drift (hardcoded models in adversarial stub) is pre-existing Phase 1 artifact that 6.2 explicitly resolves (no-hardcoded test in gate).
+
+**4. Rule #10 overlap/reconciliation check:**
+
+- Target files: orchestration/nodes/adversarial_eval.py (existing Phase 1 stub), new faithfulness.py / domain_coherence.py, extension to validation.py, new test + prompts.
+- Historical record: Only CHUNK-1.4 stub work (explicitly minimal, deterministic, no model calls). No later promotions.
+- Overlap findings:
+  - adversarial_eval.py contains hardcoded model strings in DEFAULT_EVAL_CRITERIA (will be removed in promotion).
+  - Location of validation logic is foundation/validation.py (spec shorthand says orchestration/validation.py) — reconciliation: extend the actual foundation file or add orchestration wrapper as appropriate while following "extend existing".
+  - New files (faithfulness.py, domain_coherence.py, prompts/*.md, test_evaluation_pipeline.py): zero historical overlap.
+- **Reconciliation:** Promote adversarial_eval.py per ANNEX (add resolver support, prompt loading, skeptic perspective, return dict or compatible shape). Create the two new Stage 2/3 nodes exactly as in ANNEX (with CI fixture paths and §1.8 tagging). Extend validation layer for full_l3a orchestration (skip logic per §7.3). Update tests to new interfaces. All new model-based evals must carry model_gen_assumption.
+
+**5. Architecture Rev 5.2 cross-references:**
+
+- §7.2 layering: Orchestration code may import adapter (resolver) and foundation. New eval nodes stay in orchestration layer.
+- §9.1: Explicit three-stage L3a (Stage 1 deterministic + 2/3 model-based). full_l3a_evaluation orchestrates with early exit.
+- §9.2: Adversarial (L3b) is separate skeptic path from L3a quality evals.
+- §1.8: Every EvaluationScore in Stage 2/3 carries model_gen_assumption. Hardcoded model names forbidden.
+- §7.3 anti-token-burn: Skip expensive model evals when Stage 1 already fails.
+- Appendix E failure taxonomy: Faithfulness failure → type A (Context Framing).
+
+**6. Other findings + state verification:**
+
+- Git: at fbd1fc0 + minor uv.lock. No 6.2 files exist.
+- Governance: Layering clean; phase3_network_gate currently failing on pre-existing hardcoded models in adversarial stub (to be fixed by 6.2).
+- Prompts/ dir now exists (from 6.1); will add three new templates for 6.2.
+- 6.2 is the completion of the node promotion path's evaluation surface.
+
+**Overall Pre-CHUNK-6.2 Continuity Check Result:**
+
+**Clean Bill of Health for baseline + readiness for CHUNK-6.2.**
+
+- All 6 steps executed with direct evidence.
+- Prior Clean Bills hold; 5.8 plan intact.
+- One pre-existing violation (hardcoded models in Phase 1 adversarial stub) + one spec shorthand vs reality (validation.py location) identified and reconciled via "extend existing" + explicit 6.2 no-hardcode requirement.
+- New files have zero historical overlap.
+- All permanent rules, layering, §1.8/§9.1/§9.2, and CI determinism requirements align with the chunk design.
+
+**This completes the mandatory full Continuity Check for CHUNK-6.2.**
+
+The record above constitutes the authoritative audit. All evidence gathered via tool execution before any src/ or tests/ edits for 6.2.
+
+**Ready to proceed to CHUNK-6.2 implementation (exact scope per prose + ANNEX, with noted reconciliations), gate, WORKLOG append, and push.**
+
+CC complete. Next chunk (per DAG): 6.3 (factory + migration on pgvector path) or 6.5 (once 6.2 + 6.4 + 5.8 converge).
+
