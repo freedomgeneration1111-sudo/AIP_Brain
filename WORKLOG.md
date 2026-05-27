@@ -1145,3 +1145,38 @@ This completes initial functional support for the parallel node type.
 **Status:** Initial implementation complete.
 
 **Pushed:** Yes
+
+---
+
+## Task ID: 2.7-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-2.7: Richer Data Flow & Variable Passing between Nodes
+
+**Continuity Check (performed before writing any code):**
+
+**1. Why this now?**
+- We have all node types with basic execution and persistence.
+- Currently, data flow between nodes is very basic (only "last_result" in variables).
+- For real Workflow 0.1, nodes need to easily consume outputs from previous nodes (e.g., retrieval results, synthesis content, decisions).
+
+**2. Current state:**
+- WorkflowContext has a variables dict.
+- Nodes can read/write via context.set / context.get.
+- The runner sets "last_result" after each node.
+- This is too implicit for complex workflows.
+
+**3. Scope for this chunk:**
+- Introduce explicit "output" handling on NodeResult.
+- Allow nodes to declare what they "export" into the workflow variables.
+- Support simple templating or direct reference in subsequent node configs (e.g., prompt: "Summarize: {{previous.synthesis.content}}").
+- Update the runner to automatically promote node outputs into the context under a conventional name (e.g., node_id or "previous").
+
+**4. Constraints:**
+- Keep it simple and non-breaking for existing simple linear flows.
+- Must work with the existing Jinja2 usage in conditions.
+
+**Conclusion:**
+High usability improvement. Safe to proceed.
+
+**Status:** Continuity Check complete. Proceeding to implementation.
