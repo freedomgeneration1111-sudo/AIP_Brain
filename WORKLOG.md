@@ -9902,3 +9902,68 @@ Core battery (21+ passed reliable subset) remains green. Full gate follows the e
 CHUNK-9.4 complete (scaffold delivered).
 
 **Phase 7 CHUNK-9.4 complete (Web UI scaffold delivered; core battery green; pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
+## Full Pre-CHUNK-9.5 Continuity Check (Mandatory before Full §22 Acceptance Verification)
+
+**Date:** 2026-05 (immediately after 9.4 push at fa32a73)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.5 box + prose)
+**DEPENDS-ON:** 9.1–9.4, 8.7 (and all prior)
+**Status:** CC complete + documented. Ready for CHUNK-9.5 (no src/ or tests/ production edits for 9.5 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-9.4 baseline: All 9.0–9.4 + full Phase 6 surfaces + Phase 5 actors + 8.7 integration test green on core battery (21+ passed reliable subset). The system now has Vigil (9.1), the canonical pipeline (9.2), extended workflows (9.3), and the Web UI (9.4) on top of the Phase 6 surfaces.
+- Rule #10: No pre-existing 9.5 acceptance test or tests/acceptance/ directory (confirmed clean). The 7 scenarios will exercise the delivered 9.1–9.4 + 8.7 + Phase 6/5 stack without duplication.
+- All prior Clean Bills hold (including Phase 6 final gates).
+
+**1. Re-read of target CHUNK-9.5 (from Phase 7 SSOT):**
+
+```
+CHUNK-9.5: Full Acceptance Test
+PHASE: 7
+DEPENDS-ON: 9.1–9.4, 8.7 (and all prior)
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~4,000 tokens
+FILES:
+  tests/acceptance/ (or tests/test_phase7_acceptance.py)
+INTERFACES:
+  7 scenarios per §22:
+  1. Full CLI round trip (init → project → session → status)
+  2. Full API round trip (project/session/chat with gate → review/approve via 9.2 → artifact + canonical)
+  3. MCP tool round trip (search → artifact_list → artifact_approve with admin gate → trace_query)
+  4. Admin + Memory inspector (config, Sexton, Beast, Router, Budget, Autonomy log + trace/events/search/entities/canonical)
+  5. DEFINER sovereignty enforcement (no bypass on approve/config/MCP admin)
+  6. Appendix D constraint verification (UI ≠ authority, MCP ≠ bypass, MCP ≠ direct vector)
+  7. Cross-surface consistency (same data via CLI/API/MCP)
+TESTS: tests/acceptance/ or test_phase7_acceptance.py
+GATE: uv run pytest tests/test_phase7_acceptance.py -xvs
+```
+
+**Prose key mandates (exact scope):** The capstone verification that the entire AIP 0.1 system (all prior phases + Phase 7 deliverables) meets the §22 architectural acceptance criteria. In-process (CliRunner, TestClient WS, in-process MCP). Extends 8.7. Verifies §1.7 gates, Appendix D invariants, §2.3 install contract, cross-surface data consistency, and that Vigil (9.1) + canonical pipeline (9.2) + workflows (9.3) + UI (9.4) all function correctly on the Phase 6 foundation.
+
+**2–6. (Live evidence summary):**
+- All DEPENDS (9.1–9.4 + 8.7 + full Phase 6/5) present and green.
+- No pre-existing 9.5 acceptance code (Rule #10 clean).
+- Governance: core battery green (21+ passed reliable subset including 9.4).
+- Rule #10: Clean. This test is the explicit "full §22 acceptance verification" that no prior phase provided. It exercises the complete delivered stack.
+- Arch cross-refs: Directly maps to §22 acceptance gates [01]–[36] (storage contracts, import boundaries, workflow executability, installation contract, DEFINER sovereignty, Appendix D, etc.).
+
+**Overall Pre-CHUNK-9.5 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-9.5 (the 7-scenario §22 acceptance test exercising the complete Phase 7 + Phase 6 + Phase 5 system; clean per Rule #10; core battery green).**
+
+- All 6 steps executed.
+- Ready for exact 9.5 (tests/acceptance/ or test_phase7_acceptance.py with the 7 scenarios per ANNEX).
+
+**This completes the mandatory full Continuity Check for CHUNK-9.5.**
+
+The record above constitutes the authoritative audit. All evidence gathered before any src/ or tests/ edits for 9.5.
+
+**Ready to proceed to CHUNK-9.5 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: 9.5 implementation (after push).
+
+---
+
+**Phase 7 pre-9.5 CC complete. Tree clean at fa32a73. Continuing per continuous execution directive after push.**
