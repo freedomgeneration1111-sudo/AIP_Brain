@@ -79,6 +79,19 @@ class ArtifactStore(Protocol):
         """Read artifact content by id."""
         ...
 
+    # --- Phase 2 / CHUNK-4.0a amendments (append method stubs only) ---
+    async def read(self, id: str, version: int | None = None) -> str:
+        """Read artifact content by id.
+
+        version=None returns the latest version (Phase 1 backward compat).
+        version=N returns the specific version (1-indexed).
+        """
+        ...
+
+    async def list_versions(self, id: str) -> list[int]:
+        """Return list of available version numbers for this artifact id."""
+        ...
+
 
 @runtime_checkable
 class TraceStore(Protocol):
@@ -143,6 +156,20 @@ class EventStore(Protocol):
         """Write an event recording a state transition or lifecycle event."""
         ...
 
+    # --- Phase 2 / CHUNK-4.0a amendment (append method stub only) ---
+    async def query(
+        self,
+        artifact_id: str | None = None,
+        event_type: str | None = None,
+        limit: int = 100,
+    ) -> list["Event"]:
+        """Query events by artifact_id and/or event_type.
+
+        Returns most recent events first (descending timestamp).
+        Used by review node, DEFINER audit, and Sexton analysis.
+        """
+        ...
+
 
 @runtime_checkable
 class ProjectStore(Protocol):
@@ -163,6 +190,11 @@ class EcsStore(Protocol):
         reason: str,
         superseded_by: str | None = None,
     ) -> None: ...
+
+    # --- Phase 2 / CHUNK-4.0a amendment (append method stub only) ---
+    def current_state(self, artifact_id: str) -> str | None:
+        """Return the current ECS state of the artifact, or None if unknown."""
+        ...
 
 
 @runtime_checkable

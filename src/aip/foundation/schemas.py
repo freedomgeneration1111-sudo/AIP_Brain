@@ -76,3 +76,76 @@ class RetrievalResult:
     hits: list[Chunk]
     max_confidence: float
     message: str | None = None
+
+
+# --- Phase 2 / CHUNK-4.0a additions (append only) ---
+# Per AIP_0_1_Phase2_BuildSpec_Rev1.2.md (remapped series)
+# Do not modify or reorder anything above this line.
+from dataclasses import dataclass, field
+from typing import Literal
+
+
+# Type alias for Appendix E failure type codes (matches FailureType enum values)
+FailureTypeCode = Literal["A", "B", "C", "E"]
+
+
+@dataclass
+class ReviewVerdict:
+    """Outcome of a review gate on a generated artifact.
+
+    Per §9.3: REVIEWED state follows GENERATED.
+    Per §1.7: DEFINER sovereignty for APPROVED state.
+    failure_types use Appendix E taxonomy codes.
+    """
+    artifact_id: str
+    verdict: Literal["APPROVED", "REJECTED", "NEEDS_REVISION"]
+    reviewer: str  # "automated" | "definer"
+    failure_types: list[FailureTypeCode] = field(default_factory=list)
+    detail: str | None = None
+    confidence: float = 1.0
+
+
+@dataclass
+class ReviewContext:
+    """Assembled context for review decision.
+
+    Contains everything a reviewer needs: the artifact content,
+    its version history, recent trace events, and prior verdicts.
+    """
+    artifact_id: str
+    artifact_content: str
+    artifact_version: int
+    trace_events: list[dict] = field(default_factory=list)
+    prior_verdicts: list[ReviewVerdict] = field(default_factory=list)
+
+
+@dataclass
+class EcsTransition:
+    """Record of a single ECS state transition.
+
+    Per §1.5: every transition is recorded for provenance.
+    Per §1.7: actor and reason are mandatory for sovereignty audit.
+    """
+    artifact_id: str
+    from_state: str
+    to_state: str
+    actor: str
+    reason: str
+    timestamp: str
+
+
+@dataclass
+class Event:
+    """Read-model returned by EventStore.query().
+
+    Used for timeline reconstruction, DEFINER audit,
+    Sexton failure analysis, and review decisions.
+    """
+    id: int
+    event_type: str
+    actor: str
+    artifact_id: str
+    timestamp: str  # REQUIRED — ISO 8601
+    from_state: str | None = None
+    to_state: str | None = None
+    metadata: dict = field(default_factory=dict)

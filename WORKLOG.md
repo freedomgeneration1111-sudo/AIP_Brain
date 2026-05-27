@@ -3009,4 +3009,95 @@ Following the Full Codebase Continuity Pass and the identification of the 6 sess
 **Next Action Blocked Pending DEFINER Direction:**  
 Ready to begin formal Continuity Check + implementation for the first CHUNK-4.x item when directed.
 
+---
+
+## Task ID: 4.0a-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-4.0a: Schema Additions + Protocol Amendments (remapped Phase 2 foundation — first item in the Architectural Phase 2 series)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK (from AIP_0_1_Phase2_BuildSpec_Rev1.2.md):**
+- CHUNK-4.0a is the foundational L1 chunk for the entire remapped Phase 2 (Architectural Phase 2 / ECS + Review + YAML Engine).
+- DEPENDS-ON: CHUNK-1.0a and CHUNK-1.6 only.
+- Scope (strictly limited):
+  - Append-only to `foundation/schemas.py`: `ReviewVerdict`, `ReviewContext`, `EcsTransition`, `Event`, and `FailureTypeCode` type alias.
+  - Amend-by-addition only to `foundation/protocols.py`: `query()` on EventStore, `list_versions()` + extended `read(version=)` on ArtifactStore, `current_state()` + `from_state` guardrail on `EcsStore.transition()`.
+  - No redeclaration of any Protocol class (S2 fix from the spec's revision log is explicitly called out).
+  - New test file: `tests/test_phase2_schema_additions.py`
+  - Exact gate: `uv run pytest tests/test_phase2_schema_additions.py -xvs`
+- All new types carry full provenance requirements per §1.5 / §1.7 / §9.3.
+- Explicit instruction: "Append only — do not modify or reorder the existing Phase 0/1 definitions."
+
+**2. Re-read of every CHUNK listed in DEPENDS-ON:**
+- CHUNK-1.0a: Original schema append (Chunk, RetrievalResult) + protocol method additions. This established the append/amend pattern we must follow exactly.
+- CHUNK-1.6: Commit stub that first exercised the EcsStore.transition() + EventStore.write_event() signatures with actor/reason/superseded_by. The current EcsStore.transition() signature in the repo already includes from_state (added in prior work).
+
+**3. Review of Revision Log items relevant to this chunk:**
+- The Rev 1.2 of the Phase 2 spec itself contains R1 (numbering collision) and R2 (phase boundary) fixes that directly affect how we treat this chunk.
+- S2 fix (Protocol redeclaration) is repeatedly emphasized in the ANNEX and prose.
+
+**4. Cross-references to Architecture Rev 5.2:**
+- §9.3 ECS Artifact State Machine: Directly supports the states and transition provenance requirements.
+- §1.5 / §1.7: Mandate actor, reason, and full provenance on every transition and artifact write — the new dataclasses (EcsTransition, Event, ReviewVerdict) exist to satisfy these.
+- §7.2 layering: This is pure foundation work (schemas + protocols). Fully compliant.
+- §1.8: Any new model assumption in future review heuristics will need tagging; the current 4.0a dataclasses themselves do not introduce new L4 triggers, so no new model_gen_assumption fields are required here.
+- Zero-token doctrine: This chunk is 100% data definitions and protocol stubs — zero model involvement.
+
+**5. Verify consistency with what was actually delivered in prior chunks:**
+- Current `foundation/schemas.py`: Contains Phase 0 enums + Phase 1 (Chunk + RetrievalResult). Clean append point exists after the Phase 1 marker.
+- Current `foundation/protocols.py`: 
+  - ArtifactStore has `write` + `read(id)` (no version yet).
+  - EventStore has `write_event(...)` (no query yet).
+  - EcsStore has `transition(...)` with the full Phase 1 signature including `from_state`.
+- Historical touches:
+  - CHUNK-1.0a: Established the append/amend contract.
+  - CHUNK-3.12: Added BudgetStore/AutonomyGate methods (unrelated to 4.0a types).
+  - Repo 2.x (YAML engine work): Did not modify these two foundation files with any of the new 4.0a types/methods.
+  - Repo 3.x (L4/Sexton/budget): Added TraceStore methods and budget protocols — no overlap with ReviewVerdict, Event.query, Artifact versioning, or Ecs current_state.
+- Per PHASE2_IMPORT_NOTES.md reconciliation table: All items introduced by 4.0a are marked "New — no prior implementation."
+
+**6. Scope confirmation for this specific chunk:**
+- Strictly limited to the schema append + protocol method stubs listed in the ANNEX.
+- Test file name in the spec is `tests/test_phase2_schema_additions.py` (we will use this exact name).
+- No implementation of GuardrailedEcsStore, review node, or any orchestration code.
+- No changes to existing Phase 0/1 types.
+
+**Conclusion of Continuity Check:**
+- All prerequisites (1.0a, 1.6) are long complete and green.
+- No overlap with historical repo 2.x or 3.x work on the exact types/methods being added.
+- The strict append-only + amend-by-addition discipline (including the S2 "never redeclare Protocol class" rule) is fully understood and matches existing practice.
+- The chunk is a clean, low-risk L1 foundation step that satisfies every permanent rule and the new remediation controls in PHASE2_IMPORT_NOTES.md (especially Rule #10).
+
+**No blockers. Proceeding to implementation only after this CC is documented in WORKLOG.**
+
+**Spec Delta / Numbering Note:**
+This work is executed against the remapped Phase 2 BuildSpec Rev 1.2 (CHUNK-4.x series) as imported via the remediation deliverables. All future references in this series will use CHUNK-4.x numbering.
+
+**FILES (per spec):**
+- `foundation/schemas.py` (append only)
+- `foundation/protocols.py` (amend by addition only)
+- `tests/test_phase2_schema_additions.py` (new)
+
+**GATE (per spec):**
+`uv run pytest tests/test_phase2_schema_additions.py -xvs`
+
+After gate green: update WORKLOG, commit, push, continue the series.
+
+**Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-4.0a.
+
+**Implementation notes (filled after code + gate):**
+- Appended the exact Phase 2 / CHUNK-4.0a dataclasses and `FailureTypeCode` alias to `foundation/schemas.py` after the Phase 1 marker (append-only).
+- Appended the required method stubs to the existing `ArtifactStore`, `EventStore`, and `EcsStore` Protocol classes in `foundation/protocols.py` (amend-by-addition only; no class redeclarations).
+- Created `tests/test_phase2_schema_additions.py` with 11 tests covering all gate verification points from the spec (including Phase 0/1 backward compat and the S6 read-without-version test).
+- Gate executed exactly as specified: `uv run pytest tests/test_phase2_schema_additions.py -xvs` → **11/11 PASSED**.
+- All changes strictly follow the append/amend discipline and the new Process Rule #4 / #10 from the Rev 1.2 spec.
+- No overlap with historical repo 2.x or 3.x work on these specific types/methods (confirmed during CC).
+
+**Gate result:** 11/11 PASSED cleanly.
+
+**Status:** Complete
+**Pushed:** (next commit)
+
 
