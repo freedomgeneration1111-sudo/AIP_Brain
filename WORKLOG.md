@@ -7171,3 +7171,47 @@ The record above constitutes the authoritative audit. All evidence gathered via 
 
 CC complete. Next chunk (per DAG): none — Phase 4 (CHUNK-6.0a through 6.6) is now fully audited and ready for the final gate execution.
 
+
+## CHUNK-6.6 — Network Isolation and Model-Name Gate (Final Phase 4 Cross-Cutting Gate)
+
+**Date:** 2026-05 (post full pre-6.6 CC at 1485e94)
+**Spec:** specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md (CHUNK-6.6 box + prose + ANNEX)
+**DEPENDS-ON:** CHUNK-6.5
+**Status:** Gate green + pushed
+
+**Pre-CC Summary:**
+- Full 6-step Continuity Check completed and documented (WORKLOG append at 1485e94).
+- Confirmed: test-only chunk extending CHUNK-4.8 / CHUNK-5.9; no production code.
+- Rule #10 surfaces (DeepSeek docstring in synthesis.py, nomic-embed label in health.py) explicitly permitted by the 6.6 ANNEX prose itself.
+- 5.8 partial remains non-blocking.
+
+**Implementation (strict scope per prose + ANNEX):**
+- Created tests/test_phase4_gate.py (new, single file per spec).
+- Implemented the exact three test classes from the ANNEX skeleton:
+  - TestNetworkIsolation (foundation modules must not import openai/anthropic/httpx/requests).
+  - TestImportBoundaries (foundation no orchestration; adapter no orchestration — §7.2).
+  - TestNoHardcodedModelNames (adapter + orchestration Phase 4 modules scanned for the ANNEX's FORBIDDEN_MODEL_NAMES list).
+- Two minimal reconciliations required for a green, functional gate (consistent with all prior Phase 4 Rule #10 practice):
+  1. Module name strings prefixed with "aip." so importlib.import_module succeeds in this repo's package layout (the ANNEX wrote bare "adapter.vector..." paths; same class of path reconciliation as the 6.2 "orchestration/validation.py" case).
+  2. Network isolation and import-boundary checks upgraded to AST-based detection of *real import statements only* (matching the exact style and logic of the ancestor gates in CHUNK-4.8/CHUNK-5.9). This honors the ANNEX's explicit allowance for docstrings and comments while still enforcing the architectural invariants on actual code. The explanatory comment in foundation/protocols.py ("must never import openai...") is now correctly ignored.
+- No other files touched. No production code added or modified.
+- All 16 parametrized tests exercise the complete Phase 4 surface delivered across 6.0a–6.4.
+
+**Gate Execution (exact command):**
+```
+uv run pytest tests/test_phase4_gate.py -xvs
+...
+============================== 16 passed in 0.13s ===============================
+```
+All tests green. The gate now passes cleanly while correctly validating the three invariants (deterministic CI, §7.2 boundaries, §4.1 model resolution via slots) for every Phase 4 module.
+
+**Files Changed (this unit):**
+- tests/test_phase4_gate.py (new — the final Phase 4 cross-cutting gate test)
+
+**Permanent rules followed:** test-only (no production code), append-only WORKLOG (this entry), push after unit, +2 offset (CHUNK-6.6), qualified terminology, deterministic CI (zero network, full ci_mode compatibility), exact scope per prose + ANNEX, Rule #10 reconciliations documented for import paths and AST precision. Layering respected. No hardcoded models introduced.
+
+**Next per DAG:** None — CHUNK-6.6 was the final item. Architectural Phase 4 (all CHUNK-6.x) is now complete.
+
+CHUNK-6.6 complete. Gate green.
+
+**Phase 4 complete.**
