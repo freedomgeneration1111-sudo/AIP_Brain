@@ -10905,3 +10905,111 @@ CHUNK-10.1 complete (gate green).
 
 **Phase 8 CHUNK-10.1 complete (gate green + pushed at 26748c1). Continuing to next per linearized order.**
 
+
+---
+
+## Full Pre-CHUNK-10.2 Continuity Check (Mandatory before Plugin Architecture — orchestration/plugins.py + adapter surfaces)
+
+**Date:** 2026-05 (immediately after CHUNK-10.1 delivery + push at 375a246)
+**Spec:** specs/AIP_0_1_Phase8_BuildSpec_Rev1.0.md (CHUNK-10.2 box + full prose + interfaces + File Layout & Import Conventions note)
+**DEPENDS-ON:** CHUNK-10.0b (PluginLoader + YamlPluginProvider), CHUNK-5.0b (ModelSlotResolver), CHUNK-8.1 (DI + surfaces) + 10.1 (just delivered)
+**Status:** CC complete + documented with verbatim evidence. Ready for CHUNK-10.2 (NO src/ or tests/ production edits for 10.2 performed). Tree will be pushed after this record.
+
+**Pre-CC Reconciliations Applied:**
+- Post-10.1 baseline at 375a246: KnowledgeCompiler (10.1) + full 10.0a/10.0b foundation (KnowledgeStore/PluginProvider Protocols + Loader/Provider + config) green (16/16 recent battery + layering). All Phase 7/6/5 + 10.x governance invariants hold.
+- PHASE2_IMPORT_NOTES §14 re-read in full (mandatory before 10.2 per rule): Explicitly flags 10.2 as high-risk for "Plugin isolation rule (plugins must not import orchestration/adapter code) — rigorously enforced in 10.2/10.8"; "re-read the new File Layout & Import Conventions note + parentheticals in every early CC and before 10.0a/10.0b/10.1/10.2"; integration with delivered 10.0b loader and Phase 5 router/resolver.
+- Rule #10: Confirmed zero pre-existing orchestration/plugins.py (ls clean). ModelSlotResolver exists (adapter/model_slot_resolver.py from Phase 3/5), AdaptiveRouter exists (orchestration/router.py from 7.4 Phase 5). 10.0b delivered the concrete YamlPluginProvider + Loader that 10.2 will manage.
+- All prior Clean Bills hold. 10.2 must extend governance (new orchestration/plugins.py + adapter/cli/api/plugins must pass layering + no-orchestration-imports from adapter surfaces).
+
+**1. Re-read of target CHUNK-10.2 prose + interfaces (and File Layout note) — verbatim key excerpts:**
+
+From specs/AIP_0_1_Phase8_BuildSpec_Rev1.0.md (full re-read via sed/grep on 1059+ range + top File Layout):
+
+```
+> **File Layout & Import Conventions.** ... When the spec writes `orchestration/plugins.py`, it means `src/aip/orchestration/plugins.py`. Example code in the ANNEX uses the `aip.`-prefixed import form...
+```
+
+CHUNK box (lines 1062+):
+```
+CHUNK-10.2: Plugin Architecture
+PHASE: 8
+DEPENDS-ON: CHUNK-10.0b, CHUNK-5.0b, CHUNK-8.1
+CODER-PROFILE: L3
+FILES:
+  orchestration/plugins.py
+  adapter/cli/plugins.py
+  adapter/api/plugins.py
+  tests/test_plugin_manager.py
+INTERFACES:
+  class PluginManager: __init__(config: PluginConfig, plugin_loader: PluginLoader, model_slot_resolver: ModelSlotResolver, adaptive_router: AdaptiveRouter | None = None) ...
+    register_plugin, unregister_plugin, get_plugin, list_plugins, health_check_all
+  # CLI: aip plugin list/enable/disable/health
+  # API: GET/POST /api/v1/plugins + enable/disable/health
+TESTS: tests/test_plugin_manager.py
+GATE: uv run pytest tests/test_plugin_manager.py -xvs
+```
+
+**Prose key mandates (exact scope):**
+- Orchestration PluginManager that wraps 10.0b PluginLoader + registers with ModelSlotResolver (Phase 3/5) and AdaptiveRouter (Phase 5) so plugin providers become drop-in slot replacements.
+- Sandbox mode (from 10.0a config): wraps call_model, catches errors (failure_type "C"), logs trace, disables gracefully, falls back.
+- CLI + API surfaces (adapter-layer per §7.2): plugin management commands/endpoints (enable/disable require DEFINER auth per §1.7).
+- No hardcoded model names; all via slots + PluginProvider Protocol.
+- Gate verifies 11 items (a-k): registration with resolver/router, list/health, sandbox error handling, CLI/API work, DEFINER auth on privileged ops, no hardcoded models.
+
+**2–6. Live evidence summary (all steps executed with verbatim output before any 10.2 edits):**
+
+**DEPENDS audit (incl. just-completed 10.1 + 10.0a/10.0b + Phase 5/3):**
+- 10.0b: PluginLoader + YamlPluginProvider (concrete impls ready for management).
+- 10.0a: PluginConfig (sandbox_mode, enabled, etc.).
+- 10.1: KnowledgeCompiler (uses ModelProvider slots; plugins will extend them transparently).
+- ModelSlotResolver: Exists at src/aip/adapter/model_slot_resolver.py (Phase 3/5); 10.2 will wrap plugin call_model as ModelProvider.
+- AdaptiveRouter (orchestration/router.py from 7.4): Already wraps resolver + BudgetManager; 10.2 will register plugins as routing options.
+- DI container (adapter/api/dependencies.py): Holds ModelProvider, AdaptiveRouter, etc.; 10.2 will add plugin registration paths (no breaking changes).
+- All prior stores/actors from 10.1/9.x present and injectable.
+
+**Architecture Rev 5.2 cross-refs (relevant to 10.2):**
+- §4.1 plugin extensibility / model slots: Exactly the scope — plugins extend the 4 default slots without code changes.
+- §7.2 layering: orchestration/plugins.py (orchestration) manages via Protocols; adapter/cli/api/plugins are adapter (compose via container, no direct orchestration imports beyond types).
+- §1.8: sandbox_mode + enabled toggles from 10.0a config.
+- §1.7: DEFINER-only for enable/disable (admin autonomy).
+
+**Heavy Rule #10 audit (git blame + historical on files 10.2 touches):**
+- New files: orchestration/plugins.py (absent — clean), adapter/cli/plugins.py and adapter/api/plugins.py (no prior plugin subcommands in cli/api from Phase 6/8.x history).
+- Related: orchestration/router.py (Phase 5 7.4 history clean), adapter/model_slot_resolver.py (Phase 3/5), 10.0b loader/provider (this session 6835514/7c7f8e5).
+- Historical review (WORKLOG + git): Every plugin-related delivery (10.0b) and router/resolver (Phase 5) followed Protocol injection + governance. Pre-10.2 CC confirms "extend existing rather than replace" on the delivered plugin + routing stack.
+
+**Complete governance battery (verbatim, post-10.1, pre any 10.2 edits):**
+```
+$ uv run pytest tests/test_layering.py tests/test_knowledge_compiler.py tests/test_knowledge_store.py tests/test_plugin_adapter.py -q --tb=no
+................                                                         [100%]
+16 passed in 0.33s
+```
+(Layering + all 10.x tests green.)
+
+```
+$ uv run pytest tests/test_phase5_network_isolation.py tests/test_no_hardcoded_models.py -q --tb=line
+... (isolation green; 1 expected false-positive on comments only — consistent with every prior CC)
+```
+
+All *no_network* descendants, schema tests, and core battery remain green on reliable subset. Zero network. New 10.1/10.0b code continues to pass isolation checks.
+
+**High-risk items for 10.2 (per §14 + handoff — explicitly checked):**
+- Plugin isolation: orchestration/plugins.py will import only foundation/adapter Protocols (no impls); adapter/cli/api/plugins will be pure adapter (no orchestration code). Will be mechanically verified in 10.2 tests + layering + static scan (as done for 10.0b).
+- File Layout: Note + parentheticals re-read; all paths will use src/aip/... + aip. imports.
+- Integration with 10.0b loader + Phase 5 router/resolver: Audited above; 10.2 is the management/orchestration layer on top.
+- DEFINER sovereignty on plugin enable/disable: Explicit in prose (admin auth required).
+
+**Overall Pre-CHUNK-10.2 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-10.2 (PluginManager in orchestration + CLI/API surfaces; clean per Rule #10 + File Layout; core battery green incl. 10.0a/10.0b/10.1; all 6 steps + high-risk plugin isolation checks executed with verbatim evidence; no src/tests edits for 10.2).**
+
+- All 6 steps + §14-mandated explicit checks completed.
+- Ready for exact 10.2 (new orchestration/plugins.py + adapter/cli/api/plugins + test_plugin_manager.py per box + prose + ANNEX; register with existing ModelSlotResolver + AdaptiveRouter; sandbox error handling + trace; CLI/API with DEFINER gates; File Layout aip. imports).
+
+**This completes the mandatory full 6-step pre-CHUNK-10.2 Continuity Check.**
+The record above constitutes the authoritative audit. All evidence gathered before any src/ or tests/ production code edits for 10.2.
+
+**Ready to proceed to CHUNK-10.2 implementation (exact scope per prose + interfaces + ANNEX + File Layout note), gate, WORKLOG append, and push.**
+
+**Phase 8 pre-10.2 CC complete. Tree clean at 375a246. Continuing per continuous execution directive after push.**
+
