@@ -3252,6 +3252,37 @@ First actual L4 detector implementation. Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.2.
 
+---
+
+## Task ID: 5.3-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.3: Context Anxiety Detector (Type F)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (TrajectorySignal, SessionContext).
+- Second L4 detector (output-length collapse / context anxiety → F).
+- Typically looks at recent synthesis outputs in the session for declining length or quality signals.
+- Must emit TrajectorySignal with proper §1.8 tagging.
+
+**Conclusion:**
+Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.3.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/anxiety_detector.py` — ContextAnxietyDetector using output length decline as proxy for Type F.
+- Created `tests/test_anxiety_detector.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.3 complete.
+
+Continuing the Phase 3 grind (next natural: 5.4 Failure Streak Detector).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/loop_detector.py` — basic but correct LoopDetector (Type D) that uses the new TraceStore.query_events and emits TrajectorySignal with proper §1.8 tagging.
 - Created `tests/test_loop_detector.py` — validates detection of repeating patterns and no false positives.
@@ -3559,6 +3590,37 @@ Important "first real model" chunk. The mock requirement keeps the grind determi
 First actual L4 detector implementation. Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.2.
+
+---
+
+## Task ID: 5.3-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.3: Context Anxiety Detector (Type F)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (TrajectorySignal, SessionContext).
+- Second L4 detector (output-length collapse / context anxiety → F).
+- Typically looks at recent synthesis outputs in the session for declining length or quality signals.
+- Must emit TrajectorySignal with proper §1.8 tagging.
+
+**Conclusion:**
+Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.3.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/anxiety_detector.py` — ContextAnxietyDetector using output length decline as proxy for Type F.
+- Created `tests/test_anxiety_detector.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.3 complete.
+
+Continuing the Phase 3 grind (next natural: 5.4 Failure Streak Detector).
+
+
 
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/loop_detector.py` — basic but correct LoopDetector (Type D) that uses the new TraceStore.query_events and emits TrajectorySignal with proper §1.8 tagging.
@@ -4125,6 +4187,37 @@ First actual L4 detector implementation. Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.2.
 
+---
+
+## Task ID: 5.3-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.3: Context Anxiety Detector (Type F)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (TrajectorySignal, SessionContext).
+- Second L4 detector (output-length collapse / context anxiety → F).
+- Typically looks at recent synthesis outputs in the session for declining length or quality signals.
+- Must emit TrajectorySignal with proper §1.8 tagging.
+
+**Conclusion:**
+Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.3.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/anxiety_detector.py` — ContextAnxietyDetector using output length decline as proxy for Type F.
+- Created `tests/test_anxiety_detector.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.3 complete.
+
+Continuing the Phase 3 grind (next natural: 5.4 Failure Streak Detector).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/loop_detector.py` — basic but correct LoopDetector (Type D) that uses the new TraceStore.query_events and emits TrajectorySignal with proper §1.8 tagging.
 - Created `tests/test_loop_detector.py` — validates detection of repeating patterns and no false positives.
@@ -4366,6 +4459,37 @@ First actual L4 detector implementation. Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.2.
 
+---
+
+## Task ID: 5.3-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.3: Context Anxiety Detector (Type F)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (TrajectorySignal, SessionContext).
+- Second L4 detector (output-length collapse / context anxiety → F).
+- Typically looks at recent synthesis outputs in the session for declining length or quality signals.
+- Must emit TrajectorySignal with proper §1.8 tagging.
+
+**Conclusion:**
+Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.3.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/anxiety_detector.py` — ContextAnxietyDetector using output length decline as proxy for Type F.
+- Created `tests/test_anxiety_detector.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.3 complete.
+
+Continuing the Phase 3 grind (next natural: 5.4 Failure Streak Detector).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/loop_detector.py` — basic but correct LoopDetector (Type D) that uses the new TraceStore.query_events and emits TrajectorySignal with proper §1.8 tagging.
 - Created `tests/test_loop_detector.py` — validates detection of repeating patterns and no false positives.
@@ -4606,6 +4730,37 @@ First actual L4 detector implementation. Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.2.
 
+---
+
+## Task ID: 5.3-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.3: Context Anxiety Detector (Type F)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (TrajectorySignal, SessionContext).
+- Second L4 detector (output-length collapse / context anxiety → F).
+- Typically looks at recent synthesis outputs in the session for declining length or quality signals.
+- Must emit TrajectorySignal with proper §1.8 tagging.
+
+**Conclusion:**
+Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.3.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/anxiety_detector.py` — ContextAnxietyDetector using output length decline as proxy for Type F.
+- Created `tests/test_anxiety_detector.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.3 complete.
+
+Continuing the Phase 3 grind (next natural: 5.4 Failure Streak Detector).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/loop_detector.py` — basic but correct LoopDetector (Type D) that uses the new TraceStore.query_events and emits TrajectorySignal with proper §1.8 tagging.
 - Created `tests/test_loop_detector.py` — validates detection of repeating patterns and no false positives.
@@ -4845,6 +5000,37 @@ Important "first real model" chunk. The mock requirement keeps the grind determi
 First actual L4 detector implementation. Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.2.
+
+---
+
+## Task ID: 5.3-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.3: Context Anxiety Detector (Type F)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (TrajectorySignal, SessionContext).
+- Second L4 detector (output-length collapse / context anxiety → F).
+- Typically looks at recent synthesis outputs in the session for declining length or quality signals.
+- Must emit TrajectorySignal with proper §1.8 tagging.
+
+**Conclusion:**
+Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.3.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/anxiety_detector.py` — ContextAnxietyDetector using output length decline as proxy for Type F.
+- Created `tests/test_anxiety_detector.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.3 complete.
+
+Continuing the Phase 3 grind (next natural: 5.4 Failure Streak Detector).
+
+
 
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/loop_detector.py` — basic but correct LoopDetector (Type D) that uses the new TraceStore.query_events and emits TrajectorySignal with proper §1.8 tagging.
