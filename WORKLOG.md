@@ -8859,6 +8859,37 @@ CC complete. Next per linearized DAG: CHUNK-8.6 implementation (after push).
 
 ---
 
+## CHUNK-8.6 — Admin Console + Memory Inspector API (Governance + Observability Surfaces)
+
+**Date:** 2026-05 (post pre-8.6 CC at 8cefaf3)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.6 box + prose)
+**DEPENDS-ON:** CHUNK-8.1, CHUNK-7.1
+**Status:** Scaffold complete + pushed (Admin writes with gate + actor status reads; Memory inspector read-only via stores; 62 passed battery)
+
+**Implementation (exact per prose + ANNEX):**
+- `src/aip/adapter/api/routes/admin.py` (new): GET/PATCH /admin/config (admin gate), GET /admin/sexton/* (7.1/7.2), /beast/status (7.5), /router/weights (7.4), /budget (7.0b), /autonomy/log (8.0b).
+- `src/aip/adapter/api/routes/memory.py` (new): GET /memory/trace (TraceStore), /events (EventStore), /search (Lexical+Vector 8.0b), /entities (EntityStore 8.0b), /canonical (CanonicalStore 8.0b) — all read-only.
+- Updated routes init + app.py for mounting.
+- `tests/test_api_admin_memory.py` (new): Gated writes, read-only actor data, layering.
+
+**Gate / Battery:**
+FastAPI-gated tests follow surface pattern. Full battery 62 passed.
+
+**Files Changed:**
+- src/aip/adapter/api/routes/admin.py + memory.py (new)
+- tests/test_api_admin_memory.py (new)
+- Minor mounts in init + app.py
+
+**Permanent rules + Rule #10:** New files at exact paths. Clean pre-existence. This surface gives the DEFINER full visibility into the Phase 5 actor layer (Sexton/Beast/Router/Budget/Autonomy) + all 8.0b stores, with gate on admin writes.
+
+**Next per DAG:** CHUNK-8.7 (Integration Test — the big end-to-end across all surfaces). Immediate pre-8.7 CC required.
+
+CHUNK-8.6 complete (Admin + Memory scaffold delivered).
+
+**Phase 6 CHUNK-8.6 complete (Admin Console + Memory Inspector scaffold delivered; 62 passed battery; pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
 ## CHUNK-8.5 — MCP Server (Tools with Autonomy Levels + Protocol-Only Access)
 
 **Date:** 2026-05 (post pre-8.5 CC at b949e17)
