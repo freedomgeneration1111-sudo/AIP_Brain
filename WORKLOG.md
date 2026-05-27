@@ -7774,6 +7774,104 @@ CHUNK-7.2 complete (gate green).
 
 **Phase 5 CHUNK-7.2 complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
 
+---
+
+## Full Pre-CHUNK-7.3 Continuity Check (Mandatory before Phase 5 Sexton Stale Rule Audit)
+
+**Date:** 2026-05 (immediately after CHUNK-7.2 gate green + push at c69d5e1)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.3 box + prose + gate verification list, lines 1093+)
+**DEPENDS-ON:** CHUNK-7.1 (Sexton now produces classifications and has foundation audit hooks), CHUNK-7.0a/7.2 (AcePlaybookEntry with model_gen_assumption), Phase 1 (ContractRule with model_gen_assumption per §1.8)
+**Status:** CC complete + documented. Ready for CHUNK-7.3 (no src/ or tests/ production edits for 7.3 performed during this CC; only reads, scans, test runs, and this append to WORKLOG).
+
+**Pre-CC Reconciliations Applied:**
+- Authoritative baseline now includes 7.0a–7.2 fully delivered and green (42–45 passed gates across all new tests + legacy surfaces, pushed at c69d5e1 after pre-7.2 CC at a69cd4b).
+- All prior Clean Bills (post-Phase-4 through pre-7.2) hold. 5.8 partial remains non-blocking.
+- PHASE2_IMPORT_NOTES.md §10 + handoff re-read: The existing audit_model_gen_assumption / trust_score / derive stubs in the delivered `orchestration/sexton/sexton.py` (extended through 7.1) are the primary overlap for 7.3. Must extend the real delivered location (sexton/ subtree) rather than creating parallel `actors/sexton_audit.py`.
+- Continuous execution: 7.2 done; this is the immediate next pre-chunk CC per linearized order.
+
+**1. Re-read of target CHUNK-7.3 (from Phase 5 SSOT specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md:1093+):**
+
+```
+CHUNK-7.3: Sexton Stale Rule Audit
+PHASE: 5
+DEPENDS-ON: CHUNK-7.1
+CODER-PROFILE: L1
+CONTEXT-BUDGET: ~3,000 tokens
+FILES:
+  orchestration/actors/sexton_audit.py
+  tests/test_sexton_audit.py
+INTERFACES:
+  class SextonAudit:
+      def __init__(self, model_resolver: ModelSlotResolver, event_store: EventStore) -> None: ...
+      async def audit_stale_assumptions(self, contract_rules: list[ContractRule], playbook_entries: list[AcePlaybookEntry], current_model_slots: dict[str, ModelSlotConfig]) -> list[dict]: ...
+      async def flag_deprecated_rules(self, audit_results: list[dict]) -> None: ...
+TESTS: tests/test_sexton_audit.py
+GATE: uv run pytest tests/test_sexton_audit.py -xvs
+```
+
+**Prose key mandates:**
+- SextonAudit receives ModelSlotResolver + EventStore via injection (uses "sexton" slot for real audits).
+- Reads ContractRules and active AcePlaybookEntries that carry model_gen_assumption.
+- For real path: prompts the sexton slot with rule text + assumption + current model slot config; expects JSON {"still_valid": bool, "confidence": float, "reason": str}.
+- Flags stale (still_valid=False and confidence >= 0.70): writes "stale_assumption_detected" event; for playbook entries calls AcePlaybook.deprecate_entry; for ContractRules writes event for DEFINER (DEFINER retains final authority per §1.7).
+- CI mode: deterministic heuristic on keywords in model_gen_assumption ("may not", "cannot", etc.) if slot has changed.
+- All audit results must carry model_gen_assumption context per §1.8.
+- Gate verifies instantiation, processing of both rule types, flagging + deprecation/events, CI heuristics, §1.8 on outputs.
+
+**2. Re-read of all DEPENDS-ON:**
+- **CHUNK-7.1**: The extended Sexton in the delivered sexton/sexton.py now has the audit-related foundation methods (audit_model_gen_assumption, trust_score) plus the full classification pipeline. 7.3 will layer the reactive SextonAudit actor on top.
+- **CHUNK-7.0a/7.2**: AcePlaybookEntry (with model_gen_assumption, deprecate_entry support) is the second major target for auditing alongside ContractRule.
+- **Phase 1 (SSOT Rev 1.3)**: ContractRule dataclass carries model_gen_assumption (mandatory for rules compensating model limitations). §1.8 doctrine is the root requirement.
+- All deliverables present and green from prior gates.
+
+**3. Cross-check against post-7.2 / prior Clean Bills:**
+- Git at c69d5e1 (7.2) after a69cd4b (pre-7.2 CC). All 7.0a–7.2 + Phase 4/3/2/1 surfaces green.
+- 5.8 partial untouched.
+- The 7.1 extension of sexton/sexton.py (including preservation of its foundation audit stubs) directly enables 7.3 without conflict.
+
+**4. Rule #10 / Repo overlap reconciliation check (critical per handoff):**
+- **Target surfaces:** orchestration/actors/sexton_audit.py (spec path), tests/test_sexton_audit.py.
+- **Historical record:** The delivered `orchestration/sexton/sexton.py` (236 lines foundation + 7.1 extensions) already contains two versions of `audit_model_gen_assumption` (one single-rule, one list version), `trust_score`, and related helpers from the 3.4/3.10 foundation work. These were explicitly preserved through the 7.1 CC reconciliation ("extend the real delivered file").
+- **Decision (extend existing rather than replace):** For CHUNK-7.3, **extend the delivered sexton/ location**. Add the SextonAudit class (or integrate as methods on the existing Sexton if it keeps the surface clean) inside `orchestration/sexton/sexton.py` or a sibling `sexton_audit.py` in the same directory. Do **not** create `orchestration/actors/sexton_audit.py` (would duplicate the foundation audit logic and violate the handoff's explicit "extend the real delivered files" rule established in the 7.1 CC). The new audit logic will use the existing stubs as helpers where appropriate, route real audits through the "sexton" resolver slot, and produce properly structured results + deprecation calls. This is consistent with every prior Rule #10 decision (7.1 path reconciliation, 7.0b engine extension, etc.).
+- No pre-existing 7.3 files (confirmed).
+- Result: Clean reconciliation. All overlaps are in the single delivered sexton/ artifact and are additive.
+
+**5. Architecture Rev 5.2 cross-references:**
+- §1.8 (core "audit the harness for stale assumptions on every model slot upgrade"): Direct mandate for 7.3.
+- §7.1 (ContractRule.model_gen_assumption): Primary target alongside AcePlaybookEntry.
+- §16.1 (Sexton stale rule audit responsibility): Explicitly assigned to Sexton.
+- Appendix D (DEFINER authority over ContractRule deprecation): Enforced in the flagging logic.
+- §4.1 / §7.2: Uses resolver + Protocols only; no direct adapter imports.
+
+**6. Other findings + state verification (live in this CC):**
+- **Governance battery (live):** 45 passed (layering + phase4_gate 16/16 + phase5_schema + budget + sexton_classification + ace_playbook). All green post-7.2.
+- **Hardcode scan (live):** NONE.
+- **File / tree audit (live):** No 7.3 files. Existing audit stubs in sexton/sexton.py are the overlap (blame confirms 3.x foundation + 7.1 extensions). ContractRule and AcePlaybookEntry surfaces are available via prior phases.
+- **Git state:** HEAD c69d5e1, clean tree.
+- **5.8 partial:** Unchanged.
+- All permanent rules, +2 offset, layering, determinism, and §1.8 propagation confirmed.
+
+**Overall Pre-CHUNK-7.3 Continuity Check Result:**
+
+**Clean Bill of Health for baseline + readiness for CHUNK-7.3 (with documented Rule #10 reconciliation to extend the delivered sexton/ location).**
+
+- All 6 steps with direct live evidence.
+- Prior Clean Bills hold.
+- Rule #10: Existing foundation audit stubs in the delivered sexton/sexton.py will be extended for the full 7.3 SextonAudit actor (no parallel actors/ path).
+- Ready for exact-scope 7.3 implementation (extend delivered location with SextonAudit using resolver + deterministic CI heuristics, test per ANNEX, gate).
+
+**This completes the mandatory full Continuity Check for CHUNK-7.3.**
+
+The record above constitutes the authoritative audit. All evidence gathered via tool execution before any src/ or tests/ edits for 7.3.
+
+**Ready to proceed to CHUNK-7.3 implementation (exact scope per prose + ANNEX — extend the real delivered sexton/ location with the stale rule audit actor), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-7.3 implementation.
+
+---
+
+**Phase 5 pre-7.3 CC complete. Tree clean at c69d5e1. Continuing per continuous execution directive after push.**
+
 ## CHUNK-7.1 — Sexton Failure Classification (Core Phase 5 Actor)
 
 **Date:** 2026-05 (post full pre-7.1 CC at 77a7740)
