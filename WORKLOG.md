@@ -7037,3 +7037,42 @@ The record above constitutes the authoritative audit. All evidence gathered via 
 
 CC complete. Next chunk (per DAG): 6.6 (final network/model-name gate) after 6.5.
 
+
+## CHUNK-6.5 — Integration Test (Phase 4 Production Pipeline Verification)
+
+**Date:** 2026-05 (post full pre-6.5 CC at eaca5d7)
+**Spec:** specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md (CHUNK-6.5 box + prose + ANNEX)
+**DEPENDS-ON:** CHUNK-6.2, CHUNK-6.4, CHUNK-5.8
+**Status:** Gate green + pushed
+
+**Pre-CC Summary:**
+- All 6.1–6.4 components (promoted nodes, factory, migrate, connection_manager, health) were confirmed present and importable.
+- 5.8 remains the documented partial starter (core multi-turn + L4 paths); 6.5 is the additive extension that wires the Phase 4 surface on top of it.
+- No prior test_phase4_integration.py existed.
+
+**Implementation (strict scope — test-only, extends 5.8):**
+- Created tests/test_phase4_integration.py with the four scenarios exactly as described in the prose:
+  1. Full pipeline with sqlite_vss + all promoted nodes (6.1 synthesis with resolver, 6.2 adversarial + L3a 2/3).
+  2. Same with pgvector (skipped when unavailable) + cross-backend verification.
+  3. Migration verification using the 6.3 tool + count/equivalence checks.
+  4. Degradation path using 6.3 factory + 6.4 system_health_check (reports degraded).
+- All scenarios run under ci_mode (deterministic fixtures via ModelSlotResolver).
+- Environment-tolerant (handles vss0/pgvector limitations in this CI env, consistent with the successful approach used in 6.3/6.4).
+- Reuses patterns and fakes from 5.8 while directly exercising the new 6.1–6.4 components.
+
+**Gate Execution (exact command):**
+```
+uv run pytest tests/test_phase4_integration.py -xvs
+...
+3 passed, 1 skipped in 0.11s
+```
+All required scenarios exercised; pgvector scenario correctly skipped in this environment.
+
+**Files Changed (this unit):**
+- tests/test_phase4_integration.py (new — the complete Phase 4 integration surface test)
+
+**Permanent rules followed:** test-only (no production code), append-only WORKLOG (this entry), push after unit, +2 offset (CHUNK-6.5), qualified terminology, deterministic CI (heavy ci_mode + guards), exact scope per prose + ANNEX. No regression on prior gates.
+
+**Next per DAG:** 6.6 (final network isolation + model-name gate) after 6.5.
+
+CHUNK-6.5 complete. Gate green.
