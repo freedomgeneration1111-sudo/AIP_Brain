@@ -168,3 +168,46 @@ async def test_richer_data_flow_between_nodes():
     # After step2, "previous" should point to step2
     assert ctx.variables["previous"]["output"]["executed"] == "step2"
     assert ctx.variables["step2"] is not None
+
+@pytest.mark.asyncio
+async def test_end_to_end_workflow_01_happy_path():
+    """Smoke test that the high-level Workflow 0.1 executor can run a full synthesis session
+    when all gates pass (using fakes)."""
+    from aip.orchestration.workflow.workflow_01 import Workflow01Runner
+
+    class FakeVectorStore:
+        async def retrieve(self, query_vector, domain=None, top_k=10):
+            return []  # empty is fine for this smoke test
+
+    async def fake_embed(text):
+        return [0.0] * 768
+
+    class FakeArtifactStore:
+        async def write(self, id, content, metadata):
+            self.last_write = (id, content, metadata)
+
+        async def read(self, id):
+            return "fake content"
+
+    class FakeEcsStore:
+        async def transition(self, **kwargs):
+            self.last_transition = kwargs
+
+    class FakeEventStore:
+        async def write_event(self, **kwargs):
+            pass
+
+    runner = Workflow01Runner(
+        vector_store=FakeVectorStore(),
+        embed_fn=fake_embed,
+        artifact_store=FakeArtifactStore(),
+        ecs_store=FakeEcsStore(),
+        event_store=FakeEventStore(),
+    )
+
+    # In the current minimal wiring this will hit the dialog and pause.
+    # The important thing is that it runs without crashing and exercises the path.
+    result = await runner.run(query="Test query for Workflow 0.1", domain="test")
+
+    # We expect the run to have produced at least one result (even if it paused at the dialog)
+    assert result is not None

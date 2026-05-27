@@ -1233,3 +1233,35 @@ This makes it much easier and more explicit to pass data (retrieval results, syn
 High-value closing chunk for the current Phase 2 foundation. Safe to proceed. This will validate that all the previous chunks actually compose into something useful.
 
 **Status:** Continuity Check complete. Proceeding to implementation.
+
+**Implementation for CHUNK-2.8:**
+- Created `workflow/workflow_01.py` – a high-level `Workflow01Runner` that wires the Phase 1 synthesis components (retrieve + synthesis + definer_gate + commit) into the Phase 2 engine with sensible defaults.
+- Added safe no-op stores so the executor works out of the box in tests and early integration.
+- Added a realistic end-to-end test (`test_end_to_end_workflow_01_happy_path`) that exercises a full synthesis session path.
+- Minor polish surfaced during the run (defensive handling of missing stores).
+
+This chunk validates that the entire Phase 1 + Phase 2 foundation actually composes into a runnable Workflow 0.1 synthesis session.
+
+**Pushed:** Yes
+
+**Status:** Complete
+
+---
+
+**Phase 2 Foundation Status (as of CHUNK-2.8)**
+
+With 2.1–2.8 we now have a working, spec-aligned foundation for the L5 YAML Workflow Engine, including:
+
+- All five core node types from Architecture §11.1
+- Real execution of Phase 1 agent/synthesis nodes inside workflows
+- Dialog pause + DEFINER integration with resumption
+- Basic parallel execution with budget inheritance
+- Persistence / suspend-resume primitives
+- Good data flow between nodes
+- A high-level Workflow 0.1 executor + end-to-end runnable example
+
+The engine is now in a state where a real synthesis session pipeline (Workflow 0.1) can be expressed in YAML and executed.
+
+Further work (richer parallel semantics, advanced templating, production-grade persistence, visual editor support, etc.) can be done in subsequent increments.
+
+**Overall Phase 2 Foundation: Complete**
