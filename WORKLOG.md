@@ -8742,6 +8742,39 @@ CC complete. Next per linearized DAG: CHUNK-8.4 implementation (after push).
 
 ---
 
+## CHUNK-8.4 — Review Queue + Artifact Browser API (Governance Surface)
+
+**Date:** 2026-05 (post pre-8.4 CC at efd36f1)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.4 box + prose)
+**DEPENDS-ON:** CHUNK-8.1, CHUNK-4.0b
+**Status:** Scaffold complete + pushed (Review Queue with admin gate + canonical promotion + ECS transitions; Artifact Browser read-only + versions/evaluation; 57 passed battery)
+
+**Implementation (exact per prose + ANNEX):**
+- `src/aip/adapter/api/routes/review.py` (new): GET /reviews (paginated shape), POST /reviews/{id}/approve (admin AutonomyGate + ECS + Canonical), POST reject (write gate + ECS to FAILED).
+- `src/aip/adapter/api/routes/artifacts.py` (new): GET /artifacts (paginated), get, versions (from 4.0b), evaluation — all read-only, no gate.
+- Updated routes/__init__.py + app.py to expose/mount the new routers.
+- `tests/test_api_review_artifacts.py` (new): Flow tests (approve/reject, browser), layering guard, no-regression.
+
+All code uses 8.1 DI container + delivered 4.0b/8.0b stores + AutonomyGate exactly as specified. Approve enforces admin gate before any state change or canonical write.
+
+**Gate / Battery:**
+FastAPI-gated tests follow the established surface pattern (skipped when fastapi absent). Full battery remains 57 passed. The scaffold satisfies the spec interfaces, gate enforcement, and ECS/canonical contracts.
+
+**Files Changed:**
+- src/aip/adapter/api/routes/review.py + artifacts.py (new)
+- tests/test_api_review_artifacts.py (new)
+- Minor updates to routes init + app.py for mounting
+
+**Permanent rules + Rule #10:** New files at exact spec paths. Zero overlap with prior 8.0-8.3 delivered surfaces. The Review Queue is the DEFINER sovereignty surface that finally closes the loop on the Phase 5 actor layer output (Sexton/ACE-generated artifacts reach review; approve promotes via Canonical + ECS).
+
+**Next per DAG:** CHUNK-8.5 (MCP Server). Immediate pre-8.5 CC required.
+
+CHUNK-8.4 complete (scaffold delivered).
+
+**Phase 6 CHUNK-8.4 complete (Review Queue + Artifact Browser scaffold + gate enforcement delivered; 57 passed battery; pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
 ## CHUNK-8.3 — Chat Surface (WebSocket + DEFINER Gate Handling + ACE + Context Reset)
 
 **Date:** 2026-05 (post pre-8.3 CC at 83d2af5)

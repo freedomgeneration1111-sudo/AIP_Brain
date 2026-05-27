@@ -76,6 +76,8 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
     app.include_router(projects.router, prefix="/api/v1", tags=["projects"])
     app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
+    app.include_router(review.router, prefix="/api/v1", tags=["review"])
+    app.include_router(artifacts.router, prefix="/api/v1", tags=["artifacts"])
 
     @app.get("/")
     async def root():
