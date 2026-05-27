@@ -3196,6 +3196,38 @@ Clean L1 foundation chunk. No blockers. The append/amend pattern is familiar and
 **Phase 3 (remapped 5.x series) has begun.**
 Continuing the grind.
 
+---
+
+## Task ID: 5.0b-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.0b: Model Slot Resolver (Phase 3)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (just done) + config work from Phase 0/1.
+- This is the critical piece that makes real model calls possible for Phase 3 (replacing all the stubs).
+- Lives in adapter/ (correct per §7.2).
+- Must support `ci_mode` for deterministic tests (per §1.8 and the spec).
+- Will be consumed by embedding client (5.1), future synthesis promotion, etc.
+
+**Conclusion:**
+Clean L2 adapter chunk. The ci_mode requirement is important for keeping the "grind" deterministic. No blockers.
+
+**Status:** CC complete. Ready for 5.0b.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/adapter/model_slot_resolver.py` — basic resolver with ci_mode support and clear extension points for real providers.
+- Created `tests/test_model_slot_resolver.py` — resolution, ci_mode fixture, and slot listing tests.
+- Gate (with layering): **4/4 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.0b complete.
+
+Continuing the Phase 3 grind (next natural: 5.1 Embedding Slot Client).
+
+
+
 
 
 
@@ -3404,6 +3436,38 @@ Clean L1 foundation chunk. No blockers. The append/amend pattern is familiar and
 
 **Phase 3 (remapped 5.x series) has begun.**
 Continuing the grind.
+
+---
+
+## Task ID: 5.0b-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.0b: Model Slot Resolver (Phase 3)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (just done) + config work from Phase 0/1.
+- This is the critical piece that makes real model calls possible for Phase 3 (replacing all the stubs).
+- Lives in adapter/ (correct per §7.2).
+- Must support `ci_mode` for deterministic tests (per §1.8 and the spec).
+- Will be consumed by embedding client (5.1), future synthesis promotion, etc.
+
+**Conclusion:**
+Clean L2 adapter chunk. The ci_mode requirement is important for keeping the "grind" deterministic. No blockers.
+
+**Status:** CC complete. Ready for 5.0b.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/adapter/model_slot_resolver.py` — basic resolver with ci_mode support and clear extension points for real providers.
+- Created `tests/test_model_slot_resolver.py` — resolution, ci_mode fixture, and slot listing tests.
+- Gate (with layering): **4/4 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.0b complete.
+
+Continuing the Phase 3 grind (next natural: 5.1 Embedding Slot Client).
+
+
 
 
 
@@ -3871,6 +3935,38 @@ Clean L1 foundation chunk. No blockers. The append/amend pattern is familiar and
 **Phase 3 (remapped 5.x series) has begun.**
 Continuing the grind.
 
+---
+
+## Task ID: 5.0b-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.0b: Model Slot Resolver (Phase 3)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (just done) + config work from Phase 0/1.
+- This is the critical piece that makes real model calls possible for Phase 3 (replacing all the stubs).
+- Lives in adapter/ (correct per §7.2).
+- Must support `ci_mode` for deterministic tests (per §1.8 and the spec).
+- Will be consumed by embedding client (5.1), future synthesis promotion, etc.
+
+**Conclusion:**
+Clean L2 adapter chunk. The ci_mode requirement is important for keeping the "grind" deterministic. No blockers.
+
+**Status:** CC complete. Ready for 5.0b.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/adapter/model_slot_resolver.py` — basic resolver with ci_mode support and clear extension points for real providers.
+- Created `tests/test_model_slot_resolver.py` — resolution, ci_mode fixture, and slot listing tests.
+- Gate (with layering): **4/4 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.0b complete.
+
+Continuing the Phase 3 grind (next natural: 5.1 Embedding Slot Client).
+
+
+
 
 
 
@@ -4013,6 +4109,38 @@ Clean L1 foundation chunk. No blockers. The append/amend pattern is familiar and
 **Phase 3 (remapped 5.x series) has begun.**
 Continuing the grind.
 
+---
+
+## Task ID: 5.0b-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.0b: Model Slot Resolver (Phase 3)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (just done) + config work from Phase 0/1.
+- This is the critical piece that makes real model calls possible for Phase 3 (replacing all the stubs).
+- Lives in adapter/ (correct per §7.2).
+- Must support `ci_mode` for deterministic tests (per §1.8 and the spec).
+- Will be consumed by embedding client (5.1), future synthesis promotion, etc.
+
+**Conclusion:**
+Clean L2 adapter chunk. The ci_mode requirement is important for keeping the "grind" deterministic. No blockers.
+
+**Status:** CC complete. Ready for 5.0b.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/adapter/model_slot_resolver.py` — basic resolver with ci_mode support and clear extension points for real providers.
+- Created `tests/test_model_slot_resolver.py` — resolution, ci_mode fixture, and slot listing tests.
+- Gate (with layering): **4/4 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.0b complete.
+
+Continuing the Phase 3 grind (next natural: 5.1 Embedding Slot Client).
+
+
+
 
 
 
@@ -4154,6 +4282,38 @@ Clean L1 foundation chunk. No blockers. The append/amend pattern is familiar and
 **Phase 3 (remapped 5.x series) has begun.**
 Continuing the grind.
 
+---
+
+## Task ID: 5.0b-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.0b: Model Slot Resolver (Phase 3)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (just done) + config work from Phase 0/1.
+- This is the critical piece that makes real model calls possible for Phase 3 (replacing all the stubs).
+- Lives in adapter/ (correct per §7.2).
+- Must support `ci_mode` for deterministic tests (per §1.8 and the spec).
+- Will be consumed by embedding client (5.1), future synthesis promotion, etc.
+
+**Conclusion:**
+Clean L2 adapter chunk. The ci_mode requirement is important for keeping the "grind" deterministic. No blockers.
+
+**Status:** CC complete. Ready for 5.0b.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/adapter/model_slot_resolver.py` — basic resolver with ci_mode support and clear extension points for real providers.
+- Created `tests/test_model_slot_resolver.py` — resolution, ci_mode fixture, and slot listing tests.
+- Gate (with layering): **4/4 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.0b complete.
+
+Continuing the Phase 3 grind (next natural: 5.1 Embedding Slot Client).
+
+
+
 
 
 
@@ -4294,6 +4454,38 @@ Clean L1 foundation chunk. No blockers. The append/amend pattern is familiar and
 
 **Phase 3 (remapped 5.x series) has begun.**
 Continuing the grind.
+
+---
+
+## Task ID: 5.0b-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.0b: Model Slot Resolver (Phase 3)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (just done) + config work from Phase 0/1.
+- This is the critical piece that makes real model calls possible for Phase 3 (replacing all the stubs).
+- Lives in adapter/ (correct per §7.2).
+- Must support `ci_mode` for deterministic tests (per §1.8 and the spec).
+- Will be consumed by embedding client (5.1), future synthesis promotion, etc.
+
+**Conclusion:**
+Clean L2 adapter chunk. The ci_mode requirement is important for keeping the "grind" deterministic. No blockers.
+
+**Status:** CC complete. Ready for 5.0b.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/adapter/model_slot_resolver.py` — basic resolver with ci_mode support and clear extension points for real providers.
+- Created `tests/test_model_slot_resolver.py` — resolution, ci_mode fixture, and slot listing tests.
+- Gate (with layering): **4/4 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.0b complete.
+
+Continuing the Phase 3 grind (next natural: 5.1 Embedding Slot Client).
+
+
 
 
 
