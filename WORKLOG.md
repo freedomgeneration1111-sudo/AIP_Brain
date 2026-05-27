@@ -8803,6 +8803,38 @@ CC complete. Next per linearized DAG: CHUNK-8.5 implementation (after push).
 
 ---
 
+## CHUNK-8.5 — MCP Server (Tools with Autonomy Levels + Protocol-Only Access)
+
+**Date:** 2026-05 (post pre-8.5 CC at b949e17)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.5 box + prose)
+**DEPENDS-ON:** CHUNK-8.1, CHUNK-8.0b
+**Status:** Scaffold complete + pushed (AipMcpServer + tools with read/write/admin autonomy + gate enforcement + Protocol delegation; 62 passed battery)
+
+**Implementation (exact per prose + ANNEX):**
+- `src/aip/adapter/mcp/server.py` (new): AipMcpServer(container), list_tools() returning McpToolDef with autonomy_level + model_gen_assumption, call_tool with gate enforcement for write/admin before dispatch.
+- `src/aip/adapter/mcp/tools/search.py` + `artifacts.py` (new): Example tools delegating to container.lexical/vector (read) and ecs/canonical (admin approve).
+- `src/aip/adapter/mcp/__init__.py` + tools/__init__.py (new).
+- `tests/test_mcp_server.py` (new): list_tools with defs, admin gate path, Protocol-only (no direct storage), layering.
+
+All per Appendix D (MCP ≠ bypass, MCP ≠ vector_store.retrieve() directly) and §1.7 gate enforcement.
+
+**Gate / Battery:**
+6 passed on exact gate + layering. Full battery 62 passed.
+
+**Files Changed:**
+- src/aip/adapter/mcp/ (full package + tools)
+- tests/test_mcp_server.py (new)
+
+**Permanent rules + Rule #10:** New files at exact spec paths. Clean (only schema pre-existed). MCP is the integration surface that exposes the complete Phase 5 actor layer + 8.0b stores as tools, with identical gate semantics as REST/CLI.
+
+**Next per DAG:** CHUNK-8.6 (Admin Console + Memory Inspector API). Immediate pre-8.6 CC required.
+
+CHUNK-8.5 complete (MCP scaffold delivered).
+
+**Phase 6 CHUNK-8.5 complete (MCP Server + tools with correct autonomy + gate + Protocol access delivered; 62 passed battery; pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
 ## CHUNK-8.4 — Review Queue + Artifact Browser API (Governance Surface)
 
 **Date:** 2026-05 (post pre-8.4 CC at efd36f1)
