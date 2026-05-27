@@ -6397,3 +6397,103 @@ uv run pytest tests/test_pgvector_store.py tests/test_layering.py -xvs
 **Next per DAG:** 6.0b unblocks 6.3 (factory + migration). Parallel path (6.1 synthesis promotion) remains available. Integration at 6.5.
 
 CHUNK-6.0b complete. Gate green.
+
+## Full Pre-CHUNK-6.1 Continuity Check (Mandatory before Synthesis Node Promotion)
+
+**Date:** 2026-05 (immediately after CHUNK-6.0b gate green + push at a373134)
+**Scope:** Full 6-step Continuity Check per permanent rules before any production code for CHUNK-6.1. Authoritative baselines: post-Phase-3 Clean Bill, pre-6.0a CC, 6.0a/6.0b completion records, SSOT Phase 4 Rev1.0, PHASE2_IMPORT_NOTES, Architecture Rev 5.2.
+**Next Chunk Selection:** Per linearized build order in Phase 4 spec ("6.0a → 6.0b (parallel with 6.1 after 5.0b) → 6.1 → 6.2 ..."), after completing 6.0b the next in the documented sequence is CHUNK-6.1 (Synthesis Node Promotion — the start of the node promotion parallel path). 6.3 (factory/migration on the pgvector path) remains available in parallel. Selected 6.1 to follow the explicit linearized text flow.
+
+**1. Re-read of target CHUNK-6.1 (from SSOT specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md:1025+):**
+
+```
+CHUNK-6.1: Synthesis Node Promotion
+PHASE: 4
+DEPENDS-ON: CHUNK-6.0a, CHUNK-5.0b, CHUNK-4.5
+CODER-PROFILE: L3
+CONTEXT-BUDGET: ~4,000 tokens
+FILES:
+  orchestration/nodes/synthesis.py (update from stub)
+  tests/test_synthesis_node.py (update from Phase 1 stub test)
+INTERFACES:
+  async def synthesize(query, domain, context, model_resolver=None, config=None, token_budget=None) -> dict: ...
+TESTS: tests/test_synthesis_node.py
+GATE: uv run pytest tests/test_synthesis_node.py tests/test_layering.py -xvs
+```
+
+**Prose key points:**
+- Promote Phase 1 deterministic fixture stub to production impl using ModelSlotResolver (from 5.0b) for real calls.
+- Load prompt template from `prompts/synthesis.md` (new per prose).
+- Assemble messages (system from template + context + user query/domain).
+- Call resolver.call("synthesis", messages, temperature=0.7, max_tokens=...).
+- Return dict with content, model, usage, latency_ms, cost_usd.
+- Token budget tracking/reporting.
+- CI mode: when resolver._ci_mode, use deterministic fixtures (no real calls).
+- Explicit backward compatibility: extend existing stub signature with optional params + defaults so old callers continue to work (falls back to fixture when resolver is None).
+- No hardcoded model names (enforced in gate test).
+- Gate also verifies prompt loading, context assembly per §1.3, layering.
+
+**ANNEX:** Detailed synthesis.py update (with _stub_synthesize, prompt loading via Path, message assembly, resolver.call), plus test updates using FakeModelResolver for CI mode + stub compat tests + no-hardcoded-model check.
+
+**2. Re-read of all DEPENDS-ON (current reality + prior deliveries):**
+
+- **CHUNK-5.0b (ModelSlotResolver):** Fully delivered and in use. Supports __init__ from config, resolve(), list_slots(), async call() with ci_mode deterministic fixtures. Current implementation returns simple hash-based fixtures. (src/aip/adapter/model_slot_resolver.py)
+- **CHUNK-4.5 (YAML workflow engine):** Delivered earlier; synthesis node is expected to be callable from engine/workflows (backward compat important).
+- **CHUNK-6.0a:** Minor (likely for any config/schema types; not directly used in 6.1 ANNEX).
+- Current synthesis.py (src/aip/orchestration/nodes/synthesis.py): Still the Phase 1 stub (different signature: takes RetrievalResult, returns SynthesisOutput dataclass, uses structural_validate, _resolve_model_name from config). Existing tests (test_synthesis_node.py ~74 LOC) are written against this old interface.
+- No prompts/ directory or synthesis.md exists yet.
+
+**3. Cross-check against post-Phase-3 CC + 6.0a/6.0b completions + 5.8 plan:**
+
+- Git: at a373134 (6.0b) + minor uv.lock. Governance (layering + phase3_network_gate) still 5/5 green post-6.0b.
+- 5.8 partial (starter vs full ANNEX): untouched by adapter work (6.0b). Plan remains non-blocking.
+- Clean Bill from 92b5fd3 + all subsequent CCs/records holds. No regressions from 6.0a/6.0b.
+- 6.1 is the first orchestration-layer promotion using the resolver delivered in 5.0b — core to the "node promotion path" described in the Phase 4 intro.
+
+**4. Rule #10 overlap/reconciliation check:**
+
+- Target file: orchestration/nodes/synthesis.py (existing stub from CHUNK-1.3).
+- Historical record (WORKLOG + git): Only Phase 1 stub work (CHUNK-1.3). No later updates or promotions in 2.x/3.x/4.x/5.x. The stub was deliberately minimal (deterministic, no network, passes structural_validate).
+- Current vs spec mismatch (critical overlap):
+  - Actual delivered stub signature: `async def synthesize(query, domain, retrieval_result: RetrievalResult, model_slot="synthesis", config=None) -> SynthesisOutput` (dataclass with explicit fields).
+  - Spec target for 6.1: `async def synthesize(query, domain, context: str, model_resolver=None, config=None, token_budget=None) -> dict`.
+- **Reconciliation (extend existing rather than replace):** Follow the explicit prose guidance in 6.1: "Phase 4 extends this [Phase 1 stub signature] to accept `model_resolver` and `config` parameters with defaults that preserve the stub behavior. When `model_resolver` is None, the node falls back to the deterministic fixture." Implementation will add the new optional parameters (model_resolver, token_budget) while keeping the old call sites working (the existing stub path remains for direct calls without resolver). The return shape will be updated to the dict expected by later workflow/engine usage (per 4.5/6.5), with care for any direct SynthesisOutput consumers (additive compat if needed). The new prompt loading + resolver wiring + CI fixture path will be added on top of the existing deterministic logic.
+- New supporting file (prompts/synthesis.md): Zero overlap — safe to create (part of chunk scope per prose/ANNEX).
+- No other historical conflicts on the synthesis node surface.
+
+**5. Architecture Rev 5.2 cross-references:**
+
+- §7.2 layering: Orchestration may import foundation + adapter (ModelSlotResolver lives in adapter — correct and already used elsewhere). The synthesis.py update must not import adapter implementation details, only the resolver protocol/interface.
+- §1.8: All model calls go through named slots via resolver (no hardcodes — explicitly tested in ANNEX). Token budget and config are toggleable.
+- §4.1 / ModelSlotConfig: Resolver + synthesis slot usage.
+- §9.1 / L3a: Synthesis output will later be evaluated by 6.2 stages (this promotion enables that).
+- Prompt templates: Source-controlled, machine-readable per §11.1 node contracts.
+- Anti-token-burn (§7.3): Explicit token_budget support and reporting.
+
+**6. Other findings + state verification:**
+
+- No 6.1 code exists yet (confirmed by tree + searches).
+- prompts/ dir does not exist (will be created as part of this chunk).
+- Existing synthesis stub + tests are Phase 1 only; the promotion is additive extension work.
+- Governance clean. Violation scan (post-6.0b): still only the one allowed adapter/embedding httpx.
+- 6.1 is pure orchestration (L3) — no network outside resolver (which is already ci_mode guarded).
+
+**Overall Pre-CHUNK-6.1 Continuity Check Result:**
+
+**Clean Bill of Health for baseline + readiness for CHUNK-6.1.**
+
+- All 6 steps executed with direct evidence (spec reads, code inspection, WORKLOG searches, governance runs, git state).
+- Post-Phase-3 Clean Bill + 6.0a/6.0b success + 5.8 plan remain fully intact.
+- One material overlap (interface drift between delivered Phase 1 stub and 6.1 target signature) identified and reconciled via the spec's own explicit backward-compat guidance: extend with optional params + fallback, keep old path functional.
+- New prompts/synthesis.md is in-scope and has zero prior overlap.
+- All permanent rules, layering, §1.8, no-hardcode, and CI determinism requirements are directly supported by the chunk design.
+- Ready to implement.
+
+**This completes the mandatory full Continuity Check for CHUNK-6.1.**
+
+The record above constitutes the authoritative audit. All evidence gathered via tool execution before any src/ or tests/ edits for 6.1.
+
+**Ready to proceed to CHUNK-6.1 implementation (exact scope per prose + ANNEX, with interface extension per Rule #10 reconciliation), gate (including test_layering.py), WORKLOG append, and push.**
+
+CC complete. Next after this (per DAG): 6.2 or 6.3 depending on path.
+
