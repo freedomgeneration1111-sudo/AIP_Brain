@@ -7978,6 +7978,64 @@ CHUNK-7.4 complete (gate green).
 
 **Phase 5 CHUNK-7.4 complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
 
+---
+
+## Full Pre-CHUNK-7.5 Continuity Check (Mandatory before Phase 5 Beast Actor)
+
+**Date:** 2026-05 (immediately after CHUNK-7.4 gate green + push at 9e0e488)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.5 box + prose + ANNEX, lines 1171+)
+**DEPENDS-ON:** CHUNK-7.0b (BeastCadenceConfig), CHUNK-6.0b (VectorStore with count/health_check/upsert from Phase 4), CHUNK-7.0a (ProjectStore.list_projects)
+**Status:** CC complete + documented. Ready for CHUNK-7.5 (no src/ or tests/ production edits for 7.5 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Baseline includes full 7.0a–7.4 (router + budget integration) green at 51 passed, pushed at 9e0e488.
+- All prior Clean Bills hold. 5.8 partial non-blocking.
+- No pre-existing Beast code or `orchestration/actors/` directory (clean slate for this actor — unlike the Sexton case).
+
+**1. Re-read of target CHUNK-7.5 (from Phase 5 SSOT):**
+
+```
+CHUNK-7.5: Beast Actor
+PHASE: 5
+DEPENDS-ON: CHUNK-7.0b, CHUNK-6.0b
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~4,000 tokens
+FILES:
+  orchestration/actors/beast.py
+  tests/test_beast_actor.py
+INTERFACES:
+  class Beast:
+      def __init__(self, config: BeastCadenceConfig, vector_store: VectorStore, embedding_provider: EmbeddingProvider, project_store: ProjectStore) -> None: ...
+      async def run_corpus_maintenance(self) -> dict: ...
+      async def run_entity_maintenance(self) -> dict: ...
+      async def run_health_check(self) -> dict: ...
+TESTS: tests/test_beast_actor.py
+GATE: uv run pytest tests/test_beast_actor.py -xvs
+```
+
+**Prose key mandates:** Deterministic cadence actor (no LLM in main path). Uses `project_store.list_projects()` (7.0a), `vector_store.count()` + `health_check()` + `upsert()` (Phase 4 6.0b/6.3), `embedding_provider.embed()`. Three methods: corpus re-index (stale vectors), entity maintenance, health_check. Cadence itself is out of scope (caller invokes the methods). CI mode uses mocks.
+
+**2–6. (Live evidence):** DEPENDS deliverables present and green. No Beast files or actors/ dir (confirmed). Governance 51 passed (incl router test). Hardcode clean. Rule #10: No conflicting partial for Beast — spec path `orchestration/actors/beast.py` can be followed cleanly (new directory is acceptable as there is nothing to extend in a wrong location). Arch §3 / §5.10 alignments confirmed.
+
+**Overall Pre-CHUNK-7.5 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-7.5 (new Beast actor at spec path, using Phase 4 VectorStore surfaces + 7.0a list_projects).**
+
+- All 6 steps executed with direct evidence.
+- Ready for exact-scope 7.5 (orchestration/actors/beast.py + test per ANNEX).
+
+**This completes the mandatory full Continuity Check for CHUNK-7.5.**
+
+The record above constitutes the authoritative audit. All evidence gathered via tool execution before any src/ or tests/ edits for 7.5.
+
+**Ready to proceed to CHUNK-7.5 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-7.5 implementation.
+
+---
+
+**Phase 5 pre-7.5 CC complete. Tree clean at 9e0e488. Continuing per continuous execution directive after push.**
+
 CC complete. Next per linearized DAG: CHUNK-7.4 implementation.
 
 ---
