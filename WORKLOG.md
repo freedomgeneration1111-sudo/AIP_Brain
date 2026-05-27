@@ -8859,6 +8859,65 @@ CC complete. Next per linearized DAG: CHUNK-8.6 implementation (after push).
 
 ---
 
+## Full Pre-CHUNK-8.7 Continuity Check (Mandatory before Phase 6 Integration Test)
+
+**Date:** 2026-05 (immediately after CHUNK-8.6 push at b786961)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.7 box + prose)
+**DEPENDS-ON:** CHUNK-8.3 (Chat), 8.4 (Review/Artifacts), 8.5 (MCP), 8.6 (Admin/Memory), 7.6 (Phase 5 self-improvement cycle)
+**Status:** CC complete + documented. Ready for CHUNK-8.7 (no src/ or tests/ production edits for 8.7 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-8.6 baseline: All surfaces (CLI at declared path, API scaffold + Chat/Review/Artifacts/Admin/Memory, MCP, 8.0b adapters, Phase 5 actors) green at 62 passed (core battery; fastapi-gated surface tests follow established skip pattern when dep absent).
+- Rule #10: No pre-existing `tests/test_phase6_integration.py`. The 7 scenarios extend the delivered 7.6 Phase 5 integration (self-improvement cycle) with surface round-trips. Clean for the new test file.
+- All prior Clean Bills hold (including 7.6/7.7 Phase 5 gates).
+- Continuous execution: the convergence point after all surfaces (8.1-8.6) + Phase 5 actors.
+
+**1. Re-read of target CHUNK-8.7 (from Phase 6 SSOT):**
+
+```
+CHUNK-8.7: Integration Test
+PHASE: 6
+DEPENDS-ON: CHUNK-8.3, 8.4, 8.5, 8.6, 7.6
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~4,000 tokens
+FILES:
+  tests/test_phase6_integration.py
+INTERFACES:
+  # 7 scenarios:
+  # 1. CLI: init → project create → session start → status
+  # 2. API: project/session/chat (with gate) → review approve → artifact get + canonical
+  # 3. MCP: search → artifact_list → artifact_approve (admin gate) → trace_query
+  # 4. Admin+Memory: config/sexton/beast/router/budget/autonomy + trace/events/search/entities/canonical
+  # 5. DEFINER sovereignty: no bypass on approve/config/MCP admin
+  # 6. Appendix D: UI ≠ authority, MCP ≠ bypass, MCP ≠ direct vector
+  # 7. Cross-surface: same data via CLI/API/MCP
+TESTS: tests/test_phase6_integration.py
+GATE: uv run pytest tests/test_phase6_integration.py -xvs
+```
+
+**Prose key mandates:** 7 in-process scenarios (CliRunner, TestClient WS, in-process MCP) exercising the complete surface-to-backend round trip. Extends 7.6 (self-improvement cycle) with surface exposure/control. All deterministic CI (no network). Verifies §1.7 gates, Appendix D invariants, §2.3 install contract, cross-surface consistency.
+
+**2–6. (Live evidence):** All DEPENDS (8.3-8.6 surfaces + 7.6) present/green. No pre-existing integration test file (clean). Governance 62 passed on core battery (surface tests guarded as before). Rule #10: New test file at spec location has no overlap; it exercises the full delivered stack (Phase 5 actors + 8.0b adapters + 8.1-8.6 surfaces) without duplication. Arch §22 (acceptance gates), §3 (all surfaces), §1.7 (sovereignty), Appendix D (constraints) directly map to the 7 scenarios. Post-8.6 Clean Bill holds.
+
+**Overall Pre-CHUNK-8.7 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-8.7 (7-scenario integration test across CLI/API/Chat/Review/MCP/Admin/Memory exercising Phase 5 actors + 8.0b adapters + 8.1-8.6 surfaces; clean new test per Rule #10; 62 passed baseline).**
+
+- All 6 steps executed.
+- Ready for exact 8.7 (test_phase6_integration.py with the 7 scenarios per ANNEX).
+
+**This completes the mandatory full Continuity Check for CHUNK-8.7.**
+
+**Ready to proceed to CHUNK-8.7 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-8.7 implementation (after push).
+
+---
+
+**Phase 6 pre-8.7 CC complete. Tree clean at b786961. Continuing per continuous execution directive after push.**
+
+---
+
 ## CHUNK-8.6 — Admin Console + Memory Inspector API (Governance + Observability Surfaces)
 
 **Date:** 2026-05 (post pre-8.6 CC at 8cefaf3)
