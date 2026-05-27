@@ -3100,4 +3100,85 @@ After gate green: update WORKLOG, commit, push, continue the series.
 **Status:** Complete
 **Pushed:** (next commit)
 
+---
+
+## Task ID: 4.0b-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-4.0b: ECS State Graph + Guardrails (remapped Phase 2 foundation — second item in the Architectural Phase 2 / CHUNK-4.x series)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK (from AIP_0_1_Phase2_BuildSpec_Rev1.2.md):**
+- CHUNK-4.0b implements the declarative ECS state machine per Architecture §9.3 with guardrail enforcement.
+- DEPENDS-ON: CHUNK-4.0a (just completed).
+- FILES:
+  - `foundation/ecs_graph.py` (new — pure validation logic, zero I/O)
+  - `adapter/ecs_store_guardrailed.py` (new — adapter layer)
+  - `tests/test_ecs_graph.py`
+- Core deliverables:
+  - `VALID_TRANSITIONS` dict (exact encoding of §9.3 states and allowed transitions)
+  - `InvalidTransitionError`
+  - `validate_transition(from_state, to_state)`
+  - `GuardrailedEcsStore(EcsStore)` — wraps an underlying store + EventStore, enforces the graph on every transition, records events.
+- Explicit notes in prose:
+  - The graph is the single source of truth.
+  - GuardrailedEcsStore is **adapter**, not foundation.
+  - `REJECTED → GENERATED` (not SPECIFIED) for re-synthesis.
+  - Must preserve `superseded_by` from Phase 1 signature (S1 fix).
+
+**2-5. Review of dependencies, prior work, Architecture, and current state:**
+- DEPENDS-ON (4.0a) is complete and green.
+- Architecture Rev 5.2 §9.3 exactly matches the VALID_TRANSITIONS in the spec.
+- Current repo state (as of post-4.0a):
+  - Only the EcsStore protocol exists (with the Phase 1 transition signature).
+  - `commit.py` calls `ecs_store.transition` directly (historical repo 2.x work).
+  - No `ecs_graph.py`, no `GuardrailedEcsStore`, no `InvalidTransitionError`, no `VALID_TRANSITIONS` anywhere.
+- Historical repo 2.x touched commit.py and engine code that uses EcsStore, but introduced **zero** guardrail or graph logic.
+- Repo 3.x (L4/Sexton/budget) had no interaction with ECS state machine.
+- Per PHASE2_IMPORT_NOTES.md gap audit: `VALID_TRANSITIONS`, `InvalidTransitionError`, and `GuardrailedEcsStore` are all marked “Not implemented”.
+
+**6. Reconciliation with remediation rules (PHASE2_IMPORT_NOTES.md Rule #10):**
+- This chunk introduces entirely new files (`foundation/ecs_graph.py` and the adapter).
+- The only overlap is the existing direct use of `EcsStore.transition` in `commit.py` (from repo 2.x).
+- Strategy: The GuardrailedEcsStore will become the production implementation that wraps the underlying store. Existing call sites (commit.py) can continue to use the protocol; we will wire the guardrailed version at construction time in later chunks (per the spec's design). No breakage of existing transition calls during this chunk.
+- All new logic lives in the correct layers (foundation for graph, adapter for guardrail).
+
+**Additional cross-checks:**
+- §7.2 layering: `ecs_graph.py` (foundation) imports nothing from orchestration/adapter. `GuardrailedEcsStore` (adapter) correctly imports from foundation protocols only. Compliant.
+- Zero-token: `ecs_graph.py` is pure data + functions. GuardrailedEcsStore does I/O only through the injected protocols. Compliant.
+- §1.8: The state machine itself encodes sovereignty rules from the Architecture. No new model-generated heuristics are being introduced in this chunk, so no new `model_gen_assumption` tags required here.
+- Process Rule #9 (qualified terminology): This CC and all future work will refer to “CHUNK-4.0b”, “Architectural Phase 2”, and “repo 2.x” distinctly.
+
+**Conclusion of Continuity Check:**
+No blockers. The chunk is a clean L1 foundation + adapter step. The only pre-existing usage of EcsStore is well-understood and will be extended (not broken) by introducing the guardrailed wrapper. All remediation controls (especially overlap reconciliation) have been explicitly addressed.
+
+**Spec Delta / Numbering Note:**
+This work is executed against the remapped Phase 2 BuildSpec Rev 1.2 (CHUNK-4.x series).
+
+**FILES (per spec):**
+- `foundation/ecs_graph.py` (new)
+- `adapter/ecs_store_guardrailed.py` (new)
+- `tests/test_ecs_graph.py` (new)
+
+**GATE (per spec):**
+`uv run pytest tests/test_ecs_graph.py -xvs`
+
+After gate green: update WORKLOG, commit, push, continue the series.
+
+**Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-4.0b.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/foundation/ecs_graph.py` with the exact declarative `VALID_TRANSITIONS`, `InvalidTransitionError`, `validate_transition`, `is_terminal`, and supporting constants per the spec ANNEX (pure foundation, zero I/O).
+- Created `src/aip/adapter/ecs_store_guardrailed.py` with `GuardrailedEcsStore` (adapter that wraps an underlying EcsStore + EventStore, enforces the graph, records events, and maintains the S1 `superseded_by` compatibility).
+- Created `tests/test_ecs_graph.py` with tests covering pure graph validation + guardrail behavior (valid/invalid transitions, precondition checks, event recording).
+- Gate executed exactly as specified: `uv run pytest tests/test_ecs_graph.py -xvs` → **8/8 PASSED**.
+- All changes respect layering (§7.2), the new remediation reconciliation rules, and append-only discipline on new files.
+- No breakage to existing `commit.py` or other callers of the EcsStore protocol (they continue to work; the guardrailed version is introduced as the enforcing wrapper for future wiring).
+
+**Gate result:** 8/8 PASSED cleanly.
+
+**Status:** Complete
+**Pushed:** (next commit)
+
 
