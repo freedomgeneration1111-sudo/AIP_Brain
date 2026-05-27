@@ -1,5 +1,5 @@
-"""API route modules for CHUNK-8.1 surfaces."""
+"""API route modules for CHUNK-8.1/8.3 surfaces."""
 
-from . import health, projects, sessions
+from . import chat, health, projects, sessions
 
-__all__ = ["health", "projects", "sessions"]
+__all__ = ["chat", "health", "projects", "sessions"]

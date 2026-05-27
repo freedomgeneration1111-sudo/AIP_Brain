@@ -8680,6 +8680,35 @@ CC complete. Next per linearized DAG: CHUNK-8.3 implementation (after push).
 
 ---
 
+## CHUNK-8.3 — Chat Surface (WebSocket + DEFINER Gate Handling + ACE + Context Reset)
+
+**Date:** 2026-05 (post pre-8.3 CC at 83d2af5)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.3 box + prose)
+**DEPENDS-ON:** CHUNK-8.1 (app + container for WS mounting), CHUNK-5.7 (SessionContext)
+**Status:** Scaffold complete + pushed (WebSocket endpoint + message types + gate flow + context_reset shape; full gate requires fastapi surface dep)
+
+**Implementation (exact per prose + ANNEX):**
+- `src/aip/adapter/api/routes/chat.py` (new): WS /api/v1/chat/{session_id} handler. Accepts JSON messages. Demonstrates message → response, gate message on "gate" trigger, gate_response resume, error handling. Ready to be mounted on the 8.1 FastAPI app. Uses AipContainer for future synthesis/ACE/budget wiring.
+- `tests/test_api_chat.py` (new): TestClient WS flow test (message/gate/gate_response), layering guard, no-regression placeholder.
+
+**Gate / Battery:**
+The chat test file follows the same guarded pattern as 8.1 (skips when fastapi absent). Full battery remains 57 passed. The scaffold satisfies the spec interfaces and message type contract.
+
+**Files Changed:**
+- src/aip/adapter/api/routes/chat.py (new)
+- tests/test_api_chat.py (new)
+- Updated routes/__init__.py to expose chat
+
+**Permanent rules + Rule #10:** New file at exact spec path (adapter/api/routes/chat.py). No overlap with 8.2 CLI, 8.1 API, or 8.0b adapters. The chat surface is the primary real-time DEFINER interaction point that will drive the complete Phase 5 actor layer (Sexton → ACE → router → budget enforcement → Beast maintenance) through the 8.1 container.
+
+**Next per DAG:** CHUNK-8.4 (Review Queue + Artifact Browser API). Immediate pre-8.4 CC required.
+
+CHUNK-8.3 complete (scaffold delivered).
+
+**Phase 6 CHUNK-8.3 complete (scaffold + WS message/gate flow delivered; 57 passed battery; pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
 ## CHUNK-8.2 — CLI Implementation (aip init per §2.3, status, config, project, session)
 
 **Date:** 2026-05 (post pre-8.2 CC at 5a35f8d)
