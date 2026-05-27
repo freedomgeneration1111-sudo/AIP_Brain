@@ -1,0 +1,40 @@
+# Workflow 0.1 — Canonical Synthesis Session Pipeline
+# This is the reference YAML for a full AIP synthesis session using the
+# L5 YAML Workflow Engine (Phase 2) and the Phase 1 node implementations.
+
+name: "Workflow 0.1 - Synthesis Session"
+description: "The canonical synthesis session pipeline as defined in Architecture Appendix F."
+
+nodes:
+  - id: retrieve
+    type: agent
+    model_slot: embedding
+    prompt: "Retrieve relevant context for the following query in domain '{{ domain }}': {{ query }}"
+
+  - id: structural_validate
+    type: script
+    # In a real deployment this would call the Phase 1 structural_validate function
+    # on the synthesis output. For the reference pipeline we keep it as a marker node.
+    code: "structural_validate"
+
+  - id: adversarial_eval
+    type: script
+    # Similarly, this would invoke the Phase 1 adversarial_eval stub / logic.
+    code: "adversarial_eval"
+
+  - id: definer_gate
+    type: dialog
+    prompt: |
+      Please review the synthesis output for query "{{ query }}" in domain "{{ domain }}".
+      Decide: approve, reject, or revise.
+
+  - id: commit
+    type: script
+    # Final commit step (only reached on approve). In a real run this would
+    # call the Phase 1 commit_artifact logic with the approved synthesis.
+    code: "commit_artifact"
+
+# Optional top-level metadata for the workflow
+metadata:
+  version: "0.1"
+  target: "Workflow 0.1"

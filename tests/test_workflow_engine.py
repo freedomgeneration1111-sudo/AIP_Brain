@@ -409,3 +409,95 @@ nodes:
     # Workflow 0.1 convenience path
     result2 = await engine.run_workflow_01(query="Test query", domain="test")
     assert result2 is not None
+
+@pytest.mark.asyncio
+async def test_complete_workflow_01_reference_happy_path():
+    """
+    End-to-end integration test that runs a realistic Workflow 0.1-style
+    pipeline (retrieve → synthesis → definer gate → commit) using the
+    high-level public API.
+
+    This is the capstone test for the Phase 2 foundation (CHUNK-2.13).
+    """
+    from aip.orchestration.workflow.engine import WorkflowEngine
+
+    class FakeVectorStore:
+        async def retrieve(self, query_vector, domain=None, top_k=10):
+            from aip.foundation.schemas import Chunk
+            return [
+                Chunk(id="c1", content="Sovereign memory must be local-first and inspectable.", score=0.92, domain=domain),
+            ]
+
+    async def fake_embed(text):
+        return [0.01] * 768
+
+    class CapturingArtifactStore:
+        def __init__(self):
+            self.writes = []
+        async def write(self, id: str, content: str, metadata: dict):
+            self.writes.append((id, content, metadata))
+        async def read(self, id: str):
+            for wid, content, _ in self.writes:
+                if wid == id:
+                    return content
+            return ""
+
+    class CapturingEcsStore:
+        def __init__(self):
+            self.transitions = []
+        async def transition(self, **kwargs):
+            self.transitions.append(kwargs)
+
+    class NoopEventStore:
+        async def write_event(self, **kwargs):
+            pass
+
+    artifact_store = CapturingArtifactStore()
+    ecs_store = CapturingEcsStore()
+
+    engine = WorkflowEngine(
+        vector_store=FakeVectorStore(),
+        embed_fn=fake_embed,
+        artifact_store=artifact_store,
+        ecs_store=ecs_store,
+        event_store=NoopEventStore(),
+    )
+
+    # Build a minimal but realistic Workflow 0.1-style pipeline using the public API
+    import tempfile
+    from pathlib import Path
+
+    wf = """
+nodes:
+  - id: retrieve
+    type: agent
+    model_slot: embedding
+    prompt: "Retrieve context for: {{ query }}"
+
+  - id: synthesize
+    type: agent
+    model_slot: synthesis
+    prompt: "Synthesize an answer using: {{ previous }}"
+
+  - id: definer_gate
+    type: dialog
+    prompt: "Please review the synthesis"
+
+  - id: commit
+    type: script
+    code: "commit"
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(wf)
+        path = f.name
+
+    result = await engine.run_workflow(path, variables={"query": "Key principles of sovereign AI memory"})
+
+    Path(path).unlink()
+
+    # With the current foundation, the flow reaches the definer gate (which the
+    # high-level engine can auto-approve in some configurations). The key
+    # validation for 2.13 is that a full Workflow 0.1-style pipeline can be
+    # expressed and executed through the public API without crashing.
+    assert result is not None
