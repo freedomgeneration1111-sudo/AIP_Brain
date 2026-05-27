@@ -10204,3 +10204,168 @@ Core reliable subset (24+ from 9.6 baseline) + 9.5 acceptance + this 9.7 extensi
 **Architectural Phase 7 (and thus AIP 0.1) is now complete.** All linearized chunks (9.0a–9.7) delivered per spec. Full system (Phase 5 actor layer + Phase 6 surfaces + Phase 7 Vigil/auth/rate/canonical/workflows/UI/packaging + final gates) verified. All invariants (network isolation, model slots, import boundaries, DEFINER sovereignty, §1.8 togglability, Appendix D) hold. Ready for external use / further evolution under the same governance.
 
 **Phase 7 CHUNK-9.7 complete (final cross-cutting gates delivered; 8+1 passed on gate battery; core invariants green; pushed at <hash>). This closes Phase 7 and AIP 0.1 per linearized order.**
+
+---
+
+## PHASE 8 SESSION INITIATION — Mandatory First Actions (Fresh Session Resume per Handoff Prompt 2026-05)
+
+**Date:** 2026-05 (start of Architectural Phase 8 session)
+**Context:** Architectural Phase 7 complete at 946e0c4. Repository clean. Sole SSOT: AIP_0_1_Phase1..., Phase5..., and incoming Phase8 spec + PHASE2_IMPORT_NOTES.md + this WORKLOG.md (append-only).
+**Status:** Beginning strict mandatory first actions in exact order. NO src/ or tests/ production code edits until all 4 steps + full pre-10.0a CC documented and pushed. All actions documented here before any implementation.
+
+**Permanent Rules Acknowledged (re-affirmed for entire Phase 8):**
+- Chunk numbering: exclusively CHUNK-10.x (permanent +2 offset from Phase 7's 9.x)
+- 6-step Continuity Check before EVERY chunk (including this pre-10.0a)
+- Append-only / amend-by-addition on foundation/schemas.py, foundation/protocols.py (inside existing), config/aip.config.toml, WORKLOG.md
+- Scope fidelity to current chunk prose+ANNEX only
+- Rule #10 on every chunk (git blame + historical)
+- Zero network in CI; §4.1 model slots only; §7.2 layering; DEFINER sovereignty; collaborator_can_approve=false default
+- Push after every gate green with exact phrase: "CHUNK-10.X complete (gate green + pushed at <hash>). Continuing to next per linearized order."
+- Continuous autonomous execution through linearized order (10.0a → 10.0b → ... → 10.8) unless one of 4 explicit stop conditions.
+
+**Files/Dirs at session start (verified):**
+- aip/ is git root at /home/moses/aip (HEAD 946e0c4)
+- specs/ contains up to Phase7_BuildSpec_Rev1.0.md + PHASE2_IMPORT_NOTES.md
+- No AIP_0_1_Phase8_BuildSpec_Rev1.0.md yet in specs/
+- Downloads/ contains the user-provided "AIP_0_1_Phase8_BuildSpec (1).md"
+- src/aip/, tests/ present with full Phase 7 delivery
+- git status: clean (0 changes)
+
+---
+
+### Step 1 of Mandatory First Actions: Read full post-Phase-7 completion section of WORKLOG.md + git HEAD cross-check
+
+**Action performed:** 2026-05 (before any other edits)
+**Tooling:** read_file (offset 9800, limit 450) + prior tail + git commands.
+**Verbatim evidence captured:**
+
+**Post-Phase-7 completion section (key excerpts from WORKLOG.md lines ~10032–10206):**
+
+```
+## Full Pre-CHUNK-9.7 Continuity Check (Mandatory before Final Cross-Cutting Gates — The Cap that Closes Phase 7 / AIP 0.1)
+...
+**Phase 7 pre-9.7 CC complete. Tree clean at 6392fa6. Continuing per continuous execution directive after push.**
+
+---
+
+## CHUNK-9.7 — Cross-Cutting Gates (Final Phase 7 / AIP 0.1 Capstone — Extending 8.8)
+...
+**CHUNK-9.7 complete (gate green).**
+
+**Architectural Phase 7 (and thus AIP 0.1) is now complete.** All linearized chunks (9.0a–9.7) delivered per spec. Full system (Phase 5 actor layer + Phase 6 surfaces + Phase 7 Vigil/auth/rate/canonical/workflows/UI/packaging + final gates) verified. All invariants (network isolation, model slots, import boundaries, DEFINER sovereignty, §1.8 togglability, Appendix D) hold. Ready for external use / further evolution under the same governance.
+
+**Phase 7 CHUNK-9.7 complete (final cross-cutting gates delivered; 8+1 passed on gate battery; core invariants green; pushed at <hash>). This closes Phase 7 and AIP 0.1 per linearized order.**
+```
+
+(Full section from CHUNK-9.7 record through completion declaration read in entirety; also captured surrounding 9.5/9.6 records and pre-CCs for context. 10206-line file end confirmed.)
+
+**Git cross-check (verbatim output):**
+```
+$ cd /home/moses/aip && git log -1 --oneline --no-decorate && git rev-parse HEAD
+946e0c4 CHUNK-9.7: Cross-Cutting Gates (final Phase 7 / AIP 0.1 capstone)
+946e0c434b61fd6db41e8574b1f3eb86e8358717
+```
+- Matches handoff prompt reference: "CHUNK-9.7 at 946e0c4"
+- Matches WORKLOG declaration of completion at this commit (placeholders for <hash> in some historical records are consistent with prior Phase 7 practice).
+- Current tree: clean (git status --porcelain returned 0 lines).
+
+**Step 1 Result:** COMPLETE. Post-Phase-7 section (CHUNK-9.7 record + "Architectural Phase 7 (and thus AIP 0.1) is now complete" declaration) read in full. HEAD cross-checked and consistent. All evidence appended here before proceeding to Step 2.
+
+**No src/ or tests/ files touched during this step.**
+
+
+---
+
+### Step 2 of Mandatory First Actions: Full read of specs/PHASE2_IMPORT_NOTES.md (esp. §13 Phase 7 record + permanent +2 offset policy history)
+
+**Action performed:** 2026-05 (immediately after Step 1 documentation; before any src/tests edits or spec copy)
+**Tooling:** run_terminal_command (wc -l, head), read_file (full: offset 1 limit 160 + offset 161 limit 160). 307-line document read cover-to-cover.
+**Verbatim evidence captured:**
+
+**Document header (lines 1-6):**
+```
+# AIP 0.1 — Phase 2 & Phase 3 BuildSpec Import Notes
+
+**Date:** May 2026  
+**Status:** Authoritative — all future sessions MUST read this before touching Phase 2/3 spec code  
+**DEFINER:** Moses Jorgensen  
+```
+
+**Permanent +2 offset policy history (key excerpts):**
+
+From §3 (Chunk Number Remapping, lines 63-70):
+```
+Jumping to 4.x and 5.x avoids any collision with these existing series. Future phases (Phase 4, Phase 5, Phase 6 in the architectural sense) will use 6.x, 7.x, 8.x respectively, maintaining the +2 offset.
+```
+
+From §9 Phase 4 Import Record (lines 189-191):
+```
+**Remapping:** Per permanent +2 offset policy (established in remediation): Architectural Phase 4 → CHUNK-6.x series. All future references use CHUNK-6.0a–6.6. ...
+```
+
+From §10 Phase 5 Import Record (lines 210-211):
+```
+**Remapping:** Per permanent +2 offset policy (established in remediation and reinforced in every subsequent CC): Architectural Phase 5 → **CHUNK-7.x series**. All future references use CHUNK-7.0a–7.7. ...
+```
+
+From §12 Phase 6 Import Record (lines 254-255):
+```
+**Remapping:** Per permanent +2 offset policy (established in remediation, reinforced in every CC, and explicitly called out in the Phase 6 handoff prompt): Architectural Phase 6 → **CHUNK-8.x series**. ... Never bare "Phase 6".
+```
+
+**§13. Phase 7 Import Record (the most recent, lines 277-304 — full verbatim):**
+```
+## 13. Phase 7 Import Record (Appended for CHUNK-9.x resumption)
+
+**Date:** 2026-05 (current resumption session, immediately after Phase 6 completion at ae0fb96)
+**Action:** Copied `AIP_0_1_Phase7_BuildSpec.md` (Spec Rev 1.0, 100971 bytes) from `/home/moses/Downloads/` into `specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md` following the exact remediation import pattern used for all prior phases. No remapping edits needed inside the spec — it was authored anticipating the permanent +2 offset (CHUNK-9.x for Architectural Phase 7).
+
+**Remapping:** Per permanent +2 offset policy (now in its fourth application): Architectural Phase 7 → **CHUNK-9.x series**. All future references use CHUNK-9.0a–9.8 exclusively. Terminology rules remain in force: "Architectural Phase 7", "CHUNK-9.x", "post-Phase-6 baseline". Never bare "Phase 7".
+
+**Key notes from Phase 7 spec (mandatory for all 9.x CCs):**
+- Phase 7 is the capstone: Vigil actor (last missing §3 orchestration component), real auth system, rate limiting, canonical promotion pipeline, extended workflow templates, minimal HTMX web UI scaffold, full §22 acceptance verification, and production packaging (Docker Compose for laptop-viable + production profiles).
+- Linearized order begins with 9.0a (schema/protocol/config L1 for VigilConfig/AuthConfig/RateLimitConfig/CanonicalPromotionConfig + new Protocols VigilStore/AuthStore + amendments).
+- Heavy Rule #10 emphasis expected: now-augmented overlaps with complete Phase 6 surfaces (8.1–8.7 API/CLI/Chat/Review/MCP/Admin/Memory + 8.0b adapters) + full Phase 5 actor layer. "Extend existing rather than replace" remains non-negotiable.
+- CHUNK-9.0a follows the identical append-only/amend-by-addition pattern on foundation/schemas.py + foundation/protocols.py + config/aip.config.toml as every prior *.0a.
+- New types must carry `model_gen_assumption` per §1.8 where applicable.
+- Vigil (9.1) will be the orchestration-layer actor that monitors canonical corpus health, triggers re-evaluation on model slot changes, and maintains entity consistency — using the delivered 8.0b CanonicalStore/EntityStore + 8.1 container.
+- Canonical promotion pipeline (9.2) will drive the full REVIEWED→APPROVED→CANONICAL lifecycle using AutonomyGate + EcsStore + CanonicalStore + indexing into LexicalStore/VectorStore.
+- Full §22 acceptance test (9.5) is the final verification that the entire system (all prior phases + Phase 7 deliverables) meets the architectural acceptance criteria.
+- Post-Phase-6 Clean Bill (final gate at ae0fb96 / 69+ passed core battery) is the new baseline. All Phase 6 governance invariants carry forward and must be extended by 9.8.
+
+**High-risk areas flagged for every 9.x CC (per established pattern + Phase 7 scope):**
+- Integration with now-complete Phase 6 surfaces (highest risk for 9.0b auth/rate limiting middleware, 9.4 web UI, 9.5 acceptance tests).
+- Vigil actor overlaps with delivered 8.0b Canonical/Entity stores and 8.1 DI container.
+- Canonical pipeline must not duplicate or bypass existing 8.0b/8.4 review/approve paths.
+- Auth system must integrate cleanly with existing AutonomyGate without creating bypasses.
+- Rate limiting must respect budget system and not starve Beast cadence / MCP / chat.
+- All new modules must pass the full extended gate suite (layering, no-network, model-name, hardcode scans, etc.).
+- Rule #10 on every chunk against the now-very-substantial delivered surface + actor codebase.
+
+**Status:** Phase 7 spec successfully imported as Rev1.0. PHASE2_IMPORT_NOTES.md extended with this record. Repository at HEAD ae0fb96 (Phase 6 complete). Ready for mandatory full 6-step pre-CHUNK-9.0a Continuity Check (with extreme Rule #10 emphasis on complete Phase 6 surfaces + Phase 5 actor layer + all prior reconciliations) **before any src/ or tests/ edits**.
+```
+
+**Full document structure confirmed (sections 1–13):**
+- Purpose, Glitch Summary, Chunk Remapping (with tables for 4.x/5.x), Terminology Rules, Repo State Reconciliation, Process Rules (8 rules incl. Continuity Check, append-only, amend-by-addition, import boundaries, no hardcodes, qualified terminology).
+- Gap Audits, File Inventory.
+- Import Records: §9 Phase4 (→6.x), §10 Phase5 (→7.x), §11 Phase5 Completion, §12 Phase6 (→8.x), §13 Phase7 (→9.x).
+- Explicit statement (line 4): "Authoritative — all future sessions MUST read this before touching Phase 2/3 spec code" — extended by practice and handoff to every session and before every new chunk.
+
+**+2 offset policy explicit lineage (now 5 applications):**
+- Phase2/3 remediation → 4.x/5.x
+- Phase4 → 6.x
+- Phase5 → 7.x
+- Phase6 → 8.x
+- Phase7 → 9.x
+**Therefore for Architectural Phase 8: exclusively CHUNK-10.x (10.0a, 10.0b, ..., 10.8) per the permanent policy and handoff directive.**
+
+**Terminology enforcement (re-affirmed):**
+- "Architectural Phase 8"
+- "CHUNK-10.x"
+- "post-Phase-7 baseline"
+- Never bare "Phase 8"
+
+**Step 2 Result:** COMPLETE. Full read of PHASE2_IMPORT_NOTES.md executed and documented (verbatim key sections above). Permanent +2 offset policy history and §13 Phase 7 record internalized. This document (plus SSOT specs) will be re-read before the pre-10.0a CC and before every subsequent 10.x chunk.
+
+**No src/ or tests/ files touched during this step.**
+
