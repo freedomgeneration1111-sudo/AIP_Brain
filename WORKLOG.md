@@ -2846,3 +2846,129 @@ Please advise how you would like to proceed:
 All audit work was performed with zero production code changes and is fully documented above per the project’s deterministic rules.
 
 **Status:** Continuity Pass complete and documented. Awaiting direction before any further code or new CHUNK declarations.
+
+---
+
+## Phase 2 BuildSpec Import & Evaluation (Rev 1.1)
+
+**Date:** 2026-05-27 (immediately after Full Codebase Continuity Pass)  
+**Source:** `/home/moses/Downloads/AIP_0_1_Phase2_BuildSpec.md` (123 kB)  
+**Action taken:** Copied verbatim into repo at `specs/AIP_0_1_Phase2_BuildSpec.md` for all future sessions. This is now the authoritative Phase 2 Single Source of Truth (alongside Phase 1 Rev 1.3 .docx and Architecture Rev 5.2).
+
+**Evaluation performed:**
+- Full read of the document (structure, revision log, scope, dependency DAG, all CHUNK-2.0a–2.8 prose + ANNEX, config additions, cross-cutting gates).
+- Reality check against current repo state (schemas, protocols, existing implementations).
+- Cross-reference against:
+  - Phase 1 Rev 1.3 assumptions
+  - Architecture Rev 5.2
+  - Actual delivered history (git + WORKLOG) through CHUNK-3.12
+  - Current code surface
+
+---
+
+### 1. High-Level Summary of Phase 2 Spec (Rev 1.1)
+
+**Build Phase 2 title (per spec):** "ECS Lifecycle, YAML Workflow Engine & Review Loop"
+
+**Core deliverables (linearized order per spec):**
+- 2.0a: Schema + Protocol additions (ReviewVerdict, ReviewContext, EcsTransition, Event; query/list_versions/current_state methods)
+- 2.0b: ECS state graph + guardrails (`foundation/ecs_graph.py`, InvalidTransitionError)
+- 2.3/2.4: ArtifactStore versioning + EventStore.query (parallel)
+- 2.1: Review node (quality gate + DEFINER path)
+- 2.2: Re-synthesis loop (on REJECTED)
+- 2.5: YAML workflow engine (L5)
+- 2.6: Workflow 0.1 YAML definition
+- 2.7: Full lifecycle integration test (SPECIFIED → GENERATED → REVIEWED → APPROVED)
+- 2.8: Phase 2 extension of network/model-name gate
+
+**Explicit Phase 1 prerequisites:** Only the 1.0a–1.7 standalone nodes (no L4, no Sexton, no budget/autonomy).
+
+**Out of scope (explicit):** L4 trajectory regulation (declared "Phase 3"), Beast/Vigil, real LLM for review, multi-turn context, pgvector, UI/MCP.
+
+**Process inheritance:** Relies on Phase 1 Rev 1.3 rules (Continuity Check before every CHUNK, append-only on foundation files, WORKLOG as living document, push after every unit). Revision log contains strong S2 fix reinforcing "append method stubs only — never redeclare Protocol classes".
+
+---
+
+### 2. Critical Glitches & Session-Confusion Risks (High Priority)
+
+**GLITCH #1 — CHUNK Numbering Collision (SEVERE — will confuse every future session)**
+
+- The Phase 2 spec owns the namespace `CHUNK-2.0a`, `CHUNK-2.1` … `CHUNK-2.8`.
+- The actual repo already used `CHUNK-2.1` through `CHUNK-2.13` (plus docs) for the YAML Workflow Engine work that was executed **after** Phase 1 and **before** the 3.x series.
+- Later the 3.x series (L4 → Sexton → embedding → budget/autonomy) was layered on top using 3.x numbering.
+- **Risk:** A future session told "implement CHUNK-2.5 per the Phase 2 spec" will have no idea whether that refers to the spec's intended YAML engine or the already-delivered 2.5 in git history. WORKLOG entries will conflict in naming.
+
+**GLITCH #2 — Phase Boundary Assumption Mismatch (SEVERE)**
+
+- Phase 2 spec is written as the **immediate successor** to Phase 1 (1.x only).
+- In reality the repo executed:
+  - Full Phase 1 (1.0a–1.7)
+  - Full L5 YAML engine as "Phase 2" (2.1–2.13)
+  - Then extensive L4/L6 foundation work as 3.1–3.12 (TrajectoryMonitor, Sexton full, ACE integration, real embedding slot, budget/autonomy)
+- The spec explicitly puts "L4 trajectory regulation (Phase 3)" in out-of-scope.
+- **Risk:** Any session that reads the Phase 2 spec as "the next thing to do" will be operating from a false model of what has already been built. The 3.x work (especially Sexton + L4) is already more advanced than what the Phase 2 spec expects to exist.
+
+**GLITCH #3 — Terminology Collision on "Phase 2" (HIGH)**
+
+- User language in recent turns: "before we move on to phase 2"
+- At the moment that phrase was used, the repo had already completed what it internally called "Phase 2" (2.1–2.13) plus the entire 3.x foundation series.
+- The authoritative Phase 2 spec was sitting in Downloads and had never been imported.
+- **Risk:** Extremely high potential for the AI to misunderstand user intent about "Phase 2" across sessions.
+
+**GLITCH #4 — Missing Explicit Process Rules Section (MEDIUM)**
+
+- Unlike Phase 1 Rev 1.3, this document does **not** restate the Continuity Check procedure, WORKLOG discipline, or push requirement at the top.
+- It only references them indirectly via the revision log (S2 protocol fix) and the Phase 1 assumptions table.
+- **Risk:** A fresh session that only reads the Phase 2 .md could operate with a weaker (or different) process model than the one in the Phase 1 Rev 1.3 .docx + current WORKLOG.
+
+**GLITCH #5 — Current Code State vs. Spec Expectations (MEDIUM)**
+
+- Reality check (executed during evaluation):
+  - `ReviewVerdict`, `ReviewContext`, `EcsTransition`, Phase-2 `Event` → **do not exist**
+  - `EventStore.query`, `ArtifactStore.list_versions`/`read(version=)`, `EcsStore.current_state` → **do not exist**
+  - Full declarative `ecs_graph.py` + guardrails → **does not exist**
+  - The repo's existing "Phase 2" work was primarily the engine mechanics + Workflow 0.1 reference, not the ECS review/re-synthesis lifecycle.
+
+- The Phase 2 spec is therefore largely **still ahead** of the current codebase (the 2.x numbering in git history was for a different, narrower slice of "Phase 2").
+
+**GLITCH #6 — Protocol Amendment Language Is Excellent (POSITIVE — low risk)**
+
+- The S2 fix and repeated emphasis on "append method stubs only, never redeclare the class" is stronger and clearer than Phase 1 language. This aligns perfectly with current practice and reduces future confusion.
+
+---
+
+### 3. Other Observations
+
+- The spec is well-structured, has good revision discipline (S1–S6 fixes), clear dependency DAG, and explicit linearized + parallel build order.
+- Config additions (`[review]`, `[workflow]`, `[ecs]`) are clearly defined and toggleable per §1.8.
+- The integration test (2.7) and full-lifecycle expectation are ambitious and valuable.
+- No conflict with the existing 3.x L4/Sexton/Budget work on technical grounds — the conflict is purely one of **when** that work was declared to happen (spec says Phase 3; repo already did substantial pieces in 3.x).
+
+---
+
+### 4. Recommended Mitigations (for DEFINER decision)
+
+1. **Strongly recommended:** Create a short `specs/PHASE2_IMPORT_NOTES.md` (or add to top of the Phase 2 .md) that explicitly states:
+   - "This spec was imported after the following had already been delivered: full internal Phase 2 (2.1–2.13) + 3.1–3.12 L4/L6 foundations."
+   - "CHUNK numbers 2.x in this spec are **logical spec numbers**, not the historical commit numbers used in this repo."
+   - "Future CHUNK declarations must prefix with the source spec (e.g. 'Phase2-CHUNK-2.5' or adopt a new 4.x series) to avoid collision."
+
+2. Decide on a **numbering convention** going forward before any Phase 2 work begins:
+   - Option A: Treat the imported spec's 2.x as authoritative logical numbers and document the historical 2.x as "pre-Phase2-foundation engine work".
+   - Option B: Start any actual Phase 2 implementation under a new series (e.g. 4.x) and keep the spec's 2.x purely as reference.
+   - Option C: Update the Phase 2 spec with a new revision (1.2) that acknowledges the actual history and renumbers or annotates accordingly.
+
+3. Before starting any CHUNK from this spec, the first action must be a dedicated Continuity Check that explicitly reconciles the spec's Phase 1 assumptions against the actual delivered 3.x artifacts.
+
+4. Consider adding a one-paragraph "Known History Divergence" note at the top of the Phase 2 .md itself (or in a companion file) so it cannot be missed by future sessions.
+
+---
+
+**Action taken in this session:**
+- File copied to `specs/AIP_0_1_Phase2_BuildSpec.md`
+- This full evaluation appended to WORKLOG (amend-by-addition only)
+- No production code changes
+- No new CHUNK started
+
+**Status:** Phase 2 spec successfully imported and evaluated. Major session-confusion risks documented. Awaiting DEFINER direction on numbering convention and reconciliation approach before any Phase 2 implementation work (or further 3.x/4.x continuation) begins.
+
