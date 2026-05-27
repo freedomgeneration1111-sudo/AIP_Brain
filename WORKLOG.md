@@ -1858,7 +1858,24 @@ This CHUNK-3.2 exists to materialize the response half of the Context Reset Prot
 
 After gate green + log update for implementation: commit + push. Then await next short command for 3.3+ (e.g. Sexton foundation, tighter engine integration, or L4b anxiety metrics).
 
-**Implementation notes (to be filled only after user command + code + gate):**
-- [empty until execution]
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/reset.py` (new) with `ResetRecommendation` dataclass and `L4ResetCoordinator` exactly matching the declared minimal INTERFACES.
+- Coordinator is pure deterministic, zero-token, receives all stores via injection only (TrajectoryMonitor + TraceStore + optional ArtifactStore). Never constructs storage.
+- On relevant signals (loop_d / context_anxiety_f / combined_2of3), produces recommendation carrying model_gen_assumption (§1.8) and writes one intervention log entry via `trace_store.write_event(..., node_type="L4", outcome="intervention", intervention_applied=1, intervention_type="context_reset", **kwargs)`.
+- Added `orchestration/l4/reset.py` + amended `__init__.py` (additive exports + updated package docstring).
+- Additive default wiring in both `WorkflowEngine` (run_workflow) and `Workflow01Runner` (run): when trace_store is present (real or noop), automatically provides `trajectory_monitor` and `l4_coordinator` in the protocols dict passed to WorkflowContext. 100% backward compatible (new keys only).
+- Created `tests/test_l4_context_reset.py` (5 tests + internal layering sanity check) modeled directly on the 3.1 monitor test style. All tests exercise injection safety, **kwargs logging of intervention fields, recommendation contents, and empty-path behavior.
+- Minor test fix during gate: corrected `from __future__` + `Any` import ordering (collection error only; no logic change).
+- Gate executed verbatim:
+  `uv run pytest tests/test_l4_context_reset.py tests/test_l4_trajectory_monitor.py tests/test_layering.py tests/test_trace_schema.py -xvs`
+  - Result: **15 passed, 0 failures, 0 skips**. Full green (5 new 3.2 tests + 5 from 3.1 monitor + 1 layering + 4 trace schema).
+  - All L4 code (monitor + reset) continues to pass test_layering.py (orchestration layer only imports foundation + internal).
+  - trace_events schema (including intervention_* columns) re-validated.
+- No changes to foundation/protocols.py or schemas.py (as declared — **kwargs sufficient).
+- All changes strictly append-only / amend-by-addition.
+- Zero model calls, zero network, zero direct storage construction anywhere in L4.
+- The §10.2 response path is now executable from the L5 engine via the injected coordinator (detection → log intervention → surface recommendation for caller to drive progress summary + fresh session).
 
-**Status:** Continuity Check + Spec Delta documented. No production code written. Awaiting user "go".
+**Status:** Complete
+
+**Pushed:** (pending this work unit commit)

@@ -3,12 +3,15 @@ L4 — Trajectory Regulation and Context Reset (Foundation)
 
 Per Architecture Rev 5.2 §10.
 This package provides deterministic, zero-token components for detecting
-session drift, loops, and context anxiety from the trace archive.
+session drift, loops, and context anxiety from the trace archive, plus the
+response path of the Context Reset Protocol.
 
-CHUNK-3.1: Basic monitor foundation only. Full context reset protocol
-and Sexton integration are deferred to later L4 chunks.
+CHUNK-3.1: Basic monitor foundation (detection only).
+CHUNK-3.2: Context Reset Protocol foundation (recommendation + intervention
+logging). Full Sexton integration and L4b advanced metrics deferred.
 """
 
 from aip.orchestration.l4.monitor import TrajectoryMonitor, TrajectorySignal
+from aip.orchestration.l4.reset import L4ResetCoordinator, ResetRecommendation
 
-__all__ = ["TrajectoryMonitor", "TrajectorySignal"]
+__all__ = ["TrajectoryMonitor", "TrajectorySignal", "L4ResetCoordinator", "ResetRecommendation"]

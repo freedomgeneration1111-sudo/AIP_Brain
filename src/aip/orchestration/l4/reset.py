@@ -1,0 +1,136 @@
+"""
+L4 Context Reset Protocol Foundation (CHUNK-3.2 spec delta)
+
+Implements the response path from Architecture Rev 5.2 §10.2, consuming the
+detection foundation from CHUNK-3.1 (TrajectoryMonitor).
+
+- Deterministic evaluation of monitor signals.
+- Logs intervention event (step 4) via injected TraceStore using existing
+  write_event + **kwargs to populate intervention_applied / intervention_type
+  (per §5.9).
+- Surfaces ResetRecommendation for caller to execute model "progress summary"
+  (step 2), provisional commit (step 3), DEFINER surface (step 5), and fresh
+  session (step 6) using normal L5 paths.
+- Zero tokens inside L4 logic. All stores injected only (no direct construction).
+- Every trigger carries model_gen_assumption per §1.8.
+
+This is the smallest useful foundation for the §10.2 protocol.
+Full Sexton, UI surface, and advanced L4b metrics remain out of scope.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+from aip.foundation.protocols import ArtifactStore, TraceStore
+from aip.orchestration.l4.monitor import TrajectoryMonitor, TrajectorySignal
+
+
+@dataclass
+class ResetRecommendation:
+    """
+    Structured output when L4 decides a context reset / trajectory correction
+    is warranted per §10.2.
+
+    The caller (WorkflowEngine, script node, or external orchestrator) is
+    responsible for acting on .action (e.g. synthesize progress summary via
+    existing agent node, then commit via ArtifactStore, then start fresh
+    session seeded with the summary).
+    """
+
+    session_id: str
+    signals: list[TrajectorySignal]
+    action: str = "context_reset"
+    reason: str = (
+        "2-of-3 trajectory signals (D/F/combined) detected in session window "
+        "per Architecture §10.1; §10.2 Context Reset Protocol required."
+    )
+    model_gen_assumption: str | None = (
+        "L4 reset coordinator treats presence of D and/or F signals (or their "
+        "combined proxy) as trigger for context reset. Encodes the assumption "
+        "that model trajectory degeneration under context pressure benefits "
+        "from explicit progress summarization + fresh session. See "
+        "Architecture Rev 5.2 §10.2 and §1.8."
+    )
+
+
+class L4ResetCoordinator:
+    """
+    Deterministic coordinator for the §10.2 Context Reset Protocol (foundation).
+
+    Usage (typical, via WorkflowContext injection or direct test construction):
+        coordinator = L4ResetCoordinator(
+            trajectory_monitor=monitor,
+            trace_store=trace_store,
+            artifact_store=artifact_store,  # optional for foundation
+        )
+        recs = await coordinator.check_and_log_reset(session_id="sess_123")
+
+    Never constructs stores. Never calls models. Pure decision + logging.
+    """
+
+    def __init__(
+        self,
+        trajectory_monitor: TrajectoryMonitor,
+        trace_store: TraceStore,
+        artifact_store: ArtifactStore | None = None,
+    ) -> None:
+        self._monitor = trajectory_monitor
+        self._trace_store = trace_store
+        self._artifact_store = artifact_store
+
+    async def check_and_log_reset(
+        self, session_id: str
+    ) -> list[ResetRecommendation]:
+        """
+        Run detection, and if L4-relevant signals are present, log the
+        intervention event (step 4 of §10.2) and return recommendation(s).
+
+        Returns [] for clean sessions (no action).
+        Safe to call; defensive on store errors.
+        """
+        if not session_id:
+            return []
+
+        try:
+            signals = await self._monitor.detect(session_id=session_id)
+        except Exception:
+            return []
+
+        if not signals:
+            return []
+
+        # Filter to the signals that §10.2 cares about (D / F / combined proxy)
+        relevant = [
+            s
+            for s in signals
+            if s.signal_type in ("loop_d", "context_anxiety_f", "combined_2of3")
+        ]
+        if not relevant:
+            return []
+
+        rec = ResetRecommendation(
+            session_id=session_id,
+            signals=relevant,
+        )
+
+        # Step 4: Log reset event with intervention fields (§5.9 + §10.2)
+        # Uses **kwargs passthrough (all current fakes + noops support this;
+        # concrete writers target the full trace_events schema).
+        try:
+            await self._trace_store.write_event(
+                session_id=session_id,
+                node_type="L4",
+                failure_type=None,
+                outcome="intervention",
+                detail=f"Context reset triggered by signals: {[s.signal_type for s in relevant]}",
+                intervention_applied=1,
+                intervention_type="context_reset",
+            )
+        except Exception:
+            # Defensive: logging failure must not break the coordinator
+            # (upper layers / Sexton will still see the monitor signals).
+            pass
+
+        return [rec]

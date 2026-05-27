@@ -28,6 +28,10 @@ from aip.orchestration.workflow.node import (
 )
 from aip.orchestration.workflow.runner import SequentialRunner
 
+# L4 wiring (CHUNK-3.2 additive, backward safe)
+from aip.orchestration.l4.monitor import TrajectoryMonitor
+from aip.orchestration.l4.reset import L4ResetCoordinator
+
 
 
 class _CommitNode(WorkflowNode):
@@ -205,16 +209,30 @@ class Workflow01Runner:
             async def read(self, *a, **k):
                 return ""
 
+        trace_for_use = self.trace_store or _NoopTraceStore()
+        artifact_for_use = self.artifact_store or _NoopStore()
+
+        # L4 default wiring (CHUNK-3.2 additive, backward-compatible)
+        monitor = TrajectoryMonitor(trace_store=trace_for_use)
+        coordinator = L4ResetCoordinator(
+            trajectory_monitor=monitor,
+            trace_store=trace_for_use,
+            artifact_store=artifact_for_use if self.artifact_store is not None else None,
+        )
+
         protocols = {
             "vector_store": self.vector_store,
             "embed_fn": self.embed_fn,
-            "trace_store": self.trace_store or _NoopTraceStore(),
-            "artifact_store": self.artifact_store or _NoopStore(),
+            "trace_store": trace_for_use,
+            "artifact_store": artifact_for_use,
             "ecs_store": self.ecs_store or _NoopStore(),
             "event_store": self.event_store or _NoopStore(),
             "config": self.config,
             # The definer gate is special – we can inject the Phase 1 function
             "definer_gate": definer_gate,
+            # L4 (3.1 + 3.2)
+            "trajectory_monitor": monitor,
+            "l4_coordinator": coordinator,
         }
 
         ctx = WorkflowContext(protocols=protocols, metadata={"config": self.config})

@@ -20,6 +20,10 @@ from aip.orchestration.workflow.definition import WorkflowDefinition
 from aip.orchestration.workflow.loader import load_workflow_from_yaml
 from aip.orchestration.workflow.runner import SequentialRunner
 
+# L4 wiring (CHUNK-3.2 additive, backward safe)
+from aip.orchestration.l4.monitor import TrajectoryMonitor
+from aip.orchestration.l4.reset import L4ResetCoordinator
+
 
 class WorkflowEngine:
     """
@@ -94,14 +98,31 @@ class WorkflowEngine:
             async def write(self, *a, **k): pass
             async def read(self, *a, **k): return ""
 
+        trace_for_use = self.trace_store or _NoopTraceStore()
+        artifact_for_use = self.artifact_store or _NoopStore()
+
+        # L4 default wiring (CHUNK-3.2 additive, backward-compatible):
+        # Any caller supplying a real trace_store automatically gets a
+        # TrajectoryMonitor + L4ResetCoordinator in the protocol dict.
+        # Existing call sites and nodes continue to work unchanged.
+        monitor = TrajectoryMonitor(trace_store=trace_for_use)
+        coordinator = L4ResetCoordinator(
+            trajectory_monitor=monitor,
+            trace_store=trace_for_use,
+            artifact_store=artifact_for_use if self.artifact_store is not None else None,
+        )
+
         safe_protocols = {
             "vector_store": self.vector_store,
             "embed_fn": self.embed_fn,
-            "trace_store": self.trace_store or _NoopTraceStore(),
-            "artifact_store": self.artifact_store or _NoopStore(),
+            "trace_store": trace_for_use,
+            "artifact_store": artifact_for_use,
             "ecs_store": self.ecs_store or _NoopStore(),
             "event_store": self.event_store or _NoopStore(),
             "config": self.config,
+            # L4 (3.1 + 3.2)
+            "trajectory_monitor": monitor,
+            "l4_coordinator": coordinator,
         }
 
         ctx = WorkflowContext(
