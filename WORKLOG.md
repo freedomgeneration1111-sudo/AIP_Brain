@@ -2096,4 +2096,65 @@ After gate green + log update: commit + push. Then continue per user direction (
 
 **Status:** Complete
 
-**Pushed:** (pending this work unit)
+**Pushed:** Yes (commit df95c99)
+
+---
+
+## Task ID: 3.5-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-3.5: L4b Advanced Context Anxiety Heuristics (TrajectoryMonitor Extension) (Spec Delta per Architecture Rev 5.2 Appendix E + §10)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target scope:**
+- L4b is the specialized handling for Type F — Context Anxiety (distinct from Type D drift/loop).
+- Signals per Appendix E: output length declining across successive turns; increased hedging language; model shortening responses without task completion; context window >70% utilized.
+- Current L4 (3.1–3.3) has only basic presence detection for "F" events. No trend analysis, length tracking, hedging heuristics, or context pressure estimation.
+- The goal of L4b is more reliable, earlier detection of context anxiety so that the reset protocol (already implemented) can be triggered more effectively.
+
+**2-5. DEPENDS-ON, Revision Log, Architecture, Consistency:**
+- Directly builds on TrajectoryMonitor (3.1) and the activation/surface work (3.3).
+- Trace schema and L4 event writing are already in place.
+- Sexton (3.4) can consume the higher-quality F signals this will produce.
+- All prior L4 code is zero-token and injectable — new heuristics must remain deterministic.
+
+**6. Scope decision:**
+- Declare as explicit spec delta (L4b was noted as candidate in 3.3/3.4 notes and is the natural extension after basic L4 + Sexton).
+- Extend TrajectoryMonitor with L4b heuristics:
+  - Track recent output lengths per session.
+  - Simple hedging language detection (keyword/pattern heuristics on detail or future synthesis output).
+  - Context pressure estimation (token counts if available, or turn count + length trend).
+  - Emit stronger "context_anxiety_f" signals with higher confidence when multiple L4b indicators fire.
+- Keep everything deterministic and zero-token.
+- Update the existing L4 tests and add L4b-specific test coverage.
+- No changes to Sexton, no new protocol methods, no LLM.
+
+**Conclusion:**
+After basic L4 foundation (3.1–3.3) and Sexton (3.4), the highest-value next increment in the L4 layer is reliable detection of Type F (Context Anxiety) using the concrete signals defined in Appendix E. This directly improves the quality of recommendations fed into the already-implemented reset protocol and surface mechanism.
+
+**Spec Delta Declaration:**
+CHUNK-3.5 extends the TrajectoryMonitor with L4b Context Anxiety heuristics per Architecture Appendix E so that Type F signals are produced with higher fidelity.
+
+**FILES:**
+- (amend) orchestration/l4/monitor.py — add L4b helper methods and improved F detection logic inside detect()
+- (additive) updates to tests/test_l4_trajectory_monitor.py and test_l4_workflow_integration.py
+- No new packages or protocol changes expected
+
+**INTERFACES:**
+- Inside TrajectoryMonitor: additional private helpers (e.g. _compute_length_trend, _detect_hedging, _estimate_context_pressure) called from detect().
+- Signals of type "context_anxiety_f" will carry richer evidence.
+
+**TESTS:**
+- Extended coverage in existing L4 monitor tests for the new heuristics.
+- Gate must re-run all L4 + Sexton tests + layering + trace.
+
+**GATE:**
+`uv run pytest tests/test_sexton.py tests/test_l4_context_reset.py tests/test_l4_trajectory_monitor.py tests/test_l4_workflow_integration.py tests/test_layering.py tests/test_trace_schema.py -xvs`
+
+After gate green: update WORKLOG, commit, push, continue.
+
+**Implementation notes (to be filled after execution):**
+- [empty until next short command]
+
+**Status:** Continuity Check + Spec Delta documented for CHUNK-3.5. Awaiting short command to implement.
