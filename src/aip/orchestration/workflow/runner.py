@@ -76,27 +76,26 @@ class SequentialRunner:
 
             # Parallel execution support (CHUNK-2.4)
             if node.node_type == NodeType.PARALLEL:
-                child_ids = node.children
+                child_ids = getattr(node, "children", [])
                 child_nodes = [n for n in self.nodes if n.node_id in child_ids]
 
                 if child_nodes:
-                    # Fork contexts for each parallel branch (inherits budget/variables)
+                    # Each parallel branch gets a forked context (budget & variables inherited)
                     tasks = []
+                    branch_contexts = []
                     for child in child_nodes:
                         child_ctx = self.context.fork_for_parallel()
-                        # Create a mini runner for the single child (or subtree in future)
+                        branch_contexts.append(child_ctx)
                         mini_runner = SequentialRunner([child], child_ctx)
                         tasks.append(mini_runner.run())
 
-                    # Run in parallel
                     branch_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                    # Merge results back (simple concatenation for now)
+                    # Collect results and merge key outputs back to parent context if desired
                     for br in branch_results:
                         if isinstance(br, list):
                             results.extend(br)
 
-                # Continue after the parallel block
                 i += 1
                 continue
 

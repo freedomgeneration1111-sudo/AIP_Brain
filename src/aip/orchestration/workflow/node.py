@@ -195,14 +195,19 @@ class ParallelNode(WorkflowNode):
 
     def __init__(self, node_id: str, children: list[str], config: dict[str, Any] | None = None):
         super().__init__(node_id, NodeType.PARALLEL, config)
-        self.children = children
+        self.children = children or []
 
     async def run(self, context: "WorkflowContext") -> NodeResult:
         """
-        Placeholder for CHUNK-2.4.
-        Real implementation will fork contexts and run children concurrently.
+        ParallelNode itself is mostly a marker + metadata holder.
+        The actual concurrent execution is driven by the runner (see SequentialRunner).
+        This keeps the node simple and the execution strategy in the runner.
         """
         return NodeResult(
             success=True,
-            output={"executed": self.node_id, "type": "parallel", "children": self.children}
+            output={
+                "executed": self.node_id,
+                "type": "parallel",
+                "children": self.children
+            }
         )

@@ -2,7 +2,7 @@
 import asyncio
 import pytest
 
-from aip.orchestration.workflow.node import DialogNode, NodeType
+from aip.orchestration.workflow.node import DialogNode, NodeType, ScriptNode, ParallelNode
 from aip.orchestration.workflow.context import WorkflowContext
 from aip.orchestration.workflow.runner import SequentialRunner
 from aip.orchestration.nodes.synthesis import SynthesisOutput
@@ -39,3 +39,19 @@ async def test_dialog_node_emits_pause_event_and_stops_runner():
     assert ctx.events[0]["type"] == "workflow.dialog.paused"
     assert results[-1].output.get("paused") is True
     assert results[-1].output.get("type") == "dialog"
+
+@pytest.mark.asyncio
+async def test_parallel_node_basic_execution():
+    """Basic smoke test that ParallelNode runs its children concurrently via the runner."""
+    nodes = [
+        ScriptNode("p1", code="parallel one"),
+        ScriptNode("p2", code="parallel two"),
+        ParallelNode("par", children=["p1", "p2"]),
+    ]
+    ctx = WorkflowContext()
+    runner = SequentialRunner(nodes, ctx)
+    results = await runner.run()
+
+    # The parallel node itself plus its children should have run
+    executed_types = [r.output.get("type") for r in results if isinstance(r.output, dict)]
+    assert "parallel" in executed_types

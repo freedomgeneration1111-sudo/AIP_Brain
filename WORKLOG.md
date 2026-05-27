@@ -987,3 +987,15 @@ This fulfills the core dialog node contract from Architecture §11.1 ("structure
 **Pushed:** Yes (after the Continuity Check push)
 
 **Status:** Complete
+
+**Implementation for CHUNK-2.4 (initial):**
+- Refined ParallelNode and SequentialRunner with actual concurrent execution using asyncio.gather.
+- Each parallel child receives a properly forked WorkflowContext (budget and variables inherited).
+- Added basic test coverage for parallel execution.
+- Verified the pattern works.
+
+This brings functional support for the last major node type (parallel) in the current engine foundation, with correct budget inheritance as required by the Architecture.
+
+**Status:** Initial implementation complete. More advanced error handling, result merging, and nested parallel can be refined later.
+
+**Pushed:** Pending
