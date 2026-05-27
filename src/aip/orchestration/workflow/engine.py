@@ -22,9 +22,9 @@ from aip.orchestration.workflow.definition import WorkflowDefinition
 from aip.orchestration.workflow.loader import load_workflow_from_yaml
 from aip.orchestration.workflow.runner import SequentialRunner
 
-# L4 wiring (CHUNK-3.2 additive, backward safe)
-from aip.orchestration.l4.monitor import TrajectoryMonitor
-from aip.orchestration.l4.reset import L4ResetCoordinator
+# L4 wiring (CHUNK-3.2 additive, backward safe) — lazy to avoid circular imports at module load time
+# from aip.orchestration.l4.monitor import TrajectoryMonitor
+# from aip.orchestration.l4.reset import L4ResetCoordinator
 
 
 class WorkflowEngine:
@@ -122,6 +122,9 @@ class WorkflowEngine:
         # Any caller supplying a real trace_store automatically gets a
         # TrajectoryMonitor + L4ResetCoordinator in the protocol dict.
         # Existing call sites and nodes continue to work unchanged.
+        from aip.orchestration.l4.monitor import TrajectoryMonitor
+        from aip.orchestration.l4.reset import L4ResetCoordinator
+
         monitor = TrajectoryMonitor(trace_store=trace_for_use)
         coordinator = L4ResetCoordinator(
             trajectory_monitor=monitor,

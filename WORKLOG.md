@@ -3234,6 +3234,40 @@ Important "first real model" chunk. The mock requirement keeps the grind determi
 
 **Status:** CC complete. Ready for 5.1.
 
+---
+
+## Task ID: 5.2-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.2: Loop Detector (Type D) — first L4 trajectory detector
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (TrajectorySignal, SessionContext, TraceStore.query_events).
+- One of the three L4 detectors (loop, anxiety, failure streak) from §10.1.
+- Must emit TrajectorySignal with proper model_gen_assumption (§1.8).
+- Must use the new query_events on TraceStore to look for repeated patterns in a session window.
+
+**Conclusion:**
+First actual L4 detector implementation. Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.2.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/loop_detector.py` — basic but correct LoopDetector (Type D) that uses the new TraceStore.query_events and emits TrajectorySignal with proper §1.8 tagging.
+- Created `tests/test_loop_detector.py` — validates detection of repeating patterns and no false positives.
+- Gate (with layering): **3/3 PASSED**.
+
+**Note on unexpected issue encountered:**
+During this chunk we surfaced a pre-existing circular import between the l4 package and the workflow engine (introduced during the earlier 3.x L4 work). We fixed it cleanly by making the L4 imports in engine.py lazy (inside the method that needs them). This is the only "unexpected issue" we have hit so far in the grind.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.2 complete.
+
+Continuing the Phase 3 grind (next natural: 5.3 Context Anxiety Detector).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/adapter/embedding/ollama_embed.py` — real Ollama client + MockOllamaEmbeddingClient for CI (httpx import is lazy so the module imports without the dependency).
 - Created package `adapter/embedding/__init__.py`.
@@ -3507,6 +3541,40 @@ Clean L2 adapter chunk. The ci_mode requirement is important for keeping the "gr
 Important "first real model" chunk. The mock requirement keeps the grind deterministic. No blockers.
 
 **Status:** CC complete. Ready for 5.1.
+
+---
+
+## Task ID: 5.2-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.2: Loop Detector (Type D) — first L4 trajectory detector
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (TrajectorySignal, SessionContext, TraceStore.query_events).
+- One of the three L4 detectors (loop, anxiety, failure streak) from §10.1.
+- Must emit TrajectorySignal with proper model_gen_assumption (§1.8).
+- Must use the new query_events on TraceStore to look for repeated patterns in a session window.
+
+**Conclusion:**
+First actual L4 detector implementation. Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.2.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/loop_detector.py` — basic but correct LoopDetector (Type D) that uses the new TraceStore.query_events and emits TrajectorySignal with proper §1.8 tagging.
+- Created `tests/test_loop_detector.py` — validates detection of repeating patterns and no false positives.
+- Gate (with layering): **3/3 PASSED**.
+
+**Note on unexpected issue encountered:**
+During this chunk we surfaced a pre-existing circular import between the l4 package and the workflow engine (introduced during the earlier 3.x L4 work). We fixed it cleanly by making the L4 imports in engine.py lazy (inside the method that needs them). This is the only "unexpected issue" we have hit so far in the grind.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.2 complete.
+
+Continuing the Phase 3 grind (next natural: 5.3 Context Anxiety Detector).
+
+
 
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/adapter/embedding/ollama_embed.py` — real Ollama client + MockOllamaEmbeddingClient for CI (httpx import is lazy so the module imports without the dependency).
@@ -4039,6 +4107,40 @@ Important "first real model" chunk. The mock requirement keeps the grind determi
 
 **Status:** CC complete. Ready for 5.1.
 
+---
+
+## Task ID: 5.2-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.2: Loop Detector (Type D) — first L4 trajectory detector
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (TrajectorySignal, SessionContext, TraceStore.query_events).
+- One of the three L4 detectors (loop, anxiety, failure streak) from §10.1.
+- Must emit TrajectorySignal with proper model_gen_assumption (§1.8).
+- Must use the new query_events on TraceStore to look for repeated patterns in a session window.
+
+**Conclusion:**
+First actual L4 detector implementation. Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.2.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/loop_detector.py` — basic but correct LoopDetector (Type D) that uses the new TraceStore.query_events and emits TrajectorySignal with proper §1.8 tagging.
+- Created `tests/test_loop_detector.py` — validates detection of repeating patterns and no false positives.
+- Gate (with layering): **3/3 PASSED**.
+
+**Note on unexpected issue encountered:**
+During this chunk we surfaced a pre-existing circular import between the l4 package and the workflow engine (introduced during the earlier 3.x L4 work). We fixed it cleanly by making the L4 imports in engine.py lazy (inside the method that needs them). This is the only "unexpected issue" we have hit so far in the grind.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.2 complete.
+
+Continuing the Phase 3 grind (next natural: 5.3 Context Anxiety Detector).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/adapter/embedding/ollama_embed.py` — real Ollama client + MockOllamaEmbeddingClient for CI (httpx import is lazy so the module imports without the dependency).
 - Created package `adapter/embedding/__init__.py`.
@@ -4246,6 +4348,40 @@ Important "first real model" chunk. The mock requirement keeps the grind determi
 
 **Status:** CC complete. Ready for 5.1.
 
+---
+
+## Task ID: 5.2-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.2: Loop Detector (Type D) — first L4 trajectory detector
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (TrajectorySignal, SessionContext, TraceStore.query_events).
+- One of the three L4 detectors (loop, anxiety, failure streak) from §10.1.
+- Must emit TrajectorySignal with proper model_gen_assumption (§1.8).
+- Must use the new query_events on TraceStore to look for repeated patterns in a session window.
+
+**Conclusion:**
+First actual L4 detector implementation. Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.2.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/loop_detector.py` — basic but correct LoopDetector (Type D) that uses the new TraceStore.query_events and emits TrajectorySignal with proper §1.8 tagging.
+- Created `tests/test_loop_detector.py` — validates detection of repeating patterns and no false positives.
+- Gate (with layering): **3/3 PASSED**.
+
+**Note on unexpected issue encountered:**
+During this chunk we surfaced a pre-existing circular import between the l4 package and the workflow engine (introduced during the earlier 3.x L4 work). We fixed it cleanly by making the L4 imports in engine.py lazy (inside the method that needs them). This is the only "unexpected issue" we have hit so far in the grind.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.2 complete.
+
+Continuing the Phase 3 grind (next natural: 5.3 Context Anxiety Detector).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/adapter/embedding/ollama_embed.py` — real Ollama client + MockOllamaEmbeddingClient for CI (httpx import is lazy so the module imports without the dependency).
 - Created package `adapter/embedding/__init__.py`.
@@ -4452,6 +4588,40 @@ Important "first real model" chunk. The mock requirement keeps the grind determi
 
 **Status:** CC complete. Ready for 5.1.
 
+---
+
+## Task ID: 5.2-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.2: Loop Detector (Type D) — first L4 trajectory detector
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (TrajectorySignal, SessionContext, TraceStore.query_events).
+- One of the three L4 detectors (loop, anxiety, failure streak) from §10.1.
+- Must emit TrajectorySignal with proper model_gen_assumption (§1.8).
+- Must use the new query_events on TraceStore to look for repeated patterns in a session window.
+
+**Conclusion:**
+First actual L4 detector implementation. Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.2.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/loop_detector.py` — basic but correct LoopDetector (Type D) that uses the new TraceStore.query_events and emits TrajectorySignal with proper §1.8 tagging.
+- Created `tests/test_loop_detector.py` — validates detection of repeating patterns and no false positives.
+- Gate (with layering): **3/3 PASSED**.
+
+**Note on unexpected issue encountered:**
+During this chunk we surfaced a pre-existing circular import between the l4 package and the workflow engine (introduced during the earlier 3.x L4 work). We fixed it cleanly by making the L4 imports in engine.py lazy (inside the method that needs them). This is the only "unexpected issue" we have hit so far in the grind.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.2 complete.
+
+Continuing the Phase 3 grind (next natural: 5.3 Context Anxiety Detector).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/adapter/embedding/ollama_embed.py` — real Ollama client + MockOllamaEmbeddingClient for CI (httpx import is lazy so the module imports without the dependency).
 - Created package `adapter/embedding/__init__.py`.
@@ -4657,6 +4827,40 @@ Clean L2 adapter chunk. The ci_mode requirement is important for keeping the "gr
 Important "first real model" chunk. The mock requirement keeps the grind deterministic. No blockers.
 
 **Status:** CC complete. Ready for 5.1.
+
+---
+
+## Task ID: 5.2-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.2: Loop Detector (Type D) — first L4 trajectory detector
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a (TrajectorySignal, SessionContext, TraceStore.query_events).
+- One of the three L4 detectors (loop, anxiety, failure streak) from §10.1.
+- Must emit TrajectorySignal with proper model_gen_assumption (§1.8).
+- Must use the new query_events on TraceStore to look for repeated patterns in a session window.
+
+**Conclusion:**
+First actual L4 detector implementation. Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.2.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/loop_detector.py` — basic but correct LoopDetector (Type D) that uses the new TraceStore.query_events and emits TrajectorySignal with proper §1.8 tagging.
+- Created `tests/test_loop_detector.py` — validates detection of repeating patterns and no false positives.
+- Gate (with layering): **3/3 PASSED**.
+
+**Note on unexpected issue encountered:**
+During this chunk we surfaced a pre-existing circular import between the l4 package and the workflow engine (introduced during the earlier 3.x L4 work). We fixed it cleanly by making the L4 imports in engine.py lazy (inside the method that needs them). This is the only "unexpected issue" we have hit so far in the grind.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.2 complete.
+
+Continuing the Phase 3 grind (next natural: 5.3 Context Anxiety Detector).
+
+
 
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/adapter/embedding/ollama_embed.py` — real Ollama client + MockOllamaEmbeddingClient for CI (httpx import is lazy so the module imports without the dependency).
