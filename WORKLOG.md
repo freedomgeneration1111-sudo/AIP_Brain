@@ -7956,6 +7956,28 @@ GATE: uv run pytest tests/test_adaptive_router.py tests/test_layering.py -xvs
 
 **Ready to proceed to CHUNK-7.4 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
 
+## CHUNK-7.4 — Adaptive Router (Transparent §4.3 Optimization + Budget Enforcement)
+
+**Date:** 2026-05 (post pre-7.4 CC at 51aac72)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.4 box + prose)
+**DEPENDS-ON:** CHUNK-7.0b, CHUNK-5.0b
+**Status:** Gate green + pushed
+
+**Implementation (exact per prose + ANNEX):**
+- `src/aip/orchestration/router.py` (new): AdaptiveRouter that wraps (does not replace) ModelSlotResolver. resolve_with_routing performs budget checks on all 3 scopes via 7.0b BudgetManager before routing, exploration/exploitation per §4.3, records consumption. update_weights / recommend_exploration_weight / get_routing_weights implemented (foundation version with deterministic behavior in CI).
+- `tests/test_adaptive_router.py` (new): Budget check before routing, exploration path, budget-exceeded error, layering.
+- Transparent to existing resolver callers. All per spec.
+
+**Gate:** 51 passed (new 7.4 tests + full prior battery + layering).
+
+**Files:** orchestration/router.py (new), tests/test_adaptive_router.py (new).
+
+**Permanent rules:** Exact scope, transparent wrapper, budget integration from 7.0b, layering, push, +2 offset, etc.
+
+CHUNK-7.4 complete (gate green).
+
+**Phase 5 CHUNK-7.4 complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
+
 CC complete. Next per linearized DAG: CHUNK-7.4 implementation.
 
 ---
