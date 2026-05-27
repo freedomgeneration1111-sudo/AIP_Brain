@@ -51,6 +51,27 @@ class VectorStore(Protocol):
         """Deprecated: use upsert() instead. Returns chunk id."""
         ...
 
+    # --- Phase 4 amendments (append method stubs only — do NOT redeclare existing Protocol classes) ---
+
+    # VectorStore — add health_check and count method stubs to existing class
+    # (upsert and retrieve already defined in Phase 1 CHUNK-1.0a)
+    async def health_check(self) -> dict:
+        """Check backend health and return status.
+
+        Returns dict with: connected (bool), pool_size (int),
+        latency_ms (int), backend_name (str).
+        Used by aip status and production hardening (CHUNK-6.4).
+        """
+        ...
+
+    async def count(self, domain: str | None = None) -> int:
+        """Count vectors in the store, optionally filtered by domain.
+
+        domain=None returns total count across all domains.
+        Used by migration tool (CHUNK-6.3) for data integrity verification.
+        """
+        ...
+
 
 # Other Phase 0 protocols as empty runtime_checkable stubs
 @runtime_checkable

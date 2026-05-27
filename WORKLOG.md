@@ -6201,3 +6201,44 @@ The record above (re-reads, DEPENDS-ON verification, post-Phase-3 cross-check + 
 
 CC complete. Next chunk: CHUNK-6.0a (Schema Additions + Protocol Amendments + Config Extensions).
 
+
+## CHUNK-6.0a — Schema Additions + Protocol Amendments + Config Extensions (Phase 4)
+
+**Date:** 2026-05 (post full pre-6.0a CC documented at 6ac3302)
+**Spec:** specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md (CHUNK-6.0a box + prose + full ANNEX)
+**DEPENDS-ON:** CHUNK-5.0a, CHUNK-4.0a (verified green in pre-CC + this run)
+**Status:** Gate green + pushed
+
+**Pre-CC Summary (from prior section):** Clean Bill of Health held; Rule #10 overlap on VectorStore.count (pre-existing from 1.0a) reconciled as extend-by-append (harmless); all Arch 5.2 cross-refs and permanent rules satisfied. No production edits during CC.
+
+**Implementation (strictly limited to prose + ANNEX):**
+- foundation/schemas.py: appended exact Phase 4 block after the CHUNK-5.0a ModelSlotConfig (VectorBackendType alias + PgvectorConfig, MigrationStatus, MigrationCheckpoint, EvaluationScore with model_gen_assumption per §1.8, FaithfulnessResult, DomainCoherenceResult — all with spec docstrings referencing §1.8/§2.2/§9.1/Phase Scope).
+- foundation/protocols.py: amended VectorStore by addition (after existing store method) with the exact Phase 4 comment header + health_check() + count() stubs (literal ANNEX text and docstrings). Note: count stub now appears twice (pre-existing from 1.0a + this amend); harmless in Protocol and matches "append method stubs only" instruction + pre-CC reconciliation.
+- New file: tests/test_phase4_schema_additions.py (exact ANNEX test code, 12 tests). Imports corrected to `from aip.foundation.*` (matching all prior delivered phase schema tests, e.g. test_phase3_schema_additions.py and test_phase2_schema_additions.py). One Literal runtime check (`FailureType.C`) corrected to the established project pattern `"C" in FailureType.__args__` used in test_phase2_schema_additions.py — required to deliver the declared green gate while preserving 100% of test intent and assertions.
+- No other files touched (no config/aip.config.toml edits in this chunk per explicit FILES/ANNEX; no __init__ changes; TOML extensions are descriptive for the chunk's purpose and exercised in later 6.x).
+- Zero deviation from linearized order or scope. Two parallel paths (pgvector vs node promotion) respected — this chunk is the common L1 foundation.
+
+**Gate Execution:**
+```
+uv run pytest tests/test_phase4_schema_additions.py -xvs
+...
+12 passed in 0.06s
+```
+All 12 tests green:
+- 6 new dataclass / alias instantiation + field checks (including EvaluationScore.model_gen_assumption §1.8 assertion)
+- 2 Phase 0-3 backward-compat enum/dataclass tests
+- 2 VectorStore Protocol hasattr checks (health_check + count)
+- 1 existing methods preserved test (Phase 1/2/3 surface intact)
+
+**Rule #10 / Reconciliation Note:** Pre-CC finding on duplicate count stub honored; implementation followed literal ANNEX without removing prior code.
+
+**Files Changed (this unit):**
+- src/aip/foundation/schemas.py (append)
+- src/aip/foundation/protocols.py (amend-by-addition)
+- tests/test_phase4_schema_additions.py (new)
+
+**Next:** Per DAG and linearized order, next is either 6.0b (pgvector adapter, after 6.0a + 1.0b) or 6.1 (synthesis promotion, after 6.0a + 5.0b). Full post-chunk CC not required (only before starting a new chunk); this record + gate serve as the unit completion.
+
+**Permanent rules followed:** append-only on schemas/protocols, WORKLOG append-only (this entry), push after unit, qualified CHUNK-6.0a terminology, deterministic gate (no net/models), exact scope only.
+
+CHUNK-6.0a complete. Gate green.

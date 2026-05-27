@@ -204,3 +204,105 @@ class ModelSlotConfig:
     fallback_provider: str | None = None
     fallback_model: str | None = None
     dimensions: int | None = None
+
+
+# --- Phase 4 additions (append only) ---
+from dataclasses import dataclass, field
+from typing import Literal
+
+
+# Type alias for vector backend selection per §2.2
+VectorBackendType = Literal["pgvector", "sqlite_vss"]
+
+
+@dataclass
+class PgvectorConfig:
+    """Configuration for the pgvector VectorStore adapter.
+
+    Per §2.2: PostgreSQL 16 + pgvector is the required production path.
+    Per §1.8: all parameters toggleable via config, not hardcoded.
+    HNSW parameters tune index quality vs. build time.
+    """
+    connection_string: str
+    pool_min_size: int = 2
+    pool_max_size: int = 10
+    pool_timeout_seconds: float = 30.0
+    statement_timeout_ms: int = 5000
+    hnsw_m: int = 16
+    hnsw_ef_construction: int = 64
+    hnsw_ef_search: int = 40
+
+
+@dataclass
+class MigrationStatus:
+    """Tracks the state of a sqlite_vss → pgvector migration.
+
+    Per Phase Scope Definition: migration must be idempotent and resumable.
+    checkpoint_id enables resuming from last successful vector.
+    """
+    source_backend: str
+    target_backend: str
+    total_vectors: int = 0
+    migrated_vectors: int = 0
+    failed_vectors: int = 0
+    started_at: str = ""
+    completed_at: str | None = None
+    checkpoint_id: str | None = None
+
+
+@dataclass
+class MigrationCheckpoint:
+    """A resumable migration point.
+
+    If migration is interrupted, resume from last_migrated_id + 1.
+    """
+    checkpoint_id: str
+    source_backend: str
+    target_backend: str
+    last_migrated_id: int = 0
+    total_migrated: int = 0
+    created_at: str = ""
+
+
+@dataclass
+class EvaluationScore:
+    """A single evaluation dimension score.
+
+    Per §1.8: model_gen_assumption tags what model limitation this
+    evaluation compensates for. Sexton audits these when model slots change.
+    """
+    dimension: str
+    score: float = 0.0
+    rationale: str | None = None
+    model_slot_used: str = ""
+    tokens_consumed: int = 0
+    model_gen_assumption: str | None = None
+
+
+@dataclass
+class FaithfulnessResult:
+    """Faithfulness evaluation output (L3a Stage 2).
+
+    Per §9.1: faithfulness evaluation checks synthesis output against
+    retrieved context. Hallucination flags identify claims not grounded
+    in the retrieved context package.
+    """
+    artifact_id: str
+    faithfulness_score: float = 0.0
+    context_coverage: float = 0.0
+    hallucination_flags: list[str] = field(default_factory=list)
+    evaluation_scores: list[EvaluationScore] = field(default_factory=list)
+
+
+@dataclass
+class DomainCoherenceResult:
+    """Domain coherence evaluation output (L3a Stage 3).
+
+    Per §9.1: domain coherence evaluation checks domain-specific quality.
+    Violations list domain-specific coherence issues found.
+    """
+    artifact_id: str
+    coherence_score: float = 0.0
+    domain: str = ""
+    violations: list[str] = field(default_factory=list)
+    evaluation_scores: list[EvaluationScore] = field(default_factory=list)
