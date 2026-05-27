@@ -180,3 +180,22 @@ The Phase 3 spec describes embedding integration, L4 trajectory regulation, and 
 | This document | `download/PHASE2_IMPORT_NOTES.md` | Authoritative reference |
 | Architecture Rev 5.2 | `upload/AIP_0_1_Architecture_Rev5_2.md` | Master architecture doc |
 | Phase Scope Definition | `download/AIP_0_1_Phase_Scope_Definition.docx` | All phases (0–6) scope |
+| Phase 4 BuildSpec Rev 1.0 | `specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md` | Architectural Phase 4 (pgvector adapter, node promotion, L3a S2/3, production hardening); remapped to CHUNK-6.x series per permanent +2 offset policy |
+
+## 9. Phase 4 Import Record (Appended per mandatory pre-read for CHUNK-6.x)
+
+**Date:** 2026-05 (resumption session)
+**Action:** Copied AIP_0_1_Phase4_BuildSpec.md (Spec Rev 1.0) from /home/moses/Downloads/ into specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md following the exact remediation import pattern used for Phase 2 Rev 1.2 and Phase 3 Rev 1.1 (authoritative SSOT in specs/, documented here).
+
+**Remapping:** Per permanent +2 offset policy (established in remediation): Architectural Phase 4 → CHUNK-6.x series. All future references use CHUNK-6.0a–6.6. Terminology rules from §4 remain in force (no bare "Phase 4").
+
+**Key notes from Phase 4 spec (mandatory for all 6.x CCs):**
+- Two largely independent paths: (A) pgvector adapter path (6.0a/6.0b/6.3/6.4 — touches only adapter + foundation; DEPENDS-ON only Phase 0/1) vs (B) node promotion path (6.1/6.2 — synthesis + eval pipeline; DEPENDS-ON Phase 3's 5.0b ModelSlotResolver). Converge at 6.5 integration test.
+- CHUNK-6.0a is the first chunk: identical append-only/amend-by-addition pattern as 1.0a/4.0a/5.0a on foundation/schemas.py + protocols.py. No existing code deleted/rewritten.
+- Explicit Continuity Check rule at end of spec (mirrors Rule #10): for every CHUNK-6.x, read WORKLOG, check repo historical 2.x/3.x/4.x/5.x for overlap on target files, extend existing rather than replace, document reconciliation.
+- All new types carry §1.8 model_gen_assumption where model-based; config-driven per §2.2 / §7.2; health_check + count added to VectorStore Protocol.
+- Post-Phase-3 Clean Bill of Health (from WORKLOG) is the baseline; 5.8 partial fidelity (starter vs full ANNEX) is documented as non-blocking for Phase 4 start.
+
+**No gap audit required for 6.0a:** No prior 6.x code exists in repo (clean slate for new series). Historical overlaps only possible on shared files (schemas.py, protocols.py, config/aip.config.toml, existing nodes) — Rule #10 reconciliation applies on first touch.
+
+**Status:** Phase 4 spec successfully imported. PHASE2_IMPORT_NOTES.md (now covering through Phase 4) updated. Ready for mandatory full CC on CHUNK-6.0a before any production code.
