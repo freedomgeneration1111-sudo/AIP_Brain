@@ -812,3 +812,52 @@ This gives the engine its first real control-flow capability while staying zero-
 **Pushed:** Yes
 
 **Status:** Complete
+
+---
+
+## Task ID: 2.3-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-2.3: Dialog Node Pause + Event Emission Support
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of requirements (Architecture Rev 5.2 §11.1):**
+- Dialog node: "structured DEFINER gate; pauses, emits event before resuming"
+- Key invariant: "dialog nodes must produce an event before resuming."
+- This directly ties into the DEFINER sovereignty rule (§1.7) that we implemented in Phase 1 CHUNK-1.5.
+
+**2. Review of related Phase 1 work:**
+- We have a fully working `definer_gate` (CHUNK-1.5) that takes SynthesisOutput + ValidationResult + EvalResult and returns DefinerDecision (approve/reject/revise).
+- The WorkflowContext already has basic `emit_event()` support (added in 2.1).
+- The engine must be able to "pause" when it hits a dialog node that requires DEFINER input (especially in non-stub modes).
+
+**3. Current engine state (after 2.1 + 2.2):**
+- We have a working SequentialRunner that can handle linear + conditional flows.
+- Nodes can access context for events and protocols.
+- We have not yet wired the actual Phase 1 definer_gate into a DialogNode.
+
+**4. Scope decision for this chunk:**
+For CHUNK-2.3 we will:
+- Create a proper `DialogNode` implementation that can execute the definer_gate logic (or accept it via injection).
+- When the gate does not auto-approve (or in future MANUAL mode), the node should:
+  - Emit a structured event (containing the decision request).
+  - Return a special result indicating the workflow is paused/suspended.
+- Update the runner to stop execution when it receives a "paused" result from a dialog node.
+- Keep resumption/persistence for a later chunk (this one focuses on pause + event emission).
+
+**5. Risks / Constraints:**
+- Must not bypass DEFINER (already enforced in 1.5).
+- Must use injected protocols for any storage/event logging (already supported via context).
+- Should integrate cleanly with the existing node types and runner.
+- Avoid over-building full workflow instance persistence in this chunk.
+
+**6. Cross-references checked:**
+- Ties back to CHUNK-1.5 (definer_gate) and the overall L6 sovereignty layer.
+- Uses the event mechanism designed in 2.1.
+- Respects all Phase 1 import boundaries and determinism rules.
+
+**Conclusion of Continuity Check:**
+Clear and safe to proceed. This chunk bridges the Phase 1 DEFINER gate work into the Phase 2 workflow engine. Focus on pause + event emission; defer full resume/persistence.
+
+**Status:** Continuity Check complete. Proceeding to implementation.
