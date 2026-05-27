@@ -169,9 +169,22 @@ All succeeded. The types Rev 1.3 expects to be present before CHUNK-1.0a now exi
 ## Task ID: 1.2-1
 
 **Agent:** Grok Build  
-**Task:** CHUNK-1.2: structural_validate (L3a deterministic validation)
+**Task:** CHUNK-1.2: structural_validate — L3a Stage 1 deterministic validation (pure, zero tokens)
 
-**Status:** Next (will grind immediately)
+**Work Log:**
+- Created `src/aip/foundation/validation.py` with ValidationRule, ValidationResult, structural_validate (pure function) + DEFAULT_RULES (all tagged with model_gen_assumption per §1.8).
+- Created `tests/test_structural_validate.py`.
+- Gate: 3/3 tests passed.
+
+**Status:** Complete (small L1 chunk)
+
+**Pushed:** Yes
+
+---
+
+**Current position in Rev 1.3 linearized order:** 1.0a ✓ → 1.0b ✓ → 1.1 ✓ → 1.2 ✓
+
+Ready for 1.3 (Synthesis stub) on next command.
 
 ---
 
