@@ -1012,3 +1012,42 @@ This completes initial support for the last major node type (parallel) in the cu
 **Pushed:** Yes
 
 **Status:** Complete
+
+---
+
+## Task ID: 2.5-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-2.5: Agent Node Integration with Phase 1 Synthesis Path
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of requirements:**
+- Architecture §11.1: "agent       model synthesis call; must specify model_slot explicitly"
+- Invariant: "agent nodes must specify model_slot explicitly."
+- The whole point of Phase 2 is to orchestrate the sophisticated nodes built in Phase 1 (retrieve_for_synthesis, structural_validate, adversarial_eval, definer_gate, commit, etc.).
+
+**2. Current state after 2.1–2.4:**
+- We have a working AgentNode placeholder that only returns stub output.
+- We have fully implemented and tested the entire Phase 1 synthesis pipeline (1.1 retrieve + 1.3 synthesis + supporting L3 nodes + 1.5 gate + 1.6 commit).
+- The WorkflowContext can carry protocols.
+
+**3. Scope for this chunk:**
+- Make AgentNode actually invoke the Phase 1 retrieve_for_synthesis + synthesis logic (or a clean wrapper) when executed inside a workflow.
+- The node should receive (or look up) the model_slot and pass it correctly.
+- It should also be able to pass retrieval domain, etc., from workflow variables or node config.
+- Keep it focused on wiring the existing machinery rather than duplicating logic.
+
+**4. Constraints:**
+- Must continue to respect "no direct storage imports" — use injected protocols from context.
+- Must not regress the determinism / no-network guarantees.
+- Should be able to work with the existing fake_embed / real embed_fn pattern from Phase 1.
+
+**5. Risks:**
+- The synthesis path has several dependencies (vector store, trace store, config, embed function). We need a clean way to provide them via the workflow context or node config.
+- Token budget accounting between the workflow engine and the inner L2/L3 nodes will need care (can start simple).
+
+**Conclusion of Continuity Check:**
+High-value next step. Wiring the real Phase 1 agent capabilities into the workflow engine is what makes the whole system actually useful for Workflow 0.1. Safe to proceed.
+
+**Status:** Continuity Check complete. Proceeding to implementation.
