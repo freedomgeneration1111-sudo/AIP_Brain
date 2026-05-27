@@ -1,0 +1,65 @@
+# AIP Work Log
+
+**Project:** AI Poiesis (AIP) v0.1  
+**Single Source of Truth:** `specs/AIP_0_1_Phase1_BuildSpec_Rev1.3.docx` (Rev 1.3)
+
+All work is executed deterministically per the spec. No deviation without explicit advice to the DEFINER and a recorded spec delta.
+
+---
+
+## Task ID: 0.0
+
+**Agent:** Grok Build  
+**Task:** Initialize fresh repository + import authoritative Rev 1.3 spec as single source of truth
+
+**Work Log:**
+- Created brand new independent repo `freedomgeneration1111-sudo/aip`
+- Initialized minimal skeleton (README, .gitignore, directories)
+- Copied `AIP_0_1_Phase1_BuildSpec_Rev1.3.docx` into `specs/`
+- Generated readable paragraph-aware markdown extraction for reference (still secondary to the .docx)
+- Pushed after each discrete step so downstream verification (GLM-5.1) can proceed
+
+**Status:** Complete
+
+**Pushed:** Yes (commits bb63d65, ce7b5cf)
+
+---
+
+## Task ID: 1.0a-Prep
+
+**Agent:** Grok Build  
+**Task:** Analyze Rev 1.3 prerequisites + prepare execution of CHUNK-1.0a (Schema Additions + Adapter Package Init)
+
+**Work Log:**
+- Performed detailed reading of Rev 1.3 (single source of truth).
+- Identified critical dependency: CHUNK-1.0a is the first Phase 1 chunk and **the only one permitted to modify Phase 0 files**.
+- It performs:
+  - Append-only additions to `foundation/schemas.py` (Chunk + RetrievalResult dataclasses)
+  - Amend-by-addition to `foundation/protocols.py` (VectorStore.upsert/retrieve/delete + method signatures for TraceStore.write_event, EventStore.write_event, ArtifactStore.write/read)
+  - Creation of `adapter/__init__.py` and `adapter/vector/__init__.py`
+- DEPENDS-ON explicitly lists CHUNK-0.3, CHUNK-0.4, CHUNK-0.6 (these must be "merged and green").
+- The current repository is brand new. No Phase 0 artifacts (`foundation/schemas.py`, `foundation/protocols.py`, config system, db init, etc.) exist yet.
+- Per the spec: "If any Phase 0 chunk is not merged, the depending Phase 1 chunk cannot start."
+
+**Issue / Observation (no deviation):**
+The spec is written as a continuation of a completed Phase 0. In this fresh repo we have a prerequisite gap.
+
+**Proposed path forward (requesting DEFINER direction before coding):**
+Option A: Treat the minimal Phase 0 scaffolding (schemas.py with its enums, protocols.py with the base Protocols, basic config loader, etc.) as a prerequisite work unit that must be synthesized from the Architecture docs + Rev 1.3 implications before CHUNK-1.0a can be executed exactly as written.
+Option B: Begin directly with CHUNK-1.0a by creating the required Phase 0 files with the absolute minimum content needed for the append/amend operations to be valid, documenting this as an explicit setup delta.
+Option C: Other direction from DEFINER.
+
+**Next action blocked pending DEFINER guidance on how to handle the Phase 0 prerequisite gap while remaining strictly deterministic to Rev 1.3.**
+
+**Status:** Awaiting direction
+
+**Pushed:** Yes (this worklog)
+
+---
+
+## Future Work Units (from Rev 1.3)
+
+Linearized order per spec:
+1.0a → 1.0b → 1.1 → 1.2 (parallel ok with 1.1) → 1.3 → 1.4 (parallel ok with 1.3) → 1.5 → 1.6 → 1.7
+
+Each will be logged here with exact spec citations, ANNEX reproduction, test gates, and push after completion.
