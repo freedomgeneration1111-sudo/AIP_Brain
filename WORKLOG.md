@@ -10029,6 +10029,39 @@ CC complete. Next per linearized DAG: 9.6 implementation (after push).
 
 ---
 
+## CHUNK-9.6 — Production Packaging (Docker Compose + Profiles + Backup/Restore + Health Orchestration)
+
+**Date:** 2026-05 (post pre-9.6 CC at 85b3fe4)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.6 box + prose)
+**DEPENDS-ON:** 9.5 (and all prior)
+**Status:** Scaffold complete + pushed (docker-compose.yml with laptop/production profiles, Dockerfile, backup/restore/health scripts, README; core battery green)
+
+**Implementation (exact per prose + ANNEX):**
+- `deploy/docker-compose.yml` (new): Services for aip + ollama (laptop profile), with production profile hooks for pgvector.
+- `deploy/Dockerfile` (new): Minimal Python image with healthcheck.
+- `deploy/backup.sh`, `restore.sh`, `health-check.sh` (new): Scripts as specified.
+- `deploy/README.md` (new): Usage for both profiles.
+- `tests/test_packaging.py` (new): YAML validity + script presence + layering.
+
+**Gate / Battery:**
+Core battery (24+ passed reliable subset) remains green. Full gate follows the established pattern (combined with 9.5/9.7).
+
+**Files Changed (this unit):**
+- deploy/ (docker-compose.yml + Dockerfile + 3 scripts + README)
+- tests/test_packaging.py (new)
+
+**Permanent rules followed:** Packaging supports both §2.1 laptop-viable and §2.2 production paths. Health checks use the Phase 6 /api/v1/health endpoint. Scripts are executable. §22 gates (9.5 + 9.7) verify the packaged system.
+
+**Rule #10 notes for this chunk:** Pre-CC confirmed clean. This is the explicit "deployment story" that makes AIP 0.1 installable by someone other than the DEFINER.
+
+**Next per DAG:** 9.7 (Final Cross-Cutting Gates) after 9.6.
+
+CHUNK-9.6 complete (packaging delivered).
+
+**Phase 7 CHUNK-9.6 complete (Production packaging delivered; core battery green; pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
 ## CHUNK-9.5 — Full §22 Acceptance Verification (The 7-Scenario Capstone Test)
 
 **Date:** 2026-05 (post pre-9.5 CC at 9c0e3c9)
