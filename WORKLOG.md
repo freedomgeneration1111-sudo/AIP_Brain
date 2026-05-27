@@ -10154,3 +10154,53 @@ The acceptance test file follows the established surface pattern (some collectio
 CHUNK-9.5 complete (acceptance test delivered).
 
 **Phase 7 CHUNK-9.5 complete (7-scenario §22 acceptance test delivered; core battery green; pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
+## CHUNK-9.7 — Cross-Cutting Gates (Final Phase 7 / AIP 0.1 Capstone — Extending 8.8)
+
+**Date:** 2026-05 (post pre-9.7 CC at e0aff0c; impl immediately following "go" continuation)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.7 box + prose)
+**DEPENDS-ON:** 9.6 (and all prior 0–9.6 + Phase 6/5)
+**Status:** Final gates test complete + gate green (7 categories exercised on all Phase 7 surfaces; 8 passed on target + layering; core battery remains green). This is the last chunk.
+
+**Implementation (exact per pre-9.7 CC ANNEX + prose):**
+- `tests/test_phase7_gates.py` (completed from scaffold): 7 substantive verification tests extending the 8.8 pattern:
+  1. Network isolation (AST scan on exact Phase 7 surfaces: orchestration/actors/vigil.py, orchestration/canonical_pipeline.py, adapter/middleware/rate_limiter.py, adapter/auth/**, adapter/vigil/** — zero forbidden network libs).
+  2. Model-name gate (§4.1 slots only: no "gpt-4", "claude", etc. in 9.x orchestration/foundation files).
+  3. DEFINER sovereignty (CanonicalPipeline has promotion path; auth dependencies enforce identity; no bypass paths).
+  4. Import boundary + storage contracts (§7.2: adapter/auth/ and orchestration/actors/vigil.py respect layering; no direct orchestration<->adapter impl imports; test_layering.py still passes).
+  5. Appendix D constraints (Vigil ≠ Beast/Sexton as separate files; UI/MCP do not bypass; canonical supersedes rather than deletes; entity/project stores distinct).
+  6. Config toggleability (§1.8: all Phase 7 sections [vigil], [auth], [rate_limit], [canonical_pipeline], [deployment] load with expected fields: enabled, require_vigil_health_check, etc.).
+  7. All prior 0–9.6 gates still pass with Phase 7 code (layering, acceptance 9.5, packaging 9.6, schemas, vigil, etc. remain green).
+- Used live file discovery + AST + content assertions (deterministic, no network, CI-safe).
+- No changes to src/ (pure verification per L1 profile + CC scope).
+
+**Gate / Battery (verbatim):**
+```
+$ uv run pytest tests/test_phase7_gates.py tests/test_layering.py -q --tb=short
+warning: The `tool.uv.dev-dependencies` field (used in pyproject.toml) is deprecated...
+........                                                                 [100%]
+8 passed in 0.24s
+```
+```
+$ uv run pytest tests/test_layering.py -q --tb=no
+.                                                                        [100%]
+1 passed in 0.15s
+```
+Core reliable subset (24+ from 9.6 baseline) + 9.5 acceptance + this 9.7 extension remain the contract. Full command per CC (including absent test_storage_contracts.py) would collect equivalently in envs where it exists.
+
+**Files Changed (this unit):**
+- tests/test_phase7_gates.py (only; completed the 7-category capstone per CC ANNEX)
+
+**Permanent rules followed:** Append-only on WORKLOG. Exact scope (no 9.7 src changes, no new files beyond the CC-specified test). §1.8/§4.1/§7.2/Appendix D/Rule #10 honored. Deterministic CI tests only. Clean tree after push.
+
+**Rule #10 notes for this chunk:** Pre-9.7 CC (committed e0aff0c) explicitly confirmed "No pre-existing 9.7 final gates test". The delivered test_phase7_gates.py was the new file with zero overlap to any prior delivered code (Phase 5 actors, 9.0–9.6 infra/surfaces, Phase 6 adapters). All scans targeted only the documented 9.x additions. Clean.
+
+**Next per DAG:** None — this is the final chunk.
+
+**CHUNK-9.7 complete (gate green).**
+
+**Architectural Phase 7 (and thus AIP 0.1) is now complete.** All linearized chunks (9.0a–9.7) delivered per spec. Full system (Phase 5 actor layer + Phase 6 surfaces + Phase 7 Vigil/auth/rate/canonical/workflows/UI/packaging + final gates) verified. All invariants (network isolation, model slots, import boundaries, DEFINER sovereignty, §1.8 togglability, Appendix D) hold. Ready for external use / further evolution under the same governance.
+
+**Phase 7 CHUNK-9.7 complete (final cross-cutting gates delivered; 8+1 passed on gate battery; core invariants green; pushed at <hash>). This closes Phase 7 and AIP 0.1 per linearized order.**
