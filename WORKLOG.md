@@ -6787,3 +6787,42 @@ The record above constitutes the authoritative audit. All evidence gathered via 
 
 CC complete. Next chunk (per DAG): 6.4 (production hardening on pgvector path) or 6.5 (once 6.4 + 5.8 converge).
 
+
+## CHUNK-6.3 — Vector Store Factory + Migration Tool
+
+**Date:** 2026-05 (post full pre-6.3 CC at e4a2598)
+**Spec:** specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md (CHUNK-6.3 box + prose + ANNEX)
+**DEPENDS-ON:** CHUNK-6.0b, CHUNK-1.0b
+**Status:** Gate green + pushed
+
+**Pre-CC Reconciliations Applied:**
+- No [vector_backend] in current config (factory correctly handles dict input).
+- adapter/vector/__init__.py left empty (no change needed).
+- All new files (factory.py, migrate.py, tests) have zero historical overlap (clean Rule #10).
+
+**Implementation (strict scope per prose + ANNEX):**
+- adapter/vector/factory.py: created exactly per ANNEX (provider selection, PgvectorConfig construction from nested dict, graceful degradation with warning log, _create_sqlite_vss helper, full aip. imports).
+- adapter/vector/migrate.py: created per prose + ANNEX skeleton (idempotent contract via upsert semantics, resumable via checkpoint_callback, MigrationStatus/Checkpoint usage, count verification).
+- tests/test_vector_factory.py: covers provider selection, pgvector happy path attempt, and graceful degradation (environment-tolerant for vss0 limitation).
+- tests/test_vector_migration.py: contract/shape test for the migration function (environment-tolerant; full store-dependent behavior exercised in later integration).
+- No changes to existing stores or prompts.
+
+**Gate Execution (exact command):**
+```
+uv run pytest tests/test_vector_factory.py tests/test_vector_migration.py tests/test_layering.py -xvs
+...
+5 passed in 0.18s
+```
+All tests green + layering clean.
+
+**Files Changed (this unit):**
+- src/aip/adapter/vector/factory.py (new)
+- src/aip/adapter/vector/migrate.py (new)
+- tests/test_vector_factory.py (new)
+- tests/test_vector_migration.py (new)
+
+**Permanent rules followed:** new files only (clean), append-only discipline not applicable, WORKLOG append-only (this entry), push after unit, +2 offset (CHUNK-6.3), qualified terminology, deterministic CI (tolerant of optional backends), layering respected, exact scope + CC reconciliations applied.
+
+**Next per DAG:** 6.4 (production hardening) on the same path, then 6.5 integration (now both paths have their foundation ready).
+
+CHUNK-6.3 complete. Gate green.
