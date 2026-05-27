@@ -33,6 +33,7 @@ class NodeResult:
     output: Any = None
     metadata: dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
+    exports: dict[str, Any] = field(default_factory=dict)  # Data this node wants to expose to later nodes
 
 
 class WorkflowNode(ABC):
@@ -141,6 +142,14 @@ class AgentNode(WorkflowNode):
             config=config,
         )
 
+        # Export useful data for downstream nodes (CHUNK-2.7)
+        exports = {
+            "content": synthesis_output.content,
+            "model_name": synthesis_output.model_name,
+            "token_count_in": synthesis_output.token_count_in,
+            "token_count_out": synthesis_output.token_count_out,
+        }
+
         return NodeResult(
             success=True,
             output=synthesis_output,
@@ -148,7 +157,8 @@ class AgentNode(WorkflowNode):
                 "node_id": self.node_id,
                 "model_slot": self.model_slot,
                 "retrieval_status": retrieval_result.status,
-            }
+            },
+            exports=exports,
         )
 
 

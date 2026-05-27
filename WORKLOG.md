@@ -1180,3 +1180,16 @@ This completes initial functional support for the parallel node type.
 High usability improvement. Safe to proceed.
 
 **Status:** Continuity Check complete. Proceeding to implementation.
+
+**Implementation for CHUNK-2.7:**
+- Added `exports` field to NodeResult for nodes to explicitly declare data they want to expose.
+- Updated SequentialRunner to automatically promote each node's output + exports into the workflow context under `<node_id>` and as `previous` (for easy access in the next node).
+- Made AgentNode export useful fields from the SynthesisOutput (content, tokens, model, etc.).
+- Added test coverage for data flow between nodes.
+- Minor improvement to ScriptNode and others via the runner promotion.
+
+This makes it much easier and more explicit to pass data (retrieval results, synthesis content, decisions, etc.) between steps in a workflow.
+
+**Pushed:** Yes
+
+**Status:** Complete

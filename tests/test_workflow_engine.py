@@ -149,3 +149,22 @@ def _make_val_for_test():
 def _make_eval_for_test():
     from aip.orchestration.nodes.adversarial_eval import EvalResult
     return EvalResult(passed=True, scores={}, requires_deep_eval=False)
+
+@pytest.mark.asyncio
+async def test_richer_data_flow_between_nodes():
+    """Verify that node outputs are automatically promoted to context under node_id and 'previous'."""
+    nodes = [
+        ScriptNode("step1", code="one"),
+        ScriptNode("step2", code="two"),
+    ]
+    ctx = WorkflowContext()
+    runner = SequentialRunner(nodes, ctx)
+    await runner.run()
+
+    # After step1
+    assert "step1" in ctx.variables
+    assert ctx.variables["step1"]["output"]["executed"] == "step1"
+
+    # After step2, "previous" should point to step2
+    assert ctx.variables["previous"]["output"]["executed"] == "step2"
+    assert ctx.variables["step2"] is not None

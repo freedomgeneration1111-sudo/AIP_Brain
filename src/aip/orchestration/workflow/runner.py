@@ -50,6 +50,20 @@ class SequentialRunner:
 
             result = await node.run(self.context)
             results.append(result)
+
+            # Richer data flow (CHUNK-2.7)
+            # Promote useful data from this node into the workflow context
+            node_data = {
+                "output": result.output,
+                "metadata": result.metadata,
+                "success": result.success,
+            }
+            if result.exports:
+                node_data.update(result.exports)
+
+            # Make data available as <node_id> and as "previous" for the next node
+            self.context.set(node.node_id, node_data)
+            self.context.set("previous", node_data)
             self.context.set("last_result", result.output)
 
             if not result.success:
