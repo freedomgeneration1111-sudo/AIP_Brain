@@ -8680,6 +8680,68 @@ CC complete. Next per linearized DAG: CHUNK-8.3 implementation (after push).
 
 ---
 
+## Full Pre-CHUNK-8.4 Continuity Check (Mandatory before Review Queue + Artifact Browser API)
+
+**Date:** 2026-05 (immediately after CHUNK-8.3 push at a689ea8)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.4 box + prose, lines 1193+)
+**DEPENDS-ON:** CHUNK-8.1 (FastAPI app + AipContainer + DI for mounting routes), CHUNK-4.0b (GuardrailedEcsStore for transitions, VersionedArtifactStore for versions)
+**Status:** CC complete + documented. Ready for CHUNK-8.4 (no src/ or tests/ production edits for 8.4 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-8.3 baseline: Chat WS scaffold + 8.2 CLI (at declared pyproject path) + 8.1 API scaffold + 8.0b adapters + full Phase 5 actor layer (Sexton, Beast, AdaptiveRouter, ACE Playbook, BudgetManager) + 8.0a schemas (incl ReviewQueueEntry) all green at 57 passed.
+- Critical Rule #10 finding: Only the 8.0a `ReviewQueueEntry` dataclass exists in foundation/schemas.py. No pre-existing `adapter/api/routes/review.py`, `artifacts.py`, or any review/artifact route implementations. No "review queue" business logic in orchestration or adapter layers beyond the schema stub. Clean slate for the two new route modules at spec locations.
+- All prior Clean Bills + 8.0-8.3 hold. 5.8 partial non-blocking.
+- Continuous execution: immediate next after 8.3 per linearized DAG (Review Queue is the DEFINER governance surface that closes the synthesis → review → approve loop).
+
+**1. Re-read of target CHUNK-8.4 (from Phase 6 SSOT):**
+
+```
+CHUNK-8.4: Review Queue + Artifact Browser API
+PHASE: 6
+DEPENDS-ON: CHUNK-8.1, CHUNK-4.0b
+CODER-PROFILE: L3
+CONTEXT-BUDGET: ~5,000 tokens
+FILES:
+  adapter/api/routes/review.py
+  adapter/api/routes/artifacts.py
+  tests/test_api_review_artifacts.py
+INTERFACES:
+  GET    /api/v1/reviews → list[ReviewQueueEntry] (paginated, filterable)
+  POST   /api/v1/reviews/{artifact_id}/approve → dict (autonomy_gate: admin, ECS REVIEWED→APPROVED + CanonicalStore.write_canonical)
+  POST   /api/v1/reviews/{artifact_id}/reject → dict (autonomy_gate: write, ECS REVIEWED→FAILED)
+  GET    /api/v1/artifacts → list[dict] (paginated)
+  GET    /api/v1/artifacts/{artifact_id} → dict
+  GET    /api/v1/artifacts/{artifact_id}/versions → list[dict]
+  GET    /api/v1/artifacts/{artifact_id}/evaluation → EvaluationScore + ...
+TESTS: tests/test_api_review_artifacts.py
+GATE: uv run pytest tests/test_api_review_artifacts.py -xvs
+```
+
+**Prose key mandates:** Review Queue aggregates from ArtifactStore + EcsStore + evaluation results. Approve: (1) AutonomyGate admin check, (2) EcsStore.transition REVIEWED→APPROVED, (3) CanonicalStore.write_canonical (with approved_by="definer"), (4) Event write. Reject: similar but to FAILED, no canonical. Artifact Browser read-only (no gate). Pagination from SurfaceConfig. ECS states per §9.3. All via 8.1 DI container. No direct storage imports.
+
+**2–6. (Live evidence):** DEPENDS (8.1 app/routes, 4.0b GuardrailedEcs + VersionedArtifact from Phase 4) present/green. No pre-existing review routes (grep + ls confirmed clean). Governance 57 passed (full battery incl CLI + layering). Rule #10: New files at exact spec paths (adapter/api/routes/review.py + artifacts.py) have zero overlap with delivered 8.0-8.3 code or Phase 5 actors. The Review Queue is the surface that finally exercises the actor layer's output (Sexton classifications feed into review decisions; ACE playbook influences what gets generated for review). Arch §3 (Review Queue surface), §9.3 (ECS states), §1.7 (admin gate on approve), §16 (Sexton/actor integration) alignments confirmed in prose. Post-8.3 Clean Bill holds.
+
+**Overall Pre-CHUNK-8.4 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-8.4 (Review Queue endpoints with admin AutonomyGate + canonical promotion + ECS transitions; Artifact Browser read-only; clean new paths per Rule #10; 57 passed baseline).**
+
+- All 6 steps executed with direct evidence.
+- Ready for exact 8.4 (two route modules + test per ANNEX).
+
+**This completes the mandatory full Continuity Check for CHUNK-8.4.**
+
+The record above constitutes the authoritative audit. All evidence gathered before any src/ or tests/ edits for 8.4.
+
+**Ready to proceed to CHUNK-8.4 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-8.4 implementation (after push).
+
+---
+
+**Phase 6 pre-8.4 CC complete. Tree clean at a689ea8. Continuing per continuous execution directive after push.**
+
+---
+
 ## CHUNK-8.3 — Chat Surface (WebSocket + DEFINER Gate Handling + ACE + Context Reset)
 
 **Date:** 2026-05 (post pre-8.3 CC at 83d2af5)
