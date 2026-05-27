@@ -3419,6 +3419,49 @@ After gate green: update WORKLOG, commit, push, continue the series.
 
 **Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-4.2.
 
+---
+
+## Task ID: 4.5-1 (Major Integration Chunk)
+
+**Agent:** Grok Build  
+**Task:** CHUNK-4.5: YAML Workflow Engine (the central L5 integration point for the remapped Phase 2 series)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK (from AIP_0_1_Phase2_BuildSpec_Rev1.2.md):**
+- This is the big L5 engine chunk that composes all previous node functions (including the new review/re-synthesis from 4.1/4.2 and the storage from 4.3/4.4) into a YAML-driven executable graph.
+- DEPENDS-ON: CHUNK-4.1, 4.2, 4.3, 4.4 (all of which we have now delivered the core pieces for).
+- FILES: Primarily `orchestration/engine.py` (and supporting workflow/ package) + tests.
+- Key requirements:
+  - Load YAML, Jinja2 resolution, topological sort, node dispatch.
+  - Enforce node contract invariants (zero-token for script/condition, model_slot for agent, event for dialog, protocol injection for storage).
+  - Support the new review and re-synthesis nodes in the Workflow 0.1 lifecycle.
+
+**2-6. Reconciliation — This is the critical one:**
+- **Historical repo 2.x reality (CHUNK-2.1–2.13 in old numbering):** There is already a substantial `orchestration/workflow/` package (engine.py, runner.py, context.py, loader.py, node.py, etc.) plus a high-level `WorkflowEngine` facade. This was built as the "Phase 2" engine before the remediation remapping.
+- The PHASE2_IMPORT_NOTES.md explicitly flags this: under 4.5 it says **"Partial — repo 2.x has mechanics but not full spec compliance"**.
+- Per Process Rule #10 (remediation): We **must** extend the existing engine to meet the new spec rather than replace it.
+- The new 4.1 (review) and 4.2 (re-synthesis) must be integrated into the node dispatch and the Workflow 0.1 reference lifecycle.
+- The storage from 4.3/4.4 (versioned artifacts, queryable events) must be injectable via the `stores` dict.
+- The L4 wiring (from our 3.x work, now carried forward) is already partially present in the current engine.py.
+
+**Conclusion of Continuity Check:**
+This is the reconciliation point we have been building toward. No blockers to starting the extension work, but the implementation must be "amend by addition / extension" of the existing repo 2.x engine mechanics, not a rewrite. All prior 4.x foundation pieces (review, re-synthesis, versioning, queryable events, ECS guardrails) are now available to wire in.
+
+**Status:** Continuity Check complete and documented. Ready for the (careful, extension-oriented) implementation of CHUNK-4.5.
+
+**Start of CHUNK-4.5 implementation (additive extension of existing repo 2.x engine):**
+- Added `ReviewNode` and `ReSynthesizeNode` classes in `orchestration/workflow/node.py` (additive, at the end of the file).
+- These delegate to the functions built in 4.1 and 4.2 when the appropriate protocols are available in the WorkflowContext.
+- Layering test still passes.
+- This is the beginning of wiring the new Phase 2 lifecycle nodes into the existing engine mechanics (as required by the remediation reconciliation for 4.5).
+
+More integration work (loader dispatch for "review"/"re_synthesize" node types in YAML, full Workflow 0.1 lifecycle support, store injection for the new versioned/queryable stores) will follow in subsequent steps of this chunk.
+
+**Next:** Continue extending the engine/loader to recognize and dispatch the new node types from YAML definitions.
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/re_synthesize.py` with `build_failure_context` and `re_synthesize` exactly per the spec ANNEX (failure context from Appendix E, retry budget enforcement, ECS transitions, versioned write, event recording).
 - Created `tests/test_re_synthesize.py` with the core tests (failure context building + basic re-synthesis flow).

@@ -282,3 +282,94 @@ class ParallelNode(WorkflowNode):
                 "continue_on_error": self.continue_on_error,
             }
         )
+
+
+# --- CHUNK-4.5 extensions: Review and Re-Synthesis nodes (additive) ---
+
+from aip.orchestration.review import review_artifact
+from aip.orchestration.re_synthesize import re_synthesize
+
+
+class ReviewNode(WorkflowNode):
+    """Node that runs the Phase 2 review gate (4.1)."""
+
+    def __init__(self, node_id: str, config: dict[str, Any] | None = None):
+        super().__init__(node_id, NodeType.DIALOG, config)  # Treated as dialog-like for pausing semantics
+
+    async def run(self, context: "WorkflowContext") -> NodeResult:
+        artifact_store = context.get_protocol("artifact_store")
+        ecs_store = context.get_protocol("ecs_store")
+        event_store = context.get_protocol("event_store")
+        trace_store = context.get_protocol("trace_store")
+        config = context.get_protocol("config")
+
+        # For now, we assume the artifact_id is in context or config
+        artifact_id = context.get("artifact_id") or self.config.get("artifact_id")
+        if not artifact_id:
+            return NodeResult(success=False, error="ReviewNode requires artifact_id in context or config")
+
+        try:
+            verdict = await review_artifact(
+                artifact_id=artifact_id,
+                artifact_store=artifact_store,
+                ecs_store=ecs_store,
+                event_store=event_store,
+                trace_store=trace_store,
+                config=config,
+            )
+            paused = verdict.verdict in ("REJECTED", "NEEDS_REVISION")
+            return NodeResult(
+                success=True,
+                output=verdict,
+                metadata={"verdict": verdict.verdict},
+                exports={"review_verdict": verdict},
+            )
+        except Exception as e:
+            return NodeResult(success=False, error=str(e))
+
+
+class ReSynthesizeNode(WorkflowNode):
+    """Node that runs the re-synthesis loop (4.2) on rejection."""
+
+    def __init__(self, node_id: str, config: dict[str, Any] | None = None):
+        super().__init__(node_id, NodeType.AGENT, config)  # Agent-like (can consume tokens)
+
+    async def run(self, context: "WorkflowContext") -> NodeResult:
+        artifact_store = context.get_protocol("artifact_store")
+        ecs_store = context.get_protocol("ecs_store")
+        event_store = context.get_protocol("event_store")
+        trace_store = context.get_protocol("trace_store")
+        config = context.get_protocol("config")
+
+        artifact_id = context.get("artifact_id") or self.config.get("artifact_id")
+        rejection = context.get("review_verdict")  # Expected from previous review node
+
+        if not artifact_id or not rejection:
+            return NodeResult(success=False, error="ReSynthesizeNode requires artifact_id and review_verdict in context")
+
+        try:
+            # Use the Phase 1 synthesis stub as the synthesize_fn for now
+            from aip.orchestration.nodes.synthesis import synthesize as phase1_synth
+
+            async def synth_wrapper(artifact_id, failure_context):
+                # Simplified wrapper — real integration in 4.5 will be richer
+                return await phase1_synth(
+                    query=str(failure_context),
+                    domain="re_synthesis",
+                    retrieval_result=None,
+                    config=config,
+                )
+
+            verdict = await re_synthesize(
+                artifact_id=artifact_id,
+                rejection=rejection,
+                artifact_store=artifact_store,
+                ecs_store=ecs_store,
+                event_store=event_store,
+                trace_store=trace_store,
+                synthesize_fn=synth_wrapper,
+                config=config,
+            )
+            return NodeResult(success=True, output=verdict, exports={"re_synthesis_verdict": verdict})
+        except Exception as e:
+            return NodeResult(success=False, error=str(e))
