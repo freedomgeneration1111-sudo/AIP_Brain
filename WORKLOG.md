@@ -680,3 +680,67 @@ All work in this phase will continue to follow the same process:
 **Status:** Prep complete. Awaiting execution of first Phase 2 CHUNK (with Continuity Check).
 
 **Pushed:** Yes
+
+---
+
+## Task ID: 2.1-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-2.1: L5 Workflow Engine Foundation — Node Protocol, Execution Context, YAML Loader, and Sequential Runner
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target requirements (Architecture Rev 5.2 §11.1):**
+- The engine must support at minimum these node types for Workflow 0.1:
+  - script (deterministic Python, zero tokens)
+  - agent (explicit model_slot, synthesis call)
+  - condition (Jinja2 branching, zero tokens)
+  - dialog (pauses workflow, emits event, resumes later)
+  - parallel (concurrent execution, inherits budget)
+- Hard invariants that must be respected from day one:
+  - script/condition = zero tokens
+  - agent nodes must declare model_slot explicitly
+  - dialog nodes must emit an event before pausing
+  - parallel nodes inherit parent budget
+  - No workflow node may ever import a storage implementation directly — everything goes through injected protocols (this is critical given our Phase 1 layering work)
+  - Workflow YAML is source-controlled and must remain machine-readable
+
+**2. Review of Phase 1 deliverables that this engine must consume/compose:**
+- We have fully implemented and tested node-like behaviors in Phase 1:
+  - retrieve_for_synthesis (L2 agent-like)
+  - structural_validate (L3a script-like)
+  - adversarial_eval (L3b)
+  - definer_gate (dialog-like)
+  - commit_artifact (script-like with side effects)
+- The workflow engine in Phase 2 must be able to orchestrate these (and future) nodes.
+- All of them already respect the "no direct storage imports" rule and use injected protocols (good continuity).
+
+**3. Import boundary / determinism constraints:**
+- The new workflow engine code will live in `orchestration/` (or a new `orchestration/workflow/` subpackage).
+- It must follow the §7.2 layering we just enforced with test_layering.py:
+  - orchestration/ can depend on foundation/
+  - Must not import adapter/ implementations directly
+- The engine itself must be fully deterministic and network-free in its core (model calls only happen inside properly slotted "agent" nodes).
+
+**4. Gaps / Risks identified:**
+- We do not yet have a formal "Node" protocol or "WorkflowContext" object.
+- We have no YAML loader or graph representation yet.
+- The existing Phase 1 functions are standalone; the engine will need to wrap/invoke them via a common interface.
+- Budget inheritance for parallel nodes will require a proper execution context (not present in Phase 1).
+- Dialog nodes pausing the workflow will require an event emission + resumption mechanism (this will likely need EventStore integration).
+
+**5. Scope decision for this CHUNK (to keep it L1/L2 and focused):**
+For CHUNK-2.1 we will deliver only the foundation:
+- Abstract node protocol / base classes (with clear hooks for the 5 types)
+- WorkflowContext / ExecutionContext object (budget tracking, variable store, event bus skeleton)
+- YAML loader that can parse a basic workflow definition into an executable graph
+- A simple sequential runner that can execute script + agent nodes (condition/dialog/parallel can be stubbed or raise NotImplemented for later chunks)
+- No full support for parallel, dialog pausing, or complex condition evaluation yet (those will be subsequent CHUNKS).
+
+This keeps the chunk focused while establishing the architecture that later chunks must respect.
+
+**Conclusion:**
+Safe to proceed with a narrowly scoped foundation chunk. The design must heavily reuse the protocol injection patterns and layering discipline from Phase 1.
+
+**Status:** Continuity Check complete. Proceeding to implementation of CHUNK-2.1.
+
