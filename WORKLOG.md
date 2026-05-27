@@ -3288,6 +3288,39 @@ Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.4.
 
+---
+
+## Task ID: 5.5-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.5: Trajectory Regulator (the "2 of 3" composer)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a + the three detectors (5.2, 5.3, 5.4).
+- This is the composer from §10.1: if 2 of the 3 signals (loop, anxiety, failure streak) fire in the session window, it decides on an intervention (progress summary + reset recommendation, etc.).
+- Must be deterministic and produce a ResetRecommendation or similar structured output.
+- Must carry appropriate §1.8 considerations in its decision logic / output.
+
+**Conclusion:**
+The "brain" of the L4 system. Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.5.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/regulator.py` — TrajectoryRegulator applying the 2-of-3 rule and producing ResetRecommendation.
+- Created `tests/test_regulator.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.5 complete.
+
+This completes the core L4 trajectory regulation composer.
+
+Continuing the Phase 3 grind (next natural: 5.6 Context Reset Protocol or 5.7 Multi-turn SessionContext).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/failure_streak.py` — FailureStreakDetector (Type E) looking for consecutive low-substance "completion" claims.
 - Created `tests/test_failure_streak.py`.
@@ -3659,6 +3692,39 @@ Clean. No blockers.
 Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.4.
+
+---
+
+## Task ID: 5.5-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.5: Trajectory Regulator (the "2 of 3" composer)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a + the three detectors (5.2, 5.3, 5.4).
+- This is the composer from §10.1: if 2 of the 3 signals (loop, anxiety, failure streak) fire in the session window, it decides on an intervention (progress summary + reset recommendation, etc.).
+- Must be deterministic and produce a ResetRecommendation or similar structured output.
+- Must carry appropriate §1.8 considerations in its decision logic / output.
+
+**Conclusion:**
+The "brain" of the L4 system. Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.5.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/regulator.py` — TrajectoryRegulator applying the 2-of-3 rule and producing ResetRecommendation.
+- Created `tests/test_regulator.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.5 complete.
+
+This completes the core L4 trajectory regulation composer.
+
+Continuing the Phase 3 grind (next natural: 5.6 Context Reset Protocol or 5.7 Multi-turn SessionContext).
+
+
 
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/failure_streak.py` — FailureStreakDetector (Type E) looking for consecutive low-substance "completion" claims.
@@ -4289,6 +4355,39 @@ Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.4.
 
+---
+
+## Task ID: 5.5-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.5: Trajectory Regulator (the "2 of 3" composer)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a + the three detectors (5.2, 5.3, 5.4).
+- This is the composer from §10.1: if 2 of the 3 signals (loop, anxiety, failure streak) fire in the session window, it decides on an intervention (progress summary + reset recommendation, etc.).
+- Must be deterministic and produce a ResetRecommendation or similar structured output.
+- Must carry appropriate §1.8 considerations in its decision logic / output.
+
+**Conclusion:**
+The "brain" of the L4 system. Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.5.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/regulator.py` — TrajectoryRegulator applying the 2-of-3 rule and producing ResetRecommendation.
+- Created `tests/test_regulator.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.5 complete.
+
+This completes the core L4 trajectory regulation composer.
+
+Continuing the Phase 3 grind (next natural: 5.6 Context Reset Protocol or 5.7 Multi-turn SessionContext).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/failure_streak.py` — FailureStreakDetector (Type E) looking for consecutive low-substance "completion" claims.
 - Created `tests/test_failure_streak.py`.
@@ -4594,6 +4693,39 @@ Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.4.
 
+---
+
+## Task ID: 5.5-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.5: Trajectory Regulator (the "2 of 3" composer)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a + the three detectors (5.2, 5.3, 5.4).
+- This is the composer from §10.1: if 2 of the 3 signals (loop, anxiety, failure streak) fire in the session window, it decides on an intervention (progress summary + reset recommendation, etc.).
+- Must be deterministic and produce a ResetRecommendation or similar structured output.
+- Must carry appropriate §1.8 considerations in its decision logic / output.
+
+**Conclusion:**
+The "brain" of the L4 system. Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.5.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/regulator.py` — TrajectoryRegulator applying the 2-of-3 rule and producing ResetRecommendation.
+- Created `tests/test_regulator.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.5 complete.
+
+This completes the core L4 trajectory regulation composer.
+
+Continuing the Phase 3 grind (next natural: 5.6 Context Reset Protocol or 5.7 Multi-turn SessionContext).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/failure_streak.py` — FailureStreakDetector (Type E) looking for consecutive low-substance "completion" claims.
 - Created `tests/test_failure_streak.py`.
@@ -4898,6 +5030,39 @@ Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.4.
 
+---
+
+## Task ID: 5.5-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.5: Trajectory Regulator (the "2 of 3" composer)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a + the three detectors (5.2, 5.3, 5.4).
+- This is the composer from §10.1: if 2 of the 3 signals (loop, anxiety, failure streak) fire in the session window, it decides on an intervention (progress summary + reset recommendation, etc.).
+- Must be deterministic and produce a ResetRecommendation or similar structured output.
+- Must carry appropriate §1.8 considerations in its decision logic / output.
+
+**Conclusion:**
+The "brain" of the L4 system. Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.5.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/regulator.py` — TrajectoryRegulator applying the 2-of-3 rule and producing ResetRecommendation.
+- Created `tests/test_regulator.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.5 complete.
+
+This completes the core L4 trajectory regulation composer.
+
+Continuing the Phase 3 grind (next natural: 5.6 Context Reset Protocol or 5.7 Multi-turn SessionContext).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/failure_streak.py` — FailureStreakDetector (Type E) looking for consecutive low-substance "completion" claims.
 - Created `tests/test_failure_streak.py`.
@@ -5201,6 +5366,39 @@ Clean. No blockers.
 Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.4.
+
+---
+
+## Task ID: 5.5-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.5: Trajectory Regulator (the "2 of 3" composer)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a + the three detectors (5.2, 5.3, 5.4).
+- This is the composer from §10.1: if 2 of the 3 signals (loop, anxiety, failure streak) fire in the session window, it decides on an intervention (progress summary + reset recommendation, etc.).
+- Must be deterministic and produce a ResetRecommendation or similar structured output.
+- Must carry appropriate §1.8 considerations in its decision logic / output.
+
+**Conclusion:**
+The "brain" of the L4 system. Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.5.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/regulator.py` — TrajectoryRegulator applying the 2-of-3 rule and producing ResetRecommendation.
+- Created `tests/test_regulator.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.5 complete.
+
+This completes the core L4 trajectory regulation composer.
+
+Continuing the Phase 3 grind (next natural: 5.6 Context Reset Protocol or 5.7 Multi-turn SessionContext).
+
+
 
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/failure_streak.py` — FailureStreakDetector (Type E) looking for consecutive low-substance "completion" claims.
