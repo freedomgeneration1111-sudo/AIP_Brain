@@ -1878,4 +1878,92 @@ After gate green + log update for implementation: commit + push. Then await next
 
 **Status:** Complete
 
-**Pushed:** (pending this work unit commit)
+**Pushed:** Yes (commit ce20b7b)
+
+---
+
+## Task ID: 3.3-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-3.3: L4 Activation in Workflow 0.1 + DEFINER Surface Hook (Spec Delta per Architecture Rev 5.2 §10.2)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target scope (Architecture Rev 5.2 §10.2 step 5 + §10.1 + §16.1):**
+- After CHUNK-3.2, the L4 coordinator can detect signals and log the intervention event (steps 1 and 4 of the §10.2 protocol).
+- The remaining actionable steps for a usable system are:
+  - Step 5: Surface to DEFINER (the recommendation + signals must reach a human authority via the existing dialog mechanism).
+  - Step 2/3/6 (progress summary synthesis, provisional commit, fresh session) remain caller-driven using existing L5 primitives.
+- Sexton (§16.1) is a downstream reader of the intervention events; it does not drive the surface step.
+- Per §1.8, any activation logic or thresholds must remain toggleable and tagged with model_gen_assumption.
+- The coordinator is already injected into WorkflowContext under "l4_coordinator". The gap is that no production workflow node or script currently calls it during a synthesis session.
+
+**2. DEPENDS-ON verification:**
+- CHUNK-3.2: L4ResetCoordinator + ResetRecommendation fully delivered and wired into WorkflowEngine / Workflow01Runner.
+- CHUNK-3.1: TrajectoryMonitor + get_recent_events.
+- Phase 2 L5: DialogNode / emit_event mechanism, ScriptNode (for deterministic calls), WorkflowContext.get_protocol, Workflow 0.1 reference implementation.
+- All Phase 1 nodes (especially definer_gate, synthesis, commit) that already participate in the "surface + review + commit" flow.
+- test_layering.py, test_trace_schema.py, and the two L4 test files.
+
+**3. Revision Log cross-check:**
+- No production code yet calls check_and_log_reset outside of the engine default wiring and unit tests.
+- The dialog / DEFINER surface mechanism (from Phase 2) is mature and must be reused — no new dialog primitives.
+- All prior L4 work stayed strictly within "detection + logging + recommendation surfacing" (no node-level activation).
+
+**4. Architecture cross-references checked:**
+- §10.2 step 5 "Surface to DEFINER" is the explicit next activation point after logging the intervention.
+- §1.8: L4 intervention triggers must be harness components that can be audited/toggled.
+- §11.1: Workflow nodes (script) are the correct place for deterministic L4 calls inside a YAML-defined flow.
+- §16.1: Sexton consumes the trace events after they are written; surface to DEFINER is a separate, earlier harness responsibility.
+- Layering (§7.2) and injection (§11) remain non-negotiable.
+
+**5. Consistency with actually delivered artifacts (post-3.2):**
+- l4_coordinator is present in every WorkflowContext created by the high-level runners (engine + workflow_01).
+- No node or script in src/aip/orchestration/nodes/ or examples/ currently consumes it.
+- The reference Workflow 0.1 (workflow_01.py) has a definer_gate dialog but no L4 check before or after synthesis.
+- All L4 tests pass, layering is clean, trace schema supports the intervention records.
+- The "surface" capability (emit_event + DialogNode) exists and is used by the reference workflow.
+
+**6. Scope decision for this chunk (no deviation):**
+- Declare as explicit spec delta (same justification as 3.1/3.2): Rev 1.3 only lists "L4 trajectory regulation (Phase 3)" with no CHUNK definitions. This continues the Architecture-driven L4 sequence.
+- Minimal activation chunk that makes L4 actually fire during a synthesis session and reach the DEFINER:
+  - Add a small, reusable helper (or script node example) that can be dropped into Workflow 0.1 or custom YAML flows: call the injected l4_coordinator from context, and if recommendations exist, emit a structured dialog event containing the recommendations + signals for DEFINER review.
+  - Update the reference Workflow 0.1 (workflow_01.py) additively to include an L4 check point (e.g. after synthesis or in a new script node) so the canonical pipeline demonstrates the full loop.
+  - Ensure the surfaced payload is useful for a DEFINER decision (signals evidence, recommended action, model_gen_assumption).
+  - One dedicated test (test_l4_workflow_integration.py or extension of existing workflow tests) that runs a minimal workflow with the coordinator wired and verifies that a recommendation correctly triggers a dialog event.
+  - Gate: new test + full re-run of both L4 tests + test_layering.py + test_trace_schema.py + relevant workflow tests.
+- Explicitly out of scope: actually executing the progress summary synthesis or the fresh session start (those are DEFINER-approved actions using existing agent + workflow primitives), any changes to core node contracts, Sexton implementation, advanced heuristics, UI beyond the existing dialog surface.
+
+**Conclusion of Continuity Check:**
+The foundation (3.1 detection + 3.2 response/logging + engine wiring) is solid. The missing piece for a usable L4 capability is activation inside running workflows so that step 5 ("Surface to DEFINER") of the §10.2 protocol can occur using the Phase 2 dialog machinery. This is the smallest next unit that delivers end-to-end value while obeying every process rule, layering constraint, and zero-token doctrine. Safe to proceed to implementation on next short command.
+
+**Status:** Continuity Check complete. Declaring spec delta scope for CHUNK-3.3. Awaiting short user command to execute.
+
+**Spec Delta Declaration (logged before any CHUNK-3.3 production code):**
+This CHUNK-3.3 activates the L4 Context Reset capability inside actual synthesis workflows so the "Surface to DEFINER" step of Architecture Rev 5.2 §10.2 can occur. Scope is strictly limited to the minimal integration that reuses existing dialog and script mechanisms. All future work continues append-only discipline.
+
+**FILES (for 3.3):**
+- (additive) updates to orchestration/workflow/workflow_01.py to include an L4 check point in the reference Workflow 0.1 pipeline
+- (optional but likely) small reusable helper in orchestration/l4/ or a documented script node pattern for calling the coordinator and emitting dialog events
+- tests/test_l4_workflow_integration.py (new) or extension of test_workflow_engine.py / test_workflow_01
+- Gate must re-run all L4 tests + layering + trace schema + key workflow tests
+
+**INTERFACES (minimal):**
+- From WorkflowContext: `l4_coordinator = ctx.get_protocol("l4_coordinator")`
+- If recs := await coordinator.check_and_log_reset(session_id): 
+    ctx.emit_event("l4_reset_recommended", {"recommendations": [asdict(r) for r in recs], ...})
+- The existing DialogNode + definer_gate machinery consumes the emitted event for DEFINER review.
+
+**TESTS:**
+- New or extended integration test that constructs a WorkflowContext with the coordinator, runs a minimal flow that triggers a recommendation, and asserts a dialog-type event is emitted with the correct payload.
+- Full regression of previous L4 gates.
+
+**GATE:**
+`uv run pytest tests/test_l4_context_reset.py tests/test_l4_trajectory_monitor.py tests/test_l4_workflow_integration.py tests/test_layering.py tests/test_trace_schema.py tests/test_workflow_engine.py -xvs`
+
+After gate green: update WORKLOG with implementation notes, commit, push. Await next command for 3.4 (Sexton foundation or deeper L4b heuristics).
+
+**Implementation notes (to be filled after execution):**
+- [empty until next "go"]
+
+**Status:** Continuity Check + Spec Delta documented. No production code written for 3.3. Awaiting user short command.
