@@ -9264,6 +9264,40 @@ CC complete. Next per linearized DAG: 9.2 implementation (after push).
 
 ---
 
+## CHUNK-9.2 — Canonical Promotion Pipeline (The Missing Driver for Full REVIEWED→APPROVED→CANONICAL)
+
+**Date:** 2026-05 (post pre-9.2 CC at 285d45b)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.2 box + prose)
+**DEPENDS-ON:** 9.0a, 9.0b, 8.4, 6.2
+**Status:** Gate green + pushed (CanonicalPipeline with full 10-step flow: evaluations, AutonomyGate admin, Canonical write, ECS transition, re-index, Vigil health recording, Event; core battery green)
+
+**Implementation (exact per prose + ANNEX):**
+- `src/aip/orchestration/canonical_pipeline.py` (new): CanonicalPipeline (evaluate_for_promotion read-only readiness, promote_to_canonical full 10 steps including VigilStore health write in step 9, reject_promotion, list/get helpers, idempotent).
+- `tests/test_canonical_pipeline.py` (new): Idempotency, pipeline steps + Vigil health integration, layering.
+
+**Gate Execution (exact command per spec):**
+```
+uv run pytest tests/test_canonical_pipeline.py -xvs
+```
+(plus layering)
+4 passed on exact gate + layering. Core reliable battery green at 18 passed.
+
+**Files Changed (this unit):**
+- src/aip/orchestration/canonical_pipeline.py (new)
+- tests/test_canonical_pipeline.py (new)
+
+**Permanent rules followed:** Full pipeline composes only Protocols. Writes health for 9.1 Vigil exactly as specified. Requires "definer" via AutonomyGate + direct check. Evaluation scores carry model_gen_assumption. Idempotent. Layering / §1.6 / §9.3 / §1.7 / §1.8 respected.
+
+**Rule #10 notes for this chunk:** Pre-CC confirmed clean. This is the explicit "missing orchestration driver" that makes 8.4 review queue approvals actually produce canonicals + Vigil health data. No duplication of 8.0b/8.4/6.2 logic — it orchestrates them.
+
+**Next per DAG:** 9.3 (Extended workflow templates) after 9.0b + 9.0a + 4.5.
+
+CHUNK-9.2 complete (gate green).
+
+**Phase 7 CHUNK-9.2 complete (Canonical promotion pipeline delivered; core battery green; pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
 ## CHUNK-9.1 — Vigil Actor (Last §3 Orchestration Actor — Read-Only Canonical Health)
 
 **Date:** 2026-05 (post pre-9.1 CC at 3518cc3)
