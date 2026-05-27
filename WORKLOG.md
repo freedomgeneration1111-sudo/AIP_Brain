@@ -147,9 +147,31 @@ All succeeded. The types Rev 1.3 expects to be present before CHUNK-1.0a now exi
 ## Task ID: 1.1-1
 
 **Agent:** Grok Build  
-**Task:** CHUNK-1.1: retrieve_for_synthesis (next per Rev 1.3)
+**Task:** CHUNK-1.1: retrieve_for_synthesis — L2 retrieval + low-confidence gate + four-factor reranking (execute exactly per Rev 1.3)
 
-**Status:** Next
+**Work Log:**
+- Created `src/aip/orchestration/retrieval.py` with:
+  - RerankWeights + from_config (Delta 5, F3 dual dict/AipConfig support)
+  - fake_embed (deterministic, unit vector)
+  - rerank() with semantic/recency/authority/frequency factors
+  - retrieve_for_synthesis (config-loaded threshold, embed_fn, TraceStore logging with failure_type="A" on INSUFFICIENT_MEMORY, reranking)
+- Created `tests/test_retrieve_for_synthesis.py` with 13 tests covering all prose points (Deltas 4/5, R2/F2, F3, rerank behavior).
+- Gate: `PYTHONPATH=src uv run python -m pytest tests/test_retrieve_for_synthesis.py -xvs` → **13/13 PASSED**.
+
+**Gate result:** All tests pass.
+
+**Pushed:** Yes (next commit)
+
+**Status:** Complete
+
+---
+
+## Task ID: 1.2-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-1.2: structural_validate (L3a deterministic validation)
+
+**Status:** Next (will grind immediately)
 
 ---
 
