@@ -6952,3 +6952,88 @@ All tests green + layering clean (adapter-only imports).
 **Next per DAG:** 6.5 (integration test — now has both node-promotion paths + full pgvector adapter path with hardening ready, plus 5.8).
 
 CHUNK-6.4 complete. Gate green.
+
+## Full Pre-CHUNK-6.5 Continuity Check (Mandatory before Phase 4 Integration Test)
+
+**Date:** 2026-05 (immediately after CHUNK-6.4 gate green + push at d3d897a)
+**Scope:** Full 6-step Continuity Check per permanent rules before any production code for CHUNK-6.5. Authoritative baselines: post-Phase-3 Clean Bill, all prior 6.x CCs and completion records (through 6.4), SSOT Phase 4 Rev1.0, PHASE2_IMPORT_NOTES, Architecture Rev 5.2.
+**Next Chunk Selection:** Per linearized build order ("... → 6.4 → 6.5 (after 6.2, 6.4, CHUNK-5.8) ..."), after completing both parallel paths (node promotion via 6.1-6.2 and pgvector adapter via 6.0b/6.3/6.4), the next is the convergence point: CHUNK-6.5 (Integration Test). 6.6 is the final cross-cutting gate after 6.5.
+
+**1. Re-read of target CHUNK-6.5 (from SSOT specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md:1983+):**
+
+```
+CHUNK-6.5: Integration Test
+PHASE: 4
+DEPENDS-ON: CHUNK-6.2, CHUNK-6.4, CHUNK-5.8
+CODER-PROFILE: L3
+CONTEXT-BUDGET: ~4,000 tokens
+FILES:
+  tests/test_phase4_integration.py
+INTERFACES:
+  (test-only chunk — no new production code)
+TESTS: tests/test_phase4_integration.py
+GATE: uv run pytest tests/test_phase4_integration.py -xvs
+```
+
+**Prose key mandates (4 scenarios, all in CI mode):**
+- Scenario 1: Full Workflow 0.1 pipeline with sqlite_vss + all promoted nodes (6.1 synthesis with resolver, 6.2 adversarial + faithfulness + domain_coherence) + full ECS lifecycle.
+- Scenario 2: Same with pgvector (skipped if unavailable); cross-backend retrieval equivalence.
+- Scenario 3: Migration verification (sqlite_vss → pgvector via 6.3 tool) + idempotency + data integrity.
+- Scenario 4: Degradation path (invalid pgvector connection → factory fallback + 6.4 health reports degraded + still-functional retrieval).
+- Gate verifies all scenarios, no regression on prior tests, cross-backend equivalence, migration idempotency, degradation reporting.
+
+**ANNEX:** Detailed test_phase4_integration.py skeleton with the 4 scenarios (using factory, health, promoted nodes; PGVECTOR_AVAILABLE guard; ci_mode configs).
+
+**2. Re-read of all DEPENDS-ON (current reality + prior deliveries):**
+
+- **CHUNK-6.2 (completed in 6.2):** Promoted adversarial_eval, new faithfulness.py + domain_coherence.py, full_l3a in validation. All with resolver injection and CI fixtures.
+- **CHUNK-6.4 (just completed):** connection_manager.py + health.py (system_health_check) + test_production_hardening. Degradation reporting and manager lifecycle present.
+- **CHUNK-5.8 (partial, as previously declared):** test_phase3_integration.py (190-line starter with SessionManager, reset, resolver ci_mode, embedding mock). Core multi-turn + L4 paths exercised; full ~370-line ANNEX not present.
+- Current deliverables: All 6.1-6.4 promoted nodes, factory (6.3), migrate (6.3), connection_manager + health (6.4), pgvector_store (6.0b) are importable and have the expected interfaces (confirmed via smoke in CC data gather).
+- No tests/test_phase4_integration.py yet (clean).
+
+**3. Cross-check against post-Phase-3 CC + all prior 6.x work + 5.8 plan:**
+
+- Git: at d3d897a (6.4) + minor uv.lock. All 6.0-6.4 deliverables present and green.
+- All prior Clean Bills hold. The 5.8 partial fidelity (starter vs full ANNEX) remains as documented — 6.5 will exercise the promoted components on top of the 5.8 baseline; no change to the non-blocking status of the partial.
+- 6.1/6.2 node promotions + 6.3/6.4 adapter hardening now provide exactly the pieces 6.5 is designed to integrate.
+- Governance post-6.4: layering clean; pre-existing network gate failures are the known Phase 1 artifacts (unrelated to 6.5 scope).
+
+**4. Rule #10 overlap/reconciliation check:**
+
+- Target file: tests/test_phase4_integration.py (new, test-only).
+- Historical record: 4.7 (Phase 2 lifecycle), 5.8 (Phase 3 multi-turn + L4) exist and are additive baselines. No prior Phase 4 integration test. No production code overlap (6.5 is explicitly test-only).
+- **Reconciliation:** Clean — new file per ANNEX. 6.5 extends the 5.8 starter with the four new scenarios using the 6.1-6.4 deliverables. No modifications to existing 5.8 code required by this chunk. Prior partial status of 5.8 is unchanged.
+
+**5. Architecture Rev 5.2 cross-references:**
+
+- §9.1 L3a three-stage validation: Fully exercised (Stage 1 via structural_validate, 2/3 via the 6.2 nodes).
+- §2.2 VectorStore portability: Core of Scenario 2 (cross-backend equivalence) and Scenario 3 (migration integrity).
+- Degradation scenarios (Scenario 4) directly validate the 6.4 hardening + factory fallback chain.
+- All in CI mode (deterministic fixtures) per permanent determinism rule.
+
+**6. Other findings + state verification:**
+
+- No 6.5 code exists (confirmed by tree + searches).
+- All required 6.1-6.4 components are present and import cleanly.
+- Prompts/ has the required templates from 6.1/6.2.
+- 6.5 is pure test extension — zero risk to any production surface.
+- The known governance pre-existing issues (Phase 1 hardcodes) are out of scope for this test-only chunk.
+
+**Overall Pre-CHUNK-6.5 Continuity Check Result:**
+
+**Clean Bill of Health for baseline + readiness for CHUNK-6.5.**
+
+- All 6 steps executed with direct evidence.
+- Prior Clean Bills hold; 5.8 partial plan remains non-blocking.
+- No material overlaps; clean reconciliation (new test file extending prior 4.7/5.8 baselines).
+- All permanent rules, layering, §9.1/§2.2, and CI determinism requirements align with the chunk design (test-only, heavy ci_mode usage, PGVECTOR_AVAILABLE guard).
+
+**This completes the mandatory full Continuity Check for CHUNK-6.5.**
+
+The record above constitutes the authoritative audit. All evidence gathered via tool execution before any src/ or tests/ edits for 6.5.
+
+**Ready to proceed to CHUNK-6.5 implementation (exact scope per prose + ANNEX — test-only extension of 5.8 with the four scenarios), gate, WORKLOG append, and push.**
+
+CC complete. Next chunk (per DAG): 6.6 (final network/model-name gate) after 6.5.
+
