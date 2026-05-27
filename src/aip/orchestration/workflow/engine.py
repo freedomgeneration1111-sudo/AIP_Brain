@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
+from aip.orchestration.budget import InMemoryBudgetStore
 from aip.orchestration.embed_providers import get_embed_fn
 from aip.orchestration.retrieval import fake_embed
 from aip.orchestration.workflow.context import WorkflowContext
@@ -57,6 +58,7 @@ class WorkflowEngine:
         ecs_store: Any | None = None,
         event_store: Any | None = None,
         config: dict[str, Any] | None = None,
+        budget_store: Any | None = None,
         # Future: instance_store, etc.
     ):
         self.vector_store = vector_store
@@ -71,6 +73,7 @@ class WorkflowEngine:
         self.ecs_store = ecs_store
         self.event_store = event_store
         self.config = config or {}
+        self.budget_store = budget_store or InMemoryBudgetStore()
 
     async def run_workflow(
         self,
@@ -92,6 +95,7 @@ class WorkflowEngine:
             "ecs_store": self.ecs_store,
             "event_store": self.event_store,
             "config": self.config,
+            "budget_store": self.budget_store,
         }
 
         # Provide safe no-op stores for the general workflow path
@@ -131,6 +135,8 @@ class WorkflowEngine:
             # L4 (3.1 + 3.2)
             "trajectory_monitor": monitor,
             "l4_coordinator": coordinator,
+            # CHUNK-3.11 Budget
+            "budget_store": self.budget_store,
         }
 
         ctx = WorkflowContext(
