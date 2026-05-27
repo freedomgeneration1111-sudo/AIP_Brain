@@ -6242,3 +6242,108 @@ All 12 tests green:
 **Permanent rules followed:** append-only on schemas/protocols, WORKLOG append-only (this entry), push after unit, qualified CHUNK-6.0a terminology, deterministic gate (no net/models), exact scope only.
 
 CHUNK-6.0a complete. Gate green.
+
+## Full Pre-CHUNK-6.0b Continuity Check (Mandatory before Phase 4 pgvector Adapter Implementation)
+
+**Date:** 2026-05 (immediately after CHUNK-6.0a gate green + push at 70dd242)
+**Scope:** Full 6-step Continuity Check per permanent rules (PHASE2_IMPORT_NOTES §6 + Phase 4 spec Continuity Check rule + user standing instructions) before any production code for CHUNK-6.0b. Authoritative baselines: post-Phase-3 Clean Bill (5926–6056), pre-6.0a CC (6057–6203), 6.0a completion record (6204+), SSOT specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md, PHASE2_IMPORT_NOTES (updated), Architecture Rev 5.2.
+**Next Chunk Determination:** Per linearized build order in Phase 4 spec ("6.0a → 6.0b (parallel with 6.1 after 5.0b)"), after successful 6.0a the direct follow is CHUNK-6.0b (pgvector adapter path). 6.1 remains available as parallel start (both unblocked). Selected 6.0b to follow the explicit 6.0a → 6.0b arrow while the two paths remain independent until 6.5. No options offered.
+
+**1. Re-read of target CHUNK-6.0b (from SSOT specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md:555+):**
+
+```
+CHUNK-6.0b: pgvector Adapter Implementation
+PHASE: 4
+DEPENDS-ON: CHUNK-6.0a, CHUNK-1.0b
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~5,000 tokens
+FILES:
+  adapter/vector/pgvector_store.py
+  adapter/vector/__init__.py (update if exists)
+  tests/test_pgvector_store.py
+INTERFACES:
+  class PgvectorStore(VectorStore):
+      ... (full: __init__ with PgvectorConfig, upsert/retrieve/delete/health_check/count/initialize/close + batch_upsert)
+TESTS: tests/test_pgvector_store.py
+GATE: uv run pytest tests/test_pgvector_store.py tests/test_layering.py -xvs
+```
+
+**Prose summary (key mandates):**
+- Implements the *existing* VectorStore Protocol (from foundation/protocols.py, as amended through 6.0a).
+- Uses asyncpg + connection pool + HNSW indexes (CREATE EXTENSION IF NOT EXISTS vector, vector type, <=> cosine operator).
+- initialize() creates pool + (lazy) table + HNSW + domain indexes using config values.
+- close() gracefully shuts down pool.
+- upsert: ON CONFLICT DO UPDATE, matches sqlite_vss semantics exactly.
+- retrieve: SET LOCAL hnsw.ef_search, 1 - (vector <=> ) AS score (0–1 scale), domain filter, returns list[Chunk].
+- delete, health_check (SELECT 1 + pool stats + latency), count (with optional domain).
+- batch_upsert (for migration tool).
+- **CI mode:** pytest.mark.skipif when no Postgres; full MockPgvectorStore in-memory implementation that exercises identical code paths for the gate. Existing sqlite_vss tests must continue to pass.
+- Layering gate (test_layering.py) must pass: adapter/vector/pgvector_store.py imports only foundation (Protocol + schemas) + asyncpg; never orchestration.
+
+**ANNEX (implementation + test expectations):** Full PgvectorStore class with asyncpg details, _ensure_table, error handling on uninitialized pool, specific SQL strings, health_check dict shape, MockPgvectorStore with simplified in-memory logic using the signatures shown in the box, and ~20+ mock-based @pytest.mark.asyncio tests covering upsert/retrieve roundtrips, updates, domain filtering, count, delete, health_check, etc. (real Postgres tests skipped unless AIP_PGVECTOR_TEST=1).
+
+**2. Re-read of all DEPENDS-ON:**
+
+- **CHUNK-6.0a (just completed + green at 70dd242):** PgvectorConfig, Migration* types, Evaluation* types, VectorBackendType in schemas.py; health_check() + count() method stubs added to VectorStore Protocol. All 12 tests green. Clean append/amend.
+- **CHUNK-1.0b (from Phase 1 spec + current src/aip/adapter/vector/sqlite_vss_store.py):** Full SqliteVssVectorStore implementing VectorStore. Uses sync sqlite3 + vss0 extension. _init_tables creates vector_metadata + vss_vectors virtual table. upsert (with content + embedding params, delete-then-insert for upsert semantics), retrieve (vss_vectors MATCH with k, domain filter, joins to metadata), etc. Also implements the count that was already in the protocol. Current file is  the authoritative reference implementation for the protocol signatures.
+
+**Current actual VectorStore Protocol signatures (source of truth from protocols.py post-1.0a/6.0a):**
+- upsert(id, embedding: list[float], content: str, metadata: dict, domain: str | None = None)
+- retrieve(query_vector, domain: str | None = None, top_k: int = 10) → list
+- delete(id)
+- (plus health_check + count from 6.0a)
+- (plus deprecated store)
+
+**3. Cross-check against post-Phase-3 CC + 6.0a completion + 5.8 plan:**
+
+- Git: clean at 70dd242 (6.0a). No uncommitted changes. All 5.x/6.0a work present.
+- Governance re-run (this CC): test_layering.py + test_phase3_network_gate.py → 5/5 green (unchanged from post-6.0a).
+- 5.8 partial (starter vs full ANNEX): untouched by 6.0a or this 6.0b scope (adapter layer only). Plan remains non-blocking.
+- Clean Bill of Health from 92b5fd3 + pre-6.0a CC still holds in full. 6.0a added no regressions.
+- Violation scan baseline: still only the one allowed 5.1 httpx in adapter/embedding.
+
+**4. Rule #10 overlap/reconciliation check (performed on all historical + current code):**
+
+- Target files for 6.0b: adapter/vector/pgvector_store.py (new), adapter/vector/__init__.py (empty today), tests/test_pgvector_store.py (new).
+- Read WORKLOG + tree + prior CCs: pgvector was explicitly called out as out-of-scope in Phase 3 (and earlier). No prior pgvector code, no other vector store implementations besides the single sqlite_vss_store.py from CHUNK-1.0b. Zero historical 2.x/3.x/4.x/5.x attempts at this file or class.
+- Overlap on shared protocol (VectorStore): **Significant signature divergence** between Phase 4 spec ANNEX (uses "vector" param, omits "content", uses "limit" in retrieve, required domain in some places) vs. actual delivered protocol + sqlite_vss impl (uses "embedding", includes "content: str", "top_k", optional domain).
+  - **Reconciliation (extend existing rather than replace):** The protocol defined in foundation/protocols.py (as materialized and satisfied by the working sqlite_vss_store.py) is the single source of truth. PgvectorStore **must** be a drop-in structural replacement that passes the same interface checks and allows existing code using VectorStore to work unchanged. Implementation will follow the detailed behavioral prose/ANNEX (asyncpg pool + HNSW + specific SQL + health_check shape + batch_upsert + initialize/close lifecycle + error messages + CI mock strategy + cosine similarity math + domain filtering + 0–1 score normalization) 100%, but will use the exact method signatures from the current protocol (embedding + content params, top_k, optional domain) so that it satisfies `VectorStore` and the gate (including "existing SqliteVssVectorStore tests still pass").
+  - New files (pgvector_store.py + its test) have zero overlap with any historical code — safe to create.
+  - __init__.py is currently empty; any update will be minimal (if needed for exports) and additive.
+- No other overlaps (no prior asyncpg usage, no HNSW code, no pgvector-specific SQL anywhere).
+- "Extend existing" satisfied: sqlite_vss remains untouched; pgvector will be the parallel production implementation of the same protocol.
+
+**5. Architecture Rev 5.2 cross-references:**
+
+- §7.2 Import Boundary Rules (critical for this chunk): "Adapter may compose Foundation and Orchestration." But the explicit 6.0b gate + prose require: pgvector_store.py imports **only** foundation.protocols, foundation.schemas, and asyncpg. Zero orchestration imports. test_layering.py will enforce. (We will satisfy the stricter adapter-only-foundation rule stated in the ANNEX comment.)
+- §1.8: All config (pool sizes, HNSW params, timeouts) comes from PgvectorConfig (toggleable, no hardcodes). health_check / count results will be inspectable by Sexton.
+- §9.1 / zero-token / network isolation: 6.0b lives in adapter/ (correct layer for network). Uses asyncpg (legitimate, analogous to 5.1 httpx in embedding). CI path uses pure in-memory MockPgvectorStore (zero network). Matches the tolerant regression pattern established in 5.9 gate. No model calls.
+- §2.2 / VectorStore abstraction: Explicitly enables the pgvector ↔ sqlite_vss transparent swap. This chunk delivers the production side.
+- Config-driven: All behavior parameterized via the PgvectorConfig delivered in 6.0a.
+
+**6. Other findings + state verification:**
+
+- Git: HEAD exactly 70dd242, clean tree.
+- No asyncpg in pyproject.toml yet (will be a dependency addition as part of this chunk's production path; mock tests do not require it).
+- Current sqlite_vss_store.py is sync; 6.0b will be fully async (correct and expected for the production PostgreSQL path).
+- Mock strategy in spec ANNEX is comprehensive and will allow the gate to run fully in this CI environment (no Postgres).
+- 6.0b does not touch orchestration, L4, session, synthesis, or the 5.8 integration surface — zero risk to 5.8 partial plan or prior Clean Bill.
+
+**Overall Pre-CHUNK-6.0b Continuity Check Result:**
+
+**Clean Bill of Health for baseline + readiness for CHUNK-6.0b.**
+
+- All mandatory re-reads, cross-checks, Rule #10 (with explicit signature mismatch reconciliation plan), and Arch 5.2 refs completed with direct evidence.
+- Post-Phase-3 Clean Bill + 6.0a success + 5.8 plan remain fully intact.
+- One material overlap (protocol signature divergence) identified and reconciled via "extend existing": implement to the actual protocol (sqlite_vss as reference), while delivering 100% of the behavioral requirements from the 6.0b prose + ANNEX.
+- Layering, zero-token, deterministic CI, and all permanent rules will be satisfied by following the spec's own CI mock + layering gate requirements.
+- New files have zero historical overlap. Ready to implement.
+
+**This completes the mandatory full Continuity Check for CHUNK-6.0b.**
+
+The record above constitutes the authoritative audit. All evidence gathered via tool execution before any src/ or tests/ edits for 6.0b.
+
+**Ready to proceed to CHUNK-6.0b implementation (exact scope per prose + ANNEX, adjusted only for protocol signature fidelity per Rule #10 reconciliation), gate (including test_layering.py), WORKLOG append, and push.**
+
+CC complete. Next chunk (after this one): per DAG, 6.1 or 6.3 depending on path taken.
+
