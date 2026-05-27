@@ -1346,3 +1346,42 @@ This turns the 2.6 foundation into a production-usable persistence layer while s
 **Pushed:** Yes
 
 **Status:** Complete
+
+---
+
+## Task ID: 2.10-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-2.10: Advanced Parallel Semantics (branch dependencies, result merging, error aggregation)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Why this now?**
+- We have basic parallel execution from 2.4 and solid persistence from 2.9.
+- Current parallel support is very simple (just run children concurrently and collect results).
+- Real workflows need more: dependencies between parallel branches, proper result merging strategies, error handling/aggregation, and correct budget accounting when branches fail or are cancelled.
+
+**2. Current state:**
+- ParallelNode + runner support for basic concurrent execution with context forking.
+- No notion of branch dependencies yet.
+- Error in one branch just gets returned as an exception in the gather result.
+- No standardized way to merge or reduce results from parallel branches.
+
+**3. Scope decision for this chunk:**
+- Extend ParallelNode to accept dependency declarations between children.
+- Implement a result merging mechanism (e.g., "all", "any", custom reducer).
+- Proper error aggregation and propagation (with option to continue on partial failure).
+- Ensure budget is correctly accounted when parallel branches complete or fail.
+- Add tests for the new semantics.
+
+**4. Constraints:**
+- Must continue to respect all Phase 1 layering and protocol rules.
+- Should build cleanly on the existing ParallelNode and runner infrastructure.
+
+**5. Risks:**
+- Can get complex quickly. Keep the first version focused on the most common needs (dependencies + basic error handling + result collection).
+
+**Conclusion of Continuity Check:**
+High-value extension that makes parallel actually useful in production workflows. Safe to proceed.
+
+**Status:** Continuity Check complete. Proceeding to implementation.
