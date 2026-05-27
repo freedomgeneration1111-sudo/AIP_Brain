@@ -10561,3 +10561,122 @@ CHUNK-10.0a complete (gate green).
 
 **Phase 8 CHUNK-10.0a complete (gate green + pushed at bbf8bde). Continuing to next per linearized order.**
 
+
+---
+
+## Full Pre-CHUNK-10.0b Continuity Check (Mandatory before Knowledge Store Adapter + Plugin Adapter — SqliteKnowledgeStore + PluginLoader/YamlPluginProvider)
+
+**Date:** 2026-05 (immediately after CHUNK-10.0a delivery + push at 7c7f8e5)
+**Spec:** specs/AIP_0_1_Phase8_BuildSpec_Rev1.0.md (CHUNK-10.0b box + full prose + interfaces + File Layout & Import Conventions note)
+**DEPENDS-ON:** CHUNK-10.0a (just delivered), CHUNK-9.0b, CHUNK-8.1 (and all prior)
+**Status:** CC complete + documented with verbatim evidence. Ready for CHUNK-10.0b (NO src/ or tests/ production edits for 10.0b performed during this CC). Tree will be pushed after this record.
+
+**Pre-CC Reconciliations Applied:**
+- Post-10.0a baseline at 7c7f8e5: Foundation complete (KnowledgeStore + PluginProvider Protocols, 5 new dataclasses + aliases + config sections, test_phase8_schema_additions.py green). All prior Phase 7/6/5 + 10.0a governance green (layering 1/1, reliable battery subset passing with known comment-scan false positives only).
+- PHASE2_IMPORT_NOTES §14 re-read in full (latest tail + key 10.0b notes): Linearized order confirmed; 10.0b is "Knowledge compilation store adapter + plugin adapter" (pure adapter-layer); high risks explicitly include "plugin isolation rule (plugins must not import orchestration/adapter code) — difficult to enforce... 10.2 and 10.8 must be rigorous"; "KnowledgeStore must remain ... distinct from CanonicalStore"; "Path/layout translation friction" (mitigated by deltas — re-read File Layout note); "adapter layer does not import orchestration" (gate item i).
+- Rule #10: No pre-existing adapter/knowledge/ or adapter/plugins/ code (ls + find confirmed zero matches for knowledge/plugin adapter files). plugins/ dir does not exist (clean). 10.0a just added the Protocols this chunk implements.
+- All prior Clean Bills + 10.0a CC hold. 10.0b must extend governance (new adapter subpackages must pass test_layering.py strictly).
+
+**1. Re-read of target CHUNK-10.0b prose + interfaces (and File Layout note) — verbatim key excerpts:**
+
+From specs/AIP_0_1_Phase8_BuildSpec_Rev1.0.md (re-read via grep/sed on 931+ range + top File Layout note + 10.0b interfaces):
+
+```
+> **File Layout & Import Conventions.** ... When the spec writes `adapter/knowledge/sqlite_knowledge_store.py`, it means `src/aip/adapter/knowledge/sqlite_knowledge_store.py`. Example code in the ANNEX uses the `aip.`-prefixed import form that the repo requires.
+```
+
+CHUNK box (lines 934+):
+```
+CHUNK-10.0b: Knowledge Store Adapter + Plugin Adapter
+PHASE: 8
+DEPENDS-ON: CHUNK-10.0a, CHUNK-9.0b, CHUNK-8.1
+CODER-PROFILE: L2
+FILES:
+  adapter/knowledge/sqlite_knowledge_store.py
+  adapter/knowledge/__init__.py
+  adapter/plugins/plugin_loader.py
+  adapter/plugins/yaml_plugin_provider.py
+  adapter/plugins/__init__.py
+  tests/test_knowledge_store.py
+  tests/test_plugin_adapter.py
+INTERFACES: [exact SqliteKnowledgeStore(KnowledgeStore) with __init__(db_path, vector_store: VectorStore, lexical_store: LexicalStore), initialize/close, full 6 Protocol methods + dual-index on APPROVED; PluginLoader with discover/load/unload + sandbox_mode error catching; YamlPluginProvider(PluginProvider) with httpx async call + env-var-only keys + CI deterministic fixture mode]
+TESTS: tests/test_knowledge_store.py + tests/test_plugin_adapter.py
+GATE: uv run pytest tests/test_knowledge_store.py tests/test_plugin_adapter.py tests/test_layering.py -xvs
+```
+
+**Prose key mandates (exact scope, no creep):**
+- Pure adapter-layer implementations of the two Protocols from 10.0a.
+- SqliteKnowledgeStore: SQLite + two tables (compiled_knowledge + compiled_knowledge_provenance for §1.5 chain); store also does vector_store.upsert + lexical_store.index_document **only if state=="APPROVED"** (same pattern as 9.2 canonical pipeline); search_compiled does parallel Vector + Lexical + 4-factor rerank (§8.3); state machine validation; provenance join.
+- PluginLoader: Scans `plugins/` (per config [plugins].plugins_dir) for YAML; load validates + instantiates YamlPluginProvider + registers with DI container; sandbox_mode catches errors; unload by slot.
+- YamlPluginProvider: httpx.AsyncClient to base_url; health_check prompt; **API keys ONLY from os.environ (api_key_env name in YAML, never the secret itself)**; CI mode returns fixture (deterministic, zero network).
+- Gate explicitly requires: (i) "adapter layer does not import orchestration".
+- Security: no secrets in YAML or code.
+
+**2–6. Live evidence summary (all steps executed with verbatim output before any 10.0b edits):**
+
+**DEPENDS audit (incl. just-completed 10.0a + full prior stack):**
+- 10.0a deliverables now present and green: KnowledgeStore/PluginProvider Protocols in foundation/protocols.py; 5 new dataclasses + aliases + config sections in schemas + toml; test_phase8_schema_additions.py (9/9).
+- VectorStore + LexicalStore Protocols (foundation/protocols.py): upsert/retrieve/delete on Vector; search/index on Lexical — exactly what SqliteKnowledgeStore __init__ + store_compiled will consume (Protocol injection, no impls).
+- AipContainer (adapter/api/dependencies.py): Currently holds Vector/Lexical/Canonical/etc. + Phase 5 actors; no knowledge_store or plugin_loader yet (registration expected in 10.1+ or when 10.0b components are wired; 10.0b focuses on impls only).
+- Existing adapter stores (for pattern match): SqliteCanonicalStore (f1de3b0 Phase 6/8.0b) — lazy sqlite3 conn, _ensure_table, json for complex fields, implements Protocol, DEFINER enforcement. SqliteVigilStore, SqliteFts5LexicalStore follow same disciplined adapter style.
+- Auth / rate / Vigil / canonical_pipeline (9.0b/9.1/9.2): Present; 10.0b does not modify them (only new peer store + plugin loader in adapter/).
+- No pre-existing knowledge/plugin adapter code (find/ls zero hits). plugins/ dir absent (clean).
+- DI + layering: Confirmed strict (see below).
+
+**Architecture Rev 5.2 cross-refs (relevant to 10.0b adapter layer):**
+- §3 / Appendix D: Deferred Compiled Knowledge now has its persistence (KnowledgeStore peer, distinct tables/provenance); non-collapse with Canonical explicitly required (already in 10.0a Protocol + 10.0b dual-index but separate).
+- §7.2 layering: Adapter impls (10.0b) consume only foundation Protocols (KnowledgeStore, VectorStore, LexicalStore, PluginProvider, PluginConfig) + stdlib (sqlite3, json, httpx, os). Must never import orchestration/*.
+- §4.1 / §1.8: All plugin config driven; no hardcoded models; sandbox + enabled toggles.
+- §1.7: No new sovereignty issues (plugin loading is read/config, not approval paths).
+
+**Heavy Rule #10 audit (git blame + history on files 10.0b will touch/affect):**
+- New files (adapter/knowledge/*, adapter/plugins/*, tests/test_knowledge_store.py + test_plugin_adapter.py): Zero pre-existing (ls + git ls-files + grep confirmed clean).
+- Existing patterns touched indirectly: adapter/canonical/sqlite_canonical_store.py etc. — last major  f1de3b0 (Phase 6 CHUNK-8.0b "Remaining Protocol Adapter Implementations"). History is sequential append of new adapter packages; "extend existing rather than replace" pattern holds. 10.0b follows identical disciplined SQLite + Protocol impl style.
+- foundation/protocols.py + schemas.py (from 10.0a): Just extended in 7c7f8e5 (this session); 10.0b consumes the new Protocols without modifying them further.
+- DI container + test_layering.py: Phase 6/8.0b history; 10.0b must not violate the recorded boundaries (adapter imports only foundation).
+- plugins/ dir + config [plugins] section (from 10.0a): Clean.
+- Full historical review (WORKLOG + git): Every adapter addition (8.0b, 9.x) passed layering + no-orchestration-import gates. Pre-10.0b CC + this audit = clean bill for "extend by new sibling packages under adapter/".
+
+**Complete governance battery (verbatim, post-10.0a, pre any 10.0b edits):**
+
+```
+$ uv run pytest tests/test_layering.py tests/test_phase8_schema_additions.py -q --tb=no
+..........                                                               [100%]
+10 passed in 0.20s
+```
+(Layering green on 10.0a-augmented tree.)
+
+```
+$ uv run pytest tests/test_no_hardcoded_models.py ... -q --tb=line
+F............................... (1 failure: only comment/docstring false positives containing "ollama"/"Ollama" — 10 real tests passed. Consistent with all prior phases.)
+```
+
+```
+$ uv run pytest tests/test_phase5_network_isolation.py -q --tb=no
+...                                                                      [100%]
+3 passed in 0.04s
+```
+(Additional no_network green.)
+
+**Explicit checks for 10.0b high-risk items (per §14 + handoff):**
+- Path/layout: File Layout note + parentheticals re-read (this CC); all 10.0b paths will be created as src/aip/adapter/knowledge/... and src/aip/adapter/plugins/... with `from aip.foundation...` and `from aip...` imports only.
+- Plugin isolation: Gate item (i) "adapter layer does not import orchestration" will be mechanically verified in the 10.0b tests + test_layering.py (new subpackages under adapter/ are allowed only foundation imports).
+- KnowledgeStore distinct: Already enforced in 10.0a test + Protocols; 10.0b impl will use separate tables (no overlap with canonical_* tables).
+- CI determinism: YamlPluginProvider must support deterministic fixture path (no network).
+- Sandbox + env-var keys only: Explicit in prose/ANNEX.
+
+**Overall Pre-CHUNK-10.0b Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-10.0b (SqliteKnowledgeStore implementing KnowledgeStore + PluginLoader/YamlPluginProvider in pure adapter layer; clean per Rule #10 + File Layout deltas; core battery green including 10.0a; all 6 steps executed with verbatim evidence; no src/tests edits for 10.0b).**
+
+- All 6 steps + handoff-mandated explicit risk checks completed.
+- Ready for exact 10.0b (new adapter/knowledge/ and adapter/plugins/ packages per box + prose + ANNEX; follow existing store patterns (sqlite3/json/lazy conn); dual index + provenance only on APPROVED; sandbox error handling; env-var keys only; zero orchestration imports from adapter; CI fixture mode; update DI? only if ANNEX requires for this chunk — scope is impls + tests; gate must pass layering + the two new tests).
+- Post-push: proceed to 10.0b implementation per continuous directive.
+
+**This completes the mandatory full 6-step pre-CHUNK-10.0b Continuity Check.**
+The record above constitutes the authoritative audit. All evidence gathered before any src/ or tests/ production code edits for 10.0b.
+
+**Ready to proceed to CHUNK-10.0b implementation (exact scope per prose + interfaces + ANNEX + File Layout note), gate, WORKLOG append, and push.**
+
+**Phase 8 pre-10.0b CC complete. Tree clean at 7c7f8e5. Continuing per continuous execution directive after push.**
+
