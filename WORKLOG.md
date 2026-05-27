@@ -1076,3 +1076,59 @@ This completes initial functional support for the parallel node type.
 **Status:** Initial implementation complete.
 
 **Pushed:** Yes
+
+---
+
+## Task ID: 2.6-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-2.6: Workflow Instance Persistence & Resumption Support
+
+**Continuity Check (performed before writing any code):**
+
+**1. Why this chunk now?**
+- We now have functional support for all core node types, including Dialog nodes that are designed to pause workflows.
+- Without persistence/resumption, a workflow that hits a dialog node cannot actually continue later when the DEFINER makes a decision.
+- This is a critical piece for making the engine usable beyond a single in-memory execution.
+
+**2. Relevant prior work:**
+- WorkflowContext already supports forking and event emission.
+- DialogNode emits `workflow.dialog.paused` events.
+- The engine already has the concept of stopping execution on pause.
+- We have mature store protocols from Phase 1 (ArtifactStore, EventStore, EcsStore, etc.) that we can reuse via injection.
+
+**3. Scope decision for this chunk (to keep it focused):**
+- Define a simple, serializable representation of a running workflow instance (id, status, current position, variables, suspended nodes, etc.).
+- Add basic suspend/resume capability to the runner / engine.
+- When a dialog pauses, the engine can produce a "suspended" snapshot that can be persisted.
+- Provide a way to resume a workflow given a previous suspended state + a DefinerDecision.
+- Use existing store patterns via the WorkflowContext (no direct storage imports).
+- Keep the persistence format simple (JSON or basic dict) for the foundation version.
+
+**4. Constraints:**
+- Must continue to respect all Phase 1 layering and protocol rules.
+- Should not introduce new hard dependencies (use what we already have).
+- Resumption must correctly restore context and continue from the correct node.
+
+**5. Risks / Open questions:**
+- How much state needs to be captured for a faithful resume? (variables, node results, etc.)
+- Error handling and partial execution state on resume.
+- Long-term we will likely want a proper WorkflowInstanceStore protocol.
+
+**Conclusion of Continuity Check:**
+High priority and well-scoped. This is the natural next step after having all node types working. Safe to proceed with a foundation-level persistence/resumption implementation.
+
+**Status:** Continuity Check complete. Proceeding to implementation.
+
+**Implementation for CHUNK-2.6:**
+- Created `workflow/instance.py` with `SuspendedWorkflow` and `WorkflowResumeRequest` dataclasses (JSON serializable).
+- Extended `SequentialRunner` with `run_until_pause()` (returns results + SuspendedWorkflow snapshot when hitting a dialog).
+- Added `from_suspended()` classmethod to resume execution from a saved state + DefinerDecision.
+- Added end-to-end test covering suspend → decision → resume flow.
+- Verified the full cycle works.
+
+This gives the workflow engine the ability to pause at dialog nodes and later resume — a critical capability for real DEFINER-gated workflows.
+
+**Pushed:** Yes
+
+**Status:** Complete

@@ -101,3 +101,51 @@ async def test_agent_node_wires_to_phase1_synthesis(monkeypatch):
 
     assert results[0].success
     assert hasattr(results[0].output, "content")  # Should be a real SynthesisOutput
+
+@pytest.mark.asyncio
+async def test_workflow_suspend_and_resume_via_dialog():
+    """End-to-end smoke test of suspend + resume using the new persistence primitives."""
+    from aip.orchestration.workflow.instance import SuspendedWorkflow
+    from aip.orchestration.nodes.definer_gate import DefinerDecision
+
+    # Simple workflow with a dialog in the middle
+    nodes = [
+        ScriptNode("start", code="begin"),
+        DialogNode("review", prompt="Please approve this", 
+                   synthesis_output=_make_synth_for_test(), 
+                   validation_result=_make_val_for_test(), 
+                   eval_result=_make_eval_for_test()),
+        ScriptNode("finish", code="done"),
+    ]
+
+    ctx = WorkflowContext()
+    runner = SequentialRunner(nodes, ctx)
+
+    results, suspended = await runner.run_until_pause(workflow_id="wf-123")
+    assert suspended is not None
+    assert suspended.status == "suspended"
+    assert suspended.current_node_id == "review"
+
+    # Simulate DEFINER approving
+    decision = DefinerDecision(action="approve", reason="Looks good", approved_by="moses")
+
+    # Resume
+    resume_runner = SequentialRunner.from_suspended(suspended, decision, nodes, ctx)
+    final_results = await resume_runner.run()
+
+    # We should have executed the "finish" node
+    executed = [r.output.get("executed") for r in final_results if isinstance(r.output, dict)]
+    assert "finish" in executed
+
+# Helper fakes for the test
+def _make_synth_for_test():
+    from aip.orchestration.nodes.synthesis import SynthesisOutput
+    return SynthesisOutput(content="test", model_slot="s", model_name="stub", token_count_in=10, token_count_out=5, latency_ms=10)
+
+def _make_val_for_test():
+    from aip.foundation.validation import ValidationResult
+    return ValidationResult(passed=True, failure_type=None, failure_detail=None, checks_run=1, checks_failed=[])
+
+def _make_eval_for_test():
+    from aip.orchestration.nodes.adversarial_eval import EvalResult
+    return EvalResult(passed=True, scores={}, requires_deep_eval=False)
