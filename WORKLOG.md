@@ -362,6 +362,21 @@ No blockers. The logic is simple and the required inputs are ready. Implementati
 **Status:** Complete
 
 **Implementation:**
+- Created `src/aip/orchestration/nodes/commit.py`
+  - `commit_artifact(...)` with strict "approve" check
+  - Uses exact `actor="definer_gate"` and `reason="DEFINER approved"` (P2)
+  - Records ECS transition via event_store (R3)
+  - Deterministic artifact_id generation
+  - Raises `CommitBlockedError` on non-approve decisions
+- Created `tests/test_commit_node.py` with 7 tests (covers P2, R3, blocking, determinism, happy path).
+- Gate: `PYTHONPATH=src uv run python -m pytest tests/test_commit_node.py -xvs` → **7/7 PASSED**.
+- Note: Full spec gate references the still-missing `test_layering.py`.
+
+**Pushed:** Yes (next commit)
+
+**Status:** Complete
+
+**Implementation:**
 - Created `src/aip/orchestration/nodes/definer_gate.py` with the exact decision logic from the Rev 1.3 ANNEX:
   - AUTO_APPROVE_STUB only (raises for anything else).
   - If not validation_result.passed → "revise"
@@ -514,3 +529,47 @@ Linearized order per spec:
 1.0a → 1.0b → 1.1 → 1.2 (parallel ok with 1.1) → 1.3 → 1.4 (parallel ok with 1.3) → 1.5 → 1.6 → 1.7
 
 Each will be logged here with exact spec citations, ANNEX reproduction, test gates, and push after completion.
+---
+
+## Task ID: 1.7-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-1.7: Network Isolation and Model-Name Gate (final cross-cutting determinism gates)
+
+**Continuity Check (performed before writing any code for this chunk):**
+
+**1. Re-read of target CHUNK (Rev 1.3):**
+- CHUNK-1.7 is the final governance gate for all of Phase 1.
+- DEPENDS-ON: Every previous Phase 1 chunk (1.0a through 1.6) — we now have all of them.
+- Pure test infrastructure (no production code changes allowed or needed).
+- Two tests:
+  - test_no_network.py: Scans foundation/, orchestration/, adapter/ for imports of httpx, openai, anthropic.
+  - test_no_hardcoded_models.py: Scans the same directories for literal model name strings, with explicit exclusions for config/, tests/, and *.toml (because config/aip.config.toml is the only allowed place per §4.1).
+- These gates must pass for the entire Phase 1 build to be considered green.
+
+**2. Review of all prior chunks:**
+- Throughout 1.0a–1.6 we have been extremely careful:
+  - No network libraries were imported in production code.
+  - Model names were only referenced via config resolution (or stub fallbacks).
+  - All model-related logic went through the patterns established in 1.3 and 1.5.
+- This check is the enforcement mechanism for everything we did.
+
+**3. Revision Log & Architecture cross-references:**
+- These two tests were present from the very beginning of Phase 1 planning.
+- They directly support §4.1 (no hardcoded model names) and the overall determinism requirements.
+- 1.7 "extends" the Phase 0 governance tests.
+
+**4. Current repo state:**
+- All production code is in src/aip/foundation/, orchestration/, adapter/.
+- We have a minimal config/aip.config.toml (no model names hardcoded in it yet, which is fine).
+- test_layering.py is still missing (recurring note across many gates), but 1.7's gate does not depend on it.
+
+**5. Risks / Observations:**
+- Risk: If any earlier chunk accidentally introduced a forbidden import or string, this gate will catch it.
+- Positive: Because we followed the spec's constraints at every step (especially the "no network / no hardcoded models" rule mentioned in many places), these tests should pass cleanly.
+- Observation: The tests are AST-based scanners (typical for such governance gates).
+
+**Conclusion of Continuity Check:**
+This is a verification gate rather than a construction gate. We can proceed to write the two test files exactly as described in the spec (unchanged from Rev 1.0). They should pass against our current codebase.
+
+**Status:** Continuity Check complete. Proceeding to implementation.
