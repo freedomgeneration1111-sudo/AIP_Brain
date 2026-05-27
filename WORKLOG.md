@@ -759,3 +759,43 @@ This establishes the architectural foundation that all future Phase 2 chunks wil
 **Pushed:** Yes
 
 **Status:** Complete
+
+---
+
+## Task ID: 2.2-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-2.2: Condition Evaluation and Branching Support (Jinja2)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of requirements:**
+- From Architecture §11.1: condition nodes are "Jinja2 branch; no model call; zero tokens".
+- They are explicitly intended to avoid repeated model calls for routing decisions (see Burn Doctrine in §8).
+- The runner must be able to evaluate conditions and choose the next node(s) based on the result.
+
+**2. Review of current state (after 2.1):**
+- We have a basic SequentialRunner that just executes nodes in order.
+- We have a ConditionNode placeholder that does nothing useful yet.
+- We have WorkflowContext with variables that can be used for templating.
+
+**3. Key constraints to maintain:**
+- Condition evaluation must be deterministic and zero-token.
+- Must use Jinja2 (standard in the project for templating).
+- Must not violate import boundaries (Jinja2 is fine; no storage imports).
+- Should integrate cleanly with the existing node and context abstractions.
+
+**4. Scope for this chunk:**
+- Extend the SequentialRunner (or create a better graph runner) to support conditional branching.
+- Implement actual Jinja2 evaluation inside ConditionNode.
+- Define a simple way to express "if condition then next node X else Y" in the YAML structure.
+- Keep it focused — full parallel and dialog handling can come later.
+
+**5. Risks:**
+- YAML structure for conditions needs to be decided (we should keep it simple and evolvable).
+- Need to be careful not to over-engineer the graph representation in one chunk.
+
+**Conclusion:**
+Proceed with implementing condition evaluation + basic branching in the runner. This is the highest-leverage next increment after the foundation.
+
+**Status:** Continuity Check complete. Proceeding to implementation.
