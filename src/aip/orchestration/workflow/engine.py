@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
+from aip.orchestration.embed_providers import get_embed_fn
 from aip.orchestration.retrieval import fake_embed
 from aip.orchestration.workflow.context import WorkflowContext
 from aip.orchestration.workflow.definition import WorkflowDefinition
@@ -59,7 +60,12 @@ class WorkflowEngine:
         # Future: instance_store, etc.
     ):
         self.vector_store = vector_store
-        self.embed_fn = embed_fn or fake_embed
+        # CHUNK-3.9: Use config-driven embed provider (fake by default for CI/tests;
+        # real provider when [embedding] section specifies one in Phase 3+).
+        if embed_fn is not None:
+            self.embed_fn = embed_fn
+        else:
+            self.embed_fn = get_embed_fn(config)
         self.trace_store = trace_store
         self.artifact_store = artifact_store
         self.ecs_store = ecs_store

@@ -2410,7 +2410,14 @@ The usual retrieval + engine + layering + trace gate.
 
 After gate green: update, commit, push, continue.
 
-**Implementation notes (to be filled after execution):**
-- [empty until next short command]
+**Implementation notes (filled after code + gate):**
+- Created `orchestration/embed_providers.py` with `get_embed_fn(config)` — fake by default (for CI/tests), stub path for real provider based on [embedding] section (CHUNK-3.9 Phase 3 foundation per Rev 1.3).
+- Updated `WorkflowEngine` to use the provider when no explicit embed_fn is passed.
+- Updated example `config/aip.config.toml` with [embedding] section.
+- Added `test_embedding_provider_from_config_fake_default` in `tests/test_retrieve_for_synthesis.py`.
+- All existing behavior (fake) preserved; new path is additive.
+- Combined gate green (41+ passed).
 
-**Status:** Continuity Check + Spec Delta documented for CHUNK-3.9. Awaiting short command to implement.
+**Status:** Complete
+
+**Pushed:** (pending this work unit)

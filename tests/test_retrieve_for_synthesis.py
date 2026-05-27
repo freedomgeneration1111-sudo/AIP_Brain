@@ -216,6 +216,22 @@ def test_config_model_dump_fallback():
     assert result.status == "OK"
 
 
+def test_embedding_provider_from_config_fake_default():
+    """CHUNK-3.9: get_embed_fn respects config [embedding] (fake by default for foundation)."""
+    from aip.orchestration.embed_providers import get_embed_fn
+
+    # No embedding section -> fake
+    fn1 = get_embed_fn({})
+    assert fn1 is not None
+    vec = fn1("hello")
+    assert len(vec) > 0
+
+    # Explicit fake
+    cfg = {"embedding": {"provider": "fake"}}
+    fn2 = get_embed_fn(cfg)
+    assert fn2("hello") == fn1("hello")  # same deterministic behavior
+
+
 def test_ace_rules_boost_procedural_hits():
     """CHUNK-3.8: Passing ace_rules from Sexton should have observable effect (boost for procedural)."""
     # Rule suggesting procedural match for certain content
