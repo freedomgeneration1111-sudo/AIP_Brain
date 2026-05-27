@@ -1608,3 +1608,127 @@ This work builds directly on the solid L5 foundation and the Phase 1 determinism
 **Status:** Prep complete. Awaiting execution of first L4-related CHUNK (with Continuity Check).
 
 **Pushed:** Yes
+
+---
+
+## Task ID: 3.1-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-3.1: L4 Trajectory Monitor Foundation + Basic Drift/Loop Detection (Spec Delta per Architecture Rev 5.2 §10)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target scope (Architecture Rev 5.2 §10.1 / 10.2 + Appendix E):**
+- L4 detects 2-of-3 signals inside a session window: (loop detection → failure_type D), (output-length collapse → F Context Anxiety), (tool failure streak → E).
+- Rule: "If 2 of 3 signals fire inside the session window, inject deterministic recovery or trigger context reset."
+- SQLite-query driven against trace_events (trace.db).
+- L4 writes trace events with node_type=L4, failure_type D/F, intervention_type (e.g. context_reset, trajectory_correction).
+- Context Reset Protocol (§10.2) is the *response* path (progress summary, provisional commit, DEFINER surface, fresh session). Foundation chunk focuses on *detection*.
+- Sexton (§16.1) is a consumer of classified trace_events but is downstream (not in scope for 3.1 foundation).
+
+**2. DEPENDS-ON verification:**
+- CHUNK-0.7 / test_trace_schema.py + db/trace.db already carry the full §5.9 schema (including intervention_applied, intervention_type, failure_type A–F, node_type).
+- All Phase 2 L5 chunks (2.1–2.13): WorkflowContext protocol injection model, TraceStore usage in nodes/engine, event emission, WorkflowEngine public API, finally/on_error, dialog pause/resume.
+- Phase 1 nodes (retrieve, synthesis, adversarial_eval, definer_gate, commit) that already call write_event with proper failure_type/outcome.
+- test_layering.py (§7.2 enforcement) — any new L4 code must live under orchestration/ and only import foundation/ + stdlib.
+- Rev 1.3 process rules (append-only/amend-by-addition on foundation files, no model calls in deterministic components, §1.8 tagging, zero-token preference per §9.1, full green gate including layering).
+
+**3. Revision Log cross-check (all D/F/R/P + Phase 2 foundation):**
+- No L4 code exists in src/ or tests/ yet.
+- TraceStore protocol is currently write-only (write_event signature from CHUNK-1.0a). L4 consumers (monitor, future Sexton) require read/query capability.
+- Existing fakes in tests/ and _NoopTraceStore in engine.py / workflow_01.py will need compatible updates (additive methods with default or NotImplemented in stubs).
+- All prior chunks respected "no direct store construction inside nodes" — L4 monitor will receive TraceStore via injection, never import sqlite implementation.
+- model_gen_assumption tagging (R1 family, gate [31]): any heuristic in L4 that encodes assumptions about model trajectory behavior (e.g. the 2-of-3 rule itself, length-collapse thresholds) must carry the field when promoted to ContractRule or L4 trigger.
+
+**4. Architecture cross-references checked:**
+- §1.8 Harness Evolution + toggleable interventions: L4 heuristics are toggleable; any that compensate for model limitations get model_gen_assumption.
+- §5.9 trace schema: already complete for L4 needs (failure_type, intervention_type, node_type=L4).
+- §7.2 layering: L4 implementation belongs in orchestration/l4/ (orchestration layer may depend on foundation protocols).
+- §9.1 zero tokens: L4 monitor foundation must be pure deterministic query + heuristics (no LLM calls inside detection logic).
+- Appendix E taxonomy: D and F are the primary L4 signals; E can be observed but is primarily L3a concern.
+- §11 L5 invariants: protocol injection, no direct storage classes, workflow YAML source-controlled. L4 monitor must be injectable as a protocol.
+
+**5. Consistency with actually delivered artifacts:**
+- Phase 1 retrieval + synthesis nodes already write meaningful trace events (INSUFFICIENT_MEMORY, etc.).
+- L5 runner/engine already supports rich event emission and context forking.
+- test_trace_schema.py + test_layering.py are present and part of the aggregate green gate.
+- No violations of "WorkUnit with empty source_requirement_ids" or other INV rules (those were codeforge-specific; aip equivalent is the trace + artifact provenance).
+- sqlite_vss skips remain expected behavior.
+
+**6. Scope decision for this chunk (no deviation):**
+- Declare this as an explicit spec delta (like 0.BOOTSTRAP) because Rev 1.3 (the Phase 1 single source of truth) does not contain L4 CHUNK definitions or ANNEX. The L5 foundation (2.1-2.13) was similarly executed from Architecture §11 under the "continue through the spec systematically" directive.
+- Minimal foundation only:
+  - Amend TraceStore (amend-by-addition) with query method(s) sufficient for L4 detection (e.g., get_recent_events or query_by_session).
+  - New package: src/aip/orchestration/l4/__init__.py + monitor.py
+  - TrajectoryMonitor class (or protocol + reference impl) that accepts TraceStore + session window, implements basic 2-of-3 signal detection per §10.1 using deterministic heuristics on recent trace events. Tags any model-behavior assumptions with model_gen_assumption.
+  - Wire injection point in WorkflowContext (and WorkflowEngine defaults) so L4 monitor can be provided by callers.
+  - One dedicated deterministic test file exercising detection with synthetic trace events (no real DB or LLM).
+  - Update any necessary fakes/stubs for additive compatibility.
+  - Gate must include the new test + re-run of test_layering.py + test_trace_schema.py.
+- Explicitly out of scope for 3.1: full context reset protocol execution (§10.2), Sexton implementation, UI surface, provisional store writes, DEFINER intervention wiring, advanced entropy/citation narrowing metrics. Those are later L4 chunks or L4b.
+
+**Risks noted:**
+- Over-building the monitor in one chunk. Kept to basic count + simple trend heuristics.
+- Protocol change impact on existing fakes/tests. Mitigated by additive design + updating only the minimal call sites in this chunk's test.
+
+**Conclusion of Continuity Check:**
+Fully compliant with all permanent process rules, layering, trace schema, protocol injection model, and zero-token / determinism doctrines. The gap (no L4 ANNEX in Rev 1.3) is explicitly declared as a spec delta in this log entry. Scope is the smallest useful foundation that makes future L4b / Sexton / reset work possible. Safe to proceed to implementation. No blocker.
+
+**Status:** Continuity Check complete. Declaring spec delta scope. Proceeding to implementation.
+
+**Spec Delta Declaration (logged before any L4 production code):**
+This CHUNK-3.1 exists to materialize the minimal L4 detection capability described in Architecture Rev 5.2 §10.1 so that the engine + trace archive can be observed for trajectory problems. Exact deliverables below are the binding scope for this unit (derived strictly from the cited Architecture sections + prior delivered contracts). Any future L4 chunk that changes these files will follow append-only / amend-by-addition discipline.
+
+**FILES (for 3.1):**
+- foundation/protocols.py (amend by addition — add query method(s) to TraceStore)
+- orchestration/l4/__init__.py (new package init)
+- orchestration/l4/monitor.py (new — TrajectoryMonitor + signal types + basic 2-of-3 detection)
+- tests/test_l4_trajectory_monitor.py (new — deterministic tests with fake events)
+- (optional) minor additive updates to engine.py / workflow_01.py _NoopTraceStore and WorkflowContext if injection wiring is required for the foundation
+
+**INTERFACES (minimal, per Architecture §10 + §5.9 + L5 injection model):**
+- TraceStore extension (additive):
+  async def get_recent_events(self, session_id: str, limit: int = 100) -> list[dict]: ...
+  (returns raw event rows or simple dicts with the §5.9 columns)
+- In monitor.py:
+  @dataclass
+  class TrajectorySignal:
+      signal_type: str  # "loop_d", "context_anxiety_f", "tool_streak_e", "combined_2of3"
+      session_id: str
+      confidence: float
+      evidence: list[dict]
+      model_gen_assumption: str | None = "L4 2-of-3 heuristic encodes assumptions about model trajectory degeneration under context pressure (see Architecture §10.1 and Appendix E)"
+  class TrajectoryMonitor:
+      def __init__(self, trace_store: TraceStore, window_limit: int = 50): ...
+      def detect(self, session_id: str) -> list[TrajectorySignal]: ...
+      # Pure deterministic; zero tokens; queries only via injected TraceStore
+
+**TESTS:**
+- tests/test_l4_trajectory_monitor.py
+- Must pass test_layering.py and test_trace_schema.py (re-run as part of gate)
+
+**GATE:**
+`uv run pytest tests/test_l4_trajectory_monitor.py tests/test_layering.py tests/test_trace_schema.py -xvs`
+
+After gate green + log update: commit + push. Then await next short command for 3.2+ (e.g. context reset protocol or Sexton foundation).
+
+**Implementation notes (filled after code + gate):**
+- Protocol: TraceStore amended by addition with `get_recent_events(session_id, limit) -> list[dict]` (newest-first contract documented). All existing _NoopTraceStore and FakeTraceStore implementations updated for additive compatibility.
+- New package: `orchestration/l4/` with `__init__.py` and `monitor.py`.
+- `TrajectoryMonitor` + `TrajectorySignal`: deterministic, zero-token, protocol-injected only. Basic D/F detection + combined_2of3 proxy for the §10.1 "2 of 3" rule. Every signal carries `model_gen_assumption` per §1.8 / gate [31].
+- Minor wiring: WorkflowEngine and Workflow01Runner _NoopTraceStores now satisfy the extended protocol.
+- Test: `tests/test_l4_trajectory_monitor.py` (6 tests, all deterministic, exercises injection safety + layering sanity double-check).
+- Gate executed exactly as declared: `uv run pytest tests/test_l4_trajectory_monitor.py tests/test_layering.py tests/test_trace_schema.py -xvs`
+  - Result: 10 passed, 0 failures, 0 skips. Full green (new L4 test + the two cross-cutting Phase 1 gates).
+- Layering: Confirmed by gate (test_layering.py) — L4 code lives in orchestration/, imports only foundation/ + stdlib. No violations.
+- Trace schema: Already complete for L4 needs (gate re-confirmed).
+- No new schemas.py additions required for foundation (raw dicts + dataclass local to monitor sufficient; future L4b can append typed events if needed).
+- All changes follow append-only / amend-by-addition discipline on Phase 0/1 files.
+- No model calls, no network, no direct storage construction anywhere.
+
+**Gate command (verbatim from spec delta):**  
+`uv run pytest tests/test_l4_trajectory_monitor.py tests/test_layering.py tests/test_trace_schema.py -xvs`
+
+**Status:** Complete
+
+**Pushed:** Pending (will push after this log update)

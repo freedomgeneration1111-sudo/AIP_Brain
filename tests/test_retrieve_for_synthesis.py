@@ -51,6 +51,10 @@ class FakeTraceStore(TraceStore):
             "detail": detail,
         })
 
+    async def get_recent_events(self, session_id: str, limit: int = 100) -> list[dict]:
+        # Return in reverse chrono (most recent first) to match production expectation
+        return list(reversed([e for e in self.events if e.get("session_id") == session_id]))[:limit]
+
 
 def _chunk(id: str, score: float, authority: str = "raw",
            created_at: str | None = None, access_count: int = 0) -> Chunk:

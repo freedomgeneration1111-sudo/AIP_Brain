@@ -98,6 +98,17 @@ class TraceStore(Protocol):
         """Write a trace event for node execution."""
         ...
 
+    # L4 / CHUNK-3.1 addition (amend by addition only — never rewrite existing methods)
+    # Provides the query surface required by TrajectoryMonitor and future Sexton (§10.1, §16.1).
+    # Implementations must return events in descending created_at order (most recent first).
+    async def get_recent_events(
+        self, session_id: str, limit: int = 100
+    ) -> list[dict]:
+        """Return recent trace events for a session (raw dicts matching §5.9 columns).
+        Used by L4 trajectory regulation for drift/loop detection. Zero tokens.
+        """
+        ...
+
 
 @runtime_checkable
 class EntityStore(Protocol):
