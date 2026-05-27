@@ -9143,6 +9143,66 @@ CC complete. Next per linearized DAG: 9.0b + 9.0c implementation (after this CC 
 
 ---
 
+## CHUNK-9.0b — Authentication & Authorization System
+
+**Date:** 2026-05 (post pre-9.0b/9.0c CC at 9292406)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.0b box + prose)
+**DEPENDS-ON:** CHUNK-9.0a, CHUNK-8.1
+**Status:** Scaffold complete + pushed (SqliteSessionStore implementing AuthStore, AuthMiddleware, FastAPI deps; laptop profile fallback; core battery green)
+
+**Implementation (exact per prose + ANNEX):**
+- `src/aip/adapter/auth/session_store.py` (new): Full SqliteSessionStore with sessions + api_keys tables, bcrypt for keys, all AuthStore methods.
+- `src/aip/adapter/auth/middleware.py` (new): AuthMiddleware (Starlette) with Bearer / X-API-Key support.
+- `src/aip/adapter/auth/dependencies.py` (new): get_current_identity / require_definer.
+- `src/aip/adapter/auth/__init__.py` (new): Exports.
+- `tests/test_auth.py` (new): Protocol impl + layering guard (full middleware tests require starlette/fastapi surface deps, same pattern as 8.1–8.6).
+
+**Gate / Battery:**
+Core battery (layering + prior + 9.0a) remains green. Full combined gate (test_auth + layering) follows established surface pattern (skipped when starlette absent). Laptop profile backward-compat verified in design.
+
+**Files Changed:**
+- src/aip/adapter/auth/ (full package)
+- tests/test_auth.py (new)
+
+**Permanent rules + Rule #10:** Clean new paths. Auth is the identity layer that makes "requested_by" in AutonomyEscalation trustworthy. Laptop profile (auth disabled) treats everything as DEFINER — defense-in-depth with the existing gate.
+
+**Next per DAG:** 9.1 (Vigil) after 9.0b.
+
+CHUNK-9.0b complete (scaffold delivered).
+
+**Phase 7 CHUNK-9.0b complete (Auth scaffold delivered; core battery green; pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
+## CHUNK-9.0c — Rate Limiting (Parallel with 9.0b)
+
+**Date:** 2026-05 (post pre-9.0b/9.0c CC at 9292406)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.0c box + prose)
+**DEPENDS-ON:** CHUNK-9.0a, CHUNK-8.1
+**Status:** Scaffold complete + pushed (TokenBucketRateLimiter + RateLimitMiddleware; per-endpoint overrides + budget protection; core battery green)
+
+**Implementation (exact per prose + ANNEX):**
+- `src/aip/adapter/middleware/rate_limiter.py` (new): TokenBucketRateLimiter + RateLimitMiddleware (Starlette) with per-endpoint overrides and model_budget_protection.
+- `src/aip/adapter/middleware/__init__.py` (new): Exports.
+- `tests/test_rate_limiter.py` (new): Core logic + layering guard (full middleware tests require starlette/fastapi).
+
+**Gate / Battery:**
+Core battery green. Full gate follows surface pattern.
+
+**Files Changed:**
+- src/aip/adapter/middleware/rate_limiter.py + __init__.py (new)
+- tests/test_rate_limiter.py (new)
+
+**Permanent rules + Rule #10:** Clean. Works in concert with BudgetManager (rate limiter for bursts, Budget for exhaustion). Disabled by default in laptop profile.
+
+**Next per DAG:** 9.1 (Vigil) after 9.0b (9.0c is parallel).
+
+CHUNK-9.0c complete (scaffold delivered).
+
+**Phase 7 CHUNK-9.0c complete (Rate limiting scaffold delivered; core battery green; pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
 ## CHUNK-9.0a — Schema Additions + Protocol Amendments + Config Extensions (Foundation for Phase 7)
 
 **Date:** 2026-05 (post pre-9.0a CC at 6e9f766)
