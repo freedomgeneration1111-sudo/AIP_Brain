@@ -3181,4 +3181,70 @@ After gate green: update WORKLOG, commit, push, continue the series.
 **Status:** Complete
 **Pushed:** (next commit)
 
+---
+
+## Task ID: 4.3-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-4.3: ArtifactStore Versioning (remapped Phase 2 / Architectural Phase 2 series)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK (from AIP_0_1_Phase2_BuildSpec_Rev1.2.md):**
+- CHUNK-4.3 implements versioned storage for artifacts.
+- DEPENDS-ON: CHUNK-4.0a (the protocol methods `read(version=)` and `list_versions` added there).
+- FILES:
+  - `adapter/artifact_store_versioned.py`
+  - `tests/test_artifact_versioning.py`
+- Core contract:
+  - Every `write()` appends a new version (never overwrites).
+  - `read(id)` → latest version
+  - `read(id, version=N)` → specific version
+  - `list_versions(id)` → ascending list of versions
+- Implementation uses its own SQLite table `artifacts` with composite primary key (id, version).
+- Explicitly an adapter (satisfies the extended ArtifactStore protocol from 4.0a).
+
+**2-5. Dependencies, history, Architecture, current state:**
+- DEPENDS-ON (4.0a) complete.
+- No prior versioning table or logic existed in the repo (confirmed via grep and db inspection — only `ecs_state` table present).
+- Historical repo 2.x used the unversioned Phase 1 ArtifactStore (commit.py, engine paths) but introduced no versioning semantics.
+- Repo 3.x had no interaction with ArtifactStore.
+- Architecture alignment: Directly fulfills §1.5 (provenance via versions) and §1.6 (generated vs canonical distinction).
+- Per PHASE2_IMPORT_NOTES.md: Listed as "Not implemented".
+
+**6. Reconciliation:**
+- Pure new adapter implementation.
+- Existing callers of ArtifactStore protocol remain compatible (the protocol was extended in 4.0a; this class satisfies it).
+- Actual migration/wiring of VersionedArtifactStore into higher layers happens in later chunks (4.5/4.7), not here.
+- Follows Process Rule #10: we are extending capability without breaking prior usage.
+
+**Conclusion:**
+Clean L2 adapter chunk. No blockers. All rules satisfied.
+
+**Spec Delta / Numbering Note:**
+Executed against remapped Phase 2 BuildSpec Rev 1.2 (CHUNK-4.x).
+
+**FILES (per spec):**
+- `adapter/artifact_store_versioned.py` (new)
+- `tests/test_artifact_versioning.py` (new)
+
+**GATE (per spec):**
+`uv run pytest tests/test_artifact_versioning.py -xvs`
+
+After gate green: update, commit, push, continue.
+
+**Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-4.3.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/adapter/artifact_store_versioned.py` with `VersionedArtifactStore` exactly per the spec ANNEX (SQLite-backed, append-only versioning, enriched metadata, composite PK).
+- Created `tests/test_artifact_versioning.py` with the exact test cases from the spec (write creates v1, appends versions, read latest vs specific, old versions preserved, KeyError on missing).
+- Gate executed exactly as specified: `uv run pytest tests/test_artifact_versioning.py -xvs` → **6/6 PASSED**.
+- All changes follow the declared scope, depend only on the 4.0a protocol extensions, and respect the remediation reconciliation rules.
+
+**Gate result:** 6/6 PASSED cleanly.
+
+**Status:** Complete
+**Pushed:** (next commit)
+
+
 
