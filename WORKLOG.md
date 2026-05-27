@@ -236,7 +236,7 @@ All succeeded. The types Rev 1.3 expects to be present before CHUNK-1.0a now exi
 - Does not depend on retrieval or synthesis logic from 1.1.
 - Result: Clean, consistent with all prior chunks and the zero-tokens doctrine.
 
-**Current position in Rev 1.3 linearized order:** 1.0a ✓ → 1.0b ✓ → 1.1 ✓ → 1.2 ✓ → 1.3 ✓ (after mandatory Continuity Check)
+**Current position in Rev 1.3 linearized order:** 1.0a ✓ → 1.0b ✓ → 1.1 ✓ → 1.2 ✓ → 1.3 ✓ → 1.4 ✓ (after mandatory Continuity Check)
 
 ---
 
