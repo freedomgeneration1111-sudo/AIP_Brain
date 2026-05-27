@@ -56,7 +56,11 @@ def load_workflow_from_yaml(path: str | Path) -> list[WorkflowNode]:
                 prompt_template=node_def.get("prompt", ""),
             ))
         elif node_type == NodeType.CONDITION:
-            nodes.append(ConditionNode(node_id, condition=node_def.get("condition", "")))
+            cfg = {
+                "next_on_true": node_def.get("next_on_true"),
+                "next_on_false": node_def.get("next_on_false"),
+            }
+            nodes.append(ConditionNode(node_id, condition=node_def.get("condition", ""), config=cfg))
         elif node_type == NodeType.DIALOG:
             nodes.append(DialogNode(node_id, prompt=node_def.get("prompt", "")))
         elif node_type == NodeType.PARALLEL:

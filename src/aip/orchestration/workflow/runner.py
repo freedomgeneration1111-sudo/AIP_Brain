@@ -27,21 +27,47 @@ class SequentialRunner:
         self.context = context or WorkflowContext()
 
     async def run(self) -> list[NodeResult]:
-        results: list[NodeResult] = []
+        """
+        Execute nodes sequentially, with basic support for condition branching.
 
-        for node in self.nodes:
-            # Budget guard (very basic for foundation)
-            if node.requires_model() and not self.context.consume_budget(100):  # arbitrary unit
+        A ConditionNode can influence the next node via:
+        - node.config['next_on_true'] / node.config['next_on_false']
+        """
+        results: list[NodeResult] = []
+        i = 0
+        n = len(self.nodes)
+
+        while i < n:
+            node = self.nodes[i]
+
+            # Budget guard
+            if node.requires_model() and not self.context.consume_budget(100):
                 results.append(NodeResult(success=False, error="Budget exhausted"))
                 break
 
             result = await node.run(self.context)
             results.append(result)
-
-            # Store the last result under a conventional key for simple chaining
             self.context.set("last_result", result.output)
 
             if not result.success:
                 break
+
+            # Basic branching support for conditions
+            if node.node_type == NodeType.CONDITION:
+                cond_result = result.output.get("result", False) if isinstance(result.output, dict) else False
+                next_key = "next_on_true" if cond_result else "next_on_false"
+                target_id = node.config.get(next_key)
+
+                if target_id:
+                    # Find the target node by id
+                    try:
+                        target_idx = next(idx for idx, nd in enumerate(self.nodes) if nd.node_id == target_id)
+                        i = target_idx
+                        continue
+                    except StopIteration:
+                        # Target not found — fall through to normal increment
+                        pass
+
+            i += 1
 
         return results

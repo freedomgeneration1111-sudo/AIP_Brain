@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
+import jinja2
+
 
 class NodeType(str, Enum):
     SCRIPT = "script"
@@ -108,10 +110,18 @@ class ConditionNode(WorkflowNode):
     def __init__(self, node_id: str, condition: str, config: dict[str, Any] | None = None):
         super().__init__(node_id, NodeType.CONDITION, config)
         self.condition = condition
+        self._env = jinja2.Environment(autoescape=False)
 
     async def run(self, context: "WorkflowContext") -> NodeResult:
-        # Placeholder
-        return NodeResult(success=True, output={"executed": self.node_id, "type": "condition"})
+        template = self._env.from_string(self.condition)
+        rendered = template.render(**context.variables, **context.metadata)
+        # Very simple truthiness evaluation for now
+        result = rendered.strip().lower() not in ("", "false", "0", "none", "null")
+        return NodeResult(
+            success=True,
+            output={"result": result, "rendered": rendered},
+            metadata={"condition": self.condition}
+        )
 
 
 class DialogNode(WorkflowNode):

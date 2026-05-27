@@ -799,3 +799,16 @@ This establishes the architectural foundation that all future Phase 2 chunks wil
 Proceed with implementing condition evaluation + basic branching in the runner. This is the highest-leverage next increment after the foundation.
 
 **Status:** Continuity Check complete. Proceeding to implementation.
+
+**Implementation for CHUNK-2.2:**
+- Extended `ConditionNode` to perform real Jinja2 evaluation against the WorkflowContext.
+- Updated `SequentialRunner` with basic branching support using `next_on_true` / `next_on_false` in node config.
+- Updated loader to pass branching metadata for conditions.
+- Added `jinja2` dependency.
+- Verified that condition evaluation + branching works end-to-end.
+
+This gives the engine its first real control-flow capability while staying zero-token and deterministic for condition nodes.
+
+**Pushed:** Yes
+
+**Status:** Complete
