@@ -3153,6 +3153,51 @@ Continuing the grind on 4.5.
 **Phase 2 (remapped 4.x series) core is now complete.**
 Next: Big Continuity Check + move into Phase 3 (CHUNK-5.x).
 
+---
+
+## Task ID: 5.0a-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.0a: Schema Additions + Protocol Amendments (first chunk of remapped Phase 3 series)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK (from AIP_0_1_Phase3_BuildSpec_Rev1.1.md):**
+- CHUNK-5.0a establishes the foundational types and protocols for Phase 3 (Embedding slot, L4 trajectory regulation, multi-turn sessions).
+- DEPENDS-ON: CHUNK-4.0a, 4.0b (the Phase 2 schema/protocol work we completed).
+- FILES:
+  - `foundation/schemas.py` (append only)
+  - `foundation/protocols.py` (amend by addition)
+- New types: `TrajectorySignal`, `SessionContext`, `ModelSlotConfig`, plus `TrajectorySignalType` alias.
+- New/Extended Protocols: `query_events` on TraceStore, new `ModelProvider` and `EmbeddingProvider` Protocols.
+- Strong emphasis on §1.8 tagging (`model_gen_assumption` on TrajectorySignal).
+
+**2-6. Reconciliation:**
+- We have already extended schemas.py and protocols.py multiple times (1.0a, 3.12, 4.0a, 4.3/4.4). The append/amend discipline is well established.
+- The new L4 signals (D/E/F) align with the failure taxonomy we already support.
+- Per the Phase 3 spec and PHASE2_IMPORT_NOTES.md: This is the start of the Phase 3 foundation. No major historical overlap conflicts noted for these specific types.
+- The engine and stores from Phase 2 (4.x) will be consumers of the new protocols later in the 5.x series.
+
+**Conclusion:**
+Clean L1 foundation chunk. No blockers. The append/amend pattern is familiar and the §1.8 requirements are explicit.
+
+**Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-5.0a (first Phase 3 chunk).
+
+**Implementation notes (filled after code + gate):**
+- Appended Phase 3 dataclasses (`TrajectorySignal`, `SessionContext`, `ModelSlotConfig`) to schemas.py.
+- Appended `query_events` to TraceStore and added new `ModelProvider` / `EmbeddingProvider` Protocols.
+- Created `tests/test_phase3_schema_additions.py` (6 tests) — all §1.8 and protocol checks pass.
+- Gate: **6/6 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.0a complete.
+
+**Phase 3 (remapped 5.x series) has begun.**
+Continuing the grind.
+
+
+
 
 
 
@@ -3316,6 +3361,51 @@ Continuing the grind on 4.5.
 
 **Phase 2 (remapped 4.x series) core is now complete.**
 Next: Big Continuity Check + move into Phase 3 (CHUNK-5.x).
+
+---
+
+## Task ID: 5.0a-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.0a: Schema Additions + Protocol Amendments (first chunk of remapped Phase 3 series)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK (from AIP_0_1_Phase3_BuildSpec_Rev1.1.md):**
+- CHUNK-5.0a establishes the foundational types and protocols for Phase 3 (Embedding slot, L4 trajectory regulation, multi-turn sessions).
+- DEPENDS-ON: CHUNK-4.0a, 4.0b (the Phase 2 schema/protocol work we completed).
+- FILES:
+  - `foundation/schemas.py` (append only)
+  - `foundation/protocols.py` (amend by addition)
+- New types: `TrajectorySignal`, `SessionContext`, `ModelSlotConfig`, plus `TrajectorySignalType` alias.
+- New/Extended Protocols: `query_events` on TraceStore, new `ModelProvider` and `EmbeddingProvider` Protocols.
+- Strong emphasis on §1.8 tagging (`model_gen_assumption` on TrajectorySignal).
+
+**2-6. Reconciliation:**
+- We have already extended schemas.py and protocols.py multiple times (1.0a, 3.12, 4.0a, 4.3/4.4). The append/amend discipline is well established.
+- The new L4 signals (D/E/F) align with the failure taxonomy we already support.
+- Per the Phase 3 spec and PHASE2_IMPORT_NOTES.md: This is the start of the Phase 3 foundation. No major historical overlap conflicts noted for these specific types.
+- The engine and stores from Phase 2 (4.x) will be consumers of the new protocols later in the 5.x series.
+
+**Conclusion:**
+Clean L1 foundation chunk. No blockers. The append/amend pattern is familiar and the §1.8 requirements are explicit.
+
+**Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-5.0a (first Phase 3 chunk).
+
+**Implementation notes (filled after code + gate):**
+- Appended Phase 3 dataclasses (`TrajectorySignal`, `SessionContext`, `ModelSlotConfig`) to schemas.py.
+- Appended `query_events` to TraceStore and added new `ModelProvider` / `EmbeddingProvider` Protocols.
+- Created `tests/test_phase3_schema_additions.py` (6 tests) — all §1.8 and protocol checks pass.
+- Gate: **6/6 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.0a complete.
+
+**Phase 3 (remapped 5.x series) has begun.**
+Continuing the grind.
+
+
 
 
 
@@ -3738,6 +3828,51 @@ Continuing the grind on 4.5.
 **Phase 2 (remapped 4.x series) core is now complete.**
 Next: Big Continuity Check + move into Phase 3 (CHUNK-5.x).
 
+---
+
+## Task ID: 5.0a-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.0a: Schema Additions + Protocol Amendments (first chunk of remapped Phase 3 series)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK (from AIP_0_1_Phase3_BuildSpec_Rev1.1.md):**
+- CHUNK-5.0a establishes the foundational types and protocols for Phase 3 (Embedding slot, L4 trajectory regulation, multi-turn sessions).
+- DEPENDS-ON: CHUNK-4.0a, 4.0b (the Phase 2 schema/protocol work we completed).
+- FILES:
+  - `foundation/schemas.py` (append only)
+  - `foundation/protocols.py` (amend by addition)
+- New types: `TrajectorySignal`, `SessionContext`, `ModelSlotConfig`, plus `TrajectorySignalType` alias.
+- New/Extended Protocols: `query_events` on TraceStore, new `ModelProvider` and `EmbeddingProvider` Protocols.
+- Strong emphasis on §1.8 tagging (`model_gen_assumption` on TrajectorySignal).
+
+**2-6. Reconciliation:**
+- We have already extended schemas.py and protocols.py multiple times (1.0a, 3.12, 4.0a, 4.3/4.4). The append/amend discipline is well established.
+- The new L4 signals (D/E/F) align with the failure taxonomy we already support.
+- Per the Phase 3 spec and PHASE2_IMPORT_NOTES.md: This is the start of the Phase 3 foundation. No major historical overlap conflicts noted for these specific types.
+- The engine and stores from Phase 2 (4.x) will be consumers of the new protocols later in the 5.x series.
+
+**Conclusion:**
+Clean L1 foundation chunk. No blockers. The append/amend pattern is familiar and the §1.8 requirements are explicit.
+
+**Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-5.0a (first Phase 3 chunk).
+
+**Implementation notes (filled after code + gate):**
+- Appended Phase 3 dataclasses (`TrajectorySignal`, `SessionContext`, `ModelSlotConfig`) to schemas.py.
+- Appended `query_events` to TraceStore and added new `ModelProvider` / `EmbeddingProvider` Protocols.
+- Created `tests/test_phase3_schema_additions.py` (6 tests) — all §1.8 and protocol checks pass.
+- Gate: **6/6 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.0a complete.
+
+**Phase 3 (remapped 5.x series) has begun.**
+Continuing the grind.
+
+
+
 
 
 
@@ -3835,6 +3970,51 @@ Continuing the grind on 4.5.
 **Phase 2 (remapped 4.x series) core is now complete.**
 Next: Big Continuity Check + move into Phase 3 (CHUNK-5.x).
 
+---
+
+## Task ID: 5.0a-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.0a: Schema Additions + Protocol Amendments (first chunk of remapped Phase 3 series)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK (from AIP_0_1_Phase3_BuildSpec_Rev1.1.md):**
+- CHUNK-5.0a establishes the foundational types and protocols for Phase 3 (Embedding slot, L4 trajectory regulation, multi-turn sessions).
+- DEPENDS-ON: CHUNK-4.0a, 4.0b (the Phase 2 schema/protocol work we completed).
+- FILES:
+  - `foundation/schemas.py` (append only)
+  - `foundation/protocols.py` (amend by addition)
+- New types: `TrajectorySignal`, `SessionContext`, `ModelSlotConfig`, plus `TrajectorySignalType` alias.
+- New/Extended Protocols: `query_events` on TraceStore, new `ModelProvider` and `EmbeddingProvider` Protocols.
+- Strong emphasis on §1.8 tagging (`model_gen_assumption` on TrajectorySignal).
+
+**2-6. Reconciliation:**
+- We have already extended schemas.py and protocols.py multiple times (1.0a, 3.12, 4.0a, 4.3/4.4). The append/amend discipline is well established.
+- The new L4 signals (D/E/F) align with the failure taxonomy we already support.
+- Per the Phase 3 spec and PHASE2_IMPORT_NOTES.md: This is the start of the Phase 3 foundation. No major historical overlap conflicts noted for these specific types.
+- The engine and stores from Phase 2 (4.x) will be consumers of the new protocols later in the 5.x series.
+
+**Conclusion:**
+Clean L1 foundation chunk. No blockers. The append/amend pattern is familiar and the §1.8 requirements are explicit.
+
+**Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-5.0a (first Phase 3 chunk).
+
+**Implementation notes (filled after code + gate):**
+- Appended Phase 3 dataclasses (`TrajectorySignal`, `SessionContext`, `ModelSlotConfig`) to schemas.py.
+- Appended `query_events` to TraceStore and added new `ModelProvider` / `EmbeddingProvider` Protocols.
+- Created `tests/test_phase3_schema_additions.py` (6 tests) — all §1.8 and protocol checks pass.
+- Gate: **6/6 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.0a complete.
+
+**Phase 3 (remapped 5.x series) has begun.**
+Continuing the grind.
+
+
+
 
 
 
@@ -3931,6 +4111,51 @@ Continuing the grind on 4.5.
 **Phase 2 (remapped 4.x series) core is now complete.**
 Next: Big Continuity Check + move into Phase 3 (CHUNK-5.x).
 
+---
+
+## Task ID: 5.0a-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.0a: Schema Additions + Protocol Amendments (first chunk of remapped Phase 3 series)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK (from AIP_0_1_Phase3_BuildSpec_Rev1.1.md):**
+- CHUNK-5.0a establishes the foundational types and protocols for Phase 3 (Embedding slot, L4 trajectory regulation, multi-turn sessions).
+- DEPENDS-ON: CHUNK-4.0a, 4.0b (the Phase 2 schema/protocol work we completed).
+- FILES:
+  - `foundation/schemas.py` (append only)
+  - `foundation/protocols.py` (amend by addition)
+- New types: `TrajectorySignal`, `SessionContext`, `ModelSlotConfig`, plus `TrajectorySignalType` alias.
+- New/Extended Protocols: `query_events` on TraceStore, new `ModelProvider` and `EmbeddingProvider` Protocols.
+- Strong emphasis on §1.8 tagging (`model_gen_assumption` on TrajectorySignal).
+
+**2-6. Reconciliation:**
+- We have already extended schemas.py and protocols.py multiple times (1.0a, 3.12, 4.0a, 4.3/4.4). The append/amend discipline is well established.
+- The new L4 signals (D/E/F) align with the failure taxonomy we already support.
+- Per the Phase 3 spec and PHASE2_IMPORT_NOTES.md: This is the start of the Phase 3 foundation. No major historical overlap conflicts noted for these specific types.
+- The engine and stores from Phase 2 (4.x) will be consumers of the new protocols later in the 5.x series.
+
+**Conclusion:**
+Clean L1 foundation chunk. No blockers. The append/amend pattern is familiar and the §1.8 requirements are explicit.
+
+**Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-5.0a (first Phase 3 chunk).
+
+**Implementation notes (filled after code + gate):**
+- Appended Phase 3 dataclasses (`TrajectorySignal`, `SessionContext`, `ModelSlotConfig`) to schemas.py.
+- Appended `query_events` to TraceStore and added new `ModelProvider` / `EmbeddingProvider` Protocols.
+- Created `tests/test_phase3_schema_additions.py` (6 tests) — all §1.8 and protocol checks pass.
+- Gate: **6/6 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.0a complete.
+
+**Phase 3 (remapped 5.x series) has begun.**
+Continuing the grind.
+
+
+
 
 
 
@@ -4026,6 +4251,51 @@ Continuing the grind on 4.5.
 
 **Phase 2 (remapped 4.x series) core is now complete.**
 Next: Big Continuity Check + move into Phase 3 (CHUNK-5.x).
+
+---
+
+## Task ID: 5.0a-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.0a: Schema Additions + Protocol Amendments (first chunk of remapped Phase 3 series)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK (from AIP_0_1_Phase3_BuildSpec_Rev1.1.md):**
+- CHUNK-5.0a establishes the foundational types and protocols for Phase 3 (Embedding slot, L4 trajectory regulation, multi-turn sessions).
+- DEPENDS-ON: CHUNK-4.0a, 4.0b (the Phase 2 schema/protocol work we completed).
+- FILES:
+  - `foundation/schemas.py` (append only)
+  - `foundation/protocols.py` (amend by addition)
+- New types: `TrajectorySignal`, `SessionContext`, `ModelSlotConfig`, plus `TrajectorySignalType` alias.
+- New/Extended Protocols: `query_events` on TraceStore, new `ModelProvider` and `EmbeddingProvider` Protocols.
+- Strong emphasis on §1.8 tagging (`model_gen_assumption` on TrajectorySignal).
+
+**2-6. Reconciliation:**
+- We have already extended schemas.py and protocols.py multiple times (1.0a, 3.12, 4.0a, 4.3/4.4). The append/amend discipline is well established.
+- The new L4 signals (D/E/F) align with the failure taxonomy we already support.
+- Per the Phase 3 spec and PHASE2_IMPORT_NOTES.md: This is the start of the Phase 3 foundation. No major historical overlap conflicts noted for these specific types.
+- The engine and stores from Phase 2 (4.x) will be consumers of the new protocols later in the 5.x series.
+
+**Conclusion:**
+Clean L1 foundation chunk. No blockers. The append/amend pattern is familiar and the §1.8 requirements are explicit.
+
+**Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-5.0a (first Phase 3 chunk).
+
+**Implementation notes (filled after code + gate):**
+- Appended Phase 3 dataclasses (`TrajectorySignal`, `SessionContext`, `ModelSlotConfig`) to schemas.py.
+- Appended `query_events` to TraceStore and added new `ModelProvider` / `EmbeddingProvider` Protocols.
+- Created `tests/test_phase3_schema_additions.py` (6 tests) — all §1.8 and protocol checks pass.
+- Gate: **6/6 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.0a complete.
+
+**Phase 3 (remapped 5.x series) has begun.**
+Continuing the grind.
+
+
 
 
 

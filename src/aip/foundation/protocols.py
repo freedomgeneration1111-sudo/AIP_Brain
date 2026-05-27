@@ -111,6 +111,19 @@ class TraceStore(Protocol):
         """Write a trace event for node execution."""
         ...
 
+    # --- Phase 3 / CHUNK-5.0a amendment (append method stub only) ---
+    async def query_events(
+        self,
+        session_id: str,
+        node_type: str | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Query trace events for a session (raw dicts).
+
+        Used by L4 trajectory detectors (loop, anxiety, failure streak).
+        """
+        ...
+
     # L4 / CHUNK-3.1 addition (amend by addition only — never rewrite existing methods)
     # Provides the query surface required by TrajectoryMonitor and future Sexton (§10.1, §16.1).
     # Implementations must return events in descending created_at order (most recent first).
@@ -229,4 +242,33 @@ class AutonomyGate(Protocol):
 
     async def record_autonomy_use(self, level: int, context: dict[str, Any]) -> None:
         """Record that the given autonomy level was used (for audit / Sexton)."""
+        ...
+
+
+# --- Phase 3 / CHUNK-5.0a new Protocols (not amendments to existing ones) ---
+
+@runtime_checkable
+class ModelProvider(Protocol):
+    """Abstracts model API calls for a named slot.
+
+    Phase 3 addition. Orchestration code must never import openai/anthropic/ollama directly.
+    """
+
+    async def call(self, slot_name: str, messages: list[dict], **kwargs) -> dict:
+        """Call the model for the given slot.
+
+        Returns a dict with at minimum: content, model, usage, latency_ms.
+        """
+        ...
+
+
+@runtime_checkable
+class EmbeddingProvider(Protocol):
+    """Abstracts text-to-vector embedding.
+
+    Phase 3 addition. Used by retrieval and future L2 components.
+    """
+
+    async def embed(self, text: str) -> list[float]:
+        """Embed a single text string and return the vector."""
         ...
