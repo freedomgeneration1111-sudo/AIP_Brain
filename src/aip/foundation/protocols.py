@@ -12,11 +12,44 @@ from typing import Protocol, runtime_checkable
 # Phase 0 VectorStore (the version that CHUNK-1.0a will amend)
 @runtime_checkable
 class VectorStore(Protocol):
-    """Abstracts pgvector and sqlite-vss. Both backends implement this."""
+    """Vector store abstraction for pgvector / sqlite-vss swap.
+    Phase 1 amendment (CHUNK-1.0a): added upsert, retrieve with query_vector, delete.
+    Phase 0 store() method is deprecated but retained for backward compat.
+    """
 
-    async def retrieve(self, query: str, domain: str, limit: int) -> list: ...  # returns list[Chunk] in practice
+    # Phase 1 methods (added by CHUNK-1.0a per Rev 1.3)
+    async def upsert(
+        self,
+        id: str,
+        embedding: list[float],
+        content: str,
+        metadata: dict,
+        domain: str | None = None,
+    ) -> None:
+        """Store or update a vector with metadata."""
+        ...
 
-    async def store(self, chunk: object) -> str: ...  # returns ChunkId
+    async def retrieve(
+        self,
+        query_vector: list[float],
+        domain: str | None = None,
+        top_k: int = 10,
+    ) -> list:  # list[Chunk] after schemas append
+        """Retrieve chunks by vector similarity."""
+        ...
+
+    async def delete(self, id: str) -> None:
+        """Delete a vector entry by id."""
+        ...
+
+    async def count(self, domain: str | None = None) -> int:
+        """Count entries, optionally filtered by domain."""
+        ...
+
+    # Deprecated Phase 0 method — retained for backward compatibility
+    async def store(self, chunk: object) -> str:
+        """Deprecated: use upsert() instead. Returns chunk id."""
+        ...
 
 
 # Other Phase 0 protocols as empty runtime_checkable stubs
@@ -34,14 +67,36 @@ class CanonicalStore(Protocol):
 
 @runtime_checkable
 class ArtifactStore(Protocol):
-    """Response artifact store."""
-    ...
+    """Artifact store for reading and writing generated content.
+    P1 fix (CHUNK-1.0a): Phase 0 left this as `...` stub.
+    Method signatures match CHUNK-1.6 call sites.
+    """
+    async def write(self, id: str, content: str, metadata: dict) -> None:
+        """Write artifact content with metadata."""
+        ...
+
+    async def read(self, id: str) -> str:
+        """Read artifact content by id."""
+        ...
 
 
 @runtime_checkable
 class TraceStore(Protocol):
-    """Harness observability. Reads/writes trace_events."""
-    ...
+    """Trace store for logging node execution events.
+    P1 fix (CHUNK-1.0a): Phase 0 left this as `...` stub.
+    Method signature matches CHUNK-1.1 call site.
+    Method name is write_event (confirmed per Rev 1.3 R2').
+    """
+    async def write_event(
+        self,
+        session_id: str,
+        node_type: str,
+        failure_type: str,
+        outcome: str,
+        detail: str | None = None,
+    ) -> None:
+        """Write a trace event for node execution."""
+        ...
 
 
 @runtime_checkable
@@ -52,8 +107,21 @@ class EntityStore(Protocol):
 
 @runtime_checkable
 class EventStore(Protocol):
-    """Append-only durable event log."""
-    ...
+    """Event store for recording ECS state transitions and lifecycle events.
+    P1 fix (CHUNK-1.0a): Phase 0 left this as `...` stub.
+    Method signature matches CHUNK-1.6 call site.
+    """
+    async def write_event(
+        self,
+        event_type: str,
+        actor: str,
+        artifact_id: str,
+        from_state: str | None = None,
+        to_state: str | None = None,
+        **kwargs,
+    ) -> None:
+        """Write an event recording a state transition or lifecycle event."""
+        ...
 
 
 @runtime_checkable

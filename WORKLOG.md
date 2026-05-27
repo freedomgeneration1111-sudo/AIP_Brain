@@ -99,7 +99,32 @@ All succeeded. The types Rev 1.3 expects to be present before CHUNK-1.0a now exi
 **Agent:** Grok Build  
 **Task:** CHUNK-1.0a: Schema Additions + Adapter Package Init (execute exactly per Rev 1.3)
 
-**Status:** In progress (will append to this worklog after completion)
+**Work Log:**
+- Performed append-only addition to `src/aip/foundation/schemas.py` (Chunk + RetrievalResult dataclasses) with clear separator comment.
+- Performed amend-by-addition to `src/aip/foundation/protocols.py`:
+  - Extended VectorStore with upsert, retrieve(query_vector), delete, count (kept deprecated store()).
+  - Added write_event(...) to TraceStore.
+  - Added write_event(...) to EventStore.
+  - Added write(...) and read(...) to ArtifactStore.
+- Created `tests/test_schema_additions.py` (required by the CHUNK definition in Rev 1.3).
+- Ran the exact gate: `uv run python -m pytest tests/test_schema_additions.py -xvs`
+- All 9 tests passed cleanly.
+- Zero changes to any existing Phase 0 code outside the documented append/amend locations.
+
+**Gate result:** 9/9 PASSED
+
+**Pushed:** Yes (next commit)
+
+**Status:** Complete
+
+---
+
+## Task ID: 1.0b-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-1.0b: sqlite_vss VectorStore adapter (next per Rev 1.3 linearized order)
+
+**Status:** Next (will begin after this push)
 
 ---
 
