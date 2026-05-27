@@ -3366,6 +3366,72 @@ After gate green: update WORKLOG, commit, push, continue the series.
 
 **Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-4.1.
 
+---
+
+## Task ID: 4.2-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-4.2: Re-Synthesis Loop (remapped Phase 2 / Architectural Phase 2 series)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK (from AIP_0_1_Phase2_BuildSpec_Rev1.2.md):**
+- CHUNK-4.2 implements the re-synthesis loop on REJECTED verdict.
+- DEPENDS-ON: CHUNK-4.1 (review node), CHUNK-1.3 (synthesis stub).
+- FILES:
+  - `orchestration/re_synthesize.py`
+  - `tests/test_re_synthesize.py`
+- Core responsibilities:
+  - `build_failure_context(rejection, prior_content)` — maps Appendix E failure types to correction instructions.
+  - `re_synthesize(...)` — reads prior content, builds failure context, checks retry budget from `[review].max_rejection_retries`, calls synthesize_fn with failure_context, writes new version, transitions REJECTED → GENERATED, records events.
+  - If budget exhausted → transition to FAILED.
+- Returns a ReviewVerdict so the engine can re-enter the review cycle (4.1).
+
+**2-5. Dependencies, prior work, Architecture, current state:**
+- DEPENDS-ON: 4.1 (just completed — review_artifact now exists and can be called after re-synthesis), 1.3 (synthesis stub exists, though its signature is the old Phase 1 one; the spec passes failure_context as a kwarg — this will require a small adapter or evolution at integration time).
+- Current state:
+  - No `re_synthesize.py` exists.
+  - The synthesis node (1.3) exists but expects the old signature. This is noted as interface evolution (similar to 4.1).
+  - ReviewVerdict, ECS graph (4.0b), EventStore query (4.4), and ArtifactStore versioning (4.3) are all now available — this chunk depends on them.
+- Historical repo 2.x: Had basic rejection paths in the old Workflow 0.1 engine, but nothing with Appendix E failure context injection or the formal retry budget + FAILED escalation.
+- Repo 3.x: No overlap with re-synthesis logic.
+- Per PHASE2_IMPORT_NOTES.md: `orchestration/re_synthesize.py` listed as "Not implemented".
+
+**6. Reconciliation & Remediation Rules:**
+- This is new orchestration code.
+- The main "overlap" is the existing synthesis stub (1.3) and the review node (4.1). We will call them; any signature mismatch (failure_context) will be handled by a thin adapter at the call site or noted for engine integration (4.5).
+- Follows Process Rule #10: Documented here. We extend the rejection path from repo 2.x concepts into the full ECS + failure-context version without breaking existing synthesis calls.
+
+**Conclusion of Continuity Check:**
+No blockers. The chunk is ready. The synthesis_fn signature difference is expected evolution between Phase 1 stubs and Phase 2 lifecycle. All new foundation (4.0a/b, 4.3, 4.4) is in place. All remediation controls satisfied.
+
+**Spec Delta / Numbering Note:**
+Executed against the remapped Phase 2 BuildSpec Rev 1.2 (CHUNK-4.x series).
+
+**FILES (per spec):**
+- `orchestration/re_synthesize.py` (new)
+- `tests/test_re_synthesize.py` (new)
+
+**GATE (per spec):**
+`uv run pytest tests/test_re_synthesize.py tests/test_layering.py -xvs`
+
+After gate green: update WORKLOG, commit, push, continue the series.
+
+**Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-4.2.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/re_synthesize.py` with `build_failure_context` and `re_synthesize` exactly per the spec ANNEX (failure context from Appendix E, retry budget enforcement, ECS transitions, versioned write, event recording).
+- Created `tests/test_re_synthesize.py` with the core tests (failure context building + basic re-synthesis flow).
+- Gate executed: `uv run pytest tests/test_re_synthesize.py tests/test_layering.py -xvs` → **3/3 PASSED**.
+- Interface note with 1.3 synthesis (failure_context kwarg) recorded in the CC; will be reconciled at engine integration.
+
+**Gate result:** Gate green.
+
+**Status:** Complete
+**Pushed:** (next commit)
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/review.py` with `review_artifact` and helpers exactly per the spec ANNEX (automated + definer modes, ReviewContext assembly, ECS transitions via guardrails, event + trace logging).
 - Created `tests/test_review_node.py` with the core test cases from the spec using fake stores.
