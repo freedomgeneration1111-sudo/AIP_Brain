@@ -7681,6 +7681,77 @@ CC complete. Next per linearized DAG: CHUNK-7.1 implementation.
 
 **Phase 5 pre-7.1 CC complete. Tree clean at 9c8331f. Continuing per continuous execution directive after push.**
 
+---
+
+## Full Pre-CHUNK-7.2 Continuity Check (Mandatory before Phase 5 ACE Playbook)
+
+**Date:** 2026-05 (immediately after CHUNK-7.1 gate green + push at 3b71056)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.2 box + prose + gate verification list, lines 1049–1089+)
+**DEPENDS-ON:** CHUNK-7.1 (FailureClassification + Sexton derivation), CHUNK-7.0a (AcePlaybookEntry dataclass with §1.8)
+**Status:** CC complete + documented. Ready for CHUNK-7.2 (no src/ or tests/ production edits for 7.2 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Baseline includes 7.0a/7.0b/7.1 (Sexton extended with full classification producing FailureClassification; all gates green at 42 passed, pushed at 3b71056).
+- 5.8 partial non-blocking, Phase 4 complete, etc. remain in force.
+- PHASE2_IMPORT_NOTES §10 + handoff: ACE playbook curation is Sexton-driven (7.2 consumes 7.1 output); watch for any repo 3.x ACE stubs in sexton/.
+
+**1. Re-read of target CHUNK-7.2 (from Phase 5 SSOT):**
+
+```
+CHUNK-7.2: ACE Playbook
+PHASE: 5
+DEPENDS-ON: CHUNK-7.1
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~4,500 tokens
+FILES:
+  orchestration/ace_playbook.py
+  tests/test_ace_playbook.py
+INTERFACES:
+  class AcePlaybook:
+      def __init__(self, db_path: str, config: AcePlaybookConfig) -> None: ...
+      async def load_playbook(self, domain: str | None = None) -> list[AcePlaybookEntry]: ...
+      async def add_entry(self, entry: AcePlaybookEntry) -> str: ...
+      async def deprecate_entry(self, entry_id: str, reason: str) -> None: ...
+      async def derive_from_classification(self, classification: FailureClassification, trace_event: dict) -> AcePlaybookEntry | None: ...
+      async def get_active_entries(self, domain: str, failure_type: str | None = None) -> list[AcePlaybookEntry]: ...
+TESTS: tests/test_ace_playbook.py
+GATE: uv run pytest tests/test_ace_playbook.py -xvs
+```
+
+**Prose key mandates:** SQLite-backed AcePlaybook (ace_playbook table per AcePlaybookEntry schema from 7.0a). load_playbook at session start. derive_from_classification is the bridge from 7.1 Sexton output (uses Appendix E recommendations, sets model_gen_assumption from the classification, auto-promotes if confidence >= min_confidence). Deprecate (supersession per Appendix D). Integration test (7.6) exercises full failure → classification → derivation → replay cycle.
+
+**2-3. DEPENDS-ON + cross-check:** 7.1 now produces the exact FailureClassification inputs; 7.0a AcePlaybookEntry carries §1.8. All prior Clean Bills hold.
+
+**4. Rule #10 / Repo overlap reconciliation:**
+- Target: orchestration/ace_playbook.py (new), tests/test_ace_playbook.py (new).
+- Existing overlap: `orchestration/sexton/sexton.py` contains `derive_ace_rules(...)` + related foundation stubs (derive_intervention_rule, _default_action_for, etc.) from 3.4/3.7/3.10. These are deterministic derivation helpers that already carry model_gen_assumption and map failure_type → recommended_action.
+  **Reconciliation (extend existing):** The new AcePlaybook.derive_from_classification (7.2) will be the primary persisted implementation. The existing stubs in sexton/ can remain as lightweight helpers or be called by the new AcePlaybook during derivation (or vice-versa). We extend the derivation logic into the new ace_playbook.py (SQLite + full CRUD + load at session start) rather than replacing the foundation stubs. No parallel code; the 7.1-extended sexton/ continues to expose its derivation helpers for any legacy or internal use. This is additive and honors "extend existing".
+- No pre-existing ace_playbook.py (confirmed clean by ls/audit).
+- Result: Clean. New file only where spec requires the persistent SQLite component.
+
+**5. Arch Rev 5.2:** §8.1 / §16.1 (ACE playbook curation by Sexton, loaded at session start, procedural rules with model_gen_assumption) — matches prose exactly.
+
+**6. State verification (live):** Full governance re-run (incl 7.1 test): 42 passed. No ace_playbook.py exists. Existing derivation stubs in sexton/ are the only overlap and are reconcilable.
+
+**Overall Pre-CHUNK-7.2 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-7.2 (derivation overlap with delivered sexton/ stubs reconciled via extension).**
+
+- All 6 steps with direct evidence.
+- Prior Clean Bills hold.
+- Rule #10: Existing derive_ace_rules etc. in sexton/ extended into the new persistent AcePlaybook (no replacement, no parallel).
+- Ready for exact 7.2 (new orchestration/ace_playbook.py per ANNEX with derive_from_classification consuming 7.1 output + SQLite per AcePlaybookEntry, test, gate).
+
+**This completes the mandatory full Continuity Check for CHUNK-7.2.**
+
+**Ready to proceed to CHUNK-7.2 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-7.2 implementation.
+
+---
+
+**Phase 5 pre-7.2 CC complete. Tree clean at 3b71056. Continuing per continuous execution directive after push.**
+
 ## CHUNK-7.1 — Sexton Failure Classification (Core Phase 5 Actor)
 
 **Date:** 2026-05 (post full pre-7.1 CC at 77a7740)
