@@ -240,6 +240,59 @@ All succeeded. The types Rev 1.3 expects to be present before CHUNK-1.0a now exi
 
 ---
 
+## Task ID: 1.4-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-1.4: Adversarial Eval Stub (L3b interface, no model call in CI)
+
+**Continuity Check (performed before writing any code for this chunk):**
+
+**1. Re-read of target CHUNK (Rev 1.3):**
+- CHUNK-1.4 is an **explicit stub** (L3b).
+- DEPENDS-ON: CHUNK-1.2 (ValidationResult) and CHUNK-1.3 (SynthesisOutput) — both now delivered.
+- Interface: `async def adversarial_eval(synthesis_output: SynthesisOutput, validation_result: ValidationResult, eval_criteria: list[EvalCriterion] | None = None) -> EvalResult`
+- EvalCriterion must carry `model_gen_assumption` (per §1.8 and cross-check in green gate summary).
+- The prose states: "The four criteria from §F.3 are retained with model_gen_assumption='deepseek-v3-0324 or qwen3-4b' tags. Stub mode returns deterministic passing scores."
+- ANNEX is "unchanged from Rev 1.0".
+- Used downstream by CHUNK-1.5 (definer_gate takes EvalResult).
+
+**2. Review of immediately prior chunks (1.2 + 1.3):**
+- We have `ValidationResult` (passed/failed, failure_detail) from 1.2.
+- We have `SynthesisOutput` (content, model_name, etc.) from 1.3.
+- 1.3's output is explicitly required to pass structural_validate — this stub can use the validation_result to influence scoring or `requires_deep_eval`.
+- Strong direct dependency match.
+
+**3. Revision Log & broader spec cross-references:**
+- No significant new deltas in the 1.2→1.3→1.4 section for adversarial eval (treated as stable).
+- Must maintain model_gen_assumption tagging (already enforced in 1.2 rules and required here).
+- Consistent with overall L3 "Validation / Adversarial Evaluation" layer in Architecture Rev 5.2.
+- Stub must not introduce network calls or hardcoded model names (will be caught by 1.7 later, but we must not violate).
+- `requires_deep_eval` flag in EvalResult is likely used by 1.5/1.6 to decide whether to invoke heavier evaluation or DEFINER.
+
+**4. Current repo state & recurring issues:**
+- All direct inputs (SynthesisOutput + ValidationResult) exist and are tested.
+- Recurring gate problem: `test_layering.py` is still missing (appears in the official gate for 1.4).
+- No [models] section or full config loader yet (from 0.2 gap noted in 1.3 check) — this chunk does not directly depend on model name resolution, so low risk.
+- We have a working `structural_validate` that the previous stub already satisfies.
+
+**5. Risks / Observations:**
+- Risk: Implementing the actual four criteria without the exact §F.3 text. Since the spec says "unchanged from Rev 1.0" and "four criteria from §F.3", a reasonable deterministic stub with clearly tagged criteria (matching the required model_gen_assumption) is acceptable. We should make the criteria names and logic transparent.
+- Positive: This is a pure L1 stub with no external dependencies beyond what 1.2/1.3 already provide.
+- Observation: The stub should return `passed=True` and reasonable scores by default, with `requires_deep_eval=False` for the happy path (consistent with "deterministic passing scores").
+
+**Conclusion of Continuity Check:**
+Safe to proceed. Implementation will be a minimal, deterministic stub that:
+- Accepts the outputs from 1.3 and 1.2.
+- Provides default EvalCriteria with correct model_gen_assumption tagging.
+- Returns a deterministic EvalResult (typically passing for stub mode).
+- Keeps the function simple and L1-friendly.
+
+No blocking gaps for this specific chunk.
+
+**Status:** Continuity Check complete. Proceeding to implementation.
+
+---
+
 ## Task ID: 1.3-1
 
 **Agent:** Grok Build  
