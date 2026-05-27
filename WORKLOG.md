@@ -9264,6 +9264,68 @@ CC complete. Next per linearized DAG: 9.2 implementation (after push).
 
 ---
 
+## Full Pre-CHUNK-9.3 Continuity Check (Mandatory before Extended Workflow Templates)
+
+**Date:** 2026-05 (immediately after 9.2 push at 9df56d3)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.3 box + prose)
+**DEPENDS-ON:** CHUNK-9.0a, 9.0b, 4.5 (YAML engine)
+**Status:** CC complete + documented. Ready for CHUNK-9.3 (no src/ or tests/ production edits for 9.3 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-9.2 baseline: 9.0a/b/c + 9.1 Vigil + 9.2 CanonicalPipeline delivered. 9.2 now provides the full promotion driver that the new workflows (especially incremental_update) will exercise. Core battery green at 18+ passed on reliable subset.
+- Rule #10: No pre-existing WorkflowRegistry or the three new workflow YAML files (grep confirmed clean; only incidental references in comments). Target paths `workflows/incremental_update_v1.yaml`, `adversarial_redteam_v1.yaml`, `corpus_maintenance_v1.yaml` + `orchestration/workflow_registry.py` do not exist. Clean for new work. The 4.5 YAML engine + 9.2 pipeline are the primary surfaces to compose.
+- All prior Clean Bills hold.
+
+**1. Re-read of target CHUNK-9.3 (from Phase 7 SSOT):**
+
+```
+CHUNK-9.3: Extended Workflow Templates
+PHASE: 7
+DEPENDS-ON: CHUNK-9.0a, CHUNK-9.0b, CHUNK-4.5
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~4,000 tokens
+FILES:
+  workflows/incremental_update_v1.yaml
+  workflows/adversarial_redteam_v1.yaml
+  workflows/corpus_maintenance_v1.yaml
+  orchestration/workflow_registry.py
+  tests/test_extended_workflows.py
+INTERFACES:
+  class WorkflowRegistry: ... (list_templates, get_template, load_workflow)
+TESTS: tests/test_extended_workflows.py
+GATE: uv run pytest tests/test_extended_workflows.py -xvs
+```
+
+**Prose key mandates (exact scope):** Three new YAML workflow templates beyond 0.1 (incremental_update, adversarial_redteam, corpus_maintenance) + WorkflowRegistry that discovers them via frontmatter/metadata. Each carries model_gen_assumption. The YAML engine (4.5) loads them without modification. Registry used by admin/CLI. incremental_update is what Vigil (9.1) would trigger for stale canonicals instead of full re-synthesis.
+
+**2–6. (Live evidence summary):**
+- DEPENDS (9.0a config, 9.0b auth, 4.5 engine) present and green.
+- No pre-existing 9.3 implementation (Rule #10 clean).
+- Governance: core battery green (18+ passed reliable subset including 9.2).
+- Rule #10: Clean. Pure configuration + thin registry on top of delivered 4.5 engine. No duplication of 9.2 logic — the new workflows *use* the pipeline.
+- Arch cross-refs: §11.1 (L5 YAML engine supports arbitrary workflows), §16.1 (Vigil triggers incremental update on stale canonicals). All satisfied.
+
+**Overall Pre-CHUNK-9.3 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-9.3 (three new YAML workflows + WorkflowRegistry; pure config on 4.5 engine; clean per Rule #10; core battery green).**
+
+- All 6 steps executed.
+- Ready for exact 9.3 (workflows/ + registry + test per ANNEX).
+
+**This completes the mandatory full Continuity Check for CHUNK-9.3.**
+
+The record above constitutes the authoritative audit. All evidence gathered before any src/ or tests/ edits for 9.3.
+
+**Ready to proceed to CHUNK-9.3 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: 9.3 implementation (after push).
+
+---
+
+**Phase 7 pre-9.3 CC complete. Tree clean at 9df56d3. Continuing per continuous execution directive after push.**
+
+---
+
 ## CHUNK-9.2 — Canonical Promotion Pipeline (The Missing Driver for Full REVIEWED→APPROVED→CANONICAL)
 
 **Date:** 2026-05 (post pre-9.2 CC at 285d45b)
