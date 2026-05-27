@@ -2468,7 +2468,14 @@ The usual combined gate.
 
 After gate green: update, commit, push, continue.
 
-**Implementation notes (to be filled after execution):**
-- [empty until next short command]
+**Implementation notes (filled after code + gate):**
+- Amended `orchestration/sexton/sexton.py` (additive) with:
+  - `trust_score(rule_or_event)` — minimal deterministic score (0.0-1.0) based on presence of model_gen_assumption tag, source_event_count, and recommended_action.
+  - Enhanced `audit_model_gen_assumption(rules)` — now actually scans the list and returns potentially stale rules (missing/weak §1.8 tag), fulfilling the "stale rule audit" responsibility from §16.1 / §1.8.
+- Added `test_sexton_trust_score_and_stale_rule_audit_3_10` in `tests/test_sexton.py` exercising both new methods with good/bad rules.
+- Gate (combined L4 + Sexton + layering + trace) executed: 27/27 PASSED (including the two new 3.10 tests).
+- All changes additive, deterministic, zero-token. No new protocols.
 
-**Status:** Continuity Check + Spec Delta documented for CHUNK-3.10. Awaiting short command to implement.
+**Status:** Complete
+
+**Pushed:** (pending this work unit)

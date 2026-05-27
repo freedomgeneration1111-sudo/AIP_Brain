@@ -192,3 +192,45 @@ class Sexton:
         if failure_type == "E":
             return "require_verify_step_before_commit"
         return "log_and_audit"
+
+    # --- CHUNK-3.10: remaining §16.1 foundation (trust scoring + stale rule audit) ---
+
+    def trust_score(self, rule_or_event: dict[str, Any]) -> float:
+        """
+        Minimal deterministic trust score (0.0–1.0) for a rule or classified event.
+        Foundation version: simple heuristic based on presence of supporting fields
+        and model_gen_assumption tag. Real scoring would use more data over time.
+        """
+        if not rule_or_event:
+            return 0.0
+        score = 0.5
+        if rule_or_event.get("model_gen_assumption"):
+            score += 0.3
+        if rule_or_event.get("source_event_count", 0) > 0:
+            score += 0.1
+        if rule_or_event.get("recommended_action"):
+            score += 0.1
+        return min(1.0, round(score, 2))
+
+    def audit_model_gen_assumption(self, rules: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+        """
+        CHUNK-3.10 implementation of the §1.8 stale rule audit.
+        Scans the provided rules (or internal derived rules if none passed) and
+        returns those that are missing or have weak model_gen_assumption tagging.
+        This fulfills the "stale rule audit" responsibility in the foundation.
+        """
+        if rules is None:
+            # In foundation the class doesn't persist rules internally from derive;
+            # caller (test or workflow) passes the list of rules to audit.
+            rules = []
+
+        stale: list[dict] = []
+        for rule in rules:
+            assumption = rule.get("model_gen_assumption", "")
+            if not assumption or "§1.8" not in assumption or len(assumption) < 50:
+                stale.append({
+                    **rule,
+                    "audit_reason": "Missing or weak model_gen_assumption tag (per §1.8). Rule may be stale after model upgrade.",
+                    "trust_score": self.trust_score(rule),
+                })
+        return stale

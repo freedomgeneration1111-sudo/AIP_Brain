@@ -148,3 +148,32 @@ def test_sexton_derives_ace_rules_from_classified_events():
     assert f_rule is not None
     assert "L4" in f_rule.get("node_type_pattern", "")
     assert "context_reset" in f_rule.get("recommended_action", "")
+
+
+def test_sexton_trust_score_and_stale_rule_audit_3_10():
+    """
+    CHUNK-3.10: trust_score and audit_model_gen_assumption work as declared
+    (minimal deterministic foundation for §16.1 trust + §1.8 stale audit).
+    """
+    sexton = Sexton(FakeTraceStoreForSexton())
+
+    good_rule = {
+        "rule_id": "r1",
+        "failure_type": "F",
+        "model_gen_assumption": "Derived... Per Architecture §16.1 and §1.8. Audit on model slot upgrade.",
+        "source_event_count": 5,
+        "recommended_action": "trigger_context_reset_or_l4_intervention",
+    }
+    bad_rule = {
+        "rule_id": "r2",
+        "failure_type": "A",
+        # missing/weak assumption
+    }
+
+    assert sexton.trust_score(good_rule) > 0.7
+    assert sexton.trust_score(bad_rule) < 0.6
+
+    stale = sexton.audit_model_gen_assumption([good_rule, bad_rule])
+    assert len(stale) == 1
+    assert stale[0]["rule_id"] == "r2"
+    assert "weak" in stale[0]["audit_reason"].lower() or "missing" in stale[0]["audit_reason"].lower()
