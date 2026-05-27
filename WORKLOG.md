@@ -8558,6 +8558,73 @@ CC complete. Next per linearized DAG: CHUNK-8.1 implementation (after push).
 
 ---
 
+## Full Pre-CHUNK-8.2 Continuity Check (Mandatory before CLI Implementation)
+
+**Date:** 2026-05 (immediately after CHUNK-8.1 scaffold push at 7164de9)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.2 box + prose, lines 1070+)
+**DEPENDS-ON:** CHUNK-8.0b (adapters for status/health data), CHUNK-6.4 (vector/config surfaces), plus 8.1 AipContainer + full Phase 5 actor layer (Sexton, Beast, AdaptiveRouter, ACE Playbook, BudgetManager, SessionManager) for status/config/project/session commands
+**Status:** CC complete + documented. Ready for CHUNK-8.2 (no src/ or tests/ production edits for 8.2 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-8.1 baseline: API scaffold + AipContainer + 8.0b adapters + Phase 5 actors all green at 51 passed. 8.1 routes already exercise AutonomyGate and ACE load hooks.
+- Critical Rule #10 finding (live evidence): pyproject.toml has long-standing declared entrypoint `[project.scripts] aip = "aip.cli.main:cli"` (present since f24300e bootstrap / Phase 0 era). However, `src/aip/cli/` directory and all files are **absent** (confirmed by ls + find). No actual Click/Typer code, no aip/cli/main.py, no subcommand modules exist anywhere. This is a declared-but-unimplemented CLI contract from early repo history — the exact class of "existing partial" the handoff and PHASE2_IMPORT_NOTES §5/Rule 10 warn about.
+- No adapter/cli/ or any other CLI implementation partials (clean for new work, but the pyproject declaration takes precedence for the user-facing `uv run aip` contract).
+- All prior Clean Bills + 8.0a/8.0b/8.1 hold. 5.8 partial non-blocking.
+- Continuous execution: immediate next after 8.1 per linearized order (CLI is the primary offline surface per §2.3).
+
+**1. Re-read of target CHUNK-8.2 (from Phase 6 SSOT):**
+
+```
+CHUNK-8.2: CLI Implementation
+PHASE: 6
+DEPENDS-ON: CHUNK-8.0b, CHUNK-6.4
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~5,000 tokens
+FILES:
+  adapter/cli/main.py (Click/Typer group)
+  adapter/cli/init.py (aip init — §2.3)
+  adapter/cli/status.py (aip status)
+  adapter/cli/config.py (aip config)
+  adapter/cli/project.py (aip project)
+  adapter/cli/session.py (aip session)
+  adapter/cli/__init__.py
+  tests/test_cli.py
+INTERFACES: [detailed Click group + subcommands for init (6 mandated behaviors), status, config (gate), project, session]
+TESTS: tests/test_cli.py
+GATE: uv run pytest tests/test_cli.py tests/test_layering.py -xvs
+```
+
+**Prose key mandates (exact scope):** Use Click/Typer. Follow adapter pattern (compose via Protocols / 8.1 AipContainer, never direct storage imports). `aip init` (the §2.3 contract) must: detect RAM → suggest profile + write [vector_backend], init **all** DB schemas (including new lexical.db, ace_playbook.db from 8.0b), validate Ollama (graceful warning + fallback), validate model slots via resolver, print clear local-vs-API summary. `aip status` reads Protocols directly (health_check, list slots, SessionManager, BudgetManager, Beast/Sexton stats). `aip config` writes go through AutonomyGate (admin level, with CLI prompt on block). Project/session subcommands use injection. Gate uses CliRunner; verifies init creates DBs, status prints, project/session create, config gate, layering, no regression.
+
+**2–6. (Live evidence summary):**
+- DEPENDS deliverables present and green (8.0b adapters deliver the stores health/status data will read; 8.1 container provides the wiring surface; Phase 5 actors + SessionManager/BudgetManager/ACE fully delivered and importable).
+- Target paths: `src/aip/cli/` does not exist (clean for creation). The pyproject declaration is the real delivered artifact to extend.
+- Governance: 51 passed on full current battery (layering + phase4_gate + all phaseX schema + remaining_adapters). Broad phase2_no_network still shows its 2 legacy fails on Phase 5 delivered code (non-blocking; scoped gates green).
+- Rule #10 reconciliation decision (locked before any edit): Implement the CLI at the location required by the **live pyproject entrypoint** (`src/aip/cli/main.py` etc.) to make `uv run aip` work. Treat the spec's "adapter/cli/" listing as logical (consistent with prior path reconciliations for sexton, budget, etc.). No parallel structures. The new `aip/cli/` will use the 8.1 AipContainer (or direct Protocol injection for offline mode) and call into the delivered 8.0b adapters + Phase 5 actors. This "extends the real delivered partial" (the declaration + contract) rather than replacing or ignoring it.
+- Architecture Rev 5.2 / Phase1 SSOT cross-refs: CLI is the primary offline DEFINER surface (§2.3, §3). Must respect import boundaries (adapter layer), AutonomyGate for privileged ops (§1.7), and compose the actor layer (Sexton/Beast/etc. stats in status). Matches the handoff high-risk note on CLI surfacing autonomous capabilities without breaking deterministic behavior.
+- File audits / git blame: pyproject entrypoint dates to bootstrap (f24300e). No CLI implementation files exist. All new work will be creation at the declared path. Related adapter files (budget_store etc.) last touched in Phase 5/8.0b commits.
+
+**Overall Pre-CHUNK-8.2 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-8.2 (implement at the pyproject-declared `aip.cli` path to satisfy the long-standing entrypoint contract; use 8.1 container + 8.0b/Phase 5 Protocols; exact 6 behaviors for aip init per §2.3; gate with CliRunner + layering).**
+
+- All 6 steps executed with direct tool evidence (spec re-read, live ls/grep, pyproject inspection, 51-pass battery, blame, path audit).
+- Rule #10 decision documented and binding: extend the real delivered pyproject declaration + contract.
+
+**This completes the mandatory full Continuity Check for CHUNK-8.2.**
+
+The record above constitutes the authoritative audit. All evidence gathered via tool execution **before any src/ or tests/ production edits for 8.2**.
+
+**Ready to proceed to CHUNK-8.2 implementation (exact scope per prose + ANNEX; create src/aip/cli/ to satisfy declared entrypoint; tests/test_cli.py with CliRunner; gate), WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-8.2 implementation (after this CC is pushed).
+
+---
+
+**Phase 6 pre-8.2 CC complete. Tree clean at 7164de9. Continuing per continuous execution directive after push.**
+
+---
+
 ## CHUNK-8.1 — FastAPI Application Scaffold + Project & Session REST API (DI Container + First Surfaces)
 
 **Date:** 2026-05 (post pre-8.1 CC at cdc7225)
