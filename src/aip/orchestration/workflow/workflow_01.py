@@ -30,7 +30,7 @@ from aip.orchestration.workflow.runner import SequentialRunner
 
 # L4 wiring (CHUNK-3.2 additive, backward safe)
 from aip.orchestration.l4.monitor import TrajectoryMonitor
-from aip.orchestration.l4.reset import L4ResetCoordinator
+from aip.orchestration.l4.reset import L4ResetCoordinator, check_l4_and_surface_if_needed
 
 
 
@@ -236,6 +236,14 @@ class Workflow01Runner:
         }
 
         ctx = WorkflowContext(protocols=protocols, metadata={"config": self.config})
+
+        # CHUNK-3.3 L4 activation point (additive)
+        # Calls the reusable helper which invokes the injected coordinator
+        # and emits "l4_reset_recommended" event via ctx if intervention is warranted.
+        # This demonstrates step 5 ("Surface to DEFINER") of the §10.2 protocol
+        # inside the reference Workflow 0.1 pipeline. The event can be consumed
+        # by DialogNode / definer_gate for human review.
+        await check_l4_and_surface_if_needed(ctx, session_id=f"wf01-{id(self)}")
 
         # For a real Workflow 0.1 we would want a proper graph runner.
         # For this foundation chunk we use the SequentialRunner + the fact that

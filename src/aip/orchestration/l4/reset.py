@@ -25,6 +25,7 @@ from typing import Any
 
 from aip.foundation.protocols import ArtifactStore, TraceStore
 from aip.orchestration.l4.monitor import TrajectoryMonitor, TrajectorySignal
+from aip.orchestration.workflow.context import WorkflowContext
 
 
 @dataclass
@@ -134,3 +135,53 @@ class L4ResetCoordinator:
             pass
 
         return [rec]
+
+
+# --- CHUNK-3.3 activation helper (minimal reusable pattern) ---
+# Provides the documented way for ScriptNodes or custom workflow code
+# to invoke L4 and surface recommendations to DEFINER via the existing
+# emit_event + DialogNode machinery.
+
+
+async def check_l4_and_surface_if_needed(
+    context: WorkflowContext,
+    session_id: str,
+) -> list[ResetRecommendation]:
+    """
+    Convenience helper for use inside ScriptNodes or workflow code.
+
+    Retrieves the injected L4ResetCoordinator (if present), runs detection,
+    logs any intervention, and if recommendations are produced, emits a
+    structured "l4_reset_recommended" event that can be consumed by a
+    DialogNode for DEFINER review (step 5 of §10.2).
+
+    Returns the list of recommendations (empty if no action required).
+    Fully deterministic, zero tokens, respects injection model.
+    """
+    coordinator = context.get_protocol("l4_coordinator")
+    if coordinator is None:
+        return []
+
+    try:
+        recs = await coordinator.check_and_log_reset(session_id=session_id)
+    except Exception:
+        return []
+
+    if not recs:
+        return []
+
+    # Emit event for DEFINER surface using the standard mechanism
+    payload = {
+        "session_id": session_id,
+        "action": "context_reset",
+        "recommendations": [
+            {
+                "signal_types": [s.signal_type for s in r.signals],
+                "reason": r.reason,
+                "model_gen_assumption": r.model_gen_assumption,
+            }
+            for r in recs
+        ],
+    }
+    context.emit_event("l4_reset_recommended", payload)
+    return recs
