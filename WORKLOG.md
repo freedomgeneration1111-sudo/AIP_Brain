@@ -1980,4 +1980,103 @@ After gate green: update WORKLOG with implementation notes, commit, push. Await 
 
 **Status:** Complete
 
-**Pushed:** (pending this work unit)
+**Pushed:** Yes (commit e65fc05)
+
+---
+
+## Task ID: 3.4-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-3.4: Sexton Foundation (Minimal Failure Classifier + Trace Event Consumer) (Spec Delta per Architecture Rev 5.2 §16.1)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target scope (Architecture Rev 5.2 §16.1 + §5.9 + §10 + Appendix E):**
+- Sexton is the actor responsible for:
+  - Reading trace_events where failure_type IS NOT NULL or (outcome='failure' and failure_type IS NULL).
+  - Classifying unclassified failures into Types A–F per Appendix E taxonomy.
+  - Writing the classification back.
+  - Deriving intervention rules for the ACE playbook.
+  - Auditing stale ContractRule.model_gen_assumption per §1.8.
+- With CHUNK-3.3 we now have L4 actively writing intervention events (node_type=L4, intervention_type="context_reset", intervention_applied=1) and the trace schema already supports the required columns.
+- Sexton is explicitly downstream of the L4 work (mentioned as "downstream" / "consumer" / "out of scope" in 3.1–3.3 deltas).
+- No model slot or LLM call is required inside Sexton for classification in the minimal foundation — it can be deterministic pattern matching against structured trace data (the Architecture notes Qwen3-Coder local is appropriate but not mandatory for the foundation stub).
+- L4b (advanced context anxiety metrics: entropy, citation narrowing, length collapse trends) is the other candidate for 3.4 but is more incremental to existing L4 monitor; Sexton is the next major independent actor that can now be fed by the events we produce.
+
+**2. DEPENDS-ON verification:**
+- CHUNK-3.3: L4 activation + helper that produces intervention events via the coordinator.
+- CHUNK-3.1/3.2: TrajectoryMonitor + L4ResetCoordinator + get_recent_events on TraceStore.
+- Phase 1/2: Full trace schema (test_trace_schema.py), TraceStore protocol (write_event + get_recent_events), WorkflowContext event emission, layering enforcement.
+- All prior L4 tests + the fact that we are now writing the exact fields Sexton needs (failure_type, intervention_type, node_type=L4, outcome, etc.).
+
+**3. Revision Log cross-check:**
+- No Sexton code exists anywhere in src/ or tests/.
+- TraceStore currently only has session-scoped get_recent_events. Sexton will need broader queries (e.g. recent unclassified failures across sessions). This will require an additive extension to the TraceStore protocol (new method with default/optional implementation in fakes).
+- All prior chunks have respected "no direct storage construction" and protocol injection.
+
+**4. Architecture cross-references checked:**
+- §16.1 full responsibilities and failure classification contract.
+- §5.9: Sexton reads trace_events filtered by failure_type IS NOT NULL or unclassified failures; writes classification back.
+- §10 + Appendix E: The events L4 now produces (D, F, intervention_type) are exactly the input Sexton consumes.
+- §1.8: Sexton must audit model_gen_assumption on rules.
+- §7.2 layering: Sexton logic belongs in orchestration/ (same as L4).
+- Zero-token doctrine: Classification can be deterministic for foundation.
+
+**5. Consistency with actually delivered artifacts (post-3.3):**
+- L4 is writing intervention records with the exact columns Sexton needs.
+- Trace schema is validated and complete.
+- No existing code consumes trace_events for classification.
+- The reference workflow now demonstrates L4 surface; Sexton would observe the resulting trace entries.
+- All L4 code passes layering and injection rules.
+
+**6. Scope decision for this chunk (no deviation):**
+- Declare as explicit spec delta (identical justification): Rev 1.3 only references L4 as "Phase 3" and mentions Sexton in passing for classification of retrieval failures. No detailed CHUNK/ANNEX for Sexton.
+- Minimal Sexton foundation:
+  - New module: orchestration/sexton/ (or sexton.py under orchestration) with a Sexton class.
+  - Accepts a TraceStore (injected).
+  - Provides a method to classify recent unclassified failures using the Appendix E taxonomy (deterministic rules for the foundation; can be extended later with model).
+  - Writes the classification back via the TraceStore.
+  - Stubs for ACE playbook curation and rule derivation (empty or minimal in-memory for foundation).
+  - Additive amendment to TraceStore protocol for a broader query method if needed (e.g. get_recent_failures or get_unclassified_events).
+  - Update relevant fakes/noops for the new query method.
+  - One dedicated deterministic test file exercising classification on synthetic events containing the failure types we now produce (including L4-written interventions).
+  - Gate: new test + re-run of all L4 tests + layering + trace_schema + relevant workflow tests.
+- Explicitly out of scope: Full ACE playbook persistence, trust scoring, routing weight updates, any LLM call inside classification for the foundation, UI/MCP surface for Sexton, integration into the main workflow engine, L4b advanced metrics.
+
+**Conclusion of Continuity Check:**
+The L4 foundation (detection + reset protocol + activation/surface) is now producing the exact trace events that Sexton is defined to consume. Sexton foundation is the smallest next independent unit that makes the full observability + classification loop real, while staying 100% compliant with all process rules, layering, injection, zero-token, and append-only requirements. No blockers.
+
+**Status:** Continuity Check complete. Declaring spec delta scope for CHUNK-3.4. Awaiting short user command to execute.
+
+**Spec Delta Declaration (logged before any Sexton production code):**
+This CHUNK-3.4 materializes the minimal Sexton actor per Architecture Rev 5.2 §16.1 so that the intervention and failure events produced by L4 (and earlier layers) can be classified and turned into actionable playbook rules. Scope is the smallest useful foundation.
+
+**FILES (for 3.4):**
+- orchestration/sexton/__init__.py (new package)
+- orchestration/sexton/sexton.py (new — Sexton class + classification logic + stubs)
+- (additive) amendment to foundation/protocols.py for any needed broader TraceStore query method
+- (additive) updates to fakes in existing L4 and workflow tests
+- tests/test_sexton.py (new)
+- Gate must include new test + full L4 regression + layering + trace_schema
+
+**INTERFACES (minimal):**
+- class Sexton:
+    def __init__(self, trace_store: TraceStore): ...
+    async def classify_recent_failures(self, limit: int = 100) -> list[dict]: ...
+    # Returns classified events; writes failure_type back for unclassified ones.
+- Uses the existing Appendix E taxonomy (Types A–F) as deterministic rules for foundation.
+- All access via injected TraceStore only.
+
+**TESTS:**
+- tests/test_sexton.py exercising classification of synthetic events (including L4-written D/F/intervention events), writing classifications back, and §1.8 audit hooks.
+- Full regression of L4 gates + layering + trace schema.
+
+**GATE:**
+`uv run pytest tests/test_sexton.py tests/test_l4_context_reset.py tests/test_l4_trajectory_monitor.py tests/test_l4_workflow_integration.py tests/test_layering.py tests/test_trace_schema.py -xvs`
+
+After gate green + log update: commit + push. Then continue per user direction (next would likely be L4b advanced heuristics, deeper node integration, or Phase 3 embedding slot, etc.).
+
+**Implementation notes (to be filled after execution):**
+- [empty until next short command]
+
+**Status:** Continuity Check + Spec Delta documented. No production code written for 3.4.
