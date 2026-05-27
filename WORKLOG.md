@@ -240,6 +240,54 @@ All succeeded. The types Rev 1.3 expects to be present before CHUNK-1.0a now exi
 
 ---
 
+## Task ID: 1.5-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-1.5: DEFINER Gate Stub (L6 sovereignty checkpoint)
+
+**Continuity Check (performed before writing any code for this chunk):**
+
+**1. Re-read of target CHUNK (Rev 1.3):**
+- CHUNK-1.5 is the critical L6 DEFINER sovereignty gate.
+- DEPENDS-ON: CHUNK-1.3 (SynthesisOutput) and CHUNK-1.4 (EvalResult) — both delivered.
+- Also consumes ValidationResult (from 1.2, passed through).
+- Interface includes `mode: DefinerGateMode = DefinerGateMode.AUTO_APPROVE_STUB`.
+- Only AUTO_APPROVE_STUB is implemented in Phase 1. MANUAL mode is explicitly deferred.
+- Core rule (from prose + ANNEX): Auto-approve **only if both** validation_result.passed **and** eval_result.passed.
+- On failure: return "revise" (if validation failed) or "reject" (if only eval failed).
+- In stub mode: `approved_by = "stub:auto_approve"`.
+- Per §1.7 (reconfirmed): No artifact may bypass DEFINER gates.
+
+**2. Review of DEPENDS-ON and immediate upstream (1.2 + 1.3 + 1.4):**
+- We have working SynthesisOutput (1.3), ValidationResult (1.2), and EvalResult (1.4).
+- The decision logic in the spec is simple boolean combination of the two .passed flags.
+- Our previous stubs were deliberately built so that happy-path cases produce passing validation + eval results → this gate can auto-approve them for end-to-end testing.
+- Excellent direct continuity.
+
+**3. Revision Log & cross-references:**
+- The 1.3 → 1.4 → 1.5 progression is treated as stable in Rev 1.3.
+- Strong alignment with core doctrine §1.7 (DEFINER sovereignty).
+- The gate is the final checkpoint before CHUNK-1.6 (Commit).
+- No new deltas in Rev 1.3 specifically changed the approval logic for this stub.
+
+**4. Current repo state:**
+- All three inputs the function needs now exist and are tested.
+- Recurring issue remains: `test_layering.py` is still missing from the official gate command.
+- Config / model slot gaps from earlier do not affect this chunk (it doesn't resolve models).
+- We have a working `structural_validate` and adversarial stub that can produce both passing and failing cases for testing the gate.
+
+**5. Risks / Observations:**
+- Risk: The exact failure mapping ("revise" vs "reject") must be followed precisely as in the ANNEX to keep tests portable when real DEFINER logic arrives later.
+- Positive: This is one of the cleanest, most straightforward stubs in the sequence — purely decision logic on already-computed results.
+- Observation: Because it is the sovereignty gate, the tests should explicitly cover the three paths: approve (both pass), revise (validation fails), reject (validation passes but eval fails).
+
+**Conclusion of Continuity Check:**
+No blockers. The logic is simple and the required inputs are ready. Implementation will follow the exact decision tree from the Rev 1.3 ANNEX (and the detailed prose in the main BuildSpec).
+
+**Status:** Continuity Check complete. Proceeding to implementation.
+
+---
+
 ## Task ID: 1.4-1
 
 **Agent:** Grok Build  
