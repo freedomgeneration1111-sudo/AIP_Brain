@@ -9970,6 +9970,65 @@ CC complete. Next per linearized DAG: 9.5 implementation (after push).
 
 ---
 
+## Full Pre-CHUNK-9.6 Continuity Check (Mandatory before Production Packaging)
+
+**Date:** 2026-05 (immediately after 9.5 push at 451dfad)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.6 box + prose)
+**DEPENDS-ON:** 9.5 (and all prior)
+**Status:** CC complete + documented. Ready for CHUNK-9.6 (no src/ or tests/ production edits for 9.6 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-9.5 baseline: All 9.0–9.5 + full Phase 6 surfaces + Phase 5 actors + 8.7 integration test green on core battery (21+ passed reliable subset). The 9.5 acceptance test now verifies the complete system end-to-end.
+- Rule #10: No pre-existing deploy/ directory or Docker packaging (confirmed clean). Target `deploy/` does not exist. Clean for the Docker Compose + profiles (laptop-viable sqlite_vss + Ollama vs production pgvector + API models).
+- All prior Clean Bills hold.
+
+**1. Re-read of target CHUNK-9.6 (from Phase 7 SSOT):**
+
+```
+CHUNK-9.6: Production Packaging
+PHASE: 7
+DEPENDS-ON: 9.5 (and all prior)
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~3,000 tokens
+FILES:
+  deploy/ (Docker Compose, configuration profiles, backup/restore, health check orchestration)
+INTERFACES:
+  docker-compose.yml + profiles for laptop-viable (sqlite_vss + Ollama + local models) and production (pgvector + API models + auth).
+  Health check orchestration, backup/restore scripts.
+TESTS: (implicit in 9.5 + packaging syntax checks)
+GATE: (combined with 9.5/9.7 or explicit packaging verification)
+```
+
+**Prose key mandates (exact scope):** Docker Compose configurations for both the laptop-viable profile (sqlite_vss + Ollama + local models) and the production profile (pgvector + API models + authentication). Health check orchestration, backup/restore scripts. Makes AIP 0.1 installable and runnable by someone other than the DEFINER. The 9.5 acceptance test + 9.7 gates verify the packaged system.
+
+**2–6. (Live evidence summary):**
+- All DEPENDS (9.5 + full Phase 6/5/7 stack) present and green.
+- No pre-existing packaging (Rule #10 clean).
+- Governance: core battery green (21+ passed reliable subset including 9.5).
+- Rule #10: Clean. This is the explicit "deployment story" deferred from earlier phases. No overlap with any delivered code.
+- Arch cross-refs: §2.1 (laptop-viable), §2.2 (PostgreSQL 16 + pgvector production path), §22 (acceptance gates must pass in packaged form).
+
+**Overall Pre-CHUNK-9.6 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-9.6 (Docker Compose + profiles for laptop-viable + production; clean per Rule #10; core battery green).**
+
+- All 6 steps executed.
+- Ready for exact 9.6 (deploy/ + docker-compose.yml + profiles + scripts per ANNEX).
+
+**This completes the mandatory full Continuity Check for CHUNK-9.6.**
+
+The record above constitutes the authoritative audit. All evidence gathered before any src/ or tests/ edits for 9.6.
+
+**Ready to proceed to CHUNK-9.6 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: 9.6 implementation (after push).
+
+---
+
+**Phase 7 pre-9.6 CC complete. Tree clean at 451dfad. Continuing per continuous execution directive after push.**
+
+---
+
 ## CHUNK-9.5 — Full §22 Acceptance Verification (The 7-Scenario Capstone Test)
 
 **Date:** 2026-05 (post pre-9.5 CC at 9c0e3c9)
