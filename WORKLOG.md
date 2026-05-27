@@ -1450,3 +1450,42 @@ This adds pragmatic, first-class support for the common "try / on_error / finall
 **Pushed:** Yes
 
 **Status:** Complete
+
+---
+
+## Task ID: 2.12-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-2.12: High-Level Public API & Workflow 0.1 Facade
+
+**Continuity Check (performed before writing any code):**
+
+**1. Why this now?**
+- We have a very capable low-level engine (2.1–2.11) with all core node types, persistence, error handling, data flow, etc.
+- Using the engine still requires assembling nodes, runner, context, stores, and protocols manually.
+- For real adoption and for "Workflow 0.1 as a product", we need a clean, high-level public API that makes the common case (running a synthesis session workflow) trivial while still allowing advanced usage.
+
+**2. Current state:**
+- Low-level building blocks are solid.
+- `Workflow01Runner` exists as a convenience (2.8) but is still somewhat internal and limited.
+- No stable, documented public facade yet.
+
+**3. Scope decision for this chunk:**
+- Introduce a clean top-level `WorkflowEngine` (or `AIPWorkflowEngine`) class as the main entry point.
+- Provide simple methods like `run_workflow(yaml_path, ...)` and `run_workflow_01(...)`.
+- Handle common defaults (fake_embed when no real embedder, in-memory stores, etc.) while allowing full injection.
+- Keep the low-level APIs accessible for advanced users.
+- Add good documentation / examples in the code.
+
+**4. Constraints:**
+- Must not hide the protocol injection model (advanced users still need to provide real stores, etc.).
+- Should be backward compatible with existing low-level usage.
+
+**5. Risks:**
+- Over-simplifying and hiding important concepts.
+- Scope creep into a full "SDK".
+
+**Conclusion of Continuity Check:**
+High usability win that completes the "usable engine" story after the foundation work. Safe and high-value next step. Keep it focused on a thin, clean facade.
+
+**Status:** Continuity Check complete. Proceeding to implementation.
