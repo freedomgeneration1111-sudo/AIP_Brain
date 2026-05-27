@@ -573,3 +573,22 @@ Each will be logged here with exact spec citations, ANNEX reproduction, test gat
 This is a verification gate rather than a construction gate. We can proceed to write the two test files exactly as described in the spec (unchanged from Rev 1.0). They should pass against our current codebase.
 
 **Status:** Continuity Check complete. Proceeding to implementation.
+
+**Implementation for 1.7:**
+- Created `tests/test_no_network.py` — AST scanner enforcing no direct use of httpx/openai/anthropic/etc. in production code.
+- Created `tests/test_no_hardcoded_models.py` — AST scanner enforcing that model names only appear via configuration (with explicit exception for the required `model_gen_assumption` tags mandated by §1.8).
+- Gate executed: both tests now pass cleanly against the full Phase 1 codebase.
+
+**Pushed:** Yes
+
+**Status:** Complete
+
+---
+
+**Phase 1 Status (Rev 1.3)**
+
+All chunks executed with mandatory Continuity Checks before each one.
+
+**Final linearized order status:** 1.0a ✓ → 1.0b ✓ → 1.1 ✓ → 1.2 ✓ → 1.3 ✓ → 1.4 ✓ → 1.5 ✓ → 1.6 ✓ → 1.7 ✓
+
+The two cross-cutting determinism gates (1.7) are now green.
