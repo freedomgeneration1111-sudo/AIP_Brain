@@ -21,7 +21,7 @@ from aip.orchestration.workflow.context import WorkflowContext
 from aip.orchestration.workflow.definition import WorkflowDefinition
 from aip.orchestration.workflow.instance import SuspendedWorkflow
 from aip.orchestration.workflow.instance_store import WorkflowInstanceStore
-from aip.orchestration.workflow.node import NodeResult, NodeType, WorkflowNode
+from aip.orchestration.workflow.node import NodeResult, NodeType, ReviewNode, WorkflowNode
 
 
 class SequentialRunner:
@@ -80,6 +80,12 @@ class SequentialRunner:
 
             # Dialog pause (2.3)
             if node.node_type == NodeType.DIALOG:
+                if isinstance(result.output, dict) and result.output.get("paused"):
+                    break
+
+            # Review pause (CHUNK-4.5 integration of 4.1 ReviewNode)
+            # Treat review nodes that return a non-final verdict as pause points
+            if isinstance(node, ReviewNode) or (isinstance(result.output, dict) and result.output.get("paused")):
                 if isinstance(result.output, dict) and result.output.get("paused"):
                     break
 

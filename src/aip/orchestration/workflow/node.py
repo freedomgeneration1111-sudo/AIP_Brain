@@ -318,10 +318,17 @@ class ReviewNode(WorkflowNode):
                 trace_store=trace_store,
                 config=config,
             )
-            paused = verdict.verdict in ("REJECTED", "NEEDS_REVISION")
+
+            # Signal pause to the runner if the verdict requires intervention or re-synthesis
+            is_pause = verdict.verdict in ("REJECTED", "NEEDS_REVISION")
+            output = {
+                "verdict": verdict,
+                "paused": is_pause,
+            }
+
             return NodeResult(
                 success=True,
-                output=verdict,
+                output=output,
                 metadata={"verdict": verdict.verdict},
                 exports={"review_verdict": verdict},
             )
