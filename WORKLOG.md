@@ -744,3 +744,18 @@ Safe to proceed with a narrowly scoped foundation chunk. The design must heavily
 
 **Status:** Continuity Check complete. Proceeding to implementation of CHUNK-2.1.
 
+
+**Implementation for CHUNK-2.1:**
+- Created `src/aip/orchestration/workflow/` package
+- `node.py`: Abstract `WorkflowNode` + concrete bases for script, agent, condition, dialog, parallel (with the required invariants)
+- `context.py`: `WorkflowContext` with variable store, budget tracking, protocol injection, and event emission
+- `loader.py`: Minimal YAML loader that produces node instances
+- `runner.py`: `SequentialRunner` (foundation for later graph execution)
+- Added `pyyaml` dependency
+- Smoke test passes
+
+This establishes the architectural foundation that all future Phase 2 chunks will build upon while respecting Phase 1 layering and determinism rules.
+
+**Pushed:** Yes
+
+**Status:** Complete
