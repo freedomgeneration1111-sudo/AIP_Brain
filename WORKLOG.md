@@ -2972,3 +2972,41 @@ All audit work was performed with zero production code changes and is fully docu
 
 **Status:** Phase 2 spec successfully imported and evaluated. Major session-confusion risks documented. Awaiting DEFINER direction on numbering convention and reconciliation approach before any Phase 2 implementation work (or further 3.x/4.x continuation) begins.
 
+---
+
+## Remediation Deliverables Import — Phase 2 Rev 1.2 + Phase 3 Rev 1.1 + PHASE2_IMPORT_NOTES
+
+**Task ID:** REMEDIATION-DELIVERABLES-IMPORT-1  
+**Date:** 2026-05-27  
+**Agent:** Grok Build  
+
+**Context:**  
+Following the Full Codebase Continuity Pass and the identification of the 6 session-confusion glitches (see prior entry), the DEFINER directed external remediation. The resulting three deliverables were produced and are now imported into the project.
+
+**Deliverables Imported:**
+
+| File | Location in Repo | Purpose |
+|------|------------------|---------|
+| `PHASE2_IMPORT_NOTES.md` | `specs/PHASE2_IMPORT_NOTES.md` | **Authoritative reference document**. All future sessions MUST read this before any CHUNK-4.x or CHUNK-5.x work. Contains remapping table, terminology rules, gap audit, and mandatory Process Rules. |
+| `AIP_0_1_Phase2_BuildSpec_Rev1.2.md` | `specs/AIP_0_1_Phase2_BuildSpec_Rev1.2.md` | Phase 2 spec remapped from 2.x → **CHUNK-4.x** series. Includes new §Process Rules (10 rules) and §Repo State Reconciliation. |
+| `AIP_0_1_Phase3_BuildSpec_Rev1.1.md` | `specs/AIP_0_1_Phase3_BuildSpec_Rev1.1.md` | Phase 3 spec remapped from 3.x → **CHUNK-5.x** series. Includes new §Process Rules and §Repo State Reconciliation. All Phase 2 references updated to 4.x. |
+
+**Key Resolutions Recorded in the Deliverables:**
+
+- Permanent +2 offset policy established for future architectural phases (Arch Phase N → CHUNK-(N+2).x).
+- Explicit terminology rules (Architectural Phase N vs. CHUNK-N.x vs. Repo N.x).
+- Mandatory overlap/reconciliation check during every Continuity Check for CHUNK-4.x/5.x.
+- Historical repo 2.x (2.1–2.13) and 3.x (3.1–3.12) treated as immutable facts.
+
+**Action Taken:**
+- All three files copied from Downloads into `specs/`.
+- This entry appended to WORKLOG (amend-by-addition only).
+- No production code changes.
+- No new CHUNK started.
+
+**Status:** All remediation deliverables successfully imported and documented. The six identified glitches are now addressed at the Single Source of Truth level. Project is ready for future sessions to follow the new numbering and process discipline.
+
+**Next Action Blocked Pending DEFINER Direction:**  
+Ready to begin formal Continuity Check + implementation for the first CHUNK-4.x item when directed.
+
+
