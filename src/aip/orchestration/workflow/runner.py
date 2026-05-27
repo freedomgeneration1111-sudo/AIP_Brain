@@ -14,6 +14,7 @@ from typing import Any
 
 from aip.orchestration.workflow.context import WorkflowContext
 from aip.orchestration.workflow.instance import SuspendedWorkflow
+from aip.orchestration.workflow.instance_store import WorkflowInstanceStore
 from aip.orchestration.workflow.node import NodeResult, NodeType, WorkflowNode
 
 
@@ -119,16 +120,30 @@ class SequentialRunner:
 
         return results
 
-    async def run_until_pause(self, workflow_id: str | None = None) -> tuple[list[NodeResult], SuspendedWorkflow | None]:
+    async def run_until_pause(
+        self,
+        workflow_id: str | None = None,
+        instance_store: WorkflowInstanceStore | None = None,
+    ) -> tuple[list[NodeResult], SuspendedWorkflow | None]:
         """
-        Run the workflow until it either completes or hits a dialog pause point.
+        Run until completion or a dialog pause point.
 
-        Returns:
-            (list of NodeResults, SuspendedWorkflow or None)
+        If an `instance_store` is provided, the suspended workflow will be
+        automatically persisted before returning.
         """
+        results, suspended = await self._run_until_pause_internal(workflow_id)
+
+        if suspended is not None and instance_store is not None:
+            await instance_store.save(suspended)
+
+        return results, suspended
+
+    async def _run_until_pause_internal(
+        self, workflow_id: str | None = None
+    ) -> tuple[list[NodeResult], SuspendedWorkflow | None]:
+        """Internal version that does not touch the store (for reuse)."""
         results = await self.run()
 
-        # Check if the last event or result indicates a dialog pause
         last_result = results[-1] if results else None
         is_paused = (
             last_result
@@ -140,11 +155,9 @@ class SequentialRunner:
         if not is_paused:
             return results, None
 
-        # Try to get the node id from the dialog result itself
         paused_info = last_result.output if isinstance(last_result.output, dict) else {}
         current_node_id = paused_info.get("executed") or getattr(last_result, "metadata", {}).get("node_id")
 
-        # Build a suspended workflow snapshot
         suspended = SuspendedWorkflow(
             workflow_id=workflow_id or str(uuid.uuid4()),
             run_id=str(uuid.uuid4()),
@@ -162,28 +175,27 @@ class SequentialRunner:
         return results, suspended
 
     @classmethod
-    def from_suspended(
+    async def resume_from_store(
         cls,
-        suspended: SuspendedWorkflow,
-        decision: Any,   # DefinerDecision or dict
+        run_id: str,
+        decision: Any,
         nodes: list[WorkflowNode],
+        instance_store: WorkflowInstanceStore,
         context: WorkflowContext | None = None,
     ) -> "SequentialRunner":
         """
-        Reconstruct a runner from a suspended workflow + a DEFINER decision.
-
-        This is a minimal foundation version. It restores variables and
-        continues execution from after the suspended dialog node.
+        Load a suspended workflow from the store and return a runner ready to resume.
         """
-        ctx = context or WorkflowContext(variables=suspended.variables.copy())
+        suspended = await instance_store.load(run_id)
+        if suspended is None:
+            raise ValueError(f"No suspended workflow found for run_id={run_id}")
 
-        # Inject the decision into the context so the next dialog node (if any)
-        # or downstream logic can see it.
+        # Mark the decision in the context (the dialog node or downstream logic can read it)
+        ctx = context or WorkflowContext(variables=suspended.variables.copy())
         ctx.set("last_definer_decision", decision)
 
         # Find where we were suspended
         suspended_node_id = suspended.current_node_id
-
         start_index = 0
         for idx, node in enumerate(nodes):
             if node.node_id == suspended_node_id:

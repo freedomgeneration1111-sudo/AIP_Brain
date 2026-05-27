@@ -1265,3 +1265,71 @@ The engine is now in a state where a real synthesis session pipeline (Workflow 0
 Further work (richer parallel semantics, advanced templating, production-grade persistence, visual editor support, etc.) can be done in subsequent increments.
 
 **Overall Phase 2 Foundation: Complete**
+
+---
+
+## Task ID: 2.9-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-2.9: Production-Grade Workflow Instance Persistence & Durable Resumption
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of requirements:**
+- Architecture §11.1 dialog node invariant: "dialog nodes must produce an event before resuming."
+- Broader persistence story in §5: Conversation Corpus, Retrieval Index, Response Artifact Store, Canonical JSON Store.
+- The engine must be able to pause at a dialog, persist the suspended state durably, and later resume when a DEFINER decision arrives (without losing context, variables, or progress).
+
+**2. Current state after 2.6:**
+- We have a solid foundation model (`SuspendedWorkflow`) and `run_until_pause` / `from_suspended` helpers on the SequentialRunner.
+- These work in-memory / with the caller's context.
+- No durable storage integration yet for the workflow instance itself (we persist artifacts and events, but not the suspended workflow state as a first-class thing).
+
+**3. Relevant prior work to build on:**
+- Phase 1 stores (ArtifactStore, EventStore, etc.) are already injected via WorkflowContext.
+- DialogNode already emits structured pause events.
+- We have good serialization patterns (the SuspendedWorkflow is designed to be JSON-friendly).
+
+**4. Scope decision for this chunk (to keep it focused and production-grade):**
+- Make `SuspendedWorkflow` (or a production evolution of it) persistable via the existing `ArtifactStore` protocol (or a lightweight dedicated one if needed).
+- Add proper serialization/deserialization with versioning.
+- Provide a clean "suspend + persist" path when a dialog pauses.
+- Provide a robust "resume from persisted state + DefinerDecision" entry point that correctly restores context and continues execution.
+- Handle the common case of resuming after a dialog (injecting the decision into the context).
+- Add tests that cover persist → decision → resume across a restart boundary (simulated).
+
+**5. Constraints:**
+- Must continue to respect all Phase 1 layering and protocol injection rules (no direct storage imports inside nodes or the core engine).
+- Should reuse the existing store protocols via the WorkflowContext where possible.
+- Must not break the in-memory foundation behavior from 2.6.
+
+**6. Risks / Open questions:**
+- Do we need a dedicated `WorkflowInstanceStore` protocol eventually, or is ArtifactStore sufficient for the foundation?
+- How much execution history do we need to persist for safe resumption (just variables + current node, or full node results)?
+- Error handling if the persisted state is from an older engine version.
+
+**Conclusion of Continuity Check:**
+High priority and well-scoped. This directly enables the core dialog pause/resume story from the Architecture while building cleanly on the 2.6 foundation. Safe to proceed.
+
+**Status:** Continuity Check complete. Proceeding to implementation.
+
+**Implementation for CHUNK-2.9:**
+- Created `workflow/instance_store.py` with the `WorkflowInstanceStore` protocol + a simple `FileWorkflowInstanceStore` reference implementation.
+- Extended `SequentialRunner` with production-grade `run_until_pause(instance_store=...)` that automatically persists on dialog pause.
+- Added `resume_from_store(...)` classmethod for clean resumption after a restart + DEFINER decision.
+- Added a realistic integration test that uses the file store to simulate a full suspend → restart → resume cycle.
+- Verified the entire path works end-to-end.
+
+This turns the 2.6 foundation into a production-usable persistence layer while staying true to the existing store protocols and Phase 1 layering rules.
+
+**Pushed:** Yes
+
+**Status:** Complete
+
+---
+
+**Phase 2 Foundation Status (Updated)**
+
+With 2.1–2.9 the L5 YAML Workflow Engine now has a production-grade foundation, including durable persistence and resumption for dialog-driven workflows.
+
+The engine is in a state where real, long-running, human-in-the-loop synthesis sessions can be expressed and executed reliably.

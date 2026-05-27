@@ -211,3 +211,46 @@ async def test_end_to_end_workflow_01_happy_path():
 
     # We expect the run to have produced at least one result (even if it paused at the dialog)
     assert result is not None
+
+@pytest.mark.asyncio
+async def test_production_persistence_suspend_resume(tmp_path):
+    """End-to-end test using the real FileWorkflowInstanceStore to simulate restart."""
+    from aip.orchestration.workflow.instance_store import FileWorkflowInstanceStore
+    from aip.orchestration.nodes.definer_gate import DefinerDecision
+
+    store = FileWorkflowInstanceStore(tmp_path / "wf_instances")
+
+    nodes = [
+        ScriptNode("start", code="begin"),
+        DialogNode("review", prompt="Approve?",
+                   synthesis_output=_make_synth_for_test(),
+                   validation_result=_make_val_for_test(),
+                   eval_result=_make_eval_for_test()),
+        ScriptNode("finish", code="done"),
+    ]
+
+    ctx = WorkflowContext()
+    runner = SequentialRunner(nodes, ctx)
+
+    # First run - should suspend at the dialog
+    results, suspended = await runner.run_until_pause(instance_store=store, workflow_id="wf-persist-1")
+    assert suspended is not None
+    assert suspended.status == "suspended"
+
+    # Simulate process restart: load from store
+    decision = DefinerDecision(action="approve", reason="Looks good", approved_by="moses")
+
+    resume_runner = await SequentialRunner.resume_from_store(
+        run_id=suspended.run_id,
+        decision=decision,
+        nodes=nodes,
+        instance_store=store,
+    )
+
+    final_results = await resume_runner.run()
+
+    executed = [r.output.get("executed") for r in final_results if isinstance(r.output, dict)]
+    assert "finish" in executed
+
+    # Clean up the stored instance (optional)
+    await store.delete(suspended.run_id)
