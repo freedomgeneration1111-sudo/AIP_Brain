@@ -62,7 +62,17 @@ def load_workflow_from_yaml(path: str | Path) -> WorkflowDefinition:
         nodes: list[WorkflowNode] = []
         for node_def in defs:
             node_id = node_def["id"]
-            node_type = NodeType(node_def["type"])
+            raw_type = node_def["type"]
+
+            # Support new Phase 2 node types as strings (additive)
+            if raw_type == "review":
+                nodes.append(ReviewNode(node_id, config=node_def))
+                continue
+            if raw_type == "re_synthesize":
+                nodes.append(ReSynthesizeNode(node_id, config=node_def))
+                continue
+
+            node_type = NodeType(raw_type)
 
             if node_type == NodeType.SCRIPT:
                 nodes.append(ScriptNode(node_id, code=node_def.get("code", "")))
@@ -82,10 +92,6 @@ def load_workflow_from_yaml(path: str | Path) -> WorkflowDefinition:
                 nodes.append(DialogNode(node_id, prompt=node_def.get("prompt", "")))
             elif node_type == NodeType.PARALLEL:
                 nodes.append(ParallelNode(node_id, children=node_def.get("children", [])))
-            elif node_type == "review":
-                nodes.append(ReviewNode(node_id, config=node_def))
-            elif node_type == "re_synthesize":
-                nodes.append(ReSynthesizeNode(node_id, config=node_def))
             else:
                 raise ValueError(f"Unknown node type: {node_type}")
         return nodes
