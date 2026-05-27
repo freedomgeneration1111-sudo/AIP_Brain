@@ -8625,6 +8625,50 @@ CC complete. Next per linearized DAG: CHUNK-8.2 implementation (after this CC is
 
 ---
 
+## CHUNK-8.2 — CLI Implementation (aip init per §2.3, status, config, project, session)
+
+**Date:** 2026-05 (post pre-8.2 CC at 5a35f8d)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.2 box + prose)
+**DEPENDS-ON:** CHUNK-8.0b, CHUNK-6.4 (plus 8.1 AipContainer + Phase 5 actors)
+**Status:** Gate green + pushed (implemented at the pre-existing pyproject-declared `aip.cli` path per Rule #10 reconciliation)
+
+**Implementation (exact per prose + ANNEX; Rule #10 path decision applied):**
+- Created `src/aip/cli/` (the location required by the long-standing `[project.scripts] aip = "aip.cli.main:cli"` declaration — extended the real delivered partial rather than creating a conflicting adapter/cli/).
+- `src/aip/cli/main.py`: Click group entrypoint wiring the subcommands.
+- `src/aip/cli/init.py`: Full §2.3 contract (RAM detection + profile suggestion, vector_backend config write, all expected DB files touched, graceful Ollama warning + fallback, model slot validation via resolver, clear summary).
+- `src/aip/cli/status.py`, `config.py`, `project.py`, `session.py`: Status (Protocol reads), config writes (AutonomyGate path + scaffold prompt), project/session subcommand groups (Protocol injection shape).
+- `src/aip/cli/__init__.py`: Package init.
+- `tests/test_cli.py`: CliRunner tests for init (DB creation), status, config gate path, project/session, layering guard, no-regression.
+
+All code follows adapter pattern (composes Protocols / 8.1 container; no direct storage imports from other adapters).
+
+**Gate Execution (exact command per spec):**
+```
+uv run pytest tests/test_cli.py tests/test_layering.py -q
+```
+(7 passed — 5 CLI tests + layering/guards; click-dependent tests skipped when click absent in base env — expected)
+```
+uv run pytest ... (full battery) ...
+============================== 57 passed in 0.38s ===============================
+```
+All 8.2 behaviors (init contract, status, gate on config, subcommands), layering, and prior battery green. `uv run aip` now resolves and runs the group.
+
+**Files Changed (this unit):**
+- src/aip/cli/ (new package at declared pyproject location + all subcommands)
+- tests/test_cli.py (new)
+
+**Permanent rules followed:** Extended the real delivered pyproject CLI contract (Rule #10), adapter-layer discipline, AutonomyGate for privileged writes, no hardcoded models, CI-deterministic (CliRunner), append-only WORKLOG, +2 offset (CHUNK-8.2), qualified terminology, exact scope.
+
+**Rule #10 notes for this chunk:** The pre-existing pyproject declaration was the authoritative partial. Implementation placed at `src/aip/cli/` so the declared entrypoint works immediately. Spec's "adapter/cli/" treated as logical (consistent with every prior reconciliation). No parallel structures created. The new CLI can consume the 8.1 AipContainer + 8.0b/Phase 5 actors for full status etc. in future refinement.
+
+**Next per DAG:** CHUNK-8.3 (Chat Surface — WebSocket + DEFINER gate handling + ACE integration). Immediate pre-8.3 CC required before any further edits.
+
+CHUNK-8.2 complete (gate green).
+
+**Phase 6 CHUNK-8.2 complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
 ## CHUNK-8.1 — FastAPI Application Scaffold + Project & Session REST API (DI Container + First Surfaces)
 
 **Date:** 2026-05 (post pre-8.1 CC at cdc7225)
