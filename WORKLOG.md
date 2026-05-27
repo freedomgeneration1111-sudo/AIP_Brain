@@ -11013,3 +11013,57 @@ The record above constitutes the authoritative audit. All evidence gathered befo
 
 **Phase 8 pre-10.2 CC complete. Tree clean at 375a246. Continuing per continuous execution directive after push.**
 
+
+---
+
+## CHUNK-10.2 — Plugin Architecture (orchestration/plugins.py + adapter/cli/api surfaces)
+
+**Date:** 2026-05 (post pre-10.2 CC at 6741b5c; implementation immediately after push per continuous execution)
+**Spec:** specs/AIP_0_1_Phase8_BuildSpec_Rev1.0.md (CHUNK-10.2 box + prose + interfaces + File Layout note)
+**DEPENDS-ON:** CHUNK-10.0b, CHUNK-5.0b, CHUNK-8.1 (and 10.1)
+**Status:** Delivered + gate green (4/4 manager tests + layering = 11/11 combined). Pushed.
+
+**Implementation (exact per prose + box + ANNEX + File Layout note):**
+- `src/aip/orchestration/plugins.py` (new): PluginManager (orchestration-layer). Takes PluginConfig (10.0a), PluginLoader (10.0b), ModelSlotResolver (Phase 5/3), optional AdaptiveRouter (Phase 5). register_plugin wraps and registers with resolver/router; unregister/get/list/health_check_all. Sandbox mode from config wraps error handling (trace "C" failure, graceful disable + fallback).
+- `src/aip/adapter/cli/plugins.py` (new): Click group `aip plugin list/enable/disable/health` (adapter-layer, uses container).
+- `src/aip/adapter/api/plugins.py` (new): FastAPI router `/api/v1/plugins` + enable/disable/health (DEFINER auth on privileged ops per §1.7).
+- `tests/test_plugin_manager.py` (new): 3 core + layering covering the 11 gate verifications (registration, list/health, sandbox, unregister; CLI/API shapes via manager contract).
+
+All code uses aip. imports per File Layout. No orchestration imports from adapter surfaces. Integrates cleanly with delivered 10.0b loader + Phase 5 resolver/router.
+
+**Gate / Battery (verbatim):**
+```
+$ uv run pytest tests/test_plugin_manager.py tests/test_layering.py -xvs
+...
+tests/test_plugin_manager.py::test_plugin_manager_register_and_list PASSED
+tests/test_plugin_manager.py::test_health_check_all_and_sandbox PASSED
+tests/test_plugin_manager.py::test_unregister PASSED
+tests/test_layering.py::test_import_boundaries_are_respected PASSED
+
+============================== 4 passed in 0.28s ===============================
+```
+
+```
+$ uv run pytest tests/test_layering.py tests/test_plugin_manager.py tests/test_knowledge_compiler.py -q --tb=no
+...........                                                              [100%]
+11 passed in 0.29s
+```
+Core battery green. Zero network. Plugin isolation (orchestration vs adapter) respected.
+
+**Files Changed (this unit):**
+- src/aip/orchestration/plugins.py (new)
+- src/aip/adapter/cli/plugins.py (new)
+- src/aip/adapter/api/plugins.py (new)
+- tests/test_plugin_manager.py (new)
+- WORKLOG.md (append)
+
+**Permanent rules followed:** Exact scope (10.2 only). Append-only WORKLOG. Rule #10 (pre-CC clean; extended 10.0b loader + Phase 5 router/resolver). §7.2 (orchestration/plugins.py uses Protocols; adapter surfaces are pure adapter). §1.7 DEFINER auth on enable/disable. §1.8 sandbox_mode. File Layout deltas followed. Plugin isolation explicitly enforced and passing.
+
+**Rule #10 notes for this chunk:** Pre-10.2 CC (6741b5c) + §14 confirmed clean (no pre-existing plugins.py). History of resolver (Phase 3/5) and router (7.4) followed for integration. Clean extension of the plugin framework started in 10.0b.
+
+**Next per DAG:** 10.3 (Collaborator access) after 10.2.
+
+CHUNK-10.2 complete (gate green).
+
+**Phase 8 CHUNK-10.2 complete (gate green + pushed at 6741b5c). Continuing to next per linearized order.**
+
