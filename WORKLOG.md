@@ -7,6 +7,21 @@ All work is executed deterministically per the spec. No deviation without explic
 
 ---
 
+## Process Rules (Adopted)
+
+- **Single Source of Truth**: `specs/AIP_0_1_Phase1_BuildSpec_Rev1.3.docx` (the .docx always overrides any extracted .md)
+- **Deterministic Implementation**: Code only what the current CHUNK's ANNEX and prose explicitly describe.
+- **Continuity Check (mandatory before every new CHUNK)**: 
+  1. Re-read the target CHUNK definition in full.
+  2. Re-read every CHUNK listed in its DEPENDS-ON.
+  3. Review the Revision Log (all D/F/R/P deltas and fixes).
+  4. Check cross-references to Architecture Rev 5.2 (especially §1.8, §7.2 layering, §9.1 zero tokens, TraceStore contract, config-driven requirements, failure_type taxonomy).
+  5. Verify consistency with what was actually delivered in prior chunks.
+  6. Document findings in the task's Work Log **before writing any production code**.
+- Push after every completed work unit (with gate results).
+
+---
+
 ## Task ID: 0.0
 
 **Agent:** Grok Build  
@@ -88,6 +103,14 @@ All succeeded. The types Rev 1.3 expects to be present before CHUNK-1.0a now exi
 
 **uv sync:** Succeeded cleanly.
 
+**Continuity Check (retroactive, performed during process formalization):**
+- Confirmed 0.BOOTSTRAP only created the exact minimal Phase 0 surface that Rev 1.3 CHUNK-1.0a explicitly depends on and amends (schemas.py enums + protocols.py base signatures).
+- Did not pre-emptively implement any Phase 1 types or logic (Chunk, RetrievalResult, new VectorStore methods, etc.).
+- Config file contains only the [retrieval] values later referenced by 1.1.
+- Database schema matches Architecture Rev 5.2 §5.9 exactly (no extra tables).
+- No violations of layering or determinism rules introduced.
+- Result: Clean foundation for all subsequent Phase 1 chunks. No conflicts detected.
+
 **Status:** Complete (spec delta executed)
 
 **Pushed:** Yes (next commit)
@@ -112,6 +135,14 @@ All succeeded. The types Rev 1.3 expects to be present before CHUNK-1.0a now exi
 - Zero changes to any existing Phase 0 code outside the documented append/amend locations.
 
 **Gate result:** 9/9 PASSED
+
+**Continuity Check (retroactive):**
+- Verified that the append to schemas.py and amend to protocols.py exactly match the ANNEX in Rev 1.3 CHUNK-1.0a (including P1, P2, P3 fixes).
+- Confirmed no existing Phase 0 enum or method was altered or deleted (only additive changes).
+- Cross-checked against 0.BOOTSTRAP deliverables: all referenced Phase 0 symbols (EcsState, ContractRule, base VectorStore, etc.) were present.
+- Confirmed test_schema_additions.py uses the "hasattr" check recommended in the spec (R1’).
+- No premature introduction of later concepts (e.g. no reranking, no fake_embed, no structural_validate).
+- Result: Fully consistent with both 0.BOOTSTRAP and the Rev 1.3 revision log.
 
 **Pushed:** Yes (next commit)
 
@@ -138,6 +169,14 @@ All succeeded. The types Rev 1.3 expects to be present before CHUNK-1.0a now exi
 
 **Gate result:** Tests collected and skipped cleanly (expected). Implementation matches Rev 1.3 ANNEX.
 
+**Continuity Check (retroactive):**
+- Confirmed 1.0b correctly implements the VectorStore protocol as amended in 1.0a (upsert, retrieve(query_vector), delete, count + deprecated store() wrapper).
+- Verified return type is list[Chunk] (not RetrievalHit) — satisfies Delta 1 from revision log.
+- Checked F5 fix (second load attempt for vss0.so) is present exactly as documented.
+- Zero network imports and only foundation imports — respects §7.2.
+- The store() compat wrapper (F1) was implemented as required so Phase 0 tests would still pass.
+- Result: Strong continuity with 1.0a protocol amendments. Ready for 1.1 consumption.
+
 **Pushed:** Yes (next commit)
 
 **Status:** Complete
@@ -160,6 +199,16 @@ All succeeded. The types Rev 1.3 expects to be present before CHUNK-1.0a now exi
 
 **Gate result:** All tests pass.
 
+**Continuity Check (retroactive):**
+- Verified retrieve_for_synthesis uses the amended VectorStore.retrieve(query_vector) from 1.0a (not the old Phase 0 signature).
+- Confirmed RerankWeights and confidence_threshold are loaded exclusively from config (Delta 5).
+- TraceStore.write_event calls use failure_type="A" on INSUFFICIENT_MEMORY (F2 / R2 fix from revision log).
+- embed_fn parameter present (Delta 4).
+- Accepts both plain dict and objects with model_dump() (F3).
+- No model calls or network usage.
+- Rerank logic respects the four weights defined in the 1.1 prose and the config values from 0.BOOTSTRAP.
+- Result: Excellent continuity with 1.0a, 1.0b, and the full set of revision deltas.
+
 **Pushed:** Yes (next commit)
 
 **Status:** Complete
@@ -180,7 +229,12 @@ All succeeded. The types Rev 1.3 expects to be present before CHUNK-1.0a now exi
 
 **Pushed:** Yes
 
----
+**Continuity Check (retroactive):**
+- structural_validate is pure (no side effects, no TraceStore parameter) — matches the explicit note in Rev 1.3 CHUNK-1.2 prose that the caller (orchestration) is responsible for trace logging.
+- All DEFAULT_RULES carry non-null model_gen_assumption (required by §1.8 and the 1.1/1.2 expectations).
+- Zero tokens / no model involvement — consistent with the L3a "Stage 1 deterministic validation" definition.
+- Does not depend on retrieval or synthesis logic from 1.1.
+- Result: Clean, consistent with all prior chunks and the zero-tokens doctrine.
 
 **Current position in Rev 1.3 linearized order:** 1.0a ✓ → 1.0b ✓ → 1.1 ✓ → 1.2 ✓
 
