@@ -595,3 +595,98 @@ class DeploymentProfile:
     vector_backend: str
     model_providers: dict = field(default_factory=dict)
     docker_compose_profile: str = ""
+
+
+# --- Phase 8 additions (append only) ---
+from dataclasses import dataclass, field
+from typing import Literal
+
+
+# Type aliases for compiled knowledge lifecycle
+CompilationState = Literal["SPECIFIED", "COMPILED", "REVIEWED", "APPROVED", "FAILED"]
+
+# Type aliases for plugin status
+PluginStatus = Literal["loaded", "error", "disabled"]
+
+# Type aliases for collaborator roles (extends AuthRole from Phase 7)
+CollaboratorRole = Literal["definer", "collaborator", "readonly"]
+
+
+@dataclass
+class KnowledgeCompilationConfig:
+    """Configuration for the knowledge compilation system.
+
+    Per §3: Deferred Compiled Knowledge Layer — finally implemented.
+    Per §1.8: model_gen_assumption tags what the compilation criteria assume.
+    Per Appendix D: compiled knowledge ≠ canonical artifact.
+    """
+    compilation_model_slot: str = "synthesis"
+    evaluation_model_slot: str = "evaluation"
+    max_source_canonicals: int = 10
+    compilation_confidence_threshold: float = 0.60
+    auto_index_on_approval: bool = True
+    model_gen_assumption: str | None = None
+
+
+@dataclass
+class PluginConfig:
+    """Plugin system configuration.
+
+    Per §4.1: no hardcoded model names — plugins provide extensibility.
+    Per §1.8: enabled and sandbox_mode are toggleable.
+    Per §1.8: model_gen_assumption tags what model limitations plugins compensate for.
+    """
+    plugins_dir: str = "plugins"
+    enabled: bool = True
+    auto_discover: bool = True
+    sandbox_mode: bool = True
+    model_gen_assumption: str | None = None
+
+
+@dataclass
+class CollaboratorConfig:
+    """Collaborator access configuration.
+
+    Per §1.7: collaborators never bypass DEFINER sovereignty.
+    Per §1.8: enabled is toggleable.
+    Per Process Rule 11: collaborator_can_approve defaults to False.
+    """
+    enabled: bool = False
+    max_collaborators: int = 5
+    collaborator_can_create_drafts: bool = True
+    collaborator_can_submit_review: bool = True
+    collaborator_can_approve: bool = False
+    readonly_can_search: bool = True
+
+
+@dataclass
+class PerformanceConfig:
+    """Performance tuning configuration.
+
+    Per §2.1: laptop-viable — must work on 4-6 GB RAM.
+    Per §1.8: profiling_enabled is toggleable.
+    """
+    profiling_enabled: bool = False
+    max_memory_mb: int = 4096
+    retrieval_timeout_seconds: float = 30.0
+    batch_embed_size: int = 32
+    sqlite_wal_mode: bool = True
+    sqlite_busy_timeout_ms: int = 5000
+    vector_query_limit: int = 50
+    fts5_query_limit: int = 50
+
+
+@dataclass
+class ReleaseMetadata:
+    """AIP 0.1 release metadata.
+
+    Written by release verification (CHUNK-10.7) when all §22 gates pass.
+    Serves as the definitive release manifest.
+    """
+    release_version: str = "0.1.0"
+    release_date: str = ""  # REQUIRED — ISO 8601
+    release_status: str = "alpha"
+    architecture_revision: str = "5.2"
+    acceptance_gates_passed: list[str] = field(default_factory=list)
+    known_limitations: list[str] = field(default_factory=list)
+    breaking_changes: list[str] = field(default_factory=list)

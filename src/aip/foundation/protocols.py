@@ -510,7 +510,121 @@ class AuthStore(Protocol):
         """Create a session and return session token."""
         ...
 
+    async def list_users(self) -> list[dict]:
+        """List all user identities.
+
+        Returns list of dicts with: identity, role, created_at, last_active_at.
+        """
+        ...
+
+    async def create_user(self, identity: str, role: "CollaboratorRole", password_hash: str | None = None) -> bool:
+        """Create a collaborator or readonly user.
+
+        The 'definer' role cannot be created through this method —
+        it is defined in the configuration file.
+        Returns True if created, False if identity already exists.
+        """
+        ...
+
+    async def update_user_role(self, identity: str, new_role: "CollaboratorRole") -> bool:
+        """Update a user's role.
+
+        Cannot change the DEFINER's role.
+        Returns True if updated, False if user not found.
+        """
+        ...
+
+    async def revoke_user(self, identity: str) -> bool:
+        """Remove a user. Cannot revoke the DEFINER.
+
+        Revokes all sessions and API keys for the user.
+        Returns True if revoked, False if user not found or is DEFINER.
+        """
+        ...
+
 
 # CanonicalPipeline methods (amendments to be used by 9.2 orchestration component)
 # These are added as loose method stubs for the pipeline to use existing stores via the container.
 # In practice they will be called on the injected stores.
+
+
+# --- Phase 8 new Protocols (not amendments — these are new classes) ---
+
+
+@runtime_checkable
+class KnowledgeStore(Protocol):
+    """Abstraction for the Deferred Compiled Knowledge Layer.
+
+    Per §3: "Deferred Compiled Knowledge Layer" — persistence concern.
+    Per §1.5: compiled knowledge must track provenance to source canonicals.
+    Per Appendix D: compiled knowledge ≠ canonical artifact.
+    Per Process Rule 12: CompilationState is distinct from ECS states.
+    """
+
+    async def store_compiled(
+        self,
+        knowledge_id: str,
+        content: str,
+        source_canonical_ids: list[str],
+        domain: str,
+        metadata: dict,
+    ) -> None:
+        """Store a compiled knowledge artifact with provenance.
+
+        metadata includes: compilation_model_slot, evaluation_scores,
+        compilation_timestamp, confidence.
+        """
+        ...
+
+    async def get_compiled(self, knowledge_id: str) -> dict | None:
+        """Get a compiled knowledge artifact by ID.
+
+        Returns dict with: knowledge_id, content, source_canonical_ids,
+        domain, state, metadata, created_at, updated_at.
+        """
+        ...
+
+    async def list_compiled(
+        self, domain: str | None = None, state: "CompilationState" | None = None
+    ) -> list[dict]:
+        """List compiled knowledge, optionally filtered."""
+        ...
+
+    async def update_state(self, knowledge_id: str, new_state: "CompilationState") -> None:
+        """Transition the compilation state."""
+        ...
+
+    async def get_provenance(self, knowledge_id: str) -> list[dict]:
+        """Return the list of source canonicals used to compile this knowledge."""
+        ...
+
+    async def search_compiled(
+        self, query: str, domain: str | None = None, limit: int = 10
+    ) -> list[dict]:
+        """Search compiled knowledge by query and domain."""
+        ...
+
+
+@runtime_checkable
+class PluginProvider(Protocol):
+    """Abstraction for a plugin-provided model provider.
+
+    Per §4.1 / §1.8: plugins extend model slots without hardcoding names.
+    Per Phase 3 ModelProvider: this is the extensible variant.
+    """
+
+    async def call_model(self, prompt: str, config: dict) -> str:
+        """Send prompt to the plugin's model and return the response text."""
+        ...
+
+    async def health_check(self) -> dict:
+        """Verify the plugin's model is accessible. Returns status dict."""
+        ...
+
+    def get_slot_name(self) -> str:
+        """Return the model slot name this plugin binds to."""
+        ...
+
+    def get_provider_name(self) -> str:
+        """Return the concrete provider name (e.g. plugin YAML key)."""
+        ...

@@ -10503,3 +10503,61 @@ The record above (with all tool outputs, git results, file reads, and battery ve
 
 **Phase 8 pre-10.0a CC complete. Tree clean at [pending commit after this append]. Continuing per continuous execution directive after push.**
 
+
+---
+
+## CHUNK-10.0a — Schema Additions + Protocol Amendments + Config Extensions (Foundation for Knowledge Compilation, Plugins, Collaborators, Performance)
+
+**Date:** 2026-05 (post pre-10.0a CC at bbf8bde; implementation immediately following push + continuous execution directive)
+**Spec:** specs/AIP_0_1_Phase8_BuildSpec_Rev1.0.md (CHUNK-10.0a box + prose + complete ANNEX + File Layout & Import Conventions note)
+**DEPENDS-ON:** CHUNK-9.0a, CHUNK-8.0a (and all prior Phase 7/6/5)
+**Status:** Delivered + gate green (9/9 tests passed; layering + core battery no regression; 10 passed combined). Pushed.
+
+**Implementation (exact per prose + ANNEX + File Layout note — no scope creep):**
+- `src/aip/foundation/schemas.py` (append-only): Added Phase 8 marker + from imports + CompilationState/PluginStatus/CollaboratorRole aliases + 5 new dataclasses (KnowledgeCompilationConfig, PluginConfig, CollaboratorConfig with collaborator_can_approve=False default, PerformanceConfig with 4096 MB laptop target, ReleaseMetadata) carrying model_gen_assumption per §1.8 where applicable. No existing Phase 0-7 content modified or reordered.
+- `src/aip/foundation/protocols.py` (amend by addition): Inside existing AuthStore class, appended the 4 collaborator management method stubs (list_users, create_user, update_user_role, revoke_user) per ANNEX (definer sovereignty preserved; cannot touch definer via API). At end of file, added full new Protocol classes KnowledgeStore (6 methods incl. provenance + distinct CompilationState machine) and PluginProvider (4 methods). KnowledgeStore declared as first-class peer (Appendix D / Process Rule 12 non-collapse with CanonicalStore).
+- `config/aip.config.toml` (append-only): Added 5 new sections at end ([knowledge], [plugins], [collaborators], [performance], [release]) with all fields + toggleables per §1.8 + model_gen_assumption comments. Phase 7/prior sections untouched.
+- `tests/test_phase8_schema_additions.py` (new): 9 tests covering all 11 gate expectations from spec prose (dataclass instantiation/defaults, model_gen_assumption presence on 10.0a configs, type aliases, Protocol method presence via hasattr, AuthStore amendments, prior Phase 0-7 types unbroken, collaborator_can_approve=False default, KnowledgeStore distinctness, aip.-prefixed imports per File Layout delta).
+
+All code follows append-only/amend-by-addition, §7.2 layering (foundation only), §1.8 togglability + model_gen_assumption, §4.1 slots (no hardcodes), §1.7 DEFINER sovereignty (collaborator_can_approve=false), File Layout note (aip. imports in test).
+
+**Gate / Battery (verbatim):**
+```
+$ uv run pytest tests/test_phase8_schema_additions.py -xvs
+... (full session output captured in CC/execution)
+tests/test_phase8_schema_additions.py::test_phase8_config_dataclasses PASSED
+tests/test_phase8_schema_additions.py::test_phase8_configs_carry_model_gen_assumption PASSED
+tests/test_phase8_schema_additions.py::test_phase8_type_aliases PASSED
+tests/test_phase8_schema_additions.py::test_phase8_new_protocols_exist PASSED
+tests/test_phase8_schema_additions.py::test_phase8_authstore_amendments_exist PASSED
+tests/test_phase8_schema_additions.py::test_phase0_through_phase7_types_still_work PASSED
+tests/test_phase8_schema_additions.py::test_collaborator_can_approve_default_is_false PASSED
+tests/test_phase8_schema_additions.py::test_knowledge_store_is_distinct_protocol PASSED
+tests/test_phase8_schema_additions.py::test_aip_prefixed_imports_work PASSED
+
+============================== 9 passed in 0.11s ===============================
+```
+
+```
+$ uv run pytest tests/test_layering.py tests/test_phase8_schema_additions.py -q --tb=no
+..........                                                               [100%]
+10 passed in 0.20s
+```
+Core reliable subset (prior Phase 7/6/5 battery + layering + this 10.0a) remains green. No regressions. Zero network, deterministic.
+
+**Files Changed (this unit):**
+- src/aip/foundation/schemas.py (append Phase 8 block)
+- src/aip/foundation/protocols.py (AuthStore method stubs + 2 new Protocols at end)
+- config/aip.config.toml (5 new sections at end)
+- tests/test_phase8_schema_additions.py (new, exact gate per spec)
+
+**Permanent rules followed:** Append-only on foundation + config + WORKLOG. Exact scope (only 10.0a prose/ANNEX/File Layout). Rule #10 (pre-CC heavy audit + "extend rather than replace"). §7.2 (foundation only), §1.8 (all toggles + model_gen_assumption), §1.7 (collaborator defaults), §4.1 (slots), Appendix D (KnowledgeStore distinct), collaborator_can_approve=false, continuous execution, qualified terminology (Architectural Phase 8 / CHUNK-10.0a / post-Phase-7 baseline), push discipline.
+
+**Rule #10 notes for this chunk:** Pre-10.0a CC (bbf8bde) + §14 explicitly confirmed clean (no pre-existing 10.x types; git blame on schemas/protocols/config showed only sequential Phase 7/prior appends). All shared files extended by addition after Phase 7 markers. No overlap with delivered Phase 5/6/7 actor/surface code.
+
+**Next per DAG:** 10.0b (Knowledge compilation store adapter + plugin adapter — SqliteKnowledgeStore, PluginLoader, YamlPluginProvider) after 10.0a.
+
+CHUNK-10.0a complete (gate green).
+
+**Phase 8 CHUNK-10.0a complete (gate green + pushed at bbf8bde). Continuing to next per linearized order.**
+

@@ -88,3 +88,47 @@ model_gen_assumption = "Models should not autonomously escalate to admin actions
 db_path = "db/lexical.db"
 fts5_tokenizer = "unicode61"
 
+# --- Phase 8 additions (append only) ---
+# Per CHUNK-10.0a ANNEX + prose: knowledge compilation, plugin system,
+# collaborator access, performance tuning, release metadata.
+# All toggleable per §1.8. Defaults per spec. KnowledgeStore distinct from Canonical.
+
+[knowledge]
+compilation_model_slot = "synthesis"
+evaluation_model_slot = "evaluation"
+max_source_canonicals = 10
+compilation_confidence_threshold = 0.60
+auto_index_on_approval = true
+model_gen_assumption = "Synthesis model can reliably produce structured knowledge summaries from multiple canonical sources"
+
+[plugins]
+plugins_dir = "plugins"
+enabled = true
+auto_discover = true
+sandbox_mode = true
+model_gen_assumption = "Plugins provide extensibility for model providers beyond built-in slots"
+
+[collaborators]
+enabled = false
+max_collaborators = 5
+collaborator_can_create_drafts = true
+collaborator_can_submit_review = true
+collaborator_can_approve = false
+readonly_can_search = true
+
+[performance]
+profiling_enabled = false
+max_memory_mb = 4096
+retrieval_timeout_seconds = 30.0
+batch_embed_size = 32
+sqlite_wal_mode = true
+sqlite_busy_timeout_ms = 5000
+vector_query_limit = 50
+fts5_query_limit = 50
+
+[release]
+release_version = "0.1.0"
+release_date = ""  # set by 10.7
+release_status = "alpha"
+architecture_revision = "5.2"
+
