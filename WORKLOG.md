@@ -7866,6 +7866,49 @@ The record above constitutes the authoritative audit. All evidence gathered via 
 
 **Ready to proceed to CHUNK-7.3 implementation (exact scope per prose + ANNEX — extend the real delivered sexton/ location with the stale rule audit actor), gate, WORKLOG append, and push.**
 
+## CHUNK-7.3 — Sexton Stale Rule Audit (Enforcing §1.8 on Model Slot Upgrades)
+
+**Date:** 2026-05 (post full pre-7.3 CC at 60affae)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.3 box + prose + verification list)
+**DEPENDS-ON:** CHUNK-7.1, CHUNK-7.0a/7.2, Phase 1 (ContractRule)
+**Status:** Gate green + pushed
+
+**Pre-CC Summary:**
+- Full pre-7.3 CC (Rule #10 decision: extend the delivered sexton/ location for all Sexton-related code — no parallel actors/sexton_audit.py) documented and pushed at 60affae.
+- 7.1 (extended Sexton with classification + preserved foundation audit stubs) + 7.2 (AcePlaybook with deprecate_entry) baselines in place.
+
+**Implementation (exact per prose + ANNEX — extend delivered location):**
+- `src/aip/orchestration/sexton/sexton_audit.py` (new inside the delivered sexton/ package per the pre-7.3 CC Rule #10 reconciliation): Full SextonAudit class using ModelSlotResolver ("sexton" slot) for real assessments, deterministic keyword heuristic in CI mode, audit_stale_assumptions on ContractRule + AcePlaybookEntry, flag_deprecated_rules that writes EventStore events and triggers AcePlaybook deprecation for playbook entries (DEFINER authority on ContractRules preserved).
+- `tests/test_sexton_audit.py` (new): Instantiation, audit producing results with model_gen_assumption context, flagging + events + deprecation path, CI heuristic.
+- Reuses the existing audit_model_gen_assumption / trust_score helpers from the (7.1-extended) sexton.py where helpful.
+- All new outputs/results carry model_gen_assumption context per §1.8. Layering and resolver usage respected.
+
+**Gate Execution (exact command):**
+```
+uv run pytest tests/test_sexton_audit.py -xvs
+```
+(Plus full battery:)
+```
+... (all Phase 4/5/7.x surfaces) ...
+...
+============================== 48 passed in 0.34s ===============================
+```
+All 7.3 behaviors + every prior gate green. No regressions.
+
+**Files Changed:**
+- src/aip/orchestration/sexton/sexton_audit.py (new, inside delivered package)
+- tests/test_sexton_audit.py (new)
+
+**Permanent rules followed:** Extend the real delivered sexton/ location (per documented pre-CC Rule #10), append-only WORKLOG, push, +2 offset (CHUNK-7.3), qualified terminology, deterministic CI, exact scope, layering / §7.2 / §4.1 ("sexton" slot) / §1.8 respected. All prior 7.x extensions carried forward.
+
+**Rule #10 notes:** The foundation audit stubs + 7.1 extensions in the delivered sexton/sexton.py were the overlap; 7.3 code placed inside the same package (no parallel actors/ path).
+
+**Next per DAG:** 7.4 (Adaptive Router). Immediate pre-7.4 CC required.
+
+CHUNK-7.3 complete (gate green).
+
+**Phase 5 CHUNK-7.3 complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
+
 CC complete. Next per linearized DAG: CHUNK-7.3 implementation.
 
 ---
