@@ -1,0 +1,9 @@
+# Minimal retrieval configuration for Phase 1 bootstrap (per Rev 1.3 CHUNK-0.BOOTSTRAP delta)
+# This is the authoritative place for toggleable harness parameters (§1.8).
+
+[retrieval]
+confidence_threshold = 0.30
+weight_semantic      = 0.60
+weight_recency       = 0.15
+weight_authority     = 0.15
+weight_frequency     = 0.10

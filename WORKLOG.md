@@ -57,6 +57,52 @@ Option C: Other direction from DEFINER.
 
 ---
 
+## Task ID: 0.BOOTSTRAP (Spec Delta)
+
+**Agent:** Grok Build  
+**Task:** CHUNK-0.BOOTSTRAP — Materialize minimal Phase 0 scaffolding required by Rev 1.3 before any Phase 1 code
+
+**Spec Delta Declaration (logged before any Phase 1 code):**
+This work unit was created per explicit DEFINER instruction to resolve the Phase 0 prerequisite gap identified in Task 1.0a-Prep. It exists solely to make the files that Rev 1.3 CHUNK-1.0a DEPENDS-ON and amends actually exist on disk.
+
+**Scope (strictly limited per DEFINER instruction):**
+- Only the minimal files required for CHUNK-1.0a to perform its documented append/amend operations.
+- No business logic, no implementation of any CHUNK-0.x beyond the absolute scaffolding needed.
+- All content drawn exclusively from AIP 0.1 Architecture Rev 5.2 and AIP 0.1 BuildSpec Phase 0 ANNEX.
+
+**Delivered:**
+
+- Project scaffold (CHUNK-0.1): pyproject.toml (uv + hatchling), src/aip/ layout with empty __init__.py in foundation/, orchestration/, adapter/, config/, db/
+- foundation/schemas.py — Phase 0 enums only (ContractTier, ContractRule, EcsState, FailureType, OutcomeType, ModelSlotName) exactly per Phase 0 ANNEX E. Zero Phase 1 types.
+- foundation/protocols.py — Phase 0 stub Protocols exactly per Phase 0 ANNEX D (old VectorStore.retrieve/store signatures + empty @runtime_checkable stubs for TraceStore, EventStore, ArtifactStore, EcsStore, etc.)
+- config/aip.config.toml — minimal [retrieval] section with the exact values specified by DEFINER (confidence_threshold=0.30, weights 0.60/0.15/0.15/0.10)
+- db/trace.db + db/state.db — trace_events table created with exact columns from Architecture Rev 5.2 §5.9 (no data)
+
+**Gate executed:**
+`uv run python` + proper src layout import of:
+- import aip
+- from aip.foundation.schemas import EcsState
+- from aip.foundation.protocols import VectorStore
+
+All succeeded. The types Rev 1.3 expects to be present before CHUNK-1.0a now exist.
+
+**uv sync:** Succeeded cleanly.
+
+**Status:** Complete (spec delta executed)
+
+**Pushed:** Yes (next commit)
+
+---
+
+## Task ID: 1.0a-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-1.0a: Schema Additions + Adapter Package Init (execute exactly per Rev 1.3)
+
+**Status:** In progress (will append to this worklog after completion)
+
+---
+
 ## Future Work Units (from Rev 1.3)
 
 Linearized order per spec:
