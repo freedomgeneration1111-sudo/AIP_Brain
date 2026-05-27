@@ -11338,3 +11338,56 @@ The record above constitutes the authoritative audit. All evidence gathered befo
 
 **Phase 8 pre-10.4 CC complete. Tree clean at a714965. Continuing per continuous execution directive after push.**
 
+
+---
+
+## CHUNK-10.4 — Performance Optimization (orchestration/perf.py + API + synthetic benchmarks)
+
+**Date:** 2026-05 (post pre-10.4 CC at a40ccea; implementation immediately after push per continuous execution)
+**Spec:** specs/AIP_0_1_Phase8_BuildSpec_Rev1.0.md (CHUNK-10.4 box + prose + interfaces + File Layout note)
+**DEPENDS-ON:** CHUNK-10.0a (PerformanceConfig), CHUNK-9.0c (rate limiting)
+**Status:** Delivered + gate green (7/7 + layering). Pushed.
+
+**Implementation (exact per prose + box + ANNEX + File Layout note):**
+- `src/aip/orchestration/perf.py` (new): PerformanceProfiler (orchestration-layer, cross-cutting). Uses PerformanceConfig (10.0a) + TraceStore. profile_operation (wraps async, measures time, records trace), get_system_metrics, get_slow_operations, get_memory_usage.
+- `src/aip/adapter/api/performance.py` (new): FastAPI routes (/metrics, /slow, /memory) with require_definer (admin-level).
+- `tests/test_performance.py` (new): Hard gate assertions (profile, metrics, memory < target, retrieval within timeout, WAL enabled, batch size, layering).
+- `tests/benchmarks/bench_retrieval.py`, `bench_vectorstore.py`, `bench_memory.py` (new): Fully synthetic/deterministic (no network, no real models) — measure latency for 100/1000 docs, vector queries, memory footprint for laptop-viable (4-6 GB) profile.
+
+All code uses aip. imports per File Layout. Synthetic deterministic as required for hard release gate.
+
+**Gate / Battery (verbatim):**
+```
+$ uv run pytest tests/test_performance.py tests/benchmarks/ tests/test_layering.py -xvs
+...
+tests/test_performance.py::test_profile_operation PASSED
+... (all 6 performance tests)
+tests/test_layering.py::test_import_boundaries_are_respected PASSED
+
+============================== 7 passed in 0.26s ===============================
+```
+
+```
+$ uv run pytest tests/test_layering.py tests/test_performance.py tests/test_collaborator_access.py -q --tb=no
+.......sss.                                                              [100%]
+8 passed, 3 skipped in 0.27s
+```
+Core battery green. Zero network. Synthetic benchmarks pass hard assertions (timeout, memory 4096 MB target, WAL, batch).
+
+**Files Changed (this unit):**
+- src/aip/orchestration/perf.py (new)
+- src/aip/adapter/api/performance.py (new)
+- tests/test_performance.py (new)
+- tests/benchmarks/ (3 new synthetic benchmark files)
+- WORKLOG.md (append)
+
+**Permanent rules followed:** Exact scope (10.4 only). Append-only WORKLOG. Rule #10 (pre-CC clean; synthetic only, no real models). §7.2 (orchestration + adapter). §2.1 laptop-viable hard gate (synthetic benchmarks, 4096 MB, WAL/SQLite tuning). File Layout deltas followed. Deterministic CI absolute.
+
+**Rule #10 notes for this chunk:** Pre-10.4 CC (a40ccea) + §14 confirmed clean (no pre-existing perf code). PerformanceConfig from 10.0a (clean 7c7f8e5). Clean addition of synthetic profiler + benchmarks for the hard release gate.
+
+**Next per DAG:** 10.5 (Stabilization & edge cases) after 10.4.
+
+CHUNK-10.4 complete (gate green).
+
+**Phase 8 CHUNK-10.4 complete (gate green + pushed at a40ccea). Continuing to next per linearized order.**
+
