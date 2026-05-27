@@ -1401,3 +1401,52 @@ This makes parallel branches in the workflow engine significantly more powerful 
 **Pushed:** Yes
 
 **Status:** Complete
+
+---
+
+## Task ID: 2.11-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-2.11: Workflow-Level Error Handling, Compensation & Cleanup
+
+**Continuity Check (performed before writing any code):**
+
+**1. Why this now?**
+- With advanced parallel (2.10) and production persistence (2.9), the engine is powerful but still has very basic error semantics at the workflow level.
+- Real workflows need explicit ways to handle partial failures, run compensation/cleanup logic, and define "finally" style blocks that always execute.
+
+**2. Current state:**
+- Errors in sequential flow just stop the runner.
+- Errors in parallel are aggregated at the gather level but not handled at the workflow model level.
+- No first-class "on_error", "compensation", or "finally" constructs in the node model or runner.
+
+**3. Scope decision for this chunk:**
+- Introduce a small set of error-handling node types or attributes (e.g., "on_error" handler nodes, "finally" / cleanup nodes).
+- Allow workflows to declare compensation steps that run on failure paths.
+- Ensure cleanup/compensation steps also respect the normal context and protocol injection rules.
+- Add tests demonstrating failure → compensation → cleanup flows.
+
+**4. Constraints:**
+- Must not bloat the core node model too much in one chunk.
+- Should integrate cleanly with the existing runner and context.
+
+**5. Risks:**
+- Error handling can become very complex. Keep the first version pragmatic and focused on the most common "try / on_error / finally" pattern.
+
+**Conclusion of Continuity Check:**
+High value for making the engine robust in real usage. Safe to proceed with a focused set of error/compensation constructs.
+
+**Status:** Continuity Check complete. Proceeding to implementation.
+
+**Implementation for CHUNK-2.11:**
+- Created `workflow/definition.py` with `WorkflowDefinition` supporting top-level `finally_nodes` and `on_error_nodes`.
+- Updated the loader to parse "finally" and "on_error" sections in YAML and return a `WorkflowDefinition`.
+- Extended `SequentialRunner` with a `run_workflow(definition)` method that correctly executes on_error handlers on failure paths and always runs finally handlers (in reverse order).
+- Added a dedicated test for finally + on_error execution via `WorkflowDefinition`.
+- Verified the feature works end-to-end.
+
+This adds pragmatic, first-class support for the common "try / on_error / finally" pattern at the workflow level while staying consistent with the rest of the engine.
+
+**Pushed:** Yes
+
+**Status:** Complete

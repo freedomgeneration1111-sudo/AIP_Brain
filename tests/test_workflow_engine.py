@@ -2,6 +2,7 @@
 import asyncio
 import pytest
 
+from aip.orchestration.workflow.definition import WorkflowDefinition
 from aip.orchestration.workflow.node import DialogNode, NodeType, ScriptNode, ParallelNode
 from aip.orchestration.workflow.context import WorkflowContext
 from aip.orchestration.workflow.runner import SequentialRunner
@@ -277,3 +278,91 @@ async def test_advanced_parallel_with_dependencies_and_error_handling():
     # We mainly care that it didn't crash and ran the parallel block
     par_results = [r for r in results if isinstance(r.output, dict) and r.output.get("type") == "parallel"]
     assert len(par_results) >= 1 or any("par" in str(r) for r in results)
+
+@pytest.mark.asyncio
+async def test_finally_and_on_error_handlers():
+    """Verify that finally always runs and on_error runs on failure paths."""
+    # We'll use simple script nodes that record execution order via the context
+    execution_log = []
+
+    class RecordingScript(ScriptNode):
+        def __init__(self, node_id, label):
+            super().__init__(node_id, code="")
+            self.label = label
+
+        async def run(self, context):
+            execution_log.append(self.label)
+            return NodeResult(success=True, output={"executed": self.label})
+
+    nodes = [
+        RecordingScript("main_ok", "main_ok"),
+    ]
+
+    # Success path - only finally should run after main
+    execution_log.clear()
+    wf = WorkflowDefinition(
+        nodes=[RecordingScript("main_ok", "main_ok")],
+        finally_nodes=[RecordingScript("finally1", "finally")],
+        on_error_nodes=[RecordingScript("compensate", "compensate")],
+    )
+    runner = SequentialRunner(wf.nodes)
+    await runner.run_workflow(wf)
+    assert execution_log == ["main_ok", "finally"]
+
+    # Failure path - on_error + finally should run
+    execution_log.clear()
+    def failing_run(self, context):
+        execution_log.append("main_fail")
+        return NodeResult(success=False, error="boom")
+
+    # Monkey-patch one node to fail
+    fail_node = RecordingScript("main_fail", "main_fail")
+    fail_node.run = failing_run.__get__(fail_node, RecordingScript)
+
+    wf_fail = WorkflowDefinition(
+        nodes=[fail_node],
+        finally_nodes=[RecordingScript("finally2", "finally")],
+        on_error_nodes=[RecordingScript("compensate2", "compensate")],
+    )
+    runner2 = SequentialRunner(wf_fail.nodes)
+    try:
+        await runner2.run_workflow(wf_fail)
+    except RuntimeError:
+        pass
+
+    assert "main_fail" in execution_log
+    assert "compensate" in execution_log
+    assert "finally" in execution_log
+
+@pytest.mark.asyncio
+async def test_workflow_definition_finally_and_on_error():
+    """Basic test that WorkflowDefinition + run_workflow executes finally and on_error handlers."""
+    execution = []
+
+    class LogScript(ScriptNode):
+        def __init__(self, node_id, label, fail=False):
+            super().__init__(node_id, code="")
+            self.label = label
+            self.fail = fail
+
+        async def run(self, context):
+            execution.append(self.label)
+            if self.fail:
+                return NodeResult(success=False, error="boom")
+            return NodeResult(success=True, output={"label": self.label})
+
+    wf = WorkflowDefinition(
+        nodes=[LogScript("main", "main", fail=True)],
+        finally_nodes=[LogScript("fin", "finally")],
+        on_error_nodes=[LogScript("comp", "compensate")],
+    )
+
+    runner = SequentialRunner(wf.nodes)
+    try:
+        await runner.run_workflow(wf)
+    except RuntimeError:
+        pass
+
+    assert "main" in execution
+    assert "compensate" in execution
+    assert "finally" in execution
