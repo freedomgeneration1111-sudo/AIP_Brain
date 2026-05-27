@@ -7215,3 +7215,167 @@ All tests green. The gate now passes cleanly while correctly validating the thre
 CHUNK-6.6 complete. Gate green.
 
 **Phase 4 complete.**
+
+---
+
+## Full Pre-CHUNK-7.0a Continuity Check (Mandatory before Architectural Phase 5 Schema + Protocol + Config)
+
+**Date:** 2026-05 (immediately after Phase 4 complete at f2bb46c + handoff docs at 3f48db0)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.0a box + prose + complete ANNEX, lines 233–749)
+**DEPENDS-ON:** CHUNK-6.0a, CHUNK-5.0a (per 7.0a box); broader Phase 4/3/2/1/0 for Rule #10 and integration context
+**Status:** CC complete + documented. Ready for CHUNK-7.0a (no src/ or tests/ production edits performed during this CC; only reads, scans, test runs, and this append to WORKLOG).
+
+**Pre-CC Reconciliations Applied (per handoff + PHASE2_IMPORT_NOTES §10):**
+- Authoritative baseline: Post-Phase-4 Clean Bill + explicit "**Phase 4 complete.**" declaration in WORKLOG after 6.6 gate (16 passed). Final Phase 4 commit 8cbcb0c, uv.lock maintenance f2bb46c, handoff import 3f48db0 (spec + PHASE5_HANDOFF_PROMPT.md + PHASE2_IMPORT_NOTES extension with §10 Phase 5 Import Record).
+- Permanent +2 offset policy in full force: All Phase 5 work exclusively CHUNK-7.0a–7.7 (never bare "Phase 5" or original spec chunk numbers).
+- 5.8 partial fidelity gap (190-line test_phase3_integration.py starter vs full ~370-line ANNEX) remains non-blocking per every CC since post-Phase-3 Clean Bill; untouched by Phase 4 or this CC.
+- Tree at HEAD (3f48db0): clean (git status --porcelain empty), fully pushed. Matches documented post-Phase-4 state + Phase 5 SSOT import.
+- PHASE2_IMPORT_NOTES.md re-read in full (231 lines): permanent +2 offset, Rule 10 / repo overlap reconciliation (esp. §5, §9 Phase 4 record, §10 Phase 5 record with explicit high-risk flags on sexton/, budget.py, session.py), Process Rules (esp. Rule 10 "extend existing rather than replace"), terminology (Architectural Phase 5, CHUNK-7.x, repo 3.x partials).
+- All standing rules observed: no production code until this CC fully documented; append-only on schemas/protocols; qualified terminology throughout; continuous execution mode noted for post-CC linearized 7.0a→7.7 (with per-chunk CCs).
+
+**1. Re-read of target CHUNK-7.0a (from Phase 5 SSOT specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md:233+):**
+
+```
+CHUNK-7.0a: Schema Additions + Protocol Amendments + Config Extensions
+PHASE: 5
+DEPENDS-ON: CHUNK-6.0a, CHUNK-5.0a
+CODER-PROFILE: L1
+CONTEXT-BUDGET: ~3,500 tokens
+FILES:
+  foundation/schemas.py (append only — do not modify existing Phase 0/1/2/3/4 enums or dataclasses)
+  foundation/protocols.py (amend by addition — add methods to existing Protocol classes)
+INTERFACES:
+  @dataclass class SextonConfig: classification_batch_size, classification_interval_seconds, audit_on_slot_change, max_unclassified_before_alert
+  @dataclass class AcePlaybookEntry: entry_id, domain, failure_type (A–F), intervention, condition, model_gen_assumption (§1.8), source_trace_ids, confidence, created_at, deprecated_at, deprecated_reason
+  @dataclass class BudgetConfig: session/project/daily_token_limit, warning_threshold, hard_stop
+  @dataclass class RoutingWeight: model_slot, domain, weight, exploration_weight (§4.3), sample_count, updated_at
+  @dataclass class BeastCadenceConfig: reindex/maintenance/health intervals, max_reindex_batch
+  @dataclass class FailureClassification: trace_event_id, failure_type (A–F), confidence, rationale, model_slot_used="sexton", tokens_consumed, model_gen_assumption (§1.8), classified_at
+  BudgetScope = Literal["session", "project", "daily"]
+  # New Protocol (per ANNEX)
+  class BudgetStore(Protocol):
+      async def get_budget(self, scope: BudgetScope, scope_id: str) -> dict: ...
+      async def record_usage(...) -> None: ...
+      async def check_limit(...) -> bool: ...
+  # Amendment to existing
+  async def list_projects(self, status: str | None = None) -> list[dict]: ...  # on ProjectStore
+TESTS: tests/test_phase5_schema_additions.py
+GATE: uv run pytest tests/test_phase5_schema_additions.py -xvs
+```
+
+**Prose key mandates (7 items, strict scope):**
+- Append-only `SextonConfig`, `AcePlaybookEntry` (mandatory `model_gen_assumption` per §1.8), `BudgetConfig`, `RoutingWeight`, `BeastCadenceConfig`, `FailureClassification` (also §1.8) to schemas.py. No edits/reorders/deletes to prior phases.
+- Add `BudgetScope` alias.
+- Add `BudgetStore` Protocol (new, §6-listed) in protocols.py.
+- Amend `ProjectStore` with `list_projects` (for Beast 7.5).
+- Extend config/aip.config.toml with [sexton], [ace_playbook], [router], [budget], [beast] sections (L1, append-only).
+- Gate verifies all new dataclasses instantiate, §1.8 fields present on AcePlaybookEntry + FailureClassification, all Protocol methods, prior Phase 0–4 enums/dataclasses/protocols untouched and functional.
+
+**ANNEX (complete, lines 363–747):** Exact dataclass defs with docstrings referencing §16.1, §1.8, §8.1, Appendix E, §4.3, §3, §5.10, §11.1, §7.2. Protocol stubs with full signatures + docstrings. Full 20+ function test skeleton (test_ace_playbook_entry_carries_model_gen_assumption, test_failure_classification_carries_model_gen_assumption, test_budgetstore_protocol_has_methods, test_projectstore_protocol_has_list_projects, test_existing_protocol_methods_preserved, test_phaseX_enums/dataclasses_still_work, etc.). All tests must import from foundation.* and assert no breakage.
+
+**Critical note (spec line 114):** "This chunk appends to `foundation/schemas.py` and amends `foundation/protocols.py` — the same append-only/amend-by-addition pattern as CHUNK-1.0a, CHUNK-4.0a, CHUNK-5.0a, and CHUNK-6.0a. No existing ... code is deleted or rewritten."
+
+**2. Re-read of all DEPENDS-ON (current reality + prior deliveries + specs):**
+
+- **CHUNK-6.0a (Phase 4 SSOT, just-completed baseline):** Established the exact append-only pattern used here (PgvectorConfig, Migration*, EvaluationScore/FaithfulnessResult/DomainCoherenceResult with model_gen_assumption already on EvaluationScore — directly relevant to 7.3 Sexton audit of ContractRule + new types). VectorStore health_check + count added (used by Beast 7.5). Protocols amended for VectorStore. Confirmed via re-read + actual schemas.py tail (ends cleanly with DomainCoherenceResult). 6.0a gate + all Phase4 schema tests (41 total across phases) green in this CC run.
+- **CHUNK-6.6 (Phase 4 final gate, post-6.5):** Test-only extension of 4.8/5.9; 16 passed with AST-based isolation + §4.1 scan + §7.2 boundaries. Reconciled docstring/label allowances. Directly informs our governance verification (ran test_phase4_gate.py: 16/16 green).
+- **CHUNK-5.0a (Phase 3 SSOT):** Added TrajectorySignal, SessionContext, ModelSlotConfig (all with model_gen_assumption on some). Trajectory signals feed Sexton (7.1 reads trace_events + L4 signals per spec). SessionContext used by SessionManager (5.7). Re-read relevant sections + confirmed in current schemas.py and session.py.
+- **CHUNK-5.0b:** ModelSlotResolver (adapter/model_slot_resolver.py). Critical: Sexton (7.1) must use "sexton" slot via resolver (no hardcoded models, §4.1). Router (7.4) wraps it transparently. Confirmed present + used in Phase 4 promoted nodes.
+- **CHUNK-5.7:** SessionManager (orchestration/session.py, 117 lines). Budget integration (7.0b) must hook without breaking multi-turn/trajectory (5.8/6.5 exercised it). Re-read file + trajectory/ subdir.
+- **CHUNK-5.8/5.9:** Partial integration starter + network gate. 5.8 non-blocking partial explicitly carried forward. 5.9 gate ancestor of 6.6.
+- **CHUNK-4.0a/4.5 (Phase 2):** ReviewVerdict/Event/FailureTypeCode (used by Sexton 7.1 per spec cross-refs), GuardrailedEcsStore, EventStore.query, YAML engine (orchestration/workflow/engine.py + workflow_01.py). Engine already touches budget (from tree scan). 4.5 is the enforcement hook point for 7.0b. Re-read engine.py imports + budget references.
+- **CHUNK-1.0a/1.0b (Phase 1 SSOT):** Core Chunk, ContractRule (Sexton 7.3 audits ContractRule.model_gen_assumption per §1.8), RetrievalResult, VectorStore/TraceStore/EventStore/ArtifactStore/EcsStore protocols (all extended in prior + now for 7.0a ProjectStore + BudgetStore). Trace schema (test_trace_schema.py) green. Re-read Phase1 SSOT §1.8 model_gen_assumption doctrine + ContractRule.
+- **Phase 0 relevant (trace_events, routing_outcomes, ProjectStore/EntityStore roots):** Partial in state.db; ace_playbook.db new in 7.2. Confirmed via test_trace_schema + prior integration tests.
+- **No 7.x code exists:** Confirmed via exhaustive grep for SextonConfig/AcePlaybookEntry/etc. + "Phase 5" in src/tests (only pre-existing BudgetStore old-sig references from repo 3.x in protocols/budget/engine/context).
+
+All DEPENDS-ON deliverables present, importable, previously gated green. 5.8 partial unchanged.
+
+**3. Cross-check against post-Phase-4 CC + "Phase 4 complete" declaration + handoff:**
+
+- Git at 3f48db0 (handoff docs) after f2bb46c (uv.lock post-6.6). All 6.0a–6.6 + prior Phase 0–3 deliverables present and green per WORKLOG.
+- All prior Clean Bills (post-Phase-3 through pre-6.6) hold. Governance (layering 1/1, Phase4 gate 16/16, 41 schema tests) remains green in this CC's verification runs.
+- 5.8 partial: exactly as documented (190-line starter in test_phase3_integration.py); 6.5/6.6 added on top without touching the gap. This CC does not alter its non-blocking status.
+- Handoff + PHASE2_IMPORT_NOTES §10 explicitly flag the repo 3.x partials and mandate heavy Rule #10 emphasis for 7.0a — executed below.
+- No material violations of permanent rules or spec assumptions about existing code (minor signature/path mismatches are reconcilable via "extend" as documented in step 4).
+
+**4. Rule #10 / Repo overlap reconciliation check (highest scrutiny per handoff + PHASE2_IMPORT_NOTES §5/§10):**
+
+**Target surfaces for 7.0a:** foundation/schemas.py, foundation/protocols.py, config/aip.config.toml (append sections), tests/test_phase5_schema_additions.py (new test-only).
+
+**Historical record (git blame/log + tree + all prior WORKLOG + PHASE2 notes):**
+- schemas.py / protocols.py: Incremental appends only through 6.0a (Phase 4) + earlier 1.0a/4.0a/5.0a. Clean append points confirmed (tail reads).
+- budget.py (57 lines): InMemoryBudgetStore + SimpleAutonomyGate, commit 677391fe (2026-05-27, repo 3.x CHUNK-3.11 foundation). Implements *old* BudgetStore (consume/remaining/reset). Already imported by orchestration/workflow/engine.py + context.py (pre-Phase 5 budget touchpoints exist).
+- protocols.py: BudgetStore(Protocol) + AutonomyGate already defined (3.12 amend-by-addition) with old signatures. Also ProjectStore (empty-ish), EntityStore, etc.
+- sexton/sexton.py (9448 lines): Sexton class with classify_recent_failures + deterministic _classify (Appendix E A–F rules), TraceStore injection only, model_gen_assumption comments, in-memory playbook stub. Commit df95c999 (CHUNK-3.4 spec delta, "minimal deterministic implementation per Architecture Rev 5.2 §16.1"). **No Phase 5 types yet.**
+- session.py (117 lines): SessionManager (5.7), uses SessionContext/TrajectorySignal. No budget yet.
+- engine.py (4.5): Already references BudgetStore (old) in workflow context.
+- No orchestration/actors/ dir; actual delivered is orchestration/sexton/ + top-level budget.py/session.py.
+- routing_outcomes / trace_events / ace_playbook: Phase 0/3 partial roots in state.db + EventStore/TraceStore; no ace_playbook.db yet.
+- config/aip.config.toml: Minimal retrieval/embedding sections (no Phase 5 sections).
+
+**Overlaps identified + "extend existing rather than replace" decisions (all non-breaking, append/amend only):**
+- **BudgetStore / budget.py (critical, flagged in handoff):** Existing Protocol has old methods (consume etc from 3.11/3.12); spec 7.0a describes "new Protocol" with get_budget/record_usage/check_limit. **Reconciliation:** Amend the *existing* BudgetStore Protocol definition in protocols.py by *addition* of the three new method stubs (per ANNEX). Do not delete old methods (preserve compat for InMemoryBudgetStore + engine callers during 7.0b transition). 7.0b will deliver SqliteBudgetStore implementing the full interface + update InMemory for tests. Extend budget.py (add new methods or adapter layer); do not replace the 57-line partial. Document signature evolution in 7.0b CC. This honors "amend by addition" + "extend existing".
+- **ProjectStore.list_projects:** Simple stub addition to existing Protocol (empty body in protocols.py). Matches Beast 7.5 needs. Clean.
+- **sexton/sexton.py (highest risk, 9.4k-line repo 3.x partial):** Spec prose/ANNEX for 7.1/7.3 references `orchestration/actors/sexton.py` + `sexton_audit.py`. Reality: delivered foundation at `orchestration/sexton/sexton.py` (already does deterministic classification per App E + TraceStore injection + §1.8 comments). **Reconciliation (extend real delivered artifact):** For CHUNK-7.1/7.3, extend *this exact file* (add model slot "sexton" path via resolver per 5.0b, produce FailureClassification objects, integrate full classification + stale audit logic, persist via TraceStore.write). Do *not* create parallel wrong-path `orchestration/actors/sexton.py` or `sexton_audit.py` (would duplicate and break imports). If spec shorthand requires actors/ subdir, add thin re-exports or note path as doc-only; actual code lives in delivered sexton/ dir. Update any 7.x imports to real location. Preserve deterministic foundation behavior; layer real "sexton" slot calls on top.
+- **session.py + engine.py (4.5/5.7):** Budget hooks (7.0b) and ACE loading (7.2) must extend these without breaking multi-turn/trajectory (exercised in 5.8/6.5) or YAML workflows. **Decision:** Injection of BudgetStore + playbook at SessionManager/engine startup paths. Extend, no mutation of existing logic.
+- **Path / import pattern (actors vs sexton/):** Per prior reconciliations (e.g. 6.6 ANNEX path fixes, 6.2 validation.py case), prefer actual delivered files/locations. Spec "orchestration/actors/..." treated as logical grouping shorthand. Layering (§7.2) preserved: actors import foundation Protocols + adapter.model_slot_resolver only (no direct concrete stores).
+- **Config:** Append-only new [sections] at end of aip.config.toml (current minimal state confirmed).
+- **trace_events / routing_outcomes:** Extend existing EventStore/TraceStore usage; new tables (ace_playbook) in 7.2.
+- **Result:** All overlaps reconcilable via strict amend-by-addition + extend-existing. No rewrites. Every decision documented here for future 7.x CCs. No Rule #10 blocker for 7.0a.
+
+**5. Architecture Rev 5.2 cross-references (read from /home/moses/Downloads/downloads checked/AIP_0_1_Architecture_Rev5_2.md, 1247 lines):**
+
+- §1.8 (Harness Evolution, model_gen_assumption on all rules/evals/classifs): Mandatory tagging on AcePlaybookEntry + FailureClassification (and existing EvaluationScore/ContractRule). Sexton audits on slot changes (7.3). Aligns exactly with 7.0a prose/ANNEX + 7.3.
+- §4.3 (Adaptive Router, exploration_weight, domain weights, Sexton recommendations): Directly drives RoutingWeight dataclass + 7.4.
+- §6 (BudgetStore Protocol): Listed as required abstraction. 7.0a delivers the interface; matches handoff.
+- §7.1 (ContractRule + stale assumptions): Sexton 7.3 audits exactly these.
+- §8.1 (ACE Playbook / SQLite, procedural rules, loaded at session start, curated by Sexton): Drives AcePlaybookEntry + 7.2.
+- §16.1 (Sexton: classify trace_events A–F per App E, stale rule audit, playbook curation): Core of 7.1/7.3. Three-layer actor model (§3): Sexton (harness maint), Beast (cadence/corpus/entity), Vigil (not in Phase 5 scope).
+- Appendix D (Sexton classification ≠ resolution; playbook at next session; Beast ≠ Sexton): Enforced in 7.1/7.2/7.3 (no mid-session mutation).
+- Appendix E (Failure Taxonomy A–F): Sexton _classify logic + FailureClassification.failure_type. Existing sexton.py already implements deterministic version of this.
+- §3 / §5.10 / §11.1 (Beast, cadence_state, parallel budget inheritance): BeastCadenceConfig + 7.5.
+- All align with Phase 5 SSOT + 7.0a ANNEX. No contradictions with delivered code.
+
+**6. Other findings + state verification (executed live in this CC before any edits):**
+
+- **Governance battery (all run live):**
+  - `uv run pytest tests/test_layering.py -xvs`: 1 passed (import boundaries respected: foundation no orchestration/adapter; adapter no orchestration).
+  - `uv run pytest tests/test_phase4_gate.py -xvs`: **16 passed** (full Phase 4 surface: NetworkIsolation, ImportBoundaries §7.2, NoHardcodedModelNames §4.1). Includes adapter + orchestration nodes from 6.x.
+  - `uv run pytest tests/test_phase2_no_network.py ...` (with phase3/4 gates): Phase2 gate fails on known permanent exception (adapter/embedding/ollama_embed.py:httpx, Phase 5.1 allowed in every CC since post-Phase-3 baseline + test_phase2_no_network expectations). Phase4 gate (updated AST logic) green.
+  - All schema tests (test_schema_additions.py + phase2/3/4_schema_additions.py + test_trace_schema.py): **41 passed** (all Phase 0–4 enums/dataclasses/protocols + model_gen_assumption on EvaluationScore + prior methods preserved).
+  - No test_phase5_schema_additions.py (expected; created in 7.0a).
+- **Hardcode model name scan (live python AST across src/aip, excluding tests):** NONE (beyond the two known allowed cases: DeepSeek-V3 docstring in synthesis.py (6.1, permitted by 6.6 ANNEX), nomic-embed-text label in health.py (6.4, reporting only)). §4.1 clean for new work.
+- **File / tree audit (live):** 
+  - No Phase 5 types (SextonConfig etc.) or new BudgetStore methods anywhere in src/ or tests/ (only pre-existing old-sig BudgetStore refs in 4 files from repo 3.x).
+  - schemas.py ends cleanly post-6.0a (DomainCoherenceResult + EvaluationScore with model_gen_assumption).
+  - protocols.py has BudgetStore (old sig) + ProjectStore + AutonomyGate (3.x foundation); clean append points.
+  - sexton/sexton.py (9448 lines, foundation 3.4), budget.py (57 lines, 3.11), session.py (117 lines, 5.7) all present as documented partials.
+  - config/aip.config.toml: minimal, ready for append.
+  - No 7.x files or dirs.
+- **Git state (live):** HEAD 3f48db0 (handoff), clean tree, prior Phase 4 at 8cbcb0c/f2bb46c. Blames confirm repo 3.x origins for overlaps (no Phase 4/5 touches on sexton/budget/session).
+- **5.8 partial:** Unchanged, non-blocking.
+- **Layering / determinism / §7.2 / §4.1:** All verified green or with documented permanent exceptions. New 7.x code (Sexton etc.) will route model calls exclusively via "sexton" slot + resolver + ci_mode.
+- **High-risk areas (handoff §4):** All audited above. Budget signature mismatch + sexton path + engine/session injection points explicitly reconciled (extend). No blockers.
+- **Environment:** CI-mode ready (no network in gates). PGVECTOR optional (not touched by 7.0a).
+
+**Overall Pre-CHUNK-7.0a Continuity Check Result:**
+
+**Clean Bill of Health for baseline + readiness for CHUNK-7.0a (with full documented reconciliations for all repo 3.x partials and pre-existing BudgetStore).**
+
+- All 6 steps executed with direct live evidence (tool calls: reads of SSOT/Arch/DEPENDS files, git blame/log/status, 41+ governance tests with full outputs, AST hardcode scans, file content audits, config/tree inspections).
+- Prior Clean Bills + "Phase 4 complete." + 5.8 non-blocking status hold.
+- Rule #10: Every overlap (budget signature/partial, sexton 9k-line foundation, session/engine touchpoints, protocol pre-existence, path shorthand vs delivered layout) reconciled via "extend existing rather than replace" + amend-by-addition. Explicit decisions logged for 7.0b/7.1/7.3/7.4/7.5. No material spec assumption violations requiring DEFINER input.
+- All permanent rules, +2 offset (CHUNK-7.0a), layering, §1.8 tagging, §4.1 slot resolution, §7.2 boundaries, deterministic CI, and Architecture Rev 5.2 §3/§4.3/§6/§7.1/§8.1/§16.1/App D/E alignments confirmed.
+- Zero Phase 5 production code written. Tree remains clean. Ready for exact-scope 7.0a implementation (schemas append + protocols amend + config sections + test_phase5_schema_additions.py per prose + ANNEX), gate, WORKLOG append, push.
+
+**This completes the mandatory full Continuity Check for CHUNK-7.0a.**
+
+The record above constitutes the authoritative audit. All evidence gathered via tool execution before any src/ or tests/ edits for 7.0a.
+
+**Ready to proceed to CHUNK-7.0a implementation (exact scope per prose + ANNEX — append-only schema/protocol/config extensions following the 1.0a/4.0a/5.0a/6.0a pattern, with Rule #10 extensions of repo 3.x partials), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-7.0a implementation (then immediate pre-7.0b CC, etc.).
+
+---
+
+**Phase 5 pre-7.0a CC complete. Tree clean at 3f48db0. Continuing per continuous execution directive after push.**
