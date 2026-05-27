@@ -3460,6 +3460,14 @@ More integration work (loader dispatch for "review"/"re_synthesize" node types i
 
 **Next:** Continue extending the engine/loader to recognize and dispatch the new node types from YAML definitions.
 
+**Update (CHUNK-4.5 progress):**
+- Extended `orchestration/workflow/loader.py` to recognize node types "review" and "re_synthesize" and instantiate the new node classes (additive change).
+- Imports added.
+- Layering still clean.
+- This allows YAML workflows to use the new Phase 2 review/re-synthesis nodes.
+
+Continuing the careful extension of the existing engine to full spec compliance for 4.5.
+
 
 
 **Implementation notes (filled after code + gate):**

@@ -20,6 +20,8 @@ from aip.orchestration.workflow.node import (
     DialogNode,
     NodeType,
     ParallelNode,
+    ReSynthesizeNode,
+    ReviewNode,
     ScriptNode,
     WorkflowNode,
 )
@@ -80,6 +82,10 @@ def load_workflow_from_yaml(path: str | Path) -> WorkflowDefinition:
                 nodes.append(DialogNode(node_id, prompt=node_def.get("prompt", "")))
             elif node_type == NodeType.PARALLEL:
                 nodes.append(ParallelNode(node_id, children=node_def.get("children", [])))
+            elif node_type == "review":
+                nodes.append(ReviewNode(node_id, config=node_def))
+            elif node_type == "re_synthesize":
+                nodes.append(ReSynthesizeNode(node_id, config=node_def))
             else:
                 raise ValueError(f"Unknown node type: {node_type}")
         return nodes
