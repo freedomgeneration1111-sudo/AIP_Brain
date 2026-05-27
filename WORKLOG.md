@@ -8036,6 +8036,28 @@ CC complete. Next per linearized DAG: CHUNK-7.5 implementation.
 
 **Phase 5 pre-7.5 CC complete. Tree clean at 9e0e488. Continuing per continuous execution directive after push.**
 
+## CHUNK-7.5 — Beast Actor (Deterministic Corpus & Entity Maintenance)
+
+**Date:** 2026-05 (post pre-7.5 CC at c7210dd)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.5 box + prose + ANNEX)
+**DEPENDS-ON:** CHUNK-7.0b, CHUNK-6.0b, CHUNK-7.0a
+**Status:** Gate green + pushed
+
+**Implementation (exact per prose + ANNEX):**
+- `src/aip/orchestration/actors/beast.py` (new at spec path): Beast with the three required methods using ProjectStore.list_projects (7.0a), VectorStore.count/health_check/upsert (Phase 4), EmbeddingProvider. Deterministic, Protocol injection only.
+- `tests/test_beast_actor.py` (new): Corpus maintenance, health check, layering.
+- Cadence scheduling left to caller (per spec).
+
+**Gate:** 54 passed (new Beast tests + full prior battery + layering).
+
+**Files:** orchestration/actors/beast.py + __init__.py (new), tests/test_beast_actor.py (new).
+
+**Permanent rules:** Exact scope, clean path (no conflicting partial), layering, push, +2 offset, etc.
+
+CHUNK-7.5 complete (gate green).
+
+**Phase 5 CHUNK-7.5 complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
+
 CC complete. Next per linearized DAG: CHUNK-7.4 implementation.
 
 ---
