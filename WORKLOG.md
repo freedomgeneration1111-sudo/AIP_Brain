@@ -2420,4 +2420,55 @@ After gate green: update, commit, push, continue.
 
 **Status:** Complete
 
-**Pushed:** (pending this work unit)
+**Pushed:** Yes (commit fd0f210)
+
+---
+
+## Task ID: 3.10-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-3.10: Sexton Trust Scoring and Stale Rule Audit Foundation (completing core §16.1 per Architecture)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target scope:**
+- §16.1 lists additional Sexton responsibilities beyond classification and derivation: trust scoring, stale rule audit (model_gen_assumption), contract assumption review.
+- After 3.9 (embedding), the Sexton actor is the next place to add the remaining foundation pieces for "trust" and "audit".
+
+**2-5. DEPENDS-ON etc.:**
+- Builds on 3.4/3.7 (Sexton).
+- Uses the rules and classified events already produced.
+
+**6. Scope:**
+- Minimal:
+  - Add simple trust_score method to Sexton (e.g., based on number of supporting events or rule age).
+  - Implement the audit_model_gen_assumption stub to actually scan recent rules for the tag and flag potential stale ones.
+  - Test the new methods with synthetic data.
+- Out of scope: UI, full scoring algorithm, integration into routing.
+
+**Conclusion:**
+This completes the core listed responsibilities of Sexton in the foundation phase.
+
+**Spec Delta Declaration:**
+CHUNK-3.10 adds the remaining §16.1 foundation methods to Sexton (trust scoring, stale rule audit).
+
+**FILES:**
+- (amend) orchestration/sexton/sexton.py
+- (additive) updates to test_sexton.py
+
+**INTERFACES:**
+- sexton.trust_score(rule_or_event) -> float
+- Enhanced audit that returns list of potentially stale rules.
+
+**TESTS:**
+- Basic tests for the new methods.
+
+**GATE:**
+The usual combined gate.
+
+After gate green: update, commit, push, continue.
+
+**Implementation notes (to be filled after execution):**
+- [empty until next short command]
+
+**Status:** Continuity Check + Spec Delta documented for CHUNK-3.10. Awaiting short command to implement.
