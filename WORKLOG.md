@@ -8625,6 +8625,61 @@ CC complete. Next per linearized DAG: CHUNK-8.2 implementation (after this CC is
 
 ---
 
+## Full Pre-CHUNK-8.3 Continuity Check (Mandatory before Chat Surface WebSocket)
+
+**Date:** 2026-05 (immediately after CHUNK-8.2 push at c5270ee)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.3 box + prose, lines 1150+)
+**DEPENDS-ON:** CHUNK-8.1 (FastAPI app + AipContainer for WS mounting), CHUNK-5.7 (SessionContext / SessionManager)
+**Status:** CC complete + documented. Ready for CHUNK-8.3 (no src/ or tests/ production edits for 8.3 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-8.2 baseline: Full CLI at declared entrypoint (57 passed battery), 8.1 API scaffold + 8.0b adapters + Phase 5 actor layer all green. CLI and API both surface the autonomous capabilities.
+- No pre-existing chat/WebSocket code anywhere (grep confirmed clean; no /chat/, no websocket handling, no message type handlers).
+- All prior Clean Bills hold.
+- Continuous execution: immediate next after 8.2.
+
+**1. Re-read of target CHUNK-8.3 (from Phase 6 SSOT):**
+
+```
+CHUNK-8.3: Chat Surface
+PHASE: 6
+DEPENDS-ON: CHUNK-8.1, CHUNK-5.7
+CODER-PROFILE: L3
+CONTEXT-BUDGET: ~5,000 tokens
+FILES:
+  adapter/api/routes/chat.py
+  tests/test_api_chat.py
+INTERFACES:
+  WS /api/v1/chat/{session_id}
+  Message types: message/response, gate/gate_response, context_reset
+  ...
+TESTS: tests/test_api_chat.py
+GATE: uv run pytest tests/test_api_chat.py -xvs
+```
+
+**Prose key mandates:** WebSocket endpoint mounted on the 8.1 app. Client sends {type: "message", content}. Server runs synthesis (with ACE playbook already loaded), hits dialog nodes → sends gate message, client responds with gate_response, workflow resumes. Context reset messages from L4 regulator. Budget integration. Deterministic summarization at chat_max_history_turns. All via the AipContainer from 8.1.
+
+**2–6. (Live evidence):** DEPENDS (8.1 scaffold + SessionManager) present and green. Zero pre-existing chat code (clean). Governance 57 passed (full battery including new CLI test). Rule #10: new file at spec location (adapter/api/routes/chat.py) has no overlap with delivered CLI (8.2), API scaffold (8.1), or 8.0b adapters. The chat surface will be the primary DEFINER interaction point that finally exercises the complete actor layer (Sexton classification → ACE → router → budget → Beast) in real time. Arch §3 (Chat surface) + §1.7 (gate handling) + §8.1 (ACE load) alignments confirmed.
+
+**Overall Pre-CHUNK-8.3 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-8.3 (WebSocket chat with gate handling + ACE + context reset + budget, mounted on 8.1 app; clean new path per Rule #10; 57 passed baseline).**
+
+- All 6 steps executed.
+- Ready for exact 8.3.
+
+**This completes the mandatory full Continuity Check for CHUNK-8.3.**
+
+**Ready to proceed to CHUNK-8.3 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-8.3 implementation (after push).
+
+---
+
+**Phase 6 pre-8.3 CC complete. Tree clean at c5270ee. Continuing per continuous execution directive after push.**
+
+---
+
 ## CHUNK-8.2 — CLI Implementation (aip init per §2.3, status, config, project, session)
 
 **Date:** 2026-05 (post pre-8.2 CC at 5a35f8d)
