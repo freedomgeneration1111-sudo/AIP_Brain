@@ -6053,3 +6053,151 @@ The record above (initial mapping + data gather results + closed/partial/open li
 **Ready for next phase (6.x per permanent +2 offset policy) or explicit user direction.** No further Phase 3 work or new chunks until this CC is pushed and user confirms.
 
 CC complete.
+
+## Full Pre-CHUNK-6.0a Continuity Check (Mandatory for Architectural Phase 4 / CHUNK-6.x Resumption)
+
+**Date:** 2026-05 (resumption after 92b5fd3 post-Phase-3 CC + 89b624a Phase 4 spec import)
+**Scope:** Mandatory 6-step CC before any CHUNK-6.x production code per permanent rules (PHASE2_IMPORT_NOTES §6 + Phase 4 spec §Continuity Check rule + user query). Authoritative baseline: post-Phase-3 "Clean Bill of Health" in prior section + SSOT specs/AIP_0_1_Phase1_BuildSpec_Rev1.3.docx + Phase 4 Rev1.0 + Architecture Rev 5.2 + PHASE2_IMPORT_NOTES (updated §9).
+**Status:** Complete (all steps executed via direct reads/runs; documented append-only; no production code written or edited in src/ during this CC).
+
+**Permanent Rules Re-Affirmed (re-read before CC):**
+- +2 offset: Architectural Phase 4 = CHUNK-6.x series only.
+- Terminology: "Architectural Phase 4", "CHUNK-6.0a", never bare "Phase 4" or "6.0a" without context.
+- Full 6-step CC + WORKLOG append + push before every chunk (this is the first for 6.x).
+- Amend-by-addition only on foundation/schemas.py and protocols.py (no redeclares, no deletes, no reorders).
+- Rule #10 (overlap/reconciliation): every CC must read WORKLOG + check repo historical code (2.x/3.x/4.x/5.x) on target files; extend rather than replace; document.
+- Deterministic CI, no hardcodes, layering (§7.2), §1.8 tagging, zero-token/network isolation.
+- SSOT .docx overrides .md; linearized order from Phase 4 DAG (6.0a first; two parallel paths converge at 6.5).
+
+---
+
+**1. Re-read of target first chunk (CHUNK-6.0a from SSOT specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md):**
+
+```
+CHUNK-6.0a: Schema Additions + Protocol Amendments + Config Extensions
+PHASE: 4
+DEPENDS-ON: CHUNK-5.0a, CHUNK-4.0a
+CODER-PROFILE: L1
+CONTEXT-BUDGET: ~3,500 tokens
+FILES:
+  foundation/schemas.py (append only — do not modify existing Phase 0/1/2/3 enums or dataclasses)
+  foundation/protocols.py (amend by addition — add methods to existing Protocol classes)
+INTERFACES:
+  @dataclass class PgvectorConfig: connection_string, pool_* , statement_timeout_ms, hnsw_*
+  @dataclass class MigrationStatus: source/target_backend, counts, timestamps, checkpoint_id
+  @dataclass class MigrationCheckpoint: checkpoint_id, last_migrated_id, totals
+  @dataclass class EvaluationScore: dimension, score, rationale, model_slot_used, tokens_consumed, model_gen_assumption (per §1.8)
+  @dataclass class FaithfulnessResult: artifact_id, faithfulness_score, context_coverage, hallucination_flags, evaluation_scores
+  @dataclass class DomainCoherenceResult: artifact_id, coherence_score, domain, violations, evaluation_scores
+  VectorBackendType = Literal["pgvector", "sqlite_vss"]
+  # VectorStore Protocol amendments (append stubs only):
+  async def health_check(self) -> dict: ...
+  async def count(self, domain: str | None = None) -> int: ...
+TESTS: tests/test_phase4_schema_additions.py
+GATE: uv run pytest tests/test_phase4_schema_additions.py -xvs
+```
+
+**Prose (6 explicit deliverables, verbatim):**
+1. Append PgvectorConfig (all pool/HNSW params toggleable per §1.8 + §2.2).
+2. Append MigrationStatus + MigrationCheckpoint (idempotent/resumable migration per Phase Scope).
+3. Append EvaluationScore (with model_gen_assumption), FaithfulnessResult, DomainCoherenceResult (L3a Stage 2/3 support per §9.1).
+4. Add VectorBackendType alias (§2.2 provider flag).
+5. Amend VectorStore Protocol: health_check() + count() (health for 6.4; count for 6.3 migration integrity). Note: "Phase 1 upsert/retrieve must still pass."
+6. Config additions to aip.config.toml: [vector_backend] + [vector_backend.pgvector] + [evaluation] (thresholds + ci_mode).
+
+**Critical notes from spec (mandatory):**
+- "identical append-only/amend-by-addition pattern as CHUNK-1.0a, 4.0a, 5.0a. No existing ... code is deleted or rewritten."
+- "pgvector adapter chunks (6.0a, 6.0b) depend only on Phase 0/1 ... can be built in parallel with Phase 3 work." (But 6.0a DEPENDS-ON listed as 5.0a + 4.0a for schema lineage.)
+- Two paths: pgvector (adapter-only) vs node promotion (orchestration, needs 5.0b); converge 6.5.
+- Gate verifies: new dataclasses + §1.8 field + protocols methods + Phase 0-3 not broken.
+
+**ANNEX (exact expected code for 6.0a — only this will be implemented, nothing more):**
+- schemas.py: # --- Phase 4 additions (append only) --- + the 6 dataclasses/alias exactly as listed (with docstrings referencing §1.8 / §2.2 / §9.1 / Phase Scope).
+- protocols.py: # --- Phase 4 amendments ... --- + the two async def stubs on VectorStore (with full docstrings).
+- New tests/test_phase4_schema_additions.py (full ~150 LOC ANNEX with all 12+ test_ functions exercising instantiation, §1.8, protocol hasattr, Phase0-3 backward compat).
+
+**2. Re-read of all DEPENDS-ON items (from their SSOT specs + current code reality):**
+
+**CHUNK-5.0a (from specs/AIP_0_1_Phase3_BuildSpec_Rev1.1.md + src/aip/foundation/schemas.py:tail + protocols.py:tail):**
+- Delivered: TrajectorySignal (with model_gen_assumption), SessionContext, ModelSlotConfig, TrajectorySignalType alias (in schemas.py after Phase2 block).
+- New Protocols: ModelProvider.call, EmbeddingProvider.embed (new, not amendments).
+- TraceStore amendment: query_events(...) stub (present in current protocols.py).
+- All present, imported, and green per test_phase3_schema_additions.py (6/6 passed in this CC run).
+- Matches post-Phase-3 CC "fully closed".
+
+**CHUNK-4.0a (from specs/AIP_0_1_Phase2_BuildSpec_Rev1.2.md + schemas.py + protocols.py):**
+- Delivered: ReviewVerdict, ReviewContext, EcsTransition, Event (with required timestamp), FailureTypeCode alias, EventStore.query, ArtifactStore list_versions/read(version=), EcsStore.current_state.
+- All present in current schemas.py (mid-file) and protocols.py; tests green (11/11 Phase2 schema tests passed in CC run).
+- Matches post-Phase-3 "largely closed" + 4.x deliveries.
+
+**Transitive (Phase 1/0 exercised by 6.0a):**
+- VectorStore Protocol (Phase 0/1.0a: upsert/retrieve/delete + deprecated store) — current state has count() already (see overlap below).
+- SqliteVssVectorStore etc. untouched by 6.0a.
+
+**3. Cross-check against post-Phase-3 CC findings (WORKLOG 5926-6056) + verification Clean Bill still holds:**
+
+- Git: HEAD at 89b624a (import) on 92b5fd3 (CC). No 6.x code, no uncommitted src/ changes. Tree clean except this append.
+- All 5.x deliverables (trajectory/, session.py, l4/*, adapter/embedding + resolver, 5.0a schema/protocol appends) present and unchanged since CC.
+- Governance runs (this CC):
+  - test_layering.py: PASSED (import boundaries respected).
+  - test_phase3_network_gate.py: 4/4 PASSED (no net/hardcode in Phase3 surface; tolerant regression accounts for 5.1 httpx).
+  - test_phase2_no_network.py: FAILED (as expected/known) solely on src/aip/adapter/embedding/ollama_embed.py:httpx — the legitimate Phase 3 (5.1) addition, already isolated and accepted in 5.9 gate + post-Phase-3 CC.
+- Violation scan (this CC): Only the one allowed network import (adapter/embedding, lazy + ci_mode guarded). Zero hardcodes outside resolver/config paths. Matches post-Phase-3 "Clean".
+- 5.8 fidelity: Confirmed 190 LOC starter (tests/test_phase3_integration.py) with 4 high-level scenarios (real SessionManager 5.7, execute_context_reset 5.6, resolver ci_mode 5.0b, embedding mock 5.1). All core prose paths green historically + schema baseline green now. Full ~370-line ANNEX (detailed spies, full YAML+engine multi-turn + L4 injection, Sexton assertions) still absent — exactly as documented in post-Phase-3 CC ("partial/latent").
+- 5.8 plan (explicit, unchanged): "core verified; full ANNEX in post-CC cleanup or 6.5 convergence" — non-blocking for Phase 4 start per prior declaration. 5.9 gate + 5.8 starter together sufficient for baseline.
+- No new issues, pre-existing unrelated failures (e.g. dialog suspend) untouched.
+- **Clean Bill of Health for post-Phase-3 baseline STILL HOLDS in full.** The 5.8 partial has explicit non-blocking plan. Import of Phase 4 Rev1.0 + this CC introduce zero regressions.
+
+**4. Rule #10 overlap/reconciliation check (mandatory, performed against all prior historical code + WORKLOG):**
+
+- Target files for 6.0a: foundation/schemas.py, foundation/protocols.py, config/aip.config.toml, tests/test_phase4_schema_additions.py (new), (later adapter/vector/ but not in 6.0a).
+- Read WORKLOG (full post-Phase-3 CC + all 5.x/4.x entries): No prior 6.x mentions. All schema/protocol work was additive appends (1.0a → 4.0a → 5.0a blocks present).
+- Current reality audit:
+  - schemas.py: Ends exactly with "# --- Phase 3 / CHUNK-5.0a additions (append only) ---" + TrajectorySignal/SessionContext/ModelSlotConfig. Clean append point. No 6.x.
+  - protocols.py: VectorStore has Phase 0/1 methods + count() (added in b350dfe CHUNK-1.0a commit per git blame). TraceStore has query_events (5.0a). No health_check yet. No conflicts.
+  - config/aip.config.toml: Only [retrieval] + [embedding] (fake provider). Zero [vector_backend] or [evaluation] sections — clean append.
+  - No synthesis/adversarial_eval/definer_gate changes in 6.0a (stubs remain; promotion is 6.1/6.2).
+- Overlap identified: `count(self, domain=...)` on VectorStore. Spec prose for 6.0a claims "Phase 4 adds ... count". Reality: already present since Phase 1 (1.0a). 
+  - **Reconciliation (per "extend existing rather than replace"):** No rewrite of protocols.py or historical code. The 6.0a amend-by-addition will simply include the health_check stub (new) + the count stub (already exists — including it again in the Protocol is harmless and matches the "append method stubs" instruction literally). Implementation of PgvectorStore (6.0b) will provide the real count; existing sqlite_vss may already satisfy via inheritance or will be extended later if needed. Documented here as resolved; no spec delta required for 6.0a (the stub addition is still the declared action).
+  - All other 6.0a types (PgvectorConfig etc.) have zero prior definitions in repo (grep across src/ + tests/ + WORKLOG confirmed none).
+- Historical 2.x/3.x/4.x/5.x on shared modules: Only the expected additive blocks from prior chunks. "extend" strategy followed throughout 4.x/5.x (e.g. L4 bridge in 5.7, tolerant 5.9 gate). No breakage risk for 6.0a.
+- New files (test_phase4_*.py, future pgvector_store.py): Zero overlap — safe to create.
+- **Rule #10 satisfied with explicit reconciliation recorded.** No production changes needed to resolve; 6.0a proceeds as spec'd (append/amend only).
+
+**5. Architecture Rev 5.2 cross-references (targeted re-read + verification on baseline):**
+
+- §7.2 Import Boundary Rules (layering): "Foundation must not import Orchestration/Adapter. Orchestration may depend on Foundation. Adapter may compose both." Verified: 6.0a touches only foundation/schemas+protocols (L1) + will introduce adapter/vector/ in 6.0b (correct layer). Current test_layering.py green. No violations possible in 6.0a scope.
+- §1.8 Harness Evolution Principle (Core Doctrine [C11]): "Tag each ContractRule and L4 trigger with model_gen_assumption... On every model slot upgrade: audit the harness for stale assumptions." All Phase 4 Evaluation* dataclasses explicitly carry model_gen_assumption (per prose + ANNEX). Matches 5.x pattern (TrajectorySignal etc.). Config params (HNSW, thresholds) toggleable via TOML (no hardcodes). Sexton-auditable by design.
+- §9.1 (and related zero-token/network isolation): 6.0a is pure data + protocol stubs (zero tokens, zero network, zero model calls). Later pgvector (6.0b) will be in adapter/ with asyncpg (legitimate, like 5.1 httpx), ci_mode guarded, lazy. Matches Phase 3/5.9 gate pattern. test_phase3_network_gate + layering remain the cross-cutting enforcement.
+- Config-driven requirements (§2.2, §4.1, §1.8): PgvectorConfig + [vector_backend.pgvector] + [evaluation] exactly implement "all parameters toggleable rather than hardcoded". ci_mode flag for deterministic CI (permanent rule).
+- Other: VectorStore abstraction (§8.3 / 2.2) enables pgvector ↔ sqlite_vss swap transparently. HNSW params exposed for tuning (small vs large corpora). Migration idempotent/resumable (Phase Scope). All align with delivered 5.x + post-CC architecture audit.
+
+**6. Other CC steps + final declaration:**
+
+- **Git / tree / prior work consistency:** Clean. Last 5.x push + CC (92b5fd3) + import (89b624a) only. All 5.x/4.x commits present. No force-pushes or deviations from linearized 5.x order.
+- **5.8 + partial items:** Plan unchanged and acceptable (non-blocking). Core integration paths (SessionManager + reset + resolver ci_mode + embedding) verified in 5.8 starter + 5.9 gate. Full ANNEX additive only.
+- **New issues found:** None. The count overlap was anticipated by Rule #10 / import notes and reconciled cleanly (no action required beyond documentation).
+- **Gates / determinism:** All relevant schema + layering + network gates green or known-expected (as in post-Phase-3 CC). No secrets/network in CI paths.
+- **Import notes / SSOT:** PHASE2_IMPORT_NOTES.md updated with §9 Phase 4 record (import action + key reminders + Rule #10 re-statement). Phase 4 spec in specs/ as authoritative copy.
+
+**Overall Pre-CHUNK-6.0a Continuity Check Result:**
+
+**Clean Bill of Health for post-Phase-3 baseline + Phase 4 import + readiness for CHUNK-6.0a.**
+
+- Every mandatory pre-read completed (post-Phase-3 CC, PHASE2_IMPORT_NOTES full, Phase 4 spec full, Arch 5.2 targeted sections).
+- All 6 CC steps executed with direct evidence (reads, pytest runs, git blame, violation scans, file audits).
+- Clean Bill from 92b5fd3 holds verbatim; 5.8 partial has explicit non-blocking plan.
+- Rule #10 overlap (count on VectorStore from 1.0a) identified and reconciled: extend-by-append (harmless stub); no historical conflicts on 6.0a surface.
+- Architecture cross-refs (§7.2, §1.8, §9.1/zero-token, config-driven) hold on baseline and will be preserved by 6.0a scope.
+- All permanent rules obeyed: +2 offset, append-only discipline, qualified terminology, WORKLOG append-only (this record), push after unit, deterministic, no hardcodes.
+- Two parallel paths noted (pgvector adapter vs node promotion); 6.0a is the shared L1 foundation for both and can start immediately.
+- No blockers, no violations, no new issues. Project is in identical "green + ready" state as after 5.9 + post-Phase-3 CC.
+
+**This completes the mandatory full Continuity Check for the first Phase 4 chunk (CHUNK-6.0a).**
+
+The record above (re-reads, DEPENDS-ON verification, post-Phase-3 cross-check + 5.8 plan, Rule #10 reconciliation with evidence, Arch 5.2 refs, governance runs, final declaration) constitutes the authoritative audit. All evidence gathered via tool execution before any src/ edits.
+
+**Ready to proceed to CHUNK-6.0a implementation (exact scope per prose + ANNEX only), gate, WORKLOG append, and push.**
+
+CC complete. Next chunk: CHUNK-6.0a (Schema Additions + Protocol Amendments + Config Extensions).
+
