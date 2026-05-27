@@ -28,6 +28,7 @@ class FakeTraceStoreForL4(TraceStore):
             "outcome": outcome,
             "detail": detail,
             "created_at": "2025-01-01T00:00:00Z",
+            **kw,  # support extra fields like token_count_out for L4b heuristics (CHUNK-3.5)
         })
 
     async def get_recent_events(self, session_id: str, limit: int = 100) -> list[dict]:
@@ -97,6 +98,59 @@ async def test_combined_2of3_when_both_d_and_f_present(trace_store):
     comb = next(s for s in signals if s.signal_type == "combined_2of3")
     assert comb.confidence >= 0.8
     assert "2-of-3" in (comb.model_gen_assumption or "") or "combined" in (comb.model_gen_assumption or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_l4b_detects_context_anxiety_from_hedging_language(trace_store):
+    """
+    L4b (CHUNK-3.5): Hedging language in event details triggers context_anxiety_f
+    with L4b model_gen_assumption, even without pre-labeled failure_type="F".
+    """
+    await trace_store.write_event(
+        session_id="hedgy",
+        node_type="L5",
+        outcome="success",
+        detail="The answer is perhaps approximately correct, I think it might work somewhat."
+    )
+    await trace_store.write_event(
+        session_id="hedgy",
+        node_type="L3a",
+        outcome="success",
+        detail="It seems likely that this could be the case."
+    )
+    monitor = TrajectoryMonitor(trace_store, window_limit=20)
+    signals = await monitor.detect("hedgy")
+    f_sigs = [s for s in signals if s.signal_type == "context_anxiety_f"]
+    assert f_sigs, "L4b should have emitted context_anxiety_f from hedging"
+    f = f_sigs[0]
+    assert f.confidence > 0.6
+    assert f.model_gen_assumption is not None
+    assert "L4b" in f.model_gen_assumption or "Appendix E" in f.model_gen_assumption or "hedging" in f.model_gen_assumption.lower()
+
+
+@pytest.mark.asyncio
+async def test_l4b_detects_context_anxiety_from_length_decline_and_pressure(trace_store):
+    """
+    L4b (CHUNK-3.5): Declining token_count_out + high event pressure triggers
+    stronger context_anxiety_f signal with L4b assumption.
+    """
+    # Simulate declining output lengths + several recent events (pressure)
+    for i, length in enumerate([1200, 950, 700, 480]):  # clear decline
+        await trace_store.write_event(
+            session_id="declining",
+            node_type="L5" if i % 2 == 0 else "L3a",
+            outcome="success",
+            token_count_out=length,
+            detail=f"output version {i}"
+        )
+    monitor = TrajectoryMonitor(trace_store, window_limit=20)
+    signals = await monitor.detect("declining")
+    f_sigs = [s for s in signals if s.signal_type == "context_anxiety_f"]
+    assert f_sigs
+    f = f_sigs[0]
+    assert f.confidence >= 0.65
+    assert f.model_gen_assumption is not None
+    assert "L4b" in f.model_gen_assumption or "length" in f.model_gen_assumption.lower() or "pressure" in f.model_gen_assumption.lower()
 
 
 @pytest.mark.asyncio

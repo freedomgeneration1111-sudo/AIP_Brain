@@ -2154,7 +2154,28 @@ CHUNK-3.5 extends the TrajectoryMonitor with L4b Context Anxiety heuristics per 
 
 After gate green: update WORKLOG, commit, push, continue.
 
-**Implementation notes (to be filled after execution):**
-- [empty until next short command]
+**Implementation notes (filled after code + gate):**
+- Amended `orchestration/l4/monitor.py` (additive):
+  - Added three private deterministic L4b helpers:
+    - `_contains_hedging(text)`: keyword scan for hedging language (Appendix E Type F signals: "perhaps", "I think", "likely", etc.).
+    - `_compute_length_trend(events)`: detects declining `token_count_out` across recent events (newest first).
+    - `_estimate_context_pressure(events)`: combines event density in window + presence of recent L2/L3/L4 or failure events.
+    - `_run_l4b_context_anxiety_heuristics(...)`: combines the above into indicators; returns supporting events, confidence, evidence, and detailed `model_gen_assumption` string.
+  - Enhanced `detect()` to call the L4b heuristics on every run. Strong L4b signals (hedging + length decline + pressure) now emit or boost `context_anxiety_f` with higher confidence and richer evidence, even without pre-labeled failure_type="F".
+  - Updated docstring and comments to document the CHUNK-3.5 L4b extension.
+  - All new logic is pure Python, zero tokens, no new imports or protocol changes.
+- Updated `tests/test_l4_trajectory_monitor.py` (additive):
+  - Fixed `FakeTraceStoreForL4.write_event` to forward **kw (so `token_count_out` is stored for L4b length trend tests).
+  - Added two new L4b-specific tests:
+    - `test_l4b_detects_context_anxiety_from_hedging_language`
+    - `test_l4b_detects_context_anxiety_from_length_decline_and_pressure`
+  - Both verify emission of `context_anxiety_f` with L4b `model_gen_assumption` containing references to Appendix E / hedging / length / pressure.
+- Gate executed exactly as declared (includes all L4 + Sexton + layering + trace):
+  `uv run pytest tests/test_sexton.py ... tests/test_trace_schema.py -xvs`
+  - **Result: 24/24 PASSED** (including the two new L4b tests). Clean green gate.
+- All changes follow append-only discipline. Zero model calls. Full §1.8 tagging on new L4b signals. Layering and injection invariants respected.
+- L4b now produces higher-fidelity Type F signals that will feed better recommendations into the existing reset protocol and Sexton.
 
-**Status:** Continuity Check + Spec Delta documented for CHUNK-3.5. Awaiting short command to implement.
+**Status:** Complete
+
+**Pushed:** (pending this work unit)
