@@ -3235,6 +3235,85 @@ After gate green: update, commit, push, continue.
 
 **Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-4.3.
 
+---
+
+## Task ID: 4.4-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-4.4: EventStore Query API (remapped Phase 2 / Architectural Phase 2 series)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK (from AIP_0_1_Phase2_BuildSpec_Rev1.2.md):**
+- CHUNK-4.4 implements the queryable EventStore for timeline reconstruction (review decisions, DEFINER audit, Sexton failure analysis).
+- DEPENDS-ON: CHUNK-4.0a (the `query()` method stub added to the EventStore protocol).
+- FILES:
+  - `adapter/event_store_queryable.py`
+  - `tests/test_event_store_query.py`
+- Key behavior:
+  - `QueryableEventStore` implements the full EventStore protocol (write_event + the new query).
+  - Uses its own SQLite `events` table (append-only per §5.10).
+  - `query(artifact_id=None, event_type=None, limit=100)` returns `list[Event]` (most recent first).
+  - Write semantics: strictly append-only; never modifies or deletes events.
+- The implementation creates its own events.db / table when given a db_path.
+
+**2-5. Dependencies, prior work, Architecture, current state:**
+- DEPENDS-ON (4.0a) is complete — the protocol now has the `query` method stub.
+- Historical usage of EventStore:
+  - commit.py (repo 2.x origin) calls `event_store.write_event(...)` for ECS transitions.
+  - retrieval.py, sexton.py, l4/reset.py, and the GuardrailedEcsStore (4.0b) all call `write_event` (sometimes on TraceStore, sometimes on EventStore).
+  - engine.py and workflow_01.py have no-op fakes for EventStore.
+- Current state of storage:
+  - No `events.db` tables exist yet (empty file or not initialized with the 4.4 schema).
+  - No `QueryableEventStore` or any `query` implementation exists anywhere.
+- Architecture alignment:
+  - §5.9 Trace Archive and §5.10 Database Split emphasize append-only event logs.
+  - §1.5 provenance requirements are supported by keeping all events.
+- Per PHASE2_IMPORT_NOTES.md gap audit: `QueryableEventStore` under 4.4 is marked “Not implemented”.
+
+**6. Reconciliation with remediation rules (PHASE2_IMPORT_NOTES.md Rule #10):**
+- This chunk introduces a new concrete adapter (`adapter/event_store_queryable.py`).
+- Existing call sites only use `write_event`. The new class fully implements the protocol, so they remain compatible.
+- No existing events data will be affected (no tables with this schema yet).
+- The query capability is new and additive — it enables future review/Sexton/audit use cases without changing write behavior.
+- Follows Process Rule #10: we are extending the EventStore capability in a way that does not require rewriting or breaking prior usage of write_event.
+
+**Additional checks:**
+- §7.2 layering: Lives in adapter/, imports from foundation.protocols and stdlib. Correct.
+- Zero-token / deterministic: Pure storage adapter. No model involvement.
+- §1.8: No new model-generated rules or heuristics.
+- The class returns the exact `Event` dataclass introduced in 4.0a.
+
+**Conclusion of Continuity Check:**
+Clean. No blockers. This is a straightforward L2 adapter implementation that depends cleanly on the protocol work from 4.0a. Historical write_event usage is unaffected. All remediation controls satisfied.
+
+**Spec Delta / Numbering Note:**
+Executed against the remapped Phase 2 BuildSpec Rev 1.2 (CHUNK-4.x series).
+
+**FILES (per spec):**
+- `adapter/event_store_queryable.py` (new)
+- `tests/test_event_store_query.py` (new)
+
+**GATE (per spec):**
+`uv run pytest tests/test_event_store_query.py -xvs`
+
+After gate green: update WORKLOG, commit, push, continue the series.
+
+**Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-4.4.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/adapter/event_store_queryable.py` with `QueryableEventStore` exactly per the spec ANNEX (SQLite-backed append-only events table, full query support returning `list[Event]`).
+- Created `tests/test_event_store_query.py` with the exact test cases from the spec (query by artifact_id, by event_type, combined filters, limit, descending order, empty results).
+- Gate executed exactly as specified: `uv run pytest tests/test_event_store_query.py -xvs` → **6/6 PASSED**.
+- All changes follow the declared scope, depend only on the 4.0a protocol extension, and respect the remediation reconciliation rules (additive to existing write_event usage).
+
+**Gate result:** 6/6 PASSED cleanly.
+
+**Status:** Complete
+**Pushed:** (next commit)
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/adapter/artifact_store_versioned.py` with `VersionedArtifactStore` exactly per the spec ANNEX (SQLite-backed, append-only versioning, enriched metadata, composite PK).
 - Created `tests/test_artifact_versioning.py` with the exact test cases from the spec (write creates v1, appends versions, read latest vs specific, old versions preserved, KeyError on missing).
