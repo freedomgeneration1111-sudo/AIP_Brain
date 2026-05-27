@@ -47,33 +47,71 @@ class WorkflowContext:
         })
 
     def consume_budget(self, amount: int) -> bool:
-        """CHUNK-3.11: Delegates to injected BudgetStore if present (from protocols),
-        otherwise falls back to the simple in-context counter.
-        Returns False if budget would be exceeded.
+        """CHUNK-3.12: Delegates to injected BudgetStore (now with correct bool return).
+
+        Fixed the optimistic-always-True path recorded in the 3.11 foundation stub.
+        When no running event loop (all current tests, sync entrypoints, examples),
+        uses asyncio.run to obtain the authoritative decision from the store.
+        When inside a running loop (real async workflow execution), schedules the
+        store mutation while using the local budget_remaining shadow for the
+        immediate sync return value (eventual consistency for this foundation layer).
+        Future L6 chunks may introduce a fully-async consume_budget variant.
         """
         budget_store = self.get_protocol("budget_store")
         if budget_store is not None:
-            # Fire-and-forget for foundation (real impl would await)
             try:
-                # In async context this would be awaited; for foundation we do best-effort
+                coro = budget_store.consume(amount, "default")
                 import asyncio
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # Can't await here safely in all cases; assume sync wrapper or fire
-                    pass
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                if loop is None or not loop.is_running():
+                    # Safe to block — covers pytest sync tests and typical example runs
+                    return asyncio.run(coro)
                 else:
-                    loop.run_until_complete(budget_store.consume(amount))
-                return True  # optimistic for foundation wiring
+                    # Inside running loop (async runner path): schedule mutation,
+                    # decide immediately via local shadow counter below.
+                    asyncio.create_task(coro)  # type: ignore[arg-type]
             except Exception:
                 pass
 
-        # Fallback to simple counter (existing Phase 2 behavior)
+        # Fallback / shadow counter (existing Phase 2 behavior, preserved exactly)
         if self.budget_remaining is None:
             return True
         if amount > self.budget_remaining:
             return False
         self.budget_remaining -= amount
         return True
+
+    def request_autonomy(self, level: int, context: dict[str, Any] | None = None) -> bool:
+        """CHUNK-3.12: Delegates to injected AutonomyGate if present (L6 wiring).
+
+        Provides the minimal integration surface for the two-phase gate delivered
+        as a stub in 3.11. Mirrors SimpleAutonomyGate default behavior when no
+        gate is injected. Uses the same async-compat pattern as the fixed
+        consume_budget path so it works from both sync tests and async runners.
+        """
+        gate = self.get_protocol("autonomy_gate")
+        if gate is not None:
+            ctx = context or {}
+            try:
+                coro = gate.request_autonomy(level, ctx)
+                import asyncio
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                if loop is None or not loop.is_running():
+                    return asyncio.run(coro)
+                else:
+                    asyncio.create_task(coro)  # type: ignore[arg-type]
+                    return level <= 1  # optimistic for async foundation; decision scheduled
+            except Exception:
+                pass
+
+        # Default foundation behavior (matches SimpleAutonomyGate when absent)
+        return level <= 1
 
     def fork_for_parallel(self) -> "WorkflowContext":
         """

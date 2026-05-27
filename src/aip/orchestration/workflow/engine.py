@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from aip.orchestration.budget import InMemoryBudgetStore
+from aip.orchestration.budget import InMemoryBudgetStore, SimpleAutonomyGate
 from aip.orchestration.embed_providers import get_embed_fn
 from aip.orchestration.retrieval import fake_embed
 from aip.orchestration.workflow.context import WorkflowContext
@@ -59,6 +59,7 @@ class WorkflowEngine:
         event_store: Any | None = None,
         config: dict[str, Any] | None = None,
         budget_store: Any | None = None,
+        autonomy_gate: Any | None = None,
         # Future: instance_store, etc.
     ):
         self.vector_store = vector_store
@@ -74,6 +75,8 @@ class WorkflowEngine:
         self.event_store = event_store
         self.config = config or {}
         self.budget_store = budget_store or InMemoryBudgetStore()
+        # CHUNK-3.12: AutonomyGate default (L6 foundation wiring, parallel to budget)
+        self.autonomy_gate = autonomy_gate or SimpleAutonomyGate()
 
     async def run_workflow(
         self,
@@ -96,6 +99,8 @@ class WorkflowEngine:
             "event_store": self.event_store,
             "config": self.config,
             "budget_store": self.budget_store,
+            # CHUNK-3.12
+            "autonomy_gate": self.autonomy_gate,
         }
 
         # Provide safe no-op stores for the general workflow path
@@ -137,6 +142,8 @@ class WorkflowEngine:
             "l4_coordinator": coordinator,
             # CHUNK-3.11 Budget
             "budget_store": self.budget_store,
+            # CHUNK-3.12 Autonomy
+            "autonomy_gate": self.autonomy_gate,
         }
 
         ctx = WorkflowContext(

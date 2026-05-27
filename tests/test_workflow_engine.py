@@ -519,3 +519,62 @@ def test_budget_store_basic_consumption_3_11():
     # Exhaustion path still works via fallback
     ctx2 = WorkflowContext(budget_remaining=50)
     assert ctx2.consume_budget(100) is False
+
+
+# CHUNK-3.12 tests (added after CC documented in WORKLOG; exactly per declared scope)
+
+def test_budget_exhaustion_from_store_actually_blocks_3_12():
+    """CHUNK-3.12: Injected BudgetStore returning False now correctly blocks (contract fix)."""
+    from aip.orchestration.budget import InMemoryBudgetStore
+    from aip.orchestration.workflow.context import WorkflowContext
+
+    budget = InMemoryBudgetStore(initial_budget=50)
+    ctx = WorkflowContext(protocols={"budget_store": budget}, budget_remaining=9999)
+
+    # Should be denied by the store (50 < 100), even though local counter would allow
+    assert ctx.consume_budget(100) is False
+    # Store state should reflect the attempted (but failed) consumption
+    # (remaining still 50 because consume short-circuited)
+    import asyncio
+    assert asyncio.run(budget.remaining()) == 50
+
+
+def test_autonomy_gate_injection_and_level_decisions_3_12():
+    """CHUNK-3.12: AutonomyGate wires through engine/context and honors level stub."""
+    from aip.orchestration.budget import SimpleAutonomyGate
+    from aip.orchestration.workflow.context import WorkflowContext
+    from aip.orchestration.workflow.engine import WorkflowEngine
+
+    gate = SimpleAutonomyGate()
+    ctx = WorkflowContext(protocols={"autonomy_gate": gate})
+
+    assert ctx.request_autonomy(0) is True   # Phase 1
+    assert ctx.request_autonomy(1) is True   # Phase 1 boundary
+    assert ctx.request_autonomy(2) is False  # Phase 2 stub denies
+
+    # Engine default wiring
+    eng = WorkflowEngine()
+    # The engine should have injected a gate; context created in run paths would see it
+    assert eng.autonomy_gate is not None
+    assert eng.autonomy_gate.request_autonomy  # has the method
+
+
+def test_parallel_context_inherits_budget_and_autonomy_protocols_3_12():
+    """CHUNK-3.12: fork_for_parallel preserves the protocol injections (budget + autonomy)."""
+    from aip.orchestration.budget import InMemoryBudgetStore, SimpleAutonomyGate
+    from aip.orchestration.workflow.context import WorkflowContext
+
+    budget = InMemoryBudgetStore(initial_budget=1000)
+    gate = SimpleAutonomyGate()
+    parent = WorkflowContext(
+        protocols={"budget_store": budget, "autonomy_gate": gate},
+        budget_remaining=1000,
+    )
+    child = parent.fork_for_parallel()
+
+    assert "budget_store" in child.protocols
+    assert "autonomy_gate" in child.protocols
+    assert child.get_protocol("budget_store") is budget
+    assert child.get_protocol("autonomy_gate") is gate
+    # Shadow budget copied at fork time (per existing invariant)
+    assert child.budget_remaining == 1000

@@ -7,7 +7,7 @@ This file will be amended by addition only (never rewritten) starting in CHUNK-1
 """
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 # Phase 0 VectorStore (the version that CHUNK-1.0a will amend)
 @runtime_checkable
@@ -167,11 +167,34 @@ class EcsStore(Protocol):
 
 @runtime_checkable
 class BudgetStore(Protocol):
-    """Budget and autonomy tracking."""
-    ...
+    """Budget and autonomy tracking.
+    CHUNK-3.12: method signatures added by amend-by-addition (matching the
+    InMemoryBudgetStore implementation delivered in 3.11). Zero-token contract.
+    """
+    async def consume(self, amount: int, budget_id: str = "default") -> bool:
+        """Consume amount from the named budget. Return True if successful."""
+        ...
+
+    async def remaining(self, budget_id: str = "default") -> int:
+        """Return remaining budget units for the named budget."""
+        ...
+
+    async def reset(self, budget_id: str = "default", amount: int | None = None) -> None:
+        """Reset or initialize the named budget."""
+        ...
 
 
 @runtime_checkable
 class AutonomyGate(Protocol):
-    """Two-phase autonomy gate."""
-    ...
+    """Two-phase autonomy gate.
+    CHUNK-3.12: method signatures added by amend-by-addition (matching the
+    SimpleAutonomyGate implementation delivered in 3.11). Per Architecture L6.
+    Low levels (Phase 1) are local; higher levels require DEFINER/policy (Phase 2).
+    """
+    async def request_autonomy(self, level: int, context: dict[str, Any]) -> bool:
+        """Request permission for the given autonomy level. Return True if granted."""
+        ...
+
+    async def record_autonomy_use(self, level: int, context: dict[str, Any]) -> None:
+        """Record that the given autonomy level was used (for audit / Sexton)."""
+        ...

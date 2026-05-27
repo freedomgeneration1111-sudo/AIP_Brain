@@ -49,6 +49,13 @@ class SequentialRunner:
                 results.append(NodeResult(success=False, error="Budget exhausted"))
                 break
 
+            # CHUNK-3.12: minimal autonomy request for observability (foundation wiring only;
+            # does not gate execution or introduce policy yet — direct completion of 3.11 stub)
+            try:
+                self.context.request_autonomy(0, {"node_id": getattr(node, "node_id", None), "phase": "pre-agent"})
+            except Exception:
+                pass
+
             result = await node.run(self.context)
             results.append(result)
             self.context.set(node.node_id, {"output": result.output})
@@ -206,6 +213,13 @@ class SequentialRunner:
                     results.append(NodeResult(success=False, error="Budget exhausted"))
                     error_occurred = True
                     break
+
+                # CHUNK-3.12: minimal autonomy request for observability (foundation wiring only;
+                # does not gate execution or introduce policy yet — direct completion of 3.11 stub)
+                try:
+                    self.context.request_autonomy(0, {"node_id": getattr(node, "node_id", None), "phase": "pre-agent"})
+                except Exception:
+                    pass
 
                 result = await node.run(self.context)
                 results.append(result)
