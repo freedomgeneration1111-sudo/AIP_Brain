@@ -8440,3 +8440,54 @@ CC complete. Next per linearized DAG: CHUNK-8.0b implementation (after push).
 ---
 
 **Phase 6 pre-8.0b CC complete. Tree clean at 8e7a5de. Continuing per continuous execution directive after push.**
+
+---
+
+## CHUNK-8.0b — Remaining Protocol Adapter Implementations (Lexical FTS5, Canonical, Entity, AutonomyGate)
+
+**Date:** 2026-05 (post pre-8.0b CC at 1c68a39)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.0b box + prose + verification list)
+**DEPENDS-ON:** CHUNK-8.0a (Protocols + schemas), CHUNK-6.0b
+**Status:** Gate green + pushed
+
+**Implementation (exact per prose + ANNEX — new files in clean adapter/ subdirs per pre-CC Rule #10 audit):**
+- `src/aip/adapter/lexical/sqlite_fts5_store.py` (new): SqliteFts5LexicalStore implementing LexicalStore. Dual-table design (fts_documents + fts_index VIRTUAL USING fts5(..., tokenize=unicode61)). initialize creates tables, index_document upserts to both, search uses MATCH + optional domain filter returning Chunk[] with rank as score, delete_document removes from documents table. Matches prose exactly.
+- `src/aip/adapter/lexical/__init__.py` (new): Exports SqliteFts5LexicalStore.
+- `src/aip/adapter/canonical/sqlite_canonical_store.py` (new): SqliteCanonicalStore. Strict `if approved_by != "definer": raise PermissionError` in write_canonical (per §1.7). Regular table + read/list/superseded support.
+- `src/aip/adapter/canonical/__init__.py` (new): Exports the impl.
+- `src/aip/adapter/entity/sqlite_entity_store.py` (new): SqliteEntityStore. Basic CRUD on entities table (get/list/update with metadata JSON merge).
+- `src/aip/adapter/entity/__init__.py` (new): Exports the impl.
+- `src/aip/adapter/autonomy/autonomy_gate.py` (new): AutonomyGateImpl (config-driven default_level + escalation_requires_definer). Manages autonomy_escalations table (with model_gen_assumption). Hierarchy ranks, check (non-blocking), escalate (blocks admin when required + requested_by != definer), audit_log. Accepts escalation_store param for signature compat but manages table internally (matches "simple SQLite table" prose).
+- `src/aip/adapter/autonomy/__init__.py` (new): Exports AutonomyGateImpl.
+- `tests/test_remaining_adapters.py` (new): 8 tests covering every gate verification point (Protocol isinstance, FTS5 ranked Chunk results + delete, DEFINER rejection on canonical write, full gate behaviors for read/admin, audit log, layering source check, no-regression placeholder).
+
+All code uses the exact Phase 5 adapter pattern (sync sqlite3 inside async methods, _ensure_table, row_factory, temp db in tests, from aip.foundation.* only, no orchestration imports).
+
+**Gate Execution (exact command per spec):**
+```
+uv run pytest tests/test_remaining_adapters.py tests/test_layering.py -xvs
+```
+(8 passed)
+```
+uv run pytest tests/test_layering.py tests/test_phase5_schema_additions.py tests/test_phase4_gate.py tests/test_phase6_schema_additions.py tests/test_remaining_adapters.py -q
+...
+============================== 51 passed in 0.32s ===============================
+```
+All 8.0b behaviors (FTS5 search/rank, DEFINER sovereignty, gate escalation rules, Protocol impls, layering, no regression on 0-5 adapters) + full prior battery green.
+
+**Files Changed (this unit):**
+- src/aip/adapter/lexical/ (new package + impl)
+- src/aip/adapter/canonical/ (new package + impl)
+- src/aip/adapter/entity/ (new package + impl)
+- src/aip/adapter/autonomy/ (new package + impl)
+- tests/test_remaining_adapters.py (new)
+
+**Permanent rules followed:** New files only at exact spec paths (clean per pre-8.0b CC Rule #10), adapter layer strictly per §7.2 (foundation only), AutonomyGate + DEFINER checks enforce §1.7/Appendix D, model_gen_assumption carried on escalations, CI deterministic (temp dbs, no network), append-only WORKLOG, push after unit, +2 offset (CHUNK-8.0b), qualified terminology, exact scope (no surfaces, no extra features).
+
+**Rule #10 notes for this chunk:** Pre-CC confirmed zero pre-existing files at the four new adapter/ subpackage paths. Phase 5 delivered surface (actors/, router, ace_playbook, budget, sexton/, engine) + 8.0a foundation untouched. These adapters exist solely to be composed by 8.1+ surfaces via the 8.0a Protocols + AutonomyGate (highest integration risk per handoff — surfaces will be the consumers).
+
+**Next per DAG:** CHUNK-8.1 (FastAPI scaffold + Project/Session REST + DI container + AutonomyGate wiring). Immediate pre-8.1 CC required before any further edits.
+
+CHUNK-8.0b complete (gate green).
+
+**Phase 6 CHUNK-8.0b complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
