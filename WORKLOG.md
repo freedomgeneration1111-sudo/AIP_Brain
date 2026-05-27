@@ -8380,3 +8380,63 @@ All 8.0a behaviors (§1.8 fields, Protocol method presence, no breakage to 0-5, 
 CHUNK-8.0a complete (gate green).
 
 **Phase 6 CHUNK-8.0a complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
+## Full Pre-CHUNK-8.0b Continuity Check (Mandatory before Remaining Protocol Adapters)
+
+**Date:** 2026-05 (immediately after CHUNK-8.0a gate green + push at 8e7a5de)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.0b box + prose, lines 924+)
+**DEPENDS-ON:** CHUNK-8.0a (new LexicalStore/AutonomyGate Protocols + schemas + config now delivered), CHUNK-6.0b (VectorStore surfaces)
+**Status:** CC complete + documented. Ready for CHUNK-8.0b (no src/ or tests/ production edits for 8.0b performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-8.0a baseline: foundation/schemas + protocols + config extended (44 passed battery green); 4 new adapter subdirs (lexical/, canonical/, entity/, autonomy/) confirmed absent (clean per Rule #10; no pre-existing partials).
+- All prior Clean Bills + 8.0a hold. Phase 5 actor layer (beast, sexton/, router, ace_playbook, budget, engine) + 8.0a foundation is the stable base for 8.0b adapter impls (which must inherit Protocols, use state.db for FTS5/canonical/entities/escalations, enforce "definer" in write_canonical and AutonomyGate admin blocks).
+- 8.0a push at 8e7a5de; tree clean on src/tests before this CC (only docs in flight during CC).
+
+**1. Re-read of target CHUNK-8.0b (from Phase 6 SSOT):**
+
+```
+CHUNK-8.0b: Remaining Protocol Adapter Implementations
+PHASE: 6
+DEPENDS-ON: CHUNK-8.0a, CHUNK-6.0b
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~6,000 tokens
+FILES:
+  adapter/lexical/sqlite_fts5_store.py
+  adapter/lexical/__init__.py
+  adapter/canonical/sqlite_canonical_store.py
+  adapter/canonical/__init__.py
+  adapter/entity/sqlite_entity_store.py
+  adapter/entity/__init__.py
+  adapter/autonomy/autonomy_gate.py
+  adapter/autonomy/__init__.py
+  tests/test_remaining_adapters.py
+INTERFACES: [SqliteFts5LexicalStore, SqliteCanonicalStore, SqliteEntityStore, AutonomyGateImpl — exact ANNEX signatures with initialize/close]
+TESTS: tests/test_remaining_adapters.py
+GATE: uv run pytest tests/test_remaining_adapters.py tests/test_layering.py -xvs
+```
+
+**Prose key mandates:** 4 adapter impls (adapter layer, §7.2): SqliteFts5LexicalStore (FTS5 tables + virtual, search returns Chunk with rank score, unicode61 tokenizer from config); SqliteCanonicalStore (write_canonical rejects non-"definer" approved_by per §1.7); SqliteEntityStore (basic CRUD on entities table); AutonomyGateImpl (hierarchy, check non-blocking, escalate blocks admin if escalation_requires_definer, audit_log; writes to autonomy_escalations table in state.db with model_gen_assumption). All have initialize()/close(). Gate covers Protocol impl, FTS5 rank, DEFINER enforcement, gate behaviors (auto-grant read, block admin), layering (no orchestration import), no-regression on prior adapters/tests.
+
+**2–6. (Live evidence):** DEPENDS (8.0a Protocols/schemas green at 44 passed; 6.0b VectorStore present). No 8.0b files/dirs (confirmed by find/ls — clean for new per Rule #10 "extend existing rather than replace"; no overlap with delivered Phase 5 adapter/ files like budget_store_sqlite.py). Governance 44 passed (layering + phase4_gate + phase5/6 schema; test_remaining_adapters absent as expected). Rule #10: full audit vs Phase 5 delivered (actors/, router.py, ace_playbook.py, sexton/, budget.py, engine.py) + 8.0a foundation changes — no conflicting code at spec paths (adapter/ subdirs were empty of 8.0b); new files only where spec requires; adapter layer will compose Phase 5 actors via injected Protocols + AutonomyGate (highest risk per handoff, deferred to surfaces). Arch §7.2 / §1.7 / Appendix D alignments confirmed (adapter composes, no bypass, DEFINER sovereignty in canonical/autonomy). Post-8.0a Clean Bill holds; 8.0b extends the gate battery.
+
+**Overall Pre-CHUNK-8.0b Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-8.0b (4 new adapter impls at spec paths inheriting 8.0a Protocols; FTS5 + DEFINER enforcement + AutonomyGate behaviors per prose/ANNEX; clean slate per Rule #10; 44 passed baseline).**
+
+- All 6 steps executed.
+- Ready for exact 8.0b (adapter/ subpackages + test per ANNEX).
+
+**This completes the mandatory full Continuity Check for CHUNK-8.0b.**
+
+The record above constitutes the authoritative audit. All evidence (reads, ls/find, pytest 44 passed, Rule #10 dir audit) gathered before any src/ or tests/ edits for 8.0b.
+
+**Ready to proceed to CHUNK-8.0b implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-8.0b implementation (after push).
+
+---
+
+**Phase 6 pre-8.0b CC complete. Tree clean at 8e7a5de. Continuing per continuous execution directive after push.**
