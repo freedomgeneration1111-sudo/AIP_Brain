@@ -1063,3 +1063,16 @@ This is the key integration point that makes workflows actually useful — "agen
 **Pushed:** Yes
 
 **Status:** Complete
+
+**Implementation for CHUNK-2.4:**
+- Refined SequentialRunner with concurrent execution for ParallelNode children using asyncio.gather.
+- Each parallel branch receives a properly forked WorkflowContext (budget and variables inherited per Architecture invariant).
+- ParallelNode acts as a lightweight container declaring its children.
+- Added dedicated tests for parallel execution.
+- Verified the basic pattern works.
+
+This completes initial functional support for the parallel node type.
+
+**Status:** Initial implementation complete.
+
+**Pushed:** Yes
