@@ -1731,4 +1731,4 @@ After gate green + log update: commit + push. Then await next short command for 
 
 **Status:** Complete
 
-**Pushed:** Pending (will push after this log update)
+**Pushed:** Yes — commit 6ec0783 (pushed to origin/main)
