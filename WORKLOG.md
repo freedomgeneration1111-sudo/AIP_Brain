@@ -8742,6 +8742,67 @@ CC complete. Next per linearized DAG: CHUNK-8.4 implementation (after push).
 
 ---
 
+## Full Pre-CHUNK-8.5 Continuity Check (Mandatory before MCP Server)
+
+**Date:** 2026-05 (immediately after CHUNK-8.4 push at d59c169)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.5 box + prose)
+**DEPENDS-ON:** CHUNK-8.1 (AipContainer for DI), CHUNK-8.0b (LexicalStore, CanonicalStore, etc. for tool impls)
+**Status:** CC complete + documented. Ready for CHUNK-8.5 (no src/ or tests/ production edits for 8.5 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-8.4 baseline: Review Queue (admin gate + canonical) + Artifact Browser + Chat WS + CLI (declared path) + API scaffold + 8.0b adapters + Phase 5 actors green at 57 passed.
+- Rule #10: Only the 8.0a `McpToolDef` schema exists. No pre-existing `adapter/mcp/` directory, server, or tool modules. Clean for new work at spec locations.
+- All prior Clean Bills hold.
+- Continuous execution: immediate next after 8.4.
+
+**1. Re-read of target CHUNK-8.5 (from Phase 6 SSOT):**
+
+```
+CHUNK-8.5: MCP Server
+PHASE: 6
+DEPENDS-ON: CHUNK-8.1, CHUNK-8.0b
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~5,000 tokens
+FILES:
+  adapter/mcp/server.py
+  adapter/mcp/tools/search.py
+  adapter/mcp/tools/projects.py
+  adapter/mcp/tools/artifacts.py
+  adapter/mcp/tools/trace.py
+  adapter/mcp/tools/config.py
+  adapter/mcp/__init__.py
+  tests/test_mcp_server.py
+INTERFACES:
+  class AipMcpServer: __init__(container), start(transport=stdio/sse), list_tools() -> list[McpToolDef]
+  Tools with autonomy_level (read/write/admin) + model_gen_assumption:
+    aip_search (read, Lexical+Vector), aip_artifact_approve (admin, Ecs+Canonical+Gate), etc.
+TESTS: tests/test_mcp_server.py
+GATE: uv run pytest tests/test_mcp_server.py tests/test_layering.py -xvs
+```
+
+**Prose key mandates:** AipMcpServer receives 8.1 AipContainer. Tools registered with declared autonomy_level. Server enforces gate before dispatch (same as REST/CLI). aip_search uses Protocols (Lexical + Vector), not direct DB. aip_artifact_approve is admin (gate + DEFINER). stdio + sse transports. Appendix D: MCP ≠ bypass, MCP ≠ vector_store.retrieve() directly. list_tools returns McpToolDef with autonomy + model_gen_assumption.
+
+**2–6. (Live evidence):** DEPENDS (8.1 container + 8.0b Protocol impls) present/green. Zero pre-existing MCP code (only schema). Governance 57 passed. Rule #10: New files at exact `adapter/mcp/` paths (server + tools subpackage) have no overlap with delivered 8.0-8.4 surfaces or Phase 5 actors. The MCP surface will expose the complete actor layer (Sexton/ACE/Beast/Router/Budget) as tools, with strict gate enforcement per Appendix D. Arch §3 (MCP/API surface), §7.2 (adapter), Appendix D constraints confirmed.
+
+**Overall Pre-CHUNK-8.5 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-8.5 (AipMcpServer + 8 tools with correct autonomy levels + Protocol-only access + gate enforcement; clean new paths per Rule #10; 57 passed baseline).**
+
+- All 6 steps executed.
+- Ready for exact 8.5.
+
+**This completes the mandatory full Continuity Check for CHUNK-8.5.**
+
+**Ready to proceed to CHUNK-8.5 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-8.5 implementation (after push).
+
+---
+
+**Phase 6 pre-8.5 CC complete. Tree clean at d59c169. Continuing per continuous execution directive after push.**
+
+---
+
 ## CHUNK-8.4 — Review Queue + Artifact Browser API (Governance Surface)
 
 **Date:** 2026-05 (post pre-8.4 CC at efd36f1)
