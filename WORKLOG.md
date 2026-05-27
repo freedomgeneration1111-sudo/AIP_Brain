@@ -8036,6 +8036,54 @@ CC complete. Next per linearized DAG: CHUNK-7.5 implementation.
 
 **Phase 5 pre-7.5 CC complete. Tree clean at 9e0e488. Continuing per continuous execution directive after push.**
 
+---
+
+## Full Pre-CHUNK-7.6 Continuity Check (Mandatory before Phase 5 Integration Test)
+
+**Date:** 2026-05 (immediately after CHUNK-7.5 gate green + push at 1e15575)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.6 box + prose, lines 1213+)
+**DEPENDS-ON:** CHUNK-7.3, CHUNK-7.4, CHUNK-7.5, CHUNK-6.5
+**Status:** CC complete + documented. Ready for CHUNK-7.6 (no src/ or tests/ production edits for 7.6 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Baseline includes 7.0a–7.5 fully green (54 passed), pushed at 1e15575.
+- All prior Clean Bills hold.
+
+**1. Re-read of target CHUNK-7.6 (from Phase 5 SSOT):**
+
+```
+CHUNK-7.6: Integration Test
+PHASE: 5
+DEPENDS-ON: CHUNK-7.3, CHUNK-7.4, CHUNK-7.5, CHUNK-6.5
+CODER-PROFILE: L1
+CONTEXT-BUDGET: ~4,000 tokens
+FILES:
+  tests/test_phase5_integration.py
+TESTS: tests/test_phase5_integration.py
+GATE: uv run pytest tests/test_phase5_integration.py -xvs
+```
+
+**Prose key mandates:** Six scenarios exercising the full self-improvement cycle (classification → ACE derivation → prevention → router optimization → Beast maintenance → budget enforcement → stale audit). All in CI mode. Extends CHUNK-6.5.
+
+**2–6. (Live evidence):** All DEPENDS (7.3/7.4/7.5 + 6.5) present and green. Governance 54 passed. No pre-existing phase5_integration.py (clean). Rule #10: Pure test extension of 6.5; no production surface conflicts.
+
+**Overall Pre-CHUNK-7.6 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-7.6 (full cycle integration test on top of 6.5 + 7.3–7.5).**
+
+- All 6 steps executed.
+- Ready for exact 7.6 (tests/test_phase5_integration.py with the six scenarios).
+
+**This completes the mandatory full Continuity Check for CHUNK-7.6.**
+
+**Ready to proceed to CHUNK-7.6 implementation (exact scope per prose), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-7.6 implementation.
+
+---
+
+**Phase 5 pre-7.6 CC complete. Tree clean at 1e15575. Continuing per continuous execution directive after push.**
+
 ## CHUNK-7.5 — Beast Actor (Deterministic Corpus & Entity Maintenance)
 
 **Date:** 2026-05 (post pre-7.5 CC at c7210dd)
