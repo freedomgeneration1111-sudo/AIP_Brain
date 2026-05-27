@@ -55,6 +55,11 @@ class FakeTraceStore(TraceStore):
         # Return in reverse chrono (most recent first) to match production expectation
         return list(reversed([e for e in self.events if e.get("session_id") == session_id]))[:limit]
 
+    async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
+        # Sexton/CHUNK-3.4 additive compat
+        unclassified = [e for e in reversed(self.events) if e.get("failure_type") is None and e.get("outcome") == "failure"]
+        return unclassified[:limit]
+
 
 def _chunk(id: str, score: float, authority: str = "raw",
            created_at: str | None = None, access_count: int = 0) -> Chunk:

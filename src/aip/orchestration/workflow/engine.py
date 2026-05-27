@@ -93,6 +93,8 @@ class WorkflowEngine:
             async def write_event(self, *a, **k): pass
             async def get_recent_events(self, session_id: str, limit: int = 100) -> list[dict]:
                 return []  # L4/CHUNK-3.1 additive compat for no-op path
+            async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
+                return []  # Sexton/CHUNK-3.4 additive compat for no-op path
 
         class _NoopStore:
             async def write(self, *a, **k): pass

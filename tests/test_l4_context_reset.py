@@ -43,6 +43,11 @@ class FakeTraceStoreForReset(TraceStore):
         matching = [e for e in reversed(self._events) if e.get("session_id") == session_id]
         return matching[:limit]
 
+    async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
+        # Sexton/CHUNK-3.4 additive compat
+        unclassified = [e for e in reversed(self._events) if e.get("failure_type") is None and e.get("outcome") == "failure"]
+        return unclassified[:limit]
+
 
 class FakeArtifactStore(ArtifactStore):
     """Minimal artifact store for coordinator construction (optional in tests)."""

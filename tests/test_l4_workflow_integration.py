@@ -43,6 +43,11 @@ class FakeTraceStoreForIntegration:
         matching = [e for e in reversed(self._events) if e.get("session_id") == session_id]
         return matching[:limit]
 
+    async def get_unclassified_failures(self, limit: int = 100):
+        # Sexton/CHUNK-3.4 additive compat
+        unclassified = [e for e in reversed(self._events) if e.get("failure_type") is None and e.get("outcome") == "failure"]
+        return unclassified[:limit]
+
 
 @pytest.mark.asyncio
 async def test_l4_helper_emits_dialog_event_when_signals_present():

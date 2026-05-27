@@ -2076,7 +2076,24 @@ This CHUNK-3.4 materializes the minimal Sexton actor per Architecture Rev 5.2 §
 
 After gate green + log update: commit + push. Then continue per user direction (next would likely be L4b advanced heuristics, deeper node integration, or Phase 3 embedding slot, etc.).
 
-**Implementation notes (to be filled after execution):**
-- [empty until next short command]
+**Implementation notes (filled after code + gate):**
+- Created new package `orchestration/sexton/` with `__init__.py` and `sexton.py`.
+- Implemented minimal `Sexton` class per declared interfaces:
+  - `__init__(trace_store)`
+  - `classify_recent_failures(limit)` — uses new `get_unclassified_failures` query, applies deterministic Appendix E rules (Types A–F), writes `failure_type` back via `write_event`.
+  - Stubs for `derive_intervention_rule` and `audit_model_gen_assumption` (§1.8).
+- Additive amendment to `foundation/protocols.py`: added `get_unclassified_failures(limit)` method (with comment referencing CHUNK-3.4 + §16.1).
+- Updated all 6 existing TraceStore fakes/noops (engine.py, workflow_01.py, 4 test files) for additive compatibility.
+- Created `tests/test_sexton.py` (4 tests):
+  - Exercises classification on L4-written intervention events and Phase 1 L2 patterns.
+  - Verifies write-back of failure_type.
+  - Covers §1.8 audit hook stub.
+- Gate executed exactly as declared:
+  `uv run pytest tests/test_sexton.py tests/test_l4_context_reset.py tests/test_l4_trajectory_monitor.py tests/test_l4_workflow_integration.py tests/test_layering.py tests/test_trace_schema.py -xvs`
+  - **Result: 22/22 PASSED** (all 4 new Sexton tests + full prior L4 regression + layering + trace schema). Clean green gate.
+- All changes strictly additive on protocols/fakes. Zero model calls, zero direct storage construction, full layering compliance.
+- Sexton foundation now consumes the exact intervention and failure events produced by L4 (3.1–3.3) and earlier layers.
 
-**Status:** Continuity Check + Spec Delta documented. No production code written for 3.4.
+**Status:** Complete
+
+**Pushed:** (pending this work unit)

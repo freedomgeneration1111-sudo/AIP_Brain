@@ -109,6 +109,15 @@ class TraceStore(Protocol):
         """
         ...
 
+    # Sexton / CHUNK-3.4 addition (amend by addition only)
+    # Provides the cross-session query surface required by Sexton (§16.1) for
+    # classifying unclassified failures. Must return events newest-first.
+    async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
+        """Return recent unclassified failures (failure_type IS NULL and outcome == 'failure').
+        Used by Sexton for Appendix E classification. Zero tokens.
+        """
+        ...
+
 
 @runtime_checkable
 class EntityStore(Protocol):
