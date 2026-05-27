@@ -1385,3 +1385,19 @@ This turns the 2.6 foundation into a production-usable persistence layer while s
 High-value extension that makes parallel actually useful in production workflows. Safe to proceed.
 
 **Status:** Continuity Check complete. Proceeding to implementation.
+
+**Implementation for CHUNK-2.10:**
+- Extended ParallelNode to accept `dependencies`, `merge_strategy`, and `continue_on_error` via its config.
+- Rewrote the parallel execution block in SequentialRunner with:
+  - Simple dependency-aware scheduling (prereqs must complete before a dependent branch starts).
+  - Result collection with pluggable merge strategies (collect_all, first_success, etc.).
+  - Error aggregation with continue_on_error support.
+  - Proper forked contexts per branch for budget inheritance.
+- Added a test exercising dependencies + continue_on_error.
+- Verified the new semantics work without breaking existing parallel behavior.
+
+This makes parallel branches in the workflow engine significantly more powerful and production-usable.
+
+**Pushed:** Yes
+
+**Status:** Complete

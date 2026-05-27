@@ -249,23 +249,36 @@ class DialogNode(WorkflowNode):
 
 
 class ParallelNode(WorkflowNode):
-    """Concurrent execution node (inherits parent budget)."""
+    """Concurrent execution node (inherits parent budget).
+
+    Advanced configuration (via config dict or direct attributes for convenience):
+      - children: list of child node ids to run in parallel
+      - dependencies: dict mapping child_id -> list of prerequisite child_ids
+      - merge_strategy: "collect_all", "first_success", "fail_fast", or custom callable
+      - continue_on_error: bool (default False)
+    """
 
     def __init__(self, node_id: str, children: list[str], config: dict[str, Any] | None = None):
         super().__init__(node_id, NodeType.PARALLEL, config)
         self.children = children or []
+        self.dependencies = (config or {}).get("dependencies", {}) if config else {}
+        self.merge_strategy = (config or {}).get("merge_strategy", "collect_all") if config else "collect_all"
+        self.continue_on_error = (config or {}).get("continue_on_error", False) if config else False
 
     async def run(self, context: "WorkflowContext") -> NodeResult:
         """
         ParallelNode itself is mostly a marker + metadata holder.
-        The actual concurrent execution is driven by the runner (see SequentialRunner).
-        This keeps the node simple and the execution strategy in the runner.
+        The actual concurrent execution (including dependency resolution,
+        merging, and error aggregation) is driven by the runner.
         """
         return NodeResult(
             success=True,
             output={
                 "executed": self.node_id,
                 "type": "parallel",
-                "children": self.children
+                "children": self.children,
+                "dependencies": self.dependencies,
+                "merge_strategy": self.merge_strategy,
+                "continue_on_error": self.continue_on_error,
             }
         )

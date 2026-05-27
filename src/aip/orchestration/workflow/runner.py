@@ -91,27 +91,90 @@ class SequentialRunner:
                     # Stop the runner; the caller is responsible for resuming later
                     break
 
-            # Parallel execution support (CHUNK-2.4)
+            # Advanced Parallel execution support (CHUNK-2.10)
             if node.node_type == NodeType.PARALLEL:
-                child_ids = getattr(node, "children", [])
+                pnode = node  # the ParallelNode
+                child_ids = pnode.children
                 child_nodes = [n for n in self.nodes if n.node_id in child_ids]
 
                 if child_nodes:
-                    # Each parallel branch gets a forked context (budget & variables inherited)
-                    tasks = []
-                    branch_contexts = []
-                    for child in child_nodes:
+                    # Build simple dependency map: child_id -> set of prereqs
+                    deps = getattr(pnode, "dependencies", {}) or {}
+                    prereqs = {cid: set(deps.get(cid, [])) for cid in child_ids}
+
+                    # Ready set: children with no unmet prereqs
+                    ready = {cid for cid in child_ids if not prereqs[cid]}
+
+                    # Track running tasks
+                    running = {}  # child_id -> task
+                    branch_results = {}  # child_id -> list[NodeResult] or exception
+                    branch_contexts = {}
+
+                    # Fork initial ready branches
+                    for cid in ready:
+                        cnode = next(n for n in child_nodes if n.node_id == cid)
                         child_ctx = self.context.fork_for_parallel()
-                        branch_contexts.append(child_ctx)
-                        mini_runner = SequentialRunner([child], child_ctx)
-                        tasks.append(mini_runner.run())
+                        branch_contexts[cid] = child_ctx
+                        mini_runner = SequentialRunner([cnode], child_ctx)
+                        running[cid] = asyncio.create_task(mini_runner.run())
 
-                    branch_results = await asyncio.gather(*tasks, return_exceptions=True)
+                    # Main scheduling loop
+                    while running:
+                        done, _ = await asyncio.wait(running.values(), return_when=asyncio.FIRST_COMPLETED)
 
-                    # Collect results and merge key outputs back to parent context if desired
-                    for br in branch_results:
-                        if isinstance(br, list):
-                            results.extend(br)
+                        for task in done:
+                            # Find which child finished
+                            for cid, t in list(running.items()):
+                                if t is task:
+                                    try:
+                                        res = task.result()
+                                        branch_results[cid] = res
+                                    except Exception as e:
+                                        branch_results[cid] = e
+
+                                    del running[cid]
+                                    break
+
+                            # Check what new children become ready
+                            for cid in list(prereqs.keys()):
+                                if cid in ready or cid in branch_results:
+                                    continue
+                                unmet = prereqs[cid] - set(branch_results.keys())
+                                if not unmet:
+                                    ready.add(cid)
+                                    cnode = next(n for n in child_nodes if n.node_id == cid)
+                                    child_ctx = self.context.fork_for_parallel()
+                                    branch_contexts[cid] = child_ctx
+                                    mini_runner = SequentialRunner([cnode], child_ctx)
+                                    running[cid] = asyncio.create_task(mini_runner.run())
+
+                    # Error aggregation / continue behavior
+                    errors = {cid: r for cid, r in branch_results.items() if isinstance(r, Exception)}
+                    continue_on_error = getattr(pnode, "continue_on_error", False)
+
+                    if errors and not continue_on_error:
+                        # Propagate first error (or could aggregate)
+                        first_err = next(iter(errors.values()))
+                        raise first_err
+
+                    # Result merging
+                    merge_strategy = getattr(pnode, "merge_strategy", "collect_all")
+
+                    if merge_strategy == "collect_all":
+                        for cid, res in branch_results.items():
+                            if isinstance(res, list):
+                                results.extend(res)
+                    elif merge_strategy == "first_success":
+                        for cid in child_ids:
+                            res = branch_results.get(cid)
+                            if isinstance(res, list) and res and getattr(res[-1], "success", True):
+                                results.extend(res)
+                                break
+                    else:
+                        # Fallback to collect_all
+                        for cid, res in branch_results.items():
+                            if isinstance(res, list):
+                                results.extend(res)
 
                 i += 1
                 continue
