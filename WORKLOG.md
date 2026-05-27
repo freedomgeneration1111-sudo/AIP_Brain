@@ -3112,6 +3112,15 @@ Continuing the grind on 4.5.
 **Even more recent 4.5 step:**
 - Added `test_review_re_synthesize_cycle_basic` in test_workflow_engine.py — a YAML with both review + re_synthesize nodes now loads cleanly through the engine, validating the full integration path we have been building.
 
+---
+
+**CHUNK-4.6 completed:**
+- Created the reference `workflows/synthesis_session_v1.yaml` (Phase 2 version with review + re-synthesis).
+- Basic validation tests added and passing.
+- This provides the canonical Workflow 0.1 definition that the engine from 4.5 can now execute (structurally).
+
+Next natural: CHUNK-4.7 (full integration test of the lifecycle) or deeper 4.5 wiring.
+
 
 ---
 
@@ -3205,6 +3214,15 @@ Continuing the grind on 4.5.
 
 **Even more recent 4.5 step:**
 - Added `test_review_re_synthesize_cycle_basic` in test_workflow_engine.py — a YAML with both review + re_synthesize nodes now loads cleanly through the engine, validating the full integration path we have been building.
+
+---
+
+**CHUNK-4.6 completed:**
+- Created the reference `workflows/synthesis_session_v1.yaml` (Phase 2 version with review + re-synthesis).
+- Basic validation tests added and passing.
+- This provides the canonical Workflow 0.1 definition that the engine from 4.5 can now execute (structurally).
+
+Next natural: CHUNK-4.7 (full integration test of the lifecycle) or deeper 4.5 wiring.
 
 
 ---
@@ -3476,6 +3494,34 @@ This is the reconciliation point we have been building toward. No blockers to st
 
 **Status:** Continuity Check complete and documented. Ready for the (careful, extension-oriented) implementation of CHUNK-4.5.
 
+---
+
+## Task ID: 4.6-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-4.6: Workflow 0.1 YAML Definition (remapped Phase 2 series)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target CHUNK:**
+- CHUNK-4.6 creates the canonical `workflows/synthesis_session_v1.yaml` that defines the modern Workflow 0.1 lifecycle (including the new review and re-synthesis steps from 4.1/4.2).
+- DEPENDS-ON: CHUNK-4.5 (the engine that can now load and run these new node types).
+- FILES:
+  - `workflows/synthesis_session_v1.yaml`
+  - `tests/test_workflow_yaml_valid.py`
+- The YAML must be loadable by the engine from 4.5 and topologically sortable.
+
+**2-6. State and Reconciliation:**
+- The engine/loader extensions we have made in 4.5 now support the node types ("review", "re_synthesize") that this YAML will use.
+- Historical repo 2.x already had a basic `examples/workflow_01.yaml`. Per remediation rules, we should evolve or replace it with the modern version rather than ignore it.
+- Per PHASE2_IMPORT_NOTES.md: `workflows/synthesis_session_v1.yaml` is listed as "Not implemented".
+
+**Conclusion:**
+This is a documentation + definition chunk that becomes executable because of the engine work in 4.5. No blockers.
+
+**Status:** Continuity Check complete and documented. Ready for implementation of CHUNK-4.6 (creating the reference YAML + validation test).
+
+
 **Start of CHUNK-4.5 implementation (additive extension of existing repo 2.x engine):**
 - Added `ReviewNode` and `ReSynthesizeNode` classes in `orchestration/workflow/node.py` (additive, at the end of the file).
 - These delegate to the functions built in 4.1 and 4.2 when the appropriate protocols are available in the WorkflowContext.
@@ -3529,6 +3575,15 @@ Continuing the grind on 4.5.
 **Even more recent 4.5 step:**
 - Added `test_review_re_synthesize_cycle_basic` in test_workflow_engine.py — a YAML with both review + re_synthesize nodes now loads cleanly through the engine, validating the full integration path we have been building.
 
+---
+
+**CHUNK-4.6 completed:**
+- Created the reference `workflows/synthesis_session_v1.yaml` (Phase 2 version with review + re-synthesis).
+- Basic validation tests added and passing.
+- This provides the canonical Workflow 0.1 definition that the engine from 4.5 can now execute (structurally).
+
+Next natural: CHUNK-4.7 (full integration test of the lifecycle) or deeper 4.5 wiring.
+
 
 
 
@@ -3556,6 +3611,15 @@ Continuing the grind on 4.5.
 **Even more recent 4.5 step:**
 - Added `test_review_re_synthesize_cycle_basic` in test_workflow_engine.py — a YAML with both review + re_synthesize nodes now loads cleanly through the engine, validating the full integration path we have been building.
 
+---
+
+**CHUNK-4.6 completed:**
+- Created the reference `workflows/synthesis_session_v1.yaml` (Phase 2 version with review + re-synthesis).
+- Basic validation tests added and passing.
+- This provides the canonical Workflow 0.1 definition that the engine from 4.5 can now execute (structurally).
+
+Next natural: CHUNK-4.7 (full integration test of the lifecycle) or deeper 4.5 wiring.
+
 
 
 
@@ -3582,6 +3646,15 @@ Continuing the grind on 4.5.
 **Even more recent 4.5 step:**
 - Added `test_review_re_synthesize_cycle_basic` in test_workflow_engine.py — a YAML with both review + re_synthesize nodes now loads cleanly through the engine, validating the full integration path we have been building.
 
+---
+
+**CHUNK-4.6 completed:**
+- Created the reference `workflows/synthesis_session_v1.yaml` (Phase 2 version with review + re-synthesis).
+- Basic validation tests added and passing.
+- This provides the canonical Workflow 0.1 definition that the engine from 4.5 can now execute (structurally).
+
+Next natural: CHUNK-4.7 (full integration test of the lifecycle) or deeper 4.5 wiring.
+
 
 
 
@@ -3607,6 +3680,15 @@ Continuing the grind on 4.5.
 
 **Even more recent 4.5 step:**
 - Added `test_review_re_synthesize_cycle_basic` in test_workflow_engine.py — a YAML with both review + re_synthesize nodes now loads cleanly through the engine, validating the full integration path we have been building.
+
+---
+
+**CHUNK-4.6 completed:**
+- Created the reference `workflows/synthesis_session_v1.yaml` (Phase 2 version with review + re-synthesis).
+- Basic validation tests added and passing.
+- This provides the canonical Workflow 0.1 definition that the engine from 4.5 can now execute (structurally).
+
+Next natural: CHUNK-4.7 (full integration test of the lifecycle) or deeper 4.5 wiring.
 
 
 

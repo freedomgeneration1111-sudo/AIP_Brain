@@ -1,0 +1,81 @@
+# Workflow 0.1 — Canonical Synthesis Session Pipeline (Phase 2 version)
+# This is the reference YAML for a full AIP synthesis session using the
+# L5 YAML Workflow Engine (CHUNK-4.5) and the Phase 2 lifecycle nodes.
+
+workflow_id: synthesis_session_v1
+version: "0.1"
+description: >
+  Single-turn synthesis session with retrieval, generation,
+  structural validation, review (automated + DEFINER), and commit.
+  Includes re-synthesis loop on rejection.
+
+inputs:
+  - query: str
+  - domain: str
+  - project_id: str
+  - work_unit_id: str
+  - model_slot: str        # default: synthesis
+
+nodes:
+
+  - id: retrieve
+    type: agent
+    model_slot: embedding
+    description: Retrieve context and enforce confidence gate
+    prompt: "Retrieve relevant context for the following query in domain '{{ domain }}': {{ query }}"
+    output: retrieval_result
+
+  - id: synthesize
+    type: agent
+    model_slot: "{{ inputs.model_slot }}"
+    description: Primary synthesis call
+    context:
+      retrieval: "{{ retrieve.retrieval_result }}"
+      query: "{{ inputs.query }}"
+      domain: "{{ inputs.domain }}"
+    output: synthesis_output
+
+  - id: validate_structural
+    type: script
+    description: L3a Stage 1 — deterministic validation (zero tokens)
+    run: structural_validate
+    context:
+      content: "{{ synthesize.synthesis_output }}"
+    output: validation_result
+
+  - id: review
+    type: review
+    description: Review artifact — automated or DEFINER gate (CHUNK-4.1)
+    context:
+      artifact_id: "{{ validate_structural.artifact_id }}"
+    output: review_verdict
+
+  - id: check_review
+    type: condition
+    description: Check review verdict — proceed or re-synthesize
+    condition: "review.review_verdict.verdict == 'APPROVED' or review.review_verdict.verdict == 'NEEDS_REVISION'"
+    output: review_check
+
+  - id: commit
+    type: script
+    description: Commit artifact to store and transition ECS
+    run: commit
+    context:
+      artifact_id: "{{ validate_structural.artifact_id }}"
+    output: commit_result
+
+  - id: re_synthesize
+    type: re_synthesize
+    description: Re-synthesize rejected artifact with failure context (CHUNK-4.2)
+    context:
+      artifact_id: "{{ validate_structural.artifact_id }}"
+      rejection: "{{ review.review_verdict }}"
+    output: re_synthesis_result
+
+# On rejection path, loop back to synthesize with failure context
+# (expressed via the condition + re_synthesize node feeding back)
+
+metadata:
+  version: "0.1"
+  target: "Workflow 0.1"
+  phase: "Phase 2 (remapped 4.x)"
