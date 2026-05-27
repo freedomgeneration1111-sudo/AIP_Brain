@@ -2358,4 +2358,59 @@ After gate green: update, commit, push, continue.
 
 **Status:** Complete
 
-**Pushed:** (pending this work unit)
+**Pushed:** Yes (commit 3990ca1)
+
+---
+
+## Task ID: 3.9-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-3.9: Real Embedding Slot and Provider Foundation (Phase 3 per Rev 1.3 and Architecture §4)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target scope:**
+- Rev 1.3 repeatedly references "real embedding slot wired in Phase 3" and "embedding pipeline gap" (Delta 4 fix in Phase 1 used fake_embed; real in Phase 3+).
+- The current system uses an injected embed_fn (fake_embed in CI/tests).
+- The next logical step is a foundation for a real, configurable embedding provider (e.g., via config, supporting local or API embedders) while keeping the zero-token/deterministic tests working with fake.
+
+**2-5. DEPENDS-ON etc.:**
+- Builds on all previous (retrieval, engine, config, Phase 1 retrieval).
+- The embed_fn parameter is already the extension point.
+
+**6. Scope:**
+- Minimal foundation:
+  - Add support in config/aip.config.toml for [embedding] section (model name, provider).
+  - A simple embed provider loader (stub for real, with fake still default for tests).
+  - Update the engine / workflow to use a real provider when configured, falling back to fake.
+  - Test that the system still works with fake, and the config is respected.
+- Out of scope: Actual model download, API keys, production embedder implementation (that would be in a later Phase 3 chunk).
+
+**Conclusion:**
+The retrieval and L2 path is now "real-embedding ready" once the provider is wired. This chunk provides the foundation per the spec's Phase 3 note.
+
+**Spec Delta Declaration:**
+CHUNK-3.9 provides the minimal foundation for a configurable real embedding provider/slot as referenced throughout Rev 1.3 for Phase 3.
+
+**FILES:**
+- (amend) config loading / aip.config.toml example
+- (amend) orchestration/engine.py and retrieval to support real embed provider
+- (additive) tests for the new config path
+- No breaking changes (fake remains default)
+
+**INTERFACES:**
+- Support for embed_provider or similar in config, with a loader that returns the embed_fn.
+
+**TESTS:**
+- Existing retrieval tests continue to pass with fake.
+- New test for config-driven embed (stub).
+
+**GATE:**
+The usual retrieval + engine + layering + trace gate.
+
+After gate green: update, commit, push, continue.
+
+**Implementation notes (to be filled after execution):**
+- [empty until next short command]
+
+**Status:** Continuity Check + Spec Delta documented for CHUNK-3.9. Awaiting short command to implement.
