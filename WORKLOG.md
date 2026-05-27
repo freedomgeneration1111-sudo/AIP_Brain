@@ -9205,6 +9205,65 @@ CC complete. Next per linearized DAG: 9.1 implementation (after push).
 
 ---
 
+## Full Pre-CHUNK-9.2 Continuity Check (Mandatory before Canonical Promotion Pipeline)
+
+**Date:** 2026-05 (immediately after 9.1 push at 1f54f47)
+**Spec:** specs/AIP_0_1_Phase7_BuildSpec_Rev1.0.md (CHUNK-9.2 box + prose)
+**DEPENDS-ON:** CHUNK-9.0a (CanonicalPromotionConfig), 9.0b (auth for approved_by), 8.4 (Review Queue approve/reject paths), 6.2 (evaluation nodes: faithfulness, domain_coherence, adversarial)
+**Status:** CC complete + documented. Ready for CHUNK-9.2 (no src/ or tests/ production edits for 9.2 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-9.1 baseline: 9.0a/b/c + 9.1 Vigil delivered. 9.1 Vigil now writes canonical health metadata to VigilStore (exactly the integration point 9.2 needs in step 9). Core battery green at 15+ passed on reliable subset.
+- Rule #10: No pre-existing canonical_pipeline.py or CanonicalPipeline implementation (grep confirmed only the 9.0a protocol amendments we added). Target `orchestration/canonical_pipeline.py` does not exist. Clean for new work. The 8.4 review queue + 8.0b CanonicalStore + 6.2 evaluation nodes are the primary surfaces to compose — no duplication risk; this is the missing orchestration driver.
+- All prior Clean Bills hold.
+
+**1. Re-read of target CHUNK-9.2 (from Phase 7 SSOT):**
+
+```
+CHUNK-9.2: Canonical Promotion Pipeline
+PHASE: 7
+DEPENDS-ON: CHUNK-9.0a, CHUNK-9.0b, CHUNK-8.4, CHUNK-6.2
+CODER-PROFILE: L3
+CONTEXT-BUDGET: ~6,000 tokens
+FILES:
+  orchestration/canonical_pipeline.py
+  tests/test_canonical_pipeline.py
+INTERFACES:
+  class CanonicalPipeline: ... (evaluate_for_promotion, promote_to_canonical, reject_promotion, list_promotion_candidates, get_promotion_status)
+TESTS: tests/test_canonical_pipeline.py
+GATE: uv run pytest tests/test_canonical_pipeline.py -xvs
+```
+
+**Prose key mandates (exact scope):** The missing orchestration driver for the full REVIEWED→APPROVED→CANONICAL lifecycle. evaluate_for_promotion (read-only readiness check for the review queue). promote_to_canonical (full 10-step pipeline: state check → evaluations → AutonomyGate admin escalate → CanonicalStore write → ECS transition → re-index Vector/Lexical → write health to VigilStore → Event). reject_promotion (no state change). list/get helpers. Idempotent. evaluation scores carry model_gen_assumption. Writes health metadata for Vigil (step 9).
+
+**2–6. (Live evidence summary):**
+- DEPENDS (9.0a config, 9.0b auth, 8.4 review paths, 6.2 evaluation nodes, 8.0b Canonical/Artifact/Ecs/Event/Vector/Lexical stores, 9.1 VigilStore) all present and green.
+- No pre-existing 9.2 implementation (Rule #10 clean).
+- Governance: core battery green (15+ passed reliable subset including 9.1 Vigil + 8.8 gates).
+- Rule #10: Clean. This is the explicit "missing orchestration driver" called out in the Phase 7 scope. It composes the delivered 8.4 review queue + 8.0b stores + 6.2 evals + 9.1 Vigil health recording without duplication.
+- Arch cross-refs: §1.6 (explicit canonical promotion), §9.3 (ECS final transition), §1.7 (AutonomyGate on approve), §16.1 (Vigil health integration), §1.8 (scores carry assumption). All directly satisfied by the 10-step pipeline.
+
+**Overall Pre-CHUNK-9.2 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-9.2 (CanonicalPipeline as the missing driver for full REVIEWED→APPROVED→CANONICAL with evaluations, gate, indexing, and Vigil health recording; clean per Rule #10; core battery green).**
+
+- All 6 steps executed.
+- Ready for exact 9.2 (orchestration/canonical_pipeline.py + test per ANNEX).
+
+**This completes the mandatory full Continuity Check for CHUNK-9.2.**
+
+The record above constitutes the authoritative audit. All evidence gathered before any src/ or tests/ edits for 9.2.
+
+**Ready to proceed to CHUNK-9.2 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: 9.2 implementation (after push).
+
+---
+
+**Phase 7 pre-9.2 CC complete. Tree clean at 1f54f47. Continuing per continuous execution directive after push.**
+
+---
+
 ## CHUNK-9.1 — Vigil Actor (Last §3 Orchestration Actor — Read-Only Canonical Health)
 
 **Date:** 2026-05 (post pre-9.1 CC at 3518cc3)
