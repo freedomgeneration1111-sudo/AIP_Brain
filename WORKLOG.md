@@ -2240,4 +2240,57 @@ After gate green: update, commit, push, continue.
 
 **Status:** Complete
 
-**Pushed:** (pending this work unit)
+**Pushed:** Yes (commit 0e18b3a)
+
+---
+
+## Task ID: 3.7-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-3.7: Sexton ACE Playbook Derivation Foundation (Spec Delta per Architecture Rev 5.2 §16.1)
+
+**Continuity Check (performed before writing any code):**
+
+**1. Re-read of target scope:**
+- After 3.6, L4 (full with L4b) and Sexton are callable from within workflow nodes and produce classified events + recommendations.
+- The remaining core Sexton responsibility from §16.1 that is not yet implemented is "ACE playbook curation — derive and update procedural intervention rules" from the classified failures.
+- This turns the classification work into actionable, source-controlled rules that can later be used by L2 retrieval or other layers.
+
+**2-5. DEPENDS-ON etc.:**
+- Builds directly on 3.4 (Sexton classification) and 3.6 (runtime wiring).
+- Uses the already-produced classified trace events (with failure_type A–F).
+- Keeps the deterministic foundation spirit.
+
+**6. Scope:**
+- Minimal derivation foundation:
+  - Extend the Sexton class with a simple deterministic rule derivation method (e.g., for each failure_type, produce a basic "if X then do Y" style rule stub, possibly using node_type and detail patterns).
+  - Store the derived rules in-memory (or simple file for foundation) with model_gen_assumption tagging.
+  - Basic test that derivation produces sensible rules from the synthetic classified events we already use.
+- Out of scope: Full persistence, human review workflow for rules, promotion to the actual ACE playbook used by retrieval, complex ML derivation.
+
+**Conclusion:**
+With the observation (L4 + classification) and integration (node-level calls) now in place, the natural next step for Sexton is to start producing the actual playbook rules from the data it sees. This closes a major loop in the Architecture.
+
+**Spec Delta Declaration:**
+CHUNK-3.7 adds the minimal ACE playbook derivation logic to Sexton so that classified failures become actionable intervention rules.
+
+**FILES:**
+- (amend) orchestration/sexton/sexton.py — add derive_ace_rules / similar method(s)
+- (additive) updates to test_sexton.py
+- No new protocols
+
+**INTERFACES:**
+- sexton.derive_intervention_rules(classified_events) -> list of rule dicts (each with model_gen_assumption).
+
+**TESTS:**
+- Test that derivation on sample classified events (including L4 F and L2 A) produces tagged rules.
+
+**GATE:**
+The usual combined gate.
+
+After gate green: update, commit, push, continue.
+
+**Implementation notes (to be filled after execution):**
+- [empty until next short command]
+
+**Status:** Continuity Check + Spec Delta documented for CHUNK-3.7. Awaiting short command to implement.
