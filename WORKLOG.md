@@ -7752,6 +7752,28 @@ CC complete. Next per linearized DAG: CHUNK-7.2 implementation.
 
 **Phase 5 pre-7.2 CC complete. Tree clean at 3b71056. Continuing per continuous execution directive after push.**
 
+## CHUNK-7.2 — ACE Playbook (Sexton-Curated Procedural Rules)
+
+**Date:** 2026-05 (post pre-7.2 CC at a69cd4b)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.2 box + prose)
+**DEPENDS-ON:** CHUNK-7.1, CHUNK-7.0a
+**Status:** Gate green + pushed
+
+**Implementation (exact per prose + ANNEX):**
+- `src/aip/orchestration/ace_playbook.py` (new): Full AcePlaybook with SQLite (ace_playbook table), load_playbook, add/deprecate, derive_from_classification (consumes 7.1 FailureClassification, sets model_gen_assumption, auto-promotes per config), get_active_entries. Derivation logic informed by (but does not replace) the existing foundation stubs in the extended sexton/sexton.py.
+- `tests/test_ace_playbook.py` (new): CRUD, derivation from 7.1 output, model_gen_assumption, deprecation, active filtering.
+- Rule #10: Existing derive_ace_rules etc. in sexton/ left in place as lightweight helpers; new persistent component added as required.
+
+**Gate:** 45 passed (new 7.2 tests + full prior battery + layering).
+
+**Files:** orchestration/ace_playbook.py (new), tests/test_ace_playbook.py (new), minor WORKLOG.
+
+**Permanent rules:** Exact scope, extend (derivation helpers), layering, §1.8 on entries, push, +2 offset, etc.
+
+CHUNK-7.2 complete (gate green).
+
+**Phase 5 CHUNK-7.2 complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
+
 ## CHUNK-7.1 — Sexton Failure Classification (Core Phase 5 Actor)
 
 **Date:** 2026-05 (post full pre-7.1 CC at 77a7740)
