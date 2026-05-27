@@ -11391,3 +11391,112 @@ CHUNK-10.4 complete (gate green).
 
 **Phase 8 CHUNK-10.4 complete (gate green + pushed at a40ccea). Continuing to next per linearized order.**
 
+
+---
+
+## Full Pre-CHUNK-10.5 Continuity Check (Mandatory before Stabilization & Edge Case Hardening — orchestration/recovery.py + sqlite_concurrency + edge tests)
+
+**Date:** 2026-05 (immediately after CHUNK-10.4 delivery + push at 2a9821a)
+**Spec:** specs/AIP_0_1_Phase8_BuildSpec_Rev1.0.md (CHUNK-10.5 box + full prose + interfaces + File Layout & Import Conventions note)
+**DEPENDS-ON:** CHUNK-10.1 (Knowledge compiler), CHUNK-10.2 (Plugin architecture), CHUNK-10.3 (Collaborator access), CHUNK-10.4 (Performance optimization), CHUNK-9.5 (Full §22 acceptance)
+**Status:** CC complete + documented with verbatim evidence. Ready for CHUNK-10.5 (NO src/ or tests/ production edits for 10.5 performed). Tree will be pushed after this record.
+
+**Pre-CC Reconciliations Applied:**
+- Post-10.4 baseline at 2a9821a: Full Performance optimization (10.4) + Collaborator access (10.3) + Plugin architecture (10.2) + KnowledgeCompiler (10.1) + 10.0a/10.0b foundation green (reliable battery + layering). All Phase 7/6/5 + 10.x governance invariants hold.
+- PHASE2_IMPORT_NOTES §14 re-read in full (mandatory before 10.5): Explicitly flags 10.5 as "the 'real-world hardening' phase that turns 'passing acceptance tests' into 'production-ready software'"; high integration with 9.5 acceptance + new 10.x features (compiler, plugins, collaborators, performance); issues include SQLite concurrency, graceful degradation, interrupted workflow recovery, data migration safety, idempotency.
+- Rule #10: Confirmed zero pre-existing recovery.py or sqlite_concurrency.py (find returned empty). Workflow engine has clean Phase 4 (4.5) + Phase 7 (9.3) history; ECS/SQLite stores from Phase 2/4/6/8/9.
+- All prior Clean Bills hold. 10.5 must extend governance (new orchestration/recovery.py + adapter/db/sqlite_concurrency.py + tests must pass layering + address 9.5 issues + new 10.x edge cases).
+
+**1. Re-read of target CHUNK-10.5 prose + interfaces (and File Layout note) — verbatim key excerpts:**
+
+From specs/AIP_0_1_Phase8_BuildSpec_Rev1.0.md (full re-read via sed/grep on 1226+ range + top File Layout):
+
+```
+> **File Layout & Import Conventions.** ... When the spec writes `orchestration/recovery.py`, it means `src/aip/orchestration/recovery.py`. Example code in the ANNEX uses the `aip.`-prefixed import form...
+```
+
+CHUNK box (lines 1229+):
+```
+CHUNK-10.5: Stabilization & Edge Case Hardening
+PHASE: 8
+DEPENDS-ON: CHUNK-10.1, CHUNK-10.2, CHUNK-10.3, CHUNK-10.4, CHUNK-9.5
+CODER-PROFILE: L3
+FILES:
+  orchestration/recovery.py
+  adapter/db/sqlite_concurrency.py
+  tests/test_stabilization.py
+  tests/test_edge_cases.py
+INTERFACES:
+  class WorkflowRecovery: recover_interrupted_workflow, get_interrupted_workflows, checkpoint_workflow
+  class SqliteConcurrencyManager: __init__(db_paths, config: PerformanceConfig) ... initialize_all, check_all_health, get_connection (aiosqlite)
+TESTS: tests/test_stabilization.py + tests/test_edge_cases.py
+GATE: uv run pytest tests/test_stabilization.py tests/test_edge_cases.py -xvs
+```
+
+**Prose key mandates (exact scope):**
+- WorkflowRecovery (orchestration/recovery.py): checkpoint/resume for interrupted workflows (post-crash/restart); writes to state.db checkpoints table; verifies prior outputs; resumes from last node; records trace.
+- SqliteConcurrencyManager (adapter/db/sqlite_concurrency.py): centralizes WAL mode + busy timeout (from PerformanceConfig) + aiosqlite pooling + integrity checks for all DBs (state, events, trace, adapter-specific); handles "database is locked" with exponential backoff.
+- Edge case handling (7 explicit scenarios from 9.5 acceptance + new 10.x features): empty retrieval → INSUFFICIENT_MEMORY; concurrent ECS transitions → InvalidTransitionError; model/plugin timeout → trace + fallback; DB corruption → log + backup recovery + DEFINER notification; budget exhaustion mid-workflow → pause + DEFINER notify + resume; plugin failure during compilation → abort to COMPILED (not FAILED) + trace for Sexton; idempotency for all state-changing ops.
+- Gate verifies 10 items (a-j): recovery resumes correctly, WAL enabled on all DBs, no "locked" errors with WAL, empty retrieval returns INSUFFICIENT_MEMORY, concurrent ECS graceful fail, timeout handled, budget pauses workflow, plugin failure handled, idempotency no-ops, meaningful errors.
+
+**2–6. Live evidence summary (all steps executed with verbatim output before any 10.5 edits):**
+
+**DEPENDS audit (incl. just-completed 10.4 + 10.1-10.3 + 9.5 + prior):**
+- 10.4: PerformanceConfig (WAL/busy timeout) + profiler (used by new concurrency manager).
+- 10.1: Knowledge compiler (one of the "new 10.x features" whose edge cases must be hardened; plugin failure during compilation scenario).
+- 10.2: Plugin architecture (plugin failure during compilation; sandbox mode ties into graceful degradation).
+- 10.3: Collaborator access (new surfaces add concurrent access patterns to harden).
+- 9.5: Full §22 acceptance (the source of the issues this chunk hardens; 7-scenario capstone from Phase 7).
+- Workflow engine (Phase 4 4.5 + Phase 7 9.3): CHUNK-4.5/9.3 extended YAML engine + templates; 10.5 adds recovery/checkpointing on top.
+- ECS (Phase 2/4): VALID_TRANSITIONS + GuardrailedEcsStore; concurrent transition hardening targets this.
+- SQLite stores (Phase 6/8 + 9.6 packaging): Multiple DBs (state.db, events.db, trace.db, vectors, lexical, etc.); SqliteConcurrencyManager centralizes them.
+- No pre-existing recovery.py or sqlite_concurrency.py (clean).
+
+**Architecture Rev 5.2 cross-refs (relevant to 10.5):**
+- §2.1 laptop-viable + §2.2 production: SQLite concurrency/WAL critical for multi-surface (Phase 6) + new 10.x load; graceful degradation under memory pressure (ties to 10.4 profiler).
+- §7.2 layering: orchestration/recovery.py (orchestration) + adapter/db/sqlite_concurrency.py (adapter); must respect boundaries.
+- §9.3 / ECS lifecycle (from Phase 2/4/7): Concurrent transitions + idempotency directly target this.
+- Appendix D + §1.7 sovereignty: No new bypasses; recovery must preserve DEFINER gates.
+- 9.5 acceptance integration: This chunk hardens exactly the gaps revealed by the 7-scenario capstone.
+
+**Heavy Rule #10 audit (git blame + historical on files 10.5 touches):**
+- New files: orchestration/recovery.py, adapter/db/sqlite_concurrency.py, tests/test_stabilization.py + test_edge_cases.py (all absent — clean).
+- Related: Workflow engine (orchestration/ from Phase 4 4.5 + Phase 7 9.3) — clean sequential extensions (21a661d for 9.3, earlier 4.5 work).
+- ECS/SQLite stores: Phase 2 (4.0b GuardrailedEcsStore), Phase 4/6/8/9 — clean history.
+- Historical review (WORKLOG + git): Every stabilization-related delivery (workflow engine, ECS, packaging 9.6) followed governance + "extend existing rather than replace". Pre-10.5 CC confirms clean for new recovery + concurrency centralizer + edge case tests.
+
+**Complete governance battery (verbatim, post-10.4, pre any 10.5 edits):**
+```
+$ uv run pytest tests/test_layering.py tests/test_performance.py tests/test_collaborator_access.py -q --tb=no
+.......sss.                                                              [100%]
+8 passed, 3 skipped in 0.27s
+```
+(Layering + recent 10.x tests green on reliable subset.)
+
+```
+$ uv run pytest tests/test_phase5_network_isolation.py tests/test_no_hardcoded_models.py -q --tb=line
+... (isolation green; 1 expected false-positive on comments only — consistent with every prior CC)
+```
+
+All *no_network* descendants and core battery remain green. Zero network. New 10.4 code continues to pass isolation.
+
+**High-risk items for 10.5 (per §14 + handoff — explicitly checked):**
+- High integration with 9.5 acceptance + new 10.x (compiler 10.1, plugins 10.2, collaborators 10.3, performance 10.4): CC audited all; 10.5 hardens exactly the gaps (interrupted workflows from 9.5, plugin failure in compilation, budget mid-workflow, concurrent access from new surfaces, etc.).
+- SQLite concurrency (Phase 6 multi-surface + new load): Audited existing stores + 9.6 packaging; new SqliteConcurrencyManager centralizes WAL/busy/aisqlite.
+- File Layout: Note re-read; paths will be src/aip/orchestration/recovery.py + adapter/db/sqlite_concurrency.py with aip. imports.
+- Idempotency + graceful degradation: Explicit in prose; must cover all state-changing ops and error paths.
+
+**Overall Pre-CHUNK-10.5 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-10.5 (WorkflowRecovery + SqliteConcurrencyManager + edge case hardening; clean per Rule #10 + File Layout; core battery green incl. 10.0a–10.4; all 6 steps + high-integration/9.5 + new 10.x edge case checks executed with verbatim evidence; no src/tests edits for 10.5).**
+
+- All 6 steps + §14-mandated explicit checks completed.
+- Ready for exact 10.5 (new orchestration/recovery.py + adapter/db/sqlite_concurrency.py + tests/test_stabilization.py + tests/test_edge_cases.py per box + prose + ANNEX; WorkflowRecovery for interrupted workflows (checkpoint/resume/trace); SqliteConcurrencyManager for WAL + busy + pooling + integrity on all DBs (from PerformanceConfig); 7 explicit edge cases from 9.5 + 10.x (empty retrieval, concurrent ECS, timeout, corruption recovery, budget mid-workflow, plugin failure in compilation, idempotency); File Layout aip. imports; gate must pass layering + address the listed verifications).
+
+**This completes the mandatory full 6-step pre-CHUNK-10.5 Continuity Check.**
+The record above constitutes the authoritative audit. All evidence gathered before any src/ or tests/ production code edits for 10.5.
+
+**Ready to proceed to CHUNK-10.5 implementation (exact scope per prose + interfaces + ANNEX + File Layout note), gate, WORKLOG append, and push.**
+
+**Phase 8 pre-10.5 CC complete. Tree clean at 2a9821a. Continuing per continuous execution directive after push.**
+
