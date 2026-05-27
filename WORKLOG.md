@@ -7438,3 +7438,123 @@ Full post-edit governance (live):
 CHUNK-7.0a complete (gate green).
 
 **Phase 5 CHUNK-7.0a complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
+
+---
+
+## Full Pre-CHUNK-7.0b Continuity Check (Mandatory before Phase 5 Token Budget System)
+
+**Date:** 2026-05 (immediately after CHUNK-7.0a gate green + push at 0a073b8)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.0b box + prose + ANNEX, lines 752–999+)
+**DEPENDS-ON:** CHUNK-7.0a (schemas: BudgetConfig/BudgetScope + protocols: extended BudgetStore), CHUNK-5.7 (SessionManager for integration context)
+**Status:** CC complete + documented. Ready for CHUNK-7.0b (no src/ or tests/ production edits for 7.0b performed during this CC; only reads, scans, test runs, and this append to WORKLOG).
+
+**Pre-CC Reconciliations Applied:**
+- Authoritative baseline now includes post-7.0a state: CHUNK-7.0a complete (gate 13/13 + combined 30 passed, pushed at 0a073b8 after pre-7.0a CC at cea3ea3). 7.0a delivered append-only schemas + protocols extensions (BudgetStore extended in-place per Rule #10 for compat), phase5 schema test, config sections.
+- Post-Phase-4 Clean Bill + "Phase 4 complete." (f2bb46c / 8cbcb0c) + 5.8 partial non-blocking remain in force.
+- PHASE2_IMPORT_NOTES.md §10 re-read: explicit call for detailed budget reconciliation in every 7.0b-related CC (existing budget.py partial, engine hooks, SessionManager).
+- Continuous execution: 7.0a done; this is the immediate next pre-chunk CC per linearized order (no waiting for signals).
+- All prior 7.0a Rule #10 decisions (BudgetStore extension, no parallel paths) carried forward and honored.
+
+**1. Re-read of target CHUNK-7.0b (from Phase 5 SSOT specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md:752+):**
+
+```
+CHUNK-7.0b: Token Budget System
+PHASE: 5
+DEPENDS-ON: CHUNK-7.0a, CHUNK-5.7
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~4,500 tokens
+FILES:
+  orchestration/budget.py
+  adapter/budget_store_sqlite.py
+  tests/test_budget_system.py
+INTERFACES:
+  class BudgetManager: __init__(config: BudgetConfig, budget_store: BudgetStore), check_before_call, record_consumption, get_status, is_hard_stop
+  class SqliteBudgetStore(BudgetStore): __init__(db_path), get_budget, record_usage, check_limit (implements the Phase 5 methods added in 7.0a)
+TESTS: tests/test_budget_system.py
+GATE: uv run pytest tests/test_budget_system.py tests/test_layering.py -xvs
+```
+
+**Prose key mandates:**
+- SqliteBudgetStore: implements the (7.0a-extended) BudgetStore Protocol using state.db + budget_ledger table (exact columns per ANNEX). get_budget sums tokens/cost; record_usage inserts; check_limit returns True (limit logic in Manager).
+- BudgetManager: composes BudgetConfig + BudgetStore (injected). check_before_call uses get_budget + estimated_tokens + hard_stop/warning_threshold logic (writes warning Event if threshold crossed). record_consumption delegates to store. 3 scopes (session/project/daily) tracked independently.
+- Workflow engine integration (CHUNK-4.5): hook point (check_before_call before agent nodes; not fully wired in this chunk per prose — exercised in 7.4/7.6).
+- CI mode: high/unlimited limits for determinism.
+- Gate verifies full impl, Protocol conformance, blocking/warning behavior, multi-scope, layering (adapter no orchestration), no regression.
+
+**ANNEX (key excerpts):** Exact SqliteBudgetStore (with _ensure_table creating budget_ledger + idx), BudgetManager (full methods with warning via optional EventStore), test skeleton (13+ tests for store, manager, enforcement, layering, existing tests pass). Imports use aip. prefix in practice (per prior pattern).
+
+**2. Re-read of all DEPENDS-ON (current reality post-7.0a + prior):**
+- **CHUNK-7.0a (just completed):** Delivered BudgetConfig, BudgetScope, extended BudgetStore Protocol (new methods added to existing class per Rule #10 reconciliation). Schemas/protocols now have the exact interfaces 7.0b implements against. phase5_schema test green (13/13). This CC treats 7.0a as the new baseline.
+- **CHUNK-5.7:** SessionManager (orchestration/session.py). Budget tracking must integrate without breaking multi-turn/trajectory (5.8/6.5 exercised it). Engine (4.5) already wires budget in context (see step 4).
+- **CHUNK-6.0a/6.6 + Phase 4 baseline:** VectorStore health/count (Beast later), final gate pattern (7.7 will extend), production hardening. 7.0b gate includes layering + phase4_gate equivalents.
+- **CHUNK-4.5 (engine):** YAML workflow engine already has InMemoryBudgetStore wiring (from repo 3.x/4.5). 7.0b extends for enforcement (check_before_call before model calls).
+- **Phase 3/2/1/0:** Trace/Event stores for warnings, SessionContext, Protocol patterns (append-only respected in 7.0a), state.db roots.
+- Current deliverables post-7.0a: BudgetStore Protocol has both old (compat) + new methods; schemas have BudgetConfig/Scope; no Sqlite impl or BudgetManager yet (confirmed clean).
+
+**3. Cross-check against post-7.0a / post-Phase-4 Clean Bills:**
+- Git at 0a073b8 (7.0a) after cea3ea3 (pre-7.0a CC). All 6.0a–6.6 + 7.0a green.
+- 5.8 partial unchanged/non-blocking.
+- 7.0a CC reconciliations (BudgetStore extension for compat during 7.0b transition) directly enable this chunk.
+- No new violations; governance surface (incl new phase5 test) green.
+
+**4. Rule #10 overlap/reconciliation check (heavy emphasis per PHASE2_IMPORT_NOTES §10 + handoff):**
+- **Target files for 7.0b:** orchestration/budget.py (extend existing 57-line 3.11 partial), adapter/budget_store_sqlite.py (new per ANNEX), tests/test_budget_system.py (new), minimal hooks in orchestration/workflow/engine.py (extend existing wiring).
+- **Historical record (git + tree + WORKLOG + 7.0a CC):**
+  - budget.py: 677391fe (CHUNK-3.11 foundation), InMemoryBudgetStore + old methods (consume/remaining/reset) + SimpleAutonomyGate. Imports old BudgetStore.
+  - protocols.py: BudgetStore extended in 7.0a (0a073b82) with new methods + compat comment. Old methods from 3.12 (218f1d06).
+  - engine.py (181 lines, 4.5): Already imports InMemoryBudgetStore, wires it in WorkflowEngine __init__ / context / multiple places (lines ~17, 77, 101, 146-147). Pre-existing budget touchpoints from repo 3.x foundation.
+  - session.py (5.7): SessionManager exists; no budget yet.
+  - sexton/ (3.4): Untouched by budget chunk (per 7.0a decision).
+  - 7.0a files (schemas, protocols, phase5 test, config): New but additive; already gated.
+- **Overlaps + "extend existing rather than replace" decisions:**
+  - **budget.py (major, flagged):** Small foundation partial. **Reconciliation:** Extend this file with BudgetManager class (exact ANNEX) and any necessary updates to InMemoryBudgetStore to support new Protocol methods (or thin wrapper). Do not replace the 3.11 code. Keep old methods for any legacy callers during transition.
+  - **engine.py (4.5, high-risk integration point):** Already has budget wiring. **Reconciliation:** Extend the existing engine paths to call budget_manager.check_before_call(...) before agent/model nodes (per prose "hook" + "enforcement in workflow engine"). Add import for BudgetManager (from orchestration.budget after extension). Do not rewrite engine mechanics. Keep InMemory for CI/foundation paths; Sqlite for real.
+  - **protocols.py (post-7.0a):** Already extended. No further change for 7.0b (impl will satisfy the interface).
+  - **session.py:** Potential for budget injection in 7.0b/7.6. **Decision:** Extend SessionManager init/context if needed for per-session scope (minimal, non-breaking).
+  - **No 7.0b files exist (confirmed by find/ls):** Clean for new adapter/budget_store_sqlite.py (exact ANNEX, with aip. imports per delivered pattern) and test.
+  - **Path note:** Spec lists orchestration/budget.py (matches delivered location). adapter/ for Sqlite impl (correct per §7.2: adapter may import foundation).
+  - **Result:** Clean reconciliations. All extend-existing. No blockers. 7.0b will honor the 7.0a BudgetStore extension decision.
+
+**5. Architecture Rev 5.2 cross-references:**
+- §6 (BudgetStore Protocol): Core of 7.0b.
+- §11.1 (parallel nodes inherit parent budget): 3-scope tracking + inheritance in Manager.
+- §5.10 (state.db): budget_ledger table location.
+- §1.8 / §16.1 (toggleable, model_gen_assumption): Config-driven, warnings via EventStore.
+- §7.2 layering: adapter/budget_store_sqlite imports only foundation (enforced in gate).
+- Aligns with prose/ANNEX and 7.0a extensions.
+
+**6. Other findings + state verification (live in this CC):**
+- **Governance battery (live):** `uv run pytest tests/test_layering.py tests/test_phase4_gate.py tests/test_phase5_schema_additions.py -q`: **30 passed** (layering, phase4_gate 16/16 unchanged, phase5 13/13). No regressions.
+- **Hardcode scan (live):** NONE (clean post-7.0a).
+- **File / tree audit (live):** 
+  - adapter/budget_store_sqlite.py + tests/test_budget_system.py: do not exist (clean).
+  - budget.py: 57 lines, 3.11 origin, old impl only.
+  - engine.py: 181 lines, pre-existing budget wiring (InMemory) in multiple call sites.
+  - No other 7.0b concepts (SqliteBudgetStore, BudgetManager) in tree.
+  - 7.0a deliverables present and importable (BudgetConfig, extended BudgetStore).
+- **Git state (live):** HEAD 0a073b8 (post-7.0a), clean. Blames confirm 3.11/3.12 + 7.0a for budget surfaces.
+- **5.8 partial:** Unchanged.
+- **Environment:** CI-tolerant (InMemory will be used/extended for tests per prose).
+- **High-risk (handoff):** Budget/engine integration audited and reconciled (extend). No direct adapter imports in orchestration. All gates green.
+
+**Overall Pre-CHUNK-7.0b Continuity Check Result:**
+
+**Clean Bill of Health for baseline + readiness for CHUNK-7.0b (with documented budget/engine reconciliations).**
+
+- All 6 steps with direct live evidence (spec re-reads, git blame on budget/engine/protocols, 30 passed governance + phase5 test, hardcode clean, file absence confirmed, engine wiring audit).
+- Post-7.0a / post-Phase-4 Clean Bills hold; 5.8 non-blocking.
+- Rule #10: engine.py pre-existing wiring + small budget.py partial reconciled via "extend existing" (add BudgetManager + Sqlite impl; extend engine hooks minimally). 7.0a Protocol extension honored for compat. No 7.0b files pre-exist.
+- Permanent rules, +2 offset (CHUNK-7.0b), layering, §1.8, deterministic CI, Arch 5.2 alignments confirmed.
+- Zero 7.0b production code written. Tree clean at 0a073b8. Ready for exact-scope 7.0b (extend budget.py with Manager, new adapter/budget_store_sqlite.py per ANNEX, test per skeleton, minimal engine extension, gate).
+
+**This completes the mandatory full Continuity Check for CHUNK-7.0b.**
+
+The record above constitutes the authoritative audit. All evidence gathered via tool execution before any src/ or tests/ edits for 7.0b.
+
+**Ready to proceed to CHUNK-7.0b implementation (exact scope per prose + ANNEX — extend budget.py, new Sqlite impl in adapter/, test_budget_system.py, engine hooks), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-7.0b implementation.
+
+---
+
+**Phase 5 pre-7.0b CC complete. Tree clean at 0a073b8. Continuing per continuous execution directive after push.**
