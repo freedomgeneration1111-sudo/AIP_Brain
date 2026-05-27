@@ -3468,6 +3468,7 @@ More integration work (loader dispatch for "review"/"re_synthesize" node types i
 - Updated `orchestration/workflow/__init__.py` to export the new node types for convenience.
 - Fixed loader dispatch logic so string node types "review" and "re_synthesize" are handled before the strict Enum cast.
 - Smoke test confirmed: YAML with `type: review` now loads and instantiates ReviewNode.
+- Improved ReviewNode + ReSynthesizeNode to prefer the Phase 2 versioned/queryable stores (4.3/4.4) when injected via context (graceful fallback to older stores).
 
 Continuing the careful extension of the existing engine to full spec compliance for 4.5.
 

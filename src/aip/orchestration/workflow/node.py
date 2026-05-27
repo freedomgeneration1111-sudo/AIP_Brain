@@ -297,9 +297,10 @@ class ReviewNode(WorkflowNode):
         super().__init__(node_id, NodeType.DIALOG, config)  # Treated as dialog-like for pausing semantics
 
     async def run(self, context: "WorkflowContext") -> NodeResult:
-        artifact_store = context.get_protocol("artifact_store")
-        ecs_store = context.get_protocol("ecs_store")
-        event_store = context.get_protocol("event_store")
+        # Prefer the Phase 2 versioned/queryable stores (4.3/4.4) when available
+        artifact_store = context.get_protocol("versioned_artifact_store") or context.get_protocol("artifact_store")
+        ecs_store = context.get_protocol("guardrailed_ecs_store") or context.get_protocol("ecs_store")
+        event_store = context.get_protocol("queryable_event_store") or context.get_protocol("event_store")
         trace_store = context.get_protocol("trace_store")
         config = context.get_protocol("config")
 
@@ -335,9 +336,10 @@ class ReSynthesizeNode(WorkflowNode):
         super().__init__(node_id, NodeType.AGENT, config)  # Agent-like (can consume tokens)
 
     async def run(self, context: "WorkflowContext") -> NodeResult:
-        artifact_store = context.get_protocol("artifact_store")
-        ecs_store = context.get_protocol("ecs_store")
-        event_store = context.get_protocol("event_store")
+        # Prefer the Phase 2 versioned/queryable stores (4.3/4.4) when available
+        artifact_store = context.get_protocol("versioned_artifact_store") or context.get_protocol("artifact_store")
+        ecs_store = context.get_protocol("guardrailed_ecs_store") or context.get_protocol("ecs_store")
+        event_store = context.get_protocol("queryable_event_store") or context.get_protocol("event_store")
         trace_store = context.get_protocol("trace_store")
         config = context.get_protocol("config")
 
