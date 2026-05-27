@@ -7681,6 +7681,55 @@ CC complete. Next per linearized DAG: CHUNK-7.1 implementation.
 
 **Phase 5 pre-7.1 CC complete. Tree clean at 9c8331f. Continuing per continuous execution directive after push.**
 
+## CHUNK-7.1 — Sexton Failure Classification (Core Phase 5 Actor)
+
+**Date:** 2026-05 (post full pre-7.1 CC at 77a7740)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.1 box + prose + verification list)
+**DEPENDS-ON:** CHUNK-7.0a, CHUNK-5.0b, CHUNK-6.2
+**Status:** Gate green + pushed
+
+**Pre-CC Summary:**
+- Full pre-7.1 CC (with explicit Rule #10 decision to extend the real delivered `orchestration/sexton/sexton.py` 236-line 3.4 foundation in place; no parallel actors/ path) documented and pushed at 77a7740.
+- 7.0a (SextonConfig + FailureClassification with §1.8) + 7.0b (budget) baselines in place and green.
+- Existing sexton/ partial (minimal deterministic Appendix E + TraceStore injection + model_gen_assumption comments) confirmed as the only real delivered artifact.
+
+**Implementation (strict scope per prose + verification list — extend existing delivered partial):**
+- `src/aip/orchestration/sexton/sexton.py` (extend the 236-line delivered 3.4 foundation per Rule #10): 
+  - Updated __init__ to accept the full 7.1 contract (SextonConfig, ModelSlotResolver, TraceStore, EventStore) while preserving backward-compat for foundation callers.
+  - Added the four required async methods: classify_failures, classify_trace_event (returns FailureClassification with mandatory model_gen_assumption per §1.8), count_unclassified, run_classification_cycle.
+  - Real path (when resolver present and not ci_mode): uses resolver.call("sexton", ...) with prompt containing Appendix E taxonomy + trace data; parses response; writes classification back exclusively via TraceStore.
+  - CI / foundation path: reuses the existing deterministic _classify logic (Appendix E A–F rules based on node_type/detail/outcome) and wraps results as FailureClassification objects. This satisfies the spec's "CI mode uses deterministic fixtures derived from node_type and outcome" requirement exactly.
+  - Added helper methods for prompt building and minimal response parsing (faithful to prose).
+  - All new outputs carry model_gen_assumption. Layering respected (imports only foundation Protocols + adapter.model_slot_resolver; no concrete adapter storage).
+- `tests/test_sexton_classification.py` (new per ANNEX/gate verification list): Tests for instantiation with 7.1 contract, FailureClassification + §1.8 tagging, CI-mode deterministic fixtures, count/alert threshold, layering (no forbidden adapter imports).
+- No other files touched. The original foundation methods (classify_recent_failures, derive_ace_rules, audit_model_gen_assumption, etc.) are preserved for 7.2/7.3 and any legacy callers.
+
+**Gate Execution (exact command per spec):**
+```
+uv run pytest tests/test_sexton_classification.py tests/test_layering.py -xvs
+```
+(Plus full battery:)
+```
+uv run pytest ... (all Phase 4/5/7.0a/7.0b/7.1 surfaces) ...
+...
+============================== 42 passed in 0.44s ===============================
+```
+All 7.1 behaviors (classification flow, FailureClassification with model_gen_assumption, CI determinism, alerts, cycle) + layering + every prior gate (phase4 16/16, phase5 13/13, budget 9/9, etc.) green. No regressions.
+
+**Files Changed (this unit):**
+- src/aip/orchestration/sexton/sexton.py (extend with 7.1 interface on delivered foundation)
+- tests/test_sexton_classification.py (new, per spec verification list)
+
+**Permanent rules followed:** extend the real delivered sexton/sexton.py (per explicit pre-CC Rule #10 decision and handoff "extend existing rather than replace"), append-only WORKLOG, push after unit, +2 offset (CHUNK-7.1), qualified terminology, deterministic CI (resolver ci_mode + foundation _classify fixtures), exact scope per prose + verification list, Rule #10 documented (path + partial reconciliation), layering / §7.2 / §4.1 ("sexton" slot via resolver) / §1.8 respected. 5.8 untouched. 7.0a/7.0b extensions carried forward.
+
+**Rule #10 notes for this chunk (in addition to pre-CC):** The single delivered Sexton foundation was extended in place. Spec path "actors/" treated as logical shorthand (consistent with all prior path reconciliations). Existing deterministic logic reused for CI and foundation behavior — no duplication.
+
+**Next per DAG:** 7.2 (ACE Playbook). Immediate pre-7.2 CC required before any further edits.
+
+CHUNK-7.1 complete (gate green).
+
+**Phase 5 CHUNK-7.1 complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
+
 ## CHUNK-7.0b — Token Budget System (Phase 5 Resource Governance)
 
 **Date:** 2026-05 (post full pre-7.0b CC at 5a65575)
