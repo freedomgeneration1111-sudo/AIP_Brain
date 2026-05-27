@@ -6826,3 +6826,92 @@ All tests green + layering clean.
 **Next per DAG:** 6.4 (production hardening) on the same path, then 6.5 integration (now both paths have their foundation ready).
 
 CHUNK-6.3 complete. Gate green.
+
+## Full Pre-CHUNK-6.4 Continuity Check (Mandatory before Production Hardening)
+
+**Date:** 2026-05 (immediately after CHUNK-6.3 gate green + push at fcc131d)
+**Scope:** Full 6-step Continuity Check per permanent rules before any production code for CHUNK-6.4. Authoritative baselines: post-Phase-3 Clean Bill, all prior 6.x CCs and completion records (through 6.3), SSOT Phase 4 Rev1.0, PHASE2_IMPORT_NOTES, Architecture Rev 5.2.
+**Next Chunk Selection:** Per linearized build order ("... → 6.3 → 6.4 → 6.5 ..."), after completing 6.3 (factory + migration) on the pgvector path, the next is CHUNK-6.4 (Production Hardening — connection management, health checks, graceful degradation, retry logic, aip status backend). This completes the adapter path foundation for convergence at 6.5.
+
+**1. Re-read of target CHUNK-6.4 (from SSOT specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md:1825+):**
+
+```
+CHUNK-6.4: Production Hardening — Connection Management, Health Checks & Graceful Degradation
+PHASE: 4
+DEPENDS-ON: CHUNK-6.3
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~3,000 tokens
+FILES:
+  adapter/vector/connection_manager.py
+  adapter/health.py
+  tests/test_production_hardening.py
+INTERFACES:
+  class VectorStoreConnectionManager: __init__, get_store, health_check_all, shutdown
+  async def system_health_check(config) -> dict
+TESTS: tests/test_production_hardening.py
+GATE: uv run pytest tests/test_production_hardening.py tests/test_layering.py -xvs
+```
+
+**Prose key mandates:**
+- VectorStoreConnectionManager: long-lived, wraps factory (6.3), lazy get_store, shutdown closes pool, retry with exp backoff (3 attempts) before fallback.
+- system_health_check: vector store + embedding (Ollama), returns status dict for `aip status` CLI (Phase 0).
+- Graceful degradation chain: pgvector → sqlite_vss → in-memory stub.
+- Trace events for backend_fallback.
+- Gate verifies manager, health, degradation, shutdown, retry, layering.
+
+**ANNEX:** health.py with system_health_check (imports factory, calls health_check, handles degradation); test with HEALTH_CONFIG for sqlite and pgvector-unavailable cases.
+
+**2. Re-read of all DEPENDS-ON (current reality):**
+
+- **CHUNK-6.3 (just completed + green):** factory.py and migrate.py present. create_vector_store accepts dict config and returns working stores (with graceful degradation logic).
+- **CHUNK-6.0b:** PgvectorStore has initialize(), close(), health_check(), count(). Connection pool is internal.
+- Current adapter/vector/: factory.py, migrate.py, pgvector_store.py, sqlite_vss_store.py, empty __init__.py.
+- No connection_manager.py or health.py yet (clean).
+- No "aip status" CLI implementation visible yet (Phase 0 stub referenced in spec; 6.4 provides the backend).
+- Governance: layering clean post-6.3; pre-existing network gate issues unrelated (Phase 1 adversarial hardcodes).
+
+**3. Cross-check against post-Phase-3 CC + prior 6.x work + 5.8 plan:**
+
+- Git: at fcc131d (6.3) + minor uv.lock. All 6.0-6.3 adapter work present.
+- All prior Clean Bills hold. 5.8 partial untouched.
+- 6.3 factory directly enables the ConnectionManager in 6.4.
+- Hardening (retry, health, shutdown, degradation reporting) completes the adapter path for 6.5 scenarios (degradation path test).
+
+**4. Rule #10 overlap/reconciliation check:**
+
+- Target files: adapter/vector/connection_manager.py (new), adapter/health.py (new), test_production_hardening.py (new).
+- Historical record: No prior connection management, system health check, or production hardening code in adapter/ (only the stores from 1.0b/6.0b and the new factory/migrate from 6.3). CLI status was a Phase 0 stub (no implementation yet).
+- Overlap: None on new files. The stores' health_check/close methods (from 6.0b) are the exact hooks the manager will use.
+- **Reconciliation:** Clean — new files per ANNEX. Implement ConnectionManager with retry + fallback using the factory (6.3). Implement system_health_check exactly as in ANNEX (vector + embedding status). No changes to existing stores or factory.
+
+**5. Architecture Rev 5.2 cross-references:**
+
+- §2.2: Health reporting and degradation visibility for the VectorStore abstraction.
+- §7.2: Pure adapter layer (imports only foundation + the vector subpackage).
+- §1.8: Config-driven (retry counts/delays, thresholds via the passed config).
+- Production hardening requirements (connection lifecycle, health, graceful degradation with trace events) directly match the Phase Scope Definition and §2.2 portability goals.
+
+**6. Other findings + state verification:**
+
+- No 6.4 code exists.
+- Prompts/ has the 6.2 eval prompts (unrelated).
+- 6.4 is L2 adapter work (connection_manager + health) — zero impact on orchestration or prior node work.
+- The `aip status` backend is the main deliverable for Phase 0 CLI users.
+
+**Overall Pre-CHUNK-6.4 Continuity Check Result:**
+
+**Clean Bill of Health for baseline + readiness for CHUNK-6.4.**
+
+- All 6 steps executed with direct evidence.
+- Prior Clean Bills hold; 5.8 plan intact.
+- No overlaps; clean reconciliation (new files + direct use of 6.0b/6.3 hooks).
+- All permanent rules, layering, and hardening requirements align with the chunk design.
+
+**This completes the mandatory full Continuity Check for CHUNK-6.4.**
+
+The record above constitutes the authoritative audit. All evidence gathered via tool execution before any src/ or tests/ edits for 6.4.
+
+**Ready to proceed to CHUNK-6.4 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next chunk (per DAG): 6.5 (integration, after 6.4 + 5.8).
+
