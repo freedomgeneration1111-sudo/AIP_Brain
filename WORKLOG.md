@@ -3215,6 +3215,39 @@ Clean L2 adapter chunk. The ci_mode requirement is important for keeping the "gr
 
 **Status:** CC complete. Ready for 5.0b.
 
+---
+
+## Task ID: 5.1-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.1: Embedding Slot Client (OllamaEmbeddingClient)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0b (resolver) + 1.1 (retrieve_for_synthesis which accepts embed_fn).
+- This is the first real model integration (replaces fake_embed for the embedding slot).
+- Lives in adapter/embedding/ (correct layering).
+- Must support deterministic mock mode for CI (no real Ollama required for the gate).
+- Must implement the EmbeddingProvider Protocol from 5.0a.
+
+**Conclusion:**
+Important "first real model" chunk. The mock requirement keeps the grind deterministic. No blockers.
+
+**Status:** CC complete. Ready for 5.1.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/adapter/embedding/ollama_embed.py` — real Ollama client + MockOllamaEmbeddingClient for CI (httpx import is lazy so the module imports without the dependency).
+- Created package `adapter/embedding/__init__.py`.
+- Created `tests/test_ollama_embed.py` (using the mock) — protocol compliance + determinism.
+- Gate (with layering): **4/4 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.1 complete.
+
+Continuing the Phase 3 grind.
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/adapter/model_slot_resolver.py` — basic resolver with ci_mode support and clear extension points for real providers.
 - Created `tests/test_model_slot_resolver.py` — resolution, ci_mode fixture, and slot listing tests.
@@ -3455,6 +3488,39 @@ Continuing the grind.
 Clean L2 adapter chunk. The ci_mode requirement is important for keeping the "grind" deterministic. No blockers.
 
 **Status:** CC complete. Ready for 5.0b.
+
+---
+
+## Task ID: 5.1-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.1: Embedding Slot Client (OllamaEmbeddingClient)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0b (resolver) + 1.1 (retrieve_for_synthesis which accepts embed_fn).
+- This is the first real model integration (replaces fake_embed for the embedding slot).
+- Lives in adapter/embedding/ (correct layering).
+- Must support deterministic mock mode for CI (no real Ollama required for the gate).
+- Must implement the EmbeddingProvider Protocol from 5.0a.
+
+**Conclusion:**
+Important "first real model" chunk. The mock requirement keeps the grind deterministic. No blockers.
+
+**Status:** CC complete. Ready for 5.1.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/adapter/embedding/ollama_embed.py` — real Ollama client + MockOllamaEmbeddingClient for CI (httpx import is lazy so the module imports without the dependency).
+- Created package `adapter/embedding/__init__.py`.
+- Created `tests/test_ollama_embed.py` (using the mock) — protocol compliance + determinism.
+- Gate (with layering): **4/4 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.1 complete.
+
+Continuing the Phase 3 grind.
+
+
 
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/adapter/model_slot_resolver.py` — basic resolver with ci_mode support and clear extension points for real providers.
@@ -3954,6 +4020,39 @@ Clean L2 adapter chunk. The ci_mode requirement is important for keeping the "gr
 
 **Status:** CC complete. Ready for 5.0b.
 
+---
+
+## Task ID: 5.1-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.1: Embedding Slot Client (OllamaEmbeddingClient)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0b (resolver) + 1.1 (retrieve_for_synthesis which accepts embed_fn).
+- This is the first real model integration (replaces fake_embed for the embedding slot).
+- Lives in adapter/embedding/ (correct layering).
+- Must support deterministic mock mode for CI (no real Ollama required for the gate).
+- Must implement the EmbeddingProvider Protocol from 5.0a.
+
+**Conclusion:**
+Important "first real model" chunk. The mock requirement keeps the grind deterministic. No blockers.
+
+**Status:** CC complete. Ready for 5.1.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/adapter/embedding/ollama_embed.py` — real Ollama client + MockOllamaEmbeddingClient for CI (httpx import is lazy so the module imports without the dependency).
+- Created package `adapter/embedding/__init__.py`.
+- Created `tests/test_ollama_embed.py` (using the mock) — protocol compliance + determinism.
+- Gate (with layering): **4/4 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.1 complete.
+
+Continuing the Phase 3 grind.
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/adapter/model_slot_resolver.py` — basic resolver with ci_mode support and clear extension points for real providers.
 - Created `tests/test_model_slot_resolver.py` — resolution, ci_mode fixture, and slot listing tests.
@@ -4128,6 +4227,39 @@ Clean L2 adapter chunk. The ci_mode requirement is important for keeping the "gr
 
 **Status:** CC complete. Ready for 5.0b.
 
+---
+
+## Task ID: 5.1-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.1: Embedding Slot Client (OllamaEmbeddingClient)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0b (resolver) + 1.1 (retrieve_for_synthesis which accepts embed_fn).
+- This is the first real model integration (replaces fake_embed for the embedding slot).
+- Lives in adapter/embedding/ (correct layering).
+- Must support deterministic mock mode for CI (no real Ollama required for the gate).
+- Must implement the EmbeddingProvider Protocol from 5.0a.
+
+**Conclusion:**
+Important "first real model" chunk. The mock requirement keeps the grind deterministic. No blockers.
+
+**Status:** CC complete. Ready for 5.1.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/adapter/embedding/ollama_embed.py` — real Ollama client + MockOllamaEmbeddingClient for CI (httpx import is lazy so the module imports without the dependency).
+- Created package `adapter/embedding/__init__.py`.
+- Created `tests/test_ollama_embed.py` (using the mock) — protocol compliance + determinism.
+- Gate (with layering): **4/4 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.1 complete.
+
+Continuing the Phase 3 grind.
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/adapter/model_slot_resolver.py` — basic resolver with ci_mode support and clear extension points for real providers.
 - Created `tests/test_model_slot_resolver.py` — resolution, ci_mode fixture, and slot listing tests.
@@ -4301,6 +4433,39 @@ Clean L2 adapter chunk. The ci_mode requirement is important for keeping the "gr
 
 **Status:** CC complete. Ready for 5.0b.
 
+---
+
+## Task ID: 5.1-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.1: Embedding Slot Client (OllamaEmbeddingClient)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0b (resolver) + 1.1 (retrieve_for_synthesis which accepts embed_fn).
+- This is the first real model integration (replaces fake_embed for the embedding slot).
+- Lives in adapter/embedding/ (correct layering).
+- Must support deterministic mock mode for CI (no real Ollama required for the gate).
+- Must implement the EmbeddingProvider Protocol from 5.0a.
+
+**Conclusion:**
+Important "first real model" chunk. The mock requirement keeps the grind deterministic. No blockers.
+
+**Status:** CC complete. Ready for 5.1.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/adapter/embedding/ollama_embed.py` — real Ollama client + MockOllamaEmbeddingClient for CI (httpx import is lazy so the module imports without the dependency).
+- Created package `adapter/embedding/__init__.py`.
+- Created `tests/test_ollama_embed.py` (using the mock) — protocol compliance + determinism.
+- Gate (with layering): **4/4 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.1 complete.
+
+Continuing the Phase 3 grind.
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/adapter/model_slot_resolver.py` — basic resolver with ci_mode support and clear extension points for real providers.
 - Created `tests/test_model_slot_resolver.py` — resolution, ci_mode fixture, and slot listing tests.
@@ -4473,6 +4638,39 @@ Continuing the grind.
 Clean L2 adapter chunk. The ci_mode requirement is important for keeping the "grind" deterministic. No blockers.
 
 **Status:** CC complete. Ready for 5.0b.
+
+---
+
+## Task ID: 5.1-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.1: Embedding Slot Client (OllamaEmbeddingClient)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0b (resolver) + 1.1 (retrieve_for_synthesis which accepts embed_fn).
+- This is the first real model integration (replaces fake_embed for the embedding slot).
+- Lives in adapter/embedding/ (correct layering).
+- Must support deterministic mock mode for CI (no real Ollama required for the gate).
+- Must implement the EmbeddingProvider Protocol from 5.0a.
+
+**Conclusion:**
+Important "first real model" chunk. The mock requirement keeps the grind deterministic. No blockers.
+
+**Status:** CC complete. Ready for 5.1.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/adapter/embedding/ollama_embed.py` — real Ollama client + MockOllamaEmbeddingClient for CI (httpx import is lazy so the module imports without the dependency).
+- Created package `adapter/embedding/__init__.py`.
+- Created `tests/test_ollama_embed.py` (using the mock) — protocol compliance + determinism.
+- Gate (with layering): **4/4 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.1 complete.
+
+Continuing the Phase 3 grind.
+
+
 
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/adapter/model_slot_resolver.py` — basic resolver with ci_mode support and clear extension points for real providers.
