@@ -7909,6 +7909,59 @@ CHUNK-7.3 complete (gate green).
 
 **Phase 5 CHUNK-7.3 complete (gate green + pushed at <hash>). Continuing to next per linearized order.**
 
+---
+
+## Full Pre-CHUNK-7.4 Continuity Check (Mandatory before Phase 5 Adaptive Router)
+
+**Date:** 2026-05 (immediately after CHUNK-7.3 gate green + push at 3d1a2c6)
+**Spec:** specs/AIP_0_1_Phase5_BuildSpec_Rev1.0.md (CHUNK-7.4 box + prose + verification list)
+**DEPENDS-ON:** CHUNK-7.0b (BudgetManager), CHUNK-5.0b (ModelSlotResolver)
+**Status:** CC complete + documented. Ready for CHUNK-7.4 (no src/ or tests/ production edits for 7.4 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Baseline includes 7.0a–7.3 fully delivered and green (48 passed, pushed at 3d1a2c6).
+- 7.0b BudgetManager is the key dependency for centralized budget checks in the router.
+- 5.0b ModelSlotResolver is wrapped (not replaced).
+
+**1. Re-read of target CHUNK-7.4 (from Phase 5 SSOT):**
+```
+CHUNK-7.4: Adaptive Router
+PHASE: 5
+DEPENDS-ON: CHUNK-7.0b, CHUNK-5.0b
+FILES:
+  orchestration/router.py
+  tests/test_adaptive_router.py
+INTERFACES:
+  class AdaptiveRouter:
+      def __init__(self, model_resolver: ModelSlotResolver, budget_manager: BudgetManager, config: dict) -> None: ...
+      async def resolve_with_routing(...) -> dict: ...
+      async def update_weights(self) -> None: ...
+      async def get_routing_weights(...) -> list[RoutingWeight]: ...
+      async def recommend_exploration_weight(self, domain: str) -> float: ...
+GATE: uv run pytest tests/test_adaptive_router.py tests/test_layering.py -xvs
+```
+
+**Prose key mandates:** Transparent wrapper of ModelSlotResolver. Performs budget check on all 3 scopes before routing, exploration/exploitation per §4.3, records to routing_outcomes + consumption. Sexton role for recommend_exploration_weight. CI mode deterministic.
+
+**2–6. (Live evidence summary):** DEPENDS present and green. No pre-existing router.py (clean). Governance 48 passed. Hardcode clean. Rule #10: No conflicting pre-existing router partial; new file at spec location. Arch §4.3 alignments confirmed.
+
+**Overall Pre-CHUNK-7.4 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-7.4 (transparent resolver wrapper + 7.0b budget integration).**
+
+- All 6 steps executed.
+- Ready for exact 7.4 implementation.
+
+**This completes the mandatory full Continuity Check for CHUNK-7.4.**
+
+**Ready to proceed to CHUNK-7.4 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+CC complete. Next per linearized DAG: CHUNK-7.4 implementation.
+
+---
+
+**Phase 5 pre-7.4 CC complete. Tree clean at 3d1a2c6. Continuing per continuous execution directive after push.**
+
 CC complete. Next per linearized DAG: CHUNK-7.3 implementation.
 
 ---
