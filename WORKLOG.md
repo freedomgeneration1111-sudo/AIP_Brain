@@ -238,7 +238,54 @@ All succeeded. The types Rev 1.3 expects to be present before CHUNK-1.0a now exi
 
 **Current position in Rev 1.3 linearized order:** 1.0a ✓ → 1.0b ✓ → 1.1 ✓ → 1.2 ✓
 
-Ready for 1.3 (Synthesis stub) on next command.
+---
+
+## Task ID: 1.3-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-1.3: Synthesis Node Stub (L1 agent node interface, no model call in CI)
+
+**Continuity Check (performed before writing any code for this chunk):**
+
+**1. Re-read of target CHUNK (Rev 1.3):**
+- CHUNK-1.3 is explicitly a **stub**.
+- Signature: `async def synthesize(query: str, domain: str, retrieval_result: RetrievalResult, model_slot: str = "synthesis") -> SynthesisOutput`
+- SynthesisOutput must contain: content, model_slot, model_name, token_count_in/out, latency_ms.
+- "In stub mode, the slot is resolved through the config but no API call is made."
+- The stub’s output content **must pass** the structural_validate checks from CHUNK-1.2.
+- DEPENDS-ON corrected in Rev 1.3 to: CHUNK-1.1 + CHUNK-0.2 (config system with slot resolution).
+- The provided ANNEX shows a small helper `_resolve_model_name` that reads from `cfg.get("models", {})`.
+
+**2. Review of DEPENDS-ON chunks we have delivered:**
+- CHUNK-1.1 (✓): Produces `RetrievalResult` with `status`, `hits: list[Chunk]`, `max_confidence`, `message`. This matches what 1.3 expects as input. Good.
+- CHUNK-0.2: **Gap identified**. We only have a minimal `config/aip.config.toml` from 0.BOOTSTRAP (only [retrieval] section). We do not yet have:
+  - The actual config loader (`config/loader.py` or equivalent)
+  - A validated `AipConfig` (or dict equivalent) that CHUNK-0.2 was supposed to deliver
+  - A [models] section with slot assignments (the ANNEX code for 1.3 expects this structure)
+
+**3. Revision Log & Cross-references checked:**
+- No major new deltas in the 1.2 → 1.3 section specifically target synthesis (the main correction was the DEPENDS-ON change to 0.2).
+- Consistent with §1.2 / §1.3 (harness controls retrieval and context).
+- Must respect no-network / no-hardcoded-model rules (will be enforced later by 1.7, but we must not violate early).
+- Output of synthesize must be compatible with downstream CHUNK-1.4 (adversarial_eval takes SynthesisOutput) and 1.5 (definer_gate).
+
+**4. Current repo state consistency:**
+- We have `RetrievalResult` and `Chunk` (from 1.0a + 1.1) → compatible.
+- We have `structural_validate` (from 1.2) → we must call it on the stub output inside the synthesize function or in tests.
+- Our current `aip.config.toml` lacks [models] → the `_resolve_model_name` helper in the spec ANNEX will fall back to `"<synthesis-slot-unconfigured>"`. This is acceptable for a stub, but we should note it.
+- `test_layering.py` still does not exist (appears in the gate for 1.3). This is a recurring missing artifact from Phase 0.
+
+**5. Risks / Observations before implementation:**
+- Risk: If we implement a full config loader here, we would be doing CHUNK-0.2 work out of order. We should keep the synthesis stub minimal and only do the resolution logic shown in the 1.3 ANNEX (or a thin wrapper).
+- Observation: The spec says the function is "substantially unchanged from Rev 1.0 except model name resolution". We should keep the stub as simple as possible.
+- Positive: No conflicting changes from 1.0a/1.0b/1.1/1.2 that would break this stub.
+
+**Conclusion of Continuity Check:** 
+We can proceed with CHUNK-1.3, but the implementation must be deliberately minimal. We will use the exact `_resolve_model_name` pattern from the spec ANNEX (accepting the current limited config shape). We will ensure the returned content can pass `structural_validate`. We will not build the full CHUNK-0.2 config loader as part of this task unless the spec for 1.3 explicitly requires it (it does not).
+
+**Status:** Continuity Check complete. Awaiting confirmation to begin implementation.
+
+**Pushed:** (will push after this entry is finalized)
 
 ---
 
