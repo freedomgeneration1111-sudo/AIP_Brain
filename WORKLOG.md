@@ -8918,6 +8918,67 @@ CC complete. Next per linearized DAG: CHUNK-8.7 implementation (after push).
 
 ---
 
+## Full Pre-CHUNK-8.8 Continuity Check (Mandatory before Final Cross-Cutting Gates)
+
+**Date:** 2026-05 (immediately after CHUNK-8.7 push at 4aa8e70)
+**Spec:** specs/AIP_0_1_Phase6_BuildSpec_Rev1.0.md (CHUNK-8.8 box + prose)
+**DEPENDS-ON:** CHUNK-8.7, all prior (0-8.6)
+**Status:** CC complete + documented. Ready for CHUNK-8.8 (no src/ or tests/ production edits for 8.8 performed during this CC).
+
+**Pre-CC Reconciliations Applied:**
+- Post-8.7 baseline: All surfaces (8.1-8.7) + 8.0b adapters + Phase 5 actors + integration test green on core battery (62 passed; fastapi-gated surface tests follow established pattern).
+- Rule #10: No pre-existing `tests/test_phase6_gates.py`. This is the final extension of 7.7 (Phase 5 gates) with surface-specific checks. Clean for the new test file.
+- All prior Clean Bills + 7.7/8.7 hold.
+- Continuous execution: the capstone after 8.7 (the integration test that exercises everything).
+
+**1. Re-read of target CHUNK-8.8 (from Phase 6 SSOT):**
+
+```
+CHUNK-8.8: Cross-Cutting Gates
+PHASE: 6
+DEPENDS-ON: CHUNK-8.7, all prior
+CODER-PROFILE: L1
+CONTEXT-BUDGET: ~3,000 tokens
+FILES:
+  tests/test_phase6_gates.py
+INTERFACES:
+  # 7 categories extending 7.7:
+  # 1. Network isolation (AST: no httpx/requests in adapter/ surfaces except ModelProvider)
+  # 2. Model-name gate (no hardcodes in surfaces)
+  # 3. DEFINER sovereignty (no bypass of AutonomyGate for admin across REST/MCP/CLI)
+  # 4. Import boundary (test_layering + storage_contracts still pass with 8.0-8.6)
+  # 5. Appendix D (UI ≠ authority, MCP ≠ bypass, MCP ≠ direct vector)
+  # 6. Config toggleability (§1.8 for all Phase 6 sections)
+  # 7. Existing 0-5 gates still pass
+TESTS: tests/test_phase6_gates.py
+GATE: uv run pytest tests/test_phase6_gates.py tests/test_layering.py tests/test_storage_contracts.py -xvs
+```
+
+**Prose key mandates:** Final quality gate verifying architectural invariants across all Phase 6 surfaces (network, model names, sovereignty, boundaries, Appendix D, §1.8, backward compat). Extends 7.7 exactly.
+
+**2–6. (Live evidence):** All DEPENDS present/green. No pre-existing phase6_gates.py (clean). Governance 62 passed on core. Rule #10: New test file at spec location exercises the full delivered 8.0-8.6 surface code + confirms no regressions on 0-7.7 gates. Arch §22 (final acceptance), §4.1 (model names), §7.2 (boundaries), §1.7/Appendix D (sovereignty) directly map to the 7 categories. Post-8.7 Clean Bill holds.
+
+**Overall Pre-CHUNK-8.8 Continuity Check Result:**
+
+**Clean Bill of Health + readiness for CHUNK-8.8 (final 7-category gate test extending 7.7 for all Phase 6 surfaces; clean new test per Rule #10; 62 passed core baseline).**
+
+- All 6 steps executed.
+- Ready for exact 8.8.
+
+**This completes the mandatory full Continuity Check for CHUNK-8.8.**
+
+**Ready to proceed to CHUNK-8.8 implementation (exact scope per prose + ANNEX), gate, WORKLOG append, and push.**
+
+**This is the final chunk. After this, Architectural Phase 6 is complete.**
+
+CC complete. Next (and last): CHUNK-8.8 implementation (after push).
+
+---
+
+**Phase 6 pre-8.8 CC complete. Tree clean at 4aa8e70. Continuing per continuous execution directive after push.**
+
+---
+
 ## CHUNK-8.7 — Integration Test (7 Scenarios Across All Phase 6 Surfaces)
 
 **Date:** 2026-05 (post pre-8.7 CC at e6c73b7)
