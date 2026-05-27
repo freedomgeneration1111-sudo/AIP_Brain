@@ -3270,6 +3270,39 @@ Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.3.
 
+---
+
+## Task ID: 5.4-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.4: Failure Streak Detector (Type E)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a.
+- Third L4 detector (false success / tool failure streak → E).
+- Looks for consecutive "claimed completion but actually incomplete" signals (often from trace or synthesis outputs).
+- Must emit TrajectorySignal with proper §1.8 tagging.
+
+**Conclusion:**
+Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.4.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/failure_streak.py` — FailureStreakDetector (Type E) looking for consecutive low-substance "completion" claims.
+- Created `tests/test_failure_streak.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.4 complete.
+
+This finishes the three core L4 trajectory detectors (D, F, E) from §10.1.
+
+Continuing the Phase 3 grind (next natural: 5.5 Trajectory Regulator — the "2 of 3" composer).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/anxiety_detector.py` — ContextAnxietyDetector using output length decline as proxy for Type F.
 - Created `tests/test_anxiety_detector.py`.
@@ -3608,6 +3641,39 @@ First actual L4 detector implementation. Clean. No blockers.
 Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.3.
+
+---
+
+## Task ID: 5.4-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.4: Failure Streak Detector (Type E)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a.
+- Third L4 detector (false success / tool failure streak → E).
+- Looks for consecutive "claimed completion but actually incomplete" signals (often from trace or synthesis outputs).
+- Must emit TrajectorySignal with proper §1.8 tagging.
+
+**Conclusion:**
+Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.4.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/failure_streak.py` — FailureStreakDetector (Type E) looking for consecutive low-substance "completion" claims.
+- Created `tests/test_failure_streak.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.4 complete.
+
+This finishes the three core L4 trajectory detectors (D, F, E) from §10.1.
+
+Continuing the Phase 3 grind (next natural: 5.5 Trajectory Regulator — the "2 of 3" composer).
+
+
 
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/anxiety_detector.py` — ContextAnxietyDetector using output length decline as proxy for Type F.
@@ -4205,6 +4271,39 @@ Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.3.
 
+---
+
+## Task ID: 5.4-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.4: Failure Streak Detector (Type E)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a.
+- Third L4 detector (false success / tool failure streak → E).
+- Looks for consecutive "claimed completion but actually incomplete" signals (often from trace or synthesis outputs).
+- Must emit TrajectorySignal with proper §1.8 tagging.
+
+**Conclusion:**
+Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.4.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/failure_streak.py` — FailureStreakDetector (Type E) looking for consecutive low-substance "completion" claims.
+- Created `tests/test_failure_streak.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.4 complete.
+
+This finishes the three core L4 trajectory detectors (D, F, E) from §10.1.
+
+Continuing the Phase 3 grind (next natural: 5.5 Trajectory Regulator — the "2 of 3" composer).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/anxiety_detector.py` — ContextAnxietyDetector using output length decline as proxy for Type F.
 - Created `tests/test_anxiety_detector.py`.
@@ -4477,6 +4576,39 @@ Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.3.
 
+---
+
+## Task ID: 5.4-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.4: Failure Streak Detector (Type E)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a.
+- Third L4 detector (false success / tool failure streak → E).
+- Looks for consecutive "claimed completion but actually incomplete" signals (often from trace or synthesis outputs).
+- Must emit TrajectorySignal with proper §1.8 tagging.
+
+**Conclusion:**
+Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.4.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/failure_streak.py` — FailureStreakDetector (Type E) looking for consecutive low-substance "completion" claims.
+- Created `tests/test_failure_streak.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.4 complete.
+
+This finishes the three core L4 trajectory detectors (D, F, E) from §10.1.
+
+Continuing the Phase 3 grind (next natural: 5.5 Trajectory Regulator — the "2 of 3" composer).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/anxiety_detector.py` — ContextAnxietyDetector using output length decline as proxy for Type F.
 - Created `tests/test_anxiety_detector.py`.
@@ -4748,6 +4880,39 @@ Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.3.
 
+---
+
+## Task ID: 5.4-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.4: Failure Streak Detector (Type E)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a.
+- Third L4 detector (false success / tool failure streak → E).
+- Looks for consecutive "claimed completion but actually incomplete" signals (often from trace or synthesis outputs).
+- Must emit TrajectorySignal with proper §1.8 tagging.
+
+**Conclusion:**
+Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.4.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/failure_streak.py` — FailureStreakDetector (Type E) looking for consecutive low-substance "completion" claims.
+- Created `tests/test_failure_streak.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.4 complete.
+
+This finishes the three core L4 trajectory detectors (D, F, E) from §10.1.
+
+Continuing the Phase 3 grind (next natural: 5.5 Trajectory Regulator — the "2 of 3" composer).
+
+
+
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/anxiety_detector.py` — ContextAnxietyDetector using output length decline as proxy for Type F.
 - Created `tests/test_anxiety_detector.py`.
@@ -5018,6 +5183,39 @@ First actual L4 detector implementation. Clean. No blockers.
 Clean. No blockers.
 
 **Status:** CC complete. Ready for 5.3.
+
+---
+
+## Task ID: 5.4-1
+
+**Agent:** Grok Build  
+**Task:** CHUNK-5.4: Failure Streak Detector (Type E)
+
+**Continuity Check:**
+- DEPENDS-ON: 5.0a.
+- Third L4 detector (false success / tool failure streak → E).
+- Looks for consecutive "claimed completion but actually incomplete" signals (often from trace or synthesis outputs).
+- Must emit TrajectorySignal with proper §1.8 tagging.
+
+**Conclusion:**
+Clean. No blockers.
+
+**Status:** CC complete. Ready for 5.4.
+
+**Implementation notes (filled after code + gate):**
+- Created `src/aip/orchestration/l4/failure_streak.py` — FailureStreakDetector (Type E) looking for consecutive low-substance "completion" claims.
+- Created `tests/test_failure_streak.py`.
+- Gate (with layering): **3/3 PASSED**.
+
+**Gate result:** Gate green.
+
+**Status:** CHUNK-5.4 complete.
+
+This finishes the three core L4 trajectory detectors (D, F, E) from §10.1.
+
+Continuing the Phase 3 grind (next natural: 5.5 Trajectory Regulator — the "2 of 3" composer).
+
+
 
 **Implementation notes (filled after code + gate):**
 - Created `src/aip/orchestration/l4/anxiety_detector.py` — ContextAnxietyDetector using output length decline as proxy for Type F.
