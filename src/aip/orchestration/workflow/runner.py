@@ -65,8 +65,13 @@ class SequentialRunner:
                         i = target_idx
                         continue
                     except StopIteration:
-                        # Target not found — fall through to normal increment
                         pass
+
+            # Pause execution if a dialog node signaled it needs to wait for DEFINER input
+            if node.node_type == NodeType.DIALOG:
+                if isinstance(result.output, dict) and result.output.get("paused"):
+                    # Stop the runner; the caller is responsible for resuming later
+                    break
 
             i += 1
 

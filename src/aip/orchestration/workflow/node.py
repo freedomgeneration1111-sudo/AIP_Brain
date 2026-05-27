@@ -125,17 +125,71 @@ class ConditionNode(WorkflowNode):
 
 
 class DialogNode(WorkflowNode):
-    """Structured DEFINER gate node that pauses the workflow."""
+    """Structured DEFINER gate node that can pause the workflow and emit events."""
 
-    def __init__(self, node_id: str, prompt: str, config: dict[str, Any] | None = None):
+    def __init__(
+        self,
+        node_id: str,
+        prompt: str,
+        gate_callable=None,   # Optional callable: async def(synthesis, validation, eval) -> DefinerDecision
+        synthesis_output=None,
+        validation_result=None,
+        eval_result=None,
+        config: dict[str, Any] | None = None,
+    ):
         super().__init__(node_id, NodeType.DIALOG, config)
         self.prompt = prompt
+        self.gate_callable = gate_callable
+        self.synthesis_output = synthesis_output
+        self.validation_result = validation_result
+        self.eval_result = eval_result
 
     async def run(self, context: "WorkflowContext") -> NodeResult:
-        # Must emit an event before "pausing" (per spec)
-        # In this foundation chunk we just record the intent.
-        context.emit_event("dialog.paused", {"node_id": self.node_id, "prompt": self.prompt})
-        return NodeResult(success=True, output={"executed": self.node_id, "type": "dialog", "paused": True})
+        """
+        Execute the dialog / DEFINER gate.
+
+        If a gate_callable is provided (or can be retrieved from context),
+        it is invoked. The result determines whether we pause or continue.
+
+        Per spec: dialog nodes must produce an event before "resuming".
+        """
+        # Try to get a gate from context protocols if not directly provided
+        gate = self.gate_callable or context.get_protocol("definer_gate")
+
+        decision = None
+        if gate and self.synthesis_output and self.validation_result and self.eval_result:
+            try:
+                decision = await gate(
+                    self.synthesis_output,
+                    self.validation_result,
+                    self.eval_result,
+                )
+            except Exception as e:
+                decision = None  # fall through to pause
+
+        # Default behavior for this chunk: emit event and pause
+        # (real decision logic can be injected via gate_callable)
+        event_payload = {
+            "node_id": self.node_id,
+            "prompt": self.prompt,
+            "decision": decision.action if decision else "pending",
+            "reason": getattr(decision, "reason", None) if decision else None,
+        }
+
+        context.emit_event("workflow.dialog.paused", event_payload)
+
+        paused = decision is None or decision.action != "approve"
+
+        return NodeResult(
+            success=True,
+            output={
+                "executed": self.node_id,
+                "type": "dialog",
+                "paused": paused,
+                "decision": decision.action if decision else "pending",
+            },
+            metadata={"event_emitted": True},
+        )
 
 
 class ParallelNode(WorkflowNode):

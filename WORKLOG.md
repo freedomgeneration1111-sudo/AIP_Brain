@@ -861,3 +861,15 @@ For CHUNK-2.3 we will:
 Clear and safe to proceed. This chunk bridges the Phase 1 DEFINER gate work into the Phase 2 workflow engine. Focus on pause + event emission; defer full resume/persistence.
 
 **Status:** Continuity Check complete. Proceeding to implementation.
+
+**Implementation for CHUNK-2.3:**
+- Enhanced `DialogNode` to accept synthesis/validation/eval results and an optional gate_callable.
+- When run, it can invoke the Phase 1 definer_gate (or a stub) and always emits a `workflow.dialog.paused` event via the context.
+- Updated `SequentialRunner` to stop execution when a dialog node reports it is paused.
+- Verified with a smoke test that events are emitted and the runner stops correctly.
+
+This gives the workflow engine the ability to pause at DEFINER gates (a core requirement from both Architecture §11.1 and Phase 1 CHUNK-1.5).
+
+**Pushed:** Yes
+
+**Status:** Complete
