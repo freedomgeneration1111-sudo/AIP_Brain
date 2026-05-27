@@ -1579,3 +1579,32 @@ With CHUNKS 2.1 through 2.13, the AIP L5 YAML Workflow Engine now has a complete
 The engine is now in an excellent state to support real, long-running, human-in-the-loop synthesis workflows while fully respecting the Phase 1 architecture, layering, and determinism rules.
 
 **Phase 2 Foundation: Complete**
+
+---
+
+# Phase 2 Extension / L4 Trajectory Regulation & Advanced Orchestration (Post-Foundation)
+
+After completing the core L5 YAML Workflow Engine foundation (2.1–2.13), the next major body of work per the Architecture is L4 (Trajectory Regulation / Context Reset) and related advanced orchestration capabilities.
+
+These features allow the system to monitor the "trajectory" of a synthesis session, detect when it is drifting or looping, and apply corrective interventions (including DEFINER-gated ones).
+
+This work builds directly on the solid L5 foundation and the Phase 1 determinism / sovereignty primitives.
+
+---
+
+## Task ID: 3.0-Prep (L4 Scoping)
+
+**Agent:** Grok Build  
+**Task:** Scope the opening L4 Trajectory Regulation work and perform initial analysis against Architecture Rev 5.2
+
+**Work Log:**
+- Phase 2 L5 YAML Workflow Engine foundation (2.1–2.13) is now complete, including a high-level public API and a runnable reference Workflow 0.1.
+- Per Architecture Rev 5.2, the next major layer after L5 is L4 (Trajectory Regulation / Context Reset).
+- This layer is responsible for detecting problematic trajectories (drift, loops, anxiety, false success, etc.) and recommending or applying interventions.
+- It has strong ties to the Phase 1 Sexton / trace analysis work and the DEFINER sovereignty model.
+
+**Next step:** Define the first formal L4-related CHUNK (likely "L4 Trajectory Monitor Foundation + Basic Drift/Loop Detection") and perform the required Continuity Check against §L4 and prior deliverables before writing any code.
+
+**Status:** Prep complete. Awaiting execution of first L4-related CHUNK (with Continuity Check).
+
+**Pushed:** Yes
