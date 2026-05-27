@@ -3465,6 +3465,7 @@ More integration work (loader dispatch for "review"/"re_synthesize" node types i
 - Imports added.
 - Layering still clean.
 - This allows YAML workflows to use the new Phase 2 review/re-synthesis nodes.
+- Updated `orchestration/workflow/__init__.py` to export the new node types for convenience.
 
 Continuing the careful extension of the existing engine to full spec compliance for 4.5.
 
