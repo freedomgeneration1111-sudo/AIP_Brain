@@ -873,3 +873,16 @@ This gives the workflow engine the ability to pause at DEFINER gates (a core req
 **Pushed:** Yes
 
 **Status:** Complete
+
+**Implementation for CHUNK-2.2:**
+- ConditionNode now performs real Jinja2 evaluation against WorkflowContext variables + metadata.
+- SequentialRunner supports basic branching using node.config['next_on_true'] / ['next_on_false'] when the previous node was a ConditionNode.
+- Loader passes the branching metadata for condition nodes.
+- Added jinja2 to dependencies.
+- Verified with smoke test that conditional branching works end-to-end.
+
+This adds the first real control-flow capability to the workflow engine while keeping condition nodes zero-token and fully deterministic.
+
+**Pushed:** Yes
+
+**Status:** Complete
