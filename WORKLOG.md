@@ -286,6 +286,20 @@ No blockers. The logic is simple and the required inputs are ready. Implementati
 
 **Status:** Continuity Check complete. Proceeding to implementation.
 
+**Implementation:**
+- Created `src/aip/orchestration/nodes/definer_gate.py` with the exact decision logic from the Rev 1.3 ANNEX:
+  - AUTO_APPROVE_STUB only (raises for anything else).
+  - If not validation_result.passed → "revise"
+  - Else if not eval_result.passed → "reject"
+  - Else → "approve" with `approved_by="stub:auto_approve"`
+- Created `tests/test_definer_gate.py` (4 tests covering all decision paths + manual mode guard).
+- Gate: `PYTHONPATH=src uv run python -m pytest tests/test_definer_gate.py -xvs` → **4/4 PASSED**.
+- Note: Full spec gate references the still-missing `test_layering.py`.
+
+**Pushed:** Yes (next commit)
+
+**Status:** Complete
+
 ---
 
 ## Task ID: 1.4-1
