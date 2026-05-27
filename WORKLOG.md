@@ -6695,3 +6695,95 @@ All tests green + layering clean.
 **Next per DAG:** 6.5 (integration) now has both node-promotion paths (6.1+6.2) ready. 6.3/6.4 on the pgvector adapter path remain independent until convergence.
 
 CHUNK-6.2 complete. Gate green.
+
+## Full Pre-CHUNK-6.3 Continuity Check (Mandatory before Vector Store Factory + Migration)
+
+**Date:** 2026-05 (immediately after CHUNK-6.2 gate green + push at 0d7ce20)
+**Scope:** Full 6-step Continuity Check per permanent rules before any production code for CHUNK-6.3. Authoritative baselines: post-Phase-3 Clean Bill, all prior 6.x CCs and completion records (6.0a/b through 6.2), SSOT Phase 4 Rev1.0, PHASE2_IMPORT_NOTES, Architecture Rev 5.2.
+**Next Chunk Selection:** Per linearized build order in Phase 4 spec ("6.0a → 6.0b (parallel with 6.1 after 5.0b) → 6.1 → 6.2 → 6.0b → 6.3 → 6.4 ..."), after completing the node-promotion side (6.1 + 6.2), the next in the documented sequence for the pgvector adapter path is CHUNK-6.3 (Vector Store Factory + Migration Tool). 6.4 remains pending on the same path. 6.5 convergence will come after both paths + 5.8.
+
+**1. Re-read of target CHUNK-6.3 (from SSOT specs/AIP_0_1_Phase4_BuildSpec_Rev1.0.md:1583+):**
+
+```
+CHUNK-6.3: Vector Store Factory + Migration Tool
+PHASE: 4
+DEPENDS-ON: CHUNK-6.0b, CHUNK-1.0b
+CODER-PROFILE: L2
+CONTEXT-BUDGET: ~4,000 tokens
+FILES:
+  adapter/vector/factory.py
+  adapter/vector/migrate.py
+  tests/test_vector_factory.py
+  tests/test_vector_migration.py
+INTERFACES:
+  async def create_vector_store(config: AipConfig | dict) -> VectorStore: ...
+  async def migrate_vectors(source, target, batch_size=500, checkpoint_callback=None) -> MigrationStatus: ...
+TESTS: tests/test_vector_factory.py + test_vector_migration.py
+GATE: uv run pytest tests/test_vector_factory.py tests/test_vector_migration.py tests/test_layering.py -xvs
+```
+
+**Prose key mandates:**
+- Factory reads [vector_backend] provider from config.
+- "pgvector" → PgvectorStore (with PgvectorConfig from nested section) + initialize().
+- "sqlite_vss" → SqliteVssVectorStore.
+- Graceful degradation: pgvector unavailable → sqlite_vss with warning + trace event.
+- Returns VectorStore Protocol instance (orchestration never knows the backend).
+- Migration: idempotent (batch_upsert), resumable (checkpoints via callback), counts, verifies target == source.
+- CLI exposure via existing aip migrate-vectors (from Phase 0).
+
+**ANNEX:** Detailed factory.py with _create_sqlite_vss helper and try/except degradation; migrate.py with batch logic, MigrationStatus/Checkpoint usage, simplified scan (notes real impl would use cursor + domain partitioning).
+
+**2. Re-read of all DEPENDS-ON (current reality + prior deliveries):**
+
+- **CHUNK-6.0b (just completed + green):** PgvectorStore fully implemented with initialize, upsert (with content merge for compat), batch_upsert, retrieve, delete, health_check, count. Uses asyncpg + HNSW from PgvectorConfig (delivered in 6.0a).
+- **CHUNK-1.0b:** SqliteVssVectorStore exists and implements the same VectorStore Protocol (sync, vss0 extension).
+- Current adapter/vector/: __init__.py (empty), pgvector_store.py, sqlite_vss_store.py. No factory or migrate yet.
+- Prompts/ now has the 6.2 eval prompts + synthesis (unrelated to this chunk).
+- Governance note: Post-6.2, layering clean; phase3_network_gate still showing pre-existing failures from Phase 1 hardcoded models in adversarial/validation (unrelated to vector work; 6.2 cleaned the strings in its scope).
+
+**3. Cross-check against post-Phase-3 CC + all prior 6.x work + 5.8 plan:**
+
+- Git: clean at 0d7ce20 (6.2) + minor uv.lock. All 6.0a/b/6.1/6.2 deliverables present and green.
+- Governance re-run in this CC: layering still passes; network gate failures are the known Phase 1 artifacts (not touched by 6.3 scope).
+- 5.8 partial (starter vs full ANNEX): untouched.
+- All prior Clean Bills (post-Phase-3 through 6.2) hold verbatim. 6.3 is the natural next on the pgvector path to enable 6.4/6.5.
+
+**4. Rule #10 overlap/reconciliation check:**
+
+- Target files: adapter/vector/factory.py (new), migrate.py (new), corresponding tests (new).
+- Historical record (WORKLOG + tree + prior CCs): Only sqlite_vss (1.0b) and pgvector_store (6.0b) exist. No prior factory, migration tool, or vector backend selection logic in 1.x/2.x/3.x/4.x/5.x. Explicit mentions in WORKLOG were only planning notes ("factory comes in 6.3").
+- Overlap findings: None on new files. The two existing stores (pgvector + sqlite) are the exact DEPENDS-ON implementations the factory will select between.
+- **Reconciliation:** Zero historical code to extend on the new modules. Create factory.py and migrate.py exactly per ANNEX (with proper aip. imports, logging, graceful degradation using the two stores, idempotent/resumable migration using batch_upsert + count + Migration* types from 6.0a). __init__.py can remain empty or receive minimal exports if needed for tests (not required by this chunk's ANNEX). No changes to existing stores.
+
+**5. Architecture Rev 5.2 cross-references:**
+
+- §2.2: Core of the VectorStore abstraction and [vector_backend] provider flag for transparent swap.
+- §7.2 layering: Adapter-only (foundation protocols + the two concrete stores). No orchestration imports (enforced by gate).
+- §1.8: All config (pool sizes, HNSW, db_path, connection_string) toggleable via the config dict passed to factory. Degradation events logged for Sexton audit.
+- Graceful degradation + trace intervention_type="backend_fallback" aligns with L4/trace patterns.
+
+**6. Other findings + state verification:**
+
+- No 6.3 code exists (confirmed by tree + searches).
+- vector_backend section absent from current aip.config.toml (per 6.0a CC, it was descriptive only; 6.3 factory handles dict input as per ANNEX, tests will use explicit dicts).
+- Migration ANNEX is intentionally simplified (notes real cursor/domain partitioning for production); implement the provided version.
+- 6.3 is pure L1/L2 adapter work — zero impact on orchestration, L4, or the 5.8 integration surface.
+
+**Overall Pre-CHUNK-6.3 Continuity Check Result:**
+
+**Clean Bill of Health for baseline + readiness for CHUNK-6.3.**
+
+- All 6 steps executed with direct evidence (spec reads, file inspection, WORKLOG searches, governance runs, git state).
+- Prior Clean Bills hold; 5.8 plan intact.
+- No material overlaps on new files; clean reconciliation via "new files = safe to create per ANNEX."
+- All permanent rules, layering, §2.2 portability, config-driven, and CI determinism requirements align perfectly with the chunk design.
+- Governance pre-existing issues unrelated to this scope.
+
+**This completes the mandatory full Continuity Check for CHUNK-6.3.**
+
+The record above constitutes the authoritative audit. All evidence gathered via tool execution before any src/ or tests/ edits for 6.3.
+
+**Ready to proceed to CHUNK-6.3 implementation (exact scope per prose + ANNEX, with noted reconciliations), gate (including test_layering.py), WORKLOG append, and push.**
+
+CC complete. Next chunk (per DAG): 6.4 (production hardening on pgvector path) or 6.5 (once 6.4 + 5.8 converge).
+
