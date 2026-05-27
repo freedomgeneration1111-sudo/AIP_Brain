@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin + Memory — AIP 0.1</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-200 p-8 max-w-5xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-semibold">Admin + Memory Inspector</h1>
+        <a href="/" class="text-sm text-zinc-400 hover:text-white">← Dashboard</a>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6" hx-get="/api/v1/admin/sexton/classifications" hx-trigger="load">
+            <div class="font-medium mb-3">Sexton Classifications</div>
+            <div class="text-xs text-zinc-400">Loading...</div>
+        </div>
+        
+        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6" hx-get="/api/v1/admin/beast/status" hx-trigger="load">
+            <div class="font-medium mb-3">Beast Status</div>
+            <div class="text-xs text-zinc-400">Loading...</div>
+        </div>
+        
+        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 lg:col-span-2" hx-get="/api/v1/memory/trace/demo" hx-trigger="load">
+            <div class="font-medium mb-3">Recent Trace (demo)</div>
+            <div class="text-xs text-zinc-400">Loading...</div>
+        </div>
+    </div>
+
+    <div class="mt-8 text-xs text-zinc-500">
+        All panels are live calls to the Phase 6 Admin/Memory REST endpoints (8.6). Auth (9.0b) and rate limiting (9.0c) apply server-side.
+    </div>
+</body>
+</html>

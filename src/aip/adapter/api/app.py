@@ -81,6 +81,13 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
     app.include_router(memory.router, prefix="/api/v1", tags=["memory"])
 
+    # 9.4 Web UI static (minimal HTMX dashboard)
+    from fastapi.staticfiles import StaticFiles
+    try:
+        app.mount("/static", StaticFiles(directory="src/aip/adapter/api/static"), name="static")
+    except Exception:
+        pass  # static dir may not exist in all envs
+
     @app.get("/")
     async def root():
         return {"status": "ok", "service": "aip-surfaces"}

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Projects — AIP 0.1</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-200 p-8 max-w-5xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-semibold">Projects</h1>
+        <a href="/" class="text-sm text-zinc-400 hover:text-white">← Dashboard</a>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Create -->
+        <div class="lg:col-span-1 bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+            <h2 class="font-medium mb-4">Create Project</h2>
+            <form hx-post="/api/v1/projects" hx-target="#project-list" hx-swap="outerHTML" class="space-y-3">
+                <input type="text" name="name" placeholder="Project name" class="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm" required>
+                <input type="text" name="domain" placeholder="Domain (e.g. software_architecture)" class="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm" required>
+                <button type="submit" class="w-full bg-white text-black rounded-xl py-2 text-sm font-medium">Create</button>
+            </form>
+        </div>
+
+        <!-- List -->
+        <div id="project-list" class="lg:col-span-2 bg-zinc-900 border border-zinc-800 rounded-2xl p-6" hx-get="/api/v1/projects" hx-trigger="load">
+            <div class="text-sm text-zinc-400">Loading projects...</div>
+        </div>
+    </div>
+
+    <script>
+        // After HTMX swap, re-attach if needed (simple demo)
+        document.body.addEventListener('htmx:afterSwap', function(evt) {
+            if (evt.target.id === 'project-list') {
+                // Could add client-side polish here
+            }
+        });
+    </script>
+</body>
+</html>

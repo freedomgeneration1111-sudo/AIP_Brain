@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat — AIP 0.1</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-200 p-8 max-w-3xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-semibold">Chat</h1>
+        <a href="/" class="text-sm text-zinc-400 hover:text-white">← Dashboard</a>
+    </div>
+
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+        <div id="messages" class="h-96 overflow-y-auto mb-4 space-y-3 text-sm font-mono"></div>
+        
+        <form id="chat-form" class="flex gap-2">
+            <input id="msg" type="text" placeholder="Send a message..." class="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm">
+            <button type="submit" class="px-6 rounded-xl bg-white text-black text-sm font-medium">Send</button>
+        </form>
+    </div>
+
+    <script>
+        let ws;
+        const sessionId = "demo-" + Date.now();
+        
+        function connect() {
+            ws = new WebSocket(`ws://${location.host}/api/v1/chat/${sessionId}`);
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                const div = document.createElement('div');
+                div.className = 'p-3 bg-zinc-950 border border-zinc-800 rounded-xl';
+                div.innerHTML = `<span class="text-emerald-400">[${data.type}]</span> ${data.content || JSON.stringify(data)}`;
+                document.getElementById('messages').appendChild(div);
+                document.getElementById('messages').scrollTop = 999999;
+            };
+            
+            ws.onopen = () => console.log('WS connected');
+            ws.onclose = () => setTimeout(connect, 2000);
+        }
+        
+        document.getElementById('chat-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const input = document.getElementById('msg');
+            if (ws && ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: "message", content: input.value }));
+            }
+            input.value = '';
+        });
+        
+        connect();
+    </script>
+</body>
+</html>

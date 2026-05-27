@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIP 0.1 — Dashboard</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    </style>
+</head>
+<body class="bg-zinc-950 text-zinc-200">
+    <div class="max-w-7xl mx-auto p-8">
+        <div class="flex items-center justify-between mb-8">
+            <div>
+                <h1 class="text-4xl font-bold tracking-tight">AIP 0.1</h1>
+                <p class="text-zinc-400 mt-1">AI Poiesis — Local-first autonomous system</p>
+            </div>
+            <div class="text-right text-sm">
+                <div id="health-status" class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800">
+                    <span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+                    <span class="font-mono text-xs text-emerald-400">HEALTHY</span>
+                </div>
+                <div class="text-zinc-500 mt-1 text-xs">v0.1 • laptop profile</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Quick Links -->
+            <a href="/static/projects.html" class="group block p-6 bg-zinc-900 border border-zinc-800 rounded-2xl hover:border-zinc-700 transition-colors">
+                <div class="font-semibold text-lg group-hover:text-white">Projects</div>
+                <div class="text-sm text-zinc-400 mt-1">Create, list, and manage projects</div>
+            </a>
+            
+            <a href="/static/review.html" class="group block p-6 bg-zinc-900 border border-zinc-800 rounded-2xl hover:border-zinc-700 transition-colors">
+                <div class="font-semibold text-lg group-hover:text-white">Review Queue</div>
+                <div class="text-sm text-zinc-400 mt-1">Approve or reject generated artifacts</div>
+            </a>
+            
+            <a href="/static/chat.html" class="group block p-6 bg-zinc-900 border border-zinc-800 rounded-2xl hover:border-zinc-700 transition-colors">
+                <div class="font-semibold text-lg group-hover:text-white">Chat</div>
+                <div class="text-sm text-zinc-400 mt-1">Interactive DEFINER conversation surface</div>
+            </a>
+            
+            <a href="/static/admin.html" class="group block p-6 bg-zinc-900 border border-zinc-800 rounded-2xl hover:border-zinc-700 transition-colors">
+                <div class="font-semibold text-lg group-hover:text-white">Admin + Memory</div>
+                <div class="text-sm text-zinc-400 mt-1">Sexton, Beast, Router, Budget, traces</div>
+            </a>
+        </div>
+
+        <div class="mt-8 text-xs text-zinc-500">
+            This is a minimal server-rendered HTMX dashboard (Phase 7 9.4). All data comes from the Phase 6 REST API. 
+            Authentication and rate limiting (9.0b/9.0c) are enforced by the server.
+        </div>
+    </div>
+
+    <script>
+        // Simple health poll
+        async function checkHealth() {
+            try {
+                const res = await fetch('/api/v1/health');
+                const data = await res.json();
+                const el = document.getElementById('health-status');
+                if (data.status === 'ok') {
+                    el.innerHTML = `<span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span><span class="font-mono text-xs text-emerald-400">HEALTHY</span>`;
+                }
+            } catch(e) {}
+        }
+        setInterval(checkHealth, 30000);
+        checkHealth();
+    </script>
+</body>
+</html>
