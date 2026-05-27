@@ -1333,3 +1333,16 @@ This turns the 2.6 foundation into a production-usable persistence layer while s
 With 2.1–2.9 the L5 YAML Workflow Engine now has a production-grade foundation, including durable persistence and resumption for dialog-driven workflows.
 
 The engine is in a state where real, long-running, human-in-the-loop synthesis sessions can be expressed and executed reliably.
+
+**Implementation for CHUNK-2.9:**
+- Created `workflow/instance_store.py` with the `WorkflowInstanceStore` protocol + a simple `FileWorkflowInstanceStore` reference implementation.
+- Extended `SequentialRunner` with production-grade `run_until_pause(instance_store=...)` that automatically persists on dialog pause.
+- Added `resume_from_store(...)` classmethod for clean resumption after a restart + DEFINER decision.
+- Added a realistic integration test that uses the file store to simulate a full suspend → restart → resume cycle.
+- Verified the entire path works end-to-end.
+
+This turns the 2.6 foundation into a production-usable persistence layer while staying true to the existing store protocols and Phase 1 layering rules.
+
+**Pushed:** Yes
+
+**Status:** Complete
