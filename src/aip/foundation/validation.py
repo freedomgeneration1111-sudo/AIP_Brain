@@ -74,10 +74,11 @@ def structural_validate(
 
 
 # Backward-compatible alias — new code should import from
-# aip.orchestration.evaluation instead.
+# aip.orchestration.l3a_orchestrator (CHUNK-11.0b) instead.
+# This alias preserves backward compat for any Phase 1-8 callers.
 async def full_l3a_evaluation(*args, **kwargs):
-    """Moved to orchestration.evaluation per §7.2. This alias preserves backward compat."""
+    """Moved to orchestration.l3a_orchestrator per §7.2. This alias preserves backward compat."""
     import importlib
-    _mod = importlib.import_module("aip.orchestration.evaluation")
+    _mod = importlib.import_module("aip.orchestration.l3a_orchestrator")
     _real = _mod.full_l3a_evaluation
     return await _real(*args, **kwargs)

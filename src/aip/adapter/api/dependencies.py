@@ -1,6 +1,11 @@
 """Dependency injection for the AIP FastAPI surfaces (CHUNK-8.1).
 
 Per spec: single AipContainer as the source of truth. Routes never import concrete adapters.
+
+CHUNK-11.0b: Removed direct orchestration imports from adapter layer.
+Orchestration components (SessionManager, BudgetManager, etc.) are typed
+as Any and injected at runtime via lifespan wiring. This preserves the
+three-layer discipline: adapter may only import foundation.
 """
 
 from __future__ import annotations
@@ -28,12 +33,6 @@ from aip.foundation.protocols import (
     ModelProvider,
     EmbeddingProvider,
 )
-from aip.orchestration.session import SessionManager
-from aip.orchestration.budget import BudgetManager
-from aip.orchestration.router import AdaptiveRouter
-from aip.orchestration.sexton.sexton import Sexton
-from aip.orchestration.actors.beast import Beast
-from aip.orchestration.ace_playbook import AcePlaybook
 
 
 class AipContainer:
@@ -41,6 +40,9 @@ class AipContainer:
 
     Populated in lifespan startup from config + the various adapter/foundation
     implementations delivered in 8.0a/8.0b + Phase 5 orchestration layer.
+
+    Orchestration components are typed as Any (injected at runtime) to avoid
+    adapter→orchestration import dependency per Phase 9 CHUNK-11.0b.
     """
 
     def __init__(self, config: dict) -> None:
@@ -59,12 +61,13 @@ class AipContainer:
         self.autonomy_gate: AutonomyGate | None = None
         self.model_provider: ModelProvider | None = None
         self.embedding_provider: EmbeddingProvider | None = None
-        self.session_manager: SessionManager | None = None
-        self.budget_manager: BudgetManager | None = None
-        self.adaptive_router: AdaptiveRouter | None = None
-        self.sexton: Sexton | None = None
-        self.beast: Beast | None = None
-        self.ace_playbook: AcePlaybook | None = None
+        # Orchestration components — typed as Any to avoid adapter→orchestration import
+        self.session_manager: Any = None
+        self.budget_manager: Any = None
+        self.adaptive_router: Any = None
+        self.sexton: Any = None
+        self.beast: Any = None
+        self.ace_playbook: Any = None
 
 
 def get_container(request: "Request") -> AipContainer:
