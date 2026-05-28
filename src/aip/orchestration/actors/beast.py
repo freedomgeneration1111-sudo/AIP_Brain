@@ -2,17 +2,38 @@
 
 Beast — cadence / corpus / entity maintenance.
 Deterministic (no LLM in main paths). Uses injected Protocols only.
+
+Phase 3 hardening: replaced fake health checks with real connectivity probes,
+replaced placeholder re-index loop with actual stale-vector detection via
+list_stale_vectors() + re-embedding via EmbeddingProvider, and properly
+injected EntityStore instead of getattr access.
 """
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any
 
 from aip.foundation.schemas import BeastCadenceConfig
-from aip.foundation.protocols import VectorStore, EmbeddingProvider, ProjectStore, EventStore
+from aip.foundation.protocols import (
+    VectorStore,
+    EmbeddingProvider,
+    ProjectStore,
+    EventStore,
+    EntityStore,
+    CanonicalStore,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class Beast:
-    """Beast maintenance actor per Phase 5 prose + ANNEX."""
+    """Beast maintenance actor per Phase 5 prose + ANNEX.
+
+    Performs real corpus maintenance (stale vector detection + re-embedding),
+    entity consistency checks, and honest health reporting across all
+    critical subsystems.
+    """
 
     def __init__(
         self,
@@ -21,106 +42,307 @@ class Beast:
         embedding_provider: EmbeddingProvider,
         project_store: ProjectStore,
         event_store: EventStore | None = None,
+        entity_store: EntityStore | None = None,
+        canonical_store: CanonicalStore | None = None,
     ) -> None:
         self._config = config
         self._vector = vector_store
         self._embed = embedding_provider
         self._projects = project_store
         self._events = event_store
+        self._entity_store = entity_store
+        self._canonical_store = canonical_store
+
+    # ------------------------------------------------------------------
+    # Health Check
+    # ------------------------------------------------------------------
+
+    async def run_health_check(self) -> dict:
+        """Comprehensive health report with real connectivity checks.
+
+        Probes each critical subsystem and returns honest status.
+        Never fabricates a healthy status when a check actually fails.
+
+        Returns:
+            dict with keys: vector_backend, embedding_provider, databases,
+            overall.  Each sub-dict contains at minimum ``connected`` (bool).
+        """
+        checks: dict[str, dict] = {}
+        all_healthy = True
+
+        # --- Vector store ---
+        try:
+            v_health = await self._vector.health_check()
+            checks["vector_backend"] = v_health
+            if not v_health.get("connected", False):
+                all_healthy = False
+        except Exception as exc:
+            checks["vector_backend"] = {"connected": False, "error": str(exc)}
+            all_healthy = False
+
+        # --- Embedding provider (Ollama or mock) ---
+        embed_status = await self._check_embedding_provider()
+        checks["embedding_provider"] = embed_status
+        if not embed_status.get("connected", False):
+            all_healthy = False
+
+        # --- Entity store ---
+        entity_status = await self._check_entity_store()
+        checks["entity_store"] = entity_status
+        if not entity_status.get("connected", False):
+            # Entity store is optional for basic operation, degraded but not fatal
+            pass
+
+        # --- Canonical store ---
+        canonical_status = await self._check_canonical_store()
+        checks["canonical_store"] = canonical_status
+
+        # --- Database aggregates ---
+        db_ok = entity_status.get("connected", False) and canonical_status.get("connected", False)
+        checks["databases"] = {
+            "events": "ok" if self._events is not None else "not_configured",
+            "state": "ok" if entity_status.get("connected") else "degraded",
+            "trace": "ok" if canonical_status.get("connected") else "degraded",
+            "connected": db_ok,
+        }
+
+        overall = "ok" if all_healthy else "degraded"
+
+        # Log health event if event store is wired
+        await self._emit_event(
+            event_type="beast_health_check",
+            artifact_id="system",
+            metadata={"overall": overall, "checks": {k: v.get("connected", False) for k, v in checks.items()}},
+        )
+
+        checks["overall"] = overall
+        return checks
+
+    async def _check_embedding_provider(self) -> dict:
+        """Probe the embedding provider with a tiny embed call."""
+        try:
+            start = time.monotonic()
+            await self._embed.embed("health-check-ping")
+            latency_ms = int((time.monotonic() - start) * 1000)
+            return {"connected": True, "latency_ms": latency_ms}
+        except Exception as exc:
+            logger.warning("Embedding provider health check failed: %s", exc)
+            return {"connected": False, "error": str(exc)}
+
+    async def _check_entity_store(self) -> dict:
+        """Probe entity store via list_entities with limit=1."""
+        if self._entity_store is None:
+            return {"connected": False, "status": "not_configured"}
+        try:
+            start = time.monotonic()
+            await self._entity_store.list_entities()
+            latency_ms = int((time.monotonic() - start) * 1000)
+            return {"connected": True, "latency_ms": latency_ms}
+        except Exception as exc:
+            logger.warning("Entity store health check failed: %s", exc)
+            return {"connected": False, "error": str(exc)}
+
+    async def _check_canonical_store(self) -> dict:
+        """Probe canonical store via list_canonical with no filters."""
+        if self._canonical_store is None:
+            return {"connected": False, "status": "not_configured"}
+        try:
+            start = time.monotonic()
+            await self._canonical_store.list_canonical()
+            latency_ms = int((time.monotonic() - start) * 1000)
+            return {"connected": True, "latency_ms": latency_ms}
+        except Exception as exc:
+            logger.warning("Canonical store health check failed: %s", exc)
+            return {"connected": False, "error": str(exc)}
+
+    # ------------------------------------------------------------------
+    # Corpus Maintenance
+    # ------------------------------------------------------------------
 
     async def run_corpus_maintenance(self) -> dict:
-        """Re-index stale vectors (per 7.5 prose).
+        """Detect and re-embed stale vectors across all projects.
 
-        Uses configurable batch_size from BeastCadenceConfig. Iterates projects
-        and re-indexes vectors in batches up to max_reindex_batch_size per project.
+        Uses ``list_stale_vectors()`` on the VectorStore to identify vectors
+        whose embeddings may be outdated (age beyond threshold or after model
+        slot changes), then re-embeds their content and upserts fresh vectors.
+
+        Returns:
+            dict with: projects_checked, stale_vectors_found,
+            vectors_reembedded, vectors_failed, errors.
         """
         projects = await self._projects.list_projects()
-        reindexed = 0
-        skipped = 0
+        stale_found = 0
+        reembedded = 0
+        failed = 0
         errors = 0
-        batch_size = self._config.max_reindex_batch_size
+
+        threshold_days = self._config.corpus_reindex_interval_seconds // 86400
+        if threshold_days < 1:
+            threshold_days = 1
+        batch_limit = self._config.max_reindex_batch_size
 
         for proj in projects:
             pid = proj.get("project_id") or proj.get("id")
             if not pid:
                 continue
             try:
-                total = await self._vector.count(domain=pid)
-                # Re-index in configurable batches up to max_reindex_batch_size
-                batch = min(batch_size, total) if total > 0 else 0
-                if batch > 0:
-                    # Re-embed and upsert stale vectors in batches
-                    remaining = batch
-                    while remaining > 0:
-                        chunk = min(remaining, batch_size)
-                        # Best-effort re-index: embed a placeholder and upsert
-                        # In full impl, would query for stale vectors by timestamp
-                        try:
-                            await self._vector.health_check()
-                        except Exception:
-                            pass  # health check is optional
-                        remaining -= chunk
-                    reindexed += batch
-                else:
-                    skipped += total  # type: ignore[assignment]
-            except Exception:
+                # Step 1: Detect stale vectors via the VectorStore protocol
+                stale_vectors = await self._vector.list_stale_vectors(
+                    threshold_days=threshold_days,
+                    domain=pid,
+                    limit=batch_limit,
+                )
+                stale_found += len(stale_vectors)
+
+                # Step 2: Re-embed and upsert each stale vector
+                for vec_record in stale_vectors:
+                    vec_id = vec_record.get("id")
+                    content = vec_record.get("metadata", {}).get("content", "")
+                    domain = vec_record.get("domain") or pid
+                    metadata = vec_record.get("metadata", {})
+
+                    if not vec_id or not content:
+                        failed += 1
+                        continue
+
+                    try:
+                        new_embedding = await self._embed.embed(content)
+                        await self._vector.upsert(
+                            id=vec_id,
+                            embedding=new_embedding,
+                            content=content,
+                            metadata=metadata,
+                            domain=domain,
+                        )
+                        reembedded += 1
+                    except Exception as exc:
+                        logger.warning(
+                            "Failed to re-embed vector %s in project %s: %s",
+                            vec_id, pid, exc,
+                        )
+                        failed += 1
+
+            except Exception as exc:
+                logger.error("Corpus maintenance error for project %s: %s", pid, exc)
                 errors += 1
 
-        return {
+        result = {
             "projects_checked": len(projects),
-            "vectors_reindexed": reindexed,
-            "vectors_skipped": skipped,
+            "stale_vectors_found": stale_found,
+            "vectors_reembedded": reembedded,
+            "vectors_failed": failed,
             "errors": errors,
         }
 
-    async def run_entity_maintenance(self) -> dict:
-        """Validate entity consistency (per 7.5).
+        # Emit maintenance event
+        await self._emit_event(
+            event_type="beast_corpus_maintenance",
+            artifact_id="system",
+            metadata=result,
+        )
 
-        Processes entities in configurable batches from BeastCadenceConfig.
-        Checks for stale entity references and cross-references with canonicals.
+        return result
+
+    # ------------------------------------------------------------------
+    # Entity Maintenance
+    # ------------------------------------------------------------------
+
+    async def run_entity_maintenance(self) -> dict:
+        """Validate entity consistency and cross-reference with canonicals.
+
+        Checks for stale entity references (entities modified after their
+        referencing canonical was promoted). Reports stale entities and
+        emits events for downstream consumers (L4 regulation, Vigil).
+
+        Returns:
+            dict with: entities_checked, stale_entities, consistency_errors.
         """
+        if self._entity_store is None:
+            return {
+                "entities_checked": 0,
+                "stale_entities": [],
+                "consistency_errors": 0,
+                "skipped_reason": "entity_store_not_configured",
+            }
+
         batch_size = self._config.max_reindex_batch_size
         entities_checked = 0
         stale_entities: list[dict] = []
         consistency_errors = 0
 
-        # Use entity_store if available via project_store or other wiring
-        entity_store = getattr(self, '_entity_store', None)
-        if entity_store is not None:
-            try:
-                all_entities = await entity_store.list_entities()
-                # Process in batches
-                for i in range(0, len(all_entities), batch_size):
-                    batch = all_entities[i : i + batch_size]
-                    for entity in batch:
-                        entities_checked += 1
-                        entity_id = entity.get("entity_id") or entity.get("id")
-                        if entity_id:
-                            try:
-                                data = await entity_store.get_entity(entity_id)
-                                if data and data.get("updated_since_canonical"):
-                                    stale_entities.append(data)
-                            except Exception:
-                                consistency_errors += 1
-            except Exception:
-                consistency_errors += 1
+        try:
+            all_entities = await self._entity_store.list_entities()
 
-        return {
+            for i in range(0, len(all_entities), batch_size):
+                batch = all_entities[i : i + batch_size]
+                for entity in batch:
+                    entities_checked += 1
+                    entity_id = entity.get("entity_id") or entity.get("id")
+                    if not entity_id:
+                        continue
+                    try:
+                        data = await self._entity_store.get_entity(entity_id)
+                        if data and data.get("updated_since_canonical"):
+                            stale_entities.append({
+                                "entity_id": entity_id,
+                                "entity_type": data.get("entity_type"),
+                                "name": data.get("name"),
+                                "reason": "updated_since_canonical",
+                            })
+                    except Exception as exc:
+                        logger.warning(
+                            "Entity consistency check failed for %s: %s",
+                            entity_id, exc,
+                        )
+                        consistency_errors += 1
+
+        except Exception as exc:
+            logger.error("Entity maintenance list failed: %s", exc)
+            consistency_errors += 1
+
+        result = {
             "entities_checked": entities_checked,
             "stale_entities": stale_entities,
             "consistency_errors": consistency_errors,
         }
 
-    async def run_health_check(self) -> dict:
-        """Comprehensive health report (per 7.5 prose + Phase 4 surfaces)."""
-        try:
-            v_health = await self._vector.health_check()
-        except Exception as e:
-            v_health = {"connected": False, "error": str(e)}
+        # Emit stale entity events for downstream consumers
+        if stale_entities:
+            await self._emit_event(
+                event_type="beast_entity_stale_detected",
+                artifact_id="system",
+                metadata={
+                    "stale_count": len(stale_entities),
+                    "stale_entity_ids": [e.get("entity_id") for e in stale_entities],
+                },
+            )
 
-        return {
-            "vector_backend": v_health,
-            "databases": {"events": "ok", "state": "ok", "trace": "ok"},
-            "ollama": {"connected": True, "latency_ms": 5},
-            "overall": "ok" if v_health.get("connected") else "degraded",
-        }
+        return result
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    async def _emit_event(
+        self,
+        event_type: str,
+        artifact_id: str,
+        metadata: dict | None = None,
+    ) -> None:
+        """Write an event to the EventStore if wired.
+
+        Silently no-ops if no event store is configured. Never raises.
+        """
+        if self._events is None:
+            return
+        try:
+            await self._events.write_event(
+                event_type=event_type,
+                actor="beast",
+                artifact_id=artifact_id,
+                from_state=None,
+                to_state=None,
+                **(metadata or {}),
+            )
+        except Exception as exc:
+            logger.warning("Beast failed to emit event %s: %s", event_type, exc)
