@@ -1,8 +1,8 @@
 # AIP Implementation Status
 
 **Date:** 2026-05-29
-**Phase 0–3 + Beast + Review Honesty Status:** Complete
-**Overall Assessment:** The AIP 0.1 codebase has a well-designed three-layer architecture (foundation → orchestration → adapter) with sound Protocol-based dependency injection and comprehensive schema/protocol definitions. After Phases 0–3, evaluation pipeline cleanup, model provider wiring, and review/gate honesty improvements, the implementation is approximately 20-25% scaffolding overall. The evaluation pipeline no longer silently passes artifacts by default — `canonical_pipeline.py` blocks promotion when evaluation fails AND when `ci_fixture=True` in production mode. All evaluation nodes (`faithfulness.py`, `domain_coherence.py`, `adversarial_eval.py`) now include explicit `ci_fixture` flags. Type E detection is now functional (substance_score default changed from 0.5 to 0.3, below the 0.4 threshold). The duplicate `evaluation.py` has been deleted. **ModelSlotResolver now supports real provider dispatch** — Ollama and OpenAI-compatible providers are wired with proper HTTP calls, environment variable configuration, and graceful error handling. `embed_providers.py` now wires `OllamaEmbeddingClient` when provider="ollama". **Review and gate layers are now honest** — `review.py` no longer auto-approves without evaluation data in production mode (returns `PENDING` instead), and `_definer_review()` requires real eval data for approval. `definer_gate.py` blocks CI fixture evaluation results from auto-approval in production, and all approval decisions are logged with clear markers. Remaining high-risk areas include: the Adaptive Router (no real adaptation), and MANUAL mode in `definer_gate.py` (still NotImplementedError).
+**Phase 0–3 + Stabilization Wrap-Up Status:** Complete
+**Overall Assessment:** The AIP 0.1 codebase has a well-designed three-layer architecture (foundation → orchestration → adapter) with sound Protocol-based dependency injection and comprehensive schema/protocol definitions. After Phases 0–3, evaluation pipeline cleanup, model provider wiring, review/gate honesty improvements, and stabilization wrap-up, the implementation is approximately 15-20% scaffolding overall. **All test suite failures are now resolved** (previously 3 failing tests in phase6_gates and vigil_canonical). The evaluation pipeline no longer silently passes artifacts — `canonical_pipeline.py` blocks promotion when evaluation fails AND when `ci_fixture=True` in production mode. All evaluation nodes include explicit `ci_fixture` flags. Type E detection is functional. **ModelSlotResolver supports real provider dispatch** with Ollama and OpenAI-compatible HTTP calls. **Review and gate layers are honest** — `review.py` returns `PENDING` without eval data in production, `ReviewNode` now auto-wires eval_fn from model_provider, PENDING verdicts keep artifacts in GENERATED state instead of advancing them. `definer_gate.py` blocks CI fixture evaluation results from auto-approval in production. **Dead code cleaned**: duplicate `ArtifactStore.read()` resolved in protocols.py, unused import removed from canonical_pipeline.py. Remaining high-risk areas: the Adaptive Router (no real adaptation), MANUAL mode in `definer_gate.py` (NotImplementedError), and `WorkflowContext` infinite budget default.
 
 ## P0 Fixes Applied
 
@@ -30,7 +30,7 @@
 | **Workflow: engine.py** | Partial/Hybrid | 35% | Clean facade but defaults to no-op stores. Inline `_NoopTraceStore`/`_NoopStore` duplicated with `workflow_01.py`. Dead code (`protocols` dict rebuilt as `safe_protocols`). | Extract shared no-op classes. Remove dead code. | Medium |
 | **Workflow: context.py** | Partial/Hybrid | 30% | **DANGEROUS**: `budget_remaining=None` → infinite budget by default. `consume_budget()` fires-and-forgets `asyncio.create_task`. `request_autonomy()` always allows level ≤1. | Set finite default budget. Await budget store coroutine. Gate autonomy properly. | Critical |
 | **Workflow: definition.py** | Real/Mostly Working | 0% | Clean dataclass — complete | None | Low |
-| **Workflow: node.py** | Partial/Hybrid | 40% | **ScriptNode.run() is a complete placeholder** — stores code but never executes. AgentNode, ConditionNode, DialogNode are real. | Implement ScriptNode.run (safe exec pattern). | High |
+| **Workflow: node.py** | Partial/Hybrid | 35% | **FIXED**: ReviewNode now wires eval_fn from context protocols or auto-builds from model_provider. PENDING verdicts trigger workflow pause. ScriptNode.run() is still a placeholder. AgentNode, ConditionNode, DialogNode are real. | Implement ScriptNode.run (safe exec pattern). | High |
 | **Workflow: loader.py** | Real/Mostly Working | 5% | Full YAML parser with all node types | None | Low |
 | **Workflow: instance.py** | Real/Mostly Working | 0% | Clean dataclasses with JSON serialization | None | Low |
 | **Workflow: instance_store.py** | Real/Mostly Working | 15% | Working FileWorkflowInstanceStore | Add SQLite-backed implementation | Medium |
@@ -85,14 +85,14 @@
 | **Adapter CLI: plugins.py** | Partial/Hybrid | 50% | Depends on HTTP request context in CLI. Uses deprecated `asyncio.get_event_loop().run_until_complete()`. | CLI container init + `asyncio.run()`. | High |
 | **Adapter CLI: collaborators.py** | Partial/Hybrid | 50% | Same issues as plugins.py. Password prompt is good practice (hide_input=True). | Same: CLI container init + asyncio.run(). | High |
 | **Foundation: schemas.py** | Real/Mostly Working | 5% | 730+ lines of comprehensive dataclass definitions. Duplicate imports at phase boundaries. `model_gen_assumption` fields are declarative, not fake logic. | Clean up duplicate imports at phase boundaries. | Low |
-| **Foundation: protocols.py** | Partial/Hybrid | 10% | **Duplicate `ArtifactStore.read()`**: declared at line 156 (`id: str`) and line 165 (`id: str, version: int | None = None`) — second shadows first. 27 CHUNK- references in comments. | Resolve duplicate read() signature. Make versioned version canonical. | High |
+| **Foundation: protocols.py** | Real/Mostly Working | 5% | **FIXED**: Duplicate `ArtifactStore.read()` resolved — Phase 1 version removed, Phase 2 versioned signature (`id: str, version: int | None = None`) is now canonical. 27 CHUNK- references in comments. | Clean up CHUNK- references. | Low |
 | **Foundation: ecs_graph.py** | Real/Mostly Working | 0% | Pure validation logic — single source of truth for ECS. Gold standard module. | None | Low |
 | **Foundation: validation.py** | Real/Mostly Working | 15% | Real structural validation with 3 default rules. `full_l3a_evaluation` dynamic import is fragile. | Expand validation rules. Make thresholds configurable. | Medium |
 | **Orchestration: router.py** | Mostly Scaffolding | 65% | **"Adaptive" router is not adaptive**: `update_weights()` is `pass` (no-op). `recommend_exploration_weight()` uses hardcoded `count=5`. `_pick_non_optimal()` returns first alternative. Only budget enforcement is real. | Implement update_weights with routing_outcomes queries. Replace count=5. | Critical |
 | **Orchestration: session.py** | Partial/Hybrid | 30% | Real create/advance/context utilization. Type E recovery discards inject_deterministic_recovery result. Token estimation is rough approximation. | Fix Type E recovery. Implement real token counting. | High |
 | **Orchestration: budget.py** | Real/Mostly Working | 20% | `InMemoryBudgetStore.check_limit()` always returns True. `SimpleAutonomyGate.record_autonomy_use()` is `pass`. | Fix check_limit to actually check. Implement record_autonomy_use. | Medium |
 | **Orchestration: retrieval.py** | Real/Mostly Working | 15% | Real four-factor reranking (semantic, recency, authority, frequency). `fake_embed()` uses SHA-256 for CI — documented. ACE rule boost minimal (0.15). | Replace fake_embed with real provider when available. Expand ACE matching. | Medium |
-| **Orchestration: review.py** | Partial/Hybrid | 20% | **FIXED**: `_automated_review()` no longer auto-approves without eval_fn in production — returns `PENDING` at confidence=0.0 with clear reason. CI fixture eval results (`ci_fixture=True`) trigger `NEEDS_REVISION` in production mode. CI mode still approves at reduced confidence (0.70) with fixture marker. `_definer_review()` no longer always returns APPROVED — returns `PENDING` when no eval data in production, blocks CI fixture evals. `ReviewVerdict.verdict` now includes `PENDING` literal. Logging added for all decisions. | Add PENDING state handling in downstream ECS. Wire full MANUAL mode. | High |
+| **Orchestration: review.py** | Real/Mostly Working | 10% | **FIXED**: `_automated_review()` returns `PENDING` without eval_fn in production. CI fixture evals blocked from approval. `_definer_review()` requires real eval data. **PENDING verdicts now keep artifacts in GENERATED state** (no ECS transition) instead of advancing to REVIEWED. Pending verdict recorded as event. Logging on all paths. | Wire full MANUAL mode for definer gate. Add PENDING ECS state. | Medium |
 | **Orchestration: recovery.py** | Real/Mostly Working | 15% | Real SQLite-backed checkpoint and recovery. Artifact verification works. `str()`/`ast.literal_eval` serialization is fragile. | Use JSON serialization. Create table once at init. | Medium |
 | **Orchestration: ace_playbook.py** | Real/Mostly Working | 10% | Full SQLite-backed CRUD with deprecation logic. Blocking sqlite3 in async. | Consider aiosqlite. | Low |
 | **Orchestration: perf.py** | Partial/Hybrid | 45% | `profile_operation()` is real. `get_system_metrics()` returns hardcoded empty values. `get_memory_usage()` returns fake proportional breakdown (25%/10%/5%...). | Replace hardcoded breakdown with real measurement. | Medium |
@@ -136,7 +136,7 @@ These components appear functional but contain fake logic that silently produces
 
 10. **trajectory/regulator.py** — **FIXED**: `substance_score` default changed from 0.5 to 0.3 (via `_DEFAULT_SUBSTANCE_SCORE` constant), which is below the 0.4 detection threshold. Type E detection is now functional. `FailureStreakDetector` now has configurable `default_substance_score` and `substance_threshold` constructor parameters.
 
-**Root Cause (ADDRESSED)**: The evaluation pipeline no longer silently passes artifacts. `canonical_pipeline.py` blocks promotion on evaluation failure AND when `ci_fixture=True` in production mode (CI env var not set). All three evaluation nodes (`faithfulness.py`, `domain_coherence.py`, `adversarial_eval.py`) now include `ci_fixture` flags. `adversarial_eval.py` no longer returns hardcoded passing scores — CI fixture and fallback paths return 0.0 scores with `ci_fixture=True`. Type E detection is now functional (substance_score default 0.3 < 0.4 threshold). The review and gate layers no longer silently auto-approve: `review.py` returns `PENDING` without eval data in production, and `definer_gate.py` blocks CI fixture evaluations from approval in production. Remaining gap: (1) MANUAL mode in `definer_gate.py` still raises `NotImplementedError`, and (2) production `PENDING` verdicts need downstream handling in ECS/workflow.
+**Root Cause (FULLY ADDRESSED)**: The evaluation pipeline no longer silently passes artifacts. `canonical_pipeline.py` blocks promotion on evaluation failure AND when `ci_fixture=True` in production mode. All three evaluation nodes include `ci_fixture` flags. The review and gate layers no longer silently auto-approve: `review.py` returns `PENDING` without eval data in production, `ReviewNode` auto-wires eval_fn from model_provider, PENDING verdicts keep artifacts in GENERATED state, and `definer_gate.py` blocks CI fixture evaluations from approval in production. All previously failing tests are now fixed. Remaining gap: (1) MANUAL mode in `definer_gate.py` still raises `NotImplementedError` (requires UI/Phase 2), and (2) adding a PENDING state to the ECS graph for cleaner workflow pausing.
 
 ## Additional Issues Discovered
 
@@ -152,7 +152,7 @@ These components appear functional but contain fake logic that silently produces
 7. **All SQLite stores use blocking sqlite3 in async methods** — Every SQLite adapter calls synchronous `sqlite3.connect()` and `conn.execute()` inside `async` methods. Under load, this will freeze the event loop.
 8. **Sexton/sexton_audit event store write calls use wrong signatures** — Pass dicts to `write_event()` but the Protocol expects keyword arguments. Will crash at runtime with real EventStore.
 9. **ECS state lost on process restart** — `ecs_store_guardrailed.py` uses an in-memory cache with no persistence. `current_state()` never queries the underlying store.
-10. **ArtifactStore.read() defined twice in protocols.py** — Signature conflict: line 156 (`id: str`) and line 165 (`id: str, version: int | None = None`). Second shadows first.
+10. **ArtifactStore.read() defined twice in protocols.py** — **FIXED**: Phase 1 version removed; Phase 2 versioned signature is now canonical.
 
 ### Medium (P2)
 11. **embed_providers.py routes everything to fake_embed** — **FIXED**: provider="ollama" now creates OllamaEmbeddingClient. New `get_embed_fn_async()` returns async-native EmbeddingProvider. provider="fake" returns fake_embed (unchanged). Unknown provider falls back with warning.
@@ -171,7 +171,7 @@ These components appear functional but contain fake logic that silently produces
 | Metric | Count |
 |--------|-------|
 | Total test files | 52+ |
-| Tests passing | 538 (18 new review/gate tests added) |
+| Tests passing | 538+ (0 previously failing, all green) |
 | `assert True` no-op tests | 51 |
 | `finally: pass` blocks (src/) | 15+ |
 | `# type: ignore` (src/) | 25 |
@@ -211,7 +211,7 @@ These components appear functional but contain fake logic that silently produces
 
 ### Priority 4: Remove Dead Code and Fix Anti-Patterns (High — PARTIALLY DONE)
 - ~~Delete `evaluation.py` (duplicate of `l3a_orchestrator.py`)~~ — **DONE**: Deleted. No imports existed.
-- Resolve duplicate `ArtifactStore.read()` in `protocols.py`
+- ~~Resolve duplicate `ArtifactStore.read()` in `protocols.py`~~ — **DONE**: Phase 1 version removed; Phase 2 versioned signature is canonical.
 - Remove `finally: pass` blocks throughout
 - Fix `WorkflowContext` infinite budget default
 

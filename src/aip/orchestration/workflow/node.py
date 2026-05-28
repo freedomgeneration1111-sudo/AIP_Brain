@@ -297,6 +297,80 @@ from aip.orchestration.review import review_artifact
 from aip.orchestration.re_synthesize import re_synthesize
 
 
+def _build_default_eval_fn(model_provider: Any, config: Any) -> Any:
+    """Build a default eval_fn from a model_provider for use in ReviewNode.
+
+    Returns an async callable with the signature expected by review_artifact:
+        async (artifact_content: str, artifact_id: str) -> dict
+
+    The function uses the model_provider to run a lightweight quality evaluation
+    prompt and returns a dict with confidence, failure_types, detail, and
+    ci_fixture fields.
+
+    If model_provider is in ci_mode, the eval_fn returns a CI fixture result.
+    """
+    async def _default_eval(artifact_content: str, artifact_id: str) -> dict:
+        # Check if the model provider is in CI mode (deterministic fixture)
+        if hasattr(model_provider, "_ci_mode") and model_provider._ci_mode:
+            return {
+                "confidence": 0.75,
+                "failure_types": [],
+                "detail": "CI fixture evaluation via default eval_fn.",
+                "ci_fixture": True,
+            }
+
+        # Real evaluation: ask the model to assess quality
+        eval_prompt = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a quality evaluator for generated content. "
+                    "Assess the following artifact content and respond with a JSON object "
+                    "containing: \"confidence\" (0.0-1.0 overall quality score), "
+                    "\"failure_types\" (list of issue codes: A=faithfulness, "
+                    "B=domain_mismatch, C=structural, D=safety, E=emptiness), "
+                    "and \"detail\" (brief explanation). "
+                    "Respond with ONLY the JSON object, no other text."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Artifact ID: {artifact_id}\n\nContent:\n{artifact_content[:2000]}",
+            },
+        ]
+
+        try:
+            result = await model_provider.call("evaluation", eval_prompt)
+            content = result.get("content", "")
+
+            # Try to parse JSON from model response
+            import json
+            # Handle markdown code blocks
+            json_str = content.strip()
+            if json_str.startswith("```"):
+                lines = json_str.split("\n")
+                json_str = "\n".join(lines[1:-1] if len(lines) > 2 else lines)
+
+            parsed = json.loads(json_str)
+            return {
+                "confidence": float(parsed.get("confidence", 0.0)),
+                "failure_types": list(parsed.get("failure_types", [])),
+                "detail": parsed.get("detail"),
+                "ci_fixture": False,
+            }
+        except Exception:
+            # If model evaluation fails, return a low-confidence result
+            # rather than silently passing
+            return {
+                "confidence": 0.0,
+                "failure_types": [],
+                "detail": "Default eval_fn: model evaluation failed or returned unparseable result.",
+                "ci_fixture": True,
+            }
+
+    return _default_eval
+
+
 class ReviewNode(WorkflowNode):
     """Node that runs the Phase 2 review gate (4.1)."""
 
@@ -316,6 +390,14 @@ class ReviewNode(WorkflowNode):
         if not artifact_id:
             return NodeResult(success=False, error="ReviewNode requires artifact_id in context or config")
 
+        # Resolve eval_fn from context protocols, or build a default one
+        # from the model_provider if available.
+        eval_fn = context.get_protocol("eval_fn")
+        if eval_fn is None:
+            model_provider = context.get_protocol("model_provider")
+            if model_provider is not None:
+                eval_fn = _build_default_eval_fn(model_provider, config)
+
         try:
             verdict = await review_artifact(
                 artifact_id=artifact_id,
@@ -323,11 +405,13 @@ class ReviewNode(WorkflowNode):
                 ecs_store=ecs_store,
                 event_store=event_store,
                 trace_store=trace_store,
+                eval_fn=eval_fn,
                 config=config,
             )
 
             # Signal pause to the runner if the verdict requires intervention or re-synthesis
-            is_pause = verdict.verdict in ("REJECTED", "NEEDS_REVISION")
+            # PENDING also triggers a pause so the workflow can wait for evaluation
+            is_pause = verdict.verdict in ("REJECTED", "NEEDS_REVISION", "PENDING")
             output = {
                 "verdict": verdict,
                 "paused": is_pause,

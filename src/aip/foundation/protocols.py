@@ -170,11 +170,6 @@ class ArtifactStore(Protocol):
         """Write artifact content with metadata."""
         ...
 
-    async def read(self, id: str) -> str:
-        """Read artifact content by id."""
-        ...
-
-    # --- Phase 2 amendments (append method stubs only) ---
     async def read(self, id: str, version: int | None = None) -> str:
         """Read artifact content by id.
 

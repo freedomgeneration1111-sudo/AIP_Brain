@@ -100,9 +100,37 @@ async def review_artifact(
         actor = verdict.reviewer
         reason = f"Review rejected: {', '.join(verdict.failure_types)} — {verdict.detail}"
     elif verdict.verdict == "PENDING":
-        to_state = "REVIEWED"
-        actor = verdict.reviewer
-        reason = f"Review pending — no evaluation data available (confidence={verdict.confidence:.2f})"
+        # PENDING means evaluation data is insufficient — keep artifact in GENERATED
+        # state rather than advancing it through the pipeline. The artifact can be
+        # re-reviewed once evaluation data becomes available.
+        # NOTE: The ECS graph does not currently have a PENDING state. Adding one
+        # would allow better workflow pausing. For now, we skip the transition
+        # entirely and log the pending status.
+        logger.info(
+            "Review PENDING for artifact %s — keeping in GENERATED state. "
+            "Provide eval_fn or real evaluation data to advance.",
+            artifact_id,
+        )
+        # Record the pending verdict as an event even though we don't transition ECS
+        await event_store.write_event(
+            event_type="review_verdict",
+            actor=verdict.reviewer,
+            artifact_id=artifact_id,
+            from_state="GENERATED",
+            to_state="GENERATED",
+            verdict=verdict.verdict,
+            failure_types=verdict.failure_types,
+            detail=verdict.detail,
+            confidence=verdict.confidence,
+        )
+        await trace_store.write_event(
+            session_id=artifact_id,
+            node_type="L3",
+            failure_type="",
+            outcome="review_pending",
+            detail=verdict.detail,
+        )
+        return verdict
     else:
         to_state = "REVIEWED"
         actor = verdict.reviewer

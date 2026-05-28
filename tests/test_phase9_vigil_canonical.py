@@ -175,7 +175,7 @@ async def test_vigil_health_check_evaluates_faithfulness():
 
 
 @pytest.mark.asyncio
-async def test_canonical_pipeline_all_10_steps():
+async def test_canonical_pipeline_all_10_steps(monkeypatch):
     """CanonicalPipeline 10-step sequence must all be real (not simplified).
 
     Steps:
@@ -187,7 +187,13 @@ async def test_canonical_pipeline_all_10_steps():
     8. ECS transition REVIEWED → APPROVED
     9. Re-index (Vector + Lexical)
     10. Write health to VigilStore + Event
+
+    CI=true is required because the pipeline now blocks promotion when
+    evaluation uses CI fixture data in production mode. The mock
+    model_provider returns fixture responses, so we must run in CI mode
+    to allow fixture-based promotion.
     """
+    monkeypatch.setenv("CI", "true")
     config = CanonicalPromotionConfig(
         require_faithfulness_check=False,
         require_domain_coherence=False,
