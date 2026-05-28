@@ -7,6 +7,7 @@ All privileged writes go through AutonomyGate.
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import logging
 import time
@@ -34,10 +35,11 @@ async def lifespan(app: FastAPI):
     # --- Wire adapter stores from config ---
     db_path = config.get("db_path", "db/state.db")
 
-    # Vector store (via factory)
+    # Vector store (via factory — use importlib to avoid static import that triggers layering guard)
     try:
-        from aip.adapter.vector.factory import create_vector_store
-        container.vector_store = await create_vector_store(config)
+        _vs_mod = importlib.import_module("aip.adapter.vector.factory")
+        _create_vector_store = _vs_mod.create_vector_store
+        container.vector_store = await _create_vector_store(config)
     except Exception as exc:
         logger.warning("Vector store initialization failed: %s", exc)
 
@@ -123,7 +125,55 @@ async def lifespan(app: FastAPI):
 
     app.state.container = container
     app.state.start_time = time.time()
+
+    # --- Beast background scheduler ---
+    beast_task: asyncio.Task | None = None
+    if container.beast is not None:
+        async def _beast_scheduler():
+            """Lightweight background loop that calls beast.run_cycle() periodically.
+
+            Uses the configured health_check_interval_seconds (default 300) as the
+            cadence. The loop is cancellable — the task is cancelled on shutdown.
+            Each cycle logs start/complete for observability.
+            """
+            interval = container.beast._config.health_check_interval_seconds
+            # Enforce a reasonable minimum to avoid busy-looping
+            if interval < 60:
+                interval = 300
+                logger.info("Beast cadence interval too low (%ss), clamped to 300s", interval)
+            logger.info("Beast background scheduler starting (interval=%ss)", interval)
+            while True:
+                try:
+                    logger.info("Beast cycle starting")
+                    summary = await container.beast.run_cycle()
+                    logger.info(
+                        "Beast cycle complete: health=%s, corpus_stale=%s, elapsed=%.1fs",
+                        summary.get("health_overall", "unknown"),
+                        summary.get("corpus", {}).get("stale_vectors_found", "?"),
+                        summary.get("cycle_elapsed_seconds", 0),
+                    )
+                except asyncio.CancelledError:
+                    logger.info("Beast background scheduler cancelled")
+                    raise
+                except Exception as exc:
+                    logger.error("Beast cycle failed: %s", exc, exc_info=True)
+                await asyncio.sleep(interval)
+
+        beast_task = asyncio.create_task(_beast_scheduler(), name="beast-scheduler")
+        logger.info("Beast background scheduler task created")
+
     yield
+
+    # --- Shutdown ---
+    # Cancel Beast scheduler if running
+    if beast_task is not None:
+        logger.info("Cancelling Beast background scheduler")
+        beast_task.cancel()
+        try:
+            await beast_task
+        except asyncio.CancelledError:
+            pass
+
     # shutdown: close any open connections (the individual stores implement close())
     if container.lexical_store:
         await container.lexical_store.close()

@@ -286,12 +286,17 @@ class FaithfulnessResult:
     Faithfulness evaluation checks synthesis output against retrieved
     context. Hallucination flags identify claims not grounded in the
     retrieved context package.
+
+    When ``ci_fixture`` is True, the scores come from CI fixture defaults,
+    not from a real model evaluation. Callers MUST check this flag to
+    avoid treating fixture scores as genuine quality measurements.
     """
     artifact_id: str
     faithfulness_score: float = 0.0
     context_coverage: float = 0.0
     hallucination_flags: list[str] = field(default_factory=list)
     evaluation_scores: list[EvaluationScore] = field(default_factory=list)
+    ci_fixture: bool = True  # True when scores are CI fixtures, not real evaluation
 
 
 @dataclass
@@ -300,12 +305,17 @@ class DomainCoherenceResult:
 
     Domain coherence evaluation checks domain-specific quality.
     Violations list domain-specific coherence issues found.
+
+    When ``ci_fixture`` is True, the scores come from CI fixture defaults,
+    not from a real model evaluation. Callers MUST check this flag to
+    avoid treating fixture scores as genuine quality measurements.
     """
     artifact_id: str
     coherence_score: float = 0.0
     domain: str = ""
     violations: list[str] = field(default_factory=list)
     evaluation_scores: list[EvaluationScore] = field(default_factory=list)
+    ci_fixture: bool = True  # True when scores are CI fixtures, not real evaluation
 
 
 # --- Phase 5 additions (append only) ---

@@ -56,16 +56,24 @@ class CanonicalPipeline:
         self.vigil_store = vigil_store
 
     async def evaluate_for_promotion(self, artifact_id: str) -> dict:
-        """Read-only readiness check (steps 1-4). Returns scores + pass/fail + whether gate would be required."""
+        """Read-only readiness check (steps 1-4). Returns scores + pass/fail + whether gate would be required.
+
+        If evaluation fails, scores are set to 0.0 and passes_threshold is False.
+        This ensures artifacts cannot pass the promotion gate without real evaluation.
+        In CI mode, evaluation nodes return ci_fixture scores with explicit flags.
+        """
         # 1. Verify REVIEWED state
         try:
             current = await self.ecs_store.current_state(artifact_id)
         except Exception:
-            current = "REVIEWED"
+            current = "UNKNOWN"
+            logger.warning("Could not determine ECS state for %s; assuming UNKNOWN", artifact_id)
 
         # 2-4. Run faithfulness + domain coherence evaluations
-        faithfulness_score = 0.91  # default for CI/fallback
-        domain_coherence_score = 0.87
+        # Scores default to 0.0 (fail) — must be set by real evaluation or CI fixtures
+        faithfulness_score = 0.0
+        domain_coherence_score = 0.0
+        evaluation_succeeded = False
         try:
             content = await self.artifact_store.read(artifact_id)
             content_str = str(content) if content else ""
@@ -86,12 +94,14 @@ class CanonicalPipeline:
                 model_resolver=self.model_provider,
             )
             domain_coherence_score = stage3.coherence_score
+            evaluation_succeeded = True
         except Exception:
-            logger.warning("Evaluation failed for artifact %s; using default CI scores", artifact_id, exc_info=True)
+            logger.error("Evaluation FAILED for artifact %s; scores set to 0.0 (will not pass threshold)", artifact_id, exc_info=True)
 
         # Use config thresholds (issue 12)
         passes_threshold = (
-            (not self.config.require_faithfulness_check or faithfulness_score >= self.config.faithfulness_threshold)
+            evaluation_succeeded
+            and (not self.config.require_faithfulness_check or faithfulness_score >= self.config.faithfulness_threshold)
             and (not self.config.require_domain_coherence or domain_coherence_score >= self.config.domain_coherence_threshold)
         )
 
@@ -100,6 +110,7 @@ class CanonicalPipeline:
             "current_state": current,
             "faithfulness_score": faithfulness_score,
             "domain_coherence_score": domain_coherence_score,
+            "evaluation_succeeded": evaluation_succeeded,
             "passes_threshold": passes_threshold,
             "requires_definer_approval": self.config.require_definer_approval,
         }
@@ -116,8 +127,10 @@ class CanonicalPipeline:
         content = await self.artifact_store.read(artifact_id)
         content_str = str(content) if content else ""
 
-        faithfulness = 0.91  # default for CI/fallback
-        domain_coherence = 0.87
+        # Scores default to 0.0 (fail) — must be set by real evaluation or CI fixtures
+        faithfulness = 0.0
+        domain_coherence = 0.0
+        evaluation_succeeded = False
         try:
             from aip.orchestration.nodes.faithfulness import evaluate_faithfulness
             stage2 = await evaluate_faithfulness(
@@ -136,8 +149,12 @@ class CanonicalPipeline:
                 model_resolver=self.model_provider,
             )
             domain_coherence = stage3.coherence_score
+            evaluation_succeeded = True
         except Exception:
-            logger.warning("Evaluation failed for artifact %s; using default CI scores", artifact_id, exc_info=True)
+            logger.error("Evaluation FAILED for artifact %s; scores set to 0.0 — promotion will be blocked", artifact_id, exc_info=True)
+
+        if not evaluation_succeeded:
+            raise ValueError(f"Evaluation failed for artifact {artifact_id}; cannot proceed with promotion")
 
         # Issue 12: Use config thresholds instead of hardcoded values
         if self.config.require_faithfulness_check and faithfulness < self.config.faithfulness_threshold:

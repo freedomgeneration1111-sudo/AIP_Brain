@@ -1,7 +1,7 @@
 """AIP CLI entrypoint.
 
 Implements the declared pyproject script `aip = "aip.cli.main:cli"`.
-Uses Click. Composes via Protocols / 8.1 AipContainer where possible (offline-first).
+Uses Click. Composes via Protocols / AipContainer where possible (offline-first).
 """
 
 from __future__ import annotations
@@ -21,6 +21,13 @@ def cli() -> None:
     """AIP 0.1 — AI Poiesis local-first harness.
 
     Primary offline DEFINER surface. All privileged operations go through AutonomyGate.
+
+    Common commands:
+      aip init      Initialize databases and config for this machine
+      aip status    Show system status and database health
+      aip config    Read/write configuration values
+      aip project   Manage projects (list, create, show)
+      aip session   Manage sessions (start, resume, list)
     """
     pass
 

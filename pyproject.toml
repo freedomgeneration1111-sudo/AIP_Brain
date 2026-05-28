@@ -10,6 +10,10 @@ dependencies = [
     "jinja2>=3.1",
     "asyncpg>=0.29.0",
     "aiosqlite>=0.20",
+    "httpx>=0.24",
+    "fastapi>=0.100",
+    "bcrypt>=4.0",
+    "uvicorn>=0.20",
 ]
 
 [project.scripts]

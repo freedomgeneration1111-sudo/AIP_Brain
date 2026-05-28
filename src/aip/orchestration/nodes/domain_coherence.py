@@ -2,17 +2,31 @@
 
 Domain-specific coherence checks.
 Evaluation carries model_gen_assumption.
+
+Fallback behavior:
+    When no model_resolver is provided (or when evaluation fails), returns a
+    CI fixture result with score 0.90 and the ``ci_fixture`` flag set to True.
+    Callers MUST check the ``ci_fixture`` flag to distinguish real evaluation
+    from fixture results. The canonical pipeline blocks promotion when
+    evaluation fails entirely.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from aip.foundation.schemas import (
     DomainCoherenceResult,
     EvaluationScore,
 )
+
+
+logger = logging.getLogger(__name__)
+
+# CI fixture values — used when model_resolver is None or on error
+_CI_COHERENCE_SCORE = 0.90
 
 
 async def evaluate_domain_coherence(
@@ -28,13 +42,18 @@ async def evaluate_domain_coherence(
 
     Attempts real model evaluation when model_resolver is available,
     falling back to CI fixtures when not or on error.
+
+    The returned DomainCoherenceResult includes a ``ci_fixture`` flag in
+    evaluation_scores rationale when using fixture values. Callers should
+    check this flag to avoid treating fixture scores as real evaluations.
     """
     # Default CI fixture values
-    coherence_score = 0.90
+    coherence_score = _CI_COHERENCE_SCORE
     violations: list[str] = []
     tokens_consumed = 0
     model_slot_used = "evaluation"
     rationale = "CI fixture — automatic pass"
+    ci_fixture = True  # Assume fixture unless real evaluation succeeds
 
     # Try real model evaluation
     if model_resolver is not None:
@@ -64,31 +83,35 @@ async def evaluate_domain_coherence(
             if "CI fixture" in content or "ci-evaluation" in result.get("model", ""):
                 return DomainCoherenceResult(
                     artifact_id=artifact_id,
-                    coherence_score=0.90,
+                    coherence_score=_CI_COHERENCE_SCORE,
                     domain=domain,
                     violations=[],
                     evaluation_scores=[
                         EvaluationScore(
                             dimension="domain_coherence",
-                            score=0.90,
-                            rationale="CI fixture — automatic pass",
+                            score=_CI_COHERENCE_SCORE,
+                            rationale="CI fixture — automatic pass (model returned fixture response)",
                             model_slot_used="evaluation",
                             tokens_consumed=tokens_consumed,
                             model_gen_assumption="Models may produce structurally valid but domain-incoherent output without explicit domain constraints",
                         )
                     ],
+                    ci_fixture=True,
                 )
 
             # Parse real model response
             try:
                 parsed = json.loads(content)
-                coherence_score = float(parsed.get("coherence_score", 0.90))
+                coherence_score = float(parsed.get("coherence_score", 0.0))
                 violations = parsed.get("violations", [])
                 rationale = parsed.get("rationale", "Model evaluation")
+                ci_fixture = False  # Real evaluation succeeded
             except (json.JSONDecodeError, ValueError):
-                pass  # Use defaults
+                # Model response was not valid JSON — still a fixture
+                logger.warning("Domain coherence model response was not valid JSON; using CI fixture")
 
         except Exception:
+            # Model call failed entirely — use CI fixture
             pass  # Use CI fixture defaults
 
     return DomainCoherenceResult(
@@ -106,4 +129,5 @@ async def evaluate_domain_coherence(
                 model_gen_assumption="Models may produce structurally valid but domain-incoherent output without explicit domain constraints",
             )
         ],
+        ci_fixture=ci_fixture,
     )

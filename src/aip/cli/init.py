@@ -1,15 +1,23 @@
-"""aip init command — the installation contract."""
+"""aip init command — the installation contract.
+
+Performs:
+1. RAM detection + hardware profile suggestion
+2. Vector backend configuration (writes aip.config.toml)
+3. All DB schema initialization (state.db, trace.db, events.db, vectors, ace_playbook.db, lexical.db)
+4. Ollama validation (graceful warning + fallback if unavailable)
+5. Model slot validation via resolver
+6. Clear summary of local vs API surface
+"""
 
 from __future__ import annotations
 
 import os
 import platform
+import sqlite3
 import sys
 from pathlib import Path
 
 import click
-
-from aip.foundation.schemas import SurfaceConfig
 
 
 def _detect_ram_gb() -> int:
@@ -22,6 +30,7 @@ def _detect_ram_gb() -> int:
 
 
 def _suggest_profile(ram_gb: int) -> str:
+    """Suggest a deployment profile based on available RAM."""
     if ram_gb < 6:
         return "sqlite_vss + API synthesis (low-RAM profile)"
     if ram_gb < 8:
@@ -29,63 +38,13 @@ def _suggest_profile(ram_gb: int) -> str:
     return "pgvector (preferred) + full local stack"
 
 
-@click.command("init")
-@click.option("--force", is_flag=True, help="Overwrite existing config/DBs (dangerous)")
-def init(force: bool) -> None:
-    """Initialize AIP 0.1 for this machine.
+def _init_trace_db(db_path: Path) -> bool:
+    """Initialize trace.db with the required schema.
 
-    Performs:
-    1. RAM detection + hardware profile suggestion
-    2. Vector backend configuration (writes aip.config.toml)
-    3. All DB schema initialization (state.db, trace.db, events.db, vectors, ace_playbook.db, lexical.db)
-    4. Ollama validation (graceful warning + fallback if unavailable)
-    5. Model slot validation via resolver
-    6. Clear summary of local vs API surface
+    Returns True on success, False on failure.
     """
-    click.echo("=== AIP 0.1 init (per §2.3) ===")
-
-    ram = _detect_ram_gb()
-    profile = _suggest_profile(ram)
-    click.echo(f"Detected RAM: ~{ram} GB → suggested profile: {profile}")
-
-    # 2. Write minimal vector config (extend existing config if present)
-    config_path = Path("config/aip.config.toml")
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Append vector_backend section if not present (amend-by-addition)
-    content = config_path.read_text() if config_path.exists() else ""
-    if "[vector_backend]" not in content:
-        with open(config_path, "a") as f:
-            f.write("\n\n[vector_backend]\n")
-            if ram < 6:
-                f.write('provider = "sqlite_vss"\n')
-            else:
-                f.write('provider = "pgvector"\n')
-            f.write("host = \"127.0.0.1\"\nport = 5432\n")
-        click.echo(f"Configured vector backend in {config_path}")
-
-    # 3. Initialize core DB schemas (use existing init paths where available)
-    db_dir = Path("db")
-    db_dir.mkdir(exist_ok=True)
-
-    # Touch the files the later code expects (real schema creation happens in the adapter _ensure_table calls)
-    expected_dbs = [
-        "state.db",
-        "trace.db",
-        "events.db",
-        "ace_playbook.db",
-        "lexical.db",
-        "vectors.db",  # or per-vector files
-    ]
-    for name in expected_dbs:
-        (db_dir / name).touch(exist_ok=True)
-    click.echo("Initialized DB files under db/ (state, trace, events, ace_playbook, lexical, vectors)")
-
-    # Initialize trace.db with the required schema
-    trace_db_path = db_dir / "trace.db"
     try:
-        import sqlite3
-        conn = sqlite3.connect(str(trace_db_path))
+        conn = sqlite3.connect(str(db_path))
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS trace_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,35 +95,168 @@ def init(force: bool) -> None:
         """)
         conn.commit()
         conn.close()
-        click.echo("trace.db schema initialized (trace_events + routing_outcomes)")
+        return True
     except Exception as e:
-        click.echo(f"trace.db schema init skipped: {e}")
+        click.echo(f"  trace.db schema init skipped: {e}")
+        return False
 
-    # 4. Ollama validation (graceful)
-    ollama_ok = False
+
+def _init_state_db(db_path: Path) -> bool:
+    """Initialize state.db with entity, canonical, project, and event tables.
+
+    This uses the same schemas that the adapter stores create via initialize().
+    Only creates tables if they don't already exist.
+    """
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS entities (
+                entity_id TEXT PRIMARY KEY,
+                entity_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                metadata_json TEXT DEFAULT '{}',
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS canonicals (
+                artifact_id TEXT PRIMARY KEY,
+                content TEXT NOT NULL,
+                approved_by TEXT NOT NULL,
+                version INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS projects (
+                project_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                domain TEXT NOT NULL,
+                metadata_json TEXT DEFAULT '{}',
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                actor TEXT,
+                artifact_id TEXT,
+                from_state TEXT,
+                to_state TEXT,
+                detail TEXT,
+                metadata_json TEXT DEFAULT '{}',
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_events_type
+            ON events(event_type);
+
+            CREATE INDEX IF NOT EXISTS idx_events_artifact
+            ON events(artifact_id);
+        """)
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        click.echo(f"  state.db schema init skipped: {e}")
+        return False
+
+
+def _check_ollama() -> bool:
+    """Check if Ollama is running. Returns True if reachable."""
     try:
         import httpx
         r = httpx.get("http://127.0.0.1:11434/api/tags", timeout=2)
-        ollama_ok = r.status_code == 200
+        return r.status_code == 200
     except Exception:
-        pass
+        return False
 
+
+@click.command("init")
+@click.option("--force", is_flag=True, help="Overwrite existing config/DBs (dangerous)")
+def init(force: bool) -> None:
+    """Initialize AIP 0.1 for this machine.
+
+    Performs:
+    1. RAM detection + hardware profile suggestion
+    2. Vector backend configuration (writes aip.config.toml)
+    3. All DB schema initialization (state.db, trace.db, events.db, vectors, ace_playbook.db, lexical.db)
+    4. Ollama validation (graceful warning + fallback if unavailable)
+    5. Model slot validation via resolver
+    6. Clear summary of local vs API surface
+    """
+    click.echo("=== AIP 0.1 init ===")
+
+    # 1. Hardware profile
+    ram = _detect_ram_gb()
+    profile = _suggest_profile(ram)
+    click.echo(f"Detected RAM: ~{ram} GB → suggested profile: {profile}")
+
+    # 2. Write minimal vector config
+    config_path = Path("config/aip.config.toml")
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    content = config_path.read_text() if config_path.exists() else ""
+    if "[vector_backend]" not in content:
+        with open(config_path, "a") as f:
+            f.write("\n\n[vector_backend]\n")
+            if ram < 6:
+                f.write('provider = "sqlite_vss"\n')
+            else:
+                f.write('provider = "pgvector"\n')
+            f.write("host = \"127.0.0.1\"\nport = 5432\n")
+        click.echo(f"Configured vector backend in {config_path}")
+    else:
+        click.echo(f"Vector backend config already present in {config_path}")
+
+    # 3. Initialize databases with schemas
+    db_dir = Path("db")
+    db_dir.mkdir(exist_ok=True)
+
+    # state.db — core entity/canonical/project/event tables
+    state_db = db_dir / "state.db"
+    if _init_state_db(state_db):
+        click.echo(f"state.db: schema initialized (entities, canonicals, projects, events)")
+    else:
+        state_db.touch(exist_ok=True)
+        click.echo("state.db: touched (schema init failed, will be created on first use)")
+
+    # trace.db — trace events + routing outcomes
+    trace_db = db_dir / "trace.db"
+    if _init_trace_db(trace_db):
+        click.echo("trace.db: schema initialized (trace_events + routing_outcomes)")
+    else:
+        trace_db.touch(exist_ok=True)
+        click.echo("trace.db: touched (schema init failed, will be created on first use)")
+
+    # Other DBs — create empty files; adapter stores will add schemas on first initialize()
+    other_dbs = ["events.db", "ace_playbook.db", "lexical.db", "vectors.db"]
+    for name in other_dbs:
+        (db_dir / name).touch(exist_ok=True)
+    click.echo(f"Initialized: {', '.join(other_dbs)} (schemas created on first use)")
+
+    # 4. Ollama validation
+    ollama_ok = _check_ollama()
     if ollama_ok:
         click.echo("Ollama: reachable (local models available)")
     else:
-        click.echo("Ollama: not detected. Sexton and embedding will use API fallback. Run `ollama serve` to enable local models.")
+        click.echo("Ollama: not detected. Embedding and synthesis will use API fallback.")
+        click.echo("  Run `ollama serve` to enable local models.")
 
-    # 5. Model slot validation (via existing resolver if importable)
+    # 5. Model slot validation
     try:
         from aip.adapter.model_slot_resolver import ModelSlotResolver
         resolver = ModelSlotResolver(config_path=str(config_path))
         slots = list(resolver._slots.keys()) if hasattr(resolver, "_slots") else ["synthesis", "evaluation", "sexton", "embedding"]
         click.echo(f"Model slots validated: {slots}")
     except Exception as e:
-        click.echo(f"Model slot validation skipped (resolver not fully wired in this env): {e}")
+        click.echo(f"Model slot validation skipped: {e}")
 
     # 6. Summary
     click.echo("\n=== Init complete ===")
     click.echo(f"Profile: {profile}")
-    click.echo("Local surfaces ready: CLI, basic DBs, config-driven adapters.")
-    click.echo("Run `aip status` to inspect. Run `uv run aip` for the full CLI.")
+    click.echo(f"Config: {config_path}")
+    click.echo(f"Databases: {db_dir}/")
+    click.echo("Next steps:")
+    click.echo("  Run `aip status` to inspect current state.")
+    click.echo("  Run `uvicorn aip.adapter.api.app:create_app --factory` to start the API server.")
