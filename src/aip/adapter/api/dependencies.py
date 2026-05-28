@@ -12,11 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-try:
-    from fastapi import Depends, Request
-except ImportError:
-    Depends = None  # type: ignore
-    Request = None  # type: ignore
+from fastapi import Depends, Request
 
 from aip.foundation.protocols import (
     VectorStore,
@@ -72,8 +68,6 @@ class AipContainer:
 
 def get_container(request: "Request") -> AipContainer:
     """FastAPI dependency that returns the app's container (populated in lifespan)."""
-    if Depends is None:
-        raise RuntimeError("fastapi not available (Phase 6 surface dependency)")
     container = getattr(request.app.state, "container", None)
     if container is None:
         # In test mode without lifespan, create a fresh container from any available config

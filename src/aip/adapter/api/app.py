@@ -11,12 +11,8 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any
 
-try:
-    from fastapi import FastAPI
-    from fastapi.middleware.cors import CORSMiddleware
-except ImportError:
-    FastAPI = None  # type: ignore
-    CORSMiddleware = None  # type: ignore
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from aip.adapter.api.dependencies import AipContainer, get_container
 from aip.adapter.api.routes import health, projects, sessions
@@ -53,12 +49,6 @@ async def lifespan(app: FastAPI):
 
 
 def create_app(config: dict | None = None) -> "FastAPI":
-    if FastAPI is None:
-        raise RuntimeError(
-            "fastapi is required for CHUNK-8.1 surfaces. "
-            "Install with: uv add fastapi uvicorn (or add to pyproject surface extras)."
-        )
-
     cfg = config or {}
     surface_cfg = SurfaceConfig(**{k: v for k, v in cfg.items() if k in SurfaceConfig.__dataclass_fields__})
 

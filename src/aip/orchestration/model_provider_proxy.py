@@ -27,10 +27,10 @@ class ModelResolverProtocol(Protocol):
     Orchestration code imports this Protocol instead of the adapter class.
     """
 
-    def call(self, slot_name: str, messages: list[dict], **kwargs: Any) -> Any:
+    async def call(self, slot_name: str, messages: list[dict], **kwargs: Any) -> Any:
         ...
 
-    def resolve_slot(self, slot_name: str) -> dict:
+    def resolve_slot(self, slot_name: str) -> Any:
         ...
 
     @property

@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-try:
-    from fastapi import APIRouter, Depends
-except ImportError:
-    APIRouter = None  # type: ignore
-    Depends = None  # type: ignore
+from fastapi import APIRouter, Depends
 
 from aip.adapter.api.dependencies import AipContainer, get_container
 
-router = APIRouter() if APIRouter is not None else None
+router = APIRouter()
 
 
 @router.get("/memory/trace/{session_id}")

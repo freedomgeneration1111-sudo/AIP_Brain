@@ -5,16 +5,11 @@ Writes (config) go through AutonomyGate (admin). Reads from delivered actors (Se
 
 from __future__ import annotations
 
-try:
-    from fastapi import APIRouter, Depends, HTTPException
-except ImportError:
-    APIRouter = None  # type: ignore
-    Depends = None  # type: ignore
-    HTTPException = None  # type: ignore
+from fastapi import APIRouter, Depends, HTTPException
 
 from aip.adapter.api.dependencies import AipContainer, get_container
 
-router = APIRouter() if APIRouter is not None else None
+router = APIRouter()
 
 
 @router.get("/admin/config")
@@ -93,8 +88,8 @@ async def get_router_weights(container: AipContainer = Depends(get_container)):
     # From AdaptiveRouter (7.4)
     if container.adaptive_router:
         try:
-            weights = container.adaptive_router.get_weights()
-            return {"weights": weights}
+            weights = await container.adaptive_router.get_routing_weights()
+            return {"weights": [w.__dict__ if hasattr(w, '__dict__') else w for w in weights]}
         except Exception:
             pass
     return {"weights": []}

@@ -56,11 +56,9 @@ class PluginManager:
             self.model_slot_resolver.register_provider(slot, plugin)  # type: ignore[attr-defined]
 
         if self.adaptive_router is not None:
-            # Register as routing option (best-effort; router may accept providers)
-            try:
-                self.adaptive_router.register_provider(slot, plugin)  # type: ignore[attr-defined]
-            except Exception:
-                pass
+            # AdaptiveRouter does not yet support register_provider(); skip silently.
+            # When router gains provider registration, this will be wired here.
+            pass
 
         self._registered[f"{slot}:{provider_name}"] = plugin
 

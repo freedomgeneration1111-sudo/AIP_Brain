@@ -112,7 +112,7 @@ class KnowledgeCompiler:
             compiled_content = f"[ERROR] Synthesis failed: {e}"
 
         # Structural validation (deterministic Python checks)
-        is_valid = len(compiled_content) > 20 and "provenance" in compiled_content.lower() or True  # simplified
+        is_valid = len(compiled_content) > 20 and "provenance" in compiled_content.lower()
 
         metadata = {
             "compilation_model_slot": slot,

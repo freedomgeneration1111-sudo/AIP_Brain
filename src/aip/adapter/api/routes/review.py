@@ -5,18 +5,12 @@ Per spec: GET /reviews (paginated ReviewQueueEntry), POST /reviews/{id}/approve 
 
 from __future__ import annotations
 
-try:
-    from fastapi import APIRouter, Depends, HTTPException, Query
-except ImportError:
-    APIRouter = None  # type: ignore
-    Depends = None  # type: ignore
-    HTTPException = None  # type: ignore
-    Query = None  # type: ignore
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from aip.adapter.api.dependencies import AipContainer, get_container
 from aip.foundation.schemas import ReviewQueueEntry, SurfaceConfig
 
-router = APIRouter() if APIRouter is not None else None
+router = APIRouter()
 
 
 @router.get("/reviews")

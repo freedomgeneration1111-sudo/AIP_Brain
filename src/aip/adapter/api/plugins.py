@@ -48,6 +48,5 @@ async def plugin_health(container=Depends(get_container)):
     pm = getattr(container, "plugin_manager", None)
     if pm is None:
         return {"health": {}}
-    import asyncio
-    health = asyncio.get_event_loop().run_until_complete(pm.health_check_all())
+    health = await pm.health_check_all()
     return {"health": health}
