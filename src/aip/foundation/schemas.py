@@ -86,7 +86,7 @@ from typing import Literal
 
 
 # Type alias for Appendix E failure type codes (matches FailureType enum values)
-FailureTypeCode = Literal["A", "B", "C", "E"]
+FailureTypeCode = Literal["A", "B", "C", "D", "E", "F"]
 
 
 @dataclass
@@ -528,16 +528,26 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 
+# Type alias for Vigil health status per CHUNK-9.0a
+VigilHealthStatus = Literal["healthy", "stale", "degraded", "unknown"]
+
+# Type alias for authentication roles per CHUNK-9.0a
+AuthRole = Literal["definer", "readonly", "unauthenticated"]
+
+
 @dataclass
 class VigilConfig:
     """Configuration for the Vigil actor (compiled knowledge maintenance).
 
     Per §3: Vigil — last missing orchestration actor.
     Per §16.1 / §1.8: monitors canonical corpus health and triggers re-evaluation on model slot changes.
+    Per CHUNK-9.0a INTERFACES: canonical_health_check_interval_seconds, stale_threshold_days,
+    re_evaluate_on_slot_change, max_re_evaluate_batch_size, entity_consistency_check.
     """
-    enabled: bool = True
-    stale_canonical_check_interval_seconds: int = 3600
-    model_slot_change_audit: bool = True
+    canonical_health_check_interval_seconds: int = 3600
+    stale_threshold_days: int = 30
+    re_evaluate_on_slot_change: bool = True
+    max_re_evaluate_batch_size: int = 50
     entity_consistency_check: bool = True
 
 
@@ -547,11 +557,14 @@ class AuthConfig:
 
     Per §1.7: enforces DEFINER sovereignty at the identity level.
     Phase 7 scope: single-DEFINER with API key support for non-interactive access (CLI/MCP).
+    Per CHUNK-9.0a INTERFACES: auth_enabled, session_timeout_seconds, api_key_enabled,
+    bcrypt_rounds, definer_identity.
     """
-    session_secret_key: str = "change-me-in-production"
+    auth_enabled: bool = False
+    session_timeout_seconds: int = 86400
     api_key_enabled: bool = True
-    session_timeout_minutes: int = 60
-    rate_limit_per_ip: int = 100
+    bcrypt_rounds: int = 12
+    definer_identity: str = "definer"
 
 
 @dataclass
@@ -560,12 +573,14 @@ class RateLimitConfig:
 
     Per Phase 7 scope: prevents any single surface (Beast cadence, MCP, chat) from starving others.
     Configurable per §1.8.
+    Per CHUNK-9.0a INTERFACES: requests_per_minute, burst_size, per_endpoint_overrides,
+    model_budget_protection.
     """
     enabled: bool = True
     requests_per_minute: int = 60
     burst_size: int = 10
-    per_definer: bool = True
-    per_ip: bool = True
+    per_endpoint_overrides: dict[str, int] = field(default_factory=dict)
+    model_budget_protection: bool = True
 
 
 @dataclass
@@ -573,7 +588,12 @@ class CanonicalPromotionConfig:
     """Configuration for the canonical promotion pipeline.
 
     Per §1.6 / §9.3: drives REVIEWED→APPROVED→CANONICAL lifecycle with multi-stage verification.
+    Per CHUNK-9.0a INTERFACES: faithfulness_threshold, domain_coherence_threshold,
+    model_gen_assumption.
     """
+    faithfulness_threshold: float = 0.85
+    domain_coherence_threshold: float = 0.80
+    model_gen_assumption: str | None = None
     auto_promote_on_approval: bool = False  # requires explicit DEFINER gate in 9.2
     require_vigil_health_check: bool = True
     indexing_enabled: bool = True  # LexicalStore + VectorStore sync
@@ -585,20 +605,33 @@ class CanonicalPromotionConfig:
 
 @dataclass
 class WorkflowTemplate:
-    """Extended workflow template definition (beyond Workflow 0.1)."""
-    name: str
-    version: str = "1.0"
+    """Extended workflow template definition (beyond Workflow 0.1).
+
+    Per CHUNK-9.0a INTERFACES: template_id, name, description, yaml_path, trigger, domains,
+    model_gen_assumption.
+    """
+    template_id: str
+    name: str = ""
     description: str = ""
-    path: str = ""  # relative to workflows/
+    yaml_path: str = ""  # relative to workflows/
+    trigger: str = "manual"  # manual | on_artifact_approved | on_schedule
+    domains: list[str] = field(default_factory=list)
+    model_gen_assumption: str | None = None
 
 
 @dataclass
 class DeploymentProfile:
-    """Deployment profile (laptop-viable vs production)."""
-    name: str  # "laptop" | "production"
-    vector_backend: str
-    model_providers: dict = field(default_factory=dict)
-    docker_compose_profile: str = ""
+    """Deployment profile (laptop-viable vs production).
+
+    Per CHUNK-9.0a INTERFACES: profile_name, vector_backend (VectorBackendType),
+    model_provider, auth_enabled, workers, memory_limit_mb.
+    """
+    profile_name: str  # "laptop" | "production"
+    vector_backend: VectorBackendType = "sqlite_vss"
+    model_provider: str = "ollama"
+    auth_enabled: bool = False
+    workers: int = 1
+    memory_limit_mb: int = 4096
 
 
 # --- Phase 8 additions (append only) ---

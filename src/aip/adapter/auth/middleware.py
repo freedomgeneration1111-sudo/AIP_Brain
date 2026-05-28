@@ -21,9 +21,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self.config = config
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        if not self.config.api_key_enabled and self.config.session_timeout_minutes == 0:  # simplistic "disabled" check
+        if not self.config.auth_enabled:
             # Laptop profile: everything is DEFINER
-            request.state.auth_identity = "definer"
+            request.state.auth_identity = self.config.definer_identity
             request.state.auth_role = "definer"
             return await call_next(request)
 

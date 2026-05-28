@@ -92,13 +92,21 @@ async def re_synthesize(
     retry_count = len(events)
 
     if retry_count >= max_retries:
-        # Budget exhausted — transition to FAILED, notify DEFINER
+        # Budget exhausted — per spec, REJECTED can only go to GENERATED first,
+        # then GENERATED→FAILED. Two-step transition.
         await ecs_store.transition(
             artifact_id=artifact_id,
             from_state="REJECTED",
+            to_state="GENERATED",
+            actor="re_synthesize",
+            reason="Retry budget exhausted, transitioning to GENERATED before FAILED.",
+        )
+        await ecs_store.transition(
+            artifact_id=artifact_id,
+            from_state="GENERATED",
             to_state="FAILED",
             actor="re_synthesize",
-            reason=f"Retry budget exhausted ({retry_count} attempts). Escalating to DEFINER.",
+            reason="retry_budget_exhausted",
         )
         await trace_store.write_event(
             session_id=artifact_id,

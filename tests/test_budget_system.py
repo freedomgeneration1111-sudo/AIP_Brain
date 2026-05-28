@@ -67,8 +67,8 @@ async def test_budget_manager_warning_threshold_emits_event():
     """When threshold crossed, warning event is (optionally) written."""
     events = []
     class FakeEventStore:
-        async def write_event(self, ev):
-            events.append(ev)
+        async def write_event(self, event_type, actor, artifact_id, from_state=None, to_state=None, **kwargs):
+            events.append({"event_type": event_type, "actor": actor, "artifact_id": artifact_id, "from_state": from_state, "to_state": to_state, **kwargs})
 
     cfg = BudgetConfig(session_token_limit=100, budget_warning_threshold=0.5, budget_hard_stop=False)
     store = InMemoryBudgetStore()

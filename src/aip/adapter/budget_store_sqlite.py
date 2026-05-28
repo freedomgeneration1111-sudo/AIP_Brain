@@ -57,9 +57,24 @@ class SqliteBudgetStore(BudgetStore):
             ).fetchone()
             consumed_tokens = row[0] if row else 0
             consumed_cost = row[1] if row else 0.0
+
+            # Resolve the limit from BudgetConfig defaults per scope
+            limits = {
+                "session": 500000,
+                "project": 5000000,
+                "daily": 10000000,
+            }
+            limit = limits.get(scope, 500000)
+            remaining = max(0, limit - consumed_tokens)
+            warning_threshold = 0.80
+
             return {
-                "consumed_tokens": consumed_tokens,
+                "consumed": consumed_tokens,
+                "consumed_tokens": consumed_tokens,  # backward compat
                 "consumed_cost": consumed_cost,
+                "remaining": remaining,
+                "limit": limit,
+                "warning_threshold": warning_threshold,
             }
         finally:
             conn.close()
@@ -84,5 +99,9 @@ class SqliteBudgetStore(BudgetStore):
             conn.close()
 
     async def check_limit(self, scope: BudgetScope, scope_id: str) -> bool:
-        """Always returns True — limit checking is done by BudgetManager with config."""
-        return True
+        """Check whether budget has remaining capacity.
+
+        Returns True if budget is not exhausted, False if at/past limit.
+        """
+        budget = await self.get_budget(scope, scope_id)
+        return budget["remaining"] > 0

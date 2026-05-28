@@ -72,7 +72,7 @@ class SessionManager:
             Tuple of (signals, should_intervene_flag).
         """
         signals = await regulate_trajectory(session_context, trace_store, self._config)
-        intervene = await should_intervene(signals, self._config)
+        intervene = should_intervene(signals, self._config)  # sync per spec
         return signals, intervene
 
     async def handle_intervention(

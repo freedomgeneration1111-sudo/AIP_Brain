@@ -55,8 +55,25 @@ async def full_l3a_evaluation(
     else:
         eval_cfg = {}
 
-    faithfulness_threshold = eval_cfg.get("faithfulness_threshold", 0.70) if isinstance(eval_cfg, dict) else 0.70
-    domain_coherence_threshold = eval_cfg.get("domain_coherence_threshold", 0.60) if isinstance(eval_cfg, dict) else 0.60
+    # Issue 22: Use config thresholds from CanonicalPromotionConfig if available
+    if config is not None:
+        # Check for CanonicalPromotionConfig-style attributes
+        if hasattr(config, "faithfulness_threshold"):
+            faithfulness_threshold = config.faithfulness_threshold
+        elif isinstance(eval_cfg, dict):
+            faithfulness_threshold = eval_cfg.get("faithfulness_threshold", 0.70)
+        else:
+            faithfulness_threshold = 0.70
+
+        if hasattr(config, "domain_coherence_threshold"):
+            domain_coherence_threshold = config.domain_coherence_threshold
+        elif isinstance(eval_cfg, dict):
+            domain_coherence_threshold = eval_cfg.get("domain_coherence_threshold", 0.60)
+        else:
+            domain_coherence_threshold = 0.60
+    else:
+        faithfulness_threshold = eval_cfg.get("faithfulness_threshold", 0.70) if isinstance(eval_cfg, dict) else 0.70
+        domain_coherence_threshold = eval_cfg.get("domain_coherence_threshold", 0.60) if isinstance(eval_cfg, dict) else 0.60
 
     # Stage 2
     stage2 = await evaluate_faithfulness(

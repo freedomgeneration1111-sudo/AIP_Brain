@@ -190,7 +190,7 @@ class PgvectorStore(VectorStore):
                            1 - (vector <=> $1::vector) AS score
                     FROM vectors
                     ORDER BY vector <=> $1::vector
-                    LIMIT $1
+                    LIMIT $2
                     """,
                     str(query_vector),
                     top_k,

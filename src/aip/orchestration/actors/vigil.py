@@ -66,15 +66,18 @@ class Vigil:
     async def detect_stale_canonicals(self) -> list[dict]:
         """Return list of stale canonicals (threshold + model slot)."""
         try:
-            max_age = getattr(self.config, 'staleness_threshold_seconds', 86400)
-            # Convert seconds to approximate days for the store's threshold_days param
-            threshold_days = max(1, max_age // 86400)
+            threshold_days = self.config.stale_threshold_days
             return await self.vigil_store.list_stale_canonicals(threshold_days=threshold_days)
         except Exception:
             return []
 
     async def detect_entity_inconsistencies(self) -> list[dict]:
-        """Return entities referenced by canonicals that have been updated since promotion."""
+        """Return entities referenced by canonicals that have been updated since promotion.
+
+        Only runs when config.entity_consistency_check is True.
+        """
+        if not self.config.entity_consistency_check:
+            return []
         try:
             entities = await self.entity_store.list_entities()
             # Check for entities updated more recently than their referencing canonicals
@@ -93,10 +96,7 @@ class Vigil:
         self, slot_name: str, old_config: ModelSlotConfig, new_config: ModelSlotConfig
     ) -> None:
         """Per §1.8: audit for stale assumptions on model slot upgrade."""
-        # If re_evaluate_on_slot_change: query vigil_store for canonicals using old slot
-        # Create trace events (node_type="vigil", failure_type="A" or similar) for Sexton
-        # Bound by config.max_re_evaluate_batch_size
-        if self.config.model_slot_change_audit:
+        if self.config.re_evaluate_on_slot_change:
             # Create trace events so Sexton can classify
             await self.trace_store.write_event(
                 session_id="vigil-audit",
@@ -110,6 +110,7 @@ class Vigil:
         """Cadence entry point (called by scheduler/Beast). Read-only."""
         health = await self.check_canonical_health()
         stale = await self.detect_stale_canonicals()
+
         entity_issues = await self.detect_entity_inconsistencies()
 
         await self.vigil_store.record_vigil_check(
@@ -119,7 +120,7 @@ class Vigil:
         )
 
         # Create trace events for Sexton on stale items (bounded)
-        for item in stale[: self.config.max_re_evaluate_batch_size]:  # type: ignore[attr-defined]
+        for item in stale[: self.config.max_re_evaluate_batch_size]:
             await self.trace_store.write_event(
                 session_id="vigil-run",
                 node_type="vigil",

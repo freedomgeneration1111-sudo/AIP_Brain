@@ -34,7 +34,7 @@ class VectorStore(Protocol):
         query_vector: list[float],
         domain: str | None = None,
         top_k: int = 10,
-    ) -> list:  # list[Chunk] after schemas append
+    ) -> list["Chunk"]:
         """Retrieve chunks by vector similarity."""
         ...
 
@@ -47,7 +47,7 @@ class VectorStore(Protocol):
         ...
 
     # Deprecated Phase 0 method — retained for backward compatibility
-    async def store(self, chunk: object) -> str:
+    async def store(self, chunk: "Chunk") -> str:
         """Deprecated: use upsert() instead. Returns chunk id."""
         ...
 
@@ -64,13 +64,7 @@ class VectorStore(Protocol):
         """
         ...
 
-    async def count(self, domain: str | None = None) -> int:
-        """Count vectors in the store, optionally filtered by domain.
-
-        domain=None returns total count across all domains.
-        Used by migration tool (CHUNK-6.3) for data integrity verification.
-        """
-        ...
+    # count() already defined above — Phase 4 amendment adds health_check only
 
 
 # Other Phase 0 protocols as empty runtime_checkable stubs
@@ -315,10 +309,10 @@ class ProjectStore(Protocol):
 class EcsStore(Protocol):
     """Artifact governance. EcsStore.transition() is the only legal path for state changes."""
 
-    def transition(
+    async def transition(
         self,
         artifact_id: str,
-        from_state: str,
+        from_state: str | None,
         to_state: str,
         actor: str,
         reason: str,
@@ -326,7 +320,7 @@ class EcsStore(Protocol):
     ) -> None: ...
 
     # --- Phase 2 / CHUNK-4.0a amendment (append method stub only) ---
-    def current_state(self, artifact_id: str) -> str | None:
+    async def current_state(self, artifact_id: str) -> str | None:
         """Return the current ECS state of the artifact, or None if unknown."""
         ...
 
@@ -479,15 +473,34 @@ class EmbeddingProvider(Protocol):
 class VigilStore(Protocol):
     """Protocol for Vigil actor storage needs (canonical health, entity consistency).
 
-    Per Phase 7: Vigil is read-only; it detects and reports, never modifies autonomously.
+    Per Phase 7 CHUNK-9.0a: Vigil is read-only; it detects and reports, never modifies autonomously.
+    Methods: get_canonical_health, list_stale_canonicals, record_vigil_check, get_last_vigil_check.
     """
 
-    async def list_stale_canonicals(self, max_age_seconds: int) -> list[dict]:
-        """Return canonical artifacts that have not been re-evaluated recently."""
+    async def get_canonical_health(self, artifact_id: str) -> dict | None:
+        """Get health metadata for a canonical artifact.
+
+        Returns dict with: artifact_id, last_evaluated_at, model_slot_used,
+        faithfulness_score, domain_coherence_score, status (VigilHealthStatus).
+        Returns None if artifact not found.
+        """
         ...
 
-    async def record_vigil_event(self, event: dict) -> None:
-        """Record a Vigil detection/audit event (trace-friendly)."""
+    async def list_stale_canonicals(self, threshold_days: int) -> list[dict]:
+        """Return canonical artifacts that have not been re-evaluated within threshold_days."""
+        ...
+
+    async def record_vigil_check(
+        self,
+        canonical_count: int,
+        stale_count: int,
+        status: "VigilHealthStatus",
+    ) -> None:
+        """Record the result of a Vigil health check pass."""
+        ...
+
+    async def get_last_vigil_check(self) -> dict | None:
+        """Return the most recent Vigil check result, or None if never run."""
         ...
 
 
@@ -496,18 +509,39 @@ class AuthStore(Protocol):
     """Protocol for authentication/authorization storage.
 
     Phase 7 scope: single-DEFINER + API keys for non-interactive access.
+    Per CHUNK-9.0a INTERFACES: session + API key lifecycle methods.
     """
 
     async def get_definer_identity(self) -> dict | None:
         """Return the single DEFINER identity (or None if not configured)."""
         ...
 
+    async def create_session(self, identity: str, role: "AuthRole") -> str:
+        """Create a session for the given identity and role. Returns session token."""
+        ...
+
+    async def validate_session(self, session_token: str) -> dict | None:
+        """Validate a session token. Returns identity dict or None if expired/invalid."""
+        ...
+
+    async def revoke_session(self, session_token: str) -> None:
+        """Revoke a session token."""
+        ...
+
     async def validate_api_key(self, key: str) -> dict | None:
         """Validate an API key and return associated identity info."""
         ...
 
-    async def create_session(self, identity: dict) -> str:
-        """Create a session and return session token."""
+    async def create_api_key(self, identity: str, role: "AuthRole", key_name: str) -> str:
+        """Create an API key for non-interactive access. Returns the key string."""
+        ...
+
+    async def revoke_api_key(self, key_name: str) -> None:
+        """Revoke an API key by name."""
+        ...
+
+    async def list_api_keys(self) -> list[dict]:
+        """List all API keys (key_name, identity, role, created_at)."""
         ...
 
     async def list_users(self) -> list[dict]:

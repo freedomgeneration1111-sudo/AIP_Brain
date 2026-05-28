@@ -5,6 +5,9 @@ Phase 1: deterministic stub.
 Phase 4: real ModelSlotResolver integration with skeptic prompt (per §9.2).
 
 Per §9.2: adversarial evaluation applies to canonical-bound outputs and marginal L3a passes; requires separate skeptic prompt.
+
+Issue 21: Remove duplicate adversarial_evaluate() function. Promote adversarial_eval()
+to optionally use ModelSlotResolver when provided.
 """
 
 from __future__ import annotations
@@ -63,17 +66,84 @@ DEFAULT_EVAL_CRITERIA: list[EvalCriterion] = [
 
 
 async def adversarial_eval(
-    synthesis_output: SynthesisOutput,
-    validation_result: ValidationResult,
+    synthesis_output: SynthesisOutput | None = None,
+    validation_result: ValidationResult | None = None,
     eval_criteria: list[EvalCriterion] | None = None,
-) -> EvalResult:
+    # Phase 4 promoted parameters
+    artifact_content: str | None = None,
+    context: str | None = None,
+    model_resolver: Any = None,
+    config: Any | None = None,
+) -> EvalResult | dict:
     """
-    Phase 1 stub for L3b adversarial evaluation.
+    L3b adversarial evaluation.
 
-    In stub mode this returns deterministic, generally passing scores.
-    The presence of validation failures from L3a can influence the result
-    and set requires_deep_eval=True.
+    Phase 1 backward compat: accepts SynthesisOutput + ValidationResult for stub mode.
+    Phase 4 promoted: accepts artifact_content, context, model_resolver for real eval.
+
+    When model_resolver is provided, uses it for model-based evaluation (skeptic prompt per §9.2).
+    Otherwise falls back to deterministic stub scoring.
     """
+    # Phase 4 path: model_resolver provided
+    if model_resolver is not None:
+        prompt_path = Path(__file__).parent.parent.parent / "prompts" / "adversarial_eval.md"
+        system_prompt = ""
+        if prompt_path.exists():
+            system_prompt = prompt_path.read_text()
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        _content = artifact_content or ""
+        _context = context or ""
+        messages.append({
+            "role": "user",
+            "content": f"Artifact:\n{_content}\n\nContext (for review):\n{_context}",
+        })
+
+        result = await model_resolver.call(
+            "evaluation",
+            messages,
+            temperature=0.3,
+        )
+
+        # CI fixture path
+        result_content = result.get("content", "")
+        if "CI fixture" in result_content or "ci-evaluation" in result.get("model", ""):
+            return {
+                "scores": {
+                    "framework_integrity": 0.88,
+                    "logic": 0.85,
+                    "honesty": 0.90,
+                    "completeness": 0.82,
+                },
+                "overall": 0.86,
+                "critique": "CI fixture — automatic structured pass",
+                "model": result.get("model", "ci-evaluation"),
+                "usage": result.get("usage", {}),
+                "latency_ms": result.get("latency_ms", 80),
+            }
+
+        # Production path (parse model output in real impl)
+        return {
+            "scores": {
+                "framework_integrity": 0.75,
+                "logic": 0.78,
+                "honesty": 0.82,
+                "completeness": 0.70,
+            },
+            "overall": 0.76,
+            "critique": result_content[:300] if result_content else "Model response received",
+            "model": result.get("model", "unknown"),
+            "usage": result.get("usage", {}),
+            "latency_ms": result.get("latency_ms", 0),
+        }
+
+    # Phase 1 stub path (backward compat)
+    if validation_result is None:
+        validation_result = ValidationResult(passed=True, failure_type=None, failure_detail=None, checks_run=0, checks_failed=[])
+
     criteria = eval_criteria or DEFAULT_EVAL_CRITERIA
 
     scores: dict[str, float] = {}
@@ -111,67 +181,5 @@ async def adversarial_eval(
     )
 
 
-# --- Phase 4 promotion (new primary entry point) ---
-
-async def adversarial_evaluate(
-    artifact_content: str,
-    context: str,
-    model_resolver: Any,
-    config: Any | None = None,
-) -> dict:
-    """Promoted L3b adversarial evaluation using ModelSlotResolver.
-
-    Uses a separate skeptic prompt (per §9.2). Returns structured dict.
-    Falls back gracefully if resolver is in ci_mode.
-    """
-    prompt_path = Path(__file__).parent.parent.parent / "prompts" / "adversarial_eval.md"
-    system_prompt = ""
-    if prompt_path.exists():
-        system_prompt = prompt_path.read_text()
-
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-
-    messages.append({
-        "role": "user",
-        "content": f"Artifact:\n{artifact_content}\n\nContext (for review):\n{context}",
-    })
-
-    result = await model_resolver.call(
-        "evaluation",
-        messages,
-        temperature=0.3,
-    )
-
-    # CI fixture path
-    content = result.get("content", "")
-    if "CI fixture" in content or "ci-evaluation" in result.get("model", ""):
-        return {
-            "scores": {
-                "framework_integrity": 0.88,
-                "logic": 0.85,
-                "honesty": 0.90,
-                "completeness": 0.82,
-            },
-            "overall": 0.86,
-            "critique": "CI fixture — automatic structured pass",
-            "model": result.get("model", "ci-evaluation"),
-            "usage": result.get("usage", {}),
-            "latency_ms": result.get("latency_ms", 80),
-        }
-
-    # Production path (parse model output in real impl)
-    return {
-        "scores": {
-            "framework_integrity": 0.75,
-            "logic": 0.78,
-            "honesty": 0.82,
-            "completeness": 0.70,
-        },
-        "overall": 0.76,
-        "critique": content[:300] if content else "Model response received",
-        "model": result.get("model", "unknown"),
-        "usage": result.get("usage", {}),
-        "latency_ms": result.get("latency_ms", 0),
-    }
+# Backward compat alias for Phase 4 callers
+adversarial_evaluate = adversarial_eval

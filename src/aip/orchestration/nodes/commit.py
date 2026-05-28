@@ -22,6 +22,7 @@ class ArtifactRef:
     project_id: str
     work_unit_id: str
     ecs_state: str
+    committed_at: str = ""  # ISO 8601
 
 
 class CommitBlockedError(Exception):
@@ -80,6 +81,9 @@ async def commit_artifact(
         )
 
     # R3: record the ECS transition in the event log
+    import datetime
+    committed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
     if event_store is not None:
         await event_store.write_event(
             event_type="ecs_transition",
@@ -87,6 +91,9 @@ async def commit_artifact(
             artifact_id=artifact_id,
             from_state=from_state,
             to_state=to_state,
+            project_id=project_id,
+            work_unit_id=work_unit_id,
+            timestamp=committed_at,
             reason="DEFINER approved",
         )
 
@@ -95,4 +102,5 @@ async def commit_artifact(
         project_id=project_id,
         work_unit_id=work_unit_id,
         ecs_state=to_state,
+        committed_at=committed_at,
     )

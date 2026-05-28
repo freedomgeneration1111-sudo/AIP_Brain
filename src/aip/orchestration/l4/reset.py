@@ -24,7 +24,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from aip.foundation.protocols import ArtifactStore, TraceStore
-from aip.orchestration.l4.monitor import TrajectoryMonitor, TrajectorySignal
+from aip.foundation.schemas import TrajectorySignal
+from aip.orchestration.l4.monitor import TrajectoryMonitor
 from aip.orchestration.workflow.context import WorkflowContext
 
 
@@ -103,10 +104,11 @@ class L4ResetCoordinator:
             return []
 
         # Filter to the signals that §10.2 cares about (D / F / combined proxy)
+        # Updated signal_type values to match schema's TrajectorySignalType
         relevant = [
             s
             for s in signals
-            if s.signal_type in ("loop_d", "context_anxiety_f", "combined_2of3")
+            if s.signal_type in ("loop", "anxiety", "failure_streak", "loop_d", "context_anxiety_f", "combined_2of3")
         ]
         if not relevant:
             return []

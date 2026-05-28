@@ -23,20 +23,16 @@ class ModelSlotResolver(ModelProvider):
             self._cfg = {}
 
         self._models = self._cfg.get("models", {})
-        self._ci_mode = self._models.get("ci_mode", False)
+        self._ci_mode = self._models.get("ci_mode", True)
 
     def resolve(self, slot_name: str) -> ModelSlotConfig:
         if slot_name not in self._models:
-            # In ci_mode, auto-create a stub slot for any requested name
-            if self._ci_mode:
-                return ModelSlotConfig(
-                    slot_name=slot_name,
-                    provider="stub",
-                    model=f"<{slot_name}>",
-                )
             raise ValueError(f"Unknown model slot: {slot_name}")
 
         slot_cfg = self._models[slot_name]
+        # Filter: only process dict values (skip non-dict like ci_mode flag)
+        if not isinstance(slot_cfg, dict):
+            raise ValueError(f"Unknown model slot: {slot_name}")
         return ModelSlotConfig(
             slot_name=slot_name,
             provider=slot_cfg.get("provider", "stub"),
@@ -48,7 +44,7 @@ class ModelSlotResolver(ModelProvider):
         )
 
     def list_slots(self) -> list[str]:
-        return list(self._models.keys())
+        return [k for k, v in self._models.items() if isinstance(v, dict)]
 
     async def call(self, slot_name: str, messages: list[dict], **kwargs) -> dict:
         """Execute a model call for the given slot.

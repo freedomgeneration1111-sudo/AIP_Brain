@@ -145,8 +145,8 @@ def test_phase0_through_phase7_types_still_work():
     c = Chunk(id="x", content="hello", score=0.9, metadata={}, domain="test")
     assert c.id == "x"
     # Phase 7 still importable and usable
-    vc = VigilConfig(enabled=True)
-    assert vc.enabled is True
+    vc = VigilConfig(canonical_health_check_interval_seconds=3600)
+    assert vc.canonical_health_check_interval_seconds == 3600
     ac = AuthConfig()
     assert ac.api_key_enabled is True
     # CollaboratorRole is new but extends the concept cleanly

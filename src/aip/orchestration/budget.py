@@ -127,14 +127,14 @@ class BudgetManager:
         # Check warning threshold
         if limit > 0 and consumed / limit >= self._config.budget_warning_threshold:
             if self._event_store:
-                await self._event_store.write_event({
-                    "event_type": "budget_warning",
-                    "scope": scope,
-                    "scope_id": scope_id,
-                    "consumed": consumed,
-                    "limit": limit,
-                    "fraction": consumed / limit,
-                })
+                await self._event_store.write_event(
+                    "budget_warning",
+                    "budget_manager",
+                    "",
+                    from_state=None,
+                    to_state=None,
+                    detail=f"Budget warning: {scope}/{scope_id} at {consumed}/{limit} ({consumed/limit:.0%})",
+                )
 
         # Check hard stop
         if self._config.budget_hard_stop and (consumed + estimated_tokens) > limit:

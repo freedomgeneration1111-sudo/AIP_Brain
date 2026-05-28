@@ -132,3 +132,70 @@ release_date = ""  # set by 10.7
 release_status = "alpha"
 architecture_revision = "5.2"
 
+# --- Phase 7 additions (append only) ---
+# Per CHUNK-9.0a ANNEX + prose: vigil, auth, rate limiting,
+# canonical pipeline, deployment profiles.
+# All toggleable per §1.8. Defaults per spec.
+
+[review]
+faithfulness_threshold = 0.85
+domain_coherence_threshold = 0.80
+require_definer_approval = true
+auto_promote_on_approval = false
+
+[workflow]
+default_template = "workflow_01"
+max_parallel_nodes = 3
+context_reset_turn_threshold = 40
+
+[ecs]
+db_path = "db/ecs.db"
+transition_audit_enabled = true
+
+[trajectory]
+loop_detection_window = 5
+anxiety_threshold = 0.7
+failure_streak_threshold = 3
+context_reset_on_anxiety = true
+
+[evaluation]
+faithfulness_threshold = 0.85
+domain_coherence_threshold = 0.80
+adversarial_enabled = false
+
+[vigil]
+canonical_health_check_interval_seconds = 3600
+stale_threshold_days = 30
+re_evaluate_on_slot_change = true
+max_re_evaluate_batch_size = 50
+entity_consistency_check = true
+
+[auth]
+auth_enabled = false
+session_timeout_seconds = 86400
+api_key_enabled = true
+bcrypt_rounds = 12
+definer_identity = "definer"
+
+[rate_limit]
+enabled = true
+requests_per_minute = 60
+burst_size = 10
+per_endpoint_overrides = {}
+model_budget_protection = true
+
+[canonical_pipeline]
+faithfulness_threshold = 0.85
+domain_coherence_threshold = 0.80
+require_vigil_health_check = true
+indexing_enabled = true
+require_definer_approval = true
+
+[deployment]
+profile_name = "laptop"
+vector_backend = "sqlite_vss"
+model_provider = "ollama"
+auth_enabled = false
+workers = 1
+memory_limit_mb = 4096
+

@@ -15,39 +15,18 @@ This is deliberately the smallest useful foundation:
 
 All heuristics that encode assumptions about model trajectory behavior under
 context pressure carry an explicit model_gen_assumption field.
+
+Issue 17: Removed duplicate TrajectorySignal dataclass. Import from foundation.schemas instead.
+Updated signal creation to use schema's field names (detail instead of evidence, detected_at, etc.).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from aip.foundation.protocols import TraceStore
-
-
-@dataclass
-class TrajectorySignal:
-    """
-    A detected trajectory problem signal.
-
-    Per Architecture §10.1 and Appendix E:
-    - signal_type: "loop_d", "context_anxiety_f", "combined_2of3", etc.
-    - evidence: supporting recent trace events (truncated for logging).
-    - model_gen_assumption: Non-null when the heuristic compensates for
-      documented model limitations (e.g., tendency to degenerate or rush
-      under context pressure). Required for §1.8 auditability.
-    """
-
-    signal_type: str
-    session_id: str
-    confidence: float  # 0.0–1.0 rough heuristic strength
-    evidence: list[dict[str, Any]] = field(default_factory=list)
-    model_gen_assumption: str | None = (
-        "L4 2-of-3 heuristic encodes assumptions about model trajectory "
-        "degeneration (repetitive/generic output, shortening, hedging) under "
-        "growing context pressure or loop formation. See Architecture Rev 5.2 "
-        "§10.1, Appendix E (Types D/F), and §1.8 Harness Evolution Principle."
-    )
+from aip.foundation.schemas import TrajectorySignal
 
 
 class TrajectoryMonitor:
@@ -117,14 +96,23 @@ class TrajectoryMonitor:
                 f_events.append(ev)
 
         signals: list[TrajectorySignal] = []
+        now = datetime.now(timezone.utc).isoformat()
 
         if d_events:
             signals.append(
                 TrajectorySignal(
-                    signal_type="loop_d",
+                    signal_type="loop",
                     session_id=session_id,
+                    failure_type="D",
                     confidence=min(1.0, len(d_events) / 3.0),
-                    evidence=d_events[:3],  # keep small for logs
+                    detail=f"Detected {len(d_events)} D-type events in session window",
+                    detected_at=now,
+                    model_gen_assumption=(
+                        "L4 2-of-3 heuristic encodes assumptions about model trajectory "
+                        "degeneration (repetitive/generic output, shortening, hedging) under "
+                        "growing context pressure or loop formation. See Architecture Rev 5.2 "
+                        "§10.1, Appendix E (Types D/F), and §1.8 Harness Evolution Principle."
+                    ),
                 )
             )
 
@@ -138,14 +126,14 @@ class TrajectoryMonitor:
                 min(1.0, len(combined_f) / 3.0) if combined_f else 0.0,
                 l4b_confidence
             )
-            final_evidence = (combined_f[:2] + l4b_evidence)[:3] if combined_f or l4b_evidence else l4b_evidence
-
             signals.append(
                 TrajectorySignal(
-                    signal_type="context_anxiety_f",
+                    signal_type="anxiety",
                     session_id=session_id,
+                    failure_type="F",
                     confidence=final_conf,
-                    evidence=final_evidence,
+                    detail=f"Context anxiety detected: {len(combined_f)} F-type events, L4b confidence {l4b_confidence:.2f}",
+                    detected_at=now,
                     model_gen_assumption=l4b_assumption,
                 )
             )
@@ -153,10 +141,12 @@ class TrajectoryMonitor:
             # Fallback to basic pre-labeled only
             signals.append(
                 TrajectorySignal(
-                    signal_type="context_anxiety_f",
+                    signal_type="anxiety",
                     session_id=session_id,
+                    failure_type="F",
                     confidence=min(1.0, len(f_events) / 3.0),
-                    evidence=f_events[:3],
+                    detail=f"Detected {len(f_events)} F-type events in session window",
+                    detected_at=now,
                 )
             )
 
@@ -166,10 +156,12 @@ class TrajectoryMonitor:
         if d_events and (f_events or l4b_confidence > 0.5):
             signals.append(
                 TrajectorySignal(
-                    signal_type="combined_2of3",
+                    signal_type="failure_streak",
                     session_id=session_id,
+                    failure_type="D",
                     confidence=0.85,
-                    evidence=(d_events[:2] + (f_events + l4b_evidence)[:2])[:4],
+                    detail="Combined D+F observation treated as proxy for 2-of-3 rule",
+                    detected_at=now,
                     model_gen_assumption=(
                         "Combined D+F observation treated as proxy for the §10.1 "
                         "'2 of 3 signals' rule. Encodes the assumption that "

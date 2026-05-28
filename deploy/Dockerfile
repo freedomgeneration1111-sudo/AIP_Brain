@@ -1,5 +1,5 @@
 # Minimal Dockerfile for AIP 0.1 (Phase 7 9.6)
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 

@@ -82,7 +82,7 @@ class SqliteSessionStore(AuthStore):
         try:
             token = secrets.token_urlsafe(32)
             now = datetime.now(timezone.utc)
-            expires = now + timedelta(minutes=self._config.session_timeout_minutes)
+            expires = now + timedelta(seconds=self._config.session_timeout_seconds)
             conn.execute(
                 "INSERT INTO sessions (session_token, identity, role, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
                 (token, identity, role, now.isoformat() + "Z", expires.isoformat() + "Z"),

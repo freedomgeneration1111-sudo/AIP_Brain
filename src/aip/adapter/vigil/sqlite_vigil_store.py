@@ -7,7 +7,7 @@ Read-only actor support (populated by 9.2 canonical pipeline).
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from aip.foundation.protocols import VigilStore
@@ -64,7 +64,7 @@ class SqliteVigilStore(VigilStore):
             self._conn.close()
             self._conn = None
 
-    async def get_canonical_health(self, artifact_id: str) -> dict:
+    async def get_canonical_health(self, artifact_id: str) -> dict | None:
         conn = self._get_conn()
         try:
             row = conn.execute(
@@ -72,7 +72,7 @@ class SqliteVigilStore(VigilStore):
                 (artifact_id,),
             ).fetchone()
             if not row:
-                return {}
+                return None
             return dict(row)
         finally:
             pass
@@ -81,7 +81,7 @@ class SqliteVigilStore(VigilStore):
         conn = self._get_conn()
         try:
             # Simplified staleness: last_evaluated older than threshold_days
-            cutoff = (datetime.utcnow() - __import__('datetime').timedelta(days=threshold_days)).isoformat() + "Z"
+            cutoff = (datetime.now(timezone.utc) - __import__('datetime').timedelta(days=threshold_days)).isoformat().replace('+00:00', 'Z')
             rows = conn.execute(
                 "SELECT * FROM canonical_health WHERE last_evaluated < ? OR last_evaluated IS NULL",
                 (cutoff,),
@@ -93,7 +93,7 @@ class SqliteVigilStore(VigilStore):
     async def record_vigil_check(self, canonical_count: int, stale_count: int, status: str) -> None:
         conn = self._get_conn()
         try:
-            now = datetime.utcnow().isoformat() + "Z"
+            now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
             conn.execute(
                 "INSERT INTO vigil_checks (check_time, canonical_count, stale_count, status) VALUES (?, ?, ?, ?)",
                 (now, canonical_count, stale_count, status),

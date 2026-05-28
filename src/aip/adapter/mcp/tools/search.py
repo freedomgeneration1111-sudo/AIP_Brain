@@ -18,11 +18,17 @@ async def aip_search(container: Any, query: str, domain: str | None = None) -> l
             ])
         except Exception:
             pass
-    # Vector search
+    # Vector search — use embed_fn from container (or local adapter stub) per §7.2 boundary
     if container.vector_store:
         try:
-            from aip.orchestration.retrieval import fake_embed
-            query_vector = fake_embed(query)
+            # Use the embedding provider from the container, or fall back to
+            # the adapter-local stub (no orchestration import).
+            embed_fn = getattr(container, "embedding_provider", None)
+            if embed_fn is not None and hasattr(embed_fn, "embed"):
+                query_vector = await embed_fn.embed(query)
+            else:
+                from aip.adapter.embedding.ollama_embed import fake_embed_via_provider
+                query_vector = fake_embed_via_provider(query)
             vector_results = await container.vector_store.retrieve(query_vector, domain=domain)
             results.extend([
                 {"id": r.id, "content": r.content, "score": r.score, "source": "vector"}

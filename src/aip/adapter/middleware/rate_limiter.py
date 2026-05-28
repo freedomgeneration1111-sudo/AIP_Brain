@@ -54,6 +54,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not self.config.enabled:
             return await call_next(request)
 
+        # When model_budget_protection is True, don't reject read-only requests or health checks
+        path = request.url.path
+        if self.config.model_budget_protection:
+            # Health checks are never rate-limited
+            if path.startswith("/api/v1/health") or path == "/":
+                return await call_next(request)
+            # Read-only (GET) requests are not rate-limited when model_budget_protection is on
+            if request.method == "GET":
+                return await call_next(request)
+
         # Determine key (per-DEFINER preferred when auth present)
         auth_identity = getattr(request.state, "auth_identity", None)
         if auth_identity:
@@ -62,9 +72,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             key = f"ip:{request.client.host if request.client else 'unknown'}"
 
         # Per-endpoint override (simple prefix match)
-        path = request.url.path
         rpm = self.config.requests_per_minute
-        for pattern, override_rpm in self.config.per_endpoint_overrides.items():  # type: ignore[attr-defined]
+        for pattern, override_rpm in self.config.per_endpoint_overrides.items():
             if path.startswith(pattern):
                 rpm = override_rpm
                 break

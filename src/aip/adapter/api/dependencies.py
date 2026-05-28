@@ -78,3 +78,11 @@ def get_container(request: "Request") -> AipContainer:
         container = AipContainer(config)
         request.app.state.container = container
     return container
+
+
+# Re-export auth dependencies so route modules can import from this single location
+from aip.adapter.auth.dependencies import (  # noqa: E402
+    get_current_identity,
+    require_definer,
+    require_collaborator_or_above,
+)

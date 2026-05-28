@@ -11,7 +11,8 @@ CHUNK-3.2: Context Reset Protocol foundation (recommendation + intervention
 logging). Full Sexton integration and L4b advanced metrics deferred.
 """
 
-from aip.orchestration.l4.monitor import TrajectoryMonitor, TrajectorySignal
+from aip.orchestration.l4.monitor import TrajectoryMonitor
+from aip.foundation.schemas import TrajectorySignal  # issue 18: import from schemas
 from aip.orchestration.l4.reset import L4ResetCoordinator, ResetRecommendation
 
 __all__ = ["TrajectoryMonitor", "TrajectorySignal", "L4ResetCoordinator", "ResetRecommendation"]

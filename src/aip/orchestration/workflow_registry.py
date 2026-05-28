@@ -2,6 +2,9 @@
 
 Discovers YAML workflow templates (frontmatter + body) beyond the Phase 2 0.1 template.
 Used by admin console and CLI.
+
+Updated for WorkflowTemplate schema: template_id, name, description, yaml_path,
+trigger, domains, model_gen_assumption.
 """
 
 from __future__ import annotations
@@ -42,15 +45,21 @@ class WorkflowRegistry:
                                 meta["description"] = line.split(":", 1)[1].strip()
                             elif line.startswith("# trigger:"):
                                 meta["trigger"] = line.split(":", 1)[1].strip()
+                            elif line.startswith("# domains:"):
+                                domains_str = line.split(":", 1)[1].strip()
+                                meta["domains"] = [d.strip() for d in domains_str.split(",") if d.strip()]
                         if "template_id" in meta:
                             data = meta
 
                     if data and "template_id" in data:
-                        self._templates[data["template_id"]] = WorkflowTemplate(
+                        tid = data["template_id"]
+                        self._templates[tid] = WorkflowTemplate(
+                            template_id=tid,
                             name=data.get("name", yaml_file.stem),
-                            version=data.get("version", "1.0"),
                             description=data.get("description", ""),
-                            path=str(yaml_file),
+                            yaml_path=str(yaml_file.relative_to(self.workflows_dir)) if yaml_file.is_relative_to(self.workflows_dir) else str(yaml_file),
+                            trigger=data.get("trigger", "manual"),
+                            domains=data.get("domains", []),
                         )
             except Exception:
                 continue
@@ -58,10 +67,10 @@ class WorkflowRegistry:
         # Always include the original Phase 2 template
         if "synthesis_session_v1" not in self._templates:
             self._templates["synthesis_session_v1"] = WorkflowTemplate(
+                template_id="synthesis_session_v1",
                 name="Synthesis Session v1",
-                version="1.0",
                 description="Original synthesis workflow from Phase 2",
-                path=str(self.workflows_dir / "synthesis_session_v1.yaml"),
+                yaml_path="synthesis_session_v1.yaml",
             )
 
     def list_templates(self) -> list[WorkflowTemplate]:
@@ -74,5 +83,7 @@ class WorkflowRegistry:
         tmpl = self.get_template(template_id)
         if not tmpl:
             raise ValueError(f"Unknown template: {template_id}")
-        with open(tmpl.path, "r") as f:
+        # Resolve yaml_path relative to workflows_dir
+        yaml_path = self.workflows_dir / tmpl.yaml_path
+        with open(yaml_path, "r") as f:
             return yaml.safe_load(f) or {}

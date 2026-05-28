@@ -133,10 +133,13 @@ class SqliteFts5LexicalStore(LexicalStore):
     async def delete_document(self, doc_id: str) -> None:
         conn = self._get_conn()
         try:
+            # Delete from FTS5 virtual table index first
+            conn.execute(
+                "DELETE FROM fts_index WHERE rowid = (SELECT rowid FROM fts_documents WHERE doc_id = ?)",
+                (doc_id,),
+            )
+            # Then delete from the documents table
             conn.execute("DELETE FROM fts_documents WHERE doc_id = ?", (doc_id,))
-            # FTS5 rows are automatically managed via triggers in many setups, but we keep explicit for clarity
-            # (In this simple dual-table design we rely on the JOIN above; for robustness we can leave orphaned FTS rows
-            # or add a trigger. For exact scope we delete from documents only — search will simply not return them.)
             conn.commit()
         finally:
             pass

@@ -8,10 +8,26 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+import httpx
+
 from aip.foundation.protocols import EmbeddingProvider
 
-# httpx is only needed for the real client; we import it lazily inside the class
-# so that the module (and the mock) can be imported in environments without httpx.
+
+def fake_embed_via_provider(text: str, dimensions: int = 768) -> list[float]:
+    """Deterministic fake embedding for CI / adapter-layer use.
+
+    Uses SHA-256 hash for determinism (same algorithm as
+    orchestration.retrieval.fake_embed but without the import boundary
+    violation — adapters must not import orchestration per §7.2).
+    """
+    digest = hashlib.sha256(text.encode()).digest()
+    vec = []
+    for i in range(dimensions):
+        byte_idx = (i * 4) % len(digest)
+        val = int.from_bytes(digest[byte_idx:byte_idx+4].ljust(4, b'\x00'), 'big')
+        vec.append(val / (2**32 - 1))
+    norm = sum(v*v for v in vec) ** 0.5
+    return [v/norm for v in vec] if norm > 0 else vec
 
 
 class OllamaEmbeddingClient(EmbeddingProvider):
@@ -24,6 +40,9 @@ class OllamaEmbeddingClient(EmbeddingProvider):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.dimensions = dimensions
+        self._client: httpx.AsyncClient = httpx.AsyncClient(
+            base_url=self.base_url, timeout=30.0,
+        )
 
     async def embed(self, text: str) -> list[float]:
         """Embed text using Ollama.
@@ -31,16 +50,14 @@ class OllamaEmbeddingClient(EmbeddingProvider):
         On failure (Ollama not running, etc.), raises cleanly (no silent fake fallback).
         """
         try:
-            import httpx  # lazy import
-            async with httpx.AsyncClient(base_url=self.base_url, timeout=30.0) as client:
-                resp = await client.post(
-                    "/api/embeddings",
-                    json={"model": self.model, "prompt": text},
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                vec = data.get("embedding", [])
-                return vec
+            resp = await self._client.post(
+                "/api/embeddings",
+                json={"model": self.model, "prompt": text},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            vec = data.get("embedding", [])
+            return vec
         except Exception as e:
             raise ConnectionError(
                 f"Failed to embed via Ollama at {self.base_url} (model={self.model}). "

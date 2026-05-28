@@ -140,21 +140,21 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 # Placeholder embedding (real embedding happens upstream in 10.1 compiler)
                 dummy_embedding = [0.0] * 384  # typical small dim for laptop-viable
                 await self._vector_store.upsert(
-                    id=f"compiled:{knowledge_id}",
-                    embedding=dummy_embedding,
-                    content=content[:2000],
-                    metadata={"type": "compiled_knowledge", "domain": domain, **metadata},
-                    domain=domain,
+                    f"compiled:{knowledge_id}",
+                    dummy_embedding,
+                    content[:2000],
+                    {"type": "compiled_knowledge", "domain": domain, **metadata},
+                    domain,
                 )
             except Exception:
                 pass  # non-fatal in this adapter (embedding provided by caller in 10.1)
 
             try:
                 await self._lexical_store.index_document(
-                    id=f"compiled:{knowledge_id}",
-                    content=content,
-                    metadata={"type": "compiled_knowledge", "domain": domain},
-                    domain=domain,
+                    f"compiled:{knowledge_id}",
+                    content,
+                    domain,
+                    {"type": "compiled_knowledge", "domain": domain},
                 )
             except Exception:
                 pass

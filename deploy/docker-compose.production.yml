@@ -1,0 +1,89 @@
+# docker-compose.production.yml — Production profile per Phase 7 CHUNK-9.6
+# PostgreSQL + pgvector + API models + authentication
+#
+# Usage:
+#   export POSTGRES_PASSWORD=$(openssl rand -hex 32)
+#   docker compose -f deploy/docker-compose.production.yml up --build -d
+
+version: '3.8'
+
+services:
+  aip-production:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: aip-production
+    ports:
+      - "${AIP_PORT:-8000}:8000"
+    environment:
+      - AIP_PROFILE=production
+      - AIP_CONFIG=/app/config/aip.config.toml
+      - DATABASE_URL=postgresql://aip:${POSTGRES_PASSWORD:-changeme}@postgres:5432/aip
+    volumes:
+      - aip-prod-data:/app/db
+      - ../config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8192M
+    profiles:
+      - production
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aip-postgres
+    environment:
+      POSTGRES_USER: aip
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: aip
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aip -d aip"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+    profiles:
+      - production
+
+  # Optional: Ollama for hybrid setups (production + local fallback)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aip-ollama-prod
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    profiles:
+      - production
+
+volumes:
+  aip-prod-data:
+    driver: local
+  pg-data:
+    driver: local
+  ollama-data:
+    driver: local

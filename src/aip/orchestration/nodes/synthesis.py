@@ -145,4 +145,11 @@ async def synthesize(
         max_tokens=max_tokens,
     )
 
-    return result
+    # Issue 20: Ensure return dict has spec-required keys
+    return {
+        "content": result.get("content", ""),
+        "model": result.get("model", ""),
+        "usage": result.get("usage", {}),
+        "latency_ms": result.get("latency_ms", 0),
+        "cost_usd": result.get("cost_usd", 0.0),
+    }

@@ -61,15 +61,19 @@ class KnowledgeCompiler:
         self.ecs_store = ecs_store
         self.vigil_store = vigil_store
 
-    async def _record_trace(self, node_type: str, details: dict) -> None:
-        """Helper to record trace events for every compilation step."""
+    async def _record_trace(self, node_type: str, failure_type: str = "", outcome: str = "success", detail: str | None = None) -> None:
+        """Helper to record trace events for every compilation step.
+
+        Issue 23: Use trace_store.write_event(session_id, node_type, failure_type, outcome, detail)
+        instead of record_event.
+        """
         try:
-            await self.trace_store.record_event(
-                {
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "node_type": node_type,
-                    "details": details,
-                }
+            await self.trace_store.write_event(
+                session_id="knowledge_compiler",
+                node_type=node_type,
+                failure_type=failure_type,
+                outcome=outcome,
+                detail=detail or "",
             )
         except Exception:
             pass  # trace failures must never break compilation
@@ -130,12 +134,7 @@ class KnowledgeCompiler:
 
         await self.knowledge_store.update_state(knowledge_id, "COMPILED")
 
-        await self._record_trace("knowledge_compiler", {
-            "action": "compile_from_canonicals",
-            "knowledge_id": knowledge_id,
-            "domain": domain,
-            "topic": topic,
-        })
+        await self._record_trace("knowledge_compiler", outcome="success", detail=f"compile_from_canonicals: knowledge_id={knowledge_id}, domain={domain}, topic={topic}")
 
         return {
             "knowledge_id": knowledge_id,
@@ -167,7 +166,7 @@ class KnowledgeCompiler:
             existing["domain"], {**metadata, "state": "COMPILED"}
         )
 
-        await self._record_trace("knowledge_compiler", {"action": "cross_reference", "knowledge_id": knowledge_id})
+        await self._record_trace("knowledge_compiler", outcome="success", detail=f"cross_reference: knowledge_id={knowledge_id}")
         return {"knowledge_id": knowledge_id, "cross_references": cross_refs}
 
     async def evaluate_compiled(self, knowledge_id: str) -> dict:
@@ -192,13 +191,7 @@ class KnowledgeCompiler:
         new_state = "REVIEWED" if passed else "FAILED"
         await self.knowledge_store.update_state(knowledge_id, new_state)
 
-        await self._record_trace("knowledge_compiler", {
-            "action": "evaluate",
-            "knowledge_id": knowledge_id,
-            "scores": scores,
-            "passed": passed,
-            "new_state": new_state,
-        })
+        await self._record_trace("knowledge_compiler", outcome="success" if passed else "failure", detail=f"evaluate: knowledge_id={knowledge_id}, passed={passed}, new_state={new_state}")
 
         return {"knowledge_id": knowledge_id, "scores": scores, "passed": passed, "new_state": new_state}
 
@@ -217,4 +210,4 @@ class KnowledgeCompiler:
             # Budget check would happen here via injected BudgetManager in full wiring
             result = await self.compile_domain_summary(c["domain"])
             await self.evaluate_compiled(result["knowledge_id"])
-            await self._record_trace("knowledge_compiler", {"action": "run_cycle", "candidate": c})
+            await self._record_trace("knowledge_compiler", outcome="success", detail=f"run_cycle: candidate={c}")

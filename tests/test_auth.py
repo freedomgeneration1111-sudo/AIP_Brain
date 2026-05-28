@@ -15,7 +15,7 @@ from aip.foundation.schemas import AuthConfig
 
 def test_sqlite_session_store_implements_protocol(tmp_path):
     db = tmp_path / "auth.db"
-    config = AuthConfig(session_timeout_minutes=5)
+    config = AuthConfig(session_timeout_seconds=300)
     store = SqliteSessionStore(str(db), config)
     assert hasattr(store, "create_session")
     assert hasattr(store, "validate_session")

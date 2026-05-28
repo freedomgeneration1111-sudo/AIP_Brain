@@ -36,7 +36,13 @@ def _make_ci_config(provider: str = "sqlite_vss", db_path: str = ":memory:") -> 
             "db_path": db_path,
             "connection_string": "postgresql://localhost:5432/aip_test_vectors" if provider == "pgvector" else "",
         },
-        "models": {"ci_mode": True},
+        "models": {
+            "ci_mode": True,
+            "synthesis": {"provider": "stub", "model": "stub-synthesis"},
+            "evaluation": {"provider": "stub", "model": "stub-evaluation"},
+            "sexton": {"provider": "stub", "model": "stub-sexton"},
+            "embedding": {"provider": "stub", "model": "stub-embedding"},
+        },
     }
 
 

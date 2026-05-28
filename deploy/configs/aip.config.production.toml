@@ -1,0 +1,180 @@
+# AIP 0.1 Production Configuration
+# Profile: production — PostgreSQL + pgvector + API models + authentication
+# Per Phase 7 CHUNK-9.6 deployment profiles
+
+[retrieval]
+confidence_threshold = 0.30
+weight_semantic      = 0.60
+weight_recency       = 0.15
+weight_authority     = 0.15
+weight_frequency     = 0.10
+
+[embedding]
+provider = "api"
+# model = "text-embedding-3-small"  # or your preferred embedding model
+
+[sexton]
+classification_batch_size = 100
+classification_interval_seconds = 180
+audit_on_slot_change = true
+max_unclassified_before_alert = 5
+
+[ace_playbook]
+db_path = "db/ace_playbook.db"
+auto_derive = true
+min_confidence = 0.75
+
+[router]
+default_exploration_weight = 0.05
+min_sample_count = 20
+weight_decay = 0.95
+domain_overrides = {}
+
+[budget]
+session_token_limit = 500000
+project_token_limit = 5000000
+daily_token_limit = 10000000
+budget_warning_threshold = 0.80
+budget_hard_stop = true
+
+[beast]
+corpus_reindex_interval_seconds = 1800
+entity_maintenance_interval_seconds = 900
+health_check_interval_seconds = 30
+max_reindex_batch_size = 2000
+
+[api]
+host = "0.0.0.0"
+port = 8000
+cors_origins = ["https://your-domain.com"]
+workers = 2
+chat_max_history_turns = 50
+review_page_size = 20
+artifact_page_size = 20
+
+[cli]
+color = true
+pager = true
+output_format = "json"
+
+[mcp]
+enabled = true
+transport = "sse"
+max_concurrent_tools = 10
+
+[chat]
+system_prompt_path = "prompts/chat_system.md"
+max_context_turns = 50
+auto_summarize_at = 40
+
+[autonomy]
+default_level = "read"
+escalation_requires_definer = true
+audit_retention_days = 365
+model_gen_assumption = "Models should not autonomously escalate to admin actions"
+
+[lexical]
+db_path = "db/lexical.db"
+fts5_tokenizer = "unicode61"
+
+[knowledge]
+compilation_model_slot = "synthesis"
+evaluation_model_slot = "evaluation"
+max_source_canonicals = 10
+compilation_confidence_threshold = 0.60
+auto_index_on_approval = true
+model_gen_assumption = "Synthesis model can reliably produce structured knowledge summaries from multiple canonical sources"
+
+[plugins]
+plugins_dir = "plugins"
+enabled = true
+auto_discover = true
+sandbox_mode = true
+model_gen_assumption = "Plugins provide extensibility for model providers beyond built-in slots"
+
+[collaborators]
+enabled = true
+max_collaborators = 5
+collaborator_can_create_drafts = true
+collaborator_can_submit_review = true
+collaborator_can_approve = false
+readonly_can_search = true
+
+[performance]
+profiling_enabled = false
+max_memory_mb = 8192
+retrieval_timeout_seconds = 15.0
+batch_embed_size = 64
+sqlite_wal_mode = true
+sqlite_busy_timeout_ms = 5000
+vector_query_limit = 100
+fts5_query_limit = 100
+
+[release]
+release_version = "0.1.0"
+release_date = ""
+release_status = "alpha"
+architecture_revision = "5.2"
+
+[review]
+faithfulness_threshold = 0.85
+domain_coherence_threshold = 0.80
+require_definer_approval = true
+auto_promote_on_approval = false
+
+[workflow]
+default_template = "workflow_01"
+max_parallel_nodes = 5
+context_reset_turn_threshold = 40
+
+[ecs]
+db_path = "db/ecs.db"
+transition_audit_enabled = true
+
+[trajectory]
+loop_detection_window = 5
+anxiety_threshold = 0.7
+failure_streak_threshold = 3
+context_reset_on_anxiety = true
+
+[evaluation]
+faithfulness_threshold = 0.85
+domain_coherence_threshold = 0.80
+adversarial_enabled = true
+
+[vigil]
+canonical_health_check_interval_seconds = 1800
+stale_threshold_days = 14
+re_evaluate_on_slot_change = true
+max_re_evaluate_batch_size = 100
+entity_consistency_check = true
+
+[auth]
+auth_enabled = true
+session_timeout_seconds = 86400
+api_key_enabled = true
+bcrypt_rounds = 12
+definer_identity = "definer"
+
+[rate_limit]
+enabled = true
+requests_per_minute = 120
+burst_size = 20
+per_endpoint_overrides = {"/api/v1/admin" = 30}
+model_budget_protection = true
+
+[canonical_pipeline]
+faithfulness_threshold = 0.85
+domain_coherence_threshold = 0.80
+require_vigil_health_check = true
+indexing_enabled = true
+require_definer_approval = true
+
+# --- Production-specific overrides ---
+[deployment]
+profile_name = "production"
+vector_backend = "pgvector"
+model_provider = "api"
+auth_enabled = true
+workers = 2
+memory_limit_mb = 8192

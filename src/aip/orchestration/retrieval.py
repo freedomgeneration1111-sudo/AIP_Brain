@@ -46,22 +46,53 @@ class RerankWeights:
 
 
 def fake_embed(text: str, dimensions: int = 768) -> list[float]:
-    """Deterministic fake embedding for Phase 1 CI (no real model calls)."""
-    # Simple but deterministic hash-based embedding
-    seed = abs(hash(text)) % (2**32)
+    """Deterministic fake embedding for Phase 1 CI (no real model calls).
+
+    Uses SHA-256 hash for determinism (same input always produces same output,
+    regardless of Python version or platform). Per spec CHUNK-1.1.
+    """
+    import hashlib
+    digest = hashlib.sha256(text.encode()).digest()
     vec = []
     for i in range(dimensions):
-        val = math.sin(seed + i) * math.cos(seed * 0.1 + i * 0.3)
-        vec.append(val)
-    # Normalize to unit vector
-    norm = math.sqrt(sum(v * v for v in vec))
-    if norm > 0:
-        vec = [v / norm for v in vec]
-    return vec
+        byte_idx = (i * 4) % len(digest)
+        val = int.from_bytes(digest[byte_idx:byte_idx+4].ljust(4, b'\x00'), 'big')
+        vec.append(val / (2**32 - 1))
+    norm = sum(v*v for v in vec) ** 0.5
+    return [v/norm for v in vec] if norm > 0 else vec
+
+
+def _compute_recency(created_at: str | None) -> float:
+    """Half-life decay with 30-day half-life per spec."""
+    if not created_at:
+        return 0.0
+    try:
+        from datetime import datetime, timezone
+        created_dt = datetime.fromisoformat(created_at)
+        if created_dt.tzinfo is None:
+            created_dt = created_dt.replace(tzinfo=timezone.utc)
+        age_days = (datetime.now(timezone.utc) - created_dt).total_seconds() / 86400.0
+        half_life = 30.0
+        return 0.5 ** (age_days / half_life)
+    except Exception:
+        return 0.0
+
+
+def _compute_authority(authority: str) -> float:
+    """Authority score per spec: approved=1.0, reviewed=0.75, provisional=0.5, raw=0.25."""
+    mapping = {"approved": 1.0, "reviewed": 0.75, "provisional": 0.5, "raw": 0.25}
+    return mapping.get(authority, 0.25)
+
+
+def _compute_frequency(access_count: int | None) -> float:
+    """Frequency score per spec: min(1.0, count/10.0) with default 0.5."""
+    if access_count is None:
+        return 0.5
+    return min(1.0, access_count / 10.0)
 
 
 def rerank(hits: list[Chunk], domain: str, weights: RerankWeights) -> list[Chunk]:
-    """Apply four-factor reranking to hits."""
+    """Apply four-factor reranking to hits per spec."""
     if not hits:
         return hits
 
@@ -71,25 +102,21 @@ def rerank(hits: list[Chunk], domain: str, weights: RerankWeights) -> list[Chunk
         meta = h.metadata or {}
         authority = meta.get("authority", "raw")
         created = meta.get("created_at")
-        access = meta.get("access_count", 0)
+        access = meta.get("access_count")
 
         # Base semantic score from the Chunk (already a similarity score)
         base = h.score
 
-        # Recency boost (simplified: prefer non-null created_at)
-        recency = 0.1 if created else 0.0
-
-        # Authority boost
-        auth_boost = 0.15 if authority == "approved" else 0.0
-
-        # Frequency boost (simple log scaling)
-        freq_boost = min(0.1, math.log1p(access) * 0.05)
+        # Spec four-factor computation
+        recency = _compute_recency(created)
+        auth_score = _compute_authority(authority)
+        freq_score = _compute_frequency(access)
 
         boosted = (
             base * weights.semantic
             + recency * weights.recency
-            + auth_boost * weights.authority
-            + freq_boost * weights.frequency
+            + auth_score * weights.authority
+            + freq_score * weights.frequency
         )
         scored.append((boosted, h))
 
@@ -105,6 +132,7 @@ async def retrieve_for_synthesis(
     trace_store: TraceStore,
     config: dict | Any | None = None,
     ace_rules: list[dict] | None = None,
+    top_k: int = 10,
 ) -> RetrievalResult:
     """
     L2 retrieval + low-confidence gate + reranking.
@@ -137,6 +165,9 @@ async def retrieve_for_synthesis(
     # Rerank
     reranked = rerank(raw_hits, domain, weights)
 
+    # Apply top_k limit after reranking
+    reranked = reranked[:top_k]
+
     # CHUNK-3.8: Minimal application of ACE rules from Sexton (deterministic boost for procedural matches)
     if ace_rules:
         for rule in ace_rules:
@@ -151,7 +182,7 @@ async def retrieve_for_synthesis(
     if not reranked:
         # Log trace event (R2 / F2 fix: failure_type = "A" for Missing Context)
         await trace_store.write_event(
-            session_id="current",
+            session_id="retrieval",
             node_type="L2",
             failure_type="A",
             outcome="insufficient_memory",
@@ -168,7 +199,7 @@ async def retrieve_for_synthesis(
 
     if max_conf < threshold:
         await trace_store.write_event(
-            session_id="current",
+            session_id="retrieval",
             node_type="L2",
             failure_type="A",
             outcome="insufficient_memory",

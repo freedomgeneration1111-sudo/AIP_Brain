@@ -146,15 +146,15 @@ def test_phase7_config_toggleability_all_new_sections():
         VigilConfig, AuthConfig, RateLimitConfig, CanonicalPromotionConfig, DeploymentProfile
     )
     v = VigilConfig()
-    assert hasattr(v, "enabled") and hasattr(v, "stale_canonical_check_interval_seconds")
+    assert hasattr(v, "canonical_health_check_interval_seconds") and hasattr(v, "stale_threshold_days")
     a = AuthConfig()
-    assert hasattr(a, "api_key_enabled") and hasattr(a, "session_timeout_minutes")
+    assert hasattr(a, "api_key_enabled") and hasattr(a, "session_timeout_seconds")
     r = RateLimitConfig()
     assert hasattr(r, "enabled") and hasattr(r, "requests_per_minute")
     c = CanonicalPromotionConfig()
     assert hasattr(c, "require_vigil_health_check") and hasattr(c, "auto_promote_on_approval")
-    d = DeploymentProfile(name="laptop", vector_backend="sqlite_vss")
-    assert hasattr(d, "name") and hasattr(d, "docker_compose_profile")
+    d = DeploymentProfile(profile_name="laptop", vector_backend="sqlite_vss")
+    assert hasattr(d, "profile_name") and hasattr(d, "vector_backend")
     assert True
 
 

@@ -46,8 +46,8 @@ from aip.foundation.protocols import (
 
 
 def test_phase7_config_dataclasses():
-    vc = VigilConfig(enabled=True, stale_canonical_check_interval_seconds=3600)
-    assert vc.enabled is True
+    vc = VigilConfig(canonical_health_check_interval_seconds=3600, stale_threshold_days=30)
+    assert vc.canonical_health_check_interval_seconds == 3600
 
     ac = AuthConfig(api_key_enabled=True)
     assert ac.api_key_enabled is True
@@ -58,11 +58,11 @@ def test_phase7_config_dataclasses():
     cp = CanonicalPromotionConfig(require_vigil_health_check=True)
     assert cp.require_vigil_health_check is True
 
-    wt = WorkflowTemplate(name="incremental_update_v1", version="1.0")
-    assert wt.name == "incremental_update_v1"
+    wt = WorkflowTemplate(template_id="incremental_update_v1", name="Incremental Update v1")
+    assert wt.name == "Incremental Update v1"
 
-    dp = DeploymentProfile(name="laptop", vector_backend="sqlite_vss")
-    assert dp.name == "laptop"
+    dp = DeploymentProfile(profile_name="laptop", vector_backend="sqlite_vss")
+    assert dp.profile_name == "laptop"
 
 
 def test_phase7_new_protocols_exist():

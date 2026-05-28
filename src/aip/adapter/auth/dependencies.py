@@ -61,3 +61,10 @@ async def require_definer(identity: dict = Depends(get_current_identity)) -> dic
     if identity.get("role") != "definer":
         raise HTTPException(status_code=403, detail="DEFINER role required")
     return identity
+
+
+async def require_collaborator_or_above(identity: dict = Depends(get_current_identity)) -> dict:
+    """Raises 403 if role is 'readonly'. Allows 'definer' and 'collaborator'."""
+    if identity.get("role") == "readonly":
+        raise HTTPException(status_code=403, detail="Collaborator or above required")
+    return identity
