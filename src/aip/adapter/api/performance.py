@@ -1,4 +1,4 @@
-"""API performance metrics routes (CHUNK-10.4).
+"""API performance metrics routes.
 
 Adapter-layer. Admin-level (require DEFINER auth).
 """

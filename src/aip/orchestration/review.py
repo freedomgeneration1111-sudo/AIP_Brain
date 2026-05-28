@@ -1,8 +1,7 @@
 """Review node — quality gate between synthesis and DEFINER approval.
 
-Implements §9.3: GENERATED → REVIEWED | REJECTED.
-Two modes: automated (default in CI) and definer (human-in-the-loop).
-Per §1.7: no bypass of DEFINER gates.
+Implements GENERATED → REVIEWED | REJECTED.
+No bypass of DEFINER gates.
 """
 from __future__ import annotations
 
@@ -171,9 +170,9 @@ async def _definer_review(
     """DEFINER human-in-the-loop review.
 
     In CI: returns deterministic APPROVED fixture.
-    In production: integrates with DEFINER gate stub (CHUNK-1.5).
+    In production: integrates with DEFINER gate stub.
     """
-    # Deterministic fixture for CI — production uses CHUNK-1.5 DEFINER gate
+    # Deterministic fixture for CI — production uses DEFINER gate
     return ReviewVerdict(
         artifact_id=context.artifact_id,
         verdict="APPROVED",

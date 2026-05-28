@@ -24,4 +24,4 @@ def test_fails_min_length():
 def test_rules_tagged_with_model_assumption():
     for rule in DEFAULT_RULES:
         assert rule.model_gen_assumption is not None
-        assert "deepseek" in rule.model_gen_assumption.lower() or "qwen" in rule.model_gen_assumption.lower()
+        assert "§1.8" in rule.model_gen_assumption

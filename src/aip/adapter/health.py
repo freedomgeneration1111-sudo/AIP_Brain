@@ -1,7 +1,7 @@
 """System health check — verifies all AIP components are operational.
 
 Per Phase 0: aip status command backend.
-Per §2.2: reports vector backend status and degradation.
+Reports vector backend status and degradation.
 """
 
 from __future__ import annotations

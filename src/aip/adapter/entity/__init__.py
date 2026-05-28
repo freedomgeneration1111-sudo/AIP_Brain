@@ -1,4 +1,4 @@
-"""EntityStore adapter implementations (CHUNK-8.0b)."""
+"""EntityStore adapter implementations."""
 
 from .sqlite_entity_store import SqliteEntityStore
 

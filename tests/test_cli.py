@@ -58,9 +58,5 @@ def test_adapter_layer_does_not_import_orchestration_impls():
         text = py.read_text()
         assert "from aip.adapter.budget_store" not in text
         assert "from aip.adapter.vector" not in text  # direct storage
-    assert True
 
 
-def test_existing_tests_still_pass():
-    """No-regression placeholder (full battery run in gate command)."""
-    assert True

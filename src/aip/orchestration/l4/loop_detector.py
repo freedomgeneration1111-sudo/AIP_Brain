@@ -1,4 +1,4 @@
-"""Loop Detector (Type D) — CHUNK-5.2.
+"""Loop Detector (Type D) —.
 
 Detects repeated patterns in a session's trace events (basic loop / session drift detection).
 Emits TrajectorySignal with failure_type="D" when a loop is detected.

@@ -1,4 +1,4 @@
-"""Admin Console routes (CHUNK-8.6).
+"""Admin Console routes.
 
 Writes (config) go through AutonomyGate (admin). Reads from delivered actors (Sexton 7.1, Beast 7.5, Router 7.4, Budget 7.0b, etc.).
 """
@@ -8,6 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.foundation.schemas import coerce_autonomy_level
 
 router = APIRouter()
 
@@ -24,7 +25,7 @@ async def patch_admin_config(payload: dict, container: AipContainer = Depends(ge
     esc = await container.autonomy_gate.escalate(
         action_type="modify_config",
         resource_id="admin_config",
-        requested_level="admin",  # type: ignore[arg-type]
+        requested_level=coerce_autonomy_level("admin"),
         requested_by="api",
     )
     if not esc.granted:

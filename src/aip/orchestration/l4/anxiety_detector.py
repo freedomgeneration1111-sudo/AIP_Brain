@@ -1,4 +1,4 @@
-"""Context Anxiety Detector (Type F) — CHUNK-5.3.
+"""Context Anxiety Detector (Type F) —.
 
 Detects declining output length / quality in recent synthesis turns (proxy for context anxiety / window collapse).
 Emits TrajectorySignal with failure_type="F".

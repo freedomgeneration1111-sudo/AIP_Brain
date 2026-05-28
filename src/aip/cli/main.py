@@ -1,7 +1,7 @@
-"""AIP CLI entrypoint (CHUNK-8.2).
+"""AIP CLI entrypoint.
 
 Implements the declared pyproject script `aip = "aip.cli.main:cli"`.
-Uses Click. Composes via Protocols / 8.1 AipContainer where possible (offline-first per §2.1).
+Uses Click. Composes via Protocols / 8.1 AipContainer where possible (offline-first).
 """
 
 from __future__ import annotations

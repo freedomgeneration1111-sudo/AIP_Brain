@@ -1,5 +1,5 @@
 """
-L5 Workflow Engine package (historical repo 2.x + CHUNK-4.5 extensions).
+L5 Workflow Engine package (historical repo 2.x + extensions).
 
 Exposes the core node types and the high-level WorkflowEngine.
 """

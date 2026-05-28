@@ -639,5 +639,5 @@ nodes:
         engine = WorkflowEngine()
         # We don't have full stores wired, so we only test that loading + basic
         # node presence works. Full execution would require more wiring.
-        assert any(isinstance(n, type) and "Review" in type(n).__name__ for n in definition.nodes) or True  # structural check
+        assert any("Review" in type(n).__name__ for n in definition.nodes)  # structural check
         print("CHUNK-4.5 cycle smoke: YAML with review + re_synthesize loaded successfully")

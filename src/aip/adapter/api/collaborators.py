@@ -1,6 +1,6 @@
-"""API collaborator management routes (CHUNK-10.3).
+"""API collaborator management routes.
 
-Adapter-layer. Requires DEFINER auth for create/update/remove (per §1.7).
+Adapter-layer. Requires DEFINER auth for create/update/remove.
 Uses CollaboratorManager (injected via container).
 """
 

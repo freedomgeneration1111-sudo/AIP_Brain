@@ -1,5 +1,5 @@
 """
-Commit stub (CHUNK-1.6 per Rev 1.3).
+Commit stub (per Rev 1.3).
 
 Writes artifact, performs ECS transition with correct actor/reason (P2),
 and records the transition in the event log (R3).
@@ -39,7 +39,7 @@ async def commit_artifact(
     event_store: EventStore,
 ) -> ArtifactRef:
     """
-    Commit stub per CHUNK-1.6.
+    Commit stub per.
 
     - Only proceeds if decision.action == "approve"
     - Generates deterministic artifact_id
@@ -50,7 +50,7 @@ async def commit_artifact(
     if decision.action != "approve":
         raise CommitBlockedError(f"DEFINER decision was '{decision.action}'")
 
-    # Deterministic artifact ID (per §1.5 provenance)
+    # Deterministic artifact ID (provenance)
     content_for_id = f"{project_id}:{work_unit_id}:{synthesis.content}"
     artifact_id = hashlib.sha256(content_for_id.encode()).hexdigest()[:32]
 

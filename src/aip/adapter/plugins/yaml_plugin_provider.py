@@ -1,4 +1,4 @@
-"""YamlPluginProvider — PluginProvider implementation driven by YAML config (CHUNK-10.0b).
+"""YamlPluginProvider — PluginProvider implementation driven by YAML config.
 
 Per spec: API keys come ONLY from environment variables (api_key_env name in YAML).
 In CI / deterministic mode returns fixture response (no network).

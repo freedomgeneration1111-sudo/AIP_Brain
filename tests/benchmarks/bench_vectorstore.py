@@ -12,7 +12,6 @@ def test_bench_vector_query_50_results():
     time.sleep(0.001)  # deterministic micro-delay
     duration_ms = (time.perf_counter() - start) * 1000
     assert duration_ms < 10
-    assert True  # results would be returned in real
 
 
 @pytest.mark.benchmark

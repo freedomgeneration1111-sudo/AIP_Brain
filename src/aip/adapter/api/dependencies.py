@@ -1,8 +1,8 @@
-"""Dependency injection for the AIP FastAPI surfaces (CHUNK-8.1).
+"""Dependency injection for the AIP FastAPI surfaces.
 
 Per spec: single AipContainer as the source of truth. Routes never import concrete adapters.
 
-CHUNK-11.0b: Removed direct orchestration imports from adapter layer.
+Removed direct orchestration imports from adapter layer.
 Orchestration components (SessionManager, BudgetManager, etc.) are typed
 as Any and injected at runtime via lifespan wiring. This preserves the
 three-layer discipline: adapter may only import foundation.
@@ -38,7 +38,7 @@ class AipContainer:
     implementations delivered in 8.0a/8.0b + Phase 5 orchestration layer.
 
     Orchestration components are typed as Any (injected at runtime) to avoid
-    adapter→orchestration import dependency per Phase 9 CHUNK-11.0b.
+    adapter→orchestration import dependency per Phase 9.
     """
 
     def __init__(self, config: dict) -> None:

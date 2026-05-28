@@ -1,8 +1,8 @@
 """pgvector VectorStore adapter — production-grade vector backend.
 
-Per §2.2: PostgreSQL 16 + pgvector is the required production path.
-Per §1.8: all HNSW and pool parameters toggleable via config.
-Per §7.2: adapter may import foundation but not orchestration.
+PostgreSQL 16 + pgvector is the required production path.
+All HNSW and pool parameters toggleable via config.
+Adapter may import foundation but not orchestration.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ class PgvectorStore(VectorStore):
 
     Uses asyncpg for async connectivity with connection pooling.
     HNSW index for approximate nearest neighbor search.
-    Cosine distance as the default similarity metric (§8.3).
+    Cosine distance as the default similarity metric.
     """
 
     def __init__(self, config: PgvectorConfig) -> None:
@@ -158,7 +158,7 @@ class PgvectorStore(VectorStore):
     ) -> list[Chunk]:
         """Retrieve vectors by cosine similarity, filtered by domain.
 
-        Per §8.3: cosine similarity for semantic search.
+        Cosine similarity for semantic search.
         Score = 1 - cosine_distance (0–1 scale, matching RerankWeights).
         """
         if self._pool is None:

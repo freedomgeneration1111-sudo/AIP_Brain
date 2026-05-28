@@ -1,5 +1,5 @@
 """
-Workflow definition model (CHUNK-2.11).
+Workflow definition model.
 
 Provides a richer structure than a flat list of nodes so that
 workflows can declare top-level "finally" (cleanup) and "on_error"

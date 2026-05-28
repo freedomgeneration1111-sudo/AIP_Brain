@@ -1,4 +1,4 @@
-"""Artifact Browser routes (CHUNK-8.4) — read-only, no AutonomyGate."""
+"""Artifact Browser routes  — read-only, no AutonomyGate."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""AuthMiddleware for FastAPI (CHUNK-9.0b).
+"""AuthMiddleware for FastAPI.
 
 Integrates with 8.1 app factory.
 When auth_enabled=False (laptop profile): all requests treated as DEFINER.

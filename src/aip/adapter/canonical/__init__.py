@@ -1,4 +1,4 @@
-"""CanonicalStore adapter implementations (CHUNK-8.0b)."""
+"""CanonicalStore adapter implementations."""
 
 from .sqlite_canonical_store import SqliteCanonicalStore
 

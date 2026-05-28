@@ -1,13 +1,13 @@
 """
 L4 — Trajectory Regulation and Context Reset (Foundation)
 
-Per Architecture Rev 5.2 §10.
+Per Architecture Rev 5.2.
 This package provides deterministic, zero-token components for detecting
 session drift, loops, and context anxiety from the trace archive, plus the
 response path of the Context Reset Protocol.
 
-CHUNK-3.1: Basic monitor foundation (detection only).
-CHUNK-3.2: Context Reset Protocol foundation (recommendation + intervention
+Basic monitor foundation (detection only).
+Context Reset Protocol foundation (recommendation + intervention
 logging). Full Sexton integration and L4b advanced metrics deferred.
 """
 

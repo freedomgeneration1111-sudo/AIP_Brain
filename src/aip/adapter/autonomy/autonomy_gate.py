@@ -1,8 +1,8 @@
 """AutonomyGateImpl — SQLite-backed enforcement of DEFINER sovereignty.
 
-Per CHUNK-8.0b prose + ANNEX (exact).
-Per §1.7: No UI, workflow, Beast, MCP, or queued task may bypass the DEFINER gates.
-Per §7.2: adapter only (composes Foundation Protocols/schemas; no orchestration imports).
+Per prose + ANNEX (exact).
+No UI, workflow, Beast, MCP, or queued task may bypass the DEFINER gates.
+Adapter only (composes Foundation Protocols/schemas; no orchestration imports).
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from aip.foundation.protocols import AutonomyGate
-from aip.foundation.schemas import AutonomyEscalation, AutonomyLevel
+from aip.foundation.schemas import AutonomyEscalation, AutonomyLevel, coerce_autonomy_level
 
 
 class AutonomyGateImpl(AutonomyGate):
@@ -85,8 +85,8 @@ class AutonomyGateImpl(AutonomyGate):
             action_type=action_type,
             requested_by=requested_by,
             resource_id=resource_id,
-            current_level=current,  # type: ignore[arg-type]
-            requested_level=requested_level,  # type: ignore[arg-type]
+            current_level=coerce_autonomy_level(current),
+            requested_level=requested_level,
             granted=bool(granted),
             reason="auto-granted" if granted else "escalation required",
             model_gen_assumption=self._config.get("model_gen_assumption"),
@@ -120,8 +120,8 @@ class AutonomyGateImpl(AutonomyGate):
             action_type=action_type,
             requested_by=requested_by,
             resource_id=resource_id,
-            current_level=current,  # type: ignore[arg-type]
-            requested_level=requested_level,  # type: ignore[arg-type]
+            current_level=coerce_autonomy_level(current),
+            requested_level=requested_level,
             granted=bool(granted),
             reason=reason,
             model_gen_assumption=self._config.get("model_gen_assumption"),
@@ -145,8 +145,8 @@ class AutonomyGateImpl(AutonomyGate):
                         action_type=r["action_type"],
                         requested_by=r["requested_by"],
                         resource_id=r["resource_id"],
-                        current_level=r["current_level"],  # type: ignore[arg-type]
-                        requested_level=r["requested_level"],  # type: ignore[arg-type]
+                        current_level=coerce_autonomy_level(r["current_level"]),
+                        requested_level=coerce_autonomy_level(r["requested_level"]),
                         granted=bool(r["granted"]),
                         reason=r["reason"],
                         model_gen_assumption=r["model_gen_assumption"],

@@ -1,6 +1,6 @@
 """DEFINER gate stub for Workflow 0.1.
 
-Per §1.7: No artifact may bypass DEFINER gates.
+No artifact may bypass DEFINER gates.
 Phase 1: AUTO_APPROVE_STUB mode for CI testing.
 Manual mode deferred to Phase 2 (requires UI/review queue).
 """
@@ -36,7 +36,7 @@ async def definer_gate(
 ) -> DefinerDecision:
     """DEFINER gate for Workflow 0.1.
 
-    Per §1.7, no artifact may bypass DEFINER approval.
+    No artifact may bypass DEFINER approval.
     This gate checks validation and evaluation results before
     deciding on approve/reject/revise.
 

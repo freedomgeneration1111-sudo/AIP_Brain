@@ -1,7 +1,7 @@
 """SQLite implementation of EntityStore Protocol.
 
-Per CHUNK-8.0b prose + ANNEX (exact).
-Separate from ProjectStore per §5 / Appendix D.
+Per prose + ANNEX (exact).
+Separate from ProjectStore per Appendix D.
 """
 
 from __future__ import annotations
@@ -71,7 +71,8 @@ class SqliteEntityStore(EntityStore):
                 "updated_at": row["updated_at"],
             }
         finally:
-            pass
+            conn.close()
+            self._conn = None
 
     async def list_entities(self, entity_type: str | None = None) -> list[dict]:
         conn = self._get_conn()
@@ -100,7 +101,8 @@ class SqliteEntityStore(EntityStore):
                 })
             return results
         finally:
-            pass
+            conn.close()
+            self._conn = None
 
     async def update_entity(self, entity_id: str, updates: dict) -> None:
         conn = self._get_conn()
@@ -108,6 +110,8 @@ class SqliteEntityStore(EntityStore):
             now = datetime.now(timezone.utc).isoformat() + "Z"
             # Simple upsert-style update (merge metadata if present)
             existing = await self.get_entity(entity_id)
+            # get_entity closes its conn; re-acquire for this operation
+            conn = self._get_conn()
             if existing:
                 meta = existing.get("metadata", {})
                 if "metadata" in updates:
@@ -152,4 +156,5 @@ class SqliteEntityStore(EntityStore):
                 )
             conn.commit()
         finally:
-            pass
+            conn.close()
+            self._conn = None

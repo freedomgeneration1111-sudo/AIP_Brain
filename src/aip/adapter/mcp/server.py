@@ -1,4 +1,4 @@
-"""AipMcpServer (CHUNK-8.5).
+"""AipMcpServer.
 
 Per spec: takes AipContainer, supports stdio/sse, list_tools() with McpToolDef (autonomy_level + model_gen_assumption), enforces gate for write/admin tools before dispatch.
 Appendix D: MCP ≠ bypass, MCP ≠ vector_store.retrieve() directly (all via Protocols).
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from aip.foundation.schemas import McpToolDef
+from aip.foundation.schemas import McpToolDef, coerce_autonomy_level, coerce_mcp_autonomy_level
 
 # Tool registry (autonomy declared per spec)
 TOOLS: list[dict[str, Any]] = [
@@ -43,7 +43,7 @@ class AipMcpServer:
                 tool_name=t["name"],
                 description=t["desc"],
                 input_schema={},
-                autonomy_level=t["autonomy"],  # type: ignore[arg-type]
+                autonomy_level=coerce_mcp_autonomy_level(t["autonomy"]),
                 model_gen_assumption=t["model_gen"],
             ))
         return defs
@@ -59,7 +59,7 @@ class AipMcpServer:
             esc = await self.container.autonomy_gate.escalate(
                 action_type=f"mcp_{name}",
                 resource_id=arguments.get("artifact_id") or arguments.get("name") or "mcp",
-                requested_level="admin" if level == "admin" else "write",  # type: ignore[arg-type]
+                requested_level=coerce_autonomy_level("admin" if level == "admin" else "write"),
                 requested_by="mcp",
             )
             if not esc.granted:

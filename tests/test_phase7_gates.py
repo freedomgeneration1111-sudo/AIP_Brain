@@ -80,14 +80,13 @@ def test_phase7_definer_sovereignty_no_bypass_for_admin_actions():
     try:
         from aip.adapter.auth.dependencies import require_definer  # type: ignore
         from aip.orchestration.canonical_pipeline import CanonicalPipeline
-        assert require_definer is not None or True
+        assert require_definer is not None
         assert hasattr(CanonicalPipeline, "promote_to_canonical") or hasattr(CanonicalPipeline, "__init__")
     except Exception:
         # Surface deps (fastapi, bcrypt) optional in base CI env; sovereignty shape verified in 9.2/9.5
         pass
     # CanonicalPipeline must exist and be the single promotion path
     assert Path("src/aip/orchestration/canonical_pipeline.py").exists()
-    assert True
 
 
 def test_phase7_import_boundaries_and_storage_contracts_still_pass():
@@ -115,7 +114,6 @@ def test_phase7_import_boundaries_and_storage_contracts_still_pass():
             boundary_violations.append(f"{canon}: imports adapter impl directly")
     assert not boundary_violations, "Phase 7 import boundary violations:\n" + "\n".join(boundary_violations)
     # Layering + storage contracts are exercised by the gate command (test_layering.py)
-    assert True
 
 
 def test_phase7_appendix_d_constraints():
@@ -137,7 +135,6 @@ def test_phase7_appendix_d_constraints():
     if canon.exists():
         text = canon.read_text(encoding="utf-8").lower()
         assert "superseded" in text or "promote" in text
-    assert True
 
 
 def test_phase7_config_toggleability_all_new_sections():
@@ -155,7 +152,6 @@ def test_phase7_config_toggleability_all_new_sections():
     assert hasattr(c, "require_vigil_health_check") and hasattr(c, "auto_promote_on_approval")
     d = DeploymentProfile(profile_name="laptop", vector_backend="sqlite_vss")
     assert hasattr(d, "profile_name") and hasattr(d, "vector_backend")
-    assert True
 
 
 def test_all_prior_phase0_through_9_6_gates_still_pass():
@@ -165,4 +161,3 @@ def test_all_prior_phase0_through_9_6_gates_still_pass():
     assert Path("tests/test_layering.py").exists()
     assert Path("tests/test_phase7_acceptance.py").exists()  # 9.5 capstone
     assert Path("deploy/docker-compose.yml").exists() or Path("deploy").exists()  # 9.6 packaging
-    assert True

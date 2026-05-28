@@ -1,4 +1,4 @@
-"""Authentication & Authorization (CHUNK-9.0b)."""
+"""Authentication & Authorization."""
 
 from .session_store import SqliteSessionStore
 from .middleware import AuthMiddleware

@@ -1,4 +1,4 @@
-"""Middleware (CHUNK-9.0c)."""
+"""Middleware."""
 
 from .rate_limiter import RateLimitMiddleware, TokenBucketRateLimiter
 

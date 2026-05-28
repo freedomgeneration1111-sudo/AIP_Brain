@@ -1,6 +1,6 @@
 """sqlite_vss implementation of the VectorStore protocol.
 Phase 1 vector backend. pgvector adapter is deferred to Phase 4.
-Per §2.2: sqlite_vss is the permitted fallback for Phase 0-2 alpha."""
+sqlite_vss is the permitted fallback for Phase 0-2 alpha."""
 
 from __future__ import annotations
 

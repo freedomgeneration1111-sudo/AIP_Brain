@@ -1,9 +1,7 @@
-"""Trajectory Regulator (CHUNK-5.5) — the "2 of 3" composer.
+"""Trajectory Regulator  — the "2 of 3" composer.
 
 If two or more of the three L4 signals (loop D, anxiety F, failure streak E)
-fire within the session window, it triggers a trajectory correction intervention
-per §10.1 and §10.2.
-"""
+fire within the session window, it triggers a trajectory correction intervention."""
 from __future__ import annotations
 
 from datetime import datetime, timezone

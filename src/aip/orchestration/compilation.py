@@ -1,10 +1,10 @@
-"""KnowledgeCompiler — orchestration component for the Deferred Compiled Knowledge Layer (CHUNK-10.1).
+"""KnowledgeCompiler — orchestration component for the Deferred Compiled Knowledge Layer.
 
 Per AIP_0_1_Phase8_BuildSpec_Rev1.0.md exact prose + box + ANNEX.
 Orchestration-layer only. Composes injected Protocols (no direct adapter impl imports).
-Fulfills §3 "Deferred Compiled Knowledge Layer" (complementary to Vigil 9.1).
+Fulfills "Deferred Compiled Knowledge Layer" (complementary to Vigil).
 Respects Appendix D non-collapse (KnowledgeStore is distinct peer).
-Uses only named model slots per §4.1 + config from 10.0a.
+Uses only named model slots + config from 10.0a.
 """
 
 from __future__ import annotations

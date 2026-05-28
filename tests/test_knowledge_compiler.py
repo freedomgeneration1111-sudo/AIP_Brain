@@ -93,4 +93,4 @@ async def test_trace_and_budget_respect(compiler):
     # Trace recording is best-effort and non-fatal
     # Budget is noted in run(); full enforcement via injected BudgetManager in wiring
     await compiler.run()
-    assert True  # if we reached here without crash, trace path executed
+    # if we reached here without crash, trace path executed

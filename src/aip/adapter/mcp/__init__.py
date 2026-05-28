@@ -1,4 +1,4 @@
-"""MCP server adapter (CHUNK-8.5)."""
+"""MCP server adapter."""
 
 from .server import AipMcpServer
 

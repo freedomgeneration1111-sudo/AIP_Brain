@@ -1,6 +1,6 @@
-"""Context reset protocol — implements §10.2 six-step reset.
+"""Context reset protocol — six-step reset.
 
-Per §10.2:
+Six-step reset:
 1. Detect context anxiety or degeneration
 2. Instruct model to produce progress summary
 3. Commit progress summary to artifact store
@@ -38,7 +38,7 @@ async def execute_context_reset(
     ecs_store: EcsStore,
     config: "AipConfig | dict | None" = None,
 ) -> SessionContext:
-    """Execute the full six-step context reset protocol per §10.2.
+    """Execute the full six-step context reset protocol.
 
     Args:
         session_context: Current session state.
@@ -79,7 +79,7 @@ async def execute_context_reset(
         },
     )
 
-    # ECS transition recorded per §10.2 prose + 4.0b/1.6 pattern (summary as artifact)
+    # ECS transition recorded (summary as artifact)
     await ecs_store.transition(
         artifact_id=summary_id,
         from_state="GENERATED",

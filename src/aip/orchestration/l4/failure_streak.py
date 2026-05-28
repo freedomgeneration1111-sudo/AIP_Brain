@@ -1,4 +1,4 @@
-"""Failure Streak Detector (Type E) — CHUNK-5.4.
+"""Failure Streak Detector (Type E) —.
 
 Detects consecutive "false success" claims (model says it is done but the output is incomplete or low-substance).
 Emits TrajectorySignal with failure_type="E".

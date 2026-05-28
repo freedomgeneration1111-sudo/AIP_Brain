@@ -53,7 +53,8 @@ def test_session_creation_loads_ace_playbook_shape():
     r = client.post("/api/v1/sessions", json={"project_id": "p1", "domain": "test"})
     assert r.status_code in (200, 503)
     if r.status_code == 200:
-        assert r.json().get("ace_playbook_loaded") is True or True  # scaffold tolerant
+        # scaffold tolerant: field may be missing in partial wiring
+        assert r.json().get("ace_playbook_loaded", True) is True
 
 
 def test_adapter_layer_does_not_import_orchestration_impls():
@@ -71,9 +72,5 @@ def test_adapter_layer_does_not_import_orchestration_impls():
         text = py.read_text()
         for bad in forbidden:
             assert bad not in text, f"{py} imports concrete adapter storage"
-    assert True
 
 
-def test_existing_tests_still_pass():
-    """No regression placeholder (covered by the full battery in the gate command)."""
-    assert True

@@ -1,7 +1,7 @@
-"""API plugin management routes (CHUNK-10.2).
+"""API plugin management routes.
 
 Adapter-layer. Mounted under the main app.
-Enable/disable require DEFINER-level auth (per §1.7).
+Enable/disable require DEFINER-level auth.
 """
 
 from __future__ import annotations

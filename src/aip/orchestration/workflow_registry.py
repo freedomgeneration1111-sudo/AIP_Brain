@@ -1,4 +1,4 @@
-"""WorkflowRegistry (CHUNK-9.3).
+"""WorkflowRegistry.
 
 Discovers YAML workflow templates (frontmatter + body) beyond the Phase 2 0.1 template.
 Used by admin console and CLI.

@@ -1,7 +1,7 @@
 """
-Embedding Providers (CHUNK-3.9 foundation for Phase 3 real embedding slot).
+Embedding Providers (foundation for Phase 3 real embedding slot).
 
-Per Rev 1.3 Phase 3 notes and Architecture §4.
+Per Rev 1.3 Phase 3 notes and Architecture.
 In Phase 1/CI: always fake_embed (deterministic, zero external deps).
 In Phase 3+: can load a real provider (e.g. local sentence-transformers or API)
 based on [embedding] section in config.

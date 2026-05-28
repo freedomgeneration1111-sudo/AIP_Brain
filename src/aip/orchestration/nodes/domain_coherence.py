@@ -1,7 +1,7 @@
 """L3a Stage 3 — Domain coherence evaluation.
 
-Per §9.1: domain-specific coherence checks.
-Per §1.8: evaluation carries model_gen_assumption.
+Domain-specific coherence checks.
+Evaluation carries model_gen_assumption.
 """
 
 from __future__ import annotations

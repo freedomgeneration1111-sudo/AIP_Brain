@@ -1,4 +1,4 @@
-"""MCP tools (CHUNK-8.5)."""
+"""MCP tools."""
 
 from .search import aip_search
 from .artifacts import aip_artifact_approve

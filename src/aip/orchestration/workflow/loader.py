@@ -1,5 +1,5 @@
 """
-Minimal YAML loader for workflows (CHUNK-2.1 foundation).
+Minimal YAML loader for workflows (foundation).
 
 Parses a simple YAML structure into a list of node definitions.
 This is intentionally minimal — full validation, Jinja templating in conditions,
@@ -32,7 +32,7 @@ def load_workflow_from_yaml(path: str | Path) -> WorkflowDefinition:
     Load a workflow definition from YAML.
 
     Supports the original flat "nodes" list plus optional top-level
-    "finally" and "on_error" lists (CHUNK-2.11).
+    "finally" and "on_error" lists.
 
     Example:
 

@@ -1,4 +1,4 @@
-"""Vigil adapter (CHUNK-9.1)."""
+"""Vigil adapter."""
 
 from .sqlite_vigil_store import SqliteVigilStore
 

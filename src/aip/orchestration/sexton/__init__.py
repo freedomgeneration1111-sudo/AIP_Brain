@@ -1,7 +1,7 @@
 """
-Sexton — Failure Classification and ACE Playbook Actor (CHUNK-3.4 foundation)
+Sexton — Failure Classification and ACE Playbook Actor (foundation)
 
-Per Architecture Rev 5.2 §16.1.
+Per Architecture Rev 5.2.
 Minimal deterministic foundation only. Full playbook persistence, trust scoring,
 and model-assisted classification are deferred.
 """

@@ -1,4 +1,4 @@
-"""PluginLoader — discovers, loads, and manages YAML-driven model plugins (CHUNK-10.0b).
+"""PluginLoader — discovers, loads, and manages YAML-driven model plugins.
 
 Pure adapter-layer. Respects sandbox_mode (errors do not crash AIP).
 Registers loaded providers with the DI container (via callable hook or direct assignment).

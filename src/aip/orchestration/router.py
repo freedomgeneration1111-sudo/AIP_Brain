@@ -1,8 +1,8 @@
-"""Adaptive Router (CHUNK-7.4).
+"""Adaptive Router.
 
 Transparent wrapper around ModelSlotResolver (does not replace it).
 Integrates BudgetManager (from 7.0b) for centralized enforcement on all three scopes
-before any model call. Implements §4.3 exploration/exploitation + Sexton role for
+before any model call. Implements exploration/exploitation + Sexton role for
 recommend_exploration_weight. Records to routing_outcomes and consumption.
 
 Placed at orchestration/router.py per spec. All storage access via injected
@@ -19,7 +19,7 @@ from aip.orchestration.budget import BudgetManager
 
 
 class AdaptiveRouter:
-    """Adaptive Router per Phase 5 §4.3 and CHUNK-7.4 prose/ANNEX."""
+    """Adaptive Router per Phase 5 and prose/ANNEX."""
 
     def __init__(
         self,
@@ -43,7 +43,7 @@ class AdaptiveRouter:
             if not await self._budget.check_before_call(scope, scope_id, estimated):
                 return {"error": "budget_exceeded", "scope": scope}
 
-        # Exploration vs exploitation per §4.3
+        # Exploration vs exploitation
         exp_w = self._config.get("default_exploration_weight", 0.10)
         if random.random() < exp_w:
             # Exploration: pick a non-optimal slot (simplified for foundation)
@@ -71,7 +71,7 @@ class AdaptiveRouter:
         return list(self._weights.values())
 
     async def recommend_exploration_weight(self, domain: str) -> float:
-        """Sexton role per §4.3: higher for sparse domains, lower for stable dense domains."""
+        """Sexton role: higher for sparse domains, lower for stable dense domains."""
         # Simple heuristic for foundation / CI
         count = 5  # would come from routing_outcomes in real impl
         min_sample = self._config.get("min_sample_count", 10)

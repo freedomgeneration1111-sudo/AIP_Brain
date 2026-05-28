@@ -1,4 +1,4 @@
-"""aip config command (CHUNK-8.2) — writes go through AutonomyGate."""
+"""aip config command  — writes go through AutonomyGate."""
 
 from __future__ import annotations
 

@@ -247,32 +247,33 @@ def test_import_boundaries_three_layer():
 def test_model_gen_assumption_includes_model_reference():
     """
     model_gen_assumption fields in ValidationRule and EvalCriterion must include
-    specific model name references (e.g., "DeepSeek-V3 and Qwen3 models may produce...")
-    rather than generic text. This is required by §1.8.
+    a per-§1.8 tag and a specific behavioral assumption about model output
+    (e.g., "Models may hallucinate specific claims; grounding check compensates per §1.8").
+    This is required by §1.8.
     """
     from aip.foundation.validation import DEFAULT_RULES
     from aip.orchestration.nodes.adversarial_eval import DEFAULT_EVAL_CRITERIA
 
     for rule in DEFAULT_RULES:
         if rule.model_gen_assumption:
-            # Must contain at least one model name reference
-            has_model_ref = any(
-                re.search(p, rule.model_gen_assumption, re.IGNORECASE)
-                for p in MODEL_NAME_PATTERNS
+            # Must contain §1.8 reference and a specific behavioral assumption
+            assert "§1.8" in rule.model_gen_assumption, (
+                f"ValidationRule '{rule.rule_id}' has model_gen_assumption but no §1.8 reference: "
+                f"{rule.model_gen_assumption!r}"
             )
-            assert has_model_ref, (
-                f"ValidationRule '{rule.rule_id}' has model_gen_assumption but no model name reference: "
+            assert "Models may" in rule.model_gen_assumption, (
+                f"ValidationRule '{rule.rule_id}' has model_gen_assumption but no behavioral assumption: "
                 f"{rule.model_gen_assumption!r}"
             )
 
     for criterion in DEFAULT_EVAL_CRITERIA:
         if criterion.model_gen_assumption:
-            has_model_ref = any(
-                re.search(p, criterion.model_gen_assumption, re.IGNORECASE)
-                for p in MODEL_NAME_PATTERNS
+            assert "§1.8" in criterion.model_gen_assumption, (
+                f"EvalCriterion '{criterion.criterion_id}' has model_gen_assumption but no §1.8 reference: "
+                f"{criterion.model_gen_assumption!r}"
             )
-            assert has_model_ref, (
-                f"EvalCriterion '{criterion.criterion_id}' has model_gen_assumption but no model name reference: "
+            assert "Models may" in criterion.model_gen_assumption, (
+                f"EvalCriterion '{criterion.criterion_id}' has model_gen_assumption but no behavioral assumption: "
                 f"{criterion.model_gen_assumption!r}"
             )
 

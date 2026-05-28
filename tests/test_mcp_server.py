@@ -44,8 +44,5 @@ def test_layering_and_no_orchestration_impl_imports():
         if p.exists():
             text = p.read_text()
             assert "from aip.orchestration.nodes" not in text  # only types via container
-    assert True
 
 
-def test_existing_tests_still_pass():
-    assert True

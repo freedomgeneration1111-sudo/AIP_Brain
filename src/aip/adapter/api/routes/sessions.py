@@ -1,4 +1,4 @@
-"""Session routes (start loads ACE Playbook per §8.1)."""
+"""Session routes (start loads ACE Playbook)."""
 
 from fastapi import APIRouter, Depends, HTTPException
 

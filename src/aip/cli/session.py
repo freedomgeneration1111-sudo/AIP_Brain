@@ -1,4 +1,4 @@
-"""aip session subcommand group (CHUNK-8.2)."""
+"""aip session subcommand group."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import click
 
 @click.group("session")
 def session() -> None:
-    """Session management (loads ACE Playbook on start per §8.1)."""
+    """Session management (loads ACE Playbook on start)."""
     pass
 
 

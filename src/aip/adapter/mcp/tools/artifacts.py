@@ -1,4 +1,4 @@
-"""aip_artifact_approve MCP tool (CHUNK-8.5) — admin, uses Ecs + Canonical + Gate (already enforced by server)."""
+"""aip_artifact_approve MCP tool  — admin, uses Ecs + Canonical + Gate (already enforced by server)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import Any
 
 
 async def aip_artifact_approve(container: Any, artifact_id: str) -> dict:
-    """Approve artifact for canonical promotion (CHUNK-8.5). Gate already checked by server."""
+    """Approve artifact for canonical promotion. Gate already checked by server."""
     if not container.ecs_store or not container.canonical_store:
         return {"approved": False, "reason": "stores not wired"}
     try:

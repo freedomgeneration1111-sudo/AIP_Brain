@@ -1,6 +1,6 @@
-"""L3a Evaluation Orchestrator (CHUNK-11.0b).
+"""L3a Evaluation Orchestrator.
 
-Moved from foundation/validation.py per §7.2 layer discipline.
+Moved from foundation/validation.py for layer discipline.
 The full_l3a_evaluation function orchestrates multi-stage evaluation
 which requires orchestration-layer imports (faithfulness, domain_coherence).
 It does not belong in the foundation layer.
@@ -29,7 +29,7 @@ async def full_l3a_evaluation(
     Stage 2: evaluate_faithfulness (model-based, if Stage 1 passes)
     Stage 3: evaluate_domain_coherence (model-based, if Stage 1 passes)
 
-    Skips expensive model stages when Stage 1 already fails (anti-token-burn §7.3).
+    Skips expensive model stages when Stage 1 already fails (anti-token-burn).
     Uses thresholds from config [evaluation].
     """
     from aip.orchestration.nodes.faithfulness import evaluate_faithfulness

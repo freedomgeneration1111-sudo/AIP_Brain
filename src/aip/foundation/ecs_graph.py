@@ -1,4 +1,4 @@
-"""ECS state graph — declarative valid transitions per §9.3.
+"""ECS state graph — declarative valid transitions.
 
 Single source of truth for artifact lifecycle state machine.
 No storage, no I/O — pure validation logic in foundation layer.
@@ -6,7 +6,7 @@ No storage, no I/O — pure validation logic in foundation layer.
 from __future__ import annotations
 
 
-# Declarative ECS state graph per §9.3
+# Declarative ECS state graph
 VALID_TRANSITIONS: dict[str, set[str]] = {
     "SPECIFIED": {"GENERATED"},
     "GENERATED": {"REVIEWED", "FAILED"},
@@ -25,7 +25,7 @@ class InvalidTransitionError(Exception):
     """Raised when an ECS transition violates the state graph.
 
     This is a controlled rejection, not a crash.
-    Per §1.7: no action may bypass DEFINER gates.
+    No action may bypass DEFINER gates.
     The graph makes it structurally impossible to skip states.
     """
 

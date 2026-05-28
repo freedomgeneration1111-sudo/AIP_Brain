@@ -1,6 +1,6 @@
-"""Vigil actor (CHUNK-9.1).
+"""Vigil actor.
 
-Last missing §3 orchestration actor.
+Last missing orchestration actor.
 Read-only (per Appendix D + Process Rule 12): monitors, detects, creates trace events for Sexton; never modifies canonicals.
 Complementary to Sexton (classifies failures) and Beast (maintains vectors).
 """
@@ -95,7 +95,7 @@ class Vigil:
     async def on_model_slot_change(
         self, slot_name: str, old_config: ModelSlotConfig, new_config: ModelSlotConfig
     ) -> None:
-        """Per §1.8: audit for stale assumptions on model slot upgrade."""
+        """Audit for stale assumptions on model slot upgrade."""
         if self.config.re_evaluate_on_slot_change:
             # Create trace events so Sexton can classify
             await self.trace_store.write_event(

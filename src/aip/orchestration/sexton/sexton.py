@@ -1,14 +1,14 @@
 """
-Sexton Foundation (CHUNK-3.4 spec delta)
+Sexton Foundation (spec delta)
 
-Minimal deterministic implementation per Architecture Rev 5.2 §16.1.
+Minimal deterministic implementation per Architecture Rev 5.2.
 - Accepts injected TraceStore.
 - classify_recent_failures(): queries unclassified failures, applies
   deterministic Appendix E rules, writes failure_type back.
 - Stubs for ACE playbook derivation (in-memory only for foundation).
 - Zero tokens. All access via injected protocol only.
 - Every classification decision that encodes model assumptions carries
-  model_gen_assumption per §1.8.
+  model_gen_assumption.
 
 This is deliberately the smallest useful foundation.
 """
@@ -23,8 +23,8 @@ from aip.foundation.schemas import SextonConfig, FailureClassification
 
 class Sexton:
     """
-    Sexton failure classification actor (CHUNK-7.1 implementation extending the
-    CHUNK-3.4 foundation stub).
+    Sexton failure classification actor (implementation extending the
+    foundation stub).
 
     Per Phase 5 spec: receives SextonConfig + ModelSlotResolver ("sexton" slot)
     + TraceStore + EventStore via injection. Never imports adapter storage
@@ -95,7 +95,7 @@ class Sexton:
 
         return classified
 
-    # --- CHUNK-7.1: full Sexton interface per Phase 5 spec (extends foundation) ---
+    # full Sexton interface per Phase 5 spec (extends foundation)
 
     async def classify_failures(self) -> list[FailureClassification]:
         """Batch classify unclassified failures (7.1 prose)."""
@@ -149,7 +149,7 @@ class Sexton:
         )
 
         if self._model_resolver is not None and not getattr(self._model_resolver, "_ci_mode", True):
-            # Real path: use the "sexton" slot (per spec §4.1 and 7.1 prose)
+            # Real path: use the "sexton" slot
             prompt = self._build_classification_prompt(event)
             try:
                 resp = await self._model_resolver.call("sexton", [{"role": "user", "content": prompt}])
@@ -305,16 +305,12 @@ class Sexton:
         """Stub — returns None in foundation. Real derivation in later chunks."""
         return None
 
-    def audit_model_gen_assumption(self, rule_id: str) -> str | None:
-        """Stub for §1.8 stale rule audit."""
-        return None
-
     def derive_ace_rules(self, classified_events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
-        Minimal deterministic ACE playbook derivation (CHUNK-3.7 foundation).
+        Minimal deterministic ACE playbook derivation (foundation).
 
         For each classified failure event, produces a basic intervention rule stub.
-        Every rule carries an explicit model_gen_assumption per §1.8.
+        Every rule carries an explicit model_gen_assumption.
         In a later chunk these would be persisted, reviewed, and promoted to the
         live ACE playbook used by L2 retrieval etc.
         """
@@ -364,7 +360,7 @@ class Sexton:
             return "require_verify_step_before_commit"
         return "log_and_audit"
 
-    # --- CHUNK-3.10: remaining §16.1 foundation (trust scoring + stale rule audit) ---
+    # remaining foundation (trust scoring + stale rule audit)
 
     def trust_score(self, rule_or_event: dict[str, Any]) -> float:
         """
@@ -385,7 +381,7 @@ class Sexton:
 
     def audit_model_gen_assumption(self, rules: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
         """
-        CHUNK-3.10 implementation of the §1.8 stale rule audit.
+        implementation of the stale rule audit.
         Scans the provided rules (or internal derived rules if none passed) and
         returns those that are missing or have weak model_gen_assumption tagging.
         This fulfills the "stale rule audit" responsibility in the foundation.

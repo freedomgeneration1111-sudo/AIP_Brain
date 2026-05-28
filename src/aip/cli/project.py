@@ -1,4 +1,4 @@
-"""aip project subcommand group (CHUNK-8.2)."""
+"""aip project subcommand group."""
 
 from __future__ import annotations
 

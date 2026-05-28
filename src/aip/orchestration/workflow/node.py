@@ -1,8 +1,8 @@
 """
-L5 Workflow Node abstractions (CHUNK-2.1 foundation).
+L5 Workflow Node abstractions (foundation).
 
 Defines the common contract and the five node type bases required by
-Architecture Rev 5.2 §11.1.
+Architecture Rev 5.2.
 
 All storage access must go through injected protocols (enforced by
 the Phase 1 layering rules).
@@ -40,7 +40,7 @@ class WorkflowNode(ABC):
     """
     Abstract base for all workflow nodes.
 
-    Invariants (from Architecture §11.1):
+    Invariants:
     - script and condition nodes must consume zero tokens.
     - agent nodes must declare an explicit model_slot.
     - dialog nodes must emit an event before returning a "paused" result.
@@ -83,7 +83,7 @@ class ScriptNode(WorkflowNode):
         self.code = code  # In a real implementation this would be a safe exec or registered function
 
     async def run(self, context: "WorkflowContext") -> NodeResult:
-        # Placeholder for CHUNK-2.1 — real implementation comes in a follow-up chunk
+        # Placeholder for — real implementation comes in a follow-up chunk
         return NodeResult(success=True, output={"executed": self.node_id, "type": "script"})
 
 
@@ -99,7 +99,7 @@ class AgentNode(WorkflowNode):
 
     async def run(self, context: "WorkflowContext") -> NodeResult:
         """
-        Real agent execution for CHUNK-2.5.
+        Real agent execution for.
 
         Uses the Phase 1 retrieval + synthesis path.
         Expects the following to be available via context.protocols or context:
@@ -149,7 +149,7 @@ class AgentNode(WorkflowNode):
             config=config,
         )
 
-        # Export useful data for downstream nodes (CHUNK-2.7)
+        # Export useful data for downstream nodes
         exports = {
             "content": synthesis_output.content,
             "model_name": synthesis_output.model_name,
@@ -216,7 +216,7 @@ class DialogNode(WorkflowNode):
         If a gate_callable is provided (or can be retrieved from context as 'definer_gate'),
         it is invoked with the provided synthesis/validation/eval results.
 
-        Per Architecture §11.1: dialog nodes must produce an event before resuming.
+        Dialog nodes must produce an event before resuming.
         The runner will stop when this node returns paused=True.
         """
         gate = self.gate_callable or context.get_protocol("definer_gate")
@@ -291,7 +291,7 @@ class ParallelNode(WorkflowNode):
         )
 
 
-# --- CHUNK-4.5 extensions: Review and Re-Synthesis nodes (additive) ---
+# extensions: Review and Re-Synthesis nodes (additive)
 
 from aip.orchestration.review import review_artifact
 from aip.orchestration.re_synthesize import re_synthesize

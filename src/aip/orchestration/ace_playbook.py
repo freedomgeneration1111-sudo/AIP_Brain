@@ -1,9 +1,9 @@
-"""ACE Playbook — SQLite-backed procedural intervention rules (CHUNK-7.2).
+"""ACE Playbook — SQLite-backed procedural intervention rules.
 
-Per §8.1: procedural intervention rules, loaded at session start, curated by Sexton.
-Per §16.1: derive and update from Sexton FailureClassification output.
+Procedural intervention rules, loaded at session start, curated by Sexton.
+Derive and update from Sexton FailureClassification output.
 Per Appendix D: deprecation (supersession) not deletion.
-Uses AcePlaybookEntry (7.0a) which carries model_gen_assumption per §1.8.
+Uses AcePlaybookEntry (7.0a) which carries model_gen_assumption.
 """
 from __future__ import annotations
 

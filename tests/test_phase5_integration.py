@@ -15,22 +15,7 @@ from aip.orchestration.budget import BudgetManager, InMemoryBudgetStore
 from aip.foundation.schemas import BudgetConfig
 
 
-@pytest.mark.asyncio
-async def test_scenario_1_failure_classification_and_ace_derivation():
-    """Scenario 1: failure → Sexton classification → ACE derivation."""
-    # Simplified deterministic path using the components we built
-    # (Full wiring would use the real 6.5 pipeline + 7.x actors)
-    assert True  # Placeholder — in real run this exercises the full chain via ci_mode
 
-
-@pytest.mark.asyncio
-async def test_scenario_2_playbook_loaded_session_prevents_recurrence():
-    assert True
-
-
-@pytest.mark.asyncio
-async def test_scenario_3_adaptive_router_optimization():
-    assert True
 
 
 @pytest.mark.asyncio
@@ -56,6 +41,4 @@ async def test_scenario_5_budget_enforcement():
     assert ok is False
 
 
-@pytest.mark.asyncio
-async def test_scenario_6_stale_rule_audit():
-    assert True
+

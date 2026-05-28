@@ -4,9 +4,9 @@ Synthesis node — primary generation via model slot.
 Phase 1: deterministic fixture stub.
 Phase 4: real ModelSlotResolver integration with CI mode fallback.
 
-Per §1.3: harness mediates everything the model sees.
-Per §1.4: models are replaceable execution engines.
-Per §4.1: synthesis slot resolves to DeepSeek-V3 by default.
+Harness mediates everything the model sees.
+Models are replaceable execution engines.
+Synthesis slot resolves to DeepSeek-V3 by default.
 """
 
 from __future__ import annotations
@@ -83,9 +83,9 @@ async def synthesize(
     """Synthesize output from query, domain, and retrieved context.
 
     Phase 4 promoted version:
-    - Accepts optional model_resolver (from CHUNK-5.0b ModelSlotResolver).
+    - Accepts optional model_resolver (from ModelSlotResolver).
     - Loads prompts/synthesis.md when available.
-    - Assembles messages per §1.3.
+    - Assembles messages.
     - Calls resolver for real (or CI fixture) synthesis.
     - Returns dict with content, model, usage, latency_ms, cost_usd.
 
@@ -128,7 +128,7 @@ async def synthesize(
     if prompt_path.exists():
         system_prompt = prompt_path.read_text()
 
-    # Assemble messages per §1.3
+    # Assemble messages
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})

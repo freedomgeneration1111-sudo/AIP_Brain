@@ -28,4 +28,3 @@ def test_layering():
     if rl_file.exists():
         text = rl_file.read_text()
         assert "from aip.orchestration" not in text
-    assert True

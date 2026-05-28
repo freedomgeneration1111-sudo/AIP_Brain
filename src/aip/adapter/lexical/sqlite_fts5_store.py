@@ -1,9 +1,9 @@
 """SQLite FTS5 implementation of LexicalStore Protocol.
 
-Per CHUNK-8.0b prose + ANNEX (exact).
-Per §6: LexicalStore Protocol (added in 8.0a).
-Per §7.2: adapter imports only foundation (schemas + protocols).
-Per §2.1: local, deterministic, laptop-viable (no external services).
+Per prose + ANNEX (exact).
+LexicalStore Protocol (added in 8.0a).
+Adapter imports only foundation (schemas + protocols).
+Local, deterministic, laptop-viable (no external services).
 """
 
 from __future__ import annotations
@@ -92,8 +92,8 @@ class SqliteFts5LexicalStore(LexicalStore):
             )
             conn.commit()
         finally:
-            # Do not close shared conn here; managed by close()
-            pass
+            conn.close()
+            self._conn = None
 
     async def search(
         self, query: str, domain: str | None = None, limit: int = 10
@@ -128,7 +128,8 @@ class SqliteFts5LexicalStore(LexicalStore):
                 )
             return results
         finally:
-            pass
+            conn.close()
+            self._conn = None
 
     async def delete_document(self, doc_id: str) -> None:
         conn = self._get_conn()
@@ -142,4 +143,5 @@ class SqliteFts5LexicalStore(LexicalStore):
             conn.execute("DELETE FROM fts_documents WHERE doc_id = ?", (doc_id,))
             conn.commit()
         finally:
-            pass
+            conn.close()
+            self._conn = None

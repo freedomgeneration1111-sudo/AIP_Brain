@@ -1,15 +1,15 @@
 """
-L4 Trajectory Monitor Foundation (CHUNK-3.1 spec delta)
+L4 Trajectory Monitor Foundation (spec delta)
 
-Implements the minimal detection capability from Architecture Rev 5.2 §10.1:
+Implements the minimal detection capability from Architecture Rev 5.2:
 - Queries TraceStore for recent events in a session window.
 - Detects basic signals for failure_types D (Session Drift / Loop) and F (Context Anxiety).
 - Applies the "2 of 3 signals" rule using deterministic heuristics on trace data.
-- Emits TrajectorySignal objects tagged with model_gen_assumption per §1.8 / gate [31].
+- Emits TrajectorySignal objects tagged with model_gen_assumption.
 
 This is deliberately the smallest useful foundation:
 - Pure query + count/trend heuristics (zero tokens, no model calls).
-- No execution of the full Context Reset Protocol (§10.2).
+- No execution of the full Context Reset Protocol.
 - No Sexton classification logic.
 - Injected via WorkflowContext.protocols["trajectory_monitor"] (or direct construction in tests).
 
@@ -56,7 +56,7 @@ class TrajectoryMonitor:
           emit a combined_2of3 signal (proxy for the "2 of 3" rule when only two
           primary L4 types are observable in the current trace producers).
 
-        L4b extension (CHUNK-3.5): In addition to pre-labeled F events, the monitor
+        L4b extension : In addition to pre-labeled F events, the monitor
         now applies deterministic heuristics on raw event data to detect Type F
         (Context Anxiety) signals per Architecture Appendix E:
         - Hedging language in detail/failure_detail
@@ -116,7 +116,7 @@ class TrajectoryMonitor:
                 )
             )
 
-        # L4b Context Anxiety heuristics (CHUNK-3.5) - Appendix E Type F
+        # L4b Context Anxiety heuristics  - Appendix E Type F
         l4b_f_events, l4b_confidence, l4b_evidence, l4b_assumption = self._run_l4b_context_anxiety_heuristics(events, session_id)
 
         if l4b_f_events or l4b_confidence > 0.6:
@@ -174,7 +174,7 @@ class TrajectoryMonitor:
 
         return signals
 
-    # --- L4b private helpers (CHUNK-3.5, deterministic, zero-token) ---
+    # --- L4b private helpers (, deterministic, zero-token) ---
 
     def _contains_hedging(self, text: str) -> bool:
         """Simple keyword heuristic for hedging language (Appendix E Type F signal)."""

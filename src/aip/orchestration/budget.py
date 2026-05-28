@@ -1,5 +1,5 @@
 """
-Budget and Autonomy Tracking (CHUNK-3.11 foundation).
+Budget and Autonomy Tracking (foundation).
 
 Minimal deterministic implementation per Architecture L6 / Budget sections
 and the existing BudgetStore + AutonomyGate protocol stubs.
@@ -17,7 +17,7 @@ from aip.foundation.protocols import BudgetStore, AutonomyGate
 
 
 class InMemoryBudgetStore(BudgetStore):
-    """Minimal in-memory BudgetStore for foundation (CHUNK-3.11)."""
+    """Minimal in-memory BudgetStore for foundation."""
 
     def __init__(self, initial_budget: int | None = None):
         self._budgets: dict[str, int] = {}
@@ -42,7 +42,7 @@ class InMemoryBudgetStore(BudgetStore):
         else:
             self._budgets.pop(budget_id, None)
 
-    # --- Phase 5 / CHUNK-7.0b extension (support extended BudgetStore Protocol for CI) ---
+    # --- Phase 5 extension (support extended BudgetStore Protocol for CI) ---
     async def get_budget(self, scope: str, scope_id: str) -> dict:
         """Support extended Protocol (track consumed per scope_id for CI tests)."""
         key = f"{scope}:{scope_id}"
@@ -62,7 +62,7 @@ class InMemoryBudgetStore(BudgetStore):
 
 
 class SimpleAutonomyGate(AutonomyGate):
-    """Two-phase autonomy gate stub (CHUNK-3.11 foundation)."""
+    """Two-phase autonomy gate stub (foundation)."""
 
     async def request_autonomy(self, level: int, context: dict[str, Any]) -> bool:
         # Phase 1: always allow low levels in foundation
@@ -76,7 +76,7 @@ class SimpleAutonomyGate(AutonomyGate):
         pass
 
 
-# --- Phase 5 / CHUNK-7.0b additions (extend existing file per Rule #10) ---
+# --- Phase 5 additions (extend existing file per Rule #10) ---
 
 from aip.foundation.protocols import BudgetStore, EventStore
 from aip.foundation.schemas import BudgetConfig, BudgetScope
@@ -87,7 +87,7 @@ class BudgetManager:
 
     Composes BudgetStore (persistence) and BudgetConfig (limits).
     Optionally writes warning events to EventStore when thresholds are crossed.
-    Per CHUNK-7.0b prose + ANNEX.
+    Per prose + ANNEX.
     """
 
     def __init__(

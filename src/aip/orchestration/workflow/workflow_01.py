@@ -1,5 +1,5 @@
 """
-Workflow 0.1 Executor (CHUNK-2.8).
+Workflow 0.1 Executor.
 
 Provides a high-level, opinionated runner for the canonical "Synthesis Session" workflow
 defined in Architecture Appendix F.
@@ -29,7 +29,7 @@ from aip.orchestration.workflow.node import (
 )
 from aip.orchestration.workflow.runner import SequentialRunner
 
-# L4 wiring (CHUNK-3.2 additive, backward safe)
+# L4 wiring (additive, backward safe)
 from aip.orchestration.l4.monitor import TrajectoryMonitor
 from aip.orchestration.l4.reset import L4ResetCoordinator, check_l4_and_surface_if_needed, run_l4_and_sexton_check
 
@@ -200,9 +200,9 @@ class Workflow01Runner:
             async def write_event(self, *a, **k):
                 pass
             async def get_recent_events(self, session_id: str, limit: int = 100) -> list[dict]:
-                return []  # L4/CHUNK-3.1 additive compat for no-op path
+                return []  # L4/additive compat for no-op path
             async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
-                return []  # Sexton/CHUNK-3.4 additive compat for no-op path
+                return []  # Sexton/additive compat for no-op path
 
         class _NoopStore:
             async def write(self, *a, **k):
@@ -213,7 +213,7 @@ class Workflow01Runner:
         trace_for_use = self.trace_store or _NoopTraceStore()
         artifact_for_use = self.artifact_store or _NoopStore()
 
-        # L4 default wiring (CHUNK-3.2 additive, backward-compatible)
+        # L4 default wiring (additive, backward-compatible)
         monitor = TrajectoryMonitor(trace_store=trace_for_use)
         coordinator = L4ResetCoordinator(
             trajectory_monitor=monitor,
@@ -238,14 +238,14 @@ class Workflow01Runner:
 
         ctx = WorkflowContext(protocols=protocols, metadata={"config": self.config})
 
-        # CHUNK-3.3 / 3.6 L4 + Sexton activation point (additive)
+        # 3.6 L4 + Sexton activation point (additive)
         # Uses the 3.6 thin helper (run_l4_and_sexton_check) which invokes both
         # the L4 coordinator (emitting the standard event for DEFINER surface)
         # and optionally Sexton for classification of recent events.
         # This is the runtime node-level integration pattern for the full L4/Sexton stack.
         l4_sexton_result = await run_l4_and_sexton_check(ctx, session_id=f"wf01-{id(self)}", also_run_sexton=True)
 
-        # CHUNK-3.8 demo wiring (additive): the derived rules from Sexton can now be
+        # demo wiring (additive): the derived rules from Sexton can now be
         # passed to retrieve_for_synthesis (see retrieval.py) for procedural boost.
         # In a real node this would happen inside the synthesis/retrieval step.
         # (ace_rules = l4_sexton_result.get("sexton_classifications") or similar)

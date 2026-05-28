@@ -1,5 +1,5 @@
 """
-Workflow instance / suspension model (CHUNK-2.6 foundation).
+Workflow instance / suspension model (foundation).
 
 Provides a simple, serializable representation of a running or suspended workflow.
 This is the minimal viable persistence layer to support dialog pause/resume.

@@ -1,4 +1,4 @@
-"""Model Slot Resolver — Phase 3 real model wiring (CHUNK-5.0b).
+"""Model Slot Resolver — Phase 3 real model wiring.
 
 Resolves named slots to concrete provider + model + base_url.
 Supports ci_mode for fully deterministic tests (no network).

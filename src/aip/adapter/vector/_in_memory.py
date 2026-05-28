@@ -1,6 +1,6 @@
 """In-memory VectorStore fallback for environments without sqlite_vss or pgvector.
 
-Graceful degradation per §7.3: when neither vector backend is available,
+Graceful degradation: when neither vector backend is available,
 this provides a working (but non-persistent) store so the system can still
 operate in CI and development environments.
 """

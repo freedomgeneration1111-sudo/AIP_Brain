@@ -110,21 +110,4 @@ def test_scenario_4_admin_memory_inspector():
     assert r.status_code in (200, 503)
 
 
-def test_scenario_5_definer_sovereignty_enforcement():
-    """No surface bypasses AutonomyGate for admin actions (covered by per-surface tests + this integration)."""
-    assert True  # Detailed enforcement already verified in 8.4/8.5/8.6 per-surface gates
 
-
-def test_scenario_6_appendix_d_constraints():
-    """UI ≠ authority, MCP ≠ bypass, MCP ≠ vector_store.retrieve() directly (enforced in 8.5 + this)."""
-    assert True
-
-
-def test_scenario_7_cross_surface_consistency():
-    """Same data visible via CLI / API / MCP (shape verified in scenarios 1-3)."""
-    assert True
-
-
-def test_existing_phase5_7_6_cycle_still_exercised():
-    """The 7.6 self-improvement cycle (classification → ACE → prevention → router → Beast → budget) remains intact through surfaces."""
-    assert True

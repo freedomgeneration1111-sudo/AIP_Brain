@@ -1,4 +1,4 @@
-"""CLI collaborator management commands (CHUNK-10.3).
+"""CLI collaborator management commands.
 
 Adapter-layer. Uses container's CollaboratorManager.
 DEFINER context assumed for privileged ops in 0.1 CLI.

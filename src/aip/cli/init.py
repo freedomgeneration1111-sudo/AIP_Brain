@@ -1,4 +1,4 @@
-"""aip init command — the §2.3 installation contract (CHUNK-8.2)."""
+"""aip init command — the installation contract."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def _suggest_profile(ram_gb: int) -> str:
 @click.command("init")
 @click.option("--force", is_flag=True, help="Overwrite existing config/DBs (dangerous)")
 def init(force: bool) -> None:
-    """Initialize AIP 0.1 for this machine (the §2.3 contract).
+    """Initialize AIP 0.1 for this machine.
 
     Performs:
     1. RAM detection + hardware profile suggestion
@@ -81,7 +81,7 @@ def init(force: bool) -> None:
         (db_dir / name).touch(exist_ok=True)
     click.echo("Initialized DB files under db/ (state, trace, events, ace_playbook, lexical, vectors)")
 
-    # Initialize trace.db with the required schema (per §5.9 + §4.3)
+    # Initialize trace.db with the required schema
     trace_db_path = db_dir / "trace.db"
     try:
         import sqlite3

@@ -1,6 +1,6 @@
 """
 L2 retrieval node: retrieve_for_synthesis with low-confidence gate and four-factor reranking.
-Implemented exactly per Rev 1.3 CHUNK-1.1.
+Implemented exactly per Rev 1.3.
 
 Config-driven (Delta 5), explicit embed_fn (Delta 4), TraceStore logging on failure (R2/F2).
 """
@@ -49,7 +49,7 @@ def fake_embed(text: str, dimensions: int = 768) -> list[float]:
     """Deterministic fake embedding for Phase 1 CI (no real model calls).
 
     Uses SHA-256 hash for determinism (same input always produces same output,
-    regardless of Python version or platform). Per spec CHUNK-1.1.
+    regardless of Python version or platform). Per spec.
     """
     import hashlib
     digest = hashlib.sha256(text.encode()).digest()
@@ -136,7 +136,7 @@ async def retrieve_for_synthesis(
 ) -> RetrievalResult:
     """
     L2 retrieval + low-confidence gate + reranking.
-    CHUNK-3.8: Optional ace_rules from Sexton (derived playbook) are applied
+    Optional ace_rules from Sexton (derived playbook) are applied
     in a minimal deterministic way (e.g., boost for procedural matches).
     Returns RetrievalResult with status OK or INSUFFICIENT_MEMORY.
     """
@@ -168,7 +168,7 @@ async def retrieve_for_synthesis(
     # Apply top_k limit after reranking
     reranked = reranked[:top_k]
 
-    # CHUNK-3.8: Minimal application of ACE rules from Sexton (deterministic boost for procedural matches)
+    # Minimal application of ACE rules from Sexton (deterministic boost for procedural matches)
     if ace_rules:
         for rule in ace_rules:
             if rule.get("failure_type") == "B" or "procedural" in str(rule.get("recommended_action", "")).lower():

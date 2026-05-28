@@ -1,6 +1,6 @@
 """
 L3a Stage 1 deterministic structural validation (pure, zero tokens).
-Per Rev 1.3 CHUNK-1.2 (unchanged from Rev 1.0).
+Per Rev 1.3 (unchanged from Rev 1.0).
 """
 
 from __future__ import annotations
@@ -27,28 +27,28 @@ class ValidationResult:
     checks_failed: list[str]
 
 
-# Default Phase 1 rules (tagged per §1.8)
+# Default Phase 1 rules
 DEFAULT_RULES: list[ValidationRule] = [
     ValidationRule(
         rule_id="min_length",
         check=lambda s: len(s) >= 100,
         failure_type="C",
         message="Output must be at least 100 characters.",
-        model_gen_assumption="DeepSeek-V3 and Qwen3 models may produce outputs that appear complete without sufficient substance",
+        model_gen_assumption="Models may produce insufficiently detailed output; length check compensates per §1.8",
     ),
     ValidationRule(
         rule_id="no_false_success_patterns",
         check=lambda s: not any(p in s.lower() for p in ["task complete", "all done", "finished successfully"]) or len(s) > 200,
         failure_type="E",
         message="Claims completion without sufficient substance.",
-        model_gen_assumption="DeepSeek-V3 and Qwen3 models may produce outputs that appear complete without sufficient substance",
+        model_gen_assumption="Models may falsely claim completion without sufficient substance; false-success check compensates per §1.8",
     ),
     ValidationRule(
         rule_id="required_section_markers",
         check=lambda s: any(marker in s for marker in ["##", "```", "1.", "Step"]),
         failure_type="C",
         message="Output lacks clear section markers.",
-        model_gen_assumption="DeepSeek-V3 and Qwen3 models may produce outputs that appear complete without sufficient substance",
+        model_gen_assumption="Models may produce malformed output; structural check compensates per §1.8",
     ),
 ]
 
@@ -74,10 +74,10 @@ def structural_validate(
 
 
 # Backward-compatible alias — new code should import from
-# aip.orchestration.l3a_orchestrator (CHUNK-11.0b) instead.
+# aip.orchestration.l3a_orchestrator  instead.
 # This alias preserves backward compat for any Phase 1-8 callers.
 async def full_l3a_evaluation(*args, **kwargs):
-    """Moved to orchestration.l3a_orchestrator per §7.2. This alias preserves backward compat."""
+    """Moved to orchestration.l3a_orchestrator. This alias preserves backward compat."""
     import importlib
     _mod = importlib.import_module("aip.orchestration.l3a_orchestrator")
     _real = _mod.full_l3a_evaluation

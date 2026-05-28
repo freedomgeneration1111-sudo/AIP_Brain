@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import yaml
 from pathlib import Path
 
@@ -23,7 +24,8 @@ def test_deploy_scripts_exist_and_are_executable():
         # On Unix, check executable bit (in CI this is reliable)
         import stat
         mode = p.stat().st_mode
-        assert bool(mode & stat.S_IXUSR) or True  # allow non-Unix CI
+        # allow non-Unix CI where executable bit may not be set
+        assert bool(mode & stat.S_IXUSR) or not hasattr(os, 'chmod')  # skip on non-Unix
 
 
 def test_readme_exists():

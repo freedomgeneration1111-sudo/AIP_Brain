@@ -1,4 +1,4 @@
-"""Queryable event store — timeline reconstruction per §5.10.
+"""Queryable event store — timeline reconstruction.
 
 Append-only: events are never modified or deleted.
 Supports query by artifact_id and event_type for review,

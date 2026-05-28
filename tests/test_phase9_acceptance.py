@@ -69,7 +69,6 @@ def test_all_prior_phase_tests_still_pass():
     from aip.orchestration.perf import PerformanceProfiler
 
     # All imports successful
-    assert True
 
 
 def test_laptop_viable_4gb_profile():

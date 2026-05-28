@@ -1,4 +1,4 @@
-"""Model Provider Proxy (CHUNK-11.0b).
+"""Model Provider Proxy.
 
 Orchestration-layer proxy that re-exports ModelSlotResolver via Protocol
 so orchestration code does not import adapter directly.

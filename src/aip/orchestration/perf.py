@@ -1,4 +1,4 @@
-"""PerformanceProfiler — orchestration component for profiling and metrics (CHUNK-10.4).
+"""PerformanceProfiler — orchestration component for profiling and metrics.
 
 Per AIP_0_1_Phase8_BuildSpec_Rev1.0.md exact prose + box + ANNEX.
 Cross-cutting. Uses PerformanceConfig (10.0a) + TraceStore.

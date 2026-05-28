@@ -27,4 +27,3 @@ def test_layering():
     if reg_file.exists():
         text = reg_file.read_text()
         assert "from aip.adapter." not in text  # pure config + engine
-    assert True

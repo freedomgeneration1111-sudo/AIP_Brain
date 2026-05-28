@@ -1,4 +1,4 @@
-"""aip_search MCP tool (CHUNK-8.5) — read, uses LexicalStore + VectorStore Protocols."""
+"""aip_search MCP tool  — read, uses LexicalStore + VectorStore Protocols."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import Any
 
 
 async def aip_search(container: Any, query: str, domain: str | None = None) -> list[dict]:
-    """Search across lexical and vector stores (CHUNK-8.5)."""
+    """Search across lexical and vector stores."""
     results = []
     # Lexical search
     if container.lexical_store:
@@ -18,7 +18,7 @@ async def aip_search(container: Any, query: str, domain: str | None = None) -> l
             ])
         except Exception:
             pass
-    # Vector search — use embed_fn from container (or local adapter stub) per §7.2 boundary
+    # Vector search — use embed_fn from container (or local adapter stub)
     if container.vector_store:
         try:
             # Use the embedding provider from the container, or fall back to

@@ -1,4 +1,4 @@
-"""Sexton Stale Rule Audit (CHUNK-7.3).
+"""Sexton Stale Rule Audit.
 
 Extends the delivered orchestration/sexton/ location (per Rule #10 reconciliation
 from the pre-7.3 CC and the 7.1 path decision). Reuses foundation audit helpers
@@ -7,8 +7,8 @@ already present in sexton.py (audit_model_gen_assumption, trust_score).
 Per Phase 5 spec: reactive audit (triggered on slot change or DEFINER command),
 uses "sexton" slot via resolver for real assessments, deterministic heuristics
 in CI mode, writes EventStore events, and calls AcePlaybook.deprecate_entry for
-stale playbook entries (DEFINER retains final authority on ContractRules per §1.7).
-All results carry model_gen_assumption context per §1.8.
+stale playbook entries (DEFINER retains final authority on ContractRules).
+All results carry model_gen_assumption context.
 """
 from __future__ import annotations
 

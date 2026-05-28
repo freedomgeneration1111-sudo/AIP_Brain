@@ -1,8 +1,8 @@
 """L3a Stage 2 — Faithfulness evaluation.
 
-Per §9.1: faithfulness to retrieved context.
-Per §1.8: evaluation carries model_gen_assumption.
-Per §7.3: skip if Stage 1 already failed (anti-token-burn).
+Faithfulness to retrieved context.
+Evaluation carries model_gen_assumption.
+Skip if Stage 1 already failed (anti-token-burn).
 """
 
 from __future__ import annotations

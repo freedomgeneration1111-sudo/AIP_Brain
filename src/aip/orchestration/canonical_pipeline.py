@@ -1,4 +1,4 @@
-"""Canonical Promotion Pipeline (CHUNK-9.2).
+"""Canonical Promotion Pipeline.
 
 The missing orchestration driver for the full REVIEWED→APPROVED→CANONICAL lifecycle.
 Composes 8.0b stores + 8.4 review paths + 6.2 evaluation nodes + 9.1 Vigil health recording + AutonomyGate.
@@ -6,6 +6,7 @@ Composes 8.0b stores + 8.4 review paths + 6.2 evaluation nodes + 9.1 Vigil healt
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from aip.foundation.protocols import (
@@ -20,7 +21,9 @@ from aip.foundation.protocols import (
     EmbeddingProvider,
     VigilStore,
 )
-from aip.foundation.schemas import CanonicalPromotionConfig
+from aip.foundation.schemas import CanonicalPromotionConfig, coerce_autonomy_level
+
+logger = logging.getLogger(__name__)
 
 
 class CanonicalPipeline:
@@ -84,7 +87,7 @@ class CanonicalPipeline:
             )
             domain_coherence_score = stage3.coherence_score
         except Exception:
-            pass  # Use default CI scores when evaluation fails
+            logger.warning("Evaluation failed for artifact %s; using default CI scores", artifact_id, exc_info=True)
 
         # Use config thresholds (issue 12)
         passes_threshold = (
@@ -134,7 +137,7 @@ class CanonicalPipeline:
             )
             domain_coherence = stage3.coherence_score
         except Exception:
-            pass  # Use default CI scores when evaluation fails
+            logger.warning("Evaluation failed for artifact %s; using default CI scores", artifact_id, exc_info=True)
 
         # Issue 12: Use config thresholds instead of hardcoded values
         if self.config.require_faithfulness_check and faithfulness < self.config.faithfulness_threshold:
@@ -147,7 +150,7 @@ class CanonicalPipeline:
             esc = await self.autonomy_gate.escalate(
                 action_type="approve_artifact",
                 resource_id=artifact_id,
-                requested_level="admin",  # type: ignore[arg-type]
+                requested_level=coerce_autonomy_level("admin"),
                 requested_by=approved_by,
             )
             if not esc.granted:
@@ -230,9 +233,10 @@ class CanonicalPipeline:
                         if state == "REVIEWED":
                             candidates.append({"artifact_id": aid, "ecs_state": "REVIEWED"})
                     except Exception:
-                        pass
+                        logger.debug("Could not check state for artifact %s", aid, exc_info=True)
             return candidates
         except Exception:
+            logger.warning("Could not list promotion candidates", exc_info=True)
             return []
 
     async def get_promotion_status(self, artifact_id: str) -> dict:

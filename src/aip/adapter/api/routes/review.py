@@ -1,4 +1,4 @@
-"""Review Queue routes (CHUNK-8.4).
+"""Review Queue routes.
 
 Per spec: GET /reviews (paginated ReviewQueueEntry), POST /reviews/{id}/approve (admin AutonomyGate + ECS + Canonical), POST reject (write gate + ECS to FAILED).
 """
@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from aip.adapter.api.dependencies import AipContainer, get_container
-from aip.foundation.schemas import ReviewQueueEntry, SurfaceConfig
+from aip.foundation.schemas import ReviewQueueEntry, SurfaceConfig, coerce_autonomy_level
 
 router = APIRouter()
 
@@ -49,7 +49,7 @@ async def approve_artifact(
     esc = await container.autonomy_gate.escalate(
         action_type="approve_artifact",
         resource_id=artifact_id,
-        requested_level="admin",  # type: ignore[arg-type]
+        requested_level=coerce_autonomy_level("admin"),
         requested_by="api",
     )
     if not esc.granted:
@@ -76,7 +76,7 @@ async def reject_artifact(
     esc = await container.autonomy_gate.escalate(
         action_type="reject_artifact",
         resource_id=artifact_id,
-        requested_level="write",  # type: ignore[arg-type]
+        requested_level=coerce_autonomy_level("write"),
         requested_by="api",
     )
     if not esc.granted:

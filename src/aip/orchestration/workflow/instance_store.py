@@ -1,5 +1,5 @@
 """
-Production-grade workflow instance persistence (CHUNK-2.9).
+Production-grade workflow instance persistence.
 
 Defines the `WorkflowInstanceStore` protocol and a simple reference implementation
 that can be swapped for a real database-backed store later.

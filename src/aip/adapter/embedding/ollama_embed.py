@@ -1,4 +1,4 @@
-"""Ollama Embedding Client — Phase 3 real embedding slot (CHUNK-5.1).
+"""Ollama Embedding Client — Phase 3 real embedding slot.
 
 Implements EmbeddingProvider. Uses Ollama local embeddings.
 Supports deterministic mock mode for CI (no real Ollama required for the gate).
@@ -18,7 +18,7 @@ def fake_embed_via_provider(text: str, dimensions: int = 768) -> list[float]:
 
     Uses SHA-256 hash for determinism (same algorithm as
     orchestration.retrieval.fake_embed but without the import boundary
-    violation — adapters must not import orchestration per §7.2).
+    violation — adapters must not import orchestration).
     """
     digest = hashlib.sha256(text.encode()).digest()
     vec = []
@@ -33,7 +33,7 @@ def fake_embed_via_provider(text: str, dimensions: int = 768) -> list[float]:
 class OllamaEmbeddingClient(EmbeddingProvider):
     """Ollama-based embedding client.
 
-    Per §4.1 and §8.1: embedding slot is local via Ollama.
+    Embedding slot is local via Ollama.
     """
 
     def __init__(self, base_url: str, model: str, dimensions: int = 768) -> None:
@@ -69,7 +69,7 @@ class OllamaEmbeddingClient(EmbeddingProvider):
 
 
 class MockOllamaEmbeddingClient(EmbeddingProvider):
-    """Deterministic mock embedding client for CI (CHUNK-5.1 gate).
+    """Deterministic mock embedding client for CI (gate).
 
     Returns a 768-dim vector derived from the input text hash (same algorithm
     spirit as the old fake_embed, but through the EmbeddingProvider interface).

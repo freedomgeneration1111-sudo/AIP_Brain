@@ -15,7 +15,7 @@ class GuardrailedEcsStore(EcsStore):
     """ECS store that validates every transition against the state graph.
 
     Wraps an underlying EcsStore (dict-backed fake in CI, SQLite in prod).
-    Records every transition as an EventStore event for provenance (§1.5).
+    Records every transition as an EventStore event for provenance.
     """
 
     def __init__(
@@ -75,7 +75,7 @@ class GuardrailedEcsStore(EcsStore):
         # Update state cache
         self._state[artifact_id] = to_state
 
-        # Record event for provenance (§1.5)
+        # Record event for provenance
         await self._event_store.write_event(
             event_type="ecs_transition",
             actor=actor,

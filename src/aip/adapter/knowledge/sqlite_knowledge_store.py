@@ -1,8 +1,8 @@
-"""SQLite implementation of KnowledgeStore Protocol (CHUNK-10.0b).
+"""SQLite implementation of KnowledgeStore Protocol.
 
 Per AIP_0_1_Phase8_BuildSpec_Rev1.0.md exact prose + interfaces.
 Pure adapter-layer. Implements deferred compiled knowledge persistence
-with provenance (§1.5) and dual indexing into VectorStore + LexicalStore
+with provenance and dual indexing into VectorStore + LexicalStore
 only on APPROVED state (same pattern as 9.2 canonical pipeline).
 """
 
@@ -22,7 +22,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
     Stores compiled knowledge artifacts (distinct from canonical artifacts per
     Appendix D / Process Rule 12). Maintains separate provenance table for
-    §1.5 source canonical chain.
+    source canonical chain.
 
     Dual-indexes content into VectorStore + LexicalStore **only** when state
     reaches "APPROVED" (mirrors CanonicalPromotionConfig behavior).

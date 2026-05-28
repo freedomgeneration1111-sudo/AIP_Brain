@@ -1,4 +1,4 @@
-"""SqliteVigilStore — implements VigilStore (CHUNK-9.1).
+"""SqliteVigilStore — implements VigilStore.
 
 Per spec: health table for canonicals + vigil_checks audit log.
 Read-only actor support (populated by 9.2 canonical pipeline).
@@ -75,7 +75,8 @@ class SqliteVigilStore(VigilStore):
                 return None
             return dict(row)
         finally:
-            pass
+            conn.close()
+            self._conn = None
 
     async def list_stale_canonicals(self, threshold_days: int) -> list[dict]:
         conn = self._get_conn()
@@ -88,7 +89,8 @@ class SqliteVigilStore(VigilStore):
             ).fetchall()
             return [dict(r) for r in rows]
         finally:
-            pass
+            conn.close()
+            self._conn = None
 
     async def record_vigil_check(self, canonical_count: int, stale_count: int, status: str) -> None:
         conn = self._get_conn()
@@ -100,7 +102,8 @@ class SqliteVigilStore(VigilStore):
             )
             conn.commit()
         finally:
-            pass
+            conn.close()
+            self._conn = None
 
     async def get_last_vigil_check(self) -> dict | None:
         conn = self._get_conn()
@@ -110,4 +113,5 @@ class SqliteVigilStore(VigilStore):
             ).fetchone()
             return dict(row) if row else None
         finally:
-            pass
+            conn.close()
+            self._conn = None

@@ -26,7 +26,11 @@ def test_sqlite_session_store_implements_protocol(tmp_path):
 def test_auth_middleware_laptop_profile_fallback():
     # When auth disabled, all requests are DEFINER
     # (detailed integration tested via 8.1 app + 9.0b middleware in later gates)
-    assert True
+    from aip.adapter.api.app import create_app
+    app = create_app()
+    client = TestClient(app)
+    r = client.get("/api/v1/health")
+    assert r.status_code == 200
 
 
 def test_layering():
@@ -35,4 +39,3 @@ def test_layering():
     if auth_file.exists():
         text = auth_file.read_text()
         assert "from aip.orchestration" not in text  # only via container
-    assert True

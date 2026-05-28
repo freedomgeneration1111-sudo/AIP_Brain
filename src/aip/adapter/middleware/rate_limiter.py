@@ -1,4 +1,4 @@
-"""Token-bucket rate limiter middleware (CHUNK-9.0c)."""
+"""Token-bucket rate limiter middleware."""
 
 from __future__ import annotations
 

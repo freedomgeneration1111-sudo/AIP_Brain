@@ -59,5 +59,14 @@ def test_phase5_no_hardcoded_model_names():
 
 def test_phase5_import_boundaries_respected():
     """CHUNK-7.7: Phase 5 modules respect §7.2 layering."""
-    # The existing test_layering.py already covers the new surfaces; this is a smoke check
-    assert True
+    # The existing test_layering.py already covers the new surfaces; verify key files exist
+    from pathlib import Path
+    phase5_files = [
+        Path("src/aip/orchestration/actors"),
+        Path("src/aip/orchestration/router.py"),
+        Path("src/aip/orchestration/ace_playbook.py"),
+        Path("src/aip/orchestration/budget.py"),
+        Path("src/aip/orchestration/sexton"),
+    ]
+    for f in phase5_files:
+        assert f.exists(), f"Phase 5 path missing: {f}"

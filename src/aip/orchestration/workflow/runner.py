@@ -1,5 +1,5 @@
 """
-Sequential + feature-rich workflow runner for the AIP L5 engine (up to CHUNK-2.11).
+Sequential + feature-rich workflow runner for the AIP L5 engine (up to ).
 
 This file contains a consolidated, working implementation of the runner
 with support for:
@@ -49,7 +49,7 @@ class SequentialRunner:
                 results.append(NodeResult(success=False, error="Budget exhausted"))
                 break
 
-            # CHUNK-3.12: minimal autonomy request for observability (foundation wiring only;
+            # minimal autonomy request for observability (foundation wiring only;
             # does not gate execution or introduce policy yet — direct completion of 3.11 stub)
             try:
                 self.context.request_autonomy(0, {"node_id": getattr(node, "node_id", None), "phase": "pre-agent"})
@@ -83,7 +83,7 @@ class SequentialRunner:
                 if isinstance(result.output, dict) and result.output.get("paused"):
                     break
 
-            # Review pause (CHUNK-4.5 integration of 4.1 ReviewNode)
+            # Review pause (integration of 4.1 ReviewNode)
             # Treat review nodes that return a non-final verdict as pause points
             if isinstance(node, ReviewNode) or (isinstance(result.output, dict) and result.output.get("paused")):
                 if isinstance(result.output, dict) and result.output.get("paused"):
@@ -216,7 +216,7 @@ class SequentialRunner:
         nodes: list[WorkflowNode],
         context: WorkflowContext | None = None,
     ) -> "SequentialRunner":
-        """Synchronous classmethod per CHUNK-2.9: create a runner from a suspended workflow.
+        """Synchronous classmethod per : create a runner from a suspended workflow.
 
         Sets the DEFINER decision in context and resumes from the node after
         the suspended position.
@@ -243,7 +243,7 @@ class SequentialRunner:
                     error_occurred = True
                     break
 
-                # CHUNK-3.12: minimal autonomy request for observability (foundation wiring only;
+                # minimal autonomy request for observability (foundation wiring only;
                 # does not gate execution or introduce policy yet — direct completion of 3.11 stub)
                 try:
                     self.context.request_autonomy(0, {"node_id": getattr(node, "node_id", None), "phase": "pre-agent"})

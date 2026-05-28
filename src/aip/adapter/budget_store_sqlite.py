@@ -1,9 +1,9 @@
 """SQLite-backed BudgetStore implementation.
 
-Per §6: BudgetStore Protocol required.
-Per §5.10: state.db stores budgets.
-Per §7.2: adapter may import foundation but not orchestration.
-Per CHUNK-7.0b ANNEX (exact).
+BudgetStore Protocol required.
+state.db stores budgets.
+Adapter may import foundation but not orchestration.
+Per ANNEX (exact).
 """
 from __future__ import annotations
 

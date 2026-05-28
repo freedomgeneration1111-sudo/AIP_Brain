@@ -22,7 +22,7 @@ from aip.adapter.health import system_health_check
 from aip.foundation.schemas import Chunk
 from aip.adapter.model_slot_resolver import ModelSlotResolver
 from aip.orchestration.nodes.synthesis import synthesize
-from aip.orchestration.nodes.adversarial_eval import adversarial_evaluate
+from aip.orchestration.nodes.adversarial_eval import adversarial_eval
 from aip.orchestration.nodes.faithfulness import evaluate_faithfulness
 from aip.orchestration.nodes.domain_coherence import evaluate_domain_coherence
 
@@ -81,7 +81,7 @@ async def test_scenario1_full_pipeline_sqlite_vss():
     assert "content" in synth
 
     # Adversarial (6.2)
-    adv = await adversarial_evaluate(
+    adv = await adversarial_eval(
         artifact_content=synth["content"],
         context="Paris is the capital of France.",
         model_resolver=resolver,

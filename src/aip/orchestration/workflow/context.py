@@ -1,5 +1,5 @@
 """
-Workflow execution context (CHUNK-2.1 foundation).
+Workflow execution context (foundation).
 
 Provides the shared state, budget tracking, protocol injection,
 and event emission mechanism that all nodes use.
@@ -47,7 +47,7 @@ class WorkflowContext:
         })
 
     def consume_budget(self, amount: int) -> bool:
-        """CHUNK-3.12: Delegates to injected BudgetStore (now with correct bool return).
+        """: Delegates to injected BudgetStore (now with correct bool return).
 
         Fixed the optimistic-always-True path recorded in the 3.11 foundation stub.
         When no running event loop (all current tests, sync entrypoints, examples),
@@ -85,7 +85,7 @@ class WorkflowContext:
         return True
 
     def request_autonomy(self, level: int, context: dict[str, Any] | None = None) -> bool:
-        """CHUNK-3.12: Delegates to injected AutonomyGate if present (L6 wiring).
+        """: Delegates to injected AutonomyGate if present (L6 wiring).
 
         Provides the minimal integration surface for the two-phase gate delivered
         as a stub in 3.11. Mirrors SimpleAutonomyGate default behavior when no

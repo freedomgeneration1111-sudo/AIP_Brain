@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.foundation.schemas import coerce_autonomy_level
 
 router = APIRouter()
 
@@ -23,7 +24,7 @@ async def create_project(payload: dict, container: AipContainer = Depends(get_co
     esc = await container.autonomy_gate.escalate(
         action_type="create_project",
         resource_id=payload.get("name", "unknown"),
-        requested_level="write",  # type: ignore[arg-type]
+        requested_level=coerce_autonomy_level("write"),
         requested_by="api",
     )
     if not esc.granted:

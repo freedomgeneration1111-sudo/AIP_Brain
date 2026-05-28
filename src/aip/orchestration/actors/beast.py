@@ -1,6 +1,6 @@
-"""Beast Actor — cadence-based corpus and entity maintenance (CHUNK-7.5).
+"""Beast Actor — cadence-based corpus and entity maintenance.
 
-Per §3: Beast — cadence / corpus / entity maintenance.
+Beast — cadence / corpus / entity maintenance.
 Deterministic (no LLM in main paths). Uses injected Protocols only.
 """
 from __future__ import annotations
@@ -12,7 +12,7 @@ from aip.foundation.protocols import VectorStore, EmbeddingProvider, ProjectStor
 
 
 class Beast:
-    """Beast maintenance actor per Phase 5 CHUNK-7.5 prose + ANNEX."""
+    """Beast maintenance actor per Phase 5 prose + ANNEX."""
 
     def __init__(
         self,

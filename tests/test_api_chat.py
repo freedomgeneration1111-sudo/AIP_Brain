@@ -44,9 +44,5 @@ def test_chat_layering_and_no_orchestration_storage_imports():
     text = chat_file.read_text()
     assert "from aip.adapter.budget_store" not in text
     assert "from aip.adapter.vector" not in text
-    assert True
 
 
-def test_existing_tests_still_pass():
-    """No-regression placeholder."""
-    assert True

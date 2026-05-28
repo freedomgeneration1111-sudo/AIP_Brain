@@ -1,7 +1,7 @@
-"""Versioned artifact store — preserves every version per §1.5 and §1.6.
+"""Versioned artifact store — preserves every version.
 
 Each write appends a new version; no version is ever overwritten.
-Uses SQLite for persistence (consistent with §5.10 database architecture).
+Uses SQLite for persistence.
 """
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from datetime import datetime, timezone
 class VersionedArtifactStore:
     """ArtifactStore implementation with version preservation.
 
-    Per §1.5: every version is preserved for provenance.
-    Per §1.6: generated ≠ canonical — versions support separation.
+    Every version is preserved for provenance.
+    Generated ≠ canonical — versions support separation.
     Per Appendix D: artifact hash ≠ approval; supersession ≠ deletion.
     """
 

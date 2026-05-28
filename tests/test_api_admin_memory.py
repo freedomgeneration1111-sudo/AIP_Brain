@@ -57,8 +57,5 @@ def test_layering_and_no_bypass():
             assert "import aip.orchestration" not in text, f"{f} imports from orchestration"
             assert "from aip.adapter.vector" not in text, f"{f} imports concrete vector adapter"
             assert "from aip.adapter.budget_store" not in text, f"{f} imports concrete budget store"
-    assert True
 
 
-def test_existing_tests_still_pass():
-    assert True

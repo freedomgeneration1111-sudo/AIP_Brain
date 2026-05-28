@@ -48,7 +48,7 @@ def test_default_criteria_have_model_gen_assumption():
     """Required by §1.8 and green gate checklist."""
     for crit in DEFAULT_EVAL_CRITERIA:
         assert crit.model_gen_assumption is not None
-        assert "deepseek" in crit.model_gen_assumption.lower() or "qwen" in crit.model_gen_assumption.lower()
+        assert "§1.8" in crit.model_gen_assumption
 
 
 def test_passing_validation_yields_high_scores():

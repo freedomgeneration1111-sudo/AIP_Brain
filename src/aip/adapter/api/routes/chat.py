@@ -1,4 +1,4 @@
-"""Chat WebSocket surface (CHUNK-8.3).
+"""Chat WebSocket surface.
 
 Per spec: WS /api/v1/chat/{session_id}
 Message flow: message → (synthesis + ACE) → response or gate → gate_response → resume

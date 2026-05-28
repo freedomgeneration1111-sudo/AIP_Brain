@@ -1,7 +1,7 @@
 """Vector store factory — creates the appropriate VectorStore implementation.
 
-Per §2.2: configuration flag switches between "pgvector" and "sqlite_vss".
-Per §7.2: adapter may import foundation but not orchestration.
+Configuration flag switches between "pgvector" and "sqlite_vss".
+Adapter may import foundation but not orchestration.
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ async def _create_sqlite_vss(vector_cfg: dict) -> VectorStore:
     """Create SqliteVssVectorStore as default or fallback.
     
     If sqlite_vss is not available, returns an InMemoryVectorStore
-    as a last-resort fallback (graceful degradation per §7.3).
+    as a last-resort fallback (graceful degradation).
     """
     try:
         from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore

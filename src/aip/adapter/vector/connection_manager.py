@@ -1,8 +1,8 @@
 """VectorStoreConnectionManager — production lifecycle and hardening for VectorStore.
 
-Per CHUNK-6.4: manages the VectorStore instance for the application lifetime.
-Wraps the factory (CHUNK-6.3) with retry + graceful degradation.
-Connection pooling is handled inside the concrete stores (CHUNK-6.0b).
+Per : manages the VectorStore instance for the application lifetime.
+Wraps the factory  with retry + graceful degradation.
+Connection pooling is handled inside the concrete stores.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """Full L3a evaluation pipeline (Stage 1 + conditional Stages 2/3).
 
-Moved from foundation/validation.py per §7.2 layer discipline.
+Moved from foundation/validation.py for layer discipline.
 Orchestration may import foundation and adapter (via protocols), so this
 is the correct home for the multi-stage evaluation orchestrator.
 """
@@ -25,7 +25,7 @@ async def full_l3a_evaluation(
     Stage 2: evaluate_faithfulness (model-based, if Stage 1 passes)
     Stage 3: evaluate_domain_coherence (model-based, if Stage 1 passes)
 
-    Skips expensive model stages when Stage 1 already fails (anti-token-burn §7.3).
+    Skips expensive model stages when Stage 1 already fails (anti-token-burn).
     Uses thresholds from config [evaluation].
     """
     from aip.orchestration.nodes.faithfulness import evaluate_faithfulness

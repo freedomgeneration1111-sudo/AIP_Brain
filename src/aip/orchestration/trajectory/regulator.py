@@ -1,10 +1,10 @@
-"""Trajectory regulation free functions (CHUNK-5.7 support).
+"""Trajectory regulation free functions (support).
 
-Provides the exact interface expected by the CHUNK-5.7 ANNEX and SessionManager:
+Provides the exact interface expected by the ANNEX and SessionManager:
 - regulate_trajectory
 - should_intervene
 
-This is an additive extension layer (per PHASE2_IMPORT_NOTES §Repo State Reconciliation
+This is an additive extension layer (per PHASE2_IMPORT_NOTES
 and "extend existing rather than replace" strategy). It re-uses the 5.5
 TrajectoryRegulator class (l4/regulator.py) for the 2-of-3 decision logic while
 providing the free-function shape the session manager and later engine integration
@@ -16,6 +16,7 @@ Issue 15: should_intervene is sync and filters by intervention_min_confidence.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -24,6 +25,8 @@ from aip.orchestration.l4.loop_detector import LoopDetector
 from aip.orchestration.l4.anxiety_detector import ContextAnxietyDetector
 from aip.orchestration.l4.failure_streak import FailureStreakDetector
 from aip.orchestration.l4.regulator import TrajectoryRegulator
+
+logger = logging.getLogger(__name__)
 
 
 # Reusable instances (the L4 classes are stateless)
@@ -66,7 +69,7 @@ async def regulate_trajectory(
         if loop_signal is not None and loop_signal.confidence >= intervention_min_confidence:
             signals.append(loop_signal)
     except Exception:
-        pass
+        logger.warning("Loop detector failed for session %s", session_id, exc_info=True)
 
     # 2. Anxiety detector (Type F)
     try:
@@ -87,7 +90,7 @@ async def regulate_trajectory(
         if anxiety_signal is not None and anxiety_signal.confidence >= intervention_min_confidence:
             signals.append(anxiety_signal)
     except Exception:
-        pass
+        logger.warning("Anxiety detector failed for session %s", session_id, exc_info=True)
 
     # 3. Failure streak detector (Type E)
     try:
@@ -111,7 +114,7 @@ async def regulate_trajectory(
         if streak_signal is not None and streak_signal.confidence >= intervention_min_confidence:
             signals.append(streak_signal)
     except Exception:
-        pass
+        logger.warning("Failure streak detector failed for session %s", session_id, exc_info=True)
 
     return signals
 

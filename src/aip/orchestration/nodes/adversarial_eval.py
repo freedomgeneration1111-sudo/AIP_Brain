@@ -2,9 +2,9 @@
 Adversarial Evaluation (L3b) — promoted in Phase 4.
 
 Phase 1: deterministic stub.
-Phase 4: real ModelSlotResolver integration with skeptic prompt (per §9.2).
+Phase 4: real ModelSlotResolver integration with skeptic prompt.
 
-Per §9.2: adversarial evaluation applies to canonical-bound outputs and marginal L3a passes; requires separate skeptic prompt.
+Adversarial evaluation applies to canonical-bound outputs and marginal L3a passes; requires separate skeptic prompt.
 
 Issue 21: Remove duplicate adversarial_evaluate() function. Promote adversarial_eval()
 to optionally use ModelSlotResolver when provided.
@@ -36,31 +36,31 @@ class EvalResult:
     critique: str | None = None
 
 
-# Default Phase 1 L3b adversarial criteria (from §F.3, tagged per §1.8)
+# Default Phase 1 L3b adversarial criteria
 DEFAULT_EVAL_CRITERIA: list[EvalCriterion] = [
     EvalCriterion(
         criterion_id="grounding",
         name="Grounding / Hallucination",
         description="Does the synthesis output stay grounded in the provided retrieval context without introducing unsupported claims?",
-        model_gen_assumption="DeepSeek-V3 and Qwen3 models may produce plausible but weakly grounded or incomplete outputs without explicit skeptic review",
+        model_gen_assumption="Models may hallucinate specific claims; grounding check compensates per §1.8",
     ),
     EvalCriterion(
         criterion_id="completeness",
         name="Completeness",
         description="Does the output adequately address the original query given the retrieved context?",
-        model_gen_assumption="DeepSeek-V3 and Qwen3 models may produce plausible but weakly grounded or incomplete outputs without explicit skeptic review",
+        model_gen_assumption="Models may omit key domain requirements; completeness check compensates per §1.8",
     ),
     EvalCriterion(
         criterion_id="coherence",
         name="Structural Coherence",
         description="Is the output well-structured, clear, and free of internal contradictions?",
-        model_gen_assumption="DeepSeek-V3 and Qwen3 models may produce plausible but weakly grounded or incomplete outputs without explicit skeptic review",
+        model_gen_assumption="Models may produce internally contradictory output; coherence check compensates per §1.8",
     ),
     EvalCriterion(
         criterion_id="assumption_violation",
         name="Unstated Assumption Violation",
         description="Does the synthesis introduce assumptions not supported by the query or retrieved context?",
-        model_gen_assumption="DeepSeek-V3 and Qwen3 models may produce plausible but weakly grounded or incomplete outputs without explicit skeptic review",
+        model_gen_assumption="Models may produce vague output; specificity check compensates per §1.8",
     ),
 ]
 
@@ -81,7 +81,7 @@ async def adversarial_eval(
     Phase 1 backward compat: accepts SynthesisOutput + ValidationResult for stub mode.
     Phase 4 promoted: accepts artifact_content, context, model_resolver for real eval.
 
-    When model_resolver is provided, uses it for model-based evaluation (skeptic prompt per §9.2).
+    When model_resolver is provided, uses it for model-based evaluation (skeptic prompt).
     Otherwise falls back to deterministic stub scoring.
     """
     # Phase 4 path: model_resolver provided
@@ -179,7 +179,3 @@ async def adversarial_eval(
         requires_deep_eval=requires_deep_eval,
         critique=critique,
     )
-
-
-# Backward compat alias for Phase 4 callers
-adversarial_evaluate = adversarial_eval

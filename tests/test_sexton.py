@@ -117,7 +117,9 @@ def test_sexton_audit_model_gen_assumption_stub():
 
     # We only need the method to exist and not crash
     # (full audit logic is out of scope for foundation)
-    assert hasattr(SextonClass, "audit_model_gen_assumption") or True  # method is on instance in current code
+    # The method may be on instances rather than the class; check instance too
+    sexton_instance = Sexton(trace_store=FakeTraceStoreForSexton())
+    assert hasattr(sexton_instance, "audit_model_gen_assumption") or hasattr(SextonClass, "audit_model_gen_assumption")
 
 
 def test_sexton_derives_ace_rules_from_classified_events():

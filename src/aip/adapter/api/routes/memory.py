@@ -1,4 +1,4 @@
-"""Memory Inspector routes (CHUNK-8.6) — all read-only, no AutonomyGate."""
+"""Memory Inspector routes  — all read-only, no AutonomyGate."""
 
 from __future__ import annotations
 

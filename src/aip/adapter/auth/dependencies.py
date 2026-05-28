@@ -1,4 +1,4 @@
-"""FastAPI dependencies for auth (CHUNK-9.0b)."""
+"""FastAPI dependencies for auth."""
 
 from __future__ import annotations
 

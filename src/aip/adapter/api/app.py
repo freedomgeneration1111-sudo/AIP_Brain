@@ -1,4 +1,4 @@
-"""FastAPI application factory + lifespan for AIP surfaces (CHUNK-8.1).
+"""FastAPI application factory + lifespan for AIP surfaces.
 
 Per spec prose + interfaces (exact).
 Wires 8.0a/8.0b adapters + full Phase 5 actor layer into AipContainer.
@@ -102,7 +102,7 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(memory.router, prefix="/api/v1", tags=["memory"])
     app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
 
-    # Phase 8 routers (CHUNK-10.x)
+    # Phase 8 routers (.x)
     app.include_router(collaborators.router, prefix="/api/v1", tags=["collaborators"])
     app.include_router(plugins.router, prefix="/api/v1", tags=["plugins"])
     app.include_router(performance.router, prefix="/api/v1", tags=["performance"])

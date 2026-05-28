@@ -1,4 +1,4 @@
-"""PluginManager — orchestration component for extensible model providers (CHUNK-10.2).
+"""PluginManager — orchestration component for extensible model providers.
 
 Per AIP_0_1_Phase8_BuildSpec_Rev1.0.md exact prose + box + ANNEX.
 Orchestration-layer. Wraps 10.0b PluginLoader, registers with ModelSlotResolver

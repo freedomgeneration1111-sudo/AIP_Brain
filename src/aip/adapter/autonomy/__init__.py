@@ -1,4 +1,4 @@
-"""AutonomyGate adapter implementations (CHUNK-8.0b)."""
+"""AutonomyGate adapter implementations."""
 
 from .autonomy_gate import AutonomyGateImpl
 

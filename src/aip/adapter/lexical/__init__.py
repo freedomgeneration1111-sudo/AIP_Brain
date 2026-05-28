@@ -1,4 +1,4 @@
-"""LexicalStore adapter implementations (CHUNK-8.0b)."""
+"""LexicalStore adapter implementations."""
 
 from .sqlite_fts5_store import SqliteFts5LexicalStore
 

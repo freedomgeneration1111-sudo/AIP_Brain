@@ -1,5 +1,5 @@
 """
-High-level public API for the AIP L5 Workflow Engine (CHUNK-2.12).
+High-level public API for the AIP L5 Workflow Engine.
 
 This module provides a clean, opinionated facade over the low-level
 workflow engine built in 2.1–2.11.
@@ -22,7 +22,7 @@ from aip.orchestration.workflow.definition import WorkflowDefinition
 from aip.orchestration.workflow.loader import load_workflow_from_yaml
 from aip.orchestration.workflow.runner import SequentialRunner
 
-# L4 wiring (CHUNK-3.2 additive, backward safe) — lazy to avoid circular imports at module load time
+# L4 wiring (additive, backward safe) — lazy to avoid circular imports at module load time
 # from aip.orchestration.l4.monitor import TrajectoryMonitor
 # from aip.orchestration.l4.reset import L4ResetCoordinator
 
@@ -60,11 +60,11 @@ class WorkflowEngine:
         config: dict[str, Any] | None = None,
         budget_store: Any | None = None,
         autonomy_gate: Any | None = None,
-        budget_manager: Any | None = None,  # CHUNK-7.0b: optional full manager for enforcement hooks
+        budget_manager: Any | None = None,  # optional full manager for enforcement hooks
         # Future: instance_store, etc.
     ):
         self.vector_store = vector_store
-        # CHUNK-3.9: Use config-driven embed provider (fake by default for CI/tests;
+        # Use config-driven embed provider (fake by default for CI/tests;
         # real provider when [embedding] section specifies one in Phase 3+).
         if embed_fn is not None:
             self.embed_fn = embed_fn
@@ -76,9 +76,9 @@ class WorkflowEngine:
         self.event_store = event_store
         self.config = config or {}
         self.budget_store = budget_store or InMemoryBudgetStore()
-        # CHUNK-3.12: AutonomyGate default (L6 foundation wiring, parallel to budget)
+        # AutonomyGate default (L6 foundation wiring, parallel to budget)
         self.autonomy_gate = autonomy_gate or SimpleAutonomyGate()
-        # CHUNK-7.0b: BudgetManager (with config + store) for engine-enforced budget checks
+        # BudgetManager (with config + store) for engine-enforced budget checks
         self.budget_manager = budget_manager
 
     async def run_workflow(
@@ -102,7 +102,6 @@ class WorkflowEngine:
             "event_store": self.event_store,
             "config": self.config,
             "budget_store": self.budget_store,
-            # CHUNK-3.12
             "autonomy_gate": self.autonomy_gate,
         }
 
@@ -110,9 +109,9 @@ class WorkflowEngine:
         class _NoopTraceStore:
             async def write_event(self, *a, **k): pass
             async def get_recent_events(self, session_id: str, limit: int = 100) -> list[dict]:
-                return []  # L4/CHUNK-3.1 additive compat for no-op path
+                return []  # L4/additive compat for no-op path
             async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
-                return []  # Sexton/CHUNK-3.4 additive compat for no-op path
+                return []  # Sexton/additive compat for no-op path
 
         class _NoopStore:
             async def write(self, *a, **k): pass
@@ -121,7 +120,7 @@ class WorkflowEngine:
         trace_for_use = self.trace_store or _NoopTraceStore()
         artifact_for_use = self.artifact_store or _NoopStore()
 
-        # L4 default wiring (CHUNK-3.2 additive, backward-compatible):
+        # L4 default wiring (additive, backward-compatible):
         # Any caller supplying a real trace_store automatically gets a
         # TrajectoryMonitor + L4ResetCoordinator in the protocol dict.
         # Existing call sites and nodes continue to work unchanged.
@@ -146,11 +145,11 @@ class WorkflowEngine:
             # L4 (3.1 + 3.2)
             "trajectory_monitor": monitor,
             "l4_coordinator": coordinator,
-            # CHUNK-3.11 Budget
+            # Budget
             "budget_store": self.budget_store,
-            # CHUNK-7.0b: full BudgetManager (if provided) for enforcement
+            # full BudgetManager (if provided) for enforcement
             "budget_manager": self.budget_manager,
-            # CHUNK-3.12 Autonomy
+            # Autonomy
             "autonomy_gate": self.autonomy_gate,
         }
 

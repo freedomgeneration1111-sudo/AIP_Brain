@@ -1,7 +1,7 @@
-"""CLI plugin management commands (CHUNK-10.2).
+"""CLI plugin management commands.
 
 Adapter-layer. Uses the container's PluginManager (orchestration) for actual work.
-Requires DEFINER auth for enable/disable (per §1.7).
+Requires DEFINER auth for enable/disable.
 """
 
 from __future__ import annotations

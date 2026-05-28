@@ -1,6 +1,6 @@
 """
 Phase 0 foundation schemas only.
-This file will be appended to (never rewritten) by CHUNK-1.0a.
+This file will be appended to (never rewritten) by.
 """
 from __future__ import annotations
 
@@ -18,9 +18,9 @@ class ContractTier(Enum):
 @dataclass
 class ContractRule:
     """
-    L1 environment contract rule. Per §1.8 (Harness Evolution Principle),
-    any rule compensating for a model limitation must carry a non-null
-    model_gen_assumption. Sexton audits these on model slot upgrades.
+    L1 environment contract rule. Any rule compensating for a model
+    limitation must carry a non-null model_gen_assumption. Sexton audits
+    these on model slot upgrades.
     """
     rule_id: str
     tier: ContractTier
@@ -51,7 +51,7 @@ OutcomeType = Literal[
 
 
 # --- Phase 1 additions (append only) ---
-# Added by CHUNK-1.0a per Rev 1.3 single source of truth.
+# Added by per Rev 1.3 single source of truth.
 # Do not modify or reorder anything above this line.
 from dataclasses import dataclass, field
 
@@ -78,7 +78,7 @@ class RetrievalResult:
     message: str | None = None
 
 
-# --- Phase 2 / CHUNK-4.0a additions (append only) ---
+# --- Phase 2 additions (append only) ---
 # Per AIP_0_1_Phase2_BuildSpec_Rev1.2.md (remapped series)
 # Do not modify or reorder anything above this line.
 from dataclasses import dataclass, field
@@ -93,8 +93,8 @@ FailureTypeCode = Literal["A", "B", "C", "D", "E", "F"]
 class ReviewVerdict:
     """Outcome of a review gate on a generated artifact.
 
-    Per §9.3: REVIEWED state follows GENERATED.
-    Per §1.7: DEFINER sovereignty for APPROVED state.
+    REVIEWED state follows GENERATED.
+    DEFINER sovereignty for APPROVED state.
     failure_types use Appendix E taxonomy codes.
     """
     artifact_id: str
@@ -123,8 +123,8 @@ class ReviewContext:
 class EcsTransition:
     """Record of a single ECS state transition.
 
-    Per §1.5: every transition is recorded for provenance.
-    Per §1.7: actor and reason are mandatory for sovereignty audit.
+    Every transition is recorded for provenance.
+    Actor and reason are mandatory for sovereignty audit.
     """
     artifact_id: str
     from_state: str
@@ -151,7 +151,7 @@ class Event:
     metadata: dict = field(default_factory=dict)
 
 
-# --- Phase 3 / CHUNK-5.0a additions (append only) ---
+# --- Phase 3 additions (append only) ---
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -164,9 +164,9 @@ TrajectorySignalType = Literal["loop", "anxiety", "failure_streak"]
 class TrajectorySignal:
     """A single detection from an L4 trajectory detector.
 
-    Per §10.1: loop detection → D, anxiety → F, failure streak → E.
-    Per §1.8: every L4 trigger must carry model_gen_assumption.
-    Per Appendix E: D/E/F are the L4 failure type codes.
+    Loop detection → D, anxiety → F, failure streak → E.
+    Every L4 trigger must carry model_gen_assumption.
+    D/E/F are the L4 failure type codes.
     """
     signal_type: TrajectorySignalType
     session_id: str
@@ -196,7 +196,7 @@ class SessionContext:
 
 @dataclass
 class ModelSlotConfig:
-    """Resolved configuration for a named model slot (per §4.1)."""
+    """Resolved configuration for a named model slot."""
     slot_name: str
     provider: str
     model: str
@@ -211,7 +211,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 
-# Type alias for vector backend selection per §2.2
+# Type alias for vector backend selection
 VectorBackendType = Literal["pgvector", "sqlite_vss"]
 
 
@@ -219,8 +219,8 @@ VectorBackendType = Literal["pgvector", "sqlite_vss"]
 class PgvectorConfig:
     """Configuration for the pgvector VectorStore adapter.
 
-    Per §2.2: PostgreSQL 16 + pgvector is the required production path.
-    Per §1.8: all parameters toggleable via config, not hardcoded.
+    PostgreSQL 16 + pgvector is the required production path.
+    All parameters toggleable via config, not hardcoded.
     HNSW parameters tune index quality vs. build time.
     """
     connection_string: str
@@ -268,8 +268,8 @@ class MigrationCheckpoint:
 class EvaluationScore:
     """A single evaluation dimension score.
 
-    Per §1.8: model_gen_assumption tags what model limitation this
-    evaluation compensates for. Sexton audits these when model slots change.
+    model_gen_assumption tags what model limitation this evaluation
+    compensates for. Sexton audits these when model slots change.
     """
     dimension: str
     score: float = 0.0
@@ -283,9 +283,9 @@ class EvaluationScore:
 class FaithfulnessResult:
     """Faithfulness evaluation output (L3a Stage 2).
 
-    Per §9.1: faithfulness evaluation checks synthesis output against
-    retrieved context. Hallucination flags identify claims not grounded
-    in the retrieved context package.
+    Faithfulness evaluation checks synthesis output against retrieved
+    context. Hallucination flags identify claims not grounded in the
+    retrieved context package.
     """
     artifact_id: str
     faithfulness_score: float = 0.0
@@ -298,7 +298,7 @@ class FaithfulnessResult:
 class DomainCoherenceResult:
     """Domain coherence evaluation output (L3a Stage 3).
 
-    Per §9.1: domain coherence evaluation checks domain-specific quality.
+    Domain coherence evaluation checks domain-specific quality.
     Violations list domain-specific coherence issues found.
     """
     artifact_id: str
@@ -320,8 +320,8 @@ BudgetScope = Literal["session", "project", "daily"]
 class SextonConfig:
     """Configuration for the Sexton failure classification actor.
 
-    Per §16.1: Sexton reads trace_events and classifies failures A-F.
-    Per §1.8: Sexton audits stale model assumptions on slot changes.
+    Sexton reads trace_events and classifies failures A-F.
+    Sexton audits stale model assumptions on slot changes.
     """
     classification_batch_size: int = 50
     classification_interval_seconds: int = 300
@@ -333,9 +333,9 @@ class SextonConfig:
 class AcePlaybookEntry:
     """A single procedural intervention rule in the ACE Playbook.
 
-    Per §8.1: procedural intervention rules, loaded at session start.
-    Per §16.1: curated by Sexton.
-    Per §1.8: every rule must carry model_gen_assumption.
+    Procedural intervention rules, loaded at session start.
+    Curated by Sexton.
+    Every rule must carry model_gen_assumption.
     Per Appendix E Type B: "Add or strengthen playbook entry."
     """
     entry_id: str
@@ -355,9 +355,9 @@ class AcePlaybookEntry:
 class BudgetConfig:
     """Token budget configuration.
 
-    Per §6: BudgetStore Protocol required.
-    Per §11.1: parallel nodes inherit parent budget.
-    Per §1.8: all limits toggleable via config.
+    BudgetStore Protocol required.
+    Parallel nodes inherit parent budget.
+    All limits toggleable via config.
     """
     session_token_limit: int = 500000
     project_token_limit: int = 5000000
@@ -370,9 +370,9 @@ class BudgetConfig:
 class RoutingWeight:
     """A single domain x model routing weight.
 
-    Per §4.3: default routing uses highest-weight model for domain.
-    Per §4.3: exploration_weight controls probability of non-optimal routing.
-    Per §16.1: Sexton recommends exploration_weight adjustments per domain.
+    Default routing uses highest-weight model for domain.
+    exploration_weight controls probability of non-optimal routing.
+    Sexton recommends exploration_weight adjustments per domain.
     """
     model_slot: str
     domain: str
@@ -386,8 +386,8 @@ class RoutingWeight:
 class BeastCadenceConfig:
     """Configuration for the Beast maintenance actor.
 
-    Per §3: Beast — cadence / corpus / entity maintenance.
-    Per §5.10: state.db stores cadence_state.
+    Beast — cadence / corpus / entity maintenance.
+    state.db stores cadence_state.
     """
     corpus_reindex_interval_seconds: int = 3600
     entity_maintenance_interval_seconds: int = 1800
@@ -399,9 +399,9 @@ class BeastCadenceConfig:
 class FailureClassification:
     """Sexton's classification output for a single trace event.
 
-    Per §16.1: Sexton assigns appropriate Type A-F label.
-    Per §5.9: writes back to trace_events.failure_type.
-    Per §1.8: every classification carries model_gen_assumption.
+    Sexton assigns appropriate Type A-F label.
+    Writes back to trace_events.failure_type.
+    Every classification carries model_gen_assumption.
     """
     trace_event_id: int
     failure_type: str  # A-F per Appendix E
@@ -423,13 +423,37 @@ AutonomyLevel = Literal["none", "read", "write", "admin"]
 McpAutonomyLevel = Literal["read", "write", "admin"]
 
 
+def coerce_autonomy_level(level: str | AutonomyLevel) -> AutonomyLevel:
+    """Convert a string autonomy level to the proper AutonomyLevel Literal type.
+
+    This eliminates the need for ``# type: ignore[arg-type]`` at call sites
+    by validating the value and narrowing the return type.
+    """
+    valid: tuple[str, ...] = ("none", "read", "write", "admin")
+    if level not in valid:
+        raise ValueError(f"Invalid autonomy level: {level!r}. Must be one of {valid}")
+    return level  # type: ignore[return-value]
+
+
+def coerce_mcp_autonomy_level(level: str | McpAutonomyLevel) -> McpAutonomyLevel:
+    """Convert a string autonomy level to the proper McpAutonomyLevel Literal type.
+
+    This eliminates the need for ``# type: ignore[arg-type]`` at call sites
+    by validating the value and narrowing the return type.
+    """
+    valid: tuple[str, ...] = ("read", "write", "admin")
+    if level not in valid:
+        raise ValueError(f"Invalid MCP autonomy level: {level!r}. Must be one of {valid}")
+    return level  # type: ignore[return-value]
+
+
 @dataclass
 class SurfaceConfig:
     """Configuration for AIP surfaces (API, CLI, Chat, MCP).
 
-    Per §1.8: all parameters toggleable via config.
-    Per §2.1: surfaces must respect laptop-viable hardware profile.
-    Per §7.2: surfaces are adapter-layer, composing Foundation and Orchestration.
+    All parameters toggleable via config.
+    Surfaces must respect laptop-viable hardware profile.
+    Surfaces are adapter-layer, composing Foundation and Orchestration.
     """
     api_host: str = "127.0.0.1"
     api_port: int = 8000
@@ -444,8 +468,8 @@ class SurfaceConfig:
 class ApiRoute:
     """A single REST API route definition.
 
-    Per §1.7: autonomy_gate=True routes enforce DEFINER sovereignty.
-    Per §7.2: all routes are adapter-layer compositions.
+    autonomy_gate=True routes enforce DEFINER sovereignty.
+    All routes are adapter-layer compositions.
     """
     method: str
     path: str
@@ -458,9 +482,9 @@ class ApiRoute:
 class McpToolDef:
     """A single MCP tool definition.
 
-    Per §3: MCP/API surface.
+    MCP/API surface.
     Per Appendix D: "MCP ≠ bypass", "MCP ≠ vector_store.retrieve() directly."
-    Per §1.8: model_gen_assumption tags what model limitation this tool compensates for.
+    model_gen_assumption tags what model limitation this tool compensates for.
     """
     tool_name: str
     description: str
@@ -473,9 +497,9 @@ class McpToolDef:
 class AutonomyEscalation:
     """A single autonomy escalation request and its resolution.
 
-    Per §1.7: "No UI, workflow, Beast cadence, MCP call, or queued task
+    "No UI, workflow, Beast cadence, MCP call, or queued task
     may bypass the DEFINER gates."
-    Per §1.8: model_gen_assumption tags what assumption this escalation encodes.
+    model_gen_assumption tags what assumption this escalation encodes.
     """
     escalation_id: str
     action_type: str
@@ -493,8 +517,8 @@ class AutonomyEscalation:
 class ChatMessage:
     """A single chat message in the DEFINER conversation surface.
 
-    Per §3: Chat surface is the primary DEFINER interaction point.
-    Per §1.3: context is assembled from explicit stores, not long chat history.
+    Chat surface is the primary DEFINER interaction point.
+    Context is assembled from explicit stores, not long chat history.
     """
     message_id: str
     session_id: str
@@ -509,9 +533,9 @@ class ChatMessage:
 class ReviewQueueEntry:
     """A single entry in the review queue surface.
 
-    Per §3: Review Queue surface.
-    Per §9.3: ECS transitions REVIEWED→APPROVED or REVIEWED→FAILED.
-    Per §1.7: canonical promotion requires DEFINER approval.
+    Review Queue surface.
+    ECS transitions REVIEWED→APPROVED or REVIEWED→FAILED.
+    Canonical promotion requires DEFINER approval.
     """
     artifact_id: str
     artifact_version: int = 1
@@ -528,10 +552,10 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 
-# Type alias for Vigil health status per CHUNK-9.0a
+# Type alias for Vigil health status per
 VigilHealthStatus = Literal["healthy", "stale", "degraded", "unknown"]
 
-# Type alias for authentication roles per CHUNK-9.0a
+# Type alias for authentication roles per
 AuthRole = Literal["definer", "readonly", "unauthenticated"]
 
 
@@ -539,9 +563,9 @@ AuthRole = Literal["definer", "readonly", "unauthenticated"]
 class VigilConfig:
     """Configuration for the Vigil actor (compiled knowledge maintenance).
 
-    Per §3: Vigil — last missing orchestration actor.
-    Per §16.1 / §1.8: monitors canonical corpus health and triggers re-evaluation on model slot changes.
-    Per CHUNK-9.0a INTERFACES: canonical_health_check_interval_seconds, stale_threshold_days,
+    Vigil — last missing orchestration actor.
+    Monitors canonical corpus health and triggers re-evaluation on model slot changes.
+    Per INTERFACES: canonical_health_check_interval_seconds, stale_threshold_days,
     re_evaluate_on_slot_change, max_re_evaluate_batch_size, entity_consistency_check.
     """
     canonical_health_check_interval_seconds: int = 3600
@@ -555,9 +579,9 @@ class VigilConfig:
 class AuthConfig:
     """Configuration for the authentication system.
 
-    Per §1.7: enforces DEFINER sovereignty at the identity level.
+    Enforces DEFINER sovereignty at the identity level.
     Phase 7 scope: single-DEFINER with API key support for non-interactive access (CLI/MCP).
-    Per CHUNK-9.0a INTERFACES: auth_enabled, session_timeout_seconds, api_key_enabled,
+    Per INTERFACES: auth_enabled, session_timeout_seconds, api_key_enabled,
     bcrypt_rounds, definer_identity.
     """
     auth_enabled: bool = False
@@ -572,8 +596,8 @@ class RateLimitConfig:
     """Token-bucket rate limiting configuration.
 
     Per Phase 7 scope: prevents any single surface (Beast cadence, MCP, chat) from starving others.
-    Configurable per §1.8.
-    Per CHUNK-9.0a INTERFACES: requests_per_minute, burst_size, per_endpoint_overrides,
+    Configurable.
+    Per INTERFACES: requests_per_minute, burst_size, per_endpoint_overrides,
     model_budget_protection.
     """
     enabled: bool = True
@@ -587,8 +611,8 @@ class RateLimitConfig:
 class CanonicalPromotionConfig:
     """Configuration for the canonical promotion pipeline.
 
-    Per §1.6 / §9.3: drives REVIEWED→APPROVED→CANONICAL lifecycle with multi-stage verification.
-    Per CHUNK-9.0a INTERFACES: faithfulness_threshold, domain_coherence_threshold,
+    Drives REVIEWED→APPROVED→CANONICAL lifecycle with multi-stage verification.
+    Per INTERFACES: faithfulness_threshold, domain_coherence_threshold,
     model_gen_assumption.
     """
     faithfulness_threshold: float = 0.85
@@ -607,7 +631,7 @@ class CanonicalPromotionConfig:
 class WorkflowTemplate:
     """Extended workflow template definition (beyond Workflow 0.1).
 
-    Per CHUNK-9.0a INTERFACES: template_id, name, description, yaml_path, trigger, domains,
+    Per INTERFACES: template_id, name, description, yaml_path, trigger, domains,
     model_gen_assumption.
     """
     template_id: str
@@ -623,7 +647,7 @@ class WorkflowTemplate:
 class DeploymentProfile:
     """Deployment profile (laptop-viable vs production).
 
-    Per CHUNK-9.0a INTERFACES: profile_name, vector_backend (VectorBackendType),
+    Per INTERFACES: profile_name, vector_backend (VectorBackendType),
     model_provider, auth_enabled, workers, memory_limit_mb.
     """
     profile_name: str  # "laptop" | "production"
@@ -653,8 +677,8 @@ CollaboratorRole = Literal["definer", "collaborator", "readonly"]
 class KnowledgeCompilationConfig:
     """Configuration for the knowledge compilation system.
 
-    Per §3: Deferred Compiled Knowledge Layer — finally implemented.
-    Per §1.8: model_gen_assumption tags what the compilation criteria assume.
+    Deferred Compiled Knowledge Layer — finally implemented.
+    model_gen_assumption tags what the compilation criteria assume.
     Per Appendix D: compiled knowledge ≠ canonical artifact.
     """
     compilation_model_slot: str = "synthesis"
@@ -669,9 +693,9 @@ class KnowledgeCompilationConfig:
 class PluginConfig:
     """Plugin system configuration.
 
-    Per §4.1: no hardcoded model names — plugins provide extensibility.
-    Per §1.8: enabled and sandbox_mode are toggleable.
-    Per §1.8: model_gen_assumption tags what model limitations plugins compensate for.
+    No hardcoded model names — plugins provide extensibility.
+    enabled and sandbox_mode are toggleable.
+    model_gen_assumption tags what model limitations plugins compensate for.
     """
     plugins_dir: str = "plugins"
     enabled: bool = True
@@ -684,8 +708,8 @@ class PluginConfig:
 class CollaboratorConfig:
     """Collaborator access configuration.
 
-    Per §1.7: collaborators never bypass DEFINER sovereignty.
-    Per §1.8: enabled is toggleable.
+    Collaborators never bypass DEFINER sovereignty.
+    enabled is toggleable.
     Per Process Rule 11: collaborator_can_approve defaults to False.
     """
     enabled: bool = False
@@ -700,8 +724,8 @@ class CollaboratorConfig:
 class PerformanceConfig:
     """Performance tuning configuration.
 
-    Per §2.1: laptop-viable — must work on 4-6 GB RAM.
-    Per §1.8: profiling_enabled is toggleable.
+    Laptop-viable — must work on 4-6 GB RAM.
+    profiling_enabled is toggleable.
     """
     profiling_enabled: bool = False
     max_memory_mb: int = 4096
@@ -717,7 +741,7 @@ class PerformanceConfig:
 class ReleaseMetadata:
     """AIP 0.1 release metadata.
 
-    Written by release verification (CHUNK-10.7) when all §22 gates pass.
+    Written by release verification when all gates pass.
     Serves as the definitive release manifest.
     """
     release_version: str = "0.1.0"

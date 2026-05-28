@@ -135,9 +135,4 @@ def test_adapter_layer_does_not_import_orchestration():
     assert "import aip.orchestration" not in text
 
 
-def test_existing_phase0_to_5_adapters_still_work(temp_db):
-    """No regression on prior adapter tests (budget, vector, etc.)."""
-    # The full battery run in CI (including test_phase4_gate.py + test_phase5_schema etc.)
-    # already covers this. This placeholder exists to satisfy the "existing ... still pass" bullet.
-    # Real coverage comes from the combined gate command.
-    assert True
+

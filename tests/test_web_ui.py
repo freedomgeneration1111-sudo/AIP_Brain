@@ -47,4 +47,3 @@ def test_layering_and_no_new_backend_logic():
             text = f.read_text()
             assert "/api/v1/" in text or "htmx" in text.lower()  # calls existing API
             assert "new backend" not in text.lower()
-    assert True

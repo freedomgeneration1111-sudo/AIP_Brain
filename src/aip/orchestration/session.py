@@ -1,8 +1,8 @@
 """Multi-turn session context manager.
 
-Per §1.3: context is assembled from explicit stores, not chat history.
-Per §10.1: trajectory regulation at each turn boundary.
-Per §10.2: context reset when session degrades.
+Context is assembled from explicit stores, not chat history.
+Trajectory regulation at each turn boundary.
+Context reset when session degrades.
 Composes L5 workflow engine with L4 regulation layer.
 """
 
@@ -86,7 +86,7 @@ class SessionManager:
     ) -> SessionContext:
         """Handle trajectory intervention.
 
-        If any signal is Type D or Type F: execute full context reset per §10.2.
+        If any signal is Type D or Type F: execute full context reset.
         If only Type E: inject deterministic recovery instruction.
 
         Returns:
@@ -94,7 +94,7 @@ class SessionManager:
         """
         failure_types = {s.failure_type for s in signals}
 
-        # Full reset for drift (D) or anxiety (F) per §10.2
+        # Full reset for drift (D) or anxiety (F)
         if "D" in failure_types or "F" in failure_types:
             return await execute_context_reset(
                 session_context, signals,

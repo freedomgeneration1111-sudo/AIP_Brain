@@ -1,7 +1,7 @@
 """SQLite implementation of CanonicalStore Protocol.
 
-Per CHUNK-8.0b prose + ANNEX (exact).
-Enforces "approved_by == 'definer'" on write per §1.7 DEFINER sovereignty.
+Per prose + ANNEX (exact).
+Enforces "approved_by == 'definer'" on write (DEFINER sovereignty).
 """
 
 from __future__ import annotations
@@ -79,13 +79,14 @@ class SqliteCanonicalStore(CanonicalStore):
                 "superseded_by": row["superseded_by"],
             }
         finally:
-            pass
+            conn.close()
+            self._conn = None
 
     async def write_canonical(
         self, artifact_id: str, content: dict, approved_by: str
     ) -> None:
         if approved_by != "definer":
-            # Per prose + §1.7: only DEFINER may create canonicals
+            # Only DEFINER may create canonicals
             raise PermissionError(
                 f"write_canonical requires approved_by='definer', got {approved_by!r}"
             )
@@ -104,7 +105,8 @@ class SqliteCanonicalStore(CanonicalStore):
             )
             conn.commit()
         finally:
-            pass
+            conn.close()
+            self._conn = None
 
     async def list_canonical(self, domain: str | None = None) -> list[dict]:
         conn = self._get_conn()
@@ -135,4 +137,5 @@ class SqliteCanonicalStore(CanonicalStore):
                 })
             return results
         finally:
-            pass
+            conn.close()
+            self._conn = None

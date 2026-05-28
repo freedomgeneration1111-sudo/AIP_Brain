@@ -86,6 +86,4 @@ def test_phase0_through_phase6_types_still_work():
     assert fc.failure_type == "A"
 
 
-def test_phase7_schema_additions_test_file_exists():
-    """Meta-test: this file itself proves the test was created per ANNEX."""
-    assert True
+

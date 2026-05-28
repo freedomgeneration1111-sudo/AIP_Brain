@@ -1,9 +1,9 @@
 """Re-synthesis loop — REJECTED → GENERATED with failure context injection.
 
-Implements the rejection correction cycle per §9.3 and Appendix E.
+Implements the rejection correction cycle and Appendix E.
 Different failure types produce different correction instructions.
 Retry budget from config prevents infinite loops.
-Per §1.7: DEFINER notified when budget exhausted.
+DEFINER notified when budget exhausted.
 """
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ async def re_synthesize(
         ecs_store: For ECS state transitions.
         event_store: For recording events.
         trace_store: For logging trace events.
-        synthesize_fn: The synthesis function (CHUNK-1.3 stub in CI).
+        synthesize_fn: The synthesis function (stub in CI).
         config: AipConfig or dict with [review] section.
     """
     cfg = config.model_dump() if hasattr(config, "model_dump") else (config or {})

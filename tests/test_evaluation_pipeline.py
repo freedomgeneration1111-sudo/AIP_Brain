@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from aip.foundation.schemas import Chunk, EvaluationScore
-from aip.orchestration.nodes.adversarial_eval import adversarial_evaluate, adversarial_eval, EvalResult
+from aip.orchestration.nodes.adversarial_eval import adversarial_eval, EvalResult
 from aip.orchestration.nodes.faithfulness import evaluate_faithfulness
 from aip.orchestration.nodes.domain_coherence import evaluate_domain_coherence
 from aip.foundation.validation import structural_validate, full_l3a_evaluation
@@ -34,7 +34,7 @@ def resolver():
 @pytest.mark.asyncio
 async def test_adversarial_eval_ci_mode(resolver):
     """Adversarial eval with ModelSlotResolver returns structured result."""
-    result = await adversarial_evaluate(
+    result = await adversarial_eval(
         artifact_content="Test content",
         context="Test context",
         model_resolver=resolver,

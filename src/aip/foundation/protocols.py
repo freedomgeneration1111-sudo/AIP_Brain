@@ -3,21 +3,21 @@ Phase 0 protocol definitions (stub form).
 
 Per ANNEX D of AIP 0.1 BuildSpec Phase 0.
 
-This file will be amended by addition only (never rewritten) starting in CHUNK-1.0a.
+This file will be amended by addition only (never rewritten) starting in.
 """
 from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-# Phase 0 VectorStore (the version that CHUNK-1.0a will amend)
+# Phase 0 VectorStore (the version that will amend)
 @runtime_checkable
 class VectorStore(Protocol):
     """Vector store abstraction for pgvector / sqlite-vss swap.
-    Phase 1 amendment (CHUNK-1.0a): added upsert, retrieve with query_vector, delete.
+    Phase 1 amendment: added upsert, retrieve with query_vector, delete.
     Phase 0 store() method is deprecated but retained for backward compat.
     """
 
-    # Phase 1 methods (added by CHUNK-1.0a per Rev 1.3)
+    # Phase 1 methods (added by per Rev 1.3)
     async def upsert(
         self,
         id: str,
@@ -54,13 +54,13 @@ class VectorStore(Protocol):
     # --- Phase 4 amendments (append method stubs only — do NOT redeclare existing Protocol classes) ---
 
     # VectorStore — add health_check and count method stubs to existing class
-    # (upsert and retrieve already defined in Phase 1 CHUNK-1.0a)
+    # (upsert and retrieve already defined in Phase 1 )
     async def health_check(self) -> dict:
         """Check backend health and return status.
 
         Returns dict with: connected (bool), pool_size (int),
         latency_ms (int), backend_name (str).
-        Used by aip status and production hardening (CHUNK-6.4).
+        Used by aip status and production hardening.
         """
         ...
 
@@ -70,13 +70,13 @@ class VectorStore(Protocol):
 # Other Phase 0 protocols as empty runtime_checkable stubs
 @runtime_checkable
 class LexicalStore(Protocol):
-    """Full-text search abstraction per §6.
+    """Full-text search abstraction.
 
     Abstracts SQLite FTS5 so that orchestration and adapter code
     never import sqlite3 directly for search operations.
 
-    Per §8.1: supports domain-filtered retrieval.
-    Per §2.1: laptop-viable, local-only.
+    Supports domain-filtered retrieval.
+    Laptop-viable, local-only.
     """
 
     async def search(
@@ -123,7 +123,7 @@ class CanonicalStore(Protocol):
         """Read a canonical artifact by ID.
 
         Returns None if no canonical version exists.
-        Canonical artifacts are DEFINER-approved per §1.6.
+        Canonical artifacts are DEFINER-approved.
         """
         ...
 
@@ -150,8 +150,8 @@ class CanonicalStore(Protocol):
 @runtime_checkable
 class ArtifactStore(Protocol):
     """Artifact store for reading and writing generated content.
-    P1 fix (CHUNK-1.0a): Phase 0 left this as `...` stub.
-    Method signatures match CHUNK-1.6 call sites.
+    P1 fix: Phase 0 left this as `...` stub.
+    Method signatures match call sites.
     """
     async def write(self, id: str, content: str, metadata: dict) -> None:
         """Write artifact content with metadata."""
@@ -161,7 +161,7 @@ class ArtifactStore(Protocol):
         """Read artifact content by id."""
         ...
 
-    # --- Phase 2 / CHUNK-4.0a amendments (append method stubs only) ---
+    # --- Phase 2 amendments (append method stubs only) ---
     async def read(self, id: str, version: int | None = None) -> str:
         """Read artifact content by id.
 
@@ -178,8 +178,8 @@ class ArtifactStore(Protocol):
 @runtime_checkable
 class TraceStore(Protocol):
     """Trace store for logging node execution events.
-    P1 fix (CHUNK-1.0a): Phase 0 left this as `...` stub.
-    Method signature matches CHUNK-1.1 call site.
+    P1 fix: Phase 0 left this as `...` stub.
+    Method signature matches call site.
     Method name is write_event (confirmed per Rev 1.3 R2').
     """
     async def write_event(
@@ -193,7 +193,7 @@ class TraceStore(Protocol):
         """Write a trace event for node execution."""
         ...
 
-    # --- Phase 3 / CHUNK-5.0a amendment (append method stub only) ---
+    # --- Phase 3 amendment (append method stub only) ---
     async def query_events(
         self,
         session_id: str,
@@ -206,19 +206,19 @@ class TraceStore(Protocol):
         """
         ...
 
-    # L4 / CHUNK-3.1 addition (amend by addition only — never rewrite existing methods)
-    # Provides the query surface required by TrajectoryMonitor and future Sexton (§10.1, §16.1).
+    # L4 addition (amend by addition only — never rewrite existing methods)
+    # Provides the query surface required by TrajectoryMonitor and future Sexton.
     # Implementations must return events in descending created_at order (most recent first).
     async def get_recent_events(
         self, session_id: str, limit: int = 100
     ) -> list[dict]:
-        """Return recent trace events for a session (raw dicts matching §5.9 columns).
+        """Return recent trace events for a session (raw dicts matching trace_events schema).
         Used by L4 trajectory regulation for drift/loop detection. Zero tokens.
         """
         ...
 
-    # Sexton / CHUNK-3.4 addition (amend by addition only)
-    # Provides the cross-session query surface required by Sexton (§16.1) for
+    # Sexton / addition (amend by addition only)
+    # Provides the cross-session query surface required by Sexton for
     # classifying unclassified failures. Must return events newest-first.
     async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
         """Return recent unclassified failures (failure_type IS NULL and outcome == 'failure').
@@ -261,8 +261,8 @@ class EntityStore(Protocol):
 @runtime_checkable
 class EventStore(Protocol):
     """Event store for recording ECS state transitions and lifecycle events.
-    P1 fix (CHUNK-1.0a): Phase 0 left this as `...` stub.
-    Method signature matches CHUNK-1.6 call site.
+    P1 fix: Phase 0 left this as `...` stub.
+    Method signature matches call site.
     """
     async def write_event(
         self,
@@ -276,7 +276,7 @@ class EventStore(Protocol):
         """Write an event recording a state transition or lifecycle event."""
         ...
 
-    # --- Phase 2 / CHUNK-4.0a amendment (append method stub only) ---
+    # --- Phase 2 amendment (append method stub only) ---
     async def query(
         self,
         artifact_id: str | None = None,
@@ -295,7 +295,7 @@ class EventStore(Protocol):
 class ProjectStore(Protocol):
     """Project and WorkUnit persistent state."""
 
-    # --- Phase 5 / CHUNK-7.0a amendment (append method stub only) ---
+    # --- Phase 5 amendment (append method stub only) ---
     async def list_projects(self, status: str | None = None) -> list[dict]:
         """List projects, optionally filtered by status.
 
@@ -319,7 +319,7 @@ class EcsStore(Protocol):
         superseded_by: str | None = None,
     ) -> None: ...
 
-    # --- Phase 2 / CHUNK-4.0a amendment (append method stub only) ---
+    # --- Phase 2 amendment (append method stub only) ---
     async def current_state(self, artifact_id: str) -> str | None:
         """Return the current ECS state of the artifact, or None if unknown."""
         ...
@@ -328,11 +328,11 @@ class EcsStore(Protocol):
 @runtime_checkable
 class BudgetStore(Protocol):
     """Budget and autonomy tracking.
-    CHUNK-3.12: method signatures added by amend-by-addition (matching the
+    method signatures added by amend-by-addition (matching the
     InMemoryBudgetStore implementation delivered in 3.11). Zero-token contract.
 
-    Phase 5 / CHUNK-7.0a: extended by addition with the canonical get_budget /
-    record_usage / check_limit interface (per §6 and ANNEX). Old methods
+    Phase 5 : extended by addition with the canonical get_budget /
+    record_usage / check_limit interface. Old methods
     retained for backward compatibility during 7.0b transition.
     """
     async def consume(self, amount: int, budget_id: str = "default") -> bool:
@@ -347,7 +347,7 @@ class BudgetStore(Protocol):
         """Reset or initialize the named budget."""
         ...
 
-    # --- Phase 5 / CHUNK-7.0a new methods (append only; extends existing Protocol) ---
+    # --- Phase 5 new methods (append only; extends existing Protocol) ---
     async def get_budget(self, scope: "BudgetScope", scope_id: str) -> dict:
         """Get current budget status.
 
@@ -388,7 +388,7 @@ class BudgetStore(Protocol):
 @runtime_checkable
 class AutonomyGate(Protocol):
     """Two-phase autonomy gate.
-    CHUNK-3.12: method signatures added by amend-by-addition (matching the
+    method signatures added by amend-by-addition (matching the
     SimpleAutonomyGate implementation delivered in 3.11). Per Architecture L6.
     Low levels (Phase 1) are local; higher levels require DEFINER/policy (Phase 2).
     """
@@ -400,7 +400,7 @@ class AutonomyGate(Protocol):
         """Record that the given autonomy level was used (for audit / Sexton)."""
         ...
 
-    # --- Phase 6 amendments (append method stubs only — AutonomyGate partial from CHUNK-3.12 preserved per Rule #10) ---
+    # --- Phase 6 amendments (append method stubs only — AutonomyGate partial from preserved per Rule #10) ---
     async def check(
         self,
         action_type: str,
@@ -437,7 +437,7 @@ class AutonomyGate(Protocol):
         ...
 
 
-# --- Phase 3 / CHUNK-5.0a new Protocols (not amendments to existing ones) ---
+# --- Phase 3 new Protocols (not amendments to existing ones) ---
 
 @runtime_checkable
 class ModelProvider(Protocol):
@@ -473,7 +473,7 @@ class EmbeddingProvider(Protocol):
 class VigilStore(Protocol):
     """Protocol for Vigil actor storage needs (canonical health, entity consistency).
 
-    Per Phase 7 CHUNK-9.0a: Vigil is read-only; it detects and reports, never modifies autonomously.
+    Per Phase 7 : Vigil is read-only; it detects and reports, never modifies autonomously.
     Methods: get_canonical_health, list_stale_canonicals, record_vigil_check, get_last_vigil_check.
     """
 
@@ -509,7 +509,7 @@ class AuthStore(Protocol):
     """Protocol for authentication/authorization storage.
 
     Phase 7 scope: single-DEFINER + API keys for non-interactive access.
-    Per CHUNK-9.0a INTERFACES: session + API key lifecycle methods.
+    Per INTERFACES: session + API key lifecycle methods.
     """
 
     async def get_definer_identity(self) -> dict | None:
@@ -589,8 +589,8 @@ class AuthStore(Protocol):
 class KnowledgeStore(Protocol):
     """Abstraction for the Deferred Compiled Knowledge Layer.
 
-    Per §3: "Deferred Compiled Knowledge Layer" — persistence concern.
-    Per §1.5: compiled knowledge must track provenance to source canonicals.
+    "Deferred Compiled Knowledge Layer" — persistence concern.
+    Compiled knowledge must track provenance to source canonicals.
     Per Appendix D: compiled knowledge ≠ canonical artifact.
     Per Process Rule 12: CompilationState is distinct from ECS states.
     """
@@ -643,7 +643,7 @@ class KnowledgeStore(Protocol):
 class PluginProvider(Protocol):
     """Abstraction for a plugin-provided model provider.
 
-    Per §4.1 / §1.8: plugins extend model slots without hardcoding names.
+    Plugins extend model slots without hardcoding names.
     Per Phase 3 ModelProvider: this is the extensible variant.
     """
 

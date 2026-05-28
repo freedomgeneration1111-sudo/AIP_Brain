@@ -1,8 +1,8 @@
-"""CollaboratorManager — adapter-layer manager for collaborator/readonly roles (CHUNK-10.3).
+"""CollaboratorManager — adapter-layer manager for collaborator/readonly roles.
 
 Per AIP_0_1_Phase8_BuildSpec_Rev1.0.md exact prose + box + ANNEX.
 Extends Phase 7 AuthStore (9.0b) + uses CollaboratorConfig (10.0a) + AutonomyGate.
-collaborator_can_approve defaults to False (DEFINER sovereignty per §1.7).
+collaborator_can_approve defaults to False (DEFINER sovereignty).
 All privileged paths go through AutonomyGate.
 Pure adapter-layer (no orchestration imports).
 """

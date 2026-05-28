@@ -1,4 +1,4 @@
-"""aip status command (CHUNK-8.2)."""
+"""aip status command."""
 
 from __future__ import annotations
 

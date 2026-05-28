@@ -98,24 +98,4 @@ def test_scenario_4_admin_memory_inspector():
     assert r.status_code in (200, 503)
 
 
-def test_scenario_5_definer_sovereignty_enforcement():
-    """5. DEFINER sovereignty enforcement (no bypass on approve/config/MCP admin)."""
-    # Detailed enforcement already verified in 8.4/8.5/9.2 per-surface gates + 9.5 scenarios 2/3
-    assert True
 
-
-def test_scenario_6_appendix_d_constraints():
-    """6. Appendix D constraint verification (UI ≠ authority, MCP ≠ bypass, MCP ≠ direct vector)."""
-    # Verified in 8.5 MCP (Protocol-only) + 9.2 pipeline + 9.4 UI (pure frontend)
-    assert True
-
-
-def test_scenario_7_cross_surface_consistency():
-    """7. Cross-surface consistency (same data via CLI/API/MCP)."""
-    # Shape verified across scenarios 1-3
-    assert True
-
-
-def test_existing_8_7_and_prior_gates_still_exercised():
-    """The 8.7 integration (and all prior self-improvement cycles) remain intact through the full system."""
-    assert True

@@ -1,4 +1,4 @@
-"""Adapter package for compiled knowledge storage (CHUNK-10.0b).
+"""Adapter package for compiled knowledge storage.
 
 Exports the SQLite implementation of KnowledgeStore.
 """

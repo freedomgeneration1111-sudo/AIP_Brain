@@ -1,20 +1,19 @@
 """
-L4 Context Reset Protocol Foundation (CHUNK-3.2 spec delta)
+L4 Context Reset Protocol Foundation (spec delta)
 
-Implements the response path from Architecture Rev 5.2 §10.2, consuming the
-detection foundation from CHUNK-3.1 (TrajectoryMonitor).
+Implements the response path from Architecture Rev 5.2, consuming the
+detection foundation from (TrajectoryMonitor).
 
 - Deterministic evaluation of monitor signals.
 - Logs intervention event (step 4) via injected TraceStore using existing
-  write_event + **kwargs to populate intervention_applied / intervention_type
-  (per §5.9).
+  write_event + **kwargs to populate intervention_applied / intervention_type.
 - Surfaces ResetRecommendation for caller to execute model "progress summary"
   (step 2), provisional commit (step 3), DEFINER surface (step 5), and fresh
   session (step 6) using normal L5 paths.
 - Zero tokens inside L4 logic. All stores injected only (no direct construction).
-- Every trigger carries model_gen_assumption per §1.8.
+- Every trigger carries model_gen_assumption.
 
-This is the smallest useful foundation for the §10.2 protocol.
+This is the smallest useful foundation for the Context Reset Protocol.
 Full Sexton, UI surface, and advanced L4b metrics remain out of scope.
 """
 
@@ -33,7 +32,7 @@ from aip.orchestration.workflow.context import WorkflowContext
 class ResetRecommendation:
     """
     Structured output when L4 decides a context reset / trajectory correction
-    is warranted per §10.2.
+    is warranted.
 
     The caller (WorkflowEngine, script node, or external orchestrator) is
     responsible for acting on .action (e.g. synthesize progress summary via
@@ -59,7 +58,7 @@ class ResetRecommendation:
 
 class L4ResetCoordinator:
     """
-    Deterministic coordinator for the §10.2 Context Reset Protocol (foundation).
+    Deterministic coordinator for the Context Reset Protocol (foundation).
 
     Usage (typical, via WorkflowContext injection or direct test construction):
         coordinator = L4ResetCoordinator(
@@ -87,7 +86,7 @@ class L4ResetCoordinator:
     ) -> list[ResetRecommendation]:
         """
         Run detection, and if L4-relevant signals are present, log the
-        intervention event (step 4 of §10.2) and return recommendation(s).
+        intervention event (step 4) and return recommendation(s).
 
         Returns [] for clean sessions (no action).
         Safe to call; defensive on store errors.
@@ -103,7 +102,7 @@ class L4ResetCoordinator:
         if not signals:
             return []
 
-        # Filter to the signals that §10.2 cares about (D / F / combined proxy)
+        # Filter to the signals that matter (D / F / combined proxy)
         # Updated signal_type values to match schema's TrajectorySignalType
         relevant = [
             s
@@ -118,7 +117,7 @@ class L4ResetCoordinator:
             signals=relevant,
         )
 
-        # Step 4: Log reset event with intervention fields (§5.9 + §10.2)
+        # Step 4: Log reset event with intervention fields
         # Uses **kwargs passthrough (all current fakes + noops support this;
         # concrete writers target the full trace_events schema).
         try:
@@ -139,7 +138,7 @@ class L4ResetCoordinator:
         return [rec]
 
 
-# --- CHUNK-3.3 activation helper (minimal reusable pattern) ---
+# activation helper (minimal reusable pattern)
 # Provides the documented way for ScriptNodes or custom workflow code
 # to invoke L4 and surface recommendations to DEFINER via the existing
 # emit_event + DialogNode machinery.
@@ -155,7 +154,7 @@ async def check_l4_and_surface_if_needed(
     Retrieves the injected L4ResetCoordinator (if present), runs detection,
     logs any intervention, and if recommendations are produced, emits a
     structured "l4_reset_recommended" event that can be consumed by a
-    DialogNode for DEFINER review (step 5 of §10.2).
+    DialogNode for DEFINER review (step 5).
 
     Returns the list of recommendations (empty if no action required).
     Fully deterministic, zero tokens, respects injection model.
@@ -189,7 +188,7 @@ async def check_l4_and_surface_if_needed(
     return recs
 
 
-# --- CHUNK-3.6 thin runtime integration helper (node-level L4 + Sexton) ---
+# thin runtime integration helper (node-level L4 + Sexton)
 
 from aip.orchestration.sexton import Sexton
 

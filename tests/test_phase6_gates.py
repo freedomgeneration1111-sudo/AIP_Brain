@@ -67,17 +67,15 @@ def test_phase6_definer_sovereignty_no_bypass_for_admin_actions():
     try:
         from aip.adapter.api.routes.review import router as review_router  # type: ignore
         from aip.adapter.mcp.server import AipMcpServer
-        assert review_router is not None or True
+        assert review_router is not None
         assert hasattr(AipMcpServer, "call_tool")
     except Exception:
         pass  # guards from fastapi-optional surface scaffolding
-    assert True
 
 
 def test_phase6_import_boundaries_and_storage_contracts_still_pass():
     """test_layering.py + test_storage_contracts.py still pass with all Phase 6 code."""
     # These are run in the gate command; if we reached here the prior runs were green
-    assert True
 
 
 def test_phase6_appendix_d_constraints():
@@ -88,7 +86,6 @@ def test_phase6_appendix_d_constraints():
     if mcp_search.exists():
         text = mcp_search.read_text().lower()
         assert "vector_store.retrieve" not in text or "container." in text
-    assert True
 
 
 def test_phase6_config_toggleability_all_sections():
@@ -98,10 +95,8 @@ def test_phase6_config_toggleability_all_sections():
     assert hasattr(cfg, "api_host")
     assert hasattr(cfg, "chat_max_history_turns")
     # In real: load from toml and assert values affect behavior (already exercised in 8.1-8.6)
-    assert True
 
 
 def test_all_prior_phase0_through_8_7_gates_still_pass():
     """Backward compatibility: all previous gate batteries still green with Phase 6 surfaces installed."""
     # Core prior gates (layering, phase4, phase5, phase6 schema, remaining adapters, cli, mcp) were green in the 62-pass run
-    assert True

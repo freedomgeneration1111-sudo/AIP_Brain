@@ -1,4 +1,4 @@
-"""Adapter package for plugin system (CHUNK-10.0b)."""
+"""Adapter package for plugin system."""
 
 from aip.adapter.plugins.plugin_loader import PluginLoader
 from aip.adapter.plugins.yaml_plugin_provider import YamlPluginProvider
