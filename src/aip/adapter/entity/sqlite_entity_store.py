@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from aip.foundation.protocols import EntityStore
@@ -105,7 +105,7 @@ class SqliteEntityStore(EntityStore):
     async def update_entity(self, entity_id: str, updates: dict) -> None:
         conn = self._get_conn()
         try:
-            now = datetime.utcnow().isoformat() + "Z"
+            now = datetime.now(timezone.utc).isoformat() + "Z"
             # Simple upsert-style update (merge metadata if present)
             existing = await self.get_entity(entity_id)
             if existing:

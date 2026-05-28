@@ -20,6 +20,7 @@ except ImportError:
 
 from aip.adapter.api.dependencies import AipContainer, get_container
 from aip.adapter.api.routes import health, projects, sessions
+from aip.adapter.api.routes import review, artifacts, admin, memory, chat
 from aip.foundation.schemas import SurfaceConfig
 
 
@@ -80,13 +81,14 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(artifacts.router, prefix="/api/v1", tags=["artifacts"])
     app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
     app.include_router(memory.router, prefix="/api/v1", tags=["memory"])
+    app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
 
     # 9.4 Web UI static (minimal HTMX dashboard)
     from fastapi.staticfiles import StaticFiles
-    try:
-        app.mount("/static", StaticFiles(directory="src/aip/adapter/api/static"), name="static")
-    except Exception:
-        pass  # static dir may not exist in all envs
+    import pathlib
+    _static_dir = pathlib.Path(__file__).parent / "static"
+    if _static_dir.is_dir():
+        app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
     @app.get("/")
     async def root():

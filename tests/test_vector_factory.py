@@ -5,6 +5,7 @@ import pytest
 from aip.adapter.vector.factory import create_vector_store
 from aip.adapter.vector.pgvector_store import PgvectorStore
 from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
+from aip.adapter.vector._in_memory import InMemoryVectorStore
 from aip.foundation.schemas import PgvectorConfig
 
 
@@ -18,7 +19,8 @@ async def test_factory_returns_sqlite_for_sqlite_provider():
     }
     try:
         store = await create_vector_store(config)
-        assert isinstance(store, SqliteVssVectorStore)
+        # May be SqliteVssVectorStore or InMemoryVectorStore (graceful degradation per §7.3)
+        assert isinstance(store, (SqliteVssVectorStore, InMemoryVectorStore))
     except Exception as e:
         # In this CI environment the vss0 extension may not be loadable.
         # The factory code path itself executed correctly (this is acceptable
@@ -49,7 +51,7 @@ async def test_factory_returns_pgvector_when_available(monkeypatch):
     try:
         store = await create_vector_store(config)
         # If it reaches here without Postgres it degraded (expected in this env)
-        assert isinstance(store, (PgvectorStore, SqliteVssVectorStore))
+        assert isinstance(store, (PgvectorStore, SqliteVssVectorStore, InMemoryVectorStore))
     except Exception:
         # Acceptable in test env without DB
         pass
@@ -66,8 +68,8 @@ async def test_factory_graceful_degradation_to_sqlite(monkeypatch):
 
     try:
         store = await create_vector_store(config)
-        # Should have fallen back (or hit extension limitation in this env)
-        assert isinstance(store, (SqliteVssVectorStore, type(None)))
+        # Should have fallen back (SqliteVssVectorStore or InMemoryVectorStore for graceful degradation)
+        assert isinstance(store, (SqliteVssVectorStore, InMemoryVectorStore))
     except Exception as e:
         # Acceptable when vss0 extension or network is unavailable in CI
         assert "enable_load_extension" in str(e) or "gaierror" in str(e) or "Temporary failure" in str(e)

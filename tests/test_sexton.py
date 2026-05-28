@@ -65,7 +65,7 @@ async def test_sexton_classifies_l4_intervention_events(trace_store):
         intervention_type="context_reset",
     )
 
-    sexton = Sexton(trace_store)
+    sexton = Sexton(trace_store=trace_store)
     results = await sexton.classify_recent_failures(limit=10)
 
     # In the current foundation rules, L4 intervention events may not get
@@ -85,7 +85,7 @@ async def test_sexton_classifies_l2_insufficient_memory_as_a(trace_store):
         detail="Max confidence 0.1 below threshold 0.30",
     )
 
-    sexton = Sexton(trace_store)
+    sexton = Sexton(trace_store=trace_store)
     results = await sexton.classify_recent_failures()
 
     # The fake write_event in the test store will have captured the classification write
@@ -104,7 +104,7 @@ async def test_sexton_writes_classification_back(trace_store):
         detail="Output schema invalid",
     )
 
-    sexton = Sexton(trace_store)
+    sexton = Sexton(trace_store=trace_store)
     await sexton.classify_recent_failures()
 
     classified_writes = [w for w in trace_store.writes if w.get("failure_type") in ("A", "B", "C", "D", "E", "F")]
@@ -132,7 +132,7 @@ def test_sexton_derives_ace_rules_from_classified_events():
         {"failure_type": "A", "node_type": "L2", "detail": "another A"},  # duplicate should be collapsed
     ]
 
-    sexton = Sexton(FakeTraceStoreForSexton())  # trace not used for pure derivation
+    sexton = Sexton(trace_store=FakeTraceStoreForSexton())  # trace not used for pure derivation
     rules = sexton.derive_ace_rules(classified)
 
     assert len(rules) >= 3  # A, F, D (dupe A collapsed)
@@ -155,7 +155,7 @@ def test_sexton_trust_score_and_stale_rule_audit_3_10():
     CHUNK-3.10: trust_score and audit_model_gen_assumption work as declared
     (minimal deterministic foundation for §16.1 trust + §1.8 stale audit).
     """
-    sexton = Sexton(FakeTraceStoreForSexton())
+    sexton = Sexton(trace_store=FakeTraceStoreForSexton())
 
     good_rule = {
         "rule_id": "r1",

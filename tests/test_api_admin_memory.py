@@ -45,12 +45,18 @@ def test_memory_inspector_read_only():
 
 
 def test_layering_and_no_bypass():
+    """Route modules must not import from orchestration or concrete adapter storage."""
     from pathlib import Path
     for f in ["admin.py", "memory.py"]:
         p = Path(__file__).parent.parent / "src/aip/adapter/api/routes" / f
         if p.exists():
             text = p.read_text()
-            assert "from aip.adapter." not in text or "from aip.foundation" in text
+            # Routes are in the adapter layer, so importing from aip.adapter.api is fine.
+            # They must NOT import from orchestration or concrete storage adapters.
+            assert "from aip.orchestration" not in text, f"{f} imports from orchestration"
+            assert "import aip.orchestration" not in text, f"{f} imports from orchestration"
+            assert "from aip.adapter.vector" not in text, f"{f} imports concrete vector adapter"
+            assert "from aip.adapter.budget_store" not in text, f"{f} imports concrete budget store"
     assert True
 
 

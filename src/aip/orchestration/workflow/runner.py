@@ -208,6 +208,29 @@ class SequentialRunner:
                 break
         return cls(nodes[start:], ctx)
 
+    @classmethod
+    def from_suspended(
+        cls,
+        suspended: "SuspendedWorkflow",
+        decision: Any,
+        nodes: list[WorkflowNode],
+        context: WorkflowContext | None = None,
+    ) -> "SequentialRunner":
+        """Synchronous classmethod per CHUNK-2.9: create a runner from a suspended workflow.
+
+        Sets the DEFINER decision in context and resumes from the node after
+        the suspended position.
+        """
+        ctx = context or WorkflowContext(variables=suspended.variables.copy())
+        ctx.set("last_definer_decision", decision)
+
+        start = 0
+        for idx, n in enumerate(nodes):
+            if n.node_id == suspended.current_node_id:
+                start = idx + 1
+                break
+        return cls(nodes[start:], ctx)
+
     # --- Finally / on_error support (2.11) ---
     async def run_workflow(self, definition: WorkflowDefinition) -> list[NodeResult]:
         results: list[NodeResult] = []

@@ -33,48 +33,39 @@ def knowledge_store():
         db = os.path.join(tmp, "knowledge.db")
         store = SqliteKnowledgeStore(db, FakeVectorStore(), FakeLexicalStore())
         yield store
-        asyncio.get_event_loop().run_until_complete(store.close())
+        asyncio.run(store.close())
 
 
 def test_knowledge_store_implements_protocol(knowledge_store):
     assert isinstance(knowledge_store, KnowledgeStore)
 
 
-def test_store_and_get_compiled(knowledge_store):
-    asyncio.get_event_loop().run_until_complete(
-        knowledge_store.store_compiled(
-            "k1", "Compiled summary of foo.", ["c1", "c2"], "test", {"state": "COMPILED"}
-        )
+async def test_store_and_get_compiled(knowledge_store):
+    await knowledge_store.store_compiled(
+        "k1", "Compiled summary of foo.", ["c1", "c2"], "test", {"state": "COMPILED"}
     )
-    got = asyncio.get_event_loop().run_until_complete(knowledge_store.get_compiled("k1"))
+    got = await knowledge_store.get_compiled("k1")
     assert got is not None
     assert got["content"].startswith("Compiled")
     assert got["source_canonical_ids"] == ["c1", "c2"]
     assert got["state"] == "COMPILED"
 
 
-def test_provenance_and_state_transition(knowledge_store):
-    asyncio.get_event_loop().run_until_complete(
-        knowledge_store.store_compiled("k2", "content", ["c99"], "d", {"state": "REVIEWED"})
-    )
-    prov = asyncio.get_event_loop().run_until_complete(knowledge_store.get_provenance("k2"))
+async def test_provenance_and_state_transition(knowledge_store):
+    await knowledge_store.store_compiled("k2", "content", ["c99"], "d", {"state": "REVIEWED"})
+    prov = await knowledge_store.get_provenance("k2")
     assert len(prov) >= 1
 
-    asyncio.get_event_loop().run_until_complete(
-        knowledge_store.update_state("k2", "APPROVED")
-    )
-    got = asyncio.get_event_loop().run_until_complete(knowledge_store.get_compiled("k2"))
+    await knowledge_store.update_state("k2", "APPROVED")
+    got = await knowledge_store.get_compiled("k2")
     assert got["state"] == "APPROVED"
 
 
-def test_list_and_search(knowledge_store):
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(
-        knowledge_store.store_compiled("k3", "searchable compiled text about AIP", ["c1"], "test", {"state": "APPROVED"})
-    )
-    listed = loop.run_until_complete(knowledge_store.list_compiled(state="APPROVED"))
+async def test_list_and_search(knowledge_store):
+    await knowledge_store.store_compiled("k3", "searchable compiled text about AIP", ["c1"], "test", {"state": "APPROVED"})
+    listed = await knowledge_store.list_compiled(state="APPROVED")
     assert any(r["knowledge_id"] == "k3" for r in listed)
 
-    results = loop.run_until_complete(knowledge_store.search_compiled("AIP", limit=5))
+    results = await knowledge_store.search_compiled("AIP", limit=5)
     # May be empty if lexical fake returns nothing, but call succeeds
     assert isinstance(results, list)

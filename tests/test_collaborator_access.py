@@ -53,36 +53,32 @@ def cm():
     return CollaboratorManager(store, cfg, gate)
 
 
-def test_create_collaborator_no_definer_role(cm):
-    res = asyncio.get_event_loop().run_until_complete(
-        cm.create_collaborator("alice", "collaborator", "secret")
-    )
+async def test_create_collaborator_no_definer_role(cm):
+    res = await cm.create_collaborator("alice", "collaborator", "secret")
     assert res["status"] == "created"
     assert res["role"] == "collaborator"
 
     # Attempt to create definer must fail
-    res2 = asyncio.get_event_loop().run_until_complete(
-        cm.create_collaborator("bob", "definer", "secret")
-    )
+    res2 = await cm.create_collaborator("bob", "definer", "secret")
     assert res2["status"] == "error"
 
 
-def test_update_and_revoke_cannot_touch_definer(cm):
+async def test_update_and_revoke_cannot_touch_definer(cm):
     # First create a collaborator
-    asyncio.get_event_loop().run_until_complete(cm.create_collaborator("charlie", "collaborator", "pw"))
+    await cm.create_collaborator("charlie", "collaborator", "pw")
 
     # Update role
-    res = asyncio.get_event_loop().run_until_complete(cm.update_role("charlie", "readonly", "definer"))
+    res = await cm.update_role("charlie", "readonly", "definer")
     assert res["status"] == "updated"
 
     # Revoke
-    res2 = asyncio.get_event_loop().run_until_complete(cm.revoke_collaborator("charlie", "definer"))
+    res2 = await cm.revoke_collaborator("charlie", "definer")
     assert res2["status"] == "revoked"
 
 
-def test_list_excludes_definer(cm):
-    asyncio.get_event_loop().run_until_complete(cm.create_collaborator("dave", "collaborator", "pw"))
-    users = asyncio.get_event_loop().run_until_complete(cm.list_collaborators())
+async def test_list_excludes_definer(cm):
+    await cm.create_collaborator("dave", "collaborator", "pw")
+    users = await cm.list_collaborators()
     assert all(u["role"] != "definer" for u in users)
 
 

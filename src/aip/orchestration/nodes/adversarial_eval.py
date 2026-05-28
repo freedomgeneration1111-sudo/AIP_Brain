@@ -39,25 +39,25 @@ DEFAULT_EVAL_CRITERIA: list[EvalCriterion] = [
         criterion_id="grounding",
         name="Grounding / Hallucination",
         description="Does the synthesis output stay grounded in the provided retrieval context without introducing unsupported claims?",
-        model_gen_assumption="Models may produce plausible but weakly grounded or incomplete outputs without explicit skeptic review",
+        model_gen_assumption="DeepSeek-V3 and Qwen3 models may produce plausible but weakly grounded or incomplete outputs without explicit skeptic review",
     ),
     EvalCriterion(
         criterion_id="completeness",
         name="Completeness",
         description="Does the output adequately address the original query given the retrieved context?",
-        model_gen_assumption="Models may produce plausible but weakly grounded or incomplete outputs without explicit skeptic review",
+        model_gen_assumption="DeepSeek-V3 and Qwen3 models may produce plausible but weakly grounded or incomplete outputs without explicit skeptic review",
     ),
     EvalCriterion(
         criterion_id="coherence",
         name="Structural Coherence",
         description="Is the output well-structured, clear, and free of internal contradictions?",
-        model_gen_assumption="Models may produce plausible but weakly grounded or incomplete outputs without explicit skeptic review",
+        model_gen_assumption="DeepSeek-V3 and Qwen3 models may produce plausible but weakly grounded or incomplete outputs without explicit skeptic review",
     ),
     EvalCriterion(
         criterion_id="assumption_violation",
         name="Unstated Assumption Violation",
         description="Does the synthesis introduce assumptions not supported by the query or retrieved context?",
-        model_gen_assumption="Models may produce plausible but weakly grounded or incomplete outputs without explicit skeptic review",
+        model_gen_assumption="DeepSeek-V3 and Qwen3 models may produce plausible but weakly grounded or incomplete outputs without explicit skeptic review",
     ),
 ]
 

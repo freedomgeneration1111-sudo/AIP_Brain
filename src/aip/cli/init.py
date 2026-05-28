@@ -81,6 +81,38 @@ def init(force: bool) -> None:
         (db_dir / name).touch(exist_ok=True)
     click.echo("Initialized DB files under db/ (state, trace, events, ace_playbook, lexical, vectors)")
 
+    # Initialize trace.db with the required schema (per §5.9)
+    trace_db_path = db_dir / "trace.db"
+    try:
+        import sqlite3
+        conn = sqlite3.connect(str(trace_db_path))
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS trace_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                node_type TEXT,
+                failure_type TEXT,
+                outcome TEXT,
+                detail TEXT,
+                intervention_applied INTEGER DEFAULT 0,
+                intervention_type TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_trace_session
+            ON trace_events(session_id)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_trace_unclassified
+            ON trace_events(failure_type, outcome)
+        """)
+        conn.commit()
+        conn.close()
+        click.echo("trace.db schema initialized")
+    except Exception as e:
+        click.echo(f"trace.db schema init skipped: {e}")
+
     # 4. Ollama validation (graceful)
     ollama_ok = False
     try:

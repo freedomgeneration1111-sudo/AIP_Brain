@@ -10,10 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from aip.foundation.protocols import PluginProvider
+from aip.foundation.protocols import PluginProvider, ModelProvider
 from aip.foundation.schemas import PluginConfig
-from aip.adapter.plugins.plugin_loader import PluginLoader
-from aip.adapter.model_slot_resolver import ModelSlotResolver
 from aip.orchestration.router import AdaptiveRouter
 
 
@@ -28,8 +26,8 @@ class PluginManager:
     def __init__(
         self,
         config: PluginConfig,
-        plugin_loader: PluginLoader,
-        model_slot_resolver: ModelSlotResolver,
+        plugin_loader: Any,  # PluginLoader — imported via DI, not directly
+        model_slot_resolver: ModelProvider,
         adaptive_router: AdaptiveRouter | None = None,
     ) -> None:
         self.config = config
@@ -45,7 +43,8 @@ class PluginManager:
 
         # Wrap as ModelProvider for the resolver
         # (PluginProvider already satisfies the call_model + health_check shape via Protocol)
-        self.model_slot_resolver.register_provider(slot, plugin)  # type: ignore[attr-defined]
+        if hasattr(self.model_slot_resolver, "register_provider"):
+            self.model_slot_resolver.register_provider(slot, plugin)  # type: ignore[attr-defined]
 
         if self.adaptive_router is not None:
             # Register as routing option (best-effort; router may accept providers)
@@ -60,10 +59,11 @@ class PluginManager:
         key = f"{slot_name}:{provider_name}"
         self._registered.pop(key, None)
         # Resolver/router unregistration is best-effort in 0.1
-        try:
-            self.model_slot_resolver.unregister_provider(slot_name, provider_name)  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        if hasattr(self.model_slot_resolver, "unregister_provider"):
+            try:
+                self.model_slot_resolver.unregister_provider(slot_name, provider_name)  # type: ignore[attr-defined]
+            except Exception:
+                pass
 
     def get_plugin(self, slot_name: str) -> PluginProvider | None:
         for k, p in self._registered.items():

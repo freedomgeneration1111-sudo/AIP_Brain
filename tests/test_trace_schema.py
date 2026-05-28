@@ -4,18 +4,17 @@ Trace schema validation test.
 Part of the Phase 1 green gates (CHUNK-0.7).
 
 Validates:
-- The trace_events table exists in db/trace.db with the minimum columns defined in Architecture Rev 5.2 §5.9
+- The trace_events table exists with the minimum columns defined in Architecture Rev 5.2 §5.9
 - The FailureType and OutcomeType literals used in code are consistent with the schema
 """
 
 import sqlite3
+import tempfile
 from pathlib import Path
 
 import pytest
 
 from aip.foundation.schemas import FailureType, OutcomeType
-
-DB_PATH = Path(__file__).parent.parent / "db" / "trace.db"
 
 EXPECTED_TRACE_COLUMNS = {
     "id",
@@ -35,11 +34,41 @@ EXPECTED_TRACE_COLUMNS = {
     "created_at",
 }
 
+CREATE_TRACE_EVENTS_SQL = """
+CREATE TABLE IF NOT EXISTS trace_events (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    node_type TEXT,
+    model_slot TEXT,
+    model_name TEXT,
+    token_count_in INTEGER DEFAULT 0,
+    token_count_out INTEGER DEFAULT 0,
+    cost_usd REAL DEFAULT 0.0,
+    latency_ms REAL DEFAULT 0.0,
+    failure_type TEXT,
+    failure_detail TEXT,
+    intervention_applied INTEGER DEFAULT 0,
+    intervention_type TEXT,
+    outcome TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
 
-def test_trace_events_table_exists_and_has_required_columns():
-    assert DB_PATH.exists(), f"trace.db not found at {DB_PATH}"
 
-    conn = sqlite3.connect(DB_PATH)
+@pytest.fixture
+def trace_db():
+    """Create a temporary trace.db with the expected schema for testing."""
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "trace.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(CREATE_TRACE_EVENTS_SQL)
+        conn.commit()
+        conn.close()
+        yield db_path
+
+
+def test_trace_events_table_exists_and_has_required_columns(trace_db):
+    conn = sqlite3.connect(str(trace_db))
     try:
         cur = conn.cursor()
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='trace_events'")

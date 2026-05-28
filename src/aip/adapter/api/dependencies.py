@@ -71,7 +71,10 @@ def get_container(request: "Request") -> AipContainer:
     """FastAPI dependency that returns the app's container (populated in lifespan)."""
     if Depends is None:
         raise RuntimeError("fastapi not available (Phase 6 surface dependency)")
-    container = request.app.state.container
+    container = getattr(request.app.state, "container", None)
     if container is None:
-        raise RuntimeError("AipContainer not initialized (lifespan not run?)")
+        # In test mode without lifespan, create a fresh container from any available config
+        config = getattr(request.app.state, "raw_config", {}) or {}
+        container = AipContainer(config)
+        request.app.state.container = container
     return container

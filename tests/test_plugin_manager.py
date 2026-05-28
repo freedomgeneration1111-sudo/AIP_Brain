@@ -51,7 +51,7 @@ def test_plugin_manager_register_and_list():
     assert pm.get_plugin("synthesis") is not None
 
 
-def test_health_check_all_and_sandbox():
+async def test_health_check_all_and_sandbox():
     cfg = PluginConfig(sandbox_mode=True)
     loader = PluginLoader(cfg)
     resolver = FakeResolver()
@@ -60,7 +60,7 @@ def test_health_check_all_and_sandbox():
     p = FakePlugin("test", "bad")
     pm.register_plugin(p)
 
-    health = asyncio.get_event_loop().run_until_complete(pm.health_check_all())
+    health = await pm.health_check_all()
     assert "test:bad" in health
 
 

@@ -23,6 +23,7 @@ from aip.orchestration.workflow.context import WorkflowContext
 from aip.orchestration.workflow.node import (
     AgentNode,
     DialogNode,
+    NodeResult,
     ScriptNode,
     WorkflowNode,
 )
@@ -46,7 +47,6 @@ class _CommitNode(WorkflowNode):
         self.event_store = event_store
 
     async def run(self, context: "WorkflowContext") -> NodeResult:
-        from aip.orchestration.nodes.commit import commit_artifact
         from aip.orchestration.nodes.definer_gate import DefinerDecision
         from aip.orchestration.nodes.synthesis import SynthesisOutput
 
@@ -98,8 +98,7 @@ class _AlwaysApproveDialogNode(WorkflowNode):
         super().__init__(node_id, NodeType.DIALOG)
         self.prompt = prompt
 
-    async def run(self, context: "WorkflowContext") -> "NodeResult":
-        from aip.orchestration.workflow.node import NodeResult
+    async def run(self, context: "WorkflowContext") -> NodeResult:
         context.emit_event("workflow.dialog.auto_approved", {"node_id": self.node_id})
         return NodeResult(
             success=True,

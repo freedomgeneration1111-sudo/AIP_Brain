@@ -31,7 +31,8 @@ async def test_health_check_reports_backend():
     backend = result["vector_store"].get("backend", "none")
     # In full envs this is sqlite_vss or pgvector.
     # In this CI env the extension may cause fallback to "none"/unhealthy path.
-    assert backend in ("sqlite_vss", "pgvector", "none")
+    # In-memory is the last-resort fallback when sqlite_vss extension is unavailable.
+    assert backend in ("sqlite_vss", "pgvector", "in-memory", "none")
 
 
 @pytest.mark.asyncio

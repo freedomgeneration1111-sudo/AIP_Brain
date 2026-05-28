@@ -50,7 +50,7 @@ def test_plugin_loader_discover_and_sandbox():
         assert result is None
 
 
-def test_ci_deterministic_mode_for_provider():
+async def test_ci_deterministic_mode_for_provider():
     os.environ["AIP_CI_MODE"] = "1"
     with tempfile.TemporaryDirectory() as tmp:
         cfg = Path(tmp) / "ci.yaml"
@@ -58,7 +58,7 @@ def test_ci_deterministic_mode_for_provider():
             "slot_name: ci\nprovider_name: ci-fixture\nbase_url: http://example\nmodel: test\n"
         )
         p = YamlPluginProvider(str(cfg))
-        resp = asyncio.get_event_loop().run_until_complete(p.call_model("hello world", {}))
+        resp = await p.call_model("hello world", {})
         assert "[CI-FIXTURE]" in resp
     del os.environ["AIP_CI_MODE"]
 

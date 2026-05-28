@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from aip.orchestration.workflow.definition import WorkflowDefinition
-from aip.orchestration.workflow.node import DialogNode, NodeType, ScriptNode, ParallelNode
+from aip.orchestration.workflow.node import DialogNode, NodeType, ScriptNode, ParallelNode, NodeResult
 from aip.orchestration.workflow.context import WorkflowContext
 from aip.orchestration.workflow.runner import SequentialRunner
 from aip.orchestration.nodes.synthesis import SynthesisOutput

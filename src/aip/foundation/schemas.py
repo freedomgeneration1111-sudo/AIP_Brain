@@ -577,6 +577,10 @@ class CanonicalPromotionConfig:
     auto_promote_on_approval: bool = False  # requires explicit DEFINER gate in 9.2
     require_vigil_health_check: bool = True
     indexing_enabled: bool = True  # LexicalStore + VectorStore sync
+    require_faithfulness_check: bool = True
+    require_domain_coherence: bool = True
+    require_definer_approval: bool = True
+    auto_reindex_on_promotion: bool = True
 
 
 @dataclass

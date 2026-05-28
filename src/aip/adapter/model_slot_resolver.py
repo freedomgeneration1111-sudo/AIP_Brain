@@ -27,6 +27,13 @@ class ModelSlotResolver(ModelProvider):
 
     def resolve(self, slot_name: str) -> ModelSlotConfig:
         if slot_name not in self._models:
+            # In ci_mode, auto-create a stub slot for any requested name
+            if self._ci_mode:
+                return ModelSlotConfig(
+                    slot_name=slot_name,
+                    provider="stub",
+                    model=f"<{slot_name}>",
+                )
             raise ValueError(f"Unknown model slot: {slot_name}")
 
         slot_cfg = self._models[slot_name]

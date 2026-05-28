@@ -26,52 +26,52 @@ router = APIRouter() if APIRouter is not None else None
 if router is not None:
     @router.websocket("/chat/{session_id}")
     async def chat_websocket(websocket: WebSocket, session_id: str):
-    """WebSocket chat endpoint with DEFINER gate handling and ACE integration."""
-    await websocket.accept()
+        """WebSocket chat endpoint with DEFINER gate handling and ACE integration."""
+        await websocket.accept()
 
-    container = get_container(websocket)  # type: ignore  # in real lifespan context
+        container = get_container(websocket)  # type: ignore  # in real lifespan context
 
-    # In full impl: load ACE playbook for the session's domain (already done at session start per 8.1/8.2)
-    # container.ace_playbook.load_for_domain(...) if available
+        # In full impl: load ACE playbook for the session's domain (already done at session start per 8.1/8.2)
+        # container.ace_playbook.load_for_domain(...) if available
 
-    try:
-        while True:
-            data = await websocket.receive_text()
-            try:
-                msg = json.loads(data)
-            except Exception:
-                await websocket.send_json({"type": "error", "content": "invalid json"})
-                continue
+        try:
+            while True:
+                data = await websocket.receive_text()
+                try:
+                    msg = json.loads(data)
+                except Exception:
+                    await websocket.send_json({"type": "error", "content": "invalid json"})
+                    continue
 
-            if msg.get("type") == "message":
-                content = msg.get("content", "")
-                # Simulate synthesis + possible gate (real impl runs the workflow)
-                # For 8.3 scaffold we echo + demonstrate gate flow
-                if "gate" in content.lower():
-                    # Simulate hitting a dialog node
-                    await websocket.send_json({
-                        "type": "gate",
-                        "gate_type": "definer_review",
-                        "artifact_id": "art-demo-123",
-                        "preview": "Proposed design decision..."
-                    })
-                else:
+                if msg.get("type") == "message":
+                    content = msg.get("content", "")
+                    # Simulate synthesis + possible gate (real impl runs the workflow)
+                    # For 8.3 scaffold we echo + demonstrate gate flow
+                    if "gate" in content.lower():
+                        # Simulate hitting a dialog node
+                        await websocket.send_json({
+                            "type": "gate",
+                            "gate_type": "definer_review",
+                            "artifact_id": "art-demo-123",
+                            "preview": "Proposed design decision..."
+                        })
+                    else:
+                        await websocket.send_json({
+                            "type": "response",
+                            "content": f"Echo (scaffold): {content}",
+                            "artifacts": [],
+                            "tokens_used": 42
+                        })
+                elif msg.get("type") == "gate_response":
+                    approved = msg.get("approved", False)
                     await websocket.send_json({
                         "type": "response",
-                        "content": f"Echo (scaffold): {content}",
-                        "artifacts": [],
-                        "tokens_used": 42
+                        "content": f"Gate {'approved' if approved else 'rejected'} (workflow resumed)",
+                        "artifacts": ["art-demo-123"] if approved else [],
+                        "tokens_used": 10
                     })
-            elif msg.get("type") == "gate_response":
-                approved = msg.get("approved", False)
-                await websocket.send_json({
-                    "type": "response",
-                    "content": f"Gate {'approved' if approved else 'rejected'} (workflow resumed)",
-                    "artifacts": ["art-demo-123"] if approved else [],
-                    "tokens_used": 10
-                })
-            else:
-                await websocket.send_json({"type": "error", "content": "unknown message type"})
-    except WebSocketDisconnect:
-        # In real impl: write disconnect event, update SessionContext
-        pass
+                else:
+                    await websocket.send_json({"type": "error", "content": "unknown message type"})
+        except WebSocketDisconnect:
+            # In real impl: write disconnect event, update SessionContext
+            pass

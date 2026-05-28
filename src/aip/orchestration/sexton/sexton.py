@@ -17,9 +17,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from aip.foundation.protocols import TraceStore, EventStore
+from aip.foundation.protocols import ModelProvider, TraceStore, EventStore
 from aip.foundation.schemas import SextonConfig, FailureClassification
-from aip.adapter.model_slot_resolver import ModelSlotResolver
 
 
 class Sexton:
@@ -40,7 +39,7 @@ class Sexton:
     def __init__(
         self,
         config: SextonConfig | None = None,
-        model_resolver: ModelSlotResolver | None = None,
+        model_resolver: ModelProvider | None = None,
         trace_store: TraceStore | None = None,
         event_store: EventStore | None = None,
     ) -> None:
@@ -149,7 +148,7 @@ class Sexton:
             "usage provides higher fidelity per §16.1."
         )
 
-        if self._model_resolver is not None and not getattr(self._model_resolver, "_ci_mode", False):
+        if self._model_resolver is not None and not getattr(self._model_resolver, "_ci_mode", True):
             # Real path: use the "sexton" slot (per spec §4.1 and 7.1 prose)
             prompt = self._build_classification_prompt(event)
             try:

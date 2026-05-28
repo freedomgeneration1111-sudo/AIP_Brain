@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from aip.foundation.protocols import LexicalStore
@@ -73,7 +73,7 @@ class SqliteFts5LexicalStore(LexicalStore):
         conn = self._get_conn()
         try:
             meta_json = json.dumps(metadata or {})
-            now = datetime.utcnow().isoformat() + "Z"
+            now = datetime.now(timezone.utc).isoformat() + "Z"
 
             # Upsert into documents table
             conn.execute(

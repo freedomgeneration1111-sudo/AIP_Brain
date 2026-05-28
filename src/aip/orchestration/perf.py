@@ -61,13 +61,21 @@ class PerformanceProfiler:
 
     async def get_system_metrics(self) -> dict:
         """Return current system metrics (CPU, memory, sessions, DB sizes, model health)."""
-        # Synthetic/deterministic values for laptop-viable profile (no real system calls in CI)
+        try:
+            import psutil
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+            memory_info = psutil.virtual_memory()
+            memory_mb = memory_info.used / (1024 * 1024)
+        except ImportError:
+            cpu_percent = 0.0
+            memory_mb = 0
+
         return {
-            "cpu_percent": 12.5,
-            "memory_mb": 1850,
-            "active_sessions": 3,
-            "db_sizes": {"state": "12MB", "events": "8MB", "trace": "5MB", "vectors": "45MB", "lexical": "18MB"},
-            "model_slot_health": {"synthesis": "ok", "evaluation": "ok"},
+            "cpu_percent": cpu_percent,
+            "memory_mb": round(memory_mb, 1),
+            "active_sessions": 0,  # Would come from session manager
+            "db_sizes": {},  # Would come from store health checks
+            "model_slot_health": {},
             "profiling_enabled": self.config.profiling_enabled,
         }
 
@@ -80,13 +88,14 @@ class PerformanceProfiler:
 
     async def get_memory_usage(self) -> dict:
         """Detailed memory breakdown by component."""
+        try:
+            import psutil
+            total_mb = psutil.virtual_memory().used / (1024 * 1024)
+        except ImportError:
+            total_mb = 0
+
         return {
-            "total_mb": 1850,
-            "vector_index": 320,
-            "lexical_fts5": 180,
-            "active_sessions": 45,
-            "model_pools": 120,
-            "compiled_knowledge_cache": 210,
-            "other": 975,
+            "total_mb": round(total_mb, 1),
             "max_target_mb": self.config.max_memory_mb,
+            "within_target": total_mb <= self.config.max_memory_mb,
         }

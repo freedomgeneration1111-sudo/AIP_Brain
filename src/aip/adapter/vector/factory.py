@@ -59,10 +59,24 @@ async def create_vector_store(config: Any) -> VectorStore:
 
 
 async def _create_sqlite_vss(vector_cfg: dict) -> VectorStore:
-    """Create SqliteVssVectorStore as default or fallback."""
-    from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
+    """Create SqliteVssVectorStore as default or fallback.
+    
+    If sqlite_vss is not available, returns an InMemoryVectorStore
+    as a last-resort fallback (graceful degradation per §7.3).
+    """
+    try:
+        from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
 
-    db_path = vector_cfg.get("db_path", "db/vectors.db")
-    store = SqliteVssVectorStore(db_path)
-    logger.info("VectorStore: sqlite_vss backend initialized")
-    return store
+        db_path = vector_cfg.get("db_path", "db/vectors.db")
+        store = SqliteVssVectorStore(db_path)
+        if store._vss_available:
+            logger.info("VectorStore: sqlite_vss backend initialized")
+            return store
+        else:
+            logger.warning("sqlite_vss extension not available, falling back to in-memory store")
+    except Exception as e:
+        logger.warning(f"sqlite_vss store creation failed ({e}), falling back to in-memory store")
+
+    # Last-resort in-memory fallback
+    from aip.adapter.vector._in_memory import InMemoryVectorStore
+    return InMemoryVectorStore()

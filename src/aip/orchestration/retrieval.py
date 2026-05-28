@@ -7,6 +7,7 @@ Config-driven (Delta 5), explicit embed_fn (Delta 4), TraceStore logging on fail
 
 from __future__ import annotations
 
+import asyncio
 import math
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
@@ -124,7 +125,11 @@ async def retrieve_for_synthesis(
         threshold = retrieval.get("confidence_threshold", 0.30)
 
     # Embed (Delta 4: explicit, no NotImplemented in VectorStore)
-    query_vector = embed_fn(query)
+    _vec = embed_fn(query)
+    if asyncio.iscoroutine(_vec):
+        query_vector = await _vec
+    else:
+        query_vector = _vec
 
     # Retrieve (now using the amended protocol with query_vector)
     raw_hits = await vector_store.retrieve(query_vector, domain=domain, top_k=20)

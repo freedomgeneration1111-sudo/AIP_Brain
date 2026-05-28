@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from aip.foundation.protocols import AutonomyGate
@@ -90,7 +90,7 @@ class AutonomyGateImpl(AutonomyGate):
             granted=bool(granted),
             reason="auto-granted" if granted else "escalation required",
             model_gen_assumption=self._config.get("model_gen_assumption"),
-            created_at=datetime.utcnow().isoformat() + "Z",
+            created_at=datetime.now(timezone.utc).isoformat() + "Z",
         )
         self._record_escalation(esc)
         return esc
@@ -125,7 +125,7 @@ class AutonomyGateImpl(AutonomyGate):
             granted=bool(granted),
             reason=reason,
             model_gen_assumption=self._config.get("model_gen_assumption"),
-            created_at=datetime.utcnow().isoformat() + "Z",
+            created_at=datetime.now(timezone.utc).isoformat() + "Z",
         )
         self._record_escalation(esc)
         return esc

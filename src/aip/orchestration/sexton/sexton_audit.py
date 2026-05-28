@@ -14,9 +14,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from aip.foundation.protocols import EventStore
+from aip.foundation.protocols import EventStore, ModelProvider
 from aip.foundation.schemas import AcePlaybookEntry, ContractRule, ModelSlotConfig
-from aip.adapter.model_slot_resolver import ModelSlotResolver
 
 
 class SextonAudit:
@@ -27,7 +26,7 @@ class SextonAudit:
     wrong-path actors/ implementations.
     """
 
-    def __init__(self, model_resolver: ModelSlotResolver, event_store: EventStore) -> None:
+    def __init__(self, model_resolver: ModelProvider, event_store: EventStore) -> None:
         self._model_resolver = model_resolver
         self._event_store = event_store
 
@@ -113,7 +112,7 @@ class SextonAudit:
         current_slots: dict[str, ModelSlotConfig],
     ) -> dict:
         """Internal assessment using resolver or CI heuristic."""
-        if self._model_resolver is not None and not getattr(self._model_resolver, "_ci_mode", False):
+        if self._model_resolver is not None and not getattr(self._model_resolver, "_ci_mode", True):
             prompt = (
                 f"Rule: {rule_text}\n"
                 f"Documented assumption: {assumption}\n"

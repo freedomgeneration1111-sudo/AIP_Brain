@@ -36,21 +36,21 @@ def profiler():
     return FakeProfiler()
 
 
-def test_profile_operation(profiler):
+async def test_profile_operation(profiler):
     async def dummy():
         return "ok"
-    res = asyncio.get_event_loop().run_until_complete(profiler.profile_operation("test_op", dummy))
+    res = await profiler.profile_operation("test_op", dummy)
     assert res["success"]
     assert res["duration_ms"] > 0
 
 
-def test_system_metrics(profiler):
-    metrics = asyncio.get_event_loop().run_until_complete(profiler.get_system_metrics())
+async def test_system_metrics(profiler):
+    metrics = await profiler.get_system_metrics()
     assert "memory_mb" in metrics
 
 
-def test_memory_below_target(profiler):
-    usage = asyncio.get_event_loop().run_until_complete(profiler.get_memory_usage())
+async def test_memory_below_target(profiler):
+    usage = await profiler.get_memory_usage()
     assert usage["total_mb"] < usage["max_target_mb"]
 
 

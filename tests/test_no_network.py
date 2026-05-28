@@ -33,7 +33,8 @@ def _get_python_files(base: Path) -> list[Path]:
 
 def test_no_network_imports_in_production_code():
     """
-    Production code must not import network/LLM client libraries directly.
+    Foundation and orchestration code must not import network/LLM client libraries directly.
+    Adapter code may import them (per §7.2: adapter is the correct place for HTTP calls).
     All such access must go through the configured model abstraction layer.
     """
     repo_root = Path(__file__).parent.parent / "src" / "aip"
@@ -42,6 +43,10 @@ def test_no_network_imports_in_production_code():
     violations = []
 
     for py_file in py_files:
+        # Adapter layer is allowed to use network libraries per §7.2
+        if "adapter" in str(py_file):
+            continue
+
         try:
             tree = ast.parse(py_file.read_text(encoding="utf-8"))
         except SyntaxError:
@@ -60,6 +65,6 @@ def test_no_network_imports_in_production_code():
                         violations.append(f"{py_file.relative_to(repo_root)}: from {name} import ...")
 
     assert not violations, (
-        "The following files import forbidden network libraries:\n"
+        "The following foundation/orchestration files import forbidden network libraries:\n"
         + "\n".join(violations)
     )

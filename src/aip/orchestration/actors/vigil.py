@@ -43,25 +43,51 @@ class Vigil:
 
     async def check_canonical_health(self) -> dict:
         """Return aggregate canonical health status."""
-        # In full impl: query all canonicals via canonical_store, cross with vigil_store health
-        # For scaffold: return shape with counts
-        return {
-            "total_count": 0,
-            "stale_count": 0,
-            "healthy_count": 0,
-            "degraded_count": 0,
-            "status": "healthy",
-        }
+        try:
+            canonicals = await self.canonical_store.list_canonical()
+            total = len(canonicals)
+            stale = await self.detect_stale_canonicals()
+            return {
+                "total_count": total,
+                "stale_count": len(stale),
+                "healthy_count": total - len(stale),
+                "degraded_count": len(stale),
+                "status": "healthy" if len(stale) == 0 else "degraded",
+            }
+        except Exception:
+            return {
+                "total_count": 0,
+                "stale_count": 0,
+                "healthy_count": 0,
+                "degraded_count": 0,
+                "status": "unknown",
+            }
 
     async def detect_stale_canonicals(self) -> list[dict]:
         """Return list of stale canonicals (threshold + model slot)."""
-        # Uses vigil_store.list_stale_canonicals + current model config
-        return []
+        try:
+            max_age = getattr(self.config, 'staleness_threshold_seconds', 86400)
+            # Convert seconds to approximate days for the store's threshold_days param
+            threshold_days = max(1, max_age // 86400)
+            return await self.vigil_store.list_stale_canonicals(threshold_days=threshold_days)
+        except Exception:
+            return []
 
     async def detect_entity_inconsistencies(self) -> list[dict]:
         """Return entities referenced by canonicals that have been updated since promotion."""
-        # Cross entity_store updates with canonical creation dates
-        return []
+        try:
+            entities = await self.entity_store.list_entities()
+            # Check for entities updated more recently than their referencing canonicals
+            inconsistencies = []
+            for entity in entities:
+                entity_id = entity.get("entity_id") or entity.get("id")
+                if entity_id:
+                    entity_data = await self.entity_store.get_entity(entity_id)
+                    if entity_data and entity_data.get("updated_since_canonical"):
+                        inconsistencies.append(entity_data)
+            return inconsistencies
+        except Exception:
+            return []
 
     async def on_model_slot_change(
         self, slot_name: str, old_config: ModelSlotConfig, new_config: ModelSlotConfig

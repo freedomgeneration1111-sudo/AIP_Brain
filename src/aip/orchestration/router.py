@@ -13,9 +13,8 @@ from __future__ import annotations
 import random
 from typing import Any
 
-from aip.foundation.protocols import EventStore
+from aip.foundation.protocols import EventStore, ModelProvider
 from aip.foundation.schemas import RoutingWeight
-from aip.adapter.model_slot_resolver import ModelSlotResolver
 from aip.orchestration.budget import BudgetManager
 
 
@@ -24,7 +23,7 @@ class AdaptiveRouter:
 
     def __init__(
         self,
-        model_resolver: ModelSlotResolver,
+        model_resolver: ModelProvider,
         budget_manager: BudgetManager,
         config: dict[str, Any] | None = None,
     ) -> None:

@@ -54,35 +54,33 @@ def compiler():
         FakeModel(), FakeEmbed(), FakeTrace(), FakeEvent(), FakeEcs(), FakeVigil()
     )
 
-def test_compile_from_canonicals_produces_artifact(compiler):
-    res = asyncio.get_event_loop().run_until_complete(
-        compiler.compile_from_canonicals("test", "overview")
-    )
+async def test_compile_from_canonicals_produces_artifact(compiler):
+    res = await compiler.compile_from_canonicals("test", "overview")
     assert "knowledge_id" in res
     assert res["state"] == "COMPILED"
     assert "content" in res
 
-def test_domain_summary_and_cross_reference(compiler):
-    s = asyncio.get_event_loop().run_until_complete(compiler.compile_domain_summary("demo"))
+async def test_domain_summary_and_cross_reference(compiler):
+    s = await compiler.compile_domain_summary("demo")
     assert s["domain"] == "demo"
-    xr = asyncio.get_event_loop().run_until_complete(compiler.compile_cross_reference(s["knowledge_id"]))
+    xr = await compiler.compile_cross_reference(s["knowledge_id"])
     assert "cross_references" in xr
 
-def test_evaluate_transitions_state(compiler):
-    s = asyncio.get_event_loop().run_until_complete(compiler.compile_from_canonicals("d", "t"))
-    ev = asyncio.get_event_loop().run_until_complete(compiler.evaluate_compiled(s["knowledge_id"]))
+async def test_evaluate_transitions_state(compiler):
+    s = await compiler.compile_from_canonicals("d", "t")
+    ev = await compiler.evaluate_compiled(s["knowledge_id"])
     assert ev["new_state"] in ("REVIEWED", "FAILED")
     assert "scores" in ev
 
-def test_list_candidates_and_run(compiler):
-    cands = asyncio.get_event_loop().run_until_complete(compiler.list_compilation_candidates())
+async def test_list_candidates_and_run(compiler):
+    cands = await compiler.list_compilation_candidates()
     assert len(cands) > 0
     # run() should not raise
-    asyncio.get_event_loop().run_until_complete(compiler.run())
+    await compiler.run()
 
-def test_provenance_recorded_and_indexed_on_approval(compiler):
-    s = asyncio.get_event_loop().run_until_complete(compiler.compile_from_canonicals("d", "t"))
-    prov = asyncio.get_event_loop().run_until_complete(compiler.knowledge_store.get_provenance(s["knowledge_id"]))
+async def test_provenance_recorded_and_indexed_on_approval(compiler):
+    s = await compiler.compile_from_canonicals("d", "t")
+    prov = await compiler.knowledge_store.get_provenance(s["knowledge_id"])
     # In our impl provenance is populated on store
     assert isinstance(prov, list)
 
@@ -91,8 +89,8 @@ def test_no_mutation_of_canonicals(compiler):
     # We simply assert the method exists and is not a write path in our code
     assert hasattr(compiler.canonical_store, "read") or hasattr(compiler.canonical_store, "list")
 
-def test_trace_and_budget_respect(compiler):
+async def test_trace_and_budget_respect(compiler):
     # Trace recording is best-effort and non-fatal
     # Budget is noted in run(); full enforcement via injected BudgetManager in wiring
-    asyncio.get_event_loop().run_until_complete(compiler.run())
+    await compiler.run()
     assert True  # if we reached here without crash, trace path executed

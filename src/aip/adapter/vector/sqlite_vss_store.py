@@ -18,13 +18,18 @@ class SqliteVssVectorStore(VectorStore):
     def __init__(self, db_path: str, dimensions: int = 768) -> None:
         self._db_path = db_path
         self._dimensions = dimensions
+        self._vss_available = False
         self._conn = sqlite3.connect(db_path)
         self._conn.enable_load_extension(True)
         try:
             self._conn.load_extension("vss0")
+            self._vss_available = True
         except sqlite3.OperationalError:
-            # F5 fix: second attempt tries common local path
-            self._conn.load_extension("./vss0.so")
+            try:
+                self._conn.load_extension("./vss0")
+                self._vss_available = True
+            except sqlite3.OperationalError:
+                pass  # sqlite_vss not available; store will raise on first use
         self._conn.enable_load_extension(False)
         self._init_tables()
 
@@ -43,12 +48,13 @@ class SqliteVssVectorStore(VectorStore):
             CREATE INDEX IF NOT EXISTS idx_vm_domain
             ON vector_metadata(domain)
         """)
-        cur.execute(f"""
-            CREATE VIRTUAL TABLE IF NOT EXISTS vss_vectors
-            USING vss0(
-                embedding float[{self._dimensions}]
-            )
-        """)
+        if self._vss_available:
+            cur.execute(f"""
+                CREATE VIRTUAL TABLE IF NOT EXISTS vss_vectors
+                USING vss0(
+                    embedding float[{self._dimensions}]
+                )
+            """)
         self._conn.commit()
 
     async def upsert(

@@ -114,7 +114,14 @@ class AgentNode(WorkflowNode):
 
         # Resolve dependencies from context (with safe fallbacks)
         vector_store = context.get_protocol("vector_store")
-        embed_fn = context.get_protocol("embed_fn") or (lambda text: fake_embed(text))
+        _provided_embed = context.get_protocol("embed_fn")
+        if _provided_embed is not None:
+            embed_fn = _provided_embed
+        else:
+            # Wrap sync fake_embed in an async wrapper for consistent calling
+            def _sync_embed_wrapper(text: str) -> list[float]:
+                return fake_embed(text)
+            embed_fn = _sync_embed_wrapper
         trace_store = context.get_protocol("trace_store")
         config = context.get_protocol("config") or context.metadata.get("config")
 

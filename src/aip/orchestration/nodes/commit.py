@@ -62,29 +62,33 @@ async def commit_artifact(
         "token_count_in": synthesis.token_count_in,
         "token_count_out": synthesis.token_count_out,
     }
-    await artifact_store.write(artifact_id, synthesis.content, metadata)
+
+    if artifact_store is not None:
+        await artifact_store.write(artifact_id, synthesis.content, metadata)
 
     from_state = "SPECIFIED"   # typical starting state before commit
     to_state = "GENERATED"
 
     # P2 fix: must pass actor and reason
-    await ecs_store.transition(
-        artifact_id=artifact_id,
-        from_state=from_state,
-        to_state=to_state,
-        actor="definer_gate",
-        reason="DEFINER approved",
-    )
+    if ecs_store is not None:
+        await ecs_store.transition(
+            artifact_id=artifact_id,
+            from_state=from_state,
+            to_state=to_state,
+            actor="definer_gate",
+            reason="DEFINER approved",
+        )
 
     # R3: record the ECS transition in the event log
-    await event_store.write_event(
-        event_type="ecs_transition",
-        actor="definer_gate",
-        artifact_id=artifact_id,
-        from_state=from_state,
-        to_state=to_state,
-        reason="DEFINER approved",
-    )
+    if event_store is not None:
+        await event_store.write_event(
+            event_type="ecs_transition",
+            actor="definer_gate",
+            artifact_id=artifact_id,
+            from_state=from_state,
+            to_state=to_state,
+            reason="DEFINER approved",
+        )
 
     return ArtifactRef(
         artifact_id=artifact_id,
