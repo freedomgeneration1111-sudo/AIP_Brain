@@ -1,12 +1,15 @@
 """Tests for Beast Actor — honest health checks, real corpus maintenance, entity maintenance.
 
 Covers:
-- Instantiation with all constructor parameters
+- Instantiation with all constructor parameters (including project_store=None)
 - run_health_check() performs real probes (no hardcoded values)
 - run_corpus_maintenance() uses list_stale_vectors() and re-embeds
+- run_corpus_maintenance() falls back to global mode without project_store
 - run_entity_maintenance() with and without entity_store
+- run_cycle() cadence method
 - Event emission via EventStore
 - Graceful degradation when stores are unavailable
+- Backward compatibility with old constructor signatures
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -27,6 +30,7 @@ def _make_beast(
     event_store: EventStore | None = None,
     entity_store: EntityStore | None = None,
     canonical_store: CanonicalStore | None = None,
+    project_store: ProjectStore | None | object = "_default",  # sentinel
 ) -> Beast:
     """Factory for Beast instances with sensible async mocks."""
     cfg = config or BeastCadenceConfig()
@@ -41,8 +45,12 @@ def _make_beast(
     else:
         ep.embed.return_value = [0.1] * 768
 
-    ps = AsyncMock(spec=ProjectStore)
-    ps.list_projects.return_value = projects or []
+    # Handle project_store: default creates a mock, None means no store
+    if project_store == "_default":
+        ps = AsyncMock(spec=ProjectStore)
+        ps.list_projects.return_value = projects or []
+    else:
+        ps = project_store  # None or user-provided mock
 
     return Beast(
         config=cfg,
@@ -88,6 +96,19 @@ class TestBeastInstantiation:
         b = _make_beast(canonical_store=cs)
         assert b._canonical_store is cs
 
+    def test_project_store_none_by_default(self):
+        b = _make_beast(project_store=None)
+        assert b._projects is None
+
+    def test_project_store_injected_via_constructor(self):
+        ps = AsyncMock(spec=ProjectStore)
+        b = _make_beast(project_store=ps)
+        assert b._projects is ps
+
+    def test_last_cycle_time_initially_none(self):
+        b = _make_beast()
+        assert b._last_cycle_time is None
+
 
 # -----------------------------------------------------------------------
 # run_health_check()
@@ -123,11 +144,10 @@ class TestRunHealthCheck:
     async def test_vector_store_health_check_raises(self):
         vs = AsyncMock(spec=VectorStore)
         vs.health_check.side_effect = ConnectionError("unreachable")
-        ps = AsyncMock(spec=ProjectStore)
         ep = AsyncMock(spec=EmbeddingProvider)
         ep.embed.return_value = [0.1] * 768
 
-        b = Beast(config=BeastCadenceConfig(), vector_store=vs, embedding_provider=ep, project_store=ps)
+        b = Beast(config=BeastCadenceConfig(), vector_store=vs, embedding_provider=ep, project_store=None)
         health = await b.run_health_check()
 
         assert health["overall"] == "degraded"
@@ -177,6 +197,24 @@ class TestRunHealthCheck:
         health = await b.run_health_check()
 
         assert health["canonical_store"]["connected"] is False
+
+    @pytest.mark.asyncio
+    async def test_project_store_not_configured(self):
+        b = _make_beast(project_store=None)
+        health = await b.run_health_check()
+
+        assert health["project_store"]["connected"] is False
+        assert health["project_store"].get("status") == "not_configured"
+
+    @pytest.mark.asyncio
+    async def test_project_store_healthy(self):
+        ps = AsyncMock(spec=ProjectStore)
+        ps.list_projects.return_value = []
+        b = _make_beast(project_store=ps)
+        health = await b.run_health_check()
+
+        assert health["project_store"]["connected"] is True
+        assert "latency_ms" in health["project_store"]
 
     @pytest.mark.asyncio
     async def test_event_emitted_on_health_check(self):
@@ -242,11 +280,8 @@ class TestRunCorpusMaintenance:
             {"id": "v1", "domain": "p1", "metadata": {"content": "good"}},
             {"id": "v2", "domain": "p1", "metadata": {"content": "bad"}},
         ]
-        embed_call_count = 0
 
         async def embed_side_effect(text):
-            nonlocal embed_call_count
-            embed_call_count += 1
             if text == "bad":
                 raise RuntimeError("Embedding failed")
             return [0.1] * 768
@@ -291,8 +326,7 @@ class TestRunCorpusMaintenance:
         ps = AsyncMock(spec=ProjectStore)
         ps.list_projects.side_effect = RuntimeError("DB down")
 
-        b = _make_beast()
-        b._projects = ps
+        b = _make_beast(project_store=ps)
 
         with pytest.raises(RuntimeError, match="DB down"):
             await b.run_corpus_maintenance()
@@ -325,6 +359,48 @@ class TestRunCorpusMaintenance:
 
         call_args = b._vector.list_stale_vectors.call_args
         assert call_args.kwargs["threshold_days"] == 7
+
+
+# -----------------------------------------------------------------------
+# run_corpus_maintenance() — global mode (no project_store)
+# -----------------------------------------------------------------------
+
+class TestCorpusMaintenanceGlobal:
+    @pytest.mark.asyncio
+    async def test_global_mode_without_project_store(self):
+        """When project_store is None, corpus maintenance runs in global mode."""
+        b = _make_beast(project_store=None, vs_stale=[
+            {"id": "v1", "metadata": {"content": "hello"}},
+        ])
+        result = await b.run_corpus_maintenance()
+
+        assert result["mode"] == "global_no_project_store"
+        assert result["projects_checked"] == 0
+        assert result["stale_vectors_found"] == 1
+        assert result["vectors_reembedded"] == 1
+
+    @pytest.mark.asyncio
+    async def test_global_mode_calls_list_stale_without_domain(self):
+        """Global mode should call list_stale_vectors with domain=None."""
+        b = _make_beast(project_store=None)
+        await b.run_corpus_maintenance()
+
+        call_args = b._vector.list_stale_vectors.call_args
+        assert call_args.kwargs["domain"] is None
+
+    @pytest.mark.asyncio
+    async def test_global_mode_handles_failure(self):
+        """Global mode should handle list_stale_vectors failure gracefully."""
+        vs = AsyncMock(spec=VectorStore)
+        vs.list_stale_vectors.side_effect = RuntimeError("Vector store down")
+        ep = AsyncMock(spec=EmbeddingProvider)
+        ep.embed.return_value = [0.1] * 768
+
+        b = Beast(config=BeastCadenceConfig(), vector_store=vs, embedding_provider=ep, project_store=None)
+        result = await b.run_corpus_maintenance()
+
+        assert result["errors"] == 1
+        assert result["mode"] == "global_no_project_store"
 
 
 # -----------------------------------------------------------------------
@@ -402,8 +478,6 @@ class TestRunEntityMaintenance:
         b = _make_beast(entity_store=es, event_store=ev)
         await b.run_entity_maintenance()
 
-        # Should emit two events: stale detection + health check not called here
-        # Find the stale detection event
         stale_calls = [
             c for c in ev.write_event.call_args_list
             if c.kwargs.get("event_type") == "beast_entity_stale_detected"
@@ -425,12 +499,58 @@ class TestRunEntityMaintenance:
         b = _make_beast(entity_store=es, event_store=ev)
         await b.run_entity_maintenance()
 
-        # No stale event should be emitted
         stale_calls = [
             c for c in ev.write_event.call_args_list
             if c.kwargs.get("event_type") == "beast_entity_stale_detected"
         ]
         assert len(stale_calls) == 0
+
+
+# -----------------------------------------------------------------------
+# run_cycle() — cadence method
+# -----------------------------------------------------------------------
+
+class TestRunCycle:
+    @pytest.mark.asyncio
+    async def test_run_cycle_returns_summary(self):
+        b = _make_beast(projects=[])
+        summary = await b.run_cycle()
+
+        assert "health_overall" in summary
+        assert "corpus" in summary
+        assert "entity" in summary
+        assert "cycle_elapsed_seconds" in summary
+        assert summary["cycle_elapsed_seconds"] >= 0
+
+    @pytest.mark.asyncio
+    async def test_run_cycle_updates_last_cycle_time(self):
+        b = _make_beast(projects=[])
+        assert b._last_cycle_time is None
+
+        await b.run_cycle()
+        assert b._last_cycle_time is not None
+
+    @pytest.mark.asyncio
+    async def test_run_cycle_emits_event(self):
+        ev = AsyncMock(spec=EventStore)
+        b = _make_beast(event_store=ev, projects=[])
+        await b.run_cycle()
+
+        # Should emit at least: health_check, corpus_maintenance, cycle_complete
+        cycle_events = [
+            c for c in ev.write_event.call_args_list
+            if c.kwargs.get("event_type") == "beast_cycle_complete"
+        ]
+        assert len(cycle_events) == 1
+        assert "cycle_elapsed_seconds" in cycle_events[0].kwargs
+
+    @pytest.mark.asyncio
+    async def test_run_cycle_works_without_project_store(self):
+        b = _make_beast(project_store=None)
+        summary = await b.run_cycle()
+
+        assert summary["health_overall"] in ("ok", "degraded")
+        assert summary["corpus"]["mode"] == "global_no_project_store"
 
 
 # -----------------------------------------------------------------------
@@ -475,8 +595,8 @@ class TestEventEmission:
 
 class TestBackwardCompatibility:
     @pytest.mark.asyncio
-    async def test_old_constructor_still_works_without_new_params(self):
-        """Ensure callers that don't pass entity_store or canonical_store still work."""
+    async def test_old_constructor_still_works_with_positional_project_store(self):
+        """Ensure callers that pass project_store positionally still work."""
         cfg = BeastCadenceConfig()
         vs = AsyncMock(spec=VectorStore)
         vs.health_check.return_value = {"connected": True}
@@ -485,9 +605,24 @@ class TestBackwardCompatibility:
         ps = AsyncMock(spec=ProjectStore)
         ps.list_projects.return_value = []
 
-        b = Beast(config=cfg, vector_store=vs, embedding_provider=ep, project_store=ps)
+        # Old-style: project_store as 4th positional arg
+        b = Beast(cfg, vs, ep, ps)
         health = await b.run_health_check()
         assert health["overall"] in ("ok", "degraded")
+
+    @pytest.mark.asyncio
+    async def test_constructor_without_project_store(self):
+        """New-style: omit project_store entirely (defaults to None)."""
+        cfg = BeastCadenceConfig()
+        vs = AsyncMock(spec=VectorStore)
+        vs.health_check.return_value = {"connected": True}
+        ep = AsyncMock(spec=EmbeddingProvider)
+        ep.embed.return_value = [0.1] * 768
+
+        b = Beast(config=cfg, vector_store=vs, embedding_provider=ep)
+        assert b._projects is None
+        health = await b.run_health_check()
+        assert health["project_store"]["connected"] is False
 
     @pytest.mark.asyncio
     async def test_admin_route_compatible_return_shape(self):

@@ -55,7 +55,7 @@
 | **Sexton: sexton.py** | Real/Mostly Working | 20% | Real deterministic + model-based classification. **Bug**: `run_classification_cycle()` writes events with wrong signatures (passes dict instead of kwargs to `write_event()`). `derive_intervention_rule()` returns None — stub. | Fix event write call signatures. Implement derive_intervention_rule. | High |
 | **Sexton: sexton_audit.py** | Partial/Hybrid | 35% | Real stale assumption audit. `flag_deprecated_rules()` — playbook deprecation call is `pass` (no-op). Same event store write signature mismatch as sexton.py. | Fix event write signatures. Implement playbook deprecation. | High |
 | **Actors: vigil.py** | Partial/Hybrid | 35% | Real canonical health monitoring. `detect_entity_inconsistencies` checks a flag that no code sets. `on_model_slot_change` only writes trace event — doesn't trigger re-evaluation. | Wire re-evaluation on slot change. Verify entity flag is set. | High |
-| **Actors: beast.py** | Mostly Scaffolding | 55% | **DANGEROUS**: `run_corpus_maintenance()` calls `health_check()` in a loop instead of re-indexing. `run_health_check()` returns hardcoded `ollama: {connected: True, latency_ms: 5}`. `entity_store` never wired → `entities_checked: 0` always. | Implement actual re-indexing. Fix fake health check. Wire entity_store. | Critical |
+| **Actors: beast.py** | Real/Mostly Working | 10% | **FIXED**: Real health checks (embedding provider, vector store, entity/canonical/project stores). Real corpus maintenance via `list_stale_vectors()` + re-embedding. Entity store properly injected via constructor. `project_store` is optional (global mode fallback). `run_cycle()` for periodic scheduling. Wired in lifespan. 58 tests pass. | Add background scheduler. Expand entity consistency checks. | Medium |
 | **Store: sqlite_entity_store.py** | Partial/Hybrid | 30% | Full CRUD. **P0 FIXED**: SQL injection in `update_entity` column names — now whitelisted. Blocking sqlite3 in async. `finally: pass` blocks. | Migrate to aiosqlite. Remove `finally: pass`. | High |
 | **Store: sqlite_fts5_store.py** | Real/Mostly Working | 10% | Cleanest store — real FTS5, parameterized queries, upsert via delete+reinsert. Blocking sqlite3 in async. | Migrate to aiosqlite. | Medium |
 | **Store: sqlite_vss_store.py** | Partial/Hybrid | 35% | **DANGEROUS**: `store()` compat method stores with `[0.0] * dimensions` zero-vector. Blocking sqlite3 in async. No `initialize()` method. | Remove zero-vector compat method. Add `initialize()`. Migrate to aiosqlite. | High |
@@ -72,7 +72,7 @@
 | **Store: event_store_queryable.py** | Real/Mostly Working | 15% | Clean append-only with indexes and parameterized queries. Blocking sqlite3 in async. `**kwargs` → metadata_json undocumented. | Migrate to aiosqlite. Document kwargs behavior. | Medium |
 | **Store: sqlite_knowledge_store.py** | Partial/Hybrid | 40% | **DANGEROUS**: `dummy_embedding = [0.0]*384` for all APPROVED items — vector search non-functional. `search_compiled` vector search is `pass` placeholder. Provenance uses empty strings. State transitions bypassed ("For 0.1 we log but allow"). Blocking sqlite3. | Wire real embeddings. Implement vector search. Fix provenance. | Critical |
 | **Store: auth/session_store.py** | Partial/Hybrid | 20% | **P0 FIXED**: `get_definer_identity()` no longer returns hardcoded DEFINER identity on error. Remaining: O(n) bcrypt scanning in `validate_api_key`. `finally: pass` blocks. `create_user` returns True even if user already existed. | Add rate limiting to validate_api_key. Fix create_user return. Use aiosqlite. | High |
-| **API: app.py** | Partial/Hybrid | 30% | Real FastAPI factory with 11 routers. `_AuthStoreProxy` uses `__getattr__` — typos silently return None. Lifespan only closes 4 of ~15 stores. | Close all stores in lifespan. Replace AuthStoreProxy. | High |
+| **API: app.py** | Partial/Hybrid | 20% | Real FastAPI factory with 11 routers. Lifespan wires stores + Beast actor. `_AuthStoreProxy` uses `__getattr__` — typos silently return None. Closes 7 stores on shutdown. | Replace AuthStoreProxy. Close remaining stores. | Medium |
 | **API: dependencies.py** | Real/Mostly Working | 15% | Clean DI container. Orchestration components typed as `Any`. `get_container` returns empty container on miss. | Raise error when container stores not initialized. | Medium |
 | **API: collaborators.py** | Partial/Hybrid | 15% | Functional CRUD with auth gates. **Password passed as query parameter** — logged in URLs. | Move password to POST body. | High |
 | **API: performance.py** | Partial/Hybrid | 40% | Routes structurally correct but delegate to `container.performance_profiler` which is never initialized. | Implement PerformanceProfiler or mark routes as stub. | Medium |
@@ -128,7 +128,7 @@ These components appear functional but contain fake logic that silently produces
 
 6. **review.py** — The `_automated_review()` function returns APPROVED at confidence=1.0 when no eval_fn is provided. The `_definer_review()` function always returns APPROVED at confidence=1.0 (CI fixture). Artifacts bypass the quality gate silently.
 
-7. **beast.py** — Health check returns hardcoded `{"connected": True, "latency_ms": 5}` for Ollama and "ok" for all databases without actually checking. `run_corpus_maintenance()` calls `health_check()` in a loop instead of re-indexing. The system appears healthy when it may not be.
+7. **beast.py** — **FIXED**: Health check now performs real connectivity probes (embedding provider, vector store, entity/canonical/project stores). Corpus maintenance uses `list_stale_vectors()` + re-embedding instead of health-check loop. Entity store properly injected via constructor. Wired in application lifespan.
 
 8. **health.py** — Embedding status always returns `{"status": "healthy"}` with model name "nomic-embed-text:v1.5" without actually checking if Ollama is running.
 
@@ -158,7 +158,7 @@ These components appear functional but contain fake logic that silently produces
 11. **embed_providers.py routes everything to fake_embed** — Even when config specifies "real" provider, code returns fake embeddings. OllamaEmbeddingClient exists but is never wired.
 12. **BudgetStore limits are hardcoded** — Session=500K, project=5M, daily=10M hardcoded rather than read from BudgetConfig.
 13. **CLI session/project commands are all scaffolding** — No actual backend integration.
-14. **AipContainer wiring is minimal** — Routes likely get None stores unless tests manually inject them.
+14. **AipContainer wiring** — **PARTIALLY FIXED**: Lifespan now wires vector_store, embedding_provider, entity_store, canonical_store, event_store, project_store, model_provider, and Beast actor. Some stores (lexical, ECS, budget, autonomy, auth) still not wired.
 15. **evaluation.py is a duplicate of l3a_orchestrator.py** — Identical content, only docstrings differ.
 16. **WorkflowContext has infinite budget by default** — `budget_remaining=None` means `consume_budget()` always returns True.
 17. **Password passed as query parameter in collaborators.py** — Gets logged in server access logs.

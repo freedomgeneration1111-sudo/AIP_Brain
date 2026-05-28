@@ -5,8 +5,25 @@ Deterministic (no LLM in main paths). Uses injected Protocols only.
 
 Phase 3 hardening: replaced fake health checks with real connectivity probes,
 replaced placeholder re-index loop with actual stale-vector detection via
-list_stale_vectors() + re-embedding via EmbeddingProvider, and properly
-injected EntityStore instead of getattr access.
+list_stale_vectors() + re-embedding via EmbeddingProvider, properly
+injected EntityStore instead of getattr access, made ProjectStore optional,
+and added cadence run_cycle() for periodic scheduling.
+
+Usage via AipContainer:
+    Beast is wired during application lifespan (app.py). To use it:
+
+        container = request.app.state.container
+        if container.beast:
+            health = await container.beast.run_health_check()
+
+    For periodic execution, call run_cycle() from a scheduler or background
+    task. It runs health check + corpus maintenance + entity maintenance in
+    sequence and returns a summary dict.
+
+    Alternatively, individual methods can be called independently:
+        await beast.run_health_check()
+        await beast.run_corpus_maintenance()
+        await beast.run_entity_maintenance()
 """
 from __future__ import annotations
 
@@ -33,6 +50,10 @@ class Beast:
     Performs real corpus maintenance (stale vector detection + re-embedding),
     entity consistency checks, and honest health reporting across all
     critical subsystems.
+
+    Constructor accepts optional stores (entity_store, canonical_store,
+    project_store) for graceful operation when those components are not
+    yet configured.
     """
 
     def __init__(
@@ -40,7 +61,7 @@ class Beast:
         config: BeastCadenceConfig,
         vector_store: VectorStore,
         embedding_provider: EmbeddingProvider,
-        project_store: ProjectStore,
+        project_store: ProjectStore | None = None,
         event_store: EventStore | None = None,
         entity_store: EntityStore | None = None,
         canonical_store: CanonicalStore | None = None,
@@ -52,6 +73,7 @@ class Beast:
         self._events = event_store
         self._entity_store = entity_store
         self._canonical_store = canonical_store
+        self._last_cycle_time: float | None = None
 
     # ------------------------------------------------------------------
     # Health Check
@@ -64,8 +86,9 @@ class Beast:
         Never fabricates a healthy status when a check actually fails.
 
         Returns:
-            dict with keys: vector_backend, embedding_provider, databases,
-            overall.  Each sub-dict contains at minimum ``connected`` (bool).
+            dict with keys: vector_backend, embedding_provider, entity_store,
+            canonical_store, databases, project_store, overall.
+            Each sub-dict contains at minimum ``connected`` (bool).
         """
         checks: dict[str, dict] = {}
         all_healthy = True
@@ -96,6 +119,10 @@ class Beast:
         # --- Canonical store ---
         canonical_status = await self._check_canonical_store()
         checks["canonical_store"] = canonical_status
+
+        # --- Project store ---
+        project_status = await self._check_project_store()
+        checks["project_store"] = project_status
 
         # --- Database aggregates ---
         db_ok = entity_status.get("connected", False) and canonical_status.get("connected", False)
@@ -130,7 +157,7 @@ class Beast:
             return {"connected": False, "error": str(exc)}
 
     async def _check_entity_store(self) -> dict:
-        """Probe entity store via list_entities with limit=1."""
+        """Probe entity store via list_entities."""
         if self._entity_store is None:
             return {"connected": False, "status": "not_configured"}
         try:
@@ -155,6 +182,19 @@ class Beast:
             logger.warning("Canonical store health check failed: %s", exc)
             return {"connected": False, "error": str(exc)}
 
+    async def _check_project_store(self) -> dict:
+        """Probe project store via list_projects."""
+        if self._projects is None:
+            return {"connected": False, "status": "not_configured"}
+        try:
+            start = time.monotonic()
+            await self._projects.list_projects()
+            latency_ms = int((time.monotonic() - start) * 1000)
+            return {"connected": True, "latency_ms": latency_ms}
+        except Exception as exc:
+            logger.warning("Project store health check failed: %s", exc)
+            return {"connected": False, "error": str(exc)}
+
     # ------------------------------------------------------------------
     # Corpus Maintenance
     # ------------------------------------------------------------------
@@ -166,10 +206,17 @@ class Beast:
         whose embeddings may be outdated (age beyond threshold or after model
         slot changes), then re-embeds their content and upserts fresh vectors.
 
+        If project_store is not configured, performs a global stale-vector
+        scan without per-project filtering.
+
         Returns:
             dict with: projects_checked, stale_vectors_found,
             vectors_reembedded, vectors_failed, errors.
         """
+        if self._projects is None:
+            # No project store — do a single global stale-vector scan
+            return await self._corpus_maintenance_global()
+
         projects = await self._projects.list_projects()
         stale_found = 0
         reembedded = 0
@@ -195,32 +242,11 @@ class Beast:
                 stale_found += len(stale_vectors)
 
                 # Step 2: Re-embed and upsert each stale vector
-                for vec_record in stale_vectors:
-                    vec_id = vec_record.get("id")
-                    content = vec_record.get("metadata", {}).get("content", "")
-                    domain = vec_record.get("domain") or pid
-                    metadata = vec_record.get("metadata", {})
-
-                    if not vec_id or not content:
-                        failed += 1
-                        continue
-
-                    try:
-                        new_embedding = await self._embed.embed(content)
-                        await self._vector.upsert(
-                            id=vec_id,
-                            embedding=new_embedding,
-                            content=content,
-                            metadata=metadata,
-                            domain=domain,
-                        )
-                        reembedded += 1
-                    except Exception as exc:
-                        logger.warning(
-                            "Failed to re-embed vector %s in project %s: %s",
-                            vec_id, pid, exc,
-                        )
-                        failed += 1
+                reembedded_count, failed_count = await self._reembed_stale_vectors(
+                    stale_vectors, pid
+                )
+                reembedded += reembedded_count
+                failed += failed_count
 
             except Exception as exc:
                 logger.error("Corpus maintenance error for project %s: %s", pid, exc)
@@ -242,6 +268,88 @@ class Beast:
         )
 
         return result
+
+    async def _corpus_maintenance_global(self) -> dict:
+        """Run corpus maintenance without project-level partitioning.
+
+        Used when project_store is not configured. Performs a single
+        list_stale_vectors() call without domain filtering.
+        """
+        threshold_days = self._config.corpus_reindex_interval_seconds // 86400
+        if threshold_days < 1:
+            threshold_days = 1
+        batch_limit = self._config.max_reindex_batch_size
+
+        try:
+            stale_vectors = await self._vector.list_stale_vectors(
+                threshold_days=threshold_days,
+                domain=None,
+                limit=batch_limit,
+            )
+            reembedded, failed = await self._reembed_stale_vectors(stale_vectors)
+
+            result = {
+                "projects_checked": 0,
+                "stale_vectors_found": len(stale_vectors),
+                "vectors_reembedded": reembedded,
+                "vectors_failed": failed,
+                "errors": 0,
+                "mode": "global_no_project_store",
+            }
+        except Exception as exc:
+            logger.error("Global corpus maintenance failed: %s", exc)
+            result = {
+                "projects_checked": 0,
+                "stale_vectors_found": 0,
+                "vectors_reembedded": 0,
+                "vectors_failed": 0,
+                "errors": 1,
+                "mode": "global_no_project_store",
+            }
+
+        await self._emit_event(
+            event_type="beast_corpus_maintenance",
+            artifact_id="system",
+            metadata=result,
+        )
+
+        return result
+
+    async def _reembed_stale_vectors(
+        self, stale_vectors: list[dict], domain: str | None = None
+    ) -> tuple[int, int]:
+        """Re-embed and upsert stale vectors. Returns (reembedded, failed)."""
+        reembedded = 0
+        failed = 0
+
+        for vec_record in stale_vectors:
+            vec_id = vec_record.get("id")
+            content = vec_record.get("metadata", {}).get("content", "")
+            vec_domain = vec_record.get("domain") or domain
+            metadata = vec_record.get("metadata", {})
+
+            if not vec_id or not content:
+                failed += 1
+                continue
+
+            try:
+                new_embedding = await self._embed.embed(content)
+                await self._vector.upsert(
+                    id=vec_id,
+                    embedding=new_embedding,
+                    content=content,
+                    metadata=metadata,
+                    domain=vec_domain,
+                )
+                reembedded += 1
+            except Exception as exc:
+                logger.warning(
+                    "Failed to re-embed vector %s: %s",
+                    vec_id, exc,
+                )
+                failed += 1
+
+        return reembedded, failed
 
     # ------------------------------------------------------------------
     # Entity Maintenance
@@ -318,6 +426,51 @@ class Beast:
             )
 
         return result
+
+    # ------------------------------------------------------------------
+    # Cadence / Scheduling
+    # ------------------------------------------------------------------
+
+    async def run_cycle(self) -> dict:
+        """Execute a full Beast maintenance cycle.
+
+        Runs health check, corpus maintenance, and entity maintenance
+        in sequence. Intended to be called periodically by a scheduler
+        or background task.
+
+        Returns a summary dict with results from each phase and timing.
+
+        Example usage with asyncio:
+            import asyncio
+            beast = container.beast
+            while True:
+                summary = await beast.run_cycle()
+                await asyncio.sleep(beast._config.health_check_interval_seconds)
+        """
+        cycle_start = time.monotonic()
+
+        health = await self.run_health_check()
+        corpus = await self.run_corpus_maintenance()
+        entity = await self.run_entity_maintenance()
+
+        elapsed = time.monotonic() - cycle_start
+        self._last_cycle_time = time.time()
+
+        summary = {
+            "health_overall": health.get("overall", "unknown"),
+            "corpus": corpus,
+            "entity": entity,
+            "cycle_elapsed_seconds": round(elapsed, 3),
+            "last_cycle_time": self._last_cycle_time,
+        }
+
+        await self._emit_event(
+            event_type="beast_cycle_complete",
+            artifact_id="system",
+            metadata=summary,
+        )
+
+        return summary
 
     # ------------------------------------------------------------------
     # Helpers

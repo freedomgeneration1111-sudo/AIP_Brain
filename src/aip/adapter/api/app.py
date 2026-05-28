@@ -7,6 +7,8 @@ All privileged writes go through AutonomyGate.
 
 from __future__ import annotations
 
+import importlib
+import logging
 import time
 from contextlib import asynccontextmanager
 from typing import Any
@@ -18,7 +20,9 @@ from aip.adapter.api.dependencies import AipContainer, get_container
 from aip.adapter.api.routes import health, projects, sessions
 from aip.adapter.api.routes import review, artifacts, admin, memory, chat
 from aip.adapter.api import collaborators, plugins, performance
-from aip.foundation.schemas import SurfaceConfig
+from aip.foundation.schemas import SurfaceConfig, BeastCadenceConfig
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -27,13 +31,96 @@ async def lifespan(app: FastAPI):
     config: dict = app.state.raw_config or {}
     container = AipContainer(config)
 
-    # Minimal wiring for the 8.1 scope (real adapters from 8.0b + Phase 5 components).
-    # In a full deployment these would come from a real factory; here we use the
-    # already-constructed instances passed via config or created with db_path from config.
-    # The gate tests exercise the container shape + basic routes.
+    # --- Wire adapter stores from config ---
+    db_path = config.get("db_path", "db/state.db")
 
-    # Placeholder wiring (tests will override via app.state or direct container mutation if needed).
-    # Real production wiring belongs in a later refinement or 8.6 admin surface.
+    # Vector store (via factory)
+    try:
+        from aip.adapter.vector.factory import create_vector_store
+        container.vector_store = await create_vector_store(config)
+    except Exception as exc:
+        logger.warning("Vector store initialization failed: %s", exc)
+
+    # Embedding provider
+    try:
+        embed_cfg = config.get("embedding", {})
+        provider = embed_cfg.get("provider", "mock")
+        if provider == "ollama":
+            from aip.adapter.embedding.ollama_embed import OllamaEmbeddingClient
+            container.embedding_provider = OllamaEmbeddingClient(
+                base_url=embed_cfg.get("base_url", "http://localhost:11434"),
+                model=embed_cfg.get("model", "nomic-embed-text"),
+            )
+        else:
+            from aip.adapter.embedding.ollama_embed import MockOllamaEmbeddingClient
+            container.embedding_provider = MockOllamaEmbeddingClient()
+    except Exception as exc:
+        logger.warning("Embedding provider initialization failed: %s", exc)
+
+    # Entity store
+    try:
+        from aip.adapter.entity.sqlite_entity_store import SqliteEntityStore
+        container.entity_store = SqliteEntityStore(db_path)
+        await container.entity_store.initialize()
+    except Exception as exc:
+        logger.warning("Entity store initialization failed: %s", exc)
+
+    # Canonical store
+    try:
+        from aip.adapter.canonical.sqlite_canonical_store import SqliteCanonicalStore
+        container.canonical_store = SqliteCanonicalStore(db_path)
+        await container.canonical_store.initialize()
+    except Exception as exc:
+        logger.warning("Canonical store initialization failed: %s", exc)
+
+    # Event store
+    try:
+        from aip.adapter.event_store_queryable import QueryableEventStore
+        container.event_store = QueryableEventStore(db_path)
+        await container.event_store.initialize()
+    except Exception as exc:
+        logger.warning("Event store initialization failed: %s", exc)
+
+    # Project store
+    try:
+        from aip.adapter.project.sqlite_project_store import SqliteProjectStore
+        container.project_store = SqliteProjectStore(db_path)
+        await container.project_store.initialize()
+    except Exception as exc:
+        logger.warning("Project store initialization failed: %s", exc)
+
+    # Model provider (ModelSlotResolver)
+    try:
+        from aip.adapter.model_slot_resolver import ModelSlotResolver
+        container.model_provider = ModelSlotResolver(config)
+    except Exception as exc:
+        logger.warning("Model provider initialization failed: %s", exc)
+
+    # --- Wire orchestration components (lazy import to preserve layer discipline) ---
+    # Beast actor — requires vector_store + embedding_provider at minimum
+    if container.vector_store is not None and container.embedding_provider is not None:
+        try:
+            _beast_mod = importlib.import_module("aip.orchestration.actors.beast")
+            _Beast = _beast_mod.Beast
+            beast_config = BeastCadenceConfig(
+                **{k: v for k, v in config.get("beast", {}).items()
+                   if k in BeastCadenceConfig.__dataclass_fields__}
+            )
+            container.beast = _Beast(
+                config=beast_config,
+                vector_store=container.vector_store,
+                embedding_provider=container.embedding_provider,
+                project_store=container.project_store,
+                event_store=container.event_store,
+                entity_store=container.entity_store,
+                canonical_store=container.canonical_store,
+            )
+            logger.info("Beast actor wired successfully")
+        except Exception as exc:
+            logger.warning("Beast actor initialization failed: %s", exc)
+    else:
+        logger.info("Beast actor not wired: missing vector_store or embedding_provider")
+
     app.state.container = container
     app.state.start_time = time.time()
     yield
@@ -46,6 +133,10 @@ async def lifespan(app: FastAPI):
         await container.entity_store.close()
     if container.autonomy_gate:
         await container.autonomy_gate.close()
+    if container.event_store:
+        await container.event_store.close()
+    if container.project_store:
+        await container.project_store.close()
 
 
 def create_app(config: dict | None = None) -> "FastAPI":
