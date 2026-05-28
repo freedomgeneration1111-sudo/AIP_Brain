@@ -81,35 +81,62 @@ def init(force: bool) -> None:
         (db_dir / name).touch(exist_ok=True)
     click.echo("Initialized DB files under db/ (state, trace, events, ace_playbook, lexical, vectors)")
 
-    # Initialize trace.db with the required schema (per §5.9)
+    # Initialize trace.db with the required schema (per §5.9 + §4.3)
     trace_db_path = db_dir / "trace.db"
     try:
         import sqlite3
         conn = sqlite3.connect(str(trace_db_path))
-        conn.execute("""
+        conn.executescript("""
             CREATE TABLE IF NOT EXISTS trace_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT NOT NULL,
                 node_type TEXT,
-                failure_type TEXT,
-                outcome TEXT,
+                model_slot TEXT,
+                model_name TEXT,
+                token_count_in INTEGER DEFAULT 0,
+                token_count_out INTEGER DEFAULT 0,
+                cost_usd REAL DEFAULT 0.0,
+                latency_ms REAL DEFAULT 0.0,
+                failure_type TEXT CHECK (failure_type IS NULL OR failure_type IN ('A', 'B', 'C', 'D', 'E', 'F')),
                 detail TEXT,
                 intervention_applied INTEGER DEFAULT 0,
                 intervention_type TEXT,
+                outcome TEXT CHECK (outcome IS NULL OR outcome IN ('success', 'failure', 'timeout', 'gate_blocked', 'insufficient_memory', 'detected', 'stale_detected')),
                 created_at TEXT DEFAULT (datetime('now'))
-            )
-        """)
-        conn.execute("""
+            );
+
             CREATE INDEX IF NOT EXISTS idx_trace_session
-            ON trace_events(session_id)
-        """)
-        conn.execute("""
+            ON trace_events(session_id);
+
             CREATE INDEX IF NOT EXISTS idx_trace_unclassified
-            ON trace_events(failure_type, outcome)
+            ON trace_events(failure_type, outcome);
+
+            CREATE INDEX IF NOT EXISTS idx_trace_node_type
+            ON trace_events(node_type);
+
+            CREATE TABLE IF NOT EXISTS routing_outcomes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                slot_name TEXT NOT NULL,
+                domain TEXT,
+                was_exploration INTEGER DEFAULT 0,
+                model_name TEXT,
+                token_count INTEGER DEFAULT 0,
+                cost_usd REAL DEFAULT 0.0,
+                latency_ms REAL DEFAULT 0.0,
+                outcome TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_routing_session
+            ON routing_outcomes(session_id);
+
+            CREATE INDEX IF NOT EXISTS idx_routing_slot_domain
+            ON routing_outcomes(slot_name, domain);
         """)
         conn.commit()
         conn.close()
-        click.echo("trace.db schema initialized")
+        click.echo("trace.db schema initialized (trace_events + routing_outcomes)")
     except Exception as e:
         click.echo(f"trace.db schema init skipped: {e}")
 
