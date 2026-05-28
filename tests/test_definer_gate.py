@@ -1,4 +1,11 @@
-"""Tests for DEFINER gate stub (CHUNK-1.5 per Rev 1.3)."""
+"""Tests for DEFINER gate stub (CHUNK-1.5 per Rev 1.3).
+
+Updated for honest gate behavior:
+- CI mode: auto-approve with stub:auto_approve_ci marker
+- Production mode: auto-approve with stub:auto_approve marker + warning
+- Production mode with ci_fixture=True eval: returns 'revise' (blocks fixture-based approval)
+- MANUAL mode: still raises NotImplementedError with clear message
+"""
 
 import asyncio
 
@@ -35,16 +42,20 @@ def _make_validation_result(passed=True, detail=None):
     )
 
 
-def _make_eval_result(passed=True):
+def _make_eval_result(passed=True, ci_fixture=False):
     return EvalResult(
         passed=passed,
         scores={"grounding": 0.85, "completeness": 0.80},
         requires_deep_eval=not passed,
         critique=None if passed else "Failed adversarial checks",
+        ci_fixture=ci_fixture,
     )
 
 
-def test_auto_approve_when_both_pass():
+def test_auto_approve_when_both_pass_ci_mode(monkeypatch):
+    """In CI mode, both pass → approve with stub:auto_approve_ci marker."""
+    monkeypatch.setenv("CI", "true")
+
     synth = _make_synthesis_output()
     val = _make_validation_result(passed=True)
     ev = _make_eval_result(passed=True)
@@ -53,8 +64,53 @@ def test_auto_approve_when_both_pass():
 
     assert isinstance(result, DefinerDecision)
     assert result.action == "approve"
+    assert result.approved_by == "stub:auto_approve_ci"
+    assert "both passed" in (result.reason or "")
+
+
+def test_auto_approve_when_both_pass_production_mode(monkeypatch):
+    """In production mode, both pass → approve with stub:auto_approve marker."""
+    monkeypatch.delenv("CI", raising=False)
+
+    synth = _make_synthesis_output()
+    val = _make_validation_result(passed=True)
+    ev = _make_eval_result(passed=True, ci_fixture=False)
+
+    result = asyncio.run(definer_gate(synth, val, ev))
+
+    assert isinstance(result, DefinerDecision)
+    assert result.action == "approve"
     assert result.approved_by == "stub:auto_approve"
     assert "both passed" in (result.reason or "")
+
+
+def test_ci_fixture_eval_blocked_in_production(monkeypatch):
+    """In production mode with ci_fixture=True eval → revise (blocks fixture-based approval)."""
+    monkeypatch.delenv("CI", raising=False)
+
+    synth = _make_synthesis_output()
+    val = _make_validation_result(passed=True)
+    ev = _make_eval_result(passed=True, ci_fixture=True)
+
+    result = asyncio.run(definer_gate(synth, val, ev))
+
+    assert result.action == "revise"
+    assert result.approved_by is None
+    assert "CI fixture" in (result.reason or "")
+
+
+def test_ci_fixture_eval_allowed_in_ci(monkeypatch):
+    """In CI mode with ci_fixture=True eval → approve (fixture data allowed in CI)."""
+    monkeypatch.setenv("CI", "true")
+
+    synth = _make_synthesis_output()
+    val = _make_validation_result(passed=True)
+    ev = _make_eval_result(passed=True, ci_fixture=True)
+
+    result = asyncio.run(definer_gate(synth, val, ev))
+
+    assert result.action == "approve"
+    assert result.approved_by == "stub:auto_approve_ci"
 
 
 def test_revise_when_validation_fails():

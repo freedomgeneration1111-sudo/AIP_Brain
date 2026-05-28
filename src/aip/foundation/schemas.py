@@ -98,7 +98,7 @@ class ReviewVerdict:
     failure_types use Appendix E taxonomy codes.
     """
     artifact_id: str
-    verdict: Literal["APPROVED", "REJECTED", "NEEDS_REVISION"]
+    verdict: Literal["APPROVED", "REJECTED", "NEEDS_REVISION", "PENDING"]
     reviewer: str  # "automated" | "definer"
     failure_types: list[FailureTypeCode] = field(default_factory=list)
     detail: str | None = None
