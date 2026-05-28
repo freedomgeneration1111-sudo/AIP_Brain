@@ -12,7 +12,7 @@ from aip.foundation.validation import structural_validate, full_l3a_evaluation
 
 
 class FakeModelResolver:
-    """Minimal fake ModelSlotResolver for testing."""
+    """Minimal fake ModelSlotResolver for testing — returns CI fixture responses."""
     def __init__(self, ci_mode=True):
         self._ci_mode = ci_mode
 
@@ -26,24 +26,70 @@ class FakeModelResolver:
         }
 
 
+class FakeModelResolverReal:
+    """Fake ModelSlotResolver that returns real-looking JSON responses."""
+    def __init__(self):
+        pass
+
+    async def call(self, slot_name, messages, **kwargs):
+        if slot_name == "evaluation":
+            return {
+                "content": '{"scores": {"framework_integrity": 0.85, "logic": 0.80, "honesty": 0.88, "completeness": 0.82}, "overall": 0.84, "critique": "Artifact is well-grounded and coherent."}',
+                "model": "test-model-v1",
+                "usage": {"prompt_tokens": 50, "completion_tokens": 100, "total_tokens": 150},
+                "latency_ms": 200,
+                "cost_usd": 0.001,
+            }
+        # Default: faithfulness/domain_coherence response
+        return {
+            "content": '{"faithfulness_score": 0.88, "context_coverage": 0.85, "hallucination_flags": [], "rationale": "Well-grounded"}',
+            "model": "test-model-v1",
+            "usage": {"prompt_tokens": 50, "completion_tokens": 100, "total_tokens": 150},
+            "latency_ms": 150,
+            "cost_usd": 0.001,
+        }
+
+
 @pytest.fixture
 def resolver():
     return FakeModelResolver()
 
 
+@pytest.fixture
+def real_resolver():
+    return FakeModelResolverReal()
+
+
 @pytest.mark.asyncio
 async def test_adversarial_eval_ci_mode(resolver):
-    """Adversarial eval with ModelSlotResolver returns structured result."""
+    """Adversarial eval with CI fixture ModelSlotResolver returns ci_fixture=True with 0.0 scores."""
     result = await adversarial_eval(
         artifact_content="Test content",
         context="Test context",
         model_resolver=resolver,
     )
     assert "scores" in result or "overall" in result
+    assert result.get("ci_fixture") is True
+    assert result.get("passed") is False
+    assert result.get("overall") == 0.0
+
+
+@pytest.mark.asyncio
+async def test_adversarial_eval_real_mode(real_resolver):
+    """Adversarial eval with real model response returns parsed scores and ci_fixture=False."""
+    result = await adversarial_eval(
+        artifact_content="Test content",
+        context="Test context",
+        model_resolver=real_resolver,
+    )
+    assert result.get("ci_fixture") is False
+    assert result.get("overall", 0.0) > 0.0
+    assert result.get("passed") is True
+    assert "framework_integrity" in result.get("scores", {})
 
 
 def test_old_adversarial_eval_backward_compat():
-    """Old Phase 1 signature still works."""
+    """Old Phase 1 signature still works and returns ci_fixture=True."""
     from aip.orchestration.nodes.synthesis import SynthesisOutput
     from aip.foundation.validation import ValidationResult
 
@@ -60,6 +106,8 @@ def test_old_adversarial_eval_backward_compat():
     result = asyncio.run(adversarial_eval(synth, val))  # type: ignore
     assert isinstance(result, EvalResult)
     assert isinstance(result.passed, bool)
+    assert result.ci_fixture is True
+    assert result.passed is False  # Stub mode cannot pass
 
 
 @pytest.mark.asyncio

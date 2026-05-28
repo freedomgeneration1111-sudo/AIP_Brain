@@ -2,11 +2,20 @@
 
 The missing orchestration driver for the full REVIEWED→APPROVED→CANONICAL lifecycle.
 Composes 8.0b stores + 8.4 review paths + 6.2 evaluation nodes + 9.1 Vigil health recording + AutonomyGate.
+
+ci_fixture handling:
+    In production mode (when the CI environment variable is not set), promotion is
+    blocked if any evaluation result has ``ci_fixture=True``. This prevents artifacts
+    evaluated only with CI fixture scores from being promoted to canonical status.
+
+    In CI mode (CI=true environment variable), ci_fixture results are allowed through
+    since no real model evaluation is available.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from aip.foundation.protocols import (
@@ -24,6 +33,17 @@ from aip.foundation.protocols import (
 from aip.foundation.schemas import CanonicalPromotionConfig, coerce_autonomy_level
 
 logger = logging.getLogger(__name__)
+
+
+def _is_ci_environment() -> bool:
+    """Check whether we are running in a CI environment.
+
+    Returns True if the CI environment variable is set to a truthy value
+    (e.g. "true", "1", "yes"). This allows CI pipelines to use fixture
+    scores without blocking promotion, while production deployments block
+    artifacts evaluated with fixture scores.
+    """
+    return os.environ.get("CI", "").lower() in ("true", "1", "yes")
 
 
 class CanonicalPipeline:
@@ -61,6 +81,10 @@ class CanonicalPipeline:
         If evaluation fails, scores are set to 0.0 and passes_threshold is False.
         This ensures artifacts cannot pass the promotion gate without real evaluation.
         In CI mode, evaluation nodes return ci_fixture scores with explicit flags.
+
+        The result includes a ``ci_fixture`` field that is True when any evaluation
+        was performed with CI fixture scores rather than real model evaluation.
+        In production mode, ci_fixture=True means the artifact should NOT be promoted.
         """
         # 1. Verify REVIEWED state
         try:
@@ -74,6 +98,7 @@ class CanonicalPipeline:
         faithfulness_score = 0.0
         domain_coherence_score = 0.0
         evaluation_succeeded = False
+        ci_fixture = False
         try:
             content = await self.artifact_store.read(artifact_id)
             content_str = str(content) if content else ""
@@ -85,6 +110,12 @@ class CanonicalPipeline:
                 model_resolver=self.model_provider,
             )
             faithfulness_score = stage2.faithfulness_score
+            if stage2.ci_fixture:
+                ci_fixture = True
+                logger.info(
+                    "Faithfulness evaluation for %s returned ci_fixture=True (score=%.2f)",
+                    artifact_id, faithfulness_score,
+                )
 
             from aip.orchestration.nodes.domain_coherence import evaluate_domain_coherence
             stage3 = await evaluate_domain_coherence(
@@ -94,13 +125,31 @@ class CanonicalPipeline:
                 model_resolver=self.model_provider,
             )
             domain_coherence_score = stage3.coherence_score
+            if stage3.ci_fixture:
+                ci_fixture = True
+                logger.info(
+                    "Domain coherence evaluation for %s returned ci_fixture=True (score=%.2f)",
+                    artifact_id, domain_coherence_score,
+                )
+
             evaluation_succeeded = True
         except Exception:
             logger.error("Evaluation FAILED for artifact %s; scores set to 0.0 (will not pass threshold)", artifact_id, exc_info=True)
 
+        # In production mode, block promotion if evaluation used CI fixtures
+        ci_fixture_blocked = False
+        if ci_fixture and not _is_ci_environment():
+            ci_fixture_blocked = True
+            logger.warning(
+                "Artifact %s evaluated with ci_fixture=True in production mode; "
+                "promotion will be blocked. Set CI=true to allow fixture promotion.",
+                artifact_id,
+            )
+
         # Use config thresholds (issue 12)
         passes_threshold = (
             evaluation_succeeded
+            and not ci_fixture_blocked
             and (not self.config.require_faithfulness_check or faithfulness_score >= self.config.faithfulness_threshold)
             and (not self.config.require_domain_coherence or domain_coherence_score >= self.config.domain_coherence_threshold)
         )
@@ -111,12 +160,18 @@ class CanonicalPipeline:
             "faithfulness_score": faithfulness_score,
             "domain_coherence_score": domain_coherence_score,
             "evaluation_succeeded": evaluation_succeeded,
+            "ci_fixture": ci_fixture,
+            "ci_fixture_blocked": ci_fixture_blocked,
             "passes_threshold": passes_threshold,
             "requires_definer_approval": self.config.require_definer_approval,
         }
 
     async def promote_to_canonical(self, artifact_id: str, approved_by: str) -> dict:
-        """Full 10-step pipeline."""
+        """Full 10-step pipeline.
+
+        Blocks promotion in production mode when evaluation results have
+        ci_fixture=True, since fixture scores are not real quality measurements.
+        """
         # 1. Verify REVIEWED
         current = await self.ecs_store.current_state(artifact_id)
         if current != "REVIEWED":
@@ -131,6 +186,7 @@ class CanonicalPipeline:
         faithfulness = 0.0
         domain_coherence = 0.0
         evaluation_succeeded = False
+        ci_fixture = False
         try:
             from aip.orchestration.nodes.faithfulness import evaluate_faithfulness
             stage2 = await evaluate_faithfulness(
@@ -140,6 +196,8 @@ class CanonicalPipeline:
                 model_resolver=self.model_provider,
             )
             faithfulness = stage2.faithfulness_score
+            if stage2.ci_fixture:
+                ci_fixture = True
 
             from aip.orchestration.nodes.domain_coherence import evaluate_domain_coherence
             stage3 = await evaluate_domain_coherence(
@@ -149,12 +207,28 @@ class CanonicalPipeline:
                 model_resolver=self.model_provider,
             )
             domain_coherence = stage3.coherence_score
+            if stage3.ci_fixture:
+                ci_fixture = True
+
             evaluation_succeeded = True
         except Exception:
             logger.error("Evaluation FAILED for artifact %s; scores set to 0.0 — promotion will be blocked", artifact_id, exc_info=True)
 
         if not evaluation_succeeded:
             raise ValueError(f"Evaluation failed for artifact {artifact_id}; cannot proceed with promotion")
+
+        # In production mode, block promotion if evaluation used CI fixtures
+        if ci_fixture and not _is_ci_environment():
+            logger.warning(
+                "BLOCKING promotion of artifact %s: evaluation used ci_fixture scores "
+                "in production mode. CI fixture scores are not real quality measurements. "
+                "Set CI=true environment variable to allow fixture-based promotion in CI.",
+                artifact_id,
+            )
+            raise ValueError(
+                f"Promotion blocked for artifact {artifact_id}: evaluation used CI fixture "
+                f"scores (ci_fixture=True) in production mode. Real model evaluation is required."
+            )
 
         # Issue 12: Use config thresholds instead of hardcoded values
         if self.config.require_faithfulness_check and faithfulness < self.config.faithfulness_threshold:

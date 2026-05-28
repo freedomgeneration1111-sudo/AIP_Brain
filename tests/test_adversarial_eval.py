@@ -51,20 +51,25 @@ def test_default_criteria_have_model_gen_assumption():
         assert "§1.8" in crit.model_gen_assumption
 
 
-def test_passing_validation_yields_high_scores():
+def test_stub_mode_returns_ci_fixture_flag():
+    """Without model_resolver, returns ci_fixture=True and honest 0.0 scores."""
     synth = _make_synthesis_output()
     val = _make_validation_result(passed=True)
     result = asyncio.run(adversarial_eval(synth, val))
-    assert result.passed is True
-    assert all(score >= 0.70 for score in result.scores.values())
+    assert isinstance(result, EvalResult)
+    assert result.ci_fixture is True
+    assert result.passed is False  # Cannot pass without real evaluation
+    assert all(score == 0.0 for score in result.scores.values())
 
 
-def test_failed_validation_lowers_scores_and_flags_deep_eval():
+def test_stub_mode_failed_validation_flags_deep_eval():
+    """Failed L3a validation still flagged for deep eval in stub mode."""
     synth = _make_synthesis_output()
     val = _make_validation_result(passed=False, failure_detail="min_length")
     result = asyncio.run(adversarial_eval(synth, val))
     assert result.requires_deep_eval is True
-    assert result.passed is False or any(s < 0.70 for s in result.scores.values())
+    assert result.passed is False
+    assert result.ci_fixture is True
 
 
 def test_accepts_custom_criteria():
@@ -73,3 +78,11 @@ def test_accepts_custom_criteria():
     custom = [DEFAULT_EVAL_CRITERIA[0]]  # only one criterion
     result = asyncio.run(adversarial_eval(synth, val, eval_criteria=custom))
     assert len(result.scores) == 1
+    assert result.ci_fixture is True
+
+
+def test_eval_result_has_ci_fixture_field():
+    """EvalResult dataclass includes ci_fixture field."""
+    result = EvalResult(passed=False, scores={"grounding": 0.0}, requires_deep_eval=True)
+    assert hasattr(result, 'ci_fixture')
+    assert result.ci_fixture is True  # Default is True (fixture until proven real)

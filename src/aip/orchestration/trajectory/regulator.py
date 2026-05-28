@@ -12,6 +12,11 @@ expect.
 
 Issue 14: Wire all three L4 detectors (loop, anxiety, failure_streak).
 Issue 15: should_intervene is sync and filters by intervention_min_confidence.
+
+Type E detection fix: The default substance_score for trace events that lack
+a substance_score field is now configurable (default 0.3) and below the
+detection threshold (0.4). Previously hardcoded at 0.5, which was always >= 0.4
+and made Type E detection completely non-functional.
 """
 
 from __future__ import annotations
@@ -27,6 +32,12 @@ from aip.orchestration.l4.failure_streak import FailureStreakDetector
 from aip.orchestration.l4.regulator import TrajectoryRegulator
 
 logger = logging.getLogger(__name__)
+
+# Default substance_score for trace events that lack the field.
+# MUST be below the FailureStreakDetector substance_threshold (0.4 by default)
+# so that Type E detection can fire. Previously hardcoded at 0.5 which was
+# always >= 0.4, making Type E detection completely non-functional.
+_DEFAULT_SUBSTANCE_SCORE = 0.3
 
 
 # Reusable instances (the L4 classes are stateless)
@@ -102,7 +113,7 @@ async def regulate_trajectory(
             recent_outcomes = [
                 {
                     "claimed_done": "done" in str(e.get("outcome", "")).lower() or e.get("outcome") == "success",
-                    "substance_score": e.get("substance_score", 0.3),  # default below 0.4 threshold so Type E can fire
+                    "substance_score": e.get("substance_score", _DEFAULT_SUBSTANCE_SCORE),  # default below 0.4 threshold so Type E can fire
                 }
                 for e in recent_events
                 if isinstance(e, dict)

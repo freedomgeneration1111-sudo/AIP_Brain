@@ -8,16 +8,36 @@ Adversarial evaluation applies to canonical-bound outputs and marginal L3a passe
 
 Issue 21: Remove duplicate adversarial_evaluate() function. Promote adversarial_eval()
 to optionally use ModelSlotResolver when provided.
+
+Fallback behavior:
+    When no model_resolver is provided (or when evaluation fails), returns honest
+    low/zero scores with ``ci_fixture=True`` in the result. This is consistent
+    with the FaithfulnessResult and DomainCoherenceResult patterns — callers
+    MUST check the ``ci_fixture`` flag to distinguish real evaluation from
+    fixture/fallback results.
+
+    CI fixture path: When the model resolver returns a CI fixture response
+    (detected by "CI fixture" in content or "ci-evaluation" in model name),
+    scores are set to 0.0 with ``ci_fixture=True`` so that promotion gates
+    correctly block artifacts evaluated without real model assessment.
+
+    Production path: When model_resolver is provided and returns a real
+    response, attempts to parse JSON scores from the model output. If parsing
+    fails, falls back to 0.0 scores with ``ci_fixture=True`` and a warning log.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from aip.orchestration.nodes.synthesis import SynthesisOutput
 from aip.foundation.validation import ValidationResult
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -34,6 +54,7 @@ class EvalResult:
     scores: dict[str, float]
     requires_deep_eval: bool
     critique: str | None = None
+    ci_fixture: bool = True  # True when scores are fixtures/fallbacks, not real evaluation
 
 
 # Default Phase 1 L3b adversarial criteria
@@ -65,6 +86,19 @@ DEFAULT_EVAL_CRITERIA: list[EvalCriterion] = [
 ]
 
 
+# CI fixture values — used when model_resolver is None or returns fixture response.
+# These are set to 0.0 to ensure that CI fixtures cannot pass promotion thresholds
+# without explicit opt-in. This is consistent with FaithfulnessResult and
+# DomainCoherenceResult patterns.
+_CI_FIXTURE_SCORES = {
+    "framework_integrity": 0.0,
+    "logic": 0.0,
+    "honesty": 0.0,
+    "completeness": 0.0,
+}
+_CI_FIXTURE_OVERALL = 0.0
+
+
 async def adversarial_eval(
     synthesis_output: SynthesisOutput | None = None,
     validation_result: ValidationResult | None = None,
@@ -82,7 +116,13 @@ async def adversarial_eval(
     Phase 4 promoted: accepts artifact_content, context, model_resolver for real eval.
 
     When model_resolver is provided, uses it for model-based evaluation (skeptic prompt).
-    Otherwise falls back to deterministic stub scoring.
+    Otherwise falls back to honest zero-score stub with ``ci_fixture=True``.
+
+    Fallback behavior:
+        - No model_resolver: returns 0.0 scores, ci_fixture=True, passed=False
+        - CI fixture response: returns 0.0 scores, ci_fixture=True, passed=False
+        - Real response with parseable JSON: returns parsed scores, ci_fixture=False
+        - Real response with unparseable JSON: returns 0.0 scores, ci_fixture=True, logs warning
     """
     # Phase 4 path: model_resolver provided
     if model_resolver is not None:
@@ -102,80 +142,147 @@ async def adversarial_eval(
             "content": f"Artifact:\n{_content}\n\nContext (for review):\n{_context}",
         })
 
-        result = await model_resolver.call(
-            "evaluation",
-            messages,
-            temperature=0.3,
-        )
+        try:
+            result = await model_resolver.call(
+                "evaluation",
+                messages,
+                temperature=0.3,
+            )
+        except Exception:
+            logger.error(
+                "Adversarial eval model call FAILED; returning ci_fixture scores (0.0). "
+                "Promotion will be blocked by ci_fixture=True flag.",
+                exc_info=True,
+            )
+            return _make_fixture_dict("Model call failed — adversarial evaluation unavailable")
 
-        # CI fixture path
         result_content = result.get("content", "")
-        if "CI fixture" in result_content or "ci-evaluation" in result.get("model", ""):
+        result_model = result.get("model", "unknown")
+
+        # CI fixture path: model returned a fixture response
+        if "CI fixture" in result_content or "ci-evaluation" in result_model:
+            logger.info(
+                "Adversarial eval detected CI fixture response (model=%s). "
+                "Returning ci_fixture=True with 0.0 scores.",
+                result_model,
+            )
             return {
-                "scores": {
-                    "framework_integrity": 0.88,
-                    "logic": 0.85,
-                    "honesty": 0.90,
-                    "completeness": 0.82,
-                },
-                "overall": 0.86,
-                "critique": "CI fixture — automatic structured pass",
-                "model": result.get("model", "ci-evaluation"),
+                "scores": dict(_CI_FIXTURE_SCORES),
+                "overall": _CI_FIXTURE_OVERALL,
+                "critique": "CI fixture — adversarial evaluation not performed; scores are 0.0",
+                "model": result_model,
                 "usage": result.get("usage", {}),
-                "latency_ms": result.get("latency_ms", 80),
+                "latency_ms": result.get("latency_ms", 0),
+                "ci_fixture": True,
+                "passed": False,
             }
 
-        # Production path (parse model output in real impl)
-        return {
-            "scores": {
-                "framework_integrity": 0.75,
-                "logic": 0.78,
-                "honesty": 0.82,
-                "completeness": 0.70,
-            },
-            "overall": 0.76,
-            "critique": result_content[:300] if result_content else "Model response received",
-            "model": result.get("model", "unknown"),
-            "usage": result.get("usage", {}),
-            "latency_ms": result.get("latency_ms", 0),
-        }
+        # Production path: attempt to parse real model output for scores
+        try:
+            parsed = json.loads(result_content)
+            scores = {}
+            # Try to extract structured scores from model JSON
+            raw_scores = parsed.get("scores", {})
+            if isinstance(raw_scores, dict) and raw_scores:
+                for key in ("framework_integrity", "logic", "honesty", "completeness"):
+                    if key in raw_scores:
+                        scores[key] = float(raw_scores[key])
+            overall = float(parsed.get("overall", 0.0)) if scores else 0.0
 
-    # Phase 1 stub path (backward compat)
+            if not scores:
+                # Model didn't return structured scores — fall back to 0.0
+                logger.warning(
+                    "Adversarial eval model response contained no structured scores; "
+                    "falling back to ci_fixture with 0.0 scores. Response preview: %s",
+                    result_content[:200],
+                )
+                return {
+                    "scores": dict(_CI_FIXTURE_SCORES),
+                    "overall": _CI_FIXTURE_OVERALL,
+                    "critique": result_content[:300] if result_content else "Model response received but no scores parsed",
+                    "model": result_model,
+                    "usage": result.get("usage", {}),
+                    "latency_ms": result.get("latency_ms", 0),
+                    "ci_fixture": True,
+                    "passed": False,
+                }
+
+            # Real evaluation succeeded
+            critique = parsed.get("critique", result_content[:300] if result_content else "Model evaluation")
+            passed = overall >= 0.70
+            logger.info(
+                "Adversarial eval completed with real scores (overall=%.2f, ci_fixture=False)",
+                overall,
+            )
+            return {
+                "scores": scores,
+                "overall": overall,
+                "critique": critique,
+                "model": result_model,
+                "usage": result.get("usage", {}),
+                "latency_ms": result.get("latency_ms", 0),
+                "ci_fixture": False,
+                "passed": passed,
+            }
+
+        except (json.JSONDecodeError, ValueError, TypeError):
+            # Model response was not valid JSON — fall back to fixture
+            logger.warning(
+                "Adversarial eval model response was not valid JSON; returning ci_fixture "
+                "scores (0.0). Promotion will be blocked. Response preview: %s",
+                result_content[:200],
+            )
+            return {
+                "scores": dict(_CI_FIXTURE_SCORES),
+                "overall": _CI_FIXTURE_OVERALL,
+                "critique": result_content[:300] if result_content else "Unparseable model response",
+                "model": result_model,
+                "usage": result.get("usage", {}),
+                "latency_ms": result.get("latency_ms", 0),
+                "ci_fixture": True,
+                "passed": False,
+            }
+
+    # Phase 1 stub path (backward compat — no model_resolver)
+    # Return honest 0.0 scores with ci_fixture=True so promotion is blocked
+    logger.info("Adversarial eval called without model_resolver; returning ci_fixture scores (0.0)")
+
     if validation_result is None:
         validation_result = ValidationResult(passed=True, failure_type=None, failure_detail=None, checks_run=0, checks_failed=[])
 
     criteria = eval_criteria or DEFAULT_EVAL_CRITERIA
 
-    scores: dict[str, float] = {}
-    base_score = 0.82
+    # Honest stub: all scores are 0.0 since no real evaluation was performed
+    scores: dict[str, float] = {crit.criterion_id: 0.0 for crit in criteria}
+    avg_score = 0.0
+    passed = False  # Cannot pass without real evaluation
 
-    # If L3a validation failed, reduce scores and flag for deeper review
-    if not validation_result.passed:
-        base_score = 0.65
+    critique = (
+        f"Adversarial evaluation stub — no model_resolver provided. "
+        f"L3a validation: {'passed' if validation_result.passed else 'failed'}. "
+        f"Requires real model evaluation before promotion."
+    )
 
-    for crit in criteria:
-        # Very simple deterministic scoring for the stub
-        score = base_score
-        if crit.criterion_id == "grounding" and not validation_result.passed:
-            score = 0.55
-        if crit.criterion_id == "completeness":
-            score = min(0.95, base_score + 0.08)
-        scores[crit.criterion_id] = round(score, 2)
-
-    avg_score = sum(scores.values()) / len(scores)
-    passed = avg_score >= 0.70 and validation_result.passed
-
-    critique = None
-    if not passed:
-        critique = f"L3a validation issues detected: {validation_result.failure_detail}. Recommend deeper model-based review."
-    elif not validation_result.passed:
-        critique = "Minor L3a issues present but overall scores acceptable in stub mode."
-
-    requires_deep_eval = (not passed) or (not validation_result.passed)
+    requires_deep_eval = True  # Always requires deep eval when in stub mode
 
     return EvalResult(
         passed=passed,
         scores=scores,
         requires_deep_eval=requires_deep_eval,
         critique=critique,
+        ci_fixture=True,
     )
+
+
+def _make_fixture_dict(reason: str) -> dict:
+    """Build a CI fixture dict result for adversarial eval failure paths."""
+    return {
+        "scores": dict(_CI_FIXTURE_SCORES),
+        "overall": _CI_FIXTURE_OVERALL,
+        "critique": f"Adversarial evaluation unavailable: {reason}",
+        "model": "none",
+        "usage": {},
+        "latency_ms": 0,
+        "ci_fixture": True,
+        "passed": False,
+    }
