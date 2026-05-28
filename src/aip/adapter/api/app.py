@@ -187,6 +187,9 @@ async def lifespan(app: FastAPI):
         await container.event_store.close()
     if container.project_store:
         await container.project_store.close()
+    # Close model provider httpx client (if wired)
+    if container.model_provider and hasattr(container.model_provider, "close"):
+        await container.model_provider.close()
 
 
 def create_app(config: dict | None = None) -> "FastAPI":

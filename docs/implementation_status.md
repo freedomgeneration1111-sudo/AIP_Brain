@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-29
 **Phase 0–3 + Beast Cleanup Status:** Complete
-**Overall Assessment:** The AIP 0.1 codebase has a well-designed three-layer architecture (foundation → orchestration → adapter) with sound Protocol-based dependency injection and comprehensive schema/protocol definitions. After Phases 0–3 and two rounds of Beast improvements plus the evaluation pipeline cleanup, the implementation is approximately 30-35% scaffolding overall. The evaluation pipeline no longer silently passes artifacts by default — `canonical_pipeline.py` blocks promotion when evaluation fails AND when `ci_fixture=True` in production mode. All evaluation nodes (`faithfulness.py`, `domain_coherence.py`, `adversarial_eval.py`) now include explicit `ci_fixture` flags. Type E detection is now functional (substance_score default changed from 0.5 to 0.3, below the 0.4 threshold). The duplicate `evaluation.py` has been deleted. Remaining high-risk areas include: the Adaptive Router (no real adaptation), `definer_gate.py` (auto-approves in CI mode), `review.py` (auto-approves without eval_fn), and the ModelSlotResolver (real mode raises NotImplementedError).
+**Overall Assessment:** The AIP 0.1 codebase has a well-designed three-layer architecture (foundation → orchestration → adapter) with sound Protocol-based dependency injection and comprehensive schema/protocol definitions. After Phases 0–3, evaluation pipeline cleanup, and model provider wiring, the implementation is approximately 25-30% scaffolding overall. The evaluation pipeline no longer silently passes artifacts by default — `canonical_pipeline.py` blocks promotion when evaluation fails AND when `ci_fixture=True` in production mode. All evaluation nodes (`faithfulness.py`, `domain_coherence.py`, `adversarial_eval.py`) now include explicit `ci_fixture` flags. Type E detection is now functional (substance_score default changed from 0.5 to 0.3, below the 0.4 threshold). The duplicate `evaluation.py` has been deleted. **ModelSlotResolver now supports real provider dispatch** — Ollama and OpenAI-compatible providers are wired with proper HTTP calls, environment variable configuration, and graceful error handling. `embed_providers.py` now wires `OllamaEmbeddingClient` when provider="ollama". Remaining high-risk areas include: the Adaptive Router (no real adaptation), `definer_gate.py` (auto-approves in CI mode), and `review.py` (auto-approves without eval_fn).
 
 ## P0 Fixes Applied
 
@@ -96,12 +96,12 @@
 | **Orchestration: recovery.py** | Real/Mostly Working | 15% | Real SQLite-backed checkpoint and recovery. Artifact verification works. `str()`/`ast.literal_eval` serialization is fragile. | Use JSON serialization. Create table once at init. | Medium |
 | **Orchestration: ace_playbook.py** | Real/Mostly Working | 10% | Full SQLite-backed CRUD with deprecation logic. Blocking sqlite3 in async. | Consider aiosqlite. | Low |
 | **Orchestration: perf.py** | Partial/Hybrid | 45% | `profile_operation()` is real. `get_system_metrics()` returns hardcoded empty values. `get_memory_usage()` returns fake proportional breakdown (25%/10%/5%...). | Replace hardcoded breakdown with real measurement. | Medium |
-| **Orchestration: embed_providers.py** | Mostly Scaffolding | 75% | **Always returns fake_embed** — even "real" provider path wraps fake_embed. Ollama never wired. | Wire OllamaEmbeddingClient when provider="ollama". | High |
+| **Orchestration: embed_providers.py** | Partial/Hybrid | 35% | **FIXED**: provider="ollama" now wires OllamaEmbeddingClient via sync wrapper (get_embed_fn) or async-native (get_embed_fn_async). provider="fake" returns fake_embed. Unknown provider falls back with warning. Sync wrapper uses ThreadPoolExecutor for event loop compatibility. | Unify fake embedding algorithms. Add batch embed support. | Medium |
 | **Orchestration: compilation.py** | Partial/Hybrid | 30% | Real compilation flow. `or True` removed in Phase 0. Evaluation still returns hardcoded scores. | Improve validation logic. Wire real evaluation. | Medium |
 | **Auth: middleware.py** | Real/Mostly Working | 10% | Proper Bearer + API key validation. Laptop profile correctly sets DEFINER. | None | Low |
 | **Auth: collaborator.py** | Partial/Hybrid | 25% | Real role enforcement and bcrypt hashing. 4 `# type: ignore[attr-defined]`. max_collaborators limit not enforced. | Implement max_collaborators. Fix Protocol type narrowing. | Medium |
 | **Auth: dependencies.py** | Real/Mostly Working | 10% | Proper FastAPI dependency injection. Falls back to DEFINER when unauthenticated (laptop profile). | None | Low |
-| **Adapter: model_slot_resolver.py** | Broken but Important | 50% | ci_mode works with fixtures. **Real mode raises NotImplementedError** — no real model dispatch exists. Token counting is `len/4`. `latency_ms: 5` and `cost_usd: 0.0` hardcoded. | Implement real provider dispatch (Ollama, OpenAI). | Critical |
+| **Adapter: model_slot_resolver.py** | Real/Mostly Working | 15% | **FIXED**: Real Ollama and OpenAI-compatible dispatch implemented via httpx. `ci_mode=True` returns deterministic fixtures (no network). `ci_mode=False` dispatches to provider HTTP endpoints. Environment variable overrides (AIP_<SLOT>_BASE_URL, etc.) and global defaults (AIP_OLLAMA_BASE_URL, AIP_OPENAI_API_KEY). Lazy httpx client with proper close(). Structured error results on failure (error=True, error_message). Kwargs mapped to provider-specific params (max_tokens→num_predict for Ollama). Latency measured with time.perf_counter(). | Add streaming support. Add retry with backoff. Add Anthropic provider. | Medium |
 | **Adapter: autonomy_gate.py** | Real/Mostly Working | 15% | Full SQLite-backed AutonomyGate with audit trail. 6 `# type: ignore[arg-type]` on AutonomyLevel strings. | Fix AutonomyLevel type narrowing. | Medium |
 | **Adapter: plugin_loader.py** | Real/Mostly Working | 15% | Real YAML discovery, loading, unloading. Sandbox mode works. | Strengthen container registration. | Low |
 | **Adapter: yaml_plugin_provider.py** | Partial/Hybrid | 40% | Real httpx-based API call in `_call_impl()`. CI mode detection correct. Only supports OpenAI-compatible endpoint. | Add provider-specific dispatch. Fail-fast when httpx missing and not CI. | Medium |
@@ -143,7 +143,7 @@ These components appear functional but contain fake logic that silently produces
 ### Critical (P0/P1)
 1. **SQL injection in `sqlite_entity_store.update_entity`** — **FIXED in Phase 0**: Column names from user-provided dict keys were interpolated directly into SQL. Now whitelisted.
 2. **DEFINER identity fallback grants admin access** — **FIXED in Phase 0**: `get_definer_identity()` returned `{"identity": "definer", "role": "definer"}` on error or when no definer exists. Now returns `None`.
-3. **ModelSlotResolver real mode is NotImplementedError** — The single most important blocker for production. Every model call goes through ci_mode fixtures. No real model provider (Ollama, OpenAI, Anthropic) is wired.
+3. **ModelSlotResolver real mode is NotImplementedError** — **FIXED**: Real Ollama (`/api/chat`) and OpenAI-compatible (`/v1/chat/completions`) dispatch now implemented. Environment variable overrides and global defaults supported. Structured error handling returns `error=True` instead of raising. Lazy httpx client with close() cleanup wired in app.py lifespan.
 
 ### High (P1)
 4. **Type E (failure streak) detection** — **FIXED**: `substance_score` default changed from 0.5 to 0.3 in both `trajectory/regulator.py` and `failure_streak.py`. Both `default_substance_score` and `substance_threshold` are now configurable via `FailureStreakDetector` constructor. Type E signals can now fire correctly.
@@ -155,7 +155,7 @@ These components appear functional but contain fake logic that silently produces
 10. **ArtifactStore.read() defined twice in protocols.py** — Signature conflict: line 156 (`id: str`) and line 165 (`id: str, version: int | None = None`). Second shadows first.
 
 ### Medium (P2)
-11. **embed_providers.py routes everything to fake_embed** — Even when config specifies "real" provider, code returns fake embeddings. OllamaEmbeddingClient exists but is never wired.
+11. **embed_providers.py routes everything to fake_embed** — **FIXED**: provider="ollama" now creates OllamaEmbeddingClient. New `get_embed_fn_async()` returns async-native EmbeddingProvider. provider="fake" returns fake_embed (unchanged). Unknown provider falls back with warning.
 12. **BudgetStore limits are hardcoded** — Session=500K, project=5M, daily=10M hardcoded rather than read from BudgetConfig.
 13. **CLI session/project commands are partially wired** — **PARTIALLY FIXED**: `project list/show/create` and `session start/list` now query real stores. `session resume` and `config write` still need implementation.
 14. **AipContainer wiring** — **MOSTLY FIXED**: Lifespan now wires vector_store, embedding_provider, entity_store, canonical_store, event_store, project_store, model_provider, and Beast actor with background scheduler. Some stores (lexical, ECS, budget, autonomy, auth) still not wired.
@@ -193,10 +193,11 @@ These components appear functional but contain fake logic that silently produces
 - Make `review.py` require `eval_fn` in production; mark CI fixture results explicitly
 - Implement MANUAL mode in `definer_gate.py`
 
-### Priority 2: Wire Real Model Providers (Critical)
-- Implement real provider dispatch in `ModelSlotResolver` (Ollama, OpenAI-compatible, Anthropic)
-- Wire `OllamaEmbeddingClient` into `embed_providers.py`
-- Without this, no component can use real models
+### Priority 2: Wire Real Model Providers (Critical — MOSTLY DONE)
+- ~~Implement real provider dispatch in `ModelSlotResolver` (Ollama, OpenAI-compatible)~~ — **DONE**: `_call_ollama()` and `_call_openai_compatible()` implemented with httpx. Environment variable config and structured error handling.
+- ~~Wire `OllamaEmbeddingClient` into `embed_providers.py`~~ — **DONE**: `get_embed_fn()` returns sync Ollama wrapper when provider="ollama"; new `get_embed_fn_async()` returns async-native EmbeddingProvider.
+- Add Anthropic provider to ModelSlotResolver
+- Add streaming support for large generation tasks
 
 ### Priority 3: Fix Broken Infrastructure (High — PARTIALLY DONE)
 - ~~Fix `substance_score` default in `trajectory/regulator.py` — Type E detection is completely non-functional~~ — **DONE**: Default changed from 0.5 to 0.3 (below 0.4 threshold). `FailureStreakDetector` now has configurable `default_substance_score` and `substance_threshold`.

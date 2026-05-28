@@ -205,11 +205,17 @@ async def test_canonical_pipeline_evaluate_for_promotion():
 
 @pytest.mark.asyncio
 async def test_canonical_pipeline_promote_to_canonical():
-    """CanonicalPipeline.promote_to_canonical succeeds with definer approval."""
+    """CanonicalPipeline.promote_to_canonical succeeds with definer approval.
+
+    In CI mode (CI=true), fixture-based evaluation scores are allowed through.
+    Without CI=true, ci_fixture scores would block promotion in production mode.
+    """
     from aip.orchestration.canonical_pipeline import CanonicalPipeline
     from aip.foundation.schemas import CanonicalPromotionConfig
 
     gate = _make_gate({"escalation_requires_definer": True})
+    # Set CI=true so ci_fixture evaluation scores don't block promotion
+    os.environ["CI"] = "true"
     try:
         config = CanonicalPromotionConfig(
             faithfulness_threshold=0.80,
@@ -236,16 +242,21 @@ async def test_canonical_pipeline_promote_to_canonical():
         assert result["state"] == "APPROVED"
         assert result["canonical_written"] is True
     finally:
+        os.environ.pop("CI", None)
         os.unlink(gate._tmp_db_path)
 
 
 @pytest.mark.asyncio
 async def test_canonical_pipeline_rejects_non_definer():
-    """CanonicalPipeline rejects promotion from non-definer."""
+    """CanonicalPipeline rejects promotion from non-definer.
+
+    In CI mode so that ci_fixture scores don't block before the definer check.
+    """
     from aip.orchestration.canonical_pipeline import CanonicalPipeline
     from aip.foundation.schemas import CanonicalPromotionConfig
 
     gate = _make_gate({"escalation_requires_definer": True})
+    os.environ["CI"] = "true"
     try:
         config = CanonicalPromotionConfig(require_definer_approval=True)
         pipeline = CanonicalPipeline(
@@ -265,6 +276,7 @@ async def test_canonical_pipeline_rejects_non_definer():
         with pytest.raises(PermissionError):
             await pipeline.promote_to_canonical("art-001", approved_by="collaborator")
     finally:
+        os.environ.pop("CI", None)
         os.unlink(gate._tmp_db_path)
 
 
