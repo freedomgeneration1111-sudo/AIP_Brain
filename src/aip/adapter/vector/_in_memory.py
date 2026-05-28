@@ -58,6 +58,12 @@ class InMemoryVectorStore(VectorStore):
     async def health_check(self) -> dict:
         return {"connected": True, "backend_name": "in-memory", "count": len(self._data)}
 
+    async def list_stale_vectors(
+        self, threshold_days: int = 30, domain: str | None = None, limit: int = 100
+    ) -> list[dict]:
+        """In-memory store has no timestamps; return empty list (no staleness tracking)."""
+        return []
+
     @staticmethod
     def _cosine_similarity(a: list[float], b: list[float]) -> float:
         dot = sum(x * y for x, y in zip(a, b))

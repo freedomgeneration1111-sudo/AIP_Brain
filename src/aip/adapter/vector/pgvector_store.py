@@ -274,3 +274,58 @@ class PgvectorStore(VectorStore):
             else:
                 row = await conn.fetchrow("SELECT COUNT(*) AS cnt FROM vectors")
         return row["cnt"] if row else 0
+
+    async def list_stale_vectors(
+        self, threshold_days: int = 30, domain: str | None = None, limit: int = 100
+    ) -> list[dict]:
+        """List vectors not updated within threshold_days.
+
+        Used by Beast corpus maintenance and Vigil to identify stale vectors.
+        """
+        if self._pool is None:
+            return []
+
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=threshold_days))
+
+        async with self._pool.acquire() as conn:
+            if domain:
+                rows = await conn.fetch(
+                    """
+                    SELECT id, domain, updated_at, metadata
+                    FROM vectors
+                    WHERE updated_at < $1 AND domain = $2
+                    ORDER BY updated_at ASC
+                    LIMIT $3
+                    """,
+                    cutoff,
+                    domain,
+                    limit,
+                )
+            else:
+                rows = await conn.fetch(
+                    """
+                    SELECT id, domain, updated_at, metadata
+                    FROM vectors
+                    WHERE updated_at < $1
+                    ORDER BY updated_at ASC
+                    LIMIT $2
+                    """,
+                    cutoff,
+                    limit,
+                )
+
+        results = []
+        for row in rows:
+            meta = row["metadata"]
+            if isinstance(meta, str):
+                meta = json.loads(meta)
+            elif not isinstance(meta, dict):
+                meta = dict(meta or {})
+            results.append({
+                "id": row["id"],
+                "domain": row["domain"],
+                "updated_at": row["updated_at"].isoformat() if hasattr(row["updated_at"], "isoformat") else str(row["updated_at"]),
+                "metadata": meta,
+            })
+        return results

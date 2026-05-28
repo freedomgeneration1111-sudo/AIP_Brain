@@ -33,7 +33,7 @@ class FailureStreakDetector:
         streak = 0
         for outcome in recent_outcomes[-self.streak_threshold :]:
             claimed_done = outcome.get("claimed_done", False) or "done" in str(outcome.get("outcome", "")).lower()
-            substance = outcome.get("substance_score", 0.5)  # 0.0–1.0, higher is better
+            substance = outcome.get("substance_score", 0.3)  # 0.0–1.0, higher is better; default below threshold so detection can fire
             if claimed_done and substance < 0.4:
                 streak += 1
             else:

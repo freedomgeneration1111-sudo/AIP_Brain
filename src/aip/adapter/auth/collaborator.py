@@ -49,7 +49,7 @@ class CollaboratorManager:
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
         # Delegate to AuthStore extension (added in 10.0a)
-        success = await self.auth_store.create_user(identity, role, password_hash)  # type: ignore[attr-defined]
+        success = await self.auth_store.create_user(identity, role, password_hash)
 
         if success:
             return {"status": "created", "identity": identity, "role": role}
@@ -58,14 +58,14 @@ class CollaboratorManager:
     async def update_role(self, identity: str, new_role: CollaboratorRole, requested_by: str) -> dict:
         """Update role (cannot change DEFINER)."""
         # In real impl would check AutonomyGate + that target is not definer
-        success = await self.auth_store.update_user_role(identity, new_role)  # type: ignore[attr-defined]
+        success = await self.auth_store.update_user_role(identity, new_role)
         if success:
             return {"status": "updated", "identity": identity, "new_role": new_role}
         return {"status": "error", "message": "Cannot change DEFINER or user not found"}
 
     async def revoke_collaborator(self, identity: str, requested_by: str) -> dict:
         """Revoke (cannot revoke DEFINER)."""
-        success = await self.auth_store.revoke_user(identity)  # type: ignore[attr-defined]
+        success = await self.auth_store.revoke_user(identity)
         if success:
             return {"status": "revoked", "identity": identity}
         return {"status": "error", "message": "Cannot revoke DEFINER or user not found"}
@@ -73,5 +73,5 @@ class CollaboratorManager:
     async def list_collaborators(self) -> list[dict]:
         """List all non-DEFINER users."""
         # Delegate to AuthStore extension (added in 10.0a)
-        users = await self.auth_store.list_users()  # type: ignore[attr-defined]
+        users = await self.auth_store.list_users()
         return [u for u in users if u.get("role") != "definer"]

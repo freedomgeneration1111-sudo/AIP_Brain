@@ -4,6 +4,7 @@ Per AIP_0_1_Phase8_BuildSpec_Rev1.0.md exact prose + interfaces.
 Pure adapter-layer. Implements deferred compiled knowledge persistence
 with provenance and dual indexing into VectorStore + LexicalStore
 only on APPROVED state (same pattern as 9.2 canonical pipeline).
+Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
 """
 
 from __future__ import annotations
@@ -12,6 +13,8 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
+
+import aiosqlite
 
 from aip.foundation.protocols import KnowledgeStore, VectorStore, LexicalStore
 from aip.foundation.schemas import CompilationState
@@ -26,6 +29,8 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
     Dual-indexes content into VectorStore + LexicalStore **only** when state
     reaches "APPROVED" (mirrors CanonicalPromotionConfig behavior).
+
+    Uses aiosqlite for async-compatible database access.
     """
 
     def __init__(
@@ -37,50 +42,83 @@ class SqliteKnowledgeStore(KnowledgeStore):
         self._db_path = db_path
         self._vector_store = vector_store
         self._lexical_store = lexical_store
-        self._conn: sqlite3.Connection | None = None
-        self._ensure_tables()
+        self._conn: aiosqlite.Connection | None = None
+        self._ensure_tables_sync()
 
-    def _get_conn(self) -> sqlite3.Connection:
+    def _ensure_tables_sync(self) -> None:
+        """Synchronous table creation during init (runs once at startup)."""
+        conn = sqlite3.connect(self._db_path)
+        try:
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS compiled_knowledge (
+                    knowledge_id TEXT PRIMARY KEY,
+                    content TEXT,
+                    source_canonical_ids TEXT,  -- JSON array
+                    domain TEXT,
+                    state TEXT,
+                    metadata TEXT,              -- JSON
+                    created_at TEXT,
+                    updated_at TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS compiled_knowledge_provenance (
+                    knowledge_id TEXT,
+                    canonical_id TEXT,
+                    canonical_domain TEXT,
+                    canonical_title TEXT,
+                    canonical_evaluation_scores TEXT,  -- JSON
+                    canonical_state TEXT,
+                    PRIMARY KEY (knowledge_id, canonical_id)
+                );
+                """
+            )
+        finally:
+            conn.close()
+
+    async def _get_conn(self) -> aiosqlite.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(self._db_path)
+            self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
         return self._conn
 
-    def _ensure_tables(self) -> None:
-        conn = self._get_conn()
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS compiled_knowledge (
-                knowledge_id TEXT PRIMARY KEY,
-                content TEXT,
-                source_canonical_ids TEXT,  -- JSON array
-                domain TEXT,
-                state TEXT,
-                metadata TEXT,              -- JSON
-                created_at TEXT,
-                updated_at TEXT
-            );
+    async def _ensure_tables(self) -> None:
+        conn = await aiosqlite.connect(self._db_path)
+        try:
+            await conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS compiled_knowledge (
+                    knowledge_id TEXT PRIMARY KEY,
+                    content TEXT,
+                    source_canonical_ids TEXT,  -- JSON array
+                    domain TEXT,
+                    state TEXT,
+                    metadata TEXT,              -- JSON
+                    created_at TEXT,
+                    updated_at TEXT
+                );
 
-            CREATE TABLE IF NOT EXISTS compiled_knowledge_provenance (
-                knowledge_id TEXT,
-                canonical_id TEXT,
-                canonical_domain TEXT,
-                canonical_title TEXT,
-                canonical_evaluation_scores TEXT,  -- JSON
-                canonical_state TEXT,
-                PRIMARY KEY (knowledge_id, canonical_id)
-            );
-            """
-        )
-        conn.commit()
+                CREATE TABLE IF NOT EXISTS compiled_knowledge_provenance (
+                    knowledge_id TEXT,
+                    canonical_id TEXT,
+                    canonical_domain TEXT,
+                    canonical_title TEXT,
+                    canonical_evaluation_scores TEXT,  -- JSON
+                    canonical_state TEXT,
+                    PRIMARY KEY (knowledge_id, canonical_id)
+                );
+                """
+            )
+        finally:
+            await conn.close()
 
     async def initialize(self) -> None:
         """Idempotent table creation (called by lifespan / container)."""
-        self._ensure_tables()
+        await self._ensure_tables()
 
     async def close(self) -> None:
         if self._conn is not None:
-            self._conn.close()
+            await self._conn.close()
             self._conn = None
 
     async def store_compiled(
@@ -95,13 +133,13 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
         If state == "APPROVED", also indexes into VectorStore + LexicalStore.
         """
-        conn = self._get_conn()
+        conn = await self._get_conn()
         now = datetime.now(timezone.utc).isoformat()
 
         state = metadata.get("state", "SPECIFIED")
         source_ids_json = json.dumps(source_canonical_ids or [])
 
-        conn.execute(
+        await conn.execute(
             """
             INSERT OR REPLACE INTO compiled_knowledge
             (knowledge_id, content, source_canonical_ids, domain, state, metadata, created_at, updated_at)
@@ -122,7 +160,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
         # Provenance links (simplified — full details come via get_provenance join in real usage)
         for cid in source_canonical_ids or []:
-            conn.execute(
+            await conn.execute(
                 """
                 INSERT OR IGNORE INTO compiled_knowledge_provenance
                 (knowledge_id, canonical_id, canonical_domain, canonical_title, canonical_evaluation_scores, canonical_state)
@@ -131,7 +169,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 (knowledge_id, cid, domain, "", "[]", "APPROVED"),
             )
 
-        conn.commit()
+        await conn.commit()
 
         # Dual index only on APPROVED (exact per prose)
         if state == "APPROVED":
@@ -160,11 +198,12 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 pass
 
     async def get_compiled(self, knowledge_id: str) -> dict | None:
-        conn = self._get_conn()
-        row = conn.execute(
+        conn = await self._get_conn()
+        cursor = await conn.execute(
             "SELECT * FROM compiled_knowledge WHERE knowledge_id = ?",
             (knowledge_id,),
-        ).fetchone()
+        )
+        row = await cursor.fetchone()
         if not row:
             return None
         return {
@@ -181,7 +220,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
     async def list_compiled(
         self, domain: str | None = None, state: CompilationState | None = None
     ) -> list[dict]:
-        conn = self._get_conn()
+        conn = await self._get_conn()
         query = "SELECT * FROM compiled_knowledge WHERE 1=1"
         params: list[Any] = []
         if domain:
@@ -191,7 +230,8 @@ class SqliteKnowledgeStore(KnowledgeStore):
             query += " AND state = ?"
             params.append(state)
         query += " ORDER BY updated_at DESC"
-        rows = conn.execute(query, params).fetchall()
+        cursor = await conn.execute(query, params)
+        rows = await cursor.fetchall()
         return [
             {
                 "knowledge_id": r["knowledge_id"],
@@ -223,17 +263,17 @@ class SqliteKnowledgeStore(KnowledgeStore):
             # For 0.1 we log but allow (full validation can tighten in 10.5)
             pass
 
-        conn = self._get_conn()
+        conn = await self._get_conn()
         now = datetime.now(timezone.utc).isoformat()
-        conn.execute(
+        await conn.execute(
             "UPDATE compiled_knowledge SET state = ?, updated_at = ? WHERE knowledge_id = ?",
             (new_state, now, knowledge_id),
         )
-        conn.commit()
+        await conn.commit()
 
     async def get_provenance(self, knowledge_id: str) -> list[dict]:
-        conn = self._get_conn()
-        rows = conn.execute(
+        conn = await self._get_conn()
+        cursor = await conn.execute(
             """
             SELECT canonical_id, canonical_domain, canonical_title,
                    canonical_evaluation_scores, canonical_state
@@ -241,7 +281,8 @@ class SqliteKnowledgeStore(KnowledgeStore):
             WHERE knowledge_id = ?
             """,
             (knowledge_id,),
-        ).fetchall()
+        )
+        rows = await cursor.fetchall()
         return [
             {
                 "canonical_id": r["canonical_id"],
@@ -265,22 +306,21 @@ class SqliteKnowledgeStore(KnowledgeStore):
             for h in lexical_hits:
                 results.append(
                     {
-                        "knowledge_id": h.get("id", "").replace("compiled:", ""),
-                        "content": h.get("content"),
-                        "score": h.get("score", 0.0),
+                        "knowledge_id": h.id.replace("compiled:", "") if hasattr(h, 'id') else "",
+                        "content": h.content if hasattr(h, 'content') else "",
+                        "score": h.score if hasattr(h, 'score') else 0.0,
                         "source": "lexical",
                     }
                 )
         except Exception:
             pass
 
-        # Vector (best effort)
-        try:
-            # Note: real embedding of query happens in caller (10.1); here we accept
-            # that vector_store may be used with pre-computed or skipped in CI.
-            pass  # placeholder — full integration in 10.1 compiler
-        except Exception:
-            pass
+        # Vector search requires an embedded query — deferred to 10.1 compiler
+        # which provides the embedding; lexical results are sufficient for now.
+        # When embedding_provider is available, this block will be:
+        #   query_vec = await self._embedding_provider.embed(query)
+        #   vec_hits = await self._vector_store.retrieve(query_vec, domain=domain, top_k=limit)
+        #   for h in vec_hits: results.append(...)
 
         # Dedup + limit (simple)
         seen: set[str] = set()

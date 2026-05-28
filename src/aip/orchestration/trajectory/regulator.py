@@ -102,7 +102,7 @@ async def regulate_trajectory(
             recent_outcomes = [
                 {
                     "claimed_done": "done" in str(e.get("outcome", "")).lower() or e.get("outcome") == "success",
-                    "substance_score": 0.5,  # default heuristic
+                    "substance_score": e.get("substance_score", 0.3),  # default below 0.4 threshold so Type E can fire
                 }
                 for e in recent_events
                 if isinstance(e, dict)

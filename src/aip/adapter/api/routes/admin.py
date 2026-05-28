@@ -1,14 +1,19 @@
 """Admin Console routes.
 
 Writes (config) go through AutonomyGate (admin). Reads from delivered actors (Sexton 7.1, Beast 7.5, Router 7.4, Budget 7.0b, etc.).
+Phase 3: added logging for silent exception handling.
 """
 
 from __future__ import annotations
+
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from aip.adapter.api.dependencies import AipContainer, get_container
 from aip.foundation.schemas import coerce_autonomy_level
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -42,7 +47,7 @@ async def get_sexton_classifications(container: AipContainer = Depends(get_conta
             classifications = await container.sexton.classify_failures()
             return {"classifications": [{"failure_type": fc.failure_type, "trace_event_id": fc.trace_event_id, "confidence": fc.confidence} for fc in classifications]}
         except Exception:
-            pass
+            logger.warning("Sexton classification failed", exc_info=True)
     return {"classifications": []}
 
 
@@ -56,7 +61,7 @@ async def get_sexton_audit(container: AipContainer = Depends(get_container)):
             stale = container.sexton.audit_model_gen_assumption(rules)
             return {"audits": stale}
         except Exception:
-            pass
+            logger.warning("Sexton audit failed", exc_info=True)
     return {"audits": []}
 
 
@@ -68,7 +73,7 @@ async def get_sexton_playbook(container: AipContainer = Depends(get_container)):
             entries = container.ace_playbook.list_entries()
             return {"entries": entries}
         except Exception:
-            pass
+            logger.warning("ACE playbook list failed", exc_info=True)
     return {"entries": []}
 
 
@@ -80,7 +85,7 @@ async def get_beast_status(container: AipContainer = Depends(get_container)):
             health = await container.beast.run_health_check()
             return {"last_run": None, "next": None, "health": health}
         except Exception:
-            pass
+            logger.warning("Beast health check failed", exc_info=True)
     return {"last_run": None, "next": None, "health": "ok"}
 
 
@@ -92,7 +97,7 @@ async def get_router_weights(container: AipContainer = Depends(get_container)):
             weights = await container.adaptive_router.get_routing_weights()
             return {"weights": [w.__dict__ if hasattr(w, '__dict__') else w for w in weights]}
         except Exception:
-            pass
+            logger.warning("Router weights retrieval failed", exc_info=True)
     return {"weights": []}
 
 
@@ -104,7 +109,7 @@ async def get_budget_status(container: AipContainer = Depends(get_container)):
             status = await container.budget_manager.get_status()
             return status
         except Exception:
-            pass
+            logger.warning("Budget status retrieval failed", exc_info=True)
     return {"status": "ok"}
 
 

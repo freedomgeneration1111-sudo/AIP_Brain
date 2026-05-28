@@ -66,6 +66,19 @@ class VectorStore(Protocol):
 
     # count() already defined above — Phase 4 amendment adds health_check only
 
+    # --- Phase 3 amendment (append method stub only) ---
+    async def list_stale_vectors(
+        self, threshold_days: int = 30, domain: str | None = None, limit: int = 100
+    ) -> list[dict]:
+        """List vectors that have not been updated within threshold_days.
+
+        Used by Beast corpus maintenance and Vigil to identify stale vectors
+        that may need re-embedding after model slot changes or knowledge updates.
+
+        Returns list of dicts with: id, domain, updated_at/created_at, metadata.
+        """
+        ...
+
 
 # Other Phase 0 protocols as empty runtime_checkable stubs
 @runtime_checkable

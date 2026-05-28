@@ -2,6 +2,7 @@
 
 Per prose + ANNEX (exact).
 Separate from ProjectStore per Appendix D.
+Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
 """
 
 from __future__ import annotations
@@ -11,24 +12,24 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
+import aiosqlite
+
 from aip.foundation.protocols import EntityStore
 
 
 class SqliteEntityStore(EntityStore):
-    """SQLite-backed EntityStore (basic CRUD for entities)."""
+    """SQLite-backed EntityStore (basic CRUD for entities).
+
+    Uses aiosqlite for async-compatible database access.
+    """
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
-        self._conn: sqlite3.Connection | None = None
-        self._ensure_table()
+        self._conn: aiosqlite.Connection | None = None
+        self._ensure_table_sync()
 
-    def _get_conn(self) -> sqlite3.Connection:
-        if self._conn is None:
-            self._conn = sqlite3.connect(self._db_path)
-            self._conn.row_factory = sqlite3.Row
-        return self._conn
-
-    def _ensure_table(self) -> None:
+    def _ensure_table_sync(self) -> None:
+        """Synchronous table creation during init (runs once at startup)."""
         conn = sqlite3.connect(self._db_path)
         try:
             conn.execute("""
@@ -45,21 +46,45 @@ class SqliteEntityStore(EntityStore):
         finally:
             conn.close()
 
+    async def _get_conn(self) -> aiosqlite.Connection:
+        if self._conn is None:
+            self._conn = await aiosqlite.connect(self._db_path)
+            self._conn.row_factory = sqlite3.Row
+        return self._conn
+
+    async def _ensure_table(self) -> None:
+        conn = await aiosqlite.connect(self._db_path)
+        try:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS entities (
+                    entity_id TEXT PRIMARY KEY,
+                    entity_type TEXT,
+                    name TEXT,
+                    metadata TEXT NOT NULL,  -- JSON
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            """)
+            await conn.commit()
+        finally:
+            await conn.close()
+
     async def initialize(self) -> None:
-        self._ensure_table()
+        await self._ensure_table()
 
     async def close(self) -> None:
         if self._conn is not None:
-            self._conn.close()
+            await self._conn.close()
             self._conn = None
 
     async def get_entity(self, entity_id: str) -> dict | None:
-        conn = self._get_conn()
+        conn = await self._get_conn()
         try:
-            row = conn.execute(
+            cursor = await conn.execute(
                 "SELECT entity_id, entity_type, name, metadata, created_at, updated_at FROM entities WHERE entity_id = ?",
                 (entity_id,),
-            ).fetchone()
+            )
+            row = await cursor.fetchone()
             if not row:
                 return None
             return {
@@ -71,24 +96,25 @@ class SqliteEntityStore(EntityStore):
                 "updated_at": row["updated_at"],
             }
         finally:
-            conn.close()
+            await conn.close()
             self._conn = None
 
     async def list_entities(self, entity_type: str | None = None) -> list[dict]:
-        conn = self._get_conn()
+        conn = await self._get_conn()
         try:
             if entity_type:
-                rows = conn.execute(
+                cursor = await conn.execute(
                     "SELECT entity_id, entity_type, name, metadata, created_at, updated_at "
                     "FROM entities WHERE entity_type = ? ORDER BY updated_at DESC",
                     (entity_type,),
-                ).fetchall()
+                )
             else:
-                rows = conn.execute(
+                cursor = await conn.execute(
                     "SELECT entity_id, entity_type, name, metadata, created_at, updated_at "
                     "FROM entities ORDER BY updated_at DESC"
-                ).fetchall()
+                )
 
+            rows = await cursor.fetchall()
             results = []
             for row in rows:
                 results.append({
@@ -101,19 +127,22 @@ class SqliteEntityStore(EntityStore):
                 })
             return results
         finally:
-            conn.close()
+            await conn.close()
             self._conn = None
 
     async def update_entity(self, entity_id: str, updates: dict) -> None:
-        conn = self._get_conn()
+        conn = await self._get_conn()
         try:
             now = datetime.now(timezone.utc).isoformat() + "Z"
-            # Simple upsert-style update (merge metadata if present)
-            existing = await self.get_entity(entity_id)
-            # get_entity closes its conn; re-acquire for this operation
-            conn = self._get_conn()
+            # Check if entity exists
+            cursor = await conn.execute(
+                "SELECT metadata FROM entities WHERE entity_id = ?",
+                (entity_id,),
+            )
+            existing = await cursor.fetchone()
+
             if existing:
-                meta = existing.get("metadata", {})
+                meta = json.loads(existing["metadata"]) if existing["metadata"] else {}
                 if "metadata" in updates:
                     meta.update(updates["metadata"])
                     updates = {**updates, "metadata": meta}
@@ -133,14 +162,14 @@ class SqliteEntityStore(EntityStore):
                 params.append(now)
                 params.append(entity_id)
 
-                conn.execute(
+                await conn.execute(
                     f"UPDATE entities SET {', '.join(set_clauses)} WHERE entity_id = ?",
                     params,
                 )
             else:
                 # Create if not exists (lenient for L2 scope)
                 meta = updates.get("metadata", {})
-                conn.execute(
+                await conn.execute(
                     """
                     INSERT INTO entities (entity_id, entity_type, name, metadata, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?)
@@ -154,7 +183,7 @@ class SqliteEntityStore(EntityStore):
                         now,
                     ),
                 )
-            conn.commit()
+            await conn.commit()
         finally:
-            conn.close()
+            await conn.close()
             self._conn = None
