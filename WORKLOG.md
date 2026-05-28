@@ -11553,3 +11553,107 @@ CHUNK-10.5 complete (gate green).
 
 **Phase 8 CHUNK-10.5 complete (gate green + pushed at 17faafc). Continuing to next per linearized order.**
 
+
+---
+## Phase 9 — Integration Remediation & Spec Reconciliation (CHUNK-11.x)
+
+**Agent:** Super Z (Phase 9 Build Agent)
+**Date:** 2026-05-28
+**Status:** Complete — All chunks committed and pushed
+
+### Continuity Check (Pre-Phase-9)
+- Re-read WORKLOG.md (11555 lines): Phases 1-8 all committed
+- Baseline: 480 passed, 10 skipped, 0 failures
+- All Phase 1-8 gate tests passing
+
+### CHUNK-11.0a: Cross-Cutting Gate Fixes
+- Created `tests/test_phase9_cross_cutting_gates.py` (5 tests)
+- Revised hardcoded model name detection to exclude docstrings, comments, model_gen_assumption
+- Verified httpx allowed in adapter only per §7.2
+- Verified three-layer import boundaries
+- Verified model_gen_assumption includes model name references (DeepSeek-V3, Qwen3)
+- Verified sqlite_vss graceful skip in CI
+- Result: 5/5 pass
+
+### CHUNK-11.0b: Layer Violation Remediation
+- Created `src/aip/orchestration/model_provider_proxy.py` — lazy adapter import via importlib
+- Created `src/aip/orchestration/l3a_orchestrator.py` — moved full_l3a_evaluation from foundation
+- Updated `src/aip/foundation/validation.py` — backward-compat alias delegates to l3a_orchestrator
+- Updated `src/aip/adapter/api/dependencies.py` — removed orchestration imports (typed as Any)
+- Created `tests/test_phase9_layer_violations.py` (4 tests)
+- Result: 4/4 pass
+
+### CHUNK-11.2: Async Event Loop Fix
+- Verified pytest-asyncio asyncio_mode="auto" already in pyproject.toml
+- Created `tests/test_phase9_async_fix.py` (6 tests)
+- Verified KnowledgeStore, KnowledgeCompiler, CollaboratorAccess, PluginManager, PerformanceProfiler async operations
+- Result: 6/6 pass
+
+### CHUNK-11.4: Trace Database Schema Initialization
+- Enhanced `src/aip/cli/init.py` with full trace_events schema (§5.9 CHECK constraints for failure_type A-F, outcome)
+- Added routing_outcomes table (§4.3) with indexes
+- Created `tests/test_phase9_trace_init.py` (5 tests)
+- Result: 5/5 pass
+
+### CHUNK-11.1: FastAPI Application Factory Repair
+- Verified all route modules mount without error
+- Created `tests/test_phase9_app_factory.py` (7 tests)
+- Verified health, projects, sessions, review, artifacts, admin, memory endpoints respond
+- Result: 7/7 pass
+
+### CHUNK-11.3: Workflow Engine Completion
+- Verified SequentialRunner.from_suspended classmethod exists
+- Verified NodeResult import correct in runner.py
+- Verified commit_artifact handles None stores gracefully
+- Created `tests/test_phase9_workflow_completion.py` (5 tests)
+- Result: 5/5 pass
+
+### CHUNK-11.5: Sexton Classification Completion
+- Verified Sexton CI mode classifies all six failure types (A-F)
+- Verified Sexton writes failure_type back to trace store
+- Verified ACE playbook derivation from classification results
+- Verified no unclassified failures remain after Sexton run
+- Created `tests/test_phase9_sexton_completion.py` (4 tests)
+- Result: 4/4 pass
+
+### CHUNK-11.6: Adapter Stub Promotion
+- Verified SqliteSessionStore CRUD with bcrypt
+- Verified auth dependencies enforce roles
+- Verified MCP search delegates to LexicalStore
+- Verified MCP artifacts delegates to ArtifactStore
+- Verified PluginLoader discovers YAML plugins
+- Verified PerformanceProfiler returns real psutil metrics
+- Created `tests/test_phase9_adapter_promotion.py` (6 tests)
+- Result: 6/6 pass
+
+### CHUNK-11.7: Vigil and Canonical Pipeline Completion
+- Verified Vigil.detect_stale_canonicals queries with staleness threshold
+- Verified Vigil.check_canonical_health evaluates faithfulness
+- Verified CanonicalPipeline all 10 steps are real
+- Verified Vigil.on_model_slot_change triggers Sexton audit
+- Created `tests/test_phase9_vigil_canonical.py` (4 tests)
+- Result: 4/4 pass
+
+### CHUNK-11.8: Integration Verification & Acceptance Gate Re-run
+- Verified Workflow 0.1 end-to-end with canonical promotion
+- Verified all prior phase tests still pass (regression)
+- Verified laptop-viable 4GB RAM profile (PerformanceConfig.max_memory_mb=4096)
+- Verified graceful degradation when pgvector unavailable
+- Verified acceptance gates 01-35 representative checks
+- Created `tests/test_phase9_acceptance.py` (5 tests)
+- Result: 5/5 pass
+
+### CHUNK-11.9: Cross-Cutting Gates (Phase 9)
+- Verified network isolation (httpx in adapter only)
+- Verified no hardcoded model names in application logic
+- Verified three-layer import boundaries
+- Verified DEFINER sovereignty on canonical writes
+- Verified Appendix D constraints (knowledge store distinct from canonical)
+- Created `tests/test_phase9_cross_cutting.py` (5 tests)
+- Result: 5/5 pass
+
+### Final Results
+- Total tests: 536 passed, 10 skipped, 0 failures, 0 errors
+- Phase 9 added: 56 new gate tests
+- All acceptance gates [36]-[44] pass
+- All commits pushed to main
