@@ -245,13 +245,12 @@ async def test_end_to_end_workflow_01_happy_path():
         artifact_store=FakeArtifactStore(),
         ecs_store=FakeEcsStore(),
         event_store=FakeEventStore(),
+        ci_mode=True,  # CI mode allows stub auto-approve for smoke test
     )
 
-    # In the current minimal wiring this will hit the dialog and pause.
-    # The important thing is that it runs without crashing and exercises the path.
     result = await runner.run(query="Test query for Workflow 0.1", domain="test")
 
-    # We expect the run to have produced at least one result (even if it paused at the dialog)
+    # In CI mode the stub gate auto-approves so the pipeline should reach commit.
     assert result is not None
 
 
@@ -455,8 +454,8 @@ nodes:
     assert result is not None
     Path(path).unlink()
 
-    # Workflow 0.1 convenience path
-    result2 = await engine.run_workflow_01(query="Test query", domain="test")
+    # Workflow 0.1 convenience path (CI mode for smoke test)
+    result2 = await engine.run_workflow_01(query="Test query", domain="test", ci_mode=True)
     assert result2 is not None
 
 

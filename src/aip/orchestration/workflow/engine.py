@@ -168,13 +168,25 @@ class WorkflowEngine:
         runner = SequentialRunner(definition.nodes, ctx)
         return await runner.run_workflow(definition)
 
-    async def run_workflow_01(self, query: str, domain: str) -> Any:
+    async def run_workflow_01(
+        self,
+        query: str,
+        domain: str,
+        ci_mode: bool | None = None,
+        gate_mode: Any | None = None,
+    ) -> Any:
         """
         Convenience method to run a standard Workflow 0.1 (synthesis session)
         using the high-level Workflow01Runner wiring.
 
         This is the easiest way to execute a full synthesis session with
         the current engine.
+
+        Args:
+            query: The synthesis query.
+            domain: The knowledge domain.
+            ci_mode: Force CI mode (auto-approve stub gate). None = auto-detect.
+            gate_mode: Override the definer gate mode.
         """
         from aip.orchestration.workflow.workflow_01 import Workflow01Runner
 
@@ -186,6 +198,8 @@ class WorkflowEngine:
             ecs_store=self.ecs_store,
             event_store=self.event_store,
             config=self.config,
+            ci_mode=ci_mode,
+            gate_mode=gate_mode,
         )
 
         return await runner.run(query=query, domain=domain)
