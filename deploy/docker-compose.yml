@@ -68,7 +68,7 @@ services:
     container_name: aip-postgres
     environment:
       POSTGRES_USER: aip
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set for production deployments}
       POSTGRES_DB: aip
     ports:
       - "${POSTGRES_PORT:-5432}:5432"

@@ -5,6 +5,9 @@ Verifies that:
 - GET /admin/beast/status returns real health data when Beast is wired
 - GET /admin/beast/status returns fallback when Beast is not wired
 """
+import os
+import tempfile
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,39 +21,61 @@ pytestmark = pytest.mark.skipif(TestClient is None, reason="fastapi not availabl
 from aip.foundation.protocols import VectorStore, EmbeddingProvider
 
 
+def _make_test_config(**overrides):
+    """Create a test config with a temporary database path.
+
+    Required components (entity, canonical, event, autonomy, artifact stores)
+    now fail-fast on startup if the db_path is invalid. Tests must provide
+    a real path so the SQLite stores can create their tables.
+    """
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    config = {
+        "db_path": tmp.name,
+        "auth": {"auth_enabled": False},
+        "rate_limit": {"enabled": False},
+        "embedding": {"provider": "mock"},
+    }
+    config.update(overrides)
+    return config, tmp.name
+
+
 class TestBeastLifespanWiring:
     def test_beast_none_when_vector_store_missing(self):
         """Without vector_store or embedding_provider, Beast should not be wired."""
         from aip.adapter.api.app import create_app
 
-        app = create_app(config={
-            "auth": {"auth_enabled": False},
-            "rate_limit": {"enabled": False},
-            "embedding": {"provider": "mock"},
-        })
-        client = TestClient(app)
+        config, db_path = _make_test_config()
+        try:
+            app = create_app(config=config)
+            client = TestClient(app)
 
-        # The lifespan creates Beast only if both vector_store and embedding_provider
-        # are available. With default config, mock embedding provider is created
-        # but vector_store may fail (no sqlite_vss). Beast may or may not be wired.
-        # The important thing is that the app doesn't crash.
-        response = client.get("/api/v1/admin/beast/status")
-        assert response.status_code == 200
+            # The lifespan creates Beast only if both vector_store and embedding_provider
+            # are available. With default config, mock embedding provider is created
+            # but vector_store may fail (no sqlite_vss). Beast may or may not be wired.
+            # The important thing is that the app doesn't crash.
+            response = client.get("/api/v1/admin/beast/status")
+            assert response.status_code == 200
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
 
     def test_beast_admin_route_returns_ok_when_not_wired(self):
         """When Beast is None, admin route returns fallback."""
         from aip.adapter.api.app import create_app
 
-        app = create_app(config={
-            "auth": {"auth_enabled": False},
-            "rate_limit": {"enabled": False},
-        })
-        client = TestClient(app)
+        config, db_path = _make_test_config()
+        try:
+            app = create_app(config=config)
+            client = TestClient(app)
 
-        response = client.get("/api/v1/admin/beast/status")
-        data = response.json()
-        # Either Beast is wired and returns real health, or fallback "ok"
-        assert "health" in data or "status" in data or data.get("health") is not None
+            response = client.get("/api/v1/admin/beast/status")
+            data = response.json()
+            # Either Beast is wired and returns real health, or fallback "ok"
+            assert "health" in data or "status" in data or data.get("health") is not None
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
 
     def test_beast_admin_route_works_with_mock_beast(self):
         """When Beast is manually set on container, admin route uses it."""
@@ -59,40 +84,41 @@ class TestBeastLifespanWiring:
         from aip.foundation.schemas import BeastCadenceConfig
         from aip.foundation.protocols import ProjectStore
 
-        app = create_app(config={
-            "auth": {"auth_enabled": False},
-            "rate_limit": {"enabled": False},
-            "embedding": {"provider": "mock"},
-        })
-        client = TestClient(app)
+        config, db_path = _make_test_config()
+        try:
+            app = create_app(config=config)
+            client = TestClient(app)
 
-        # Manually wire a Beast with mocks for testing
-        with client:
-            # Force the lifespan to run by making a request first
-            client.get("/api/v1/health")
+            # Manually wire a Beast with mocks for testing
+            with client:
+                # Force the lifespan to run by making a request first
+                client.get("/api/v1/health")
 
-            container = app.state.container
-            if container is not None:
-                vs = AsyncMock(spec=VectorStore)
-                vs.health_check.return_value = {"connected": True, "latency_ms": 1}
-                vs.list_stale_vectors.return_value = []
+                container = app.state.container
+                if container is not None:
+                    vs = AsyncMock(spec=VectorStore)
+                    vs.health_check.return_value = {"connected": True, "latency_ms": 1}
+                    vs.list_stale_vectors.return_value = []
 
-                ep = AsyncMock(spec=EmbeddingProvider)
-                ep.embed.return_value = [0.1] * 768
+                    ep = AsyncMock(spec=EmbeddingProvider)
+                    ep.embed.return_value = [0.1] * 768
 
-                ps = AsyncMock(spec=ProjectStore)
-                ps.list_projects.return_value = []
+                    ps = AsyncMock(spec=ProjectStore)
+                    ps.list_projects.return_value = []
 
-                container.beast = Beast(
-                    config=BeastCadenceConfig(),
-                    vector_store=vs,
-                    embedding_provider=ep,
-                    project_store=ps,
-                )
+                    container.beast = Beast(
+                        config=BeastCadenceConfig(),
+                        vector_store=vs,
+                        embedding_provider=ep,
+                        project_store=ps,
+                    )
 
-                response = client.get("/api/v1/admin/beast/status")
-                assert response.status_code == 200
-                data = response.json()
-                # Should have real health data, not fallback "ok"
-                assert isinstance(data["health"], dict)
-                assert "overall" in data["health"]
+                    response = client.get("/api/v1/admin/beast/status")
+                    assert response.status_code == 200
+                    data = response.json()
+                    # Should have real health data, not fallback "ok"
+                    assert isinstance(data["health"], dict)
+                    assert "overall" in data["health"]
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)

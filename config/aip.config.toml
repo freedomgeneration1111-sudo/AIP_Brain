@@ -171,6 +171,9 @@ max_re_evaluate_batch_size = 50
 entity_consistency_check = true
 
 [auth]
+# IMPORTANT: auth_enabled=false means ALL requests are treated as DEFINER.
+# This is acceptable for laptop/local development but MUST be true in production.
+# The middleware logs a warning on every request when auth is disabled.
 auth_enabled = false
 session_timeout_seconds = 86400
 api_key_enabled = true
@@ -195,6 +198,10 @@ require_definer_approval = true
 profile_name = "laptop"
 vector_backend = "sqlite_vss"
 model_provider = "ollama"
+# IMPORTANT: auth_enabled must be true in production deployments.
+# The laptop profile defaults to false for local development convenience.
+# Production deployments MUST set auth_enabled = true or provide the
+# auth.auth_enabled = true override via environment or config.
 auth_enabled = false
 workers = 1
 memory_limit_mb = 4096

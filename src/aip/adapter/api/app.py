@@ -3,6 +3,26 @@
 Per spec prose + interfaces (exact).
 Wires 8.0a/8.0b adapters + full Phase 5 actor layer into AipContainer.
 All privileged writes go through AutonomyGate.
+
+Startup Classification
+----------------------
+Components are classified as REQUIRED or OPTIONAL:
+
+REQUIRED (startup fails if these cannot initialize):
+  - Entity store: artifact metadata, collaborator data
+  - Canonical store: canonical artifact storage
+  - Event store: audit trail, trace events
+  - Autonomy gate: authorization enforcement (core security)
+  - Artifact store: artifact versioned storage
+
+OPTIONAL (startup logs warning, service degrades gracefully):
+  - Vector store: semantic search (degrades to keyword-only)
+  - Embedding provider: vector embedding (degrades to fake_embed)
+  - Project store: project management (degrades to empty projects)
+  - Budget store: token budget tracking (degrades to unlimited)
+  - Vigil store: canonical health monitoring (degrades to no monitoring)
+  - Model provider: LLM dispatch (degrades to stub responses)
+  - Beast actor: background health + corpus maintenance (degrades to no background tasks)
 """
 
 from __future__ import annotations
@@ -26,24 +46,105 @@ from aip.foundation.schemas import SurfaceConfig, BeastCadenceConfig
 logger = logging.getLogger(__name__)
 
 
+class StartupError(Exception):
+    """Raised when a required component fails to initialize on startup."""
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize all adapters and orchestration components on startup."""
+    """Initialize all adapters and orchestration components on startup.
+
+    Required components cause startup to fail fast with a clear error.
+    Optional components log warnings and degrade gracefully.
+    """
     config: dict = app.state.raw_config or {}
     container = AipContainer(config)
 
     # --- Wire adapter stores from config ---
     db_path = config.get("db_path", "db/state.db")
 
-    # Vector store (via factory — use importlib to avoid static import that triggers layering guard)
+    # =====================================================================
+    # REQUIRED COMPONENTS — startup fails if these cannot initialize
+    # =====================================================================
+
+    # Entity store — artifact metadata, collaborator data
+    try:
+        from aip.adapter.entity.sqlite_entity_store import SqliteEntityStore
+        container.entity_store = SqliteEntityStore(db_path)
+        await container.entity_store.initialize()
+        logger.info("Entity store initialized (required)")
+    except Exception as exc:
+        raise StartupError(
+            f"REQUIRED component failed: Entity store could not initialize. "
+            f"Reason: {exc}. The application cannot start without entity storage."
+        ) from exc
+
+    # Canonical store — canonical artifact storage
+    try:
+        from aip.adapter.canonical.sqlite_canonical_store import SqliteCanonicalStore
+        container.canonical_store = SqliteCanonicalStore(db_path)
+        await container.canonical_store.initialize()
+        logger.info("Canonical store initialized (required)")
+    except Exception as exc:
+        raise StartupError(
+            f"REQUIRED component failed: Canonical store could not initialize. "
+            f"Reason: {exc}. The application cannot start without canonical storage."
+        ) from exc
+
+    # Event store — audit trail, trace events
+    try:
+        from aip.adapter.event_store_queryable import QueryableEventStore
+        container.event_store = QueryableEventStore(db_path)
+        await container.event_store.initialize()
+        logger.info("Event store initialized (required)")
+    except Exception as exc:
+        raise StartupError(
+            f"REQUIRED component failed: Event store could not initialize. "
+            f"Reason: {exc}. The application cannot start without event storage."
+        ) from exc
+
+    # Autonomy gate — authorization enforcement (core security)
+    try:
+        _ag_mod = importlib.import_module("aip.adapter.autonomy.autonomy_gate")
+        _AutonomyGateImpl = _ag_mod.AutonomyGateImpl
+        container.autonomy_gate = _AutonomyGateImpl(config={**config, "db_path": db_path})
+        await container.autonomy_gate.initialize()
+        logger.info("Autonomy gate initialized (required)")
+    except Exception as exc:
+        raise StartupError(
+            f"REQUIRED component failed: Autonomy gate could not initialize. "
+            f"Reason: {exc}. The application cannot start without authorization enforcement."
+        ) from exc
+
+    # Artifact store (versioned) — artifact versioned storage
+    try:
+        _as_mod = importlib.import_module("aip.adapter.artifact_store_versioned")
+        _VersionedArtifactStore = _as_mod.VersionedArtifactStore
+        container.artifact_store = _VersionedArtifactStore(db_path)
+        await container.artifact_store.initialize()
+        logger.info("Artifact store initialized (required)")
+    except Exception as exc:
+        raise StartupError(
+            f"REQUIRED component failed: Artifact store could not initialize. "
+            f"Reason: {exc}. The application cannot start without artifact storage."
+        ) from exc
+
+    # =====================================================================
+    # OPTIONAL COMPONENTS — startup logs warning, service degrades gracefully
+    # =====================================================================
+
+    # Vector store — semantic search (degrades to keyword-only)
     try:
         _vs_mod = importlib.import_module("aip.adapter.vector.factory")
         _create_vector_store = _vs_mod.create_vector_store
         container.vector_store = await _create_vector_store(config)
+        logger.info("Vector store initialized (optional)")
     except Exception as exc:
-        logger.warning("Vector store initialization failed: %s", exc)
+        logger.warning(
+            "Vector store initialization failed (optional — semantic search degraded): %s", exc
+        )
 
-    # Embedding provider
+    # Embedding provider — vector embedding (degrades to fake_embed)
     try:
         embed_cfg = config.get("embedding", {})
         provider = embed_cfg.get("provider", "mock")
@@ -56,83 +157,57 @@ async def lifespan(app: FastAPI):
         else:
             from aip.adapter.embedding.ollama_embed import MockOllamaEmbeddingClient
             container.embedding_provider = MockOllamaEmbeddingClient()
+        logger.info("Embedding provider initialized (optional, provider=%s)", provider)
     except Exception as exc:
-        logger.warning("Embedding provider initialization failed: %s", exc)
+        logger.warning(
+            "Embedding provider initialization failed (optional — using fake_embed): %s", exc
+        )
 
-    # Entity store
-    try:
-        from aip.adapter.entity.sqlite_entity_store import SqliteEntityStore
-        container.entity_store = SqliteEntityStore(db_path)
-        await container.entity_store.initialize()
-    except Exception as exc:
-        logger.warning("Entity store initialization failed: %s", exc)
-
-    # Canonical store
-    try:
-        from aip.adapter.canonical.sqlite_canonical_store import SqliteCanonicalStore
-        container.canonical_store = SqliteCanonicalStore(db_path)
-        await container.canonical_store.initialize()
-    except Exception as exc:
-        logger.warning("Canonical store initialization failed: %s", exc)
-
-    # Event store
-    try:
-        from aip.adapter.event_store_queryable import QueryableEventStore
-        container.event_store = QueryableEventStore(db_path)
-        await container.event_store.initialize()
-    except Exception as exc:
-        logger.warning("Event store initialization failed: %s", exc)
-
-    # Project store
+    # Project store — project management (degrades to empty projects)
     try:
         from aip.adapter.project.sqlite_project_store import SqliteProjectStore
         container.project_store = SqliteProjectStore(db_path)
         await container.project_store.initialize()
+        logger.info("Project store initialized (optional)")
     except Exception as exc:
-        logger.warning("Project store initialization failed: %s", exc)
+        logger.warning(
+            "Project store initialization failed (optional — project management degraded): %s", exc
+        )
 
-    # Budget store
+    # Budget store — token budget tracking (degrades to unlimited)
     try:
         _bs_mod = importlib.import_module("aip.adapter.budget_store_sqlite")
         _SqliteBudgetStore = _bs_mod.SqliteBudgetStore
         container.budget_store = _SqliteBudgetStore(db_path)
         await container.budget_store.initialize()
+        logger.info("Budget store initialized (optional)")
     except Exception as exc:
-        logger.warning("Budget store initialization failed: %s", exc)
+        logger.warning(
+            "Budget store initialization failed (optional — budget tracking disabled): %s", exc
+        )
 
-    # Vigil store
+    # Vigil store — canonical health monitoring (degrades to no monitoring)
     try:
         _vs2_mod = importlib.import_module("aip.adapter.vigil.sqlite_vigil_store")
         _SqliteVigilStore = _vs2_mod.SqliteVigilStore
         container.vigil_store = _SqliteVigilStore(db_path)
         await container.vigil_store.initialize()
+        logger.info("Vigil store initialized (optional)")
     except Exception as exc:
-        logger.warning("Vigil store initialization failed: %s", exc)
+        logger.warning(
+            "Vigil store initialization failed (optional — health monitoring degraded): %s", exc
+        )
 
-    # Autonomy gate
-    try:
-        _ag_mod = importlib.import_module("aip.adapter.autonomy.autonomy_gate")
-        _AutonomyGateImpl = _ag_mod.AutonomyGateImpl
-        container.autonomy_gate = _AutonomyGateImpl(config={**config, "db_path": db_path})
-        await container.autonomy_gate.initialize()
-    except Exception as exc:
-        logger.warning("Autonomy gate initialization failed: %s", exc)
-
-    # Artifact store (versioned)
-    try:
-        _as_mod = importlib.import_module("aip.adapter.artifact_store_versioned")
-        _VersionedArtifactStore = _as_mod.VersionedArtifactStore
-        container.artifact_store = _VersionedArtifactStore(db_path)
-        await container.artifact_store.initialize()
-    except Exception as exc:
-        logger.warning("Artifact store initialization failed: %s", exc)
-
-    # Model provider (ModelSlotResolver)
+    # Model provider — LLM dispatch (degrades to stub responses)
     try:
         from aip.adapter.model_slot_resolver import ModelSlotResolver
         container.model_provider = ModelSlotResolver(config)
+        logger.info("Model provider initialized (optional)")
     except Exception as exc:
-        logger.warning("Model provider initialization failed: %s", exc)
+        logger.warning(
+            "Model provider initialization failed (optional — model calls will return errors): %s",
+            exc,
+        )
 
     # --- Wire orchestration components (lazy import to preserve layer discipline) ---
     # Beast actor — requires vector_store + embedding_provider at minimum
@@ -153,9 +228,9 @@ async def lifespan(app: FastAPI):
                 entity_store=container.entity_store,
                 canonical_store=container.canonical_store,
             )
-            logger.info("Beast actor wired successfully")
+            logger.info("Beast actor initialized (optional)")
         except Exception as exc:
-            logger.warning("Beast actor initialization failed: %s", exc)
+            logger.warning("Beast actor initialization failed (optional — no background tasks): %s", exc)
     else:
         logger.info("Beast actor not wired: missing vector_store or embedding_provider")
 
@@ -197,6 +272,18 @@ async def lifespan(app: FastAPI):
 
         beast_task = asyncio.create_task(_beast_scheduler(), name="beast-scheduler")
         logger.info("Beast background scheduler task created")
+
+    logger.info(
+        "AIP startup complete. Required: 5 stores initialized. "
+        "Optional: vector=%s, embedding=%s, project=%s, budget=%s, vigil=%s, model=%s, beast=%s",
+        container.vector_store is not None,
+        container.embedding_provider is not None,
+        container.project_store is not None,
+        container.budget_store is not None,
+        container.vigil_store is not None,
+        container.model_provider is not None,
+        container.beast is not None,
+    )
 
     yield
 
