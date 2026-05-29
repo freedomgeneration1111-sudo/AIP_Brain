@@ -66,8 +66,8 @@ async def system_health_check(config: Any) -> dict:
         for slot_name in resolver.list_slots():
             try:
                 model_slots[slot_name] = resolver.resolve(slot_name)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Model slot resolve failed for %s: %s", slot_name, exc)
     except Exception:
         model_slots = {"error": "resolver not available"}
 
@@ -77,8 +77,8 @@ async def system_health_check(config: Any) -> dict:
         # For standalone CLI checks, just report 0
         if hasattr(config, "_app_start_time"):
             uptime_seconds = int(time.time() - config._app_start_time)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Uptime calculation failed: %s", exc)
 
     overall_healthy = (
         vector_status.get("status") in ("healthy", "degraded") and embedding_status.get("status") == "healthy"

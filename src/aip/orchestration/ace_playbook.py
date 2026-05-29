@@ -2,7 +2,7 @@
 
 Procedural intervention rules, loaded at session start, curated by Sexton.
 Derive and update from Sexton FailureClassification output.
-Per Appendix D: deprecation (supersession) not deletion.
+Deprecation uses supersession, not deletion.
 Uses AcePlaybookEntry (7.0a) which carries model_gen_assumption.
 """
 
@@ -107,7 +107,7 @@ class AcePlaybook:
         classification: FailureClassification,
         trace_event: dict[str, Any],
     ) -> AcePlaybookEntry | None:
-        """Bridge from 7.1 Sexton output to persistent playbook entry (per 7.2 prose)."""
+        """Bridge from Sexton output to persistent playbook entry."""
         from datetime import datetime, timezone
 
         ft = classification.failure_type
@@ -165,7 +165,7 @@ class AcePlaybook:
         )
 
     def _intervention_for(self, failure_type: str) -> str:
-        # Minimal mapping per Appendix E recommendations (expandable)
+        # Minimal mapping per failure type (expandable)
         mapping = {
             "A": "Inject domain contract / strengthen retrieval before synthesis",
             "B": "Add or strengthen procedural ACE playbook entry",

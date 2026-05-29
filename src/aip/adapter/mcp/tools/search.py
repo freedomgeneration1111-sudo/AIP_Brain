@@ -1,6 +1,6 @@
 """aip_search MCP tool — read, uses LexicalStore + VectorStore Protocols.
 
-Per Appendix D: MCP routes through Protocols, not around them.
+MCP routes through Protocols, not around them.
 No direct store access — all access through container Protocols.
 """
 

@@ -1,6 +1,6 @@
 """aip_artifact_approve MCP tool — admin, uses Ecs + Canonical + Gate.
 
-Per spec: approval through MCP follows the same path as REST/CLI.
+Approval through MCP follows the same path as REST/CLI.
 Gate enforcement happens in server.py before this function is called.
 This function performs the actual ECS transition + canonical write.
 

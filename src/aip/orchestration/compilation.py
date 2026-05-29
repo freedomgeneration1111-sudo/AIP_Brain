@@ -8,6 +8,8 @@ Uses only named model slots + config.
 
 from __future__ import annotations
 
+import logging
+
 from aip.foundation.protocols import (
     CanonicalStore,
     EcsStore,
@@ -21,6 +23,8 @@ from aip.foundation.protocols import (
     VigilStore,
 )
 from aip.foundation.schemas import KnowledgeCompilationConfig
+
+logger = logging.getLogger(__name__)
 
 
 class KnowledgeCompiler:
@@ -76,8 +80,8 @@ class KnowledgeCompiler:
                 outcome=outcome,
                 detail=detail or "",
             )
-        except Exception:
-            pass  # trace failures must never break compilation
+        except Exception as exc:
+            logger.debug("Trace write failed during compilation: %s", exc)
 
     async def compile_from_canonicals(
         self,

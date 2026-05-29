@@ -9,10 +9,13 @@ to use trace_store.write_event(). Fix get_memory_usage to return per-component b
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any, Awaitable, Callable
 
 from aip.foundation.schemas import PerformanceConfig
+
+logger = logging.getLogger(__name__)
 
 
 def _read_meminfo_fallback() -> tuple[float, float]:
@@ -88,8 +91,8 @@ class PerformanceProfiler:
                     outcome="success" if success else "failure",
                     detail=f"operation={operation_name}, duration_ms={duration_ms:.1f}, error={error}",
                 )
-            except Exception:
-                pass  # trace failures must not break profiling
+            except Exception as exc:
+                logger.debug("Trace write failed during profiling: %s", exc)
 
         return {
             "operation": operation_name,

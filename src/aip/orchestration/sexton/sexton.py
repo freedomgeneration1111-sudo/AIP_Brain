@@ -15,10 +15,13 @@ This is deliberately the smallest useful foundation.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from aip.foundation.protocols import EventStore, ModelProvider, TraceStore
 from aip.foundation.schemas import FailureClassification, SextonConfig
+
+logger = logging.getLogger(__name__)
 
 
 class Sexton:
@@ -87,8 +90,8 @@ class Sexton:
                         intervention_applied=ev.get("intervention_applied", 0),
                         intervention_type=ev.get("intervention_type"),
                     )
-                except Exception:
-                    pass  # best effort for foundation
+                except Exception as exc:
+                    logger.debug("Trace write for classification failed: %s", exc)
 
                 ev = {**ev, "failure_type": failure_type}
                 classified.append(ev)
@@ -143,9 +146,9 @@ class Sexton:
         confidence = 0.7
         rationale = "Deterministic foundation classification (CI mode or no resolver)"
         model_gen_assumption = (
-            "Local deterministic rules (Qwen3-Coder equivalent in CI) may "
-            "misclassify domain-adjacent or subtle failures; real model slot "
-            "usage provides higher fidelity per §16.1."
+            "Local deterministic rules may misclassify subtle or "
+            "domain-adjacent failures; a real model slot provides "
+            "higher-fidelity classification."
         )
 
         if self._model_resolver is not None and not getattr(self._model_resolver, "_ci_mode", True):
@@ -167,7 +170,7 @@ class Sexton:
         if not failure_type:
             return None
 
-        # Write classification back exclusively via TraceStore (per spec)
+        # Write classification back exclusively via TraceStore
         if self._trace_store is not None:
             try:
                 await self._trace_store.write_event(
@@ -179,8 +182,8 @@ class Sexton:
                     intervention_applied=event.get("intervention_applied", 0),
                     intervention_type=event.get("intervention_type"),
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Trace write for classification back-fill failed: %s", exc)
 
         return FailureClassification(
             trace_event_id=trace_event_id or event.get("id", 0),
@@ -217,8 +220,8 @@ class Sexton:
                     artifact_id="",
                     metadata_json=str(count),
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("EventStore write for sexton alert failed: %s", exc)
 
         await self.classify_failures()
 
@@ -230,11 +233,11 @@ class Sexton:
                     artifact_id="",
                     metadata_json=str(count),
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("EventStore write for sexton cycle complete failed: %s", exc)
 
     def _build_classification_prompt(self, event: dict[str, Any]) -> str:
-        """Build the prompt containing full Appendix E + trace data (per 7.1 prose)."""
+        """Build the classification prompt with taxonomy and trace data."""
         # Minimal faithful prompt; real impl would include the full taxonomy text
         return (
             "You are Sexton. Classify the following trace event failure using "
@@ -341,8 +344,7 @@ class Sexton:
                 "proposed_action": "escalate_to_definer_with_full_context",
                 "requires_approval": True,
                 "model_gen_assumption": (
-                    "Deterministic rule: Repeated failures indicate a systemic issue, "
-                    "not a transient one. Per §16.1 and §1.8."
+                    "Repeated failures point to a systemic problem rather than a transient glitch."
                 ),
             }
 
@@ -358,10 +360,7 @@ class Sexton:
                 "affected_component": "evaluation",
                 "proposed_action": "block_promotion_and_alert_definer",
                 "requires_approval": True,  # Must be reviewed by DEFINER
-                "model_gen_assumption": (
-                    "Deterministic rule: Fixture leakage in production is a critical "
-                    "safety concern. Per §16.1 and §1.8."
-                ),
+                "model_gen_assumption": ("Fixture data leaking into production paths is a critical safety breach."),
             }
 
         # Canonical promotion blocked
@@ -376,9 +375,7 @@ class Sexton:
                 "affected_component": "canonical_pipeline",
                 "proposed_action": "request_definer_review_with_evaluation_context",
                 "requires_approval": True,
-                "model_gen_assumption": (
-                    "Deterministic rule: Blocked promotions need human review. Per §16.1 and §1.8."
-                ),
+                "model_gen_assumption": ("A blocked promotion always warrants human review before any further action."),
             }
 
         # Model-slot drift
@@ -393,7 +390,7 @@ class Sexton:
                 "proposed_action": "trigger_vigil_re_evaluation",
                 "requires_approval": False,  # Re-evaluation is a standard safety action
                 "model_gen_assumption": (
-                    "Deterministic rule: Model slot changes invalidate prior evaluations. Per §16.1 and §1.8."
+                    "Swapping a model slot invalidates evaluations done under the previous configuration."
                 ),
             }
 
@@ -409,7 +406,7 @@ class Sexton:
                 "proposed_action": "pause_generation_and_alert_definer",
                 "requires_approval": True,
                 "model_gen_assumption": (
-                    "Deterministic rule: Budget breaches require review before resuming. Per §16.1 and §1.8."
+                    "Once the token budget is breached, generation should pause until someone reviews consumption."
                 ),
             }
 
@@ -425,9 +422,7 @@ class Sexton:
                 "affected_component": "auth",
                 "proposed_action": "log_security_event_and_block_operation",
                 "requires_approval": True,  # Security events always require review
-                "model_gen_assumption": (
-                    "Deterministic rule: Auth violations are always critical. Per §16.1 and §1.8."
-                ),
+                "model_gen_assumption": ("Authentication or authorization violations are unconditionally critical."),
             }
 
         # Workflow stuck waiting for approval
@@ -442,9 +437,7 @@ class Sexton:
                 "affected_component": "review_queue",
                 "proposed_action": "notify_definer_of_pending_review",
                 "requires_approval": False,  # Notification is safe to auto-send
-                "model_gen_assumption": (
-                    "Deterministic rule: Stuck workflows benefit from reminders. Per §16.1 and §1.8."
-                ),
+                "model_gen_assumption": ("A workflow stalled on approval often just needs a nudge to the reviewer."),
             }
 
         # --- Failure type codes (A-F) — generic rules ---
@@ -461,8 +454,7 @@ class Sexton:
                 "proposed_action": "strengthen_contract_rule_or_improve_retrieval",
                 "requires_approval": True,
                 "model_gen_assumption": (
-                    "Deterministic rule: Type A failures indicate retrieval gaps that may "
-                    "recur under similar conditions. Per §16.1 and §1.8."
+                    "Context framing failures tend to recur when the same retrieval conditions appear again."
                 ),
             }
 
@@ -478,7 +470,7 @@ class Sexton:
                 "proposed_action": "add_or_retrieve_ace_playbook_entry",
                 "requires_approval": True,
                 "model_gen_assumption": (
-                    "Deterministic rule: Type B failures indicate missing procedural coverage. Per §16.1 and §1.8."
+                    "A procedural gap means the system has no playbook entry for this failure pattern."
                 ),
             }
 
@@ -494,8 +486,7 @@ class Sexton:
                 "proposed_action": "apply_structural_validation_or_repair",
                 "requires_approval": False,  # Validation/repair is safe to auto-apply
                 "model_gen_assumption": (
-                    "Deterministic rule: Type C failures indicate structural quality issues "
-                    "that validation can catch. Per §16.1 and §1.8."
+                    "Malformed output is usually caught by structural validation if the rules are thorough enough."
                 ),
             }
 
@@ -512,8 +503,7 @@ class Sexton:
                 "proposed_action": "trigger_context_reset_or_l4_intervention",
                 "requires_approval": False,  # Context reset is a standard recovery action
                 "model_gen_assumption": (
-                    "Deterministic rule: Type D failures indicate trajectory problems "
-                    "that L4 can address. Per §16.1 and §1.8."
+                    "Session drift and loops are trajectory problems the L4 layer is designed to correct."
                 ),
             }
 
@@ -530,8 +520,8 @@ class Sexton:
                 "proposed_action": "require_verify_step_before_commit",
                 "requires_approval": True,  # Must be approved — do not auto-commit
                 "model_gen_assumption": (
-                    "Deterministic rule: Type E failures are the most dangerous — they "
-                    "indicate the system may approve low-quality content. Per §16.1 and §1.8."
+                    "False-success reports are especially hazardous because they "
+                    "can mask low-quality output as approved."
                 ),
             }
 
@@ -548,8 +538,7 @@ class Sexton:
                 "proposed_action": "trigger_context_reset_or_l4_intervention",
                 "requires_approval": False,
                 "model_gen_assumption": (
-                    "Deterministic rule: Type F failures indicate model confidence issues "
-                    "that may benefit from context refresh. Per §16.1 and §1.8."
+                    "Context anxiety reflects declining model confidence; a context reset often restores quality."
                 ),
             }
 
@@ -587,11 +576,10 @@ class Sexton:
                 "recommended_action": self._default_action_for(ft),
                 "source_event_count": 1,
                 "model_gen_assumption": (
-                    f"Rule derived directly from observed classified failure (type {ft}) "
-                    f"in node {node}. Encodes the assumption that this pattern of "
-                    f"failure will recur under similar conditions and benefits from "
-                    f"the listed intervention. Per Architecture §16.1 and §1.8. "
-                    f"Audit on model slot upgrade."
+                    f"Rule derived from observed classified failure (type {ft}) "
+                    f"in node {node}. Assumes this pattern recurs under similar "
+                    f"conditions and benefits from the listed intervention. "
+                    f"Re-audit after model slot upgrades."
                 ),
             }
             rules.append(rule)
@@ -645,13 +633,12 @@ class Sexton:
         stale: list[dict] = []
         for rule in rules:
             assumption = rule.get("model_gen_assumption", "")
-            if not assumption or "§1.8" not in assumption or len(assumption) < 50:
+            if not assumption or len(assumption) < 50:
                 stale.append(
                     {
                         **rule,
                         "audit_reason": (
-                            "Missing or weak model_gen_assumption tag "
-                            "(per §1.8). Rule may be stale after model upgrade."
+                            "Missing or weak model_gen_assumption tag. Rule may be stale after model upgrade."
                         ),
                         "trust_score": self.trust_score(rule),
                     },

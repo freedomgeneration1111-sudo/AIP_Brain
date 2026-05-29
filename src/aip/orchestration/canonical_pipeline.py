@@ -1,7 +1,7 @@
 """Canonical Promotion Pipeline.
 
 The missing orchestration driver for the full REVIEWED→APPROVED→CANONICAL lifecycle.
-Composes 8.0b stores + 8.4 review paths + 6.2 evaluation nodes + 9.1 Vigil health recording + AutonomyGate.
+Composes stores, review paths, evaluation nodes, Vigil health recording, and AutonomyGate.
 
 ci_fixture handling:
     In production mode (when the CI environment variable is not set), promotion is

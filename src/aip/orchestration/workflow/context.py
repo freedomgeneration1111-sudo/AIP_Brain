@@ -140,8 +140,8 @@ class WorkflowContext:
                 # since this is an internal bookkeeping flag.
                 try:
                     self._warned_infinite_budget = True
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Failed to set infinite budget warning flag: %s", exc)
             return True
         if amount > self.budget_remaining:
             logger.warning(
@@ -182,8 +182,8 @@ class WorkflowContext:
                 else:
                     asyncio.create_task(coro)  # type: ignore[arg-type]
                     return level <= 1  # optimistic for async foundation; decision scheduled
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Autonomy gate request failed: %s", exc)
 
         # Default foundation behavior (matches SimpleAutonomyGate when absent)
         return level <= 1

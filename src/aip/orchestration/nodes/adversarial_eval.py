@@ -66,25 +66,27 @@ DEFAULT_EVAL_CRITERIA: list[EvalCriterion] = [
             "Does the synthesis output stay grounded in the provided "
             "retrieval context without introducing unsupported claims?"
         ),
-        model_gen_assumption=("Models may hallucinate specific claims; grounding check compensates per §1.8"),
+        model_gen_assumption="Models can hallucinate specific claims; the grounding check exists to catch this",
     ),
     EvalCriterion(
         criterion_id="completeness",
         name="Completeness",
         description="Does the output adequately address the original query given the retrieved context?",
-        model_gen_assumption="Models may omit key domain requirements; completeness check compensates per §1.8",
+        model_gen_assumption="Models sometimes skip key domain requirements; the completeness check catches omissions",
     ),
     EvalCriterion(
         criterion_id="coherence",
         name="Structural Coherence",
         description="Is the output well-structured, clear, and free of internal contradictions?",
-        model_gen_assumption="Models may produce internally contradictory output; coherence check compensates per §1.8",
+        model_gen_assumption=(
+            "Internally contradictory output is a known model failure mode; the coherence check guards against it"
+        ),
     ),
     EvalCriterion(
         criterion_id="assumption_violation",
         name="Unstated Assumption Violation",
         description="Does the synthesis introduce assumptions not supported by the query or retrieved context?",
-        model_gen_assumption="Models may produce vague output; specificity check compensates per §1.8",
+        model_gen_assumption="Vague output is a common model weakness; the specificity check enforces precision",
     ),
 ]
 

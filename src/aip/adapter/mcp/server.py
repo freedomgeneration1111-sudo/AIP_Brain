@@ -1,8 +1,8 @@
 """AipMcpServer — MCP tool server with real dispatch.
 
-Per spec: takes AipContainer, supports stdio/sse, list_tools() with McpToolDef
+Takes AipContainer, supports stdio/sse, list_tools() with McpToolDef
 (autonomy_level + model_gen_assumption), enforces gate for write/admin tools before dispatch.
-Appendix D: MCP routes through Protocols, not around them (no direct store access).
+MCP routes through Protocols, not around them (no direct store access).
 
 Response contract:
   Success: {"ok": true, "result": {...}}

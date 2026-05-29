@@ -9,9 +9,12 @@ and record recovery in trace_events.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import aiosqlite
+
+logger = logging.getLogger(__name__)
 
 
 class WorkflowRecovery:
@@ -100,8 +103,8 @@ class WorkflowRecovery:
                             outcome="recovered" if outputs_verified else "partial_recovery",
                             detail=f"Workflow recovered from node {cp['node_id']}. {verification_detail}",
                         )
-                    except Exception:
-                        pass  # trace failures must not break recovery
+                    except Exception as exc:
+                        logger.debug("Trace write failed during recovery: %s", exc)
 
                 return {
                     "status": "recovered" if outputs_verified else "partial_recovery",

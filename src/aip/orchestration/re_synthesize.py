@@ -33,7 +33,7 @@ _CORRECTION_INSTRUCTIONS = {
 def build_failure_context(rejection: ReviewVerdict, prior_content: str) -> dict:
     """Build failure context dict from rejection verdict.
 
-    Maps failure types to correction instructions per Appendix E.
+    Maps failure types to correction instructions.
     """
     instructions = []
     for ft in rejection.failure_types:
@@ -92,7 +92,7 @@ async def re_synthesize(
     retry_count = len(events)
 
     if retry_count >= max_retries:
-        # Budget exhausted — per spec, REJECTED can only go to GENERATED first,
+        # Budget exhausted — REJECTED can only go to GENERATED first,
         # then GENERATED→FAILED. Two-step transition.
         await ecs_store.transition(
             artifact_id=artifact_id,

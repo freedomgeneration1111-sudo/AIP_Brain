@@ -20,7 +20,7 @@ router = APIRouter()
 
 @router.get("/admin/config")
 async def get_admin_config(container: AipContainer = Depends(get_container)):
-    return container.config or {"status": "scaffold"}
+    return container.config or {"status": "unconfigured"}
 
 
 @router.patch("/admin/config")
@@ -122,5 +122,5 @@ async def get_budget_status(container: AipContainer = Depends(get_container)):
 
 @router.get("/admin/autonomy/log")
 async def get_autonomy_log(container: AipContainer = Depends(get_container)):
-    # From AutonomyGate audit (8.0b)
+    # From AutonomyGate audit
     return {"escalations": []}

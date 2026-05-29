@@ -34,7 +34,9 @@ DEFAULT_RULES: list[ValidationRule] = [
         check=lambda s: len(s) >= 100,
         failure_type="C",
         message="Output must be at least 100 characters.",
-        model_gen_assumption="Models may produce insufficiently detailed output; length check compensates per §1.8",
+        model_gen_assumption=(
+            "Models can produce insufficiently detailed output; the length minimum guards against this"
+        ),
     ),
     ValidationRule(
         rule_id="no_false_success_patterns",
@@ -44,7 +46,7 @@ DEFAULT_RULES: list[ValidationRule] = [
         failure_type="E",
         message="Claims completion without sufficient substance.",
         model_gen_assumption=(
-            "Models may falsely claim completion without sufficient substance; false-success check compensates per §1.8"
+            "Models sometimes claim completion prematurely; the false-success check catches these premature claims"
         ),
     ),
     ValidationRule(
@@ -52,7 +54,7 @@ DEFAULT_RULES: list[ValidationRule] = [
         check=lambda s: any(marker in s for marker in ["##", "```", "1.", "Step"]),
         failure_type="C",
         message="Output lacks clear section markers.",
-        model_gen_assumption="Models may produce malformed output; structural check compensates per §1.8",
+        model_gen_assumption="Malformed output is a common model failure mode; structural markers enforce organization",
     ),
 ]
 

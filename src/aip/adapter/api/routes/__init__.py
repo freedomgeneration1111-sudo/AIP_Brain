@@ -1,4 +1,4 @@
-"""API route modules for /8.3 surfaces."""
+"""API route modules for API surfaces."""
 
 from . import admin, artifacts, chat, health, memory, projects, review, sessions
 

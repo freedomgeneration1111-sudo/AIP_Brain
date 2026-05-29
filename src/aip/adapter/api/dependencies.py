@@ -1,6 +1,6 @@
 """Dependency injection for the AIP FastAPI surfaces.
 
-Per spec: single AipContainer as the source of truth. Routes never import concrete adapters.
+Single AipContainer as the source of truth. Routes never import concrete adapters.
 
 Removed direct orchestration imports from adapter layer.
 Orchestration components (SessionManager, BudgetManager, etc.) are typed

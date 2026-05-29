@@ -337,11 +337,10 @@ async def _get_chunk_by_id(source: VectorStore, chunk_id: str, dimensions: int) 
     if hasattr(source, "get_by_id") and callable(getattr(source, "get_by_id")):
         try:
             return await source.get_by_id(chunk_id)  # type: ignore[union-attr]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("get_by_id failed for %s: %s", chunk_id, exc)
 
     # Fallback: use a small probe vector and filter
-    # This is less efficient but works with any VectorStore implementation
     probe = [0.01] * dimensions
     try:
         results = await source.retrieve(probe, top_k=1)
@@ -350,8 +349,8 @@ async def _get_chunk_by_id(source: VectorStore, chunk_id: str, dimensions: int) 
         for chunk in results:
             if chunk.id == chunk_id:
                 return chunk
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Probe retrieve failed for chunk %s: %s", chunk_id, exc)
 
     return None
 

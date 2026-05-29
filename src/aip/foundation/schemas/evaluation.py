@@ -92,12 +92,12 @@ class AcePlaybookEntry:
     Procedural intervention rules, loaded at session start.
     Curated by Sexton.
     Every rule must carry model_gen_assumption.
-    Per Appendix E Type B: "Add or strengthen playbook entry."
+    Type B remedy: add or strengthen playbook entry.
     """
 
     entry_id: str
     domain: str
-    failure_type: str  # A-F per Appendix E
+    failure_type: str  # A-F failure type codes
     intervention: str
     condition: str  # Jinja2 expression
     model_gen_assumption: str | None = None
@@ -118,7 +118,7 @@ class FailureClassification:
     """
 
     trace_event_id: int
-    failure_type: str  # A-F per Appendix E
+    failure_type: str  # A-F failure type codes
     confidence: float = 0.0
     rationale: str = ""
     model_slot_used: str = "sexton"
@@ -133,7 +133,7 @@ class KnowledgeCompilationConfig:
 
     Deferred Compiled Knowledge Layer — finally implemented.
     model_gen_assumption tags what the compilation criteria assume.
-    Per Appendix D: compiled knowledge and canonical artifacts are distinct (no collapse).
+    Compiled knowledge and canonical artifacts are distinct (no collapse).
     """
 
     compilation_model_slot: str = "synthesis"

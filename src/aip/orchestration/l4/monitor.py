@@ -58,7 +58,7 @@ class TrajectoryMonitor:
 
         L4b extension : In addition to pre-labeled F events, the monitor
         now applies deterministic heuristics on raw event data to detect Type F
-        (Context Anxiety) signals per Architecture Appendix E:
+        (Context Anxiety) signals:
         - Hedging language in detail/failure_detail
         - Declining output length trends (via token_count_out where present)
         - High context pressure (event density + recent heavy nodes)
@@ -106,15 +106,14 @@ class TrajectoryMonitor:
                     detail=f"Detected {len(d_events)} D-type events in session window",
                     detected_at=now,
                     model_gen_assumption=(
-                        "L4 2-of-3 heuristic encodes assumptions about model trajectory "
-                        "degeneration (repetitive/generic output, shortening, hedging) under "
-                        "growing context pressure or loop formation. See Architecture Rev 5.2 "
-                        "§10.1, Appendix E (Types D/F), and §1.8 Harness Evolution Principle."
+                        "The 2-of-3 heuristic assumes model trajectories degenerate — via "
+                        "repetitive output, shortening, or hedging — under growing context "
+                        "pressure or loop formation. Revisit when the model changes."
                     ),
                 ),
             )
 
-        # L4b Context Anxiety heuristics  - Appendix E Type F
+        # L4b Context Anxiety heuristics (Type F)
         l4b_f_events, l4b_confidence, l4b_evidence, l4b_assumption = self._run_l4b_context_anxiety_heuristics(
             events,
             session_id,
@@ -164,11 +163,9 @@ class TrajectoryMonitor:
                     detail="Combined D+F observation treated as proxy for 2-of-3 rule",
                     detected_at=now,
                     model_gen_assumption=(
-                        "Combined D+F observation treated as proxy for the §10.1 "
-                        "'2 of 3 signals' rule. Encodes the assumption that "
-                        "co-occurrence of drift and context anxiety within a short "
-                        "window indicates actionable trajectory degeneration "
-                        "requiring intervention. See Architecture §10.1."
+                        "Co-occurrence of drift and context anxiety within a short "
+                        "window is treated as strong evidence of trajectory "
+                        "degeneration requiring intervention."
                     ),
                 ),
             )
@@ -178,7 +175,7 @@ class TrajectoryMonitor:
     # --- L4b private helpers (, deterministic, zero-token) ---
 
     def _contains_hedging(self, text: str) -> bool:
-        """Simple keyword heuristic for hedging language (Appendix E Type F signal)."""
+        """Simple keyword heuristic for hedging language (Type F signal)."""
         if not text:
             return False
         text_lower = text.lower()
@@ -238,7 +235,7 @@ class TrajectoryMonitor:
         session_id: str,
     ) -> tuple[list[dict[str, Any]], float, list[dict[str, Any]], str | None]:
         """
-        L4b Context Anxiety (Type F) detection per Architecture Appendix E.
+        L4b Context Anxiety (Type F) detection.
         Returns (supporting_events, confidence, evidence, model_gen_assumption or None)
         """
         hedging_events: list[dict] = []
@@ -269,11 +266,10 @@ class TrajectoryMonitor:
             evidence.extend(events[:2])
 
         assumption = (
-            "L4b heuristics for Type F (Context Anxiety) per Appendix E: "
-            "hedging language in event details, declining output length trends "
-            "(token_count_out), and high context pressure (event density + heavy recent nodes). "
-            "These encode assumptions about model behavior under growing context load. "
-            "See Architecture Rev 5.2 Appendix E and §1.8. Toggleable on model upgrade."
+            "L4b heuristics for context anxiety: hedging language, declining output "
+            "length, and high context pressure (event density + heavy recent nodes). "
+            "These assume certain model behaviors under growing context load. "
+            "Reassess after model upgrades."
         )
 
         return hedging_events, round(confidence, 2), evidence[:3], assumption

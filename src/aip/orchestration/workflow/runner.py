@@ -14,6 +14,7 @@ with support for:
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from typing import Any
 
@@ -22,6 +23,8 @@ from aip.orchestration.workflow.definition import WorkflowDefinition
 from aip.orchestration.workflow.instance import SuspendedWorkflow
 from aip.orchestration.workflow.instance_store import WorkflowInstanceStore
 from aip.orchestration.workflow.node import NodeResult, NodeType, ReviewNode, WorkflowNode
+
+logger = logging.getLogger(__name__)
 
 
 class SequentialRunner:
@@ -53,8 +56,8 @@ class SequentialRunner:
             # does not gate execution or introduce policy yet — direct completion of 3.11 stub)
             try:
                 self.context.request_autonomy(0, {"node_id": getattr(node, "node_id", None), "phase": "pre-agent"})
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Autonomy request failed: %s", exc)
 
             result = await node.run(self.context)
             results.append(result)
@@ -247,8 +250,8 @@ class SequentialRunner:
                 # does not gate execution or introduce policy yet — direct completion of 3.11 stub)
                 try:
                     self.context.request_autonomy(0, {"node_id": getattr(node, "node_id", None), "phase": "pre-agent"})
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Autonomy request failed: %s", exc)
 
                 result = await node.run(self.context)
                 results.append(result)

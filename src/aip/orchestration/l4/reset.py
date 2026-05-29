@@ -19,6 +19,7 @@ Full Sexton, UI surface, and advanced L4b metrics remain out of scope.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,6 +27,8 @@ from aip.foundation.protocols import ArtifactStore, TraceStore
 from aip.foundation.schemas import TrajectorySignal
 from aip.orchestration.l4.monitor import TrajectoryMonitor
 from aip.orchestration.workflow.context import WorkflowContext
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -44,15 +47,12 @@ class ResetRecommendation:
     signals: list[TrajectorySignal]
     action: str = "context_reset"
     reason: str = (
-        "2-of-3 trajectory signals (D/F/combined) detected in session window "
-        "per Architecture §10.1; §10.2 Context Reset Protocol required."
+        "2-of-3 trajectory signals (D/F/combined) detected in session window; Context Reset Protocol required."
     )
     model_gen_assumption: str | None = (
-        "L4 reset coordinator treats presence of D and/or F signals (or their "
-        "combined proxy) as trigger for context reset. Encodes the assumption "
-        "that model trajectory degeneration under context pressure benefits "
-        "from explicit progress summarization + fresh session. See "
-        "Architecture Rev 5.2 §10.2 and §1.8."
+        "L4 treats D and/or F signals as sufficient grounds for a context reset. "
+        "The assumption is that trajectory degeneration under context pressure "
+        "is best addressed by summarizing progress and starting a fresh session."
     )
 
 
@@ -128,10 +128,8 @@ class L4ResetCoordinator:
                 intervention_applied=1,
                 intervention_type="context_reset",
             )
-        except Exception:
-            # Defensive: logging failure must not break the coordinator
-            # (upper layers / Sexton will still see the monitor signals).
-            pass
+        except Exception as exc:
+            logger.debug("Trace write for L4 reset event failed: %s", exc)
 
         return [rec]
 
@@ -219,8 +217,8 @@ async def run_l4_and_sexton_check(
             sexton = Sexton(trace_store)
             try:
                 sexton_classifications = await sexton.classify_recent_failures(limit=50)
-            except Exception:
-                pass  # defensive for foundation
+            except Exception as exc:
+                logger.debug("Sexton classification in L4 check failed: %s", exc)
 
     return {
         "l4_recommendations": l4_recs,

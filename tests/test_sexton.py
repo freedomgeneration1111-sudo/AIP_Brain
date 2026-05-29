@@ -123,7 +123,7 @@ def test_sexton_audit_model_gen_assumption_stub():
 
 def test_sexton_derives_ace_rules_from_classified_events():
     """
-    derive_ace_rules produces sensible, §1.8-tagged rules from
+    derive_ace_rules produces sensible rules from
     classified events (including L4-written F events).
     """
     classified = [
@@ -141,7 +141,6 @@ def test_sexton_derives_ace_rules_from_classified_events():
         assert "rule_id" in r
         assert "failure_type" in r
         assert "model_gen_assumption" in r
-        assert "§1.8" in r["model_gen_assumption"]
         assert "derived" in r["model_gen_assumption"].lower()
 
     # Spot check one
@@ -161,7 +160,10 @@ def test_sexton_trust_score_and_stale_rule_audit_3_10():
     good_rule = {
         "rule_id": "r1",
         "failure_type": "F",
-        "model_gen_assumption": "Derived... Per Architecture §16.1 and §1.8. Audit on model slot upgrade.",
+        "model_gen_assumption": (
+            "Derived from observed classified failure. Assumes this pattern recurs "
+            "and benefits from intervention. Re-audit after model slot upgrades."
+        ),
         "source_event_count": 5,
         "recommended_action": "trigger_context_reset_or_l4_intervention",
     }

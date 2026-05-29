@@ -48,7 +48,7 @@ def fake_embed(text: str, dimensions: int = 768) -> list[float]:
     """Deterministic fake embedding for CI (no real model calls).
 
     Uses SHA-256 hash for determinism (same input always produces same output,
-    regardless of Python version or platform). Per spec.
+    regardless of Python version or platform).
     """
     import hashlib
 
@@ -63,7 +63,7 @@ def fake_embed(text: str, dimensions: int = 768) -> list[float]:
 
 
 def _compute_recency(created_at: str | None) -> float:
-    """Half-life decay with 30-day half-life per spec."""
+    """Half-life decay with 30-day half-life."""
     if not created_at:
         return 0.0
     try:
@@ -80,20 +80,20 @@ def _compute_recency(created_at: str | None) -> float:
 
 
 def _compute_authority(authority: str) -> float:
-    """Authority score per spec: approved=1.0, reviewed=0.75, provisional=0.5, raw=0.25."""
+    """Authority score: approved=1.0, reviewed=0.75, provisional=0.5, raw=0.25."""
     mapping = {"approved": 1.0, "reviewed": 0.75, "provisional": 0.5, "raw": 0.25}
     return mapping.get(authority, 0.25)
 
 
 def _compute_frequency(access_count: int | None) -> float:
-    """Frequency score per spec: min(1.0, count/10.0) with default 0.5."""
+    """Frequency score: min(1.0, count/10.0) with default 0.5."""
     if access_count is None:
         return 0.5
     return min(1.0, access_count / 10.0)
 
 
 def rerank(hits: list[Chunk], domain: str, weights: RerankWeights) -> list[Chunk]:
-    """Apply four-factor reranking to hits per spec."""
+    """Apply four-factor reranking to hits."""
     if not hits:
         return hits
 

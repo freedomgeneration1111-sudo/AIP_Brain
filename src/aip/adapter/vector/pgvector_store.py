@@ -209,7 +209,7 @@ class PgvectorStore(VectorStore):
     async def delete(self, id: str) -> None:
         """Delete a vector by ID.
 
-        Per Appendix D: 'Supersession ≠ deletion.' This method exists for
+        'Supersession ≠ deletion.' This method exists for
         administrative cleanup, not for normal workflow paths.
         """
         if self._pool is None:

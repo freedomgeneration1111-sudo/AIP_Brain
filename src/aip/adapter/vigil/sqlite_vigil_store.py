@@ -1,6 +1,6 @@
 """SqliteVigilStore — implements VigilStore.
 
-Per spec: health table for canonicals + vigil_checks audit log.
+Health table for canonicals + vigil_checks audit log.
 Read-only actor support (populated by canonical pipeline).
 Uses aiosqlite for async-safe database access.
 """

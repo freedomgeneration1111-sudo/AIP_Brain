@@ -86,7 +86,7 @@ SPECIFIED → GENERATED → REVIEWED → APPROVED → SUPERSEDED
 - Invalid transitions raise `InvalidTransitionError`
 - The graph makes it **structurally impossible** to skip states (e.g., SPECIFIED → APPROVED)
 
-### Canonical Pipeline (CHUNK-9.2)
+### Canonical Pipeline
 
 The 10-step pipeline for promoting artifacts from REVIEWED → APPROVED:
 
@@ -137,7 +137,7 @@ Maintenance cadence actor:
 - Entity maintenance (every 30 min)
 - Health checks (every 60 sec)
 
-### Vigil Actor (CHUNK-9.1)
+### Vigil Actor
 
 Read-only health monitoring:
 - Canonical corpus staleness detection

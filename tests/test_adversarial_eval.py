@@ -45,10 +45,10 @@ def test_adversarial_eval_returns_correct_structure():
 
 
 def test_default_criteria_have_model_gen_assumption():
-    """Required by §1.8 and green gate checklist."""
+    """Every default criterion must carry a substantive model_gen_assumption."""
     for crit in DEFAULT_EVAL_CRITERIA:
         assert crit.model_gen_assumption is not None
-        assert "§1.8" in crit.model_gen_assumption
+        assert len(crit.model_gen_assumption) > 20
 
 
 def test_stub_mode_returns_ci_fixture_flag():

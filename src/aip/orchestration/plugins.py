@@ -69,8 +69,8 @@ class PluginManager:
         if hasattr(self.model_slot_resolver, "unregister_provider"):
             try:
                 self.model_slot_resolver.unregister_provider(slot_name, provider_name)  # type: ignore[attr-defined]
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Provider unregistration failed: %s", exc)
 
     def get_plugin(self, slot_name: str) -> PluginProvider | None:
         for k, p in self._registered.items():
@@ -129,8 +129,8 @@ class PluginManager:
                             outcome="plugin_error",
                             detail=f"Plugin error (sandbox): {e}",
                         )
-                    except Exception:
-                        pass  # trace logging failure must not break recovery
+                    except Exception as exc:
+                        logger.debug("Trace write failed during sandbox: %s", exc)
 
                 # Disable the plugin gracefully
                 for key, plugin in manager._registered.items():

@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from aip.foundation.protocols import ArtifactStore, EcsStore, EventStore, TraceStore
 from aip.foundation.schemas import SessionContext, TrajectorySignal
 
-# Recovery instruction templates per Appendix E failure type
+# Recovery instruction templates by failure type
 _RECOVERY_TEMPLATES = {
     "D": "Session drift detected. Avoid repeating prior outputs. "
     "Introduce new perspectives and expand the analysis scope.",

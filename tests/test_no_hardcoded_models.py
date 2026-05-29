@@ -110,31 +110,51 @@ def test_no_hardcoded_model_names_in_production_code():
 def test_model_gen_assumption_includes_model_reference():
     """
     model_gen_assumption fields in ValidationRule and EvalCriterion must include
-    a per-§1.8 tag and a specific behavioral assumption about model output
-    (e.g., "Models may hallucinate specific claims; grounding check compensates per §1.8").
+    a specific behavioral assumption about model output
+    (e.g., "Models can hallucinate specific claims; the grounding check exists to catch this").
     """
     from aip.foundation.validation import DEFAULT_RULES
     from aip.orchestration.nodes.adversarial_eval import DEFAULT_EVAL_CRITERIA
 
     for rule in DEFAULT_RULES:
         if rule.model_gen_assumption:
-            # Must contain §1.8 reference and a specific behavioral assumption
-            assert "§1.8" in rule.model_gen_assumption, (
-                f"ValidationRule '{rule.rule_id}' has model_gen_assumption but no §1.8 reference: "
+            # Must contain a specific behavioral assumption (not just a label)
+            assert len(rule.model_gen_assumption) > 20, (
+                f"ValidationRule '{rule.rule_id}' has a model_gen_assumption that is too short: "
                 f"{rule.model_gen_assumption!r}"
             )
-            assert "Models may" in rule.model_gen_assumption, (
+            # Should describe what the model does wrong or what the check addresses
+            has_behavioral_content = any(
+                kw in rule.model_gen_assumption.lower()
+                for kw in ["model", "output", "claim", "completion", "malform", "produce", "guard", "catch", "check"]
+            )
+            assert has_behavioral_content, (
                 f"ValidationRule '{rule.rule_id}' has model_gen_assumption but no behavioral assumption: "
                 f"{rule.model_gen_assumption!r}"
             )
 
     for criterion in DEFAULT_EVAL_CRITERIA:
         if criterion.model_gen_assumption:
-            assert "§1.8" in criterion.model_gen_assumption, (
-                f"EvalCriterion '{criterion.criterion_id}' has model_gen_assumption but no §1.8 reference: "
+            assert len(criterion.model_gen_assumption) > 20, (
+                f"EvalCriterion '{criterion.criterion_id}' has a model_gen_assumption that is too short: "
                 f"{criterion.model_gen_assumption!r}"
             )
-            assert "Models may" in criterion.model_gen_assumption, (
+            has_behavioral_content = any(
+                kw in criterion.model_gen_assumption.lower()
+                for kw in [
+                    "model",
+                    "output",
+                    "hallucin",
+                    "omit",
+                    "contradict",
+                    "vague",
+                    "check",
+                    "catch",
+                    "guard",
+                    "enforce",
+                ]
+            )
+            assert has_behavioral_content, (
                 f"EvalCriterion '{criterion.criterion_id}' has model_gen_assumption but no behavioral assumption: "
                 f"{criterion.model_gen_assumption!r}"
             )

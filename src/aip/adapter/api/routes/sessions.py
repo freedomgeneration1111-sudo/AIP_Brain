@@ -11,7 +11,7 @@ router = APIRouter()
 async def create_session(payload: dict, container: AipContainer = Depends(get_container)):
     if not container.ace_playbook:
         # In full wiring this would be the real AcePlaybook from 7.2
-        pass  # scaffold allows missing for now
+        pass  # allows missing for now
     # Real impl would call container.ace_playbook.load_for_domain(payload.get("domain"))
     if not container.session_manager:
         raise HTTPException(503, "SessionManager not wired")

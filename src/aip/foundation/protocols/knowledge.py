@@ -2,7 +2,7 @@
 
 Abstraction for the Deferred Compiled Knowledge Layer.
 Compiled knowledge tracks provenance to source canonicals.
-Per Appendix D: compiled knowledge ≠ canonical artifact.
+Compiled knowledge and canonical artifacts are distinct concepts.
 """
 
 from __future__ import annotations

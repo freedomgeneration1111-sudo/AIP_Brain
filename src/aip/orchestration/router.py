@@ -5,7 +5,7 @@ Integrates BudgetManager (from 7.0b) for centralized enforcement on all three sc
 before any model call. Implements exploration/exploitation + Sexton role for
 recommend_exploration_weight. Records to routing_outcomes and consumption.
 
-Placed at orchestration/router.py per spec. All storage access via injected
+All storage access via injected
 Protocols (ModelSlotResolver + BudgetManager). No direct adapter imports.
 
 update_weights() uses real routing outcome history.

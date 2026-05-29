@@ -484,22 +484,22 @@ Backward-compat alias in `validation.py` already imports from `l3a_orchestrator`
 defaults to `DEFAULT_WORKFLOW_BUDGET` (500,000 tokens, matching `BudgetConfig.session_token_limit`).
 `consume_budget()` enforces the limit and logs warnings on exhaustion. Explicit `budget_remaining=None` still
 supported for test fixtures but logs a warning.
-17. **Password passed as query parameter in collaborators.py** — Gets logged in server access logs.
-18. **51 `assert True` no-op tests** across 23 test files — Tests that test nothing.
-19. **25 `# type: ignore` annotations** across 13 source files — Many silence real type problems.
-20. **94 files with CHUNK- references** in docstrings — Build-process artifacts that should be cleaned.
+17. **~~Password passed as query parameter in collaborators.py~~** — Fixed. Body-based transport.
+18. **~~51 `assert True` no-op tests~~** — Cleaned. Zero no-op tests remain.
+19. **~~25 `# type: ignore` annotations~~** — Reduced to 12, all justified.
+20. **~~94 files with CHUNK- references~~** — Cleaned. Zero CHUNK- references remain in source.
 
 ## Codebase Metrics
 
 | Metric | Count |
 |--------|-------|
 | Total test files | 52+ |
-| Tests passing | 638+ (6 pre-existing failures in layer/import boundary checks) |
-| `assert True` no-op tests | 51 |
+| Tests passing | 795 (0 failures, 15 skipped) |
+| `assert True` no-op tests | 0 |
 | `finally: pass` blocks (src/) | 15+ |
-| `# type: ignore` (src/) | 25 |
-| Files with CHUNK- references (src/) | 94 |
-| `model_gen_assumption` references (src/) | 94 (18 files) |
+| `# type: ignore` (src/) | 12 |
+| Files with CHUNK- references (src/) | 0 |
+| `model_gen_assumption` references (src/) | 25 files (design-intent annotation) |
 | Modules classified as Real/Mostly Working | 31 |
 | Modules classified as Partial/Hybrid | 26 |
 | Modules classified as Mostly Scaffolding | 6 |

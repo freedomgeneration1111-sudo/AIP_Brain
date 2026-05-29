@@ -203,12 +203,11 @@ the full test suite with `CI=true`.
 ## Documentation
 
 - `STATUS.md` — Current project status, maturity, and known issues
-- `docs/implementation_status.md` — Detailed module-by-module analysis with scaffolding estimates
 - `docs/ARCHITECTURE.md` — Architecture overview and design principles
 - `docs/CONFIGURATION.md` — Configuration reference
-- `specs/` — Authoritative build specifications
+- `docs/implementation_status.md` — Detailed module-by-module analysis
 - `deploy/README.md` — Docker deployment guide
 
 ## License
 
-Proprietary — see repository settings.
+MIT — see [LICENSE](LICENSE).

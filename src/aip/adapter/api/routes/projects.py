@@ -1,4 +1,4 @@
-"""Project CRUD routes (POST goes through AutonomyGate per spec)."""
+"""Project CRUD routes (POST goes through AutonomyGate)."""
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -13,7 +13,7 @@ async def list_projects(container: AipContainer = Depends(get_container)):
     if not container.project_store:
         raise HTTPException(503, "ProjectStore not wired")
     # The container.project_store would be the real one
-    return {"projects": []}  # scaffold shape
+    return {"projects": []}
 
 
 @router.post("/projects")

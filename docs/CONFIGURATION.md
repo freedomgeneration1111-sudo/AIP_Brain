@@ -363,7 +363,7 @@ Deployment profile configuration.
 
 ## `[release]`
 
-Release metadata (written by CHUNK-10.7 release verification).
+Release metadata.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|

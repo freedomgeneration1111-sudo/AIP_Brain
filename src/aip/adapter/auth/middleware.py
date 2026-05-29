@@ -1,6 +1,6 @@
 """AuthMiddleware for FastAPI.
 
-Integrates with 8.1 app factory.
+Integrates with the app factory.
 
 Behavior by profile:
 - **laptop** (auth_enabled=False): All requests are treated as DEFINER.

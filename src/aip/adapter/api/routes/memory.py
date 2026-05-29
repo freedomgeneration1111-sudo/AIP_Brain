@@ -39,7 +39,7 @@ async def get_events(project_id: str, container: AipContainer = Depends(get_cont
 
 @router.get("/memory/search")
 async def memory_search(q: str, container: AipContainer = Depends(get_container)):
-    # Hybrid via Lexical (8.0b) + Vector (8.0b)
+    # Hybrid via Lexical + Vector
     results = []
     if container.lexical_store:
         try:
@@ -63,7 +63,7 @@ async def memory_search(q: str, container: AipContainer = Depends(get_container)
 
 @router.get("/memory/entities")
 async def list_entities(container: AipContainer = Depends(get_container)):
-    # From EntityStore (8.0b)
+    # From EntityStore
     if container.entity_store:
         try:
             entities = await container.entity_store.list_entities()
@@ -75,7 +75,7 @@ async def list_entities(container: AipContainer = Depends(get_container)):
 
 @router.get("/memory/canonical")
 async def list_canonical(container: AipContainer = Depends(get_container)):
-    # From CanonicalStore (8.0b)
+    # From CanonicalStore
     if container.canonical_store:
         try:
             canonicals = await container.canonical_store.list_canonical()

@@ -1,9 +1,9 @@
 """Chat WebSocket surface.
 
-Per spec: WS /api/v1/chat/{session_id}
+WebSocket chat endpoint at /api/v1/chat/{session_id}
 Message flow: message → (synthesis + ACE) → response or gate → gate_response → resume
 Also: context_reset (from L4), budget exhaustion.
-Mounted on the 8.1 FastAPI app.
+Mounted on the FastAPI app.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
 
     _container = get_container(websocket)  # type: ignore  # in real lifespan context
 
-    # In full impl: load ACE playbook for the session's domain (already done at session start per 8.1/8.2)
+    # In full impl: load ACE playbook for the session's domain (already done at session start)
     # container.ace_playbook.load_for_domain(...) if available
 
     try:
@@ -39,7 +39,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
             if msg.get("type") == "message":
                 content = msg.get("content", "")
                 # Simulate synthesis + possible gate (real impl runs the workflow)
-                # For 8.3 scaffold we echo + demonstrate gate flow
+                # Echo + demonstrate gate flow
                 if "gate" in content.lower():
                     # Simulate hitting a dialog node
                     await websocket.send_json(
@@ -54,7 +54,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                     await websocket.send_json(
                         {
                             "type": "response",
-                            "content": f"Echo (scaffold): {content}",
+                            "content": f"Echo: {content}",
                             "artifacts": [],
                             "tokens_used": 42,
                         },

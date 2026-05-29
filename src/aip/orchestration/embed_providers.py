@@ -9,7 +9,7 @@ This file provides the loader. Real provider support is now wired:
   - provider="fake" (default): returns the deterministic fake_embed for CI
   - Any other provider: falls back to fake_embed with a warning log
 
-Layering note: Orchestration must not import adapter directly (per §7.2).
+Layering note: Orchestration must not import adapter directly.
 This module uses ``importlib.import_module()`` to lazily load
 ``aip.adapter.embedding.ollama_embed`` only at runtime, so that
 AST-based layer gate tests do not see a static cross-layer import.

@@ -137,7 +137,7 @@ def should_intervene(
 ) -> bool:
     """Apply the "2 of 3" rule.
 
-    Issue 15: Sync (not async) per spec. Filters by intervention_min_confidence
+    Issue 15: Sync (not async). Filters by intervention_min_confidence
     (default 0.50) from config before checking distinct types.
     """
     if not signals:

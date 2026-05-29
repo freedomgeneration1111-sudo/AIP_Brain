@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import Depends, HTTPException, Request
+
+logger = logging.getLogger(__name__)
 
 
 async def get_current_identity(request: Request) -> dict:
@@ -27,8 +31,8 @@ async def get_current_identity(request: Request) -> dict:
                     result = await auth_store.validate_session(token)
                     if result is not None:
                         return result
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Session token validation failed: %s", exc)
 
     # 2. Check for API key in headers
     api_key = request.headers.get("X-API-Key", "")
@@ -41,8 +45,8 @@ async def get_current_identity(request: Request) -> dict:
                     result = await auth_store.validate_api_key(api_key)
                     if result is not None:
                         return result
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("API key validation failed: %s", exc)
 
     # 3. Check for pre-set identity on request.state (from middleware)
     identity = getattr(request.state, "auth_identity", None)

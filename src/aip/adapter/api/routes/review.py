@@ -1,6 +1,6 @@
 """Review Queue routes.
 
-Per spec: GET /reviews (paginated ReviewQueueEntry), POST /reviews/{id}/approve
+GET /reviews (paginated ReviewQueueEntry), POST /reviews/{id}/approve
 (admin AutonomyGate + ECS + Canonical), POST reject (write gate + ECS to FAILED).
 """
 
@@ -25,7 +25,7 @@ async def list_reviews(
 ):
     """Return pending artifacts for review (GENERATED or REVIEWED)."""
     # In full impl: query ArtifactStore + EcsStore + evaluation results, build ReviewQueueEntry list
-    # For 8.4 scaffold we return shape; real aggregation uses the delivered stores.
+    # Placeholder; real aggregation uses the delivered stores.
     cfg = SurfaceConfig(**container.config.get("surface", {})) if hasattr(container, "config") else SurfaceConfig()
     effective_page_size = min(page_size, cfg.review_page_size)
 
@@ -56,7 +56,7 @@ async def approve_artifact(
     if not esc.granted:
         raise HTTPException(403, f"Autonomy gate blocked: {esc.reason}")
 
-    # Real flow (using delivered 4.0b + 8.0b):
+    # Real flow (using delivered stores):
     # 1. container.ecs_store.transition(artifact_id, "REVIEWED", "APPROVED")
     # 2. content = await container.artifact_store.read(artifact_id)
     # 3. await container.canonical_store.write_canonical(artifact_id, content, approved_by="definer")

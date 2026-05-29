@@ -1,6 +1,6 @@
 """YamlPluginProvider — PluginProvider implementation driven by YAML config.
 
-Per spec: API keys come ONLY from environment variables (api_key_env name in YAML).
+API keys come ONLY from environment variables (api_key_env name in YAML).
 In CI / deterministic mode returns fixture response (no network).
 Uses httpx for async calls when real execution is possible.
 """
@@ -58,7 +58,7 @@ class YamlPluginProvider(PluginProvider):
     async def call_model(self, prompt: str, config: dict) -> str:
         """Call the remote provider or return deterministic fixture in CI mode."""
         if os.environ.get("AIP_CI_MODE") or os.environ.get("CI"):
-            # Deterministic fixture response (no network, per spec)
+            # Deterministic fixture response (no network)
             return f"[CI-FIXTURE] Echo: {prompt[:120]}..."
 
         if httpx is None:

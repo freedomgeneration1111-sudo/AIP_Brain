@@ -12,8 +12,12 @@ All results carry model_gen_assumption context.
 
 from __future__ import annotations
 
+import logging
+
 from aip.foundation.protocols import EventStore, ModelProvider
 from aip.foundation.schemas import AcePlaybookEntry, ContractRule, ModelSlotConfig
+
+logger = logging.getLogger(__name__)
 
 
 class SextonAudit:
@@ -74,7 +78,7 @@ class SextonAudit:
         return results
 
     async def flag_deprecated_rules(self, audit_results: list[dict]) -> None:
-        """Apply flagging + deprecation per 7.3 prose."""
+        """Apply flagging + deprecation."""
 
         for res in audit_results:
             if res.get("still_valid") is not False:
@@ -104,8 +108,8 @@ class SextonAudit:
                         reason=reason,
                         confidence=str(res.get("confidence")),
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("EventStore write for stale assumption failed: %s", exc)
 
     async def _assess_assumption(
         self,
@@ -133,10 +137,10 @@ class SextonAudit:
                     "confidence": float(parsed.get("confidence", 0.5)),
                     "reason": str(parsed.get("reason", "model assessment")),
                 }
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Model assessment for stale assumption failed: %s", exc)
 
-        # CI / deterministic heuristic (per 7.3 ANNEX)
+        # CI / deterministic heuristic
         weak = any(kw in assumption.lower() for kw in ["may not", "cannot", "tends to", "often", "frequently"])
         return {
             "still_valid": not weak,

@@ -1,6 +1,6 @@
 """SqliteSessionStore — implements AuthStore.
 
-Per spec: session tokens + API key management with bcrypt.
+Session tokens + API key management with bcrypt.
 Laptop profile (auth_enabled=False): all requests treated as DEFINER.
 """
 
