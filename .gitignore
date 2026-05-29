@@ -49,7 +49,26 @@ db/
 *.local.toml
 config/local*.toml
 
+# Test / tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.nox/
+.tox/
+htmlcov/
+.coverage
+
+# SQLite runtime files
+*.db-journal
+*.db-wal
+*.db-shm
+
 # Logs and temp
 *.log
 tmp/
 temp/
+
+# AI session artifacts — never commit agent scratchpads
+WORKLOG.md
+CLEANUP_BASELINE.md
+PHASE*_HANDOFF_PROMPT.md
