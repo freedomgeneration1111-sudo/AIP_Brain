@@ -27,7 +27,6 @@ Usage via AipContainer:
 
 from __future__ import annotations
 
-import logging
 import time
 
 from aip.foundation.protocols import (
@@ -39,8 +38,9 @@ from aip.foundation.protocols import (
     VectorStore,
 )
 from aip.foundation.schemas import BeastCadenceConfig
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
 class Beast:
@@ -152,7 +152,7 @@ class Beast:
             latency_ms = int((time.monotonic() - start) * 1000)
             return {"connected": True, "latency_ms": latency_ms}
         except Exception as exc:
-            logger.warning("Embedding provider health check failed: %s", exc)
+            log.warning("health_check_failed", component="embedding_provider", error=str(exc))
             return {"connected": False, "error": str(exc)}
 
     async def _check_entity_store(self) -> dict:
@@ -165,7 +165,7 @@ class Beast:
             latency_ms = int((time.monotonic() - start) * 1000)
             return {"connected": True, "latency_ms": latency_ms}
         except Exception as exc:
-            logger.warning("Entity store health check failed: %s", exc)
+            log.warning("health_check_failed", component="entity_store", error=str(exc))
             return {"connected": False, "error": str(exc)}
 
     async def _check_canonical_store(self) -> dict:
@@ -178,7 +178,7 @@ class Beast:
             latency_ms = int((time.monotonic() - start) * 1000)
             return {"connected": True, "latency_ms": latency_ms}
         except Exception as exc:
-            logger.warning("Canonical store health check failed: %s", exc)
+            log.warning("health_check_failed", component="canonical_store", error=str(exc))
             return {"connected": False, "error": str(exc)}
 
     async def _check_project_store(self) -> dict:
@@ -191,7 +191,7 @@ class Beast:
             latency_ms = int((time.monotonic() - start) * 1000)
             return {"connected": True, "latency_ms": latency_ms}
         except Exception as exc:
-            logger.warning("Project store health check failed: %s", exc)
+            log.warning("health_check_failed", component="project_store", error=str(exc))
             return {"connected": False, "error": str(exc)}
 
     # ------------------------------------------------------------------
@@ -246,7 +246,7 @@ class Beast:
                 failed += failed_count
 
             except Exception as exc:
-                logger.error("Corpus maintenance error for project %s: %s", pid, exc)
+                log.error("corpus_maintenance_error", project=pid, error=str(exc))
                 errors += 1
 
         result = {
@@ -294,7 +294,7 @@ class Beast:
                 "mode": "global_no_project_store",
             }
         except Exception as exc:
-            logger.error("Global corpus maintenance failed: %s", exc)
+            log.error("corpus_maintenance_failed", mode="global", error=str(exc))
             result = {
                 "projects_checked": 0,
                 "stale_vectors_found": 0,
@@ -338,10 +338,10 @@ class Beast:
                 )
                 reembedded += 1
             except Exception as exc:
-                logger.warning(
-                    "Failed to re-embed vector %s: %s",
-                    vec_id,
-                    exc,
+                log.warning(
+                    "reembed_failed",
+                    vector_id=vec_id,
+                    error=str(exc),
                 )
                 failed += 1
 
@@ -396,15 +396,15 @@ class Beast:
                                 },
                             )
                     except Exception as exc:
-                        logger.warning(
-                            "Entity consistency check failed for %s: %s",
-                            entity_id,
-                            exc,
+                        log.warning(
+                            "entity_check_failed",
+                            entity_id=entity_id,
+                            error=str(exc),
                         )
                         consistency_errors += 1
 
         except Exception as exc:
-            logger.error("Entity maintenance list failed: %s", exc)
+            log.error("entity_maintenance_failed", error=str(exc))
             consistency_errors += 1
 
         result = {
@@ -497,4 +497,4 @@ class Beast:
                 **(metadata or {}),
             )
         except Exception as exc:
-            logger.warning("Beast failed to emit event %s: %s", event_type, exc)
+            log.warning("event_emit_failed", event_type=event_type, error=str(exc))

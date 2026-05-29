@@ -30,24 +30,51 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import logging
 import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.requests import Request
+from starlette.responses import Response
 
 from aip.adapter.api import collaborators, performance, plugins
 from aip.adapter.api.dependencies import AipContainer
 from aip.adapter.api.routes import admin, artifacts, chat, health, memory, projects, review, sessions
 from aip.config import validate_config
 from aip.foundation.schemas import BeastCadenceConfig, SurfaceConfig
+from aip.logging import configure_logging, get_logger, new_correlation_id, set_correlation_id
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
 class StartupError(Exception):
     """Raised when a required component fails to initialize on startup."""
+
+
+class CorrelationIdMiddleware(BaseHTTPMiddleware):
+    """Injects a correlation ID into every request context.
+
+    If the client sends an X-Request-ID header, that value is used.
+    Otherwise a new ID is generated. The ID is stored in a contextvar
+    so that all structlog log calls within the request automatically
+    include it, and it is echoed back as X-Request-ID in the response.
+    """
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        request_id = request.headers.get("X-Request-ID") or new_correlation_id()
+        set_correlation_id(request_id)
+
+        log.debug(
+            "request_started",
+            method=request.method,
+            path=request.url.path,
+        )
+
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
 
 
 @asynccontextmanager
@@ -57,6 +84,9 @@ async def lifespan(app: FastAPI):
     Required components cause startup to fail fast with a clear error.
     Optional components log warnings and degrade gracefully.
     """
+    # Initialize structured logging before anything else
+    configure_logging()
+
     config: dict = app.state.raw_config or {}
     container = AipContainer(config)
 
@@ -73,7 +103,7 @@ async def lifespan(app: FastAPI):
 
         container.entity_store = SqliteEntityStore(db_path)
         await container.entity_store.initialize()
-        logger.info("Entity store initialized (required)")
+        log.info("component_initialized", component="entity_store", required=True)
     except Exception as exc:
         raise StartupError(
             f"REQUIRED component failed: Entity store could not initialize. "
@@ -86,7 +116,7 @@ async def lifespan(app: FastAPI):
 
         container.canonical_store = SqliteCanonicalStore(db_path)
         await container.canonical_store.initialize()
-        logger.info("Canonical store initialized (required)")
+        log.info("component_initialized", component="canonical_store", required=True)
     except Exception as exc:
         raise StartupError(
             f"REQUIRED component failed: Canonical store could not initialize. "
@@ -99,7 +129,7 @@ async def lifespan(app: FastAPI):
 
         container.event_store = QueryableEventStore(db_path)
         await container.event_store.initialize()
-        logger.info("Event store initialized (required)")
+        log.info("component_initialized", component="event_store", required=True)
     except Exception as exc:
         raise StartupError(
             f"REQUIRED component failed: Event store could not initialize. "
@@ -112,7 +142,7 @@ async def lifespan(app: FastAPI):
         _AutonomyGateImpl = _ag_mod.AutonomyGateImpl
         container.autonomy_gate = _AutonomyGateImpl(config={**config, "db_path": db_path})
         await container.autonomy_gate.initialize()
-        logger.info("Autonomy gate initialized (required)")
+        log.info("component_initialized", component="autonomy_gate", required=True)
     except Exception as exc:
         raise StartupError(
             f"REQUIRED component failed: Autonomy gate could not initialize. "
@@ -125,7 +155,7 @@ async def lifespan(app: FastAPI):
         _VersionedArtifactStore = _as_mod.VersionedArtifactStore
         container.artifact_store = _VersionedArtifactStore(db_path)
         await container.artifact_store.initialize()
-        logger.info("Artifact store initialized (required)")
+        log.info("component_initialized", component="artifact_store", required=True)
     except Exception as exc:
         raise StartupError(
             f"REQUIRED component failed: Artifact store could not initialize. "
@@ -142,9 +172,9 @@ async def lifespan(app: FastAPI):
         _SqliteFts5LexicalStore = _ls_mod.SqliteFts5LexicalStore
         container.lexical_store = _SqliteFts5LexicalStore(db_path)
         await container.lexical_store.initialize()
-        logger.info("Lexical store initialized (optional)")
+        log.info("component_initialized", component="lexical_store", required=False)
     except Exception as exc:
-        logger.warning("Lexical store initialization failed (optional — text search degraded): %s", exc)
+        log.warning("component_failed", component="lexical_store", degradation="no_text_search", error=str(exc))
 
     # Embedding provider — vector embedding (degrades to fake_embed)
     # NOTE: Initialized before vector store so it can be passed to the factory
@@ -163,9 +193,9 @@ async def lifespan(app: FastAPI):
             from aip.adapter.embedding.ollama_embed import MockOllamaEmbeddingClient
 
             container.embedding_provider = MockOllamaEmbeddingClient()
-        logger.info("Embedding provider initialized (optional, provider=%s)", provider)
+        log.info("component_initialized", component="embedding_provider", required=False, provider=provider)
     except Exception as exc:
-        logger.warning("Embedding provider initialization failed (optional — using fake_embed): %s", exc)
+        log.warning("component_failed", component="embedding_provider", degradation="fake_embed", error=str(exc))
 
     # Vector store — semantic search (degrades to keyword-only)
     # Passes embedding_provider so SqliteVssVectorStore.store() can generate
@@ -174,9 +204,9 @@ async def lifespan(app: FastAPI):
         _vs_mod = importlib.import_module("aip.adapter.vector.factory")
         _create_vector_store = _vs_mod.create_vector_store
         container.vector_store = await _create_vector_store(config, embedding_provider=container.embedding_provider)
-        logger.info("Vector store initialized (optional)")
+        log.info("component_initialized", component="vector_store", required=False)
     except Exception as exc:
-        logger.warning("Vector store initialization failed (optional — semantic search degraded): %s", exc)
+        log.warning("component_failed", component="vector_store", degradation="keyword_only", error=str(exc))
 
     # Project store — project management (degrades to empty projects)
     try:
@@ -184,9 +214,9 @@ async def lifespan(app: FastAPI):
 
         container.project_store = SqliteProjectStore(db_path)
         await container.project_store.initialize()
-        logger.info("Project store initialized (optional)")
+        log.info("component_initialized", component="project_store", required=False)
     except Exception as exc:
-        logger.warning("Project store initialization failed (optional — project management degraded): %s", exc)
+        log.warning("component_failed", component="project_store", degradation="empty_projects", error=str(exc))
 
     # Budget store — token budget tracking (degrades to unlimited)
     try:
@@ -194,9 +224,9 @@ async def lifespan(app: FastAPI):
         _SqliteBudgetStore = _bs_mod.SqliteBudgetStore
         container.budget_store = _SqliteBudgetStore(db_path)
         await container.budget_store.initialize()
-        logger.info("Budget store initialized (optional)")
+        log.info("component_initialized", component="budget_store", required=False)
     except Exception as exc:
-        logger.warning("Budget store initialization failed (optional — budget tracking disabled): %s", exc)
+        log.warning("component_failed", component="budget_store", degradation="unlimited", error=str(exc))
 
     # Vigil store — canonical health monitoring (degrades to no monitoring)
     try:
@@ -204,21 +234,18 @@ async def lifespan(app: FastAPI):
         _SqliteVigilStore = _vs2_mod.SqliteVigilStore
         container.vigil_store = _SqliteVigilStore(db_path)
         await container.vigil_store.initialize()
-        logger.info("Vigil store initialized (optional)")
+        log.info("component_initialized", component="vigil_store", required=False)
     except Exception as exc:
-        logger.warning("Vigil store initialization failed (optional — health monitoring degraded): %s", exc)
+        log.warning("component_failed", component="vigil_store", degradation="no_monitoring", error=str(exc))
 
     # Model provider — LLM dispatch (degrades to stub responses)
     try:
         from aip.adapter.model_slot_resolver import ModelSlotResolver
 
         container.model_provider = ModelSlotResolver(config)
-        logger.info("Model provider initialized (optional)")
+        log.info("component_initialized", component="model_provider", required=False)
     except Exception as exc:
-        logger.warning(
-            "Model provider initialization failed (optional — model calls will return errors): %s",
-            exc,
-        )
+        log.warning("component_failed", component="model_provider", degradation="stub_responses", error=str(exc))
 
     # Knowledge store — compiled knowledge with embeddings
     # Requires vector_store + lexical_store + optional embedding_provider.
@@ -235,24 +262,22 @@ async def lifespan(app: FastAPI):
                 embedding_provider=container.embedding_provider,
             )
             await container.knowledge_store.initialize()
-            if container.embedding_provider is not None:
-                logger.info(
-                    "Knowledge store initialized with EmbeddingProvider "
-                    "(optional — semantic search for compiled knowledge enabled)",
-                )
-            else:
-                logger.warning(
-                    "Knowledge store initialized without EmbeddingProvider "
-                    "(optional — compiled knowledge search degrades to lexical-only). "
-                    "Configure an embedding provider for full semantic search.",
-                )
+            has_embed = container.embedding_provider is not None
+            log.info(
+                "component_initialized",
+                component="knowledge_store",
+                required=False,
+                semantic_search=has_embed,
+            )
         except Exception as exc:
-            logger.warning(
-                "Knowledge store initialization failed (optional — knowledge compilation degraded): %s",
-                exc,
+            log.warning(
+                "component_failed",
+                component="knowledge_store",
+                degradation="no_knowledge_compilation",
+                error=str(exc),
             )
     else:
-        logger.info("Knowledge store not wired: missing vector_store or lexical_store")
+        log.info("component_skipped", component="knowledge_store", reason="missing_vector_or_lexical_store")
 
     # --- Wire orchestration components (lazy import to preserve layer discipline) ---
     # Beast actor — requires vector_store + embedding_provider at minimum
@@ -272,11 +297,11 @@ async def lifespan(app: FastAPI):
                 entity_store=container.entity_store,
                 canonical_store=container.canonical_store,
             )
-            logger.info("Beast actor initialized (optional)")
+            log.info("component_initialized", component="beast", required=False)
         except Exception as exc:
-            logger.warning("Beast actor initialization failed (optional — no background tasks): %s", exc)
+            log.warning("component_failed", component="beast", degradation="no_background_tasks", error=str(exc))
     else:
-        logger.info("Beast actor not wired: missing vector_store or embedding_provider")
+        log.info("component_skipped", component="beast", reason="missing_vector_or_embedding")
 
     # PerformanceProfiler — optional, only wired when profiling_enabled=True
     try:
@@ -291,12 +316,19 @@ async def lifespan(app: FastAPI):
                 config=perf_cfg,
                 trace_store=container.event_store,
             )
-            logger.info("PerformanceProfiler initialized (profiling_enabled=True)")
+            log.info("component_initialized", component="performance_profiler", profiling_enabled=True)
         else:
-            logger.info("PerformanceProfiler not wired (profiling_enabled=%s)", perf_cfg.profiling_enabled)
+            log.info(
+                "component_skipped",
+                component="performance_profiler",
+                profiling_enabled=perf_cfg.profiling_enabled,
+            )
     except Exception as exc:
-        logger.warning(
-            "PerformanceProfiler initialization failed (optional — performance API returns DISABLED): %s", exc
+        log.warning(
+            "component_failed",
+            component="performance_profiler",
+            degradation="performance_api_disabled",
+            error=str(exc),
         )
 
     # ReviewQueueStore — optional, for MANUAL mode review queue persistence
@@ -305,10 +337,13 @@ async def lifespan(app: FastAPI):
         _ReviewQueueStore = _rqs_mod.ReviewQueueStore
         container.review_queue_store = _ReviewQueueStore(db_path=db_path)
         await container.review_queue_store.initialize()
-        logger.info("Review queue store initialized (optional)")
+        log.info("component_initialized", component="review_queue_store", required=False)
     except Exception as exc:
-        logger.warning(
-            "Review queue store initialization failed (optional — MANUAL mode review queue degraded): %s", exc
+        log.warning(
+            "component_failed",
+            component="review_queue_store",
+            degradation="manual_review_degraded",
+            error=str(exc),
         )
 
     # ECS store — use PersistentEcsStore for state that survives restart
@@ -320,12 +355,9 @@ async def lifespan(app: FastAPI):
             event_store=container.event_store,
         )
         await container.ecs_store.initialize()
-        logger.info("ECS store initialized (persistent, with EventStore)")
+        log.info("component_initialized", component="ecs_store", persistent=True)
     except Exception as exc:
-        logger.warning(
-            "Persistent ECS store initialization failed (optional — falling back to guardrailed in-memory): %s",
-            exc,
-        )
+        log.warning("component_failed", component="ecs_store", degradation="in_memory_fallback", error=str(exc))
 
     app.state.container = container
     app.state.start_time = time.time()
@@ -335,59 +367,64 @@ async def lifespan(app: FastAPI):
     if container.beast is not None:
 
         async def _beast_scheduler():
-            """Lightweight background loop that calls beast.run_cycle() periodically.
+            """Background loop that runs beast.run_cycle() periodically.
 
-            Uses the configured health_check_interval_seconds (default 300) as the
-            cadence. The loop is cancellable — the task is cancelled on shutdown.
-            Each cycle logs start/complete for observability.
+            Each cycle gets its own correlation ID so that all log messages
+            within a single cycle can be traced back to that cycle.
             """
             interval = container.beast._config.health_check_interval_seconds
             # Enforce a reasonable minimum to avoid busy-looping
             if interval < 60:
                 interval = 300
-                logger.info("Beast cadence interval too low (%ss), clamped to 300s", interval)
-            logger.info("Beast background scheduler starting (interval=%ss)", interval)
+                log.warning("beast_cadence_clamped", original_interval=interval, clamped_to=300)
+            log.info("beast_scheduler_starting", interval_s=interval)
+            cycle_num = 0
             while True:
+                cycle_num += 1
+                cycle_id = f"beast-{new_correlation_id()}"
+                set_correlation_id(cycle_id)
                 try:
-                    logger.info("Beast cycle starting")
+                    log.info("beast_cycle_start", cycle=cycle_num)
                     summary = await container.beast.run_cycle()
-                    logger.info(
-                        "Beast cycle complete: health=%s, corpus_stale=%s, elapsed=%.1fs",
-                        summary.get("health_overall", "unknown"),
-                        summary.get("corpus", {}).get("stale_vectors_found", "?"),
-                        summary.get("cycle_elapsed_seconds", 0),
+                    log.info(
+                        "beast_cycle_complete",
+                        cycle=cycle_num,
+                        health=summary.get("health_overall", "unknown"),
+                        stale_vectors=summary.get("corpus", {}).get("stale_vectors_found", "?"),
+                        reembedded=summary.get("corpus", {}).get("vectors_reembedded", 0),
+                        elapsed_s=summary.get("cycle_elapsed_seconds", 0),
                     )
                 except asyncio.CancelledError:
-                    logger.info("Beast background scheduler cancelled")
+                    log.info("beast_scheduler_cancelled", cycle=cycle_num)
                     raise
                 except Exception as exc:
-                    logger.error("Beast cycle failed: %s", exc, exc_info=True)
+                    log.error("beast_cycle_failed", cycle=cycle_num, error=str(exc), exc_info=True)
+                finally:
+                    set_correlation_id(None)
                 await asyncio.sleep(interval)
 
         beast_task = asyncio.create_task(_beast_scheduler(), name="beast-scheduler")
-        logger.info("Beast background scheduler task created")
+        log.info("beast_scheduler_created")
 
-    logger.info(
-        "AIP startup complete. Required: 5 stores initialized. "
-        "Optional: lexical=%s, vector=%s, embedding=%s, project=%s, budget=%s, "
-        "vigil=%s, model=%s, knowledge=%s, beast=%s",
-        container.lexical_store is not None,
-        container.vector_store is not None,
-        container.embedding_provider is not None,
-        container.project_store is not None,
-        container.budget_store is not None,
-        container.vigil_store is not None,
-        container.model_provider is not None,
-        container.knowledge_store is not None,
-        container.beast is not None,
+    log.info(
+        "startup_complete",
+        required_initialized=5,
+        lexical=container.lexical_store is not None,
+        vector=container.vector_store is not None,
+        embedding=container.embedding_provider is not None,
+        project=container.project_store is not None,
+        budget=container.budget_store is not None,
+        vigil=container.vigil_store is not None,
+        model=container.model_provider is not None,
+        knowledge=container.knowledge_store is not None,
+        beast=container.beast is not None,
     )
 
     yield
 
     # --- Shutdown ---
-    # Cancel Beast scheduler if running
     if beast_task is not None:
-        logger.info("Cancelling Beast background scheduler")
+        log.info("beast_scheduler_cancelling")
         beast_task.cancel()
         try:
             await beast_task
@@ -395,37 +432,29 @@ async def lifespan(app: FastAPI):
             pass
 
     # shutdown: close any open connections (the individual stores implement close())
-    if container.knowledge_store and hasattr(container.knowledge_store, "close"):
-        await container.knowledge_store.close()
-    if container.vector_store and hasattr(container.vector_store, "close"):
-        await container.vector_store.close()
-    if container.lexical_store and hasattr(container.lexical_store, "close"):
-        await container.lexical_store.close()
-    if container.canonical_store and hasattr(container.canonical_store, "close"):
-        await container.canonical_store.close()
-    if container.entity_store and hasattr(container.entity_store, "close"):
-        await container.entity_store.close()
-    if container.event_store and hasattr(container.event_store, "close"):
-        await container.event_store.close()
-    if container.project_store and hasattr(container.project_store, "close"):
-        await container.project_store.close()
-    if container.budget_store and hasattr(container.budget_store, "close"):
-        await container.budget_store.close()
-    if hasattr(container, "vigil_store") and container.vigil_store and hasattr(container.vigil_store, "close"):
-        await container.vigil_store.close()
-    if container.autonomy_gate and hasattr(container.autonomy_gate, "close"):
-        await container.autonomy_gate.close()
-    if container.artifact_store and hasattr(container.artifact_store, "close"):
-        await container.artifact_store.close()
-    # Close model provider httpx client (if wired)
-    if container.model_provider and hasattr(container.model_provider, "close"):
-        await container.model_provider.close()
-    # Close ECS store (persistent)
-    if container.ecs_store and hasattr(container.ecs_store, "close"):
-        await container.ecs_store.close()
-    # Close review queue store
-    if container.review_queue_store and hasattr(container.review_queue_store, "close"):
-        await container.review_queue_store.close()
+    for store_name, store in [
+        ("knowledge_store", container.knowledge_store),
+        ("vector_store", container.vector_store),
+        ("lexical_store", container.lexical_store),
+        ("canonical_store", container.canonical_store),
+        ("entity_store", container.entity_store),
+        ("event_store", container.event_store),
+        ("project_store", container.project_store),
+        ("budget_store", container.budget_store),
+        ("vigil_store", getattr(container, "vigil_store", None)),
+        ("autonomy_gate", container.autonomy_gate),
+        ("artifact_store", container.artifact_store),
+        ("model_provider", container.model_provider),
+        ("ecs_store", container.ecs_store),
+        ("review_queue_store", container.review_queue_store),
+    ]:
+        if store and hasattr(store, "close"):
+            try:
+                await store.close()
+            except Exception as exc:
+                log.warning("store_close_failed", store=store_name, error=str(exc))
+
+    log.info("shutdown_complete")
 
 
 def create_app(config: dict | None = None) -> "FastAPI":
@@ -435,10 +464,10 @@ def create_app(config: dict | None = None) -> "FastAPI":
     # Unsafe production configs fail fast with a clear error message.
     validation = validate_config(cfg)
     if not validation.is_valid:
-        # Log all errors for visibility
+        # Initialize logging early so critical messages are structured
+        configure_logging()
         for err in validation.errors:
-            logger.critical("Config validation error: %s", err)
-        # Raise the first error — it includes the setting path and remediation hint
+            log.critical("config_validation_error", error=str(err))
         raise validation.errors[0]
 
     surface_cfg = SurfaceConfig(**{k: v for k, v in cfg.items() if k in SurfaceConfig.__dataclass_fields__})
@@ -456,6 +485,9 @@ def create_app(config: dict | None = None) -> "FastAPI":
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Correlation ID middleware — runs early so all downstream logs have the ID
+    app.add_middleware(CorrelationIdMiddleware)
 
     # Wire AuthMiddleware + RateLimitMiddleware
     from aip.adapter.auth.middleware import AuthMiddleware

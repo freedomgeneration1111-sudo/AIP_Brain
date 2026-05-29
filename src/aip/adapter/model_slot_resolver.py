@@ -22,15 +22,15 @@ Configuration sources (in priority order):
 
 from __future__ import annotations
 
-import logging
 import os
 import time
 from typing import Any
 
 from aip.foundation.protocols import ModelProvider
 from aip.foundation.schemas import ModelSlotConfig
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 # Provider constants
 PROVIDER_OLLAMA = "ollama"
@@ -184,7 +184,7 @@ class ModelSlotResolver(ModelProvider):
             # Deterministic fixture — content is a hash of the input for reproducibility
             prompt = messages[-1]["content"] if messages else ""
             content = f"[CI-FIXTURE for {slot_name}] {prompt[:80]}..."
-            logger.debug("CI fixture response for slot %s", slot_name)
+            log.debug("ci_fixture_response", slot=slot_name)
             return {
                 "content": content,
                 "model": model,
@@ -213,12 +213,12 @@ class ModelSlotResolver(ModelProvider):
                 )
         except Exception as exc:
             elapsed_ms = int((time.perf_counter() - start) * 1000)
-            logger.error(
-                "Model call failed for slot=%s provider=%s model=%s: %s",
-                slot_name,
-                provider,
-                model,
-                exc,
+            log.error(
+                "model_call_failed",
+                slot=slot_name,
+                provider=provider,
+                model=model,
+                error=str(exc),
                 exc_info=True,
             )
             # Return a structured error result instead of raising
@@ -242,6 +242,18 @@ class ModelSlotResolver(ModelProvider):
         result.setdefault("latency_ms", elapsed_ms)
         result.setdefault("cost_usd", 0.0)
         result.setdefault("error", False)
+
+        usage = result.get("usage", {})
+        log.info(
+            "model_call_complete",
+            slot=slot_name,
+            provider=provider,
+            model=model,
+            latency_ms=elapsed_ms,
+            prompt_tokens=usage.get("prompt_tokens", 0),
+            completion_tokens=usage.get("completion_tokens", 0),
+            cost_usd=result.get("cost_usd", 0.0),
+        )
 
         return result
 
@@ -283,7 +295,7 @@ class ModelSlotResolver(ModelProvider):
         if options:
             payload["options"] = options
 
-        logger.debug("Ollama call: url=%s model=%s", url, model)
+        log.debug("provider_dispatch", provider="ollama", url=url, model=model)
         resp = await client.post(url, json=payload)
         resp.raise_for_status()
         data = resp.json()
@@ -341,7 +353,7 @@ class ModelSlotResolver(ModelProvider):
         if "top_p" in kwargs:
             payload["top_p"] = kwargs["top_p"]
 
-        logger.debug("OpenAI-compatible call: url=%s model=%s", url, model)
+        log.debug("provider_dispatch", provider="openai_compatible", url=url, model=model)
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         data = resp.json()
