@@ -85,7 +85,7 @@ def test_trace_events_table_exists_and_has_required_columns(trace_db):
 
 def test_failure_type_enum_is_consistent():
     """The FailureType literal used in code should match the allowed values in the schema (A–F)."""
-    allowed = {"A", "B", "C", "D", "E", "F"}
+    _allowed = {"A", "B", "C", "D", "E", "F"}
     # We use a Literal, so we can check the members if it were an enum,
     # but since it's a Literal we just assert the expected values are used in practice.
     # For now we simply confirm the type exists and is importable.
@@ -94,6 +94,6 @@ def test_failure_type_enum_is_consistent():
 
 def test_outcome_type_enum_is_consistent():
     """OutcomeType should contain the values referenced in the trace schema."""
-    expected = {"success", "failure", "timeout", "gate_blocked", "insufficient_memory"}
+    _expected = {"success", "failure", "timeout", "gate_blocked", "insufficient_memory"}
     # The Literal definition should be compatible
     assert OutcomeType is not None

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from fastapi import Depends, HTTPException, Request
 
-from aip.foundation.schemas import AuthConfig
-
 
 async def get_current_identity(request: Request) -> dict:
     """Returns the authenticated identity (or {'identity': 'definer', 'role': 'definer'} if auth disabled).

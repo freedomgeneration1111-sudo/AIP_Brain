@@ -12,8 +12,6 @@ All results carry model_gen_assumption context.
 
 from __future__ import annotations
 
-from typing import Any
-
 from aip.foundation.protocols import EventStore, ModelProvider
 from aip.foundation.schemas import AcePlaybookEntry, ContractRule, ModelSlotConfig
 
@@ -77,7 +75,6 @@ class SextonAudit:
 
     async def flag_deprecated_rules(self, audit_results: list[dict]) -> None:
         """Apply flagging + deprecation per 7.3 prose."""
-        from aip.orchestration.ace_playbook import AcePlaybook  # local import to avoid layering issues in some contexts
 
         for res in audit_results:
             if res.get("still_valid") is not False:

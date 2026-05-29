@@ -9,8 +9,6 @@ httpx, openai, anthropic (and similar network/LLM client libraries).
 import ast
 from pathlib import Path
 
-import pytest
-
 FORBIDDEN_IMPORTS = {
     "httpx",
     "openai",

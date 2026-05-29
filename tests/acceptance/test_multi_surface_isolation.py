@@ -8,8 +8,6 @@ Tests that surfaces (API, CLI, MCP, Chat) respect isolation per §7.2:
 - Each surface respects the same sovereignty model
 """
 
-import pytest
-
 
 def test_surface_config_importable():
     """SurfaceConfig is importable with correct defaults."""

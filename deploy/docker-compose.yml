@@ -10,6 +10,10 @@
 # Or use the profile-specific files:
 #   docker compose -f deploy/docker-compose.laptop.yml up --build
 #   docker compose -f deploy/docker-compose.production.yml up --build
+#
+# SAFETY: The application validates config at startup. Production mode
+# CANNOT start with auth_enabled=false, default passwords, or fixture
+# providers. See src/aip/config/__init__.py for validation rules.
 
 version: '3.8'
 
@@ -22,6 +26,9 @@ services:
     ports:
       - "${AIP_PORT:-8000}:8000"
     environment:
+      # AIP_PROFILE controls which validation rules apply at startup.
+      # Default is 'laptop' (relaxed rules for local development).
+      # Production deployments MUST set AIP_PROFILE=production.
       - AIP_PROFILE=${AIP_PROFILE:-laptop}
       - DATABASE_URL=${DATABASE_URL:-sqlite:///db/state.db}
     volumes:

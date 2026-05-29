@@ -3,8 +3,6 @@
 Verifies all 11 gate expectations (a-k) from spec prose.
 """
 
-import asyncio
-
 import pytest
 
 from aip.foundation.schemas import KnowledgeCompilationConfig

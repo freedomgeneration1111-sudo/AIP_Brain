@@ -8,12 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from aip.foundation.schemas import BeastCadenceConfig, BudgetConfig, SextonConfig
-from aip.orchestration.ace_playbook import AcePlaybook
+from aip.foundation.schemas import BeastCadenceConfig, BudgetConfig
 from aip.orchestration.actors.beast import Beast
 from aip.orchestration.budget import BudgetManager, InMemoryBudgetStore
-from aip.orchestration.router import AdaptiveRouter
-from aip.orchestration.sexton.sexton import Sexton
 
 
 @pytest.mark.asyncio

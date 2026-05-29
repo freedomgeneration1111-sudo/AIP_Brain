@@ -10,7 +10,6 @@ Verifies that async test infrastructure is properly configured:
 
 import tomllib
 from pathlib import Path
-from typing import Any
 
 import pytest
 

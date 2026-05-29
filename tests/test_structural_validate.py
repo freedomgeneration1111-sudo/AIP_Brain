@@ -2,7 +2,6 @@
 
 from aip.foundation.validation import (
     DEFAULT_RULES,
-    ValidationRule,
     structural_validate,
 )
 

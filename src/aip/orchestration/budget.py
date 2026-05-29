@@ -78,8 +78,8 @@ class SimpleAutonomyGate(AutonomyGate):
 
 # --- BudgetManager (extension, preserves existing code) ---
 
-from aip.foundation.protocols import BudgetStore, EventStore
-from aip.foundation.schemas import BudgetConfig, BudgetScope
+from aip.foundation.protocols import BudgetStore, EventStore  # noqa: E402 -- lazy import after class definitions
+from aip.foundation.schemas import BudgetConfig, BudgetScope  # noqa: E402 -- lazy import after class definitions
 
 
 class BudgetManager:
@@ -122,7 +122,7 @@ class BudgetManager:
         budget = await self._store.get_budget(scope, scope_id)
         consumed = budget.get("consumed_tokens", 0)
         limit = self._get_limit(scope)
-        remaining = limit - consumed
+        _remaining = limit - consumed
 
         # Check warning threshold
         if limit > 0 and consumed / limit >= self._config.budget_warning_threshold:

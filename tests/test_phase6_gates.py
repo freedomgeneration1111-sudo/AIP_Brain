@@ -7,11 +7,7 @@ import boundary, Appendix D, config toggleability (§1.8), existing 0-5/7 gates 
 from __future__ import annotations
 
 import ast
-import importlib
-import inspect
 from pathlib import Path
-
-import pytest
 
 FORBIDDEN_NETWORK = {"openai", "anthropic", "httpx", "requests", "aiohttp"}
 FORBIDDEN_MODEL_NAMES = ["deepseek", "claude", "qwen", "gpt-4", "sonnet", "o1-"]

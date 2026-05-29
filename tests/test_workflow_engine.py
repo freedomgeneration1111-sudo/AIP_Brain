@@ -7,7 +7,7 @@ from aip.orchestration.nodes.adversarial_eval import EvalResult
 from aip.orchestration.nodes.synthesis import SynthesisOutput
 from aip.orchestration.workflow.context import WorkflowContext
 from aip.orchestration.workflow.definition import WorkflowDefinition
-from aip.orchestration.workflow.node import DialogNode, NodeResult, NodeType, ParallelNode, ScriptNode
+from aip.orchestration.workflow.node import DialogNode, NodeResult, ParallelNode, ScriptNode
 from aip.orchestration.workflow.runner import SequentialRunner
 
 
@@ -100,7 +100,7 @@ async def test_parallel_node_executes_children_concurrently():
 @pytest.mark.asyncio
 async def test_agent_node_wires_to_phase1_synthesis(monkeypatch):
     """Smoke test that AgentNode now calls the real Phase 1 retrieve + synthesis path via protocols."""
-    from aip.foundation.schemas import Chunk, RetrievalResult
+    from aip.foundation.schemas import Chunk
     from aip.orchestration.workflow.node import AgentNode
 
     # Fake minimal vector store
@@ -130,7 +130,6 @@ async def test_agent_node_wires_to_phase1_synthesis(monkeypatch):
 async def test_workflow_suspend_and_resume_via_dialog():
     """End-to-end smoke test of suspend + resume using the new persistence primitives."""
     from aip.orchestration.nodes.definer_gate import DefinerDecision
-    from aip.orchestration.workflow.instance import SuspendedWorkflow
 
     # Simple workflow with a dialog in the middle
     nodes = [
@@ -339,7 +338,7 @@ async def test_finally_and_on_error_handlers():
             execution_log.append(self.label)
             return NodeResult(success=True, output={"executed": self.label})
 
-    nodes = [
+    _nodes = [
         RecordingScript("main_ok", "main_ok"),
     ]
 
@@ -594,7 +593,6 @@ def test_budget_exhaustion_from_store_actually_blocks_3_12():
     assert ctx.consume_budget(100) is False
     # Store state should reflect the attempted (but failed) consumption
     # (remaining still 50 because consume short-circuited)
-    import asyncio
 
     assert asyncio.run(budget.remaining()) == 50
 
@@ -703,7 +701,7 @@ nodes:
         definition = load_workflow_from_yaml(path)
         assert len(definition.nodes) == 2
 
-        engine = WorkflowEngine()
+        _engine = WorkflowEngine()
         # We don't have full stores wired, so we only test that loading + basic
         # node presence works. Full execution would require more wiring.
         assert any("Review" in type(n).__name__ for n in definition.nodes)  # structural check

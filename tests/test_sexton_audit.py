@@ -6,7 +6,7 @@ import pytest
 
 from aip.adapter.model_slot_resolver import ModelSlotResolver
 from aip.foundation.protocols import EventStore
-from aip.foundation.schemas import AcePlaybookEntry, ContractRule, ModelSlotConfig
+from aip.foundation.schemas import AcePlaybookEntry
 from aip.orchestration.sexton.sexton_audit import SextonAudit
 
 

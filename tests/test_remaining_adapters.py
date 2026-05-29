@@ -4,7 +4,6 @@ Exact per Phase 6 spec prose + ANNEX verification list.
 """
 
 import asyncio
-import os
 import tempfile
 from pathlib import Path
 
@@ -15,7 +14,7 @@ from aip.adapter.canonical.sqlite_canonical_store import SqliteCanonicalStore
 from aip.adapter.entity.sqlite_entity_store import SqliteEntityStore
 from aip.adapter.lexical.sqlite_fts5_store import SqliteFts5LexicalStore
 from aip.foundation.protocols import AutonomyGate, CanonicalStore, EntityStore, LexicalStore
-from aip.foundation.schemas import AutonomyLevel, Chunk
+from aip.foundation.schemas import Chunk
 
 
 @pytest.fixture
@@ -117,7 +116,7 @@ def test_autonomy_gate_impl_implements_protocol_and_behaviors(temp_db):
     # audit log
     logs = asyncio.run(gate.audit_log(limit=10))
     assert len(logs) >= 2
-    assert any(l.action_type == "approve_artifact" for l in logs)
+    assert any(entry.action_type == "approve_artifact" for entry in logs)
 
     asyncio.run(gate.close())
 

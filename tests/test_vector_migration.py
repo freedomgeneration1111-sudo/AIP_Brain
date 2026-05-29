@@ -92,7 +92,7 @@ async def test_migration_preserves_existing_embeddings():
     source = TrackingVectorStore(chunks=[chunk_with_embedding], count_value=1)
     target = TrackingVectorStore()
 
-    status = await migrate_vectors(source, target, batch_size=10)
+    _status = await migrate_vectors(source, target, batch_size=10)
 
     # Check that the target received the real embedding, not a zero vector
     if len(target.upserted) > 0:
@@ -114,7 +114,7 @@ async def test_migration_skips_items_without_embeddings_when_no_provider():
     source = TrackingVectorStore(chunks=[chunk_no_embedding], count_value=1)
     target = TrackingVectorStore()
 
-    status = await migrate_vectors(source, target, batch_size=10)
+    _status = await migrate_vectors(source, target, batch_size=10)
 
     # The chunk should NOT be upserted with a zero vector
     for upserted in target.upserted:
@@ -136,7 +136,7 @@ async def test_migration_generates_embeddings_with_provider():
     source = TrackingVectorStore(chunks=[chunk_no_embedding], count_value=1)
     target = TrackingVectorStore()
 
-    status = await migrate_vectors(
+    _status = await migrate_vectors(
         source,
         target,
         batch_size=10,
@@ -167,7 +167,7 @@ async def test_migration_rejects_zero_vector_in_metadata():
     source = TrackingVectorStore(chunks=[chunk_zero_emb], count_value=1)
     target = TrackingVectorStore()
 
-    status = await migrate_vectors(
+    _status = await migrate_vectors(
         source,
         target,
         batch_size=10,

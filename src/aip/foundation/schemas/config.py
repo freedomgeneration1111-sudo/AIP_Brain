@@ -5,7 +5,7 @@ Plugin system configuration, performance tuning, and plugin status tracking.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
 
 # Type alias for plugin status

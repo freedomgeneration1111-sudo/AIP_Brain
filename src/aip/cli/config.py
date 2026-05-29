@@ -6,9 +6,12 @@ Reads are always available.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import click
+
+logger = logging.getLogger(__name__)
 
 
 def _read_config(path: Path) -> dict[str, dict[str, str]]:
@@ -39,6 +42,59 @@ def _read_config(path: Path) -> dict[str, dict[str, str]]:
     except Exception:
         pass
     return config
+
+
+def validate_config_file(config_path: Path) -> bool:
+    """Validate config file for production-safety issues.
+
+    Reads the config file and runs the shared validation layer.
+    Returns True if valid, False if errors are found.
+    Prints human-readable error messages for each violation.
+    """
+    from aip.config import validate_config
+
+    raw_cfg = _read_config(config_path)
+    # Convert string values to proper types for validation
+    typed_cfg = _coerce_config_types(raw_cfg)
+
+    result = validate_config(typed_cfg)
+    if result.is_valid:
+        return True
+
+    for err in result.errors:
+        click.echo(f"  ERROR: {err.message}", err=True)
+        click.echo(f"    Setting: {err.setting_path}", err=True)
+        click.echo(f"    Fix: {err.remediation}", err=True)
+    return False
+
+
+def _coerce_config_types(raw: dict[str, dict[str, str]]) -> dict:
+    """Coerce string-valued config to proper types for validation.
+
+    The _read_config function returns all values as strings.
+    This converts known boolean/numeric fields to their proper types
+    so validation logic can work correctly.
+    """
+    bool_fields = {
+        ("auth", "auth_enabled"),
+        ("deployment", "auth_enabled"),
+        ("plugins", "enabled"),
+        ("plugins", "sandbox_mode"),
+        ("plugins", "auto_discover"),
+        ("collaborators", "enabled"),
+        ("performance", "profiling_enabled"),
+        ("performance", "sqlite_wal_mode"),
+        ("rate_limit", "enabled"),
+        ("rate_limit", "model_budget_protection"),
+    }
+    result: dict[str, dict] = {}
+    for section, entries in raw.items():
+        result[section] = dict(entries)
+        for key, value in entries.items():
+            if (section, key) in bool_fields:
+                if isinstance(value, str):
+                    result[section][key] = value.lower() in ("true", "1", "yes")
+    return result
 
 
 @click.command("config")
@@ -75,7 +131,7 @@ def config(key: str | None, value: str | None) -> None:
     if value:
         # Write path — would require AutonomyGate in production
         if len(parts) < 2:
-            click.echo(f"Error: key must be in section.key format (e.g., vector_backend.provider)")
+            click.echo("Error: key must be in section.key format (e.g., vector_backend.provider)")
             return
         section, subkey = parts[0], ".".join(parts[1:])
         # TODO: Wire through AutonomyGate for admin-level write approval

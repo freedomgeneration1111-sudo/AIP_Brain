@@ -6,20 +6,22 @@ Registers loaded providers with the DI container (via callable hook or direct as
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import yaml
 
 from aip.adapter.plugins.yaml_plugin_provider import YamlPluginProvider
 from aip.foundation.protocols import PluginProvider
 
+if TYPE_CHECKING:
+    from aip.foundation.schemas.config import PluginConfig
+
 
 class PluginLoader:
     """Scans a directory for plugin YAML files and manages their lifecycle."""
 
-    def __init__(self, config: "PluginConfig") -> None:  # type: ignore  # forward from 10.0a
+    def __init__(self, config: PluginConfig) -> None:
         self.config = config
         self._loaded: dict[str, PluginProvider] = {}
         self._plugins_dir = Path(config.plugins_dir)

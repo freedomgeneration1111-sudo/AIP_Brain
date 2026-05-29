@@ -63,7 +63,6 @@ def test_adapter_layer_does_not_import_orchestration_impls():
     # but must not import concrete storage adapter implementations directly.
     # The real enforcement is in test_layering.py (run in the combined gate).
     # This is a source-level sanity guard.
-    import ast
     from pathlib import Path
 
     api_root = Path(__file__).parent.parent / "src/aip/adapter/api"

@@ -5,11 +5,9 @@ Note: In base env without bcrypt (Phase 7 auth dep), full integration tests may 
 the critical new behaviors + static layering check still execute.
 """
 
-import asyncio
-
 import pytest
 
-from aip.foundation.schemas import CollaboratorConfig, CollaboratorRole
+from aip.foundation.schemas import CollaboratorConfig
 
 try:
     from aip.adapter.auth.collaborator import CollaboratorManager

@@ -16,7 +16,6 @@ from typing import Any, Callable
 
 from aip.orchestration.budget import InMemoryBudgetStore, SimpleAutonomyGate
 from aip.orchestration.embed_providers import get_embed_fn
-from aip.orchestration.retrieval import fake_embed
 from aip.orchestration.workflow.context import WorkflowContext
 from aip.orchestration.workflow.definition import WorkflowDefinition
 from aip.orchestration.workflow.loader import load_workflow_from_yaml
@@ -93,7 +92,7 @@ class WorkflowEngine:
         """
         definition: WorkflowDefinition = load_workflow_from_yaml(yaml_path)
 
-        protocols = {
+        _protocols = {
             "vector_store": self.vector_store,
             "embed_fn": self.embed_fn,
             "trace_store": self.trace_store,

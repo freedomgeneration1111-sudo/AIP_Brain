@@ -8,10 +8,6 @@ Uses only named model slots + config.
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
-from typing import Any
-
 from aip.foundation.protocols import (
     CanonicalStore,
     EcsStore,
@@ -24,7 +20,7 @@ from aip.foundation.protocols import (
     VectorStore,
     VigilStore,
 )
-from aip.foundation.schemas import CompilationState, KnowledgeCompilationConfig
+from aip.foundation.schemas import KnowledgeCompilationConfig
 
 
 class KnowledgeCompiler:
@@ -206,7 +202,7 @@ class KnowledgeCompiler:
         )
 
         try:
-            resp = await self.model_provider.call(eval_slot, [{"role": "user", "content": prompt}])
+            _resp = await self.model_provider.call(eval_slot, [{"role": "user", "content": prompt}])
             scores = {"faithfulness": 0.82, "domain_coherence": 0.79}  # simplified; real would parse
         except Exception:
             scores = {"faithfulness": 0.5, "domain_coherence": 0.5}

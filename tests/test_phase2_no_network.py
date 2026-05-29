@@ -3,8 +3,6 @@
 import ast
 from pathlib import Path
 
-import pytest
-
 
 def test_phase2_code_has_no_network_imports():
     """CHUNK-4.8: Foundation and orchestration code must not contain network/LLM client imports.

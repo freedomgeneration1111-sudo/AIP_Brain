@@ -11,8 +11,6 @@ import pytest
 from aip.adapter.model_slot_resolver import ModelSlotResolver
 from aip.foundation.schemas import SessionContext, TrajectorySignal
 from aip.orchestration.session import SessionManager
-from aip.orchestration.trajectory.context_reset import execute_context_reset
-from aip.orchestration.trajectory.regulator import should_intervene
 
 # --- Shared fakes (per ANNEX + extended for Phase 3 scenarios) ---
 

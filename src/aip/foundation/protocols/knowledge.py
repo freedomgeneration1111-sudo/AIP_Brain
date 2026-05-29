@@ -7,7 +7,10 @@ Per Appendix D: compiled knowledge ≠ canonical artifact.
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from aip.foundation.schemas import CompilationState
 
 
 @runtime_checkable
@@ -42,11 +45,11 @@ class KnowledgeStore(Protocol):
         """
         ...
 
-    async def list_compiled(self, domain: str | None = None, state: "CompilationState" | None = None) -> list[dict]:
+    async def list_compiled(self, domain: str | None = None, state: CompilationState | None = None) -> list[dict]:
         """List compiled knowledge, optionally filtered."""
         ...
 
-    async def update_state(self, knowledge_id: str, new_state: "CompilationState") -> None:
+    async def update_state(self, knowledge_id: str, new_state: CompilationState) -> None:
         """Transition the compilation state."""
         ...
 

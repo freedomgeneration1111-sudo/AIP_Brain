@@ -36,7 +36,7 @@ async def execute_context_reset(
     trace_store: TraceStore,
     event_store: EventStore,
     ecs_store: EcsStore,
-    config: "AipConfig | dict | None" = None,
+    config: "AipConfig | dict | None" = None,  # noqa: F821
 ) -> SessionContext:
     """Execute the full six-step context reset protocol.
 
@@ -125,7 +125,7 @@ async def execute_context_reset(
 
 async def inject_deterministic_recovery(
     signals: list[TrajectorySignal],
-    config: "AipConfig | dict | None" = None,
+    config: "AipConfig | dict | None" = None,  # noqa: F821
 ) -> str:
     """Generate deterministic recovery instruction from signals.
 

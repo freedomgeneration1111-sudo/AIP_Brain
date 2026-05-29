@@ -33,7 +33,7 @@ async def review_artifact(
     event_store: EventStore,
     trace_store: TraceStore,
     eval_fn: Callable[[str, str], Awaitable[dict]] | None = None,
-    config: "AipConfig | dict | None" = None,
+    config: "AipConfig | dict | None" = None,  # noqa: F821
 ) -> ReviewVerdict:
     """Review a generated artifact for quality and correctness.
 

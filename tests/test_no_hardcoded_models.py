@@ -11,8 +11,6 @@ import ast
 import re
 from pathlib import Path
 
-import pytest
-
 # Common patterns for model names that should not appear as literals in code
 MODEL_NAME_PATTERNS = [
     r"deepseek",

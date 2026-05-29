@@ -1,7 +1,5 @@
 """Tests for Commit stub (CHUNK-1.6 per Rev 1.3)."""
 
-import asyncio
-
 import pytest
 
 from aip.foundation.protocols import ArtifactStore, EcsStore, EventStore

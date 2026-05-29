@@ -19,7 +19,7 @@ Full Sexton, UI surface, and advanced L4b metrics remain out of scope.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from aip.foundation.protocols import ArtifactStore, TraceStore
@@ -188,7 +188,7 @@ async def check_l4_and_surface_if_needed(
 
 # thin runtime integration helper (node-level L4 + Sexton)
 
-from aip.orchestration.sexton import Sexton
+from aip.orchestration.sexton import Sexton  # noqa: E402 -- lazy import to avoid circular dependency
 
 
 async def run_l4_and_sexton_check(

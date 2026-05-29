@@ -14,9 +14,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from aip.adapter.model_slot_resolver import (
-    _DEFAULT_OLLAMA_BASE_URL,
-    PROVIDER_OLLAMA,
-    PROVIDER_OPENAI_COMPATIBLE,
     ModelSlotResolver,
 )
 

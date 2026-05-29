@@ -35,7 +35,7 @@ async def main() -> None:
     # ------------------------------------------------------------------
     # 2. Run the canonical Workflow 0.1 pipeline
     # ------------------------------------------------------------------
-    workflow_path = Path(__file__).parent / "workflow_01.yaml"
+    _workflow_path = Path(__file__).parent / "workflow_01.yaml"
 
     print("Starting Workflow 0.1 synthesis session...\n")
 

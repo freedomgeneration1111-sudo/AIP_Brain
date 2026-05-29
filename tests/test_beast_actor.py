@@ -12,7 +12,7 @@ Covers:
 - Backward compatibility with old constructor signatures
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 

@@ -5,9 +5,6 @@ fire within the session window, it triggers a trajectory correction intervention
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
-
 from aip.foundation.schemas import TrajectorySignal
 from aip.orchestration.l4.reset import ResetRecommendation  # reuse existing structure
 

@@ -6,7 +6,7 @@ status/checkpoint tracking for the sqlite_vss → pgvector migration path.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
 
 # Type alias for vector backend selection

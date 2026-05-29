@@ -13,8 +13,7 @@ import tempfile
 import pytest
 
 from aip.adapter.knowledge.sqlite_knowledge_store import SqliteKnowledgeStore
-from aip.foundation.protocols import EmbeddingProvider, KnowledgeStore, LexicalStore, VectorStore
-from aip.foundation.schemas import CompilationState
+from aip.foundation.protocols import KnowledgeStore, LexicalStore, VectorStore
 
 # ---------------------------------------------------------------------------
 # Fakes for VectorStore / LexicalStore (minimal, for basic tests)

@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 from aip.foundation.schemas import RetrievalResult
-from aip.foundation.validation import structural_validate
 
 
 @dataclass

@@ -8,9 +8,8 @@ Config-driven (Delta 5), explicit embed_fn (Delta 4), TraceStore logging on fail
 from __future__ import annotations
 
 import asyncio
-import math
 from dataclasses import dataclass
-from typing import Any, Callable, Protocol
+from typing import Any, Callable
 
 from aip.foundation.protocols import TraceStore, VectorStore
 from aip.foundation.schemas import Chunk, RetrievalResult

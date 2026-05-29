@@ -11,7 +11,7 @@ Part of the L4 opening gate alongside test_layering.py and test_trace_schema.py.
 import pytest
 
 from aip.foundation.protocols import TraceStore
-from aip.orchestration.l4.monitor import TrajectoryMonitor, TrajectorySignal
+from aip.orchestration.l4.monitor import TrajectoryMonitor
 
 
 class FakeTraceStoreForL4(TraceStore):

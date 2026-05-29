@@ -21,14 +21,17 @@ and made Type E detection completely non-functional.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aip.foundation.schemas import TrajectorySignal
 from aip.orchestration.l4.anxiety_detector import ContextAnxietyDetector
 from aip.orchestration.l4.failure_streak import FailureStreakDetector
 from aip.orchestration.l4.loop_detector import LoopDetector
 from aip.orchestration.l4.regulator import TrajectoryRegulator
+
+if TYPE_CHECKING:
+    from aip.foundation.protocols import TraceStore
+    from aip.foundation.schemas import SessionContext
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +47,8 @@ _regulator = TrajectoryRegulator()
 
 
 async def regulate_trajectory(
-    session_context: "SessionContext",
-    trace_store: "TraceStore",
+    session_context: SessionContext,
+    trace_store: TraceStore,
     config: Any = None,
 ) -> list[TrajectorySignal]:
     """Return trajectory signals for the session.

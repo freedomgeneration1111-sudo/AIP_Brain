@@ -39,7 +39,6 @@ def start_session(project_id: str, domain: str) -> None:
     TODO: Wire through SessionManager API once available.
     Currently records session start in the events store.
     """
-    import datetime
     import uuid
 
     session_id = str(uuid.uuid4())[:8]

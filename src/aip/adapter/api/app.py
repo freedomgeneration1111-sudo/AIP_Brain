@@ -34,14 +34,14 @@ import importlib
 import logging
 import time
 from contextlib import asynccontextmanager
-from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from aip.adapter.api import collaborators, performance, plugins
-from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.adapter.api.dependencies import AipContainer
 from aip.adapter.api.routes import admin, artifacts, chat, health, memory, projects, review, sessions
+from aip.config import validate_config
 from aip.foundation.schemas import BeastCadenceConfig, SurfaceConfig
 
 logger = logging.getLogger(__name__)
@@ -376,6 +376,17 @@ async def lifespan(app: FastAPI):
 
 def create_app(config: dict | None = None) -> "FastAPI":
     cfg = config or {}
+
+    # Config validation runs BEFORE the app is created.
+    # Unsafe production configs fail fast with a clear error message.
+    validation = validate_config(cfg)
+    if not validation.is_valid:
+        # Log all errors for visibility
+        for err in validation.errors:
+            logger.critical("Config validation error: %s", err)
+        # Raise the first error — it includes the setting path and remediation hint
+        raise validation.errors[0]
+
     surface_cfg = SurfaceConfig(**{k: v for k, v in cfg.items() if k in SurfaceConfig.__dataclass_fields__})
 
     app = FastAPI(title="AIP 0.1 Surfaces", version="0.1", lifespan=lifespan)

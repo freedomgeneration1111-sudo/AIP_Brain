@@ -13,7 +13,6 @@ Each promoted stub references the original spec chunk it was specified in.
 """
 
 import tempfile
-from typing import Any
 
 import pytest
 
@@ -70,7 +69,6 @@ async def test_session_store_crud_with_bcrypt():
 @pytest.mark.asyncio
 async def test_auth_dependencies_enforce_roles():
     """Promotes CHUNK-9.0b auth dependencies — role enforcement."""
-    from aip.adapter.auth.dependencies import get_current_identity, require_collaborator_or_above, require_definer
 
     # require_definer should reject non-definer roles
     class MockIdentity:

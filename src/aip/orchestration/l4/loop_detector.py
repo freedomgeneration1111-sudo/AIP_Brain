@@ -7,7 +7,6 @@ Emits TrajectorySignal with failure_type="D" when a loop is detected.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
 
 from aip.foundation.protocols import TraceStore
 from aip.foundation.schemas import TrajectorySignal

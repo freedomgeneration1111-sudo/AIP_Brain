@@ -6,7 +6,10 @@ and the two-phase autonomy gate that enforces DEFINER sovereignty.
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from aip.foundation.schemas import AuthRole, AutonomyEscalation, AutonomyLevel, CollaboratorRole
 
 
 @runtime_checkable
@@ -29,9 +32,9 @@ class AutonomyGate(Protocol):
         self,
         action_type: str,
         resource_id: str,
-        requested_level: "AutonomyLevel",
+        requested_level: AutonomyLevel,
         requested_by: str,
-    ) -> "AutonomyEscalation":
+    ) -> AutonomyEscalation:
         """Check whether an action is allowed at the current autonomy level.
 
         Returns an AutonomyEscalation record with granted=True/False.
@@ -43,9 +46,9 @@ class AutonomyGate(Protocol):
         self,
         action_type: str,
         resource_id: str,
-        requested_level: "AutonomyLevel",
+        requested_level: AutonomyLevel,
         requested_by: str,
-    ) -> "AutonomyEscalation":
+    ) -> AutonomyEscalation:
         """Request autonomy escalation for an action.
 
         Blocks until DEFINER approves if escalation_requires_definer is True.
@@ -53,7 +56,7 @@ class AutonomyGate(Protocol):
         """
         ...
 
-    async def audit_log(self, limit: int = 100) -> list["AutonomyEscalation"]:
+    async def audit_log(self, limit: int = 100) -> list[AutonomyEscalation]:
         """Return recent autonomy escalation records for audit.
 
         Used by admin console and DEFINER review.
@@ -73,7 +76,7 @@ class AuthStore(Protocol):
         """Return the single DEFINER identity (or None if not configured)."""
         ...
 
-    async def create_session(self, identity: str, role: "AuthRole") -> str:
+    async def create_session(self, identity: str, role: AuthRole) -> str:
         """Create a session for the given identity and role. Returns session token."""
         ...
 
@@ -89,7 +92,7 @@ class AuthStore(Protocol):
         """Validate an API key and return associated identity info."""
         ...
 
-    async def create_api_key(self, identity: str, role: "AuthRole", key_name: str) -> str:
+    async def create_api_key(self, identity: str, role: AuthRole, key_name: str) -> str:
         """Create an API key for non-interactive access. Returns the key string."""
         ...
 
@@ -108,7 +111,7 @@ class AuthStore(Protocol):
         """
         ...
 
-    async def create_user(self, identity: str, role: "CollaboratorRole", password_hash: str | None = None) -> bool:
+    async def create_user(self, identity: str, role: CollaboratorRole, password_hash: str | None = None) -> bool:
         """Create a collaborator or readonly user.
 
         The 'definer' role cannot be created through this method —
@@ -117,7 +120,7 @@ class AuthStore(Protocol):
         """
         ...
 
-    async def update_user_role(self, identity: str, new_role: "CollaboratorRole") -> bool:
+    async def update_user_role(self, identity: str, new_role: CollaboratorRole) -> bool:
         """Update a user's role.
 
         Cannot change the DEFINER's role.

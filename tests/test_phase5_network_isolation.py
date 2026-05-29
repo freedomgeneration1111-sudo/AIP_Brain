@@ -6,8 +6,6 @@ Extends the CHUNK-6.6 pattern for all new Phase 5 surfaces.
 import ast
 from pathlib import Path
 
-import pytest
-
 FORBIDDEN_NETWORK = {"openai", "anthropic", "httpx", "requests", "aiohttp"}
 FORBIDDEN_MODEL_NAMES = ["DeepSeek", "deepseek", "gpt-4", "claude-3", "llama-3", "o1-preview", "nomic-embed"]
 

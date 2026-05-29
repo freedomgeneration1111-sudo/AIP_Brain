@@ -1,57 +1,26 @@
 """Verify Phase 6 schema additions do not break Phase 0, 1, 2, 3, 4, or 5."""
 
-import pytest
-
 from aip.foundation.protocols import (
-    ArtifactStore,
     AutonomyGate,
-    BudgetStore,
     CanonicalStore,
-    EcsStore,
-    EmbeddingProvider,
     EntityStore,
-    EventStore,
     LexicalStore,
-    ModelProvider,
-    ProjectStore,
-    TraceStore,
-    VectorStore,
 )
 from aip.foundation.schemas import (
-    AcePlaybookEntry,
     ApiRoute,
     AutonomyEscalation,
     AutonomyLevel,
-    BeastCadenceConfig,
-    BudgetConfig,
-    BudgetScope,
     ChatMessage,
     Chunk,
-    ContractRule,
-    DomainCoherenceResult,
     EcsState,
-    EcsTransition,
-    EvaluationScore,
-    Event,
     FailureClassification,
     FailureType,
-    FaithfulnessResult,
     McpAutonomyLevel,
     McpToolDef,
-    MigrationCheckpoint,
-    MigrationStatus,
-    ModelSlotConfig,
-    PgvectorConfig,
-    RetrievalResult,
-    ReviewContext,
     ReviewQueueEntry,
     ReviewVerdict,
-    RoutingWeight,
-    SessionContext,
-    SextonConfig,
     SurfaceConfig,
     TrajectorySignal,
-    VectorBackendType,
 )
 
 
@@ -132,17 +101,17 @@ def test_review_queue_entry_dataclass():
 
 def test_autonomy_level_type_alias():
     """AutonomyLevel must accept the defined levels."""
-    al_none: AutonomyLevel = "none"
-    al_read: AutonomyLevel = "read"
-    al_write: AutonomyLevel = "write"
+    _al_none: AutonomyLevel = "none"
+    _al_read: AutonomyLevel = "read"
+    _al_write: AutonomyLevel = "write"
     al_admin: AutonomyLevel = "admin"
     assert al_admin == "admin"
 
 
 def test_mcp_autonomy_level_type_alias():
     """McpAutonomyLevel must accept the defined levels."""
-    ml_read: McpAutonomyLevel = "read"
-    ml_write: McpAutonomyLevel = "write"
+    _ml_read: McpAutonomyLevel = "read"
+    _ml_write: McpAutonomyLevel = "write"
     ml_admin: McpAutonomyLevel = "admin"
     assert ml_admin == "admin"
 

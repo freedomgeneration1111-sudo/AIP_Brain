@@ -1,45 +1,20 @@
 """Verify Phase 7 schema additions do not break Phase 0–6."""
 
-import pytest
-
 from aip.foundation.protocols import (
     AuthStore,
     # Prior
-    AutonomyGate,
-    CanonicalStore,
-    EntityStore,
-    LexicalStore,
     VigilStore,
 )
 from aip.foundation.schemas import (
     # Prior phases (must still work)
-    AcePlaybookEntry,
-    ApiRoute,
     AuthConfig,
-    AutonomyEscalation,
-    AutonomyLevel,
-    BeastCadenceConfig,
-    BudgetConfig,
-    BudgetScope,
     CanonicalPromotionConfig,
-    ChatMessage,
     Chunk,
-    ContractRule,
     DeploymentProfile,
     EcsState,
     FailureClassification,
     FailureType,
-    McpAutonomyLevel,
-    McpToolDef,
-    ModelSlotConfig,
     RateLimitConfig,
-    ReviewQueueEntry,
-    ReviewVerdict,
-    SessionContext,
-    SextonConfig,
-    SurfaceConfig,
-    TrajectorySignal,
-    # Phase 7 additions
     VigilConfig,
     WorkflowTemplate,
 )

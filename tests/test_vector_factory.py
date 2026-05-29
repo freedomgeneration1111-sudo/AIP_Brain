@@ -6,7 +6,6 @@ from aip.adapter.vector._in_memory import InMemoryVectorStore
 from aip.adapter.vector.factory import create_vector_store
 from aip.adapter.vector.pgvector_store import PgvectorStore
 from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
-from aip.foundation.schemas import PgvectorConfig
 
 
 @pytest.mark.asyncio

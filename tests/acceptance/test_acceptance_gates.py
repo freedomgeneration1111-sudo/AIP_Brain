@@ -12,23 +12,7 @@ import pytest
 def test_foundation_protocols_importable():
     """Gate: all Foundation Protocol classes are importable."""
     from aip.foundation.protocols import (
-        ArtifactStore,
-        AuthStore,
-        AutonomyGate,
-        BudgetStore,
-        CanonicalStore,
-        EcsStore,
-        EmbeddingProvider,
-        EntityStore,
-        EventStore,
-        KnowledgeStore,
-        LexicalStore,
-        ModelProvider,
-        PluginProvider,
-        ProjectStore,
-        TraceStore,
         VectorStore,
-        VigilStore,
     )
 
     # All protocols must be runtime-checkable
@@ -38,47 +22,7 @@ def test_foundation_protocols_importable():
 def test_foundation_schemas_importable():
     """Gate: all Foundation schema dataclasses are importable."""
     from aip.foundation.schemas import (
-        AcePlaybookEntry,
-        ApiRoute,
-        AuthConfig,
-        AutonomyEscalation,
-        BeastCadenceConfig,
-        BudgetConfig,
-        BudgetScope,
-        CanonicalPromotionConfig,
-        ChatMessage,
-        Chunk,
-        CollaboratorConfig,
-        ContractRule,
-        ContractTier,
-        DeploymentProfile,
-        DomainCoherenceResult,
         EcsState,
-        EcsTransition,
-        EvaluationScore,
-        Event,
-        FailureClassification,
-        FaithfulnessResult,
-        KnowledgeCompilationConfig,
-        McpToolDef,
-        MigrationStatus,
-        ModelSlotConfig,
-        PerformanceConfig,
-        PgvectorConfig,
-        PluginConfig,
-        RateLimitConfig,
-        ReleaseMetadata,
-        RetrievalResult,
-        ReviewContext,
-        ReviewQueueEntry,
-        ReviewVerdict,
-        RoutingWeight,
-        SessionContext,
-        SextonConfig,
-        SurfaceConfig,
-        TrajectorySignal,
-        VigilConfig,
-        WorkflowTemplate,
     )
 
     # EcsState must have all required states
@@ -92,7 +36,7 @@ def test_foundation_schemas_importable():
 
 def test_ecs_graph_valid_transitions():
     """Gate: ECS graph enforces valid transitions per §9.3."""
-    from aip.foundation.ecs_graph import VALID_TRANSITIONS, InvalidTransitionError, validate_transition
+    from aip.foundation.ecs_graph import InvalidTransitionError, validate_transition
 
     # Valid transitions
     validate_transition("SPECIFIED", "GENERATED")

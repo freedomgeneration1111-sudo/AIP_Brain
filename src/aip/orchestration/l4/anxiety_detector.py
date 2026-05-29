@@ -7,7 +7,6 @@ Emits TrajectorySignal with failure_type="F".
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
 
 from aip.foundation.schemas import TrajectorySignal
 

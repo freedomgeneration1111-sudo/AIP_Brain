@@ -1,7 +1,5 @@
 """Verify Phase 4 schema additions do not break Phase 0, 1, 2, or 3."""
 
-import pytest
-
 from aip.foundation.protocols import (
     ArtifactStore,
     EcsStore,
@@ -13,22 +11,15 @@ from aip.foundation.protocols import (
 )
 from aip.foundation.schemas import (
     Chunk,
-    ContractRule,
     DomainCoherenceResult,
     EcsState,
-    EcsTransition,
     EvaluationScore,
-    Event,
     FailureType,
     FaithfulnessResult,
     MigrationCheckpoint,
     MigrationStatus,
-    ModelSlotConfig,
     PgvectorConfig,
-    RetrievalResult,
-    ReviewContext,
     ReviewVerdict,
-    SessionContext,
     TrajectorySignal,
     VectorBackendType,
 )

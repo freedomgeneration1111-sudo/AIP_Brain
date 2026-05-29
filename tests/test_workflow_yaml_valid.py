@@ -1,7 +1,5 @@
 """Basic validation tests for the Workflow 0.1 YAML definition (CHUNK-4.6)."""
 
-import pytest
-
 from aip.orchestration.workflow.loader import load_workflow_from_yaml
 
 

@@ -27,6 +27,6 @@ def test_bench_retrieval_100_docs():
 def test_bench_retrieval_1000_docs():
     docs = generate_synthetic_docs(1000)
     start = time.perf_counter()
-    results = [d for d in docs if "knowledge" in d["content"]][:50]
+    _results = [d for d in docs if "knowledge" in d["content"]][:50]
     duration_ms = (time.perf_counter() - start) * 1000
     assert duration_ms < 200

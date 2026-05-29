@@ -3,10 +3,6 @@
 Covers the 11 gate verifications (a-k) from spec prose.
 """
 
-import asyncio
-
-import pytest
-
 from aip.adapter.plugins.plugin_loader import PluginLoader
 from aip.foundation.schemas import PluginConfig
 from aip.orchestration.plugins import PluginManager

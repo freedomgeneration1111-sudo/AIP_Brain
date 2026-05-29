@@ -8,11 +8,8 @@ Updated for honest review behavior:
 - With real eval_fn: APPROVED/REJECTED/NEEDS_REVISION based on results
 """
 
-import os
-
 import pytest
 
-from aip.foundation.schemas import ReviewVerdict
 from aip.orchestration.review import review_artifact
 
 

@@ -7,7 +7,10 @@ entity management, and project state.
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from aip.foundation.schemas import Chunk, Event
 
 
 @runtime_checkable
@@ -34,7 +37,7 @@ class VectorStore(Protocol):
         query_vector: list[float],
         domain: str | None = None,
         top_k: int = 10,
-    ) -> list["Chunk"]:
+    ) -> list[Chunk]:
         """Retrieve chunks by vector similarity."""
         ...
 
@@ -46,7 +49,7 @@ class VectorStore(Protocol):
         """Count entries, optionally filtered by domain."""
         ...
 
-    async def store(self, chunk: "Chunk") -> str:
+    async def store(self, chunk: Chunk) -> str:
         """Deprecated: use upsert() instead. Returns chunk id."""
         ...
 
@@ -89,7 +92,7 @@ class LexicalStore(Protocol):
         query: str,
         domain: str | None = None,
         limit: int = 10,
-    ) -> list["Chunk"]:
+    ) -> list[Chunk]:
         """Full-text search for documents matching query.
 
         Returns Chunk results with score = FTS5 rank.
@@ -264,7 +267,7 @@ class EventStore(Protocol):
         artifact_id: str | None = None,
         event_type: str | None = None,
         limit: int = 100,
-    ) -> list["Event"]:
+    ) -> list[Event]:
         """Query events by artifact_id and/or event_type.
 
         Returns most recent events first (descending timestamp).

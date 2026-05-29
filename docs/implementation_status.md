@@ -506,6 +506,53 @@ supported for test fixtures but logs a warning.
 | Modules classified as Broken but Important | 3 |
 | Modules classified as Dead/Duplicate | 0 |
 
+## Production Config Hardening (2026-05-29)
+
+Programmatic config validation added to `src/aip/config/__init__.py`. The application
+now fails at startup if unsafe production configurations are detected. This is not
+cosmetic — unsafe configs fail before any runtime starts.
+
+### New Module: `src/aip/config/__init__.py`
+
+- `ConfigValidationError` — structured error with `code`, `setting_path`, `remediation`
+- `RuntimeMode` — LAPTOP or PRODUCTION enum
+- `get_runtime_mode(config)` — deterministic profile detection from config + env
+- `validate_config(config)` — runs all safety checks, returns `ValidationResult`
+- `AIP_UNSAFE_ALLOW_PUBLIC_NO_AUTH` — explicit, ugly override for local dev only
+
+### Validation Rules (Programmatically Enforced)
+
+| Rule | Error Code | Condition |
+|---|---|---|
+| Production + auth disabled | `PROD_AUTH_DISABLED` | `deployment.profile_name=production` AND `auth_enabled=false` |
+| Production + missing DB password | `PROD_MISSING_DB_PASSWORD` | Production AND no `POSTGRES_PASSWORD` or `DATABASE_URL` |
+| Production + weak DB password | `PROD_WEAK_DB_PASSWORD` | Production AND password in known-weak list |
+| Production + fixture embedding | `PROD_FIXTURE_PROVIDER` | Production AND `embedding.provider` in (`fake`, `mock`, `ci`, `fixture`) |
+| Production + fixture model | `PROD_FIXTURE_MODEL_PROVIDER` | Production AND `deployment.model_provider` in fixture set |
+| Public bind + no auth | `PUBLIC_NO_AUTH` | Host in (`0.0.0.0`, `::`) AND auth disabled AND no unsafe override |
+| Public bind + weak secret | `PUBLIC_WEAK_SECRET` | Public bind AND weak database password |
+
+### Integration Points
+
+- `create_app()` in `adapter/api/app.py` — validation runs before FastAPI app creation
+- `aip validate` CLI command — standalone validation without starting server
+- `aip status` CLI command — warns if config validation fails
+- Docker compose — `POSTGRES_PASSWORD` uses `${:?}` syntax (no `changeme` fallback)
+
+### Tests
+
+63 new tests in `tests/test_config_validation.py` covering:
+- Laptop + localhost + auth disabled (allowed)
+- Public bind + auth disabled without override (blocked)
+- Production + auth disabled (blocked)
+- Production + missing/weak password (blocked)
+- Production + fixture providers (blocked)
+- API startup validation integration
+- CLI validation integration
+- Docker compose safety checks
+- Runtime mode detection edge cases
+- ConfigValidationError contract
+
 ## Recommendations for Phase 1
 
 ### Priority 1: Fix the Evaluation Pipeline (Critical — MOSTLY DONE)

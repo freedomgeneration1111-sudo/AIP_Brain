@@ -8,8 +8,6 @@ Composes L5 workflow engine with L4 regulation layer.
 
 from __future__ import annotations
 
-from typing import Any
-
 from aip.foundation.protocols import ArtifactStore, EcsStore, EventStore, TraceStore
 from aip.foundation.schemas import SessionContext, TrajectorySignal
 from aip.orchestration.trajectory.context_reset import (
@@ -26,7 +24,7 @@ class SessionManager:
     and handles interventions (recovery or reset).
     """
 
-    def __init__(self, config: "AipConfig | dict | None" = None) -> None:
+    def __init__(self, config: "AipConfig | dict | None" = None) -> None:  # noqa: F821
         cfg = config.model_dump() if hasattr(config, "model_dump") else (config or {})
         self._config = cfg
         self._models_cfg = cfg.get("models", {})
@@ -107,7 +105,7 @@ class SessionManager:
             )
 
         # Lighter recovery for failure streak (E)
-        recovery = await inject_deterministic_recovery(signals, self._config)
+        _recovery = await inject_deterministic_recovery(signals, self._config)
         # The recovery instruction is returned to the caller
         # (workflow engine) to inject into the next synthesis call.
         # For now, we store it in session context metadata via a simple approach:

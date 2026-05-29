@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from typing import Any
 
 from aip.foundation.protocols import VectorStore
@@ -46,7 +45,7 @@ class VectorStoreConnectionManager:
 
             # Retry logic with exp backoff (only for connection failures)
             delays = [1.0, 2.0, 4.0]
-            last_exc: Exception | None = None
+            _last_exc: Exception | None = None
 
             for attempt, delay in enumerate(delays, 1):
                 try:
@@ -57,7 +56,7 @@ class VectorStoreConnectionManager:
                     logger.info("VectorStoreConnectionManager: store initialized")
                     return self._store
                 except Exception as e:
-                    last_exc = e
+                    _last_exc = e
                     logger.warning(
                         f"VectorStoreConnectionManager: attempt {attempt} failed ({e}), retrying in {delay}s",
                     )

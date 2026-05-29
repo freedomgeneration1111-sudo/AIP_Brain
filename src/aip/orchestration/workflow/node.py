@@ -13,9 +13,12 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import jinja2
+
+if TYPE_CHECKING:
+    from aip.orchestration.workflow.context import WorkflowContext
 
 
 class NodeType(str, Enum):
@@ -55,7 +58,7 @@ class WorkflowNode(ABC):
         self.config = config or {}
 
     @abstractmethod
-    async def run(self, context: "WorkflowContext") -> NodeResult:
+    async def run(self, context: WorkflowContext) -> NodeResult:
         """
         Execute the node.
 
@@ -83,7 +86,7 @@ class ScriptNode(WorkflowNode):
         super().__init__(node_id, NodeType.SCRIPT, config)
         self.code = code  # In a real implementation this would be a safe exec or registered function
 
-    async def run(self, context: "WorkflowContext") -> NodeResult:
+    async def run(self, context: WorkflowContext) -> NodeResult:
         # Placeholder for — real implementation comes in a follow-up chunk
         return NodeResult(success=True, output={"executed": self.node_id, "type": "script"})
 
@@ -98,7 +101,7 @@ class AgentNode(WorkflowNode):
         self.model_slot = model_slot
         self.prompt_template = prompt_template
 
-    async def run(self, context: "WorkflowContext") -> NodeResult:
+    async def run(self, context: WorkflowContext) -> NodeResult:
         """
         Real agent execution for.
 
@@ -179,7 +182,7 @@ class ConditionNode(WorkflowNode):
         self.condition = condition
         self._env = jinja2.Environment(autoescape=False)
 
-    async def run(self, context: "WorkflowContext") -> NodeResult:
+    async def run(self, context: WorkflowContext) -> NodeResult:
         template = self._env.from_string(self.condition)
         rendered = template.render(**context.variables, **context.metadata)
         # Very simple truthiness evaluation for now
@@ -211,7 +214,7 @@ class DialogNode(WorkflowNode):
         self.validation_result = validation_result
         self.eval_result = eval_result
 
-    async def run(self, context: "WorkflowContext") -> NodeResult:
+    async def run(self, context: WorkflowContext) -> NodeResult:
         """
         Execute the dialog / DEFINER gate.
 
@@ -274,7 +277,7 @@ class ParallelNode(WorkflowNode):
         self.merge_strategy = (config or {}).get("merge_strategy", "collect_all") if config else "collect_all"
         self.continue_on_error = (config or {}).get("continue_on_error", False) if config else False
 
-    async def run(self, context: "WorkflowContext") -> NodeResult:
+    async def run(self, context: WorkflowContext) -> NodeResult:
         """
         ParallelNode itself is mostly a marker + metadata holder.
         The actual concurrent execution (including dependency resolution,
@@ -295,8 +298,8 @@ class ParallelNode(WorkflowNode):
 
 # extensions: Review and Re-Synthesis nodes
 
-from aip.orchestration.re_synthesize import re_synthesize
-from aip.orchestration.review import review_artifact
+from aip.orchestration.re_synthesize import re_synthesize  # noqa: E402 -- lazy import to avoid circular dependency
+from aip.orchestration.review import review_artifact  # noqa: E402 -- lazy import to avoid circular dependency
 
 
 def _build_default_eval_fn(model_provider: Any, config: Any) -> Any:
@@ -423,7 +426,7 @@ class ReviewNode(WorkflowNode):
     def __init__(self, node_id: str, config: dict[str, Any] | None = None):
         super().__init__(node_id, NodeType.DIALOG, config)  # Treated as dialog-like for pausing semantics
 
-    async def run(self, context: "WorkflowContext") -> NodeResult:
+    async def run(self, context: WorkflowContext) -> NodeResult:
         # Prefer the versioned/queryable stores when available
         artifact_store = context.get_protocol("versioned_artifact_store") or context.get_protocol("artifact_store")
         ecs_store = context.get_protocol("guardrailed_ecs_store") or context.get_protocol("ecs_store")
@@ -524,7 +527,7 @@ class ReSynthesizeNode(WorkflowNode):
     def __init__(self, node_id: str, config: dict[str, Any] | None = None):
         super().__init__(node_id, NodeType.AGENT, config)  # Agent-like (can consume tokens)
 
-    async def run(self, context: "WorkflowContext") -> NodeResult:
+    async def run(self, context: WorkflowContext) -> NodeResult:
         # Prefer the versioned/queryable stores when available
         artifact_store = context.get_protocol("versioned_artifact_store") or context.get_protocol("artifact_store")
         ecs_store = context.get_protocol("guardrailed_ecs_store") or context.get_protocol("ecs_store")

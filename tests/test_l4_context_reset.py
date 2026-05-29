@@ -10,13 +10,13 @@ against synthetic trace events (Architecture Rev 5.2 §10.2 + §5.9).
 Part of the L4 gate alongside the 3.1 monitor test + cross-cutting gates.
 """
 
-from typing import Any
+from typing import Any  # noqa: E402
 
-import pytest
+import pytest  # noqa: E402
 
-from aip.foundation.protocols import ArtifactStore, TraceStore
-from aip.orchestration.l4.monitor import TrajectoryMonitor
-from aip.orchestration.l4.reset import L4ResetCoordinator, ResetRecommendation
+from aip.foundation.protocols import ArtifactStore, TraceStore  # noqa: E402
+from aip.orchestration.l4.monitor import TrajectoryMonitor  # noqa: E402
+from aip.orchestration.l4.reset import L4ResetCoordinator, ResetRecommendation  # noqa: E402
 
 
 class FakeTraceStoreForReset(TraceStore):

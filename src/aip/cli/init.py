@@ -11,10 +11,7 @@ Performs:
 
 from __future__ import annotations
 
-import os
-import platform
 import sqlite3
-import sys
 from pathlib import Path
 
 import click
@@ -220,7 +217,7 @@ def init(force: bool) -> None:
     # state.db — core entity/canonical/project/event tables
     state_db = db_dir / "state.db"
     if _init_state_db(state_db):
-        click.echo(f"state.db: schema initialized (entities, canonicals, projects, events)")
+        click.echo("state.db: schema initialized (entities, canonicals, projects, events)")
     else:
         state_db.touch(exist_ok=True)
         click.echo("state.db: touched (schema init failed, will be created on first use)")

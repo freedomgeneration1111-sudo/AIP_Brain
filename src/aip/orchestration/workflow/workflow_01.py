@@ -30,7 +30,6 @@ from aip.orchestration.retrieval import fake_embed, retrieve_for_synthesis
 from aip.orchestration.workflow.context import WorkflowContext
 from aip.orchestration.workflow.node import (
     NodeResult,
-    ScriptNode,
     WorkflowNode,
 )
 from aip.orchestration.workflow.runner import SequentialRunner
@@ -511,7 +510,7 @@ class Workflow01Runner:
         Returns the final node result (commit on approve, or the paused
         review gate node when DEFINER input is needed).
         """
-        is_ci = self.ci_mode if self.ci_mode is not None else _is_ci()
+        _ci_flag = self.ci_mode if self.ci_mode is not None else _is_ci()
 
         # Determine the review gate mode
         gate_mode = self.gate_mode
@@ -522,7 +521,6 @@ class Workflow01Runner:
         _provided_embed = self.embed_fn
 
         if _provided_embed is not None:
-            import asyncio as _asyncio
 
             async def embed_fn(text: str) -> list[float]:
                 result = _provided_embed(text)

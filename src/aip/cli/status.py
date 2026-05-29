@@ -7,7 +7,6 @@ graceful degradation with clear "not configured" indicators.
 from __future__ import annotations
 
 import sqlite3
-import sys
 from pathlib import Path
 
 import click
@@ -132,7 +131,7 @@ def status() -> None:
 
     # --- Beast ---
     try:
-        from aip.orchestration.actors.beast import Beast
+        from aip.orchestration.actors.beast import Beast  # noqa: F401 -- import to test availability
 
         click.echo("beast: actor module available (runs via API lifespan scheduler)")
     except ImportError:
@@ -142,3 +141,13 @@ def status() -> None:
     click.echo(f"\nDatabases: {db_found}/{len(expected_dbs)} found, {db_total_rows} total rows")
     if db_found == 0:
         click.echo("Tip: run `aip init` to set up databases and config.")
+
+    # --- Config validation ---
+    if config_path.exists():
+        try:
+            from aip.cli.config import validate_config_file
+
+            if not validate_config_file(config_path):
+                click.echo("\n⚠  Config validation failed. Run `aip validate` for details.")
+        except Exception:
+            pass  # Validation is best-effort in status command

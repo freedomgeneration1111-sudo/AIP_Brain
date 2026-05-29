@@ -83,7 +83,7 @@ class FakeEventStore(EventStore):
         return []
 
 
-import asyncio
+import asyncio  # noqa: E402 -- import after class definitions for guardrailed tests
 
 # --- GuardrailedEcsStore tests ---
 

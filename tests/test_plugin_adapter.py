@@ -7,12 +7,9 @@ Verifies:
 - CI deterministic fixture path
 """
 
-import asyncio
 import os
 import tempfile
 from pathlib import Path
-
-import pytest
 
 from aip.adapter.plugins.plugin_loader import PluginLoader
 from aip.adapter.plugins.yaml_plugin_provider import YamlPluginProvider

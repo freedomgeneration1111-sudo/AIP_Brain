@@ -266,7 +266,7 @@ async def adversarial_eval(
 
     # Honest stub: all scores are 0.0 since no real evaluation was performed
     scores: dict[str, float] = {crit.criterion_id: 0.0 for crit in criteria}
-    avg_score = 0.0
+    _avg_score = 0.0
     passed = False  # Cannot pass without real evaluation
 
     critique = (

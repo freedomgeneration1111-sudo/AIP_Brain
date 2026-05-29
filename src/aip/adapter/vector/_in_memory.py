@@ -7,6 +7,7 @@ operate in CI and development environments.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from aip.foundation.protocols import VectorStore
@@ -38,7 +39,6 @@ class InMemoryVectorStore(VectorStore):
         top_k: int = 10,
     ) -> list[Chunk]:
         # Simple cosine similarity fallback
-        import math
 
         results = []
         for id_, data in self._data.items():

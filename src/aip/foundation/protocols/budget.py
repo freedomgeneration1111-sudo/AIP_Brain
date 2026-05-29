@@ -5,7 +5,10 @@ Token budget tracking across session, project, and daily scopes.
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from aip.foundation.schemas import BudgetScope
 
 
 @runtime_checkable
@@ -28,7 +31,7 @@ class BudgetStore(Protocol):
         """Reset or initialize the named budget."""
         ...
 
-    async def get_budget(self, scope: "BudgetScope", scope_id: str) -> dict:
+    async def get_budget(self, scope: BudgetScope, scope_id: str) -> dict:
         """Get current budget status.
 
         Args:
@@ -42,7 +45,7 @@ class BudgetStore(Protocol):
 
     async def record_usage(
         self,
-        scope: "BudgetScope",
+        scope: BudgetScope,
         scope_id: str,
         tokens_used: int,
         cost_usd: float,
@@ -55,7 +58,7 @@ class BudgetStore(Protocol):
         """
         ...
 
-    async def check_limit(self, scope: "BudgetScope", scope_id: str) -> bool:
+    async def check_limit(self, scope: BudgetScope, scope_id: str) -> bool:
         """Check whether budget has remaining capacity.
 
         Returns True if budget is not exhausted, False if at/past limit.

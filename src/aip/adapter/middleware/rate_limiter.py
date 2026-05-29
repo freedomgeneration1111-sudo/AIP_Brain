@@ -72,7 +72,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         rpm = self.config.requests_per_minute
         for pattern, override_rpm in self.config.per_endpoint_overrides.items():
             if path.startswith(pattern):
-                rpm = override_rpm
+                rpm = override_rpm  # noqa: F841 -- assigned for potential future use
                 break
 
         if not self.rate_limiter.allow_request(key):

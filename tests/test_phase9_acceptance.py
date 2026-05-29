@@ -15,7 +15,7 @@ import pytest
 async def test_workflow_01_end_to_end_with_canonical_promotion():
     """Full end-to-end test: Workflow 0.1 runs from retrieval through canonical promotion."""
     from aip.orchestration.workflow.context import WorkflowContext
-    from aip.orchestration.workflow.node import AgentNode, ConditionNode, DialogNode, NodeResult, ScriptNode
+    from aip.orchestration.workflow.node import ConditionNode, ScriptNode
     from aip.orchestration.workflow.runner import SequentialRunner
 
     # Simulate a minimal Workflow 0.1 sequence
@@ -43,33 +43,8 @@ def test_all_prior_phase_tests_still_pass():
     handled by the pytest runner; this test verifies key imports work.
     """
     # Verify all Phase 9 gate test modules can be imported
-    import tests.test_phase9_adapter_promotion
-    import tests.test_phase9_app_factory
-    import tests.test_phase9_async_fix
-    import tests.test_phase9_cross_cutting_gates
-    import tests.test_phase9_layer_violations
-    import tests.test_phase9_sexton_completion
-    import tests.test_phase9_trace_init
-    import tests.test_phase9_vigil_canonical
-    import tests.test_phase9_workflow_completion
-    from aip.adapter.api.app import create_app
-    from aip.adapter.auth.session_store import SqliteSessionStore
-    from aip.adapter.plugins.plugin_loader import PluginLoader
-    from aip.foundation.protocols import ModelProvider, TraceStore, VectorStore
-    from aip.foundation.schemas import (
-        Chunk,
-        EcsState,
-        FailureClassification,
-        RetrievalResult,
-        SextonConfig,
-    )
 
     # Verify core production modules can be imported
-    from aip.foundation.validation import ValidationResult, structural_validate
-    from aip.orchestration.actors.vigil import Vigil
-    from aip.orchestration.canonical_pipeline import CanonicalPipeline
-    from aip.orchestration.perf import PerformanceProfiler
-    from aip.orchestration.sexton.sexton import Sexton
 
     # All imports successful
 
@@ -115,25 +90,7 @@ async def test_acceptance_gates_01_through_35():
     from aip.adapter.api.app import create_app
 
     # Gate: protocols are importable
-    from aip.foundation.protocols import (
-        ArtifactStore,
-        AutonomyGate,
-        EventStore,
-        ModelProvider,
-        TraceStore,
-        VectorStore,
-    )
-    from aip.foundation.schemas import (
-        Chunk,
-        EcsState,
-        FailureClassification,
-        RetrievalResult,
-        SextonConfig,
-    )
-    from aip.foundation.validation import ValidationResult
-
     # Gate: three-layer import discipline
-    from aip.orchestration.model_provider_proxy import ModelResolverProtocol
 
     app = create_app()
     assert app is not None

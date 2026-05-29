@@ -9,7 +9,6 @@ to use trace_store.write_event(). Fix get_memory_usage to return per-component b
 
 from __future__ import annotations
 
-import asyncio
 import time
 from typing import Any, Awaitable, Callable
 

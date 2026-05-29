@@ -104,7 +104,7 @@ def test_vigil_health_status_type():
     from aip.foundation.schemas import VigilHealthStatus
 
     # VigilHealthStatus is a Literal type — verify it's defined
-    valid_statuses = ["healthy", "stale", "degraded", "unknown"]
+    _valid_statuses = ["healthy", "stale", "degraded", "unknown"]
     # We can't iterate a Literal at runtime, but we can check the type alias exists
     assert VigilHealthStatus is not None
 

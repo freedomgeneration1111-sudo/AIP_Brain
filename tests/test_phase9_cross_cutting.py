@@ -13,8 +13,6 @@ import ast
 import re
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).parent.parent / "src" / "aip"
 
 
@@ -156,7 +154,6 @@ def test_definer_sovereignty_on_canonical_writes():
     This test verifies that the canonical pipeline and MCP tools check the gate.
     """
     # Verify CanonicalPipeline uses AutonomyGate
-    from aip.orchestration.canonical_pipeline import CanonicalPipeline
 
     source = Path(__file__).parent.parent / "src" / "aip" / "orchestration" / "canonical_pipeline.py"
     content = source.read_text()
@@ -164,7 +161,6 @@ def test_definer_sovereignty_on_canonical_writes():
     assert "escalate" in content, "CanonicalPipeline must call autonomy_gate.escalate()"
 
     # Verify MCP artifacts tool uses gate
-    from aip.adapter.mcp.tools.artifacts import aip_artifact_approve
 
     source = Path(__file__).parent.parent / "src" / "aip" / "adapter" / "mcp" / "tools" / "artifacts.py"
     content = source.read_text()

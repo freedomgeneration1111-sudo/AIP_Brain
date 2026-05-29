@@ -3,8 +3,6 @@
 Hard gate assertions for laptop-viable profile (synthetic deterministic).
 """
 
-import asyncio
-
 import pytest
 
 from aip.foundation.schemas import PerformanceConfig

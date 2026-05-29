@@ -8,7 +8,6 @@ Complementary to Sexton (classifies failures) and Beast (maintains vectors).
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from aip.foundation.protocols import (
@@ -115,7 +114,7 @@ class Vigil:
         health = await self.check_canonical_health()
         stale = await self.detect_stale_canonicals()
 
-        entity_issues = await self.detect_entity_inconsistencies()
+        _entity_issues = await self.detect_entity_inconsistencies()
 
         await self.vigil_store.record_vigil_check(
             canonical_count=health.get("total_count", 0),

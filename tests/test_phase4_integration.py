@@ -52,7 +52,7 @@ async def test_scenario1_full_pipeline_sqlite_vss():
     config = _make_ci_config("sqlite_vss")
     try:
         store = await create_vector_store(config)
-    except Exception as e:
+    except Exception:
         # vss0 extension not available in this CI env — still validate that the
         # promoted node surface (6.1/6.2) is reachable with a resolver.
         ci_config = {
@@ -171,10 +171,10 @@ async def test_scenario4_graceful_degradation():
     }
 
     try:
-        store = await create_vector_store(bad_config)
+        _store = await create_vector_store(bad_config)
     except Exception:
         # Expected in envs without vss0 when factory tries fallback
-        store = None
+        _store = None
 
     # Even if store creation is limited, the health check path must not crash
     health = await system_health_check(bad_config)

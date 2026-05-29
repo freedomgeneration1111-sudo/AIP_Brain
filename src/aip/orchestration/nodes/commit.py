@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Any
 
 from aip.foundation.protocols import ArtifactStore, EcsStore, EventStore
 from aip.orchestration.nodes.definer_gate import DefinerDecision

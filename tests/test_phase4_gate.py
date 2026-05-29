@@ -7,8 +7,6 @@ Verifies: deterministic CI, import boundaries, no hardcoded model names.
 import ast
 import importlib
 import inspect
-import os
-from pathlib import Path
 
 import pytest
 

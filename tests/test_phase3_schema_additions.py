@@ -9,7 +9,6 @@ from aip.foundation.schemas import (
     ModelSlotConfig,
     SessionContext,
     TrajectorySignal,
-    TrajectorySignalType,
 )
 
 

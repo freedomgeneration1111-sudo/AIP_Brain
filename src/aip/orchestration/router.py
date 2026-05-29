@@ -15,12 +15,11 @@ recommend_exploration_weight() derives from actual domain sample counts.
 from __future__ import annotations
 
 import logging
-import math
 import random
 from datetime import datetime, timezone
 from typing import Any
 
-from aip.foundation.protocols import EventStore, ModelProvider
+from aip.foundation.protocols import ModelProvider
 from aip.foundation.schemas import RoutingWeight
 from aip.orchestration.budget import BudgetManager
 

@@ -8,7 +8,6 @@
 
 import pytest
 
-from aip.foundation.schemas import ReviewVerdict
 from aip.orchestration.workflow.context import DEFAULT_WORKFLOW_BUDGET, WorkflowContext
 
 # --- Task 1: WorkflowContext budget defaults ---

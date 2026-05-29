@@ -7,8 +7,6 @@ Per AIP_0_1_Phase2_BuildSpec_Rev1.2.md
 
 from __future__ import annotations
 
-import pytest
-
 from aip.foundation.protocols import (
     ArtifactStore,
     EcsStore,

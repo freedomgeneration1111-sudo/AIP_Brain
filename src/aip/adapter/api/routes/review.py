@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from aip.adapter.api.dependencies import AipContainer, get_container
-from aip.foundation.schemas import ReviewQueueEntry, SurfaceConfig, coerce_autonomy_level
+from aip.foundation.schemas import SurfaceConfig, coerce_autonomy_level
 
 router = APIRouter()
 

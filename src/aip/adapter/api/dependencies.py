@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import Depends, Request
+from fastapi import Request
 
 from aip.foundation.protocols import (
     ArtifactStore,
@@ -84,7 +84,7 @@ def get_container(request: "Request") -> AipContainer:
 
 # Re-export auth dependencies so route modules can import from this single location
 from aip.adapter.auth.dependencies import (  # noqa: E402
-    get_current_identity,
-    require_collaborator_or_above,
-    require_definer,
+    get_current_identity,  # noqa: F401
+    require_collaborator_or_above,  # noqa: F401
+    require_definer,  # noqa: F401
 )

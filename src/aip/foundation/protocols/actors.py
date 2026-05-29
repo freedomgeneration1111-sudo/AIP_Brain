@@ -6,7 +6,10 @@ stale detection, and health check recording.
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from aip.foundation.schemas import VigilHealthStatus
 
 
 @runtime_checkable
@@ -33,7 +36,7 @@ class VigilStore(Protocol):
         self,
         canonical_count: int,
         stale_count: int,
-        status: "VigilHealthStatus",
+        status: VigilHealthStatus,
     ) -> None:
         """Record the result of a Vigil health check pass."""
         ...

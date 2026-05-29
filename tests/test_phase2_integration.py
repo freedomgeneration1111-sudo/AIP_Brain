@@ -90,7 +90,7 @@ def test_full_lifecycle_happy_path_loads_and_runs_structurally(full_fakes):
     assert "review" in [n.node_id for n in definition.nodes]
     assert "re_synthesize" in [n.node_id for n in definition.nodes]
 
-    engine = WorkflowEngine()
+    _engine = WorkflowEngine()
     # We only test structural execution up to the point we have fakes for.
     # A full run would require more complete node implementations.
     assert definition is not None

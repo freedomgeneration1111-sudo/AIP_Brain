@@ -8,9 +8,7 @@ Verifies that:
 - Vigil.on_model_slot_change triggers Sexton stale rule audit
 """
 
-import tempfile
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
 import pytest
 

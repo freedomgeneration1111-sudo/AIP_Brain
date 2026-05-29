@@ -6,7 +6,6 @@ Writes go through AutonomyGate in production.
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 
@@ -92,7 +91,7 @@ def create_project(name: str, domain: str) -> None:
 
         asyncio.run(store.initialize())
         project_id = str(uuid.uuid4())[:8]
-        result = asyncio.run(store.create_project(project_id=project_id, name=name, domain=domain))
+        _result = asyncio.run(store.create_project(project_id=project_id, name=name, domain=domain))
         click.echo(f"Created project: {project_id} — {name} [{domain}]")
     except ImportError:
         # Fallback: direct SQL

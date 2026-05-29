@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from aip.foundation.schemas import Chunk, EvaluationScore
-from aip.foundation.validation import full_l3a_evaluation, structural_validate
+from aip.foundation.schemas import Chunk
+from aip.foundation.validation import full_l3a_evaluation
 from aip.orchestration.nodes.adversarial_eval import EvalResult, adversarial_eval
 from aip.orchestration.nodes.domain_coherence import evaluate_domain_coherence
 from aip.orchestration.nodes.faithfulness import evaluate_faithfulness

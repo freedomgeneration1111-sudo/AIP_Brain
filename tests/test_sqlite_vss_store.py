@@ -20,8 +20,8 @@ except Exception:
 
 pytestmark = pytest.mark.skipif(not HAS_VSS, reason="sqlite_vss not available")
 
-from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
-from aip.foundation.schemas import Chunk
+from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore  # noqa: E402 -- import after pytest.skip
+from aip.foundation.schemas import Chunk  # noqa: E402 -- import after pytest.skip
 
 
 class FakeEmbeddingProvider:

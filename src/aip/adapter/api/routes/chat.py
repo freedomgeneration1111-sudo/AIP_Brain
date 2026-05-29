@@ -9,7 +9,6 @@ Mounted on the 8.1 FastAPI app.
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -23,7 +22,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
     """WebSocket chat endpoint with DEFINER gate handling and ACE integration."""
     await websocket.accept()
 
-    container = get_container(websocket)  # type: ignore  # in real lifespan context
+    _container = get_container(websocket)  # type: ignore  # in real lifespan context
 
     # In full impl: load ACE playbook for the session's domain (already done at session start per 8.1/8.2)
     # container.ace_playbook.load_for_domain(...) if available

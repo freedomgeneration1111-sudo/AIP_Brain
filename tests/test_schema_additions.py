@@ -2,10 +2,8 @@
 CHUNK-1.0a gate per Rev 1.3.
 """
 
-import pytest
-
 from aip.foundation.protocols import ArtifactStore, EventStore, TraceStore, VectorStore
-from aip.foundation.schemas import Chunk, ContractRule, EcsState, FailureType, RetrievalResult
+from aip.foundation.schemas import Chunk, EcsState, FailureType, RetrievalResult
 
 
 def test_chunk_dataclass():

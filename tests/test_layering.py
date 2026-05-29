@@ -15,8 +15,6 @@ import ast
 from pathlib import Path
 from typing import List, Set
 
-import pytest
-
 REPO_ROOT = Path(__file__).parent.parent / "src" / "aip"
 
 LAYERS = {
@@ -78,7 +76,7 @@ def test_import_boundaries_are_respected():
             if current_layer is None:
                 continue
 
-            allowed = LAYERS[current_layer]
+            _allowed = LAYERS[current_layer]
 
             for imp in imports:
                 # Skip stdlib and known safe things

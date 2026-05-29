@@ -4,8 +4,6 @@ Covers the 7 explicit scenarios from prose + gate verifications (c-j).
 Synthetic/deterministic (no real models/network).
 """
 
-import pytest
-
 
 def test_empty_retrieval_returns_insufficient_memory():
     # Per §8.2 and 9.5 acceptance

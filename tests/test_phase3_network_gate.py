@@ -10,8 +10,6 @@ import boundaries (§7.2) hold for the new modules.
 import ast
 from pathlib import Path
 
-import pytest
-
 # Re-use the exact logic from 4.8 by importing the tests (or copy the scanners for independence).
 # For strict extension we duplicate the scanners with Phase 3 paths emphasized.
 
@@ -26,7 +24,7 @@ def test_phase3_code_has_no_network_imports():
     violations = []
 
     # Focus + all (to catch any accidental addition in 5.x)
-    phase3_dirs = ["orchestration/trajectory", "orchestration/session.py"]
+    _phase3_dirs = ["orchestration/trajectory", "orchestration/session.py"]
 
     for py_file in src_root.rglob("*.py"):
         if "test" in py_file.parts:

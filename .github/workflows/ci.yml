@@ -11,10 +11,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Test & Lint
+  lint:
+    name: Lint (blocking)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -38,15 +38,34 @@ jobs:
         # BLOCKING: All Python code must be formatted with ruff.
         run: uv run ruff format --check .
 
-      - name: Check lint with ruff (formatting + import order)
-        # BLOCKING: E501, I001, W291, W293, E701 must pass.
-        # COM812 handled by ruff format, not needed here.
-        run: uv run ruff check . --select E501,I001,W291,W293,E701
-
-      - name: Check lint with ruff (full)
-        # Soft check: reports remaining historic findings but does not block.
-        continue-on-error: true
+      - name: Check lint with ruff
+        # BLOCKING: Baseline lint rules (E, F, W, I) must pass.
+        # These cover: syntax errors, unused imports, unused variables,
+        # import sorting, line length, and whitespace issues.
         run: uv run ruff check .
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --dev
 
       - name: Run test suite
         env:

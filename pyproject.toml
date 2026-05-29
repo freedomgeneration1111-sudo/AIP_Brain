@@ -33,9 +33,27 @@ asyncio_mode = "auto"
 target-version = "py311"
 line-length = 120
 
+# Exclude generated/historical/archived files from linting
+extend-exclude = [
+    "specs/",          # Build process specifications, not active code
+    "prompts/",        # Template files, not Python
+]
+
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "COM"]
-ignore = ["COM812"]  # handled by ruff format
+# Baseline rule set: formatting, imports, pyflakes, basic pydocstyle.
+# Do NOT enable strict complexity/docstring/annotation rules here.
+# See docs/implementation_status.md for the lint baseline rationale.
+select = ["E", "F", "W", "I"]
+ignore = []
+
+[tool.ruff.lint.isort]
+# Ensure import sorting is consistent with the existing codebase style.
+known-first-party = ["aip"]
+
+[tool.ruff.format]
+# Ruff formatter settings — matches the existing codebase style.
+quote-style = "double"
+indent-style = "space"
 
 [tool.uv]
 dev-dependencies = [

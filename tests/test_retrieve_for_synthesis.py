@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import pytest
 
 from aip.foundation.protocols import TraceStore, VectorStore
-from aip.foundation.schemas import Chunk, RetrievalResult
+from aip.foundation.schemas import Chunk
 from aip.orchestration.retrieval import (
     RerankWeights,
     fake_embed,

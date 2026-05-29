@@ -6,8 +6,6 @@ and the validate_transition function from foundation.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from aip.foundation.ecs_graph import InvalidTransitionError, validate_transition
 from aip.foundation.protocols import EcsStore, EventStore
 

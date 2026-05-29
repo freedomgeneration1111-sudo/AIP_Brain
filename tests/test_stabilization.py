@@ -5,7 +5,6 @@ Note: In base env without aiosqlite (optional dep for surfaces), full integratio
 core logic + layering still verified.
 """
 
-import asyncio
 import os
 import tempfile
 
@@ -15,7 +14,6 @@ from aip.foundation.schemas import PerformanceConfig
 
 try:
     from aip.adapter.db.sqlite_concurrency import SqliteConcurrencyManager
-
     from aip.orchestration.recovery import WorkflowRecovery
 except Exception:
     WorkflowRecovery = None  # type: ignore

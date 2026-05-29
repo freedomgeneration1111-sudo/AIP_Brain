@@ -126,7 +126,7 @@ def test_collaborator_config_cannot_approve():
 
 def test_definer_gate_module_importable():
     """DEFINER gate node is importable."""
-    from aip.orchestration.nodes.definer_gate import DefinerDecision, DefinerGateMode, definer_gate
+    from aip.orchestration.nodes.definer_gate import DefinerGateMode
 
     assert DefinerGateMode.AUTO_APPROVE_STUB.value == "auto_approve_stub"
 

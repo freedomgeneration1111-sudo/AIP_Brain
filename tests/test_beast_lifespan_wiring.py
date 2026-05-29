@@ -8,7 +8,7 @@ Verifies that:
 
 import os
 import tempfile
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -19,7 +19,7 @@ except ImportError:
 
 pytestmark = pytest.mark.skipif(TestClient is None, reason="fastapi not available")
 
-from aip.foundation.protocols import EmbeddingProvider, VectorStore
+from aip.foundation.protocols import EmbeddingProvider, VectorStore  # noqa: E402 -- import after pytest.skip
 
 
 def _make_test_config(**overrides):

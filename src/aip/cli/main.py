@@ -6,6 +6,8 @@ Uses Click. Composes via Protocols / AipContainer where possible (offline-first)
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 
 from aip.cli import config as config_cmd
@@ -26,10 +28,38 @@ def cli() -> None:
       aip init      Initialize databases and config for this machine
       aip status    Show system status and database health
       aip config    Read/write configuration values
+      aip validate  Validate config for production-safety issues
       aip project   Manage projects (list, create, show)
       aip session   Manage sessions (start, resume, list)
     """
     pass
+
+
+@click.command("validate")
+@click.option("--config-path", default="config/aip.config.toml", help="Path to config file")
+def validate(config_path: str) -> None:
+    """Validate configuration for production-safety issues.
+
+    Checks for unsafe combinations such as:
+    - Production mode with auth disabled
+    - Public API bind with auth disabled
+    - Default/weak database passwords
+    - Fixture/CI providers in production
+
+    Exits with code 1 if any validation errors are found.
+    """
+    path = Path(config_path)
+    if not path.exists():
+        click.echo(f"Config file not found: {path}")
+        click.echo("Run `aip init` to create a configuration file.")
+        raise SystemExit(1)
+
+    click.echo(f"Validating config: {path}")
+    if config_cmd.validate_config_file(path):
+        click.echo("Config validation passed. No safety issues found.")
+    else:
+        click.echo("\nConfig validation FAILED. Fix the errors above before deploying.", err=True)
+        raise SystemExit(1)
 
 
 # Register subcommands
@@ -38,6 +68,7 @@ cli.add_command(status_cmd.status)
 cli.add_command(config_cmd.config)
 cli.add_command(project_cmd.project)
 cli.add_command(session_cmd.session)
+cli.add_command(validate)
 
 
 if __name__ == "__main__":

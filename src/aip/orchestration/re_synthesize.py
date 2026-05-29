@@ -56,7 +56,7 @@ async def re_synthesize(
     event_store: EventStore,
     trace_store: TraceStore,
     synthesize_fn: Callable,
-    config: "AipConfig | dict | None" = None,
+    config: "AipConfig | dict | None" = None,  # noqa: F821
 ) -> ReviewVerdict:
     """Re-synthesize a rejected artifact with failure context injection.
 

@@ -11,7 +11,6 @@ or overly aggressive after Phases 1-8. Phase 9 remediates:
 """
 
 import ast
-import os
 import re
 from pathlib import Path
 
@@ -241,7 +240,7 @@ def test_import_boundaries_three_layer():
                     if node.module:
                         imports.add(node.module.split(".")[0])
 
-                allowed = LAYERS[layer_name]
+                _allowed = LAYERS[layer_name]
 
                 for imp in imports:
                     if imp in STDLIB_SAFE:
