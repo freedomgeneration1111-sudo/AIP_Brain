@@ -17,6 +17,43 @@ from typing import Any, Callable, Awaitable
 from aip.foundation.schemas import PerformanceConfig
 
 
+def _read_meminfo_fallback() -> tuple[float, float]:
+    """Read CPU and memory stats from /proc when psutil is unavailable.
+
+    Returns (cpu_percent, memory_mb_used).  Falls back to (0.0, 0.0)
+    if /proc is not available (non-Linux systems without psutil).
+    """
+    cpu_percent = 0.0
+    memory_mb = 0.0
+    try:
+        # CPU idle ratio from /proc/stat
+        with open("/proc/stat", "r") as f:
+            line = f.readline()
+        parts = line.split()
+        if len(parts) >= 5:
+            user, nice, system, idle, iowait = (int(x) for x in parts[1:6])
+            total = user + nice + system + idle + iowait
+            if total > 0:
+                cpu_percent = round((1.0 - idle / total) * 100.0, 1)
+
+        # Memory from /proc/meminfo
+        mem_total_kb = 0
+        mem_available_kb = 0
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    mem_total_kb = int(line.split()[1])
+                elif line.startswith("MemAvailable:"):
+                    mem_available_kb = int(line.split()[1])
+                if mem_total_kb and mem_available_kb:
+                    break
+        if mem_total_kb:
+            memory_mb = (mem_total_kb - mem_available_kb) / 1024.0
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+    return cpu_percent, memory_mb
+
+
 class PerformanceProfiler:
     """Provides performance profiling and metrics for critical path optimization.
 
@@ -66,14 +103,16 @@ class PerformanceProfiler:
 
     async def get_system_metrics(self) -> dict:
         """Return current system metrics (CPU, memory, sessions, DB sizes, model health)."""
+        cpu_percent = 0.0
+        memory_mb = 0.0
         try:
             import psutil
             cpu_percent = psutil.cpu_percent(interval=0.1)
             memory_info = psutil.virtual_memory()
             memory_mb = memory_info.used / (1024 * 1024)
         except ImportError:
-            cpu_percent = 0.0
-            memory_mb = 0
+            # psutil not installed — fall back to /proc/meminfo on Linux
+            cpu_percent, memory_mb = _read_meminfo_fallback()
 
         return {
             "cpu_percent": cpu_percent,
@@ -122,11 +161,12 @@ class PerformanceProfiler:
 
         Issue 24: Return per-component breakdown.
         """
+        total_mb = 0.0
         try:
             import psutil
             total_mb = psutil.virtual_memory().used / (1024 * 1024)
         except ImportError:
-            total_mb = 0
+            _, total_mb = _read_meminfo_fallback()
 
         # Per-component breakdown (estimated proportions for CI/foundation)
         return {
