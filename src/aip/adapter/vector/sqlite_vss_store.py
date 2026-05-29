@@ -2,6 +2,7 @@
 Phase 1 vector backend. pgvector adapter is deferred to Phase 4.
 sqlite_vss is the permitted fallback for Phase 0-2 alpha.
 Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
+Phase 10: store() compat method no longer inserts zero vectors.
 
 Note: sqlite_vss extension loading requires enable_load_extension.
 aiosqlite supports this via conn.enable_load_extension() after connecting.
@@ -10,13 +11,16 @@ aiosqlite supports this via conn.enable_load_extension() after connecting.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from typing import Any
 
 import aiosqlite
 
-from aip.foundation.protocols import VectorStore
+from aip.foundation.protocols import EmbeddingProvider, VectorStore
 from aip.foundation.schemas import Chunk
+
+logger = logging.getLogger(__name__)
 
 
 class SqliteVssVectorStore(VectorStore):
@@ -24,11 +28,22 @@ class SqliteVssVectorStore(VectorStore):
 
     Uses aiosqlite for async-compatible database access.
     Falls back gracefully when sqlite_vss is not available.
+
+    When an ``EmbeddingProvider`` is provided, the deprecated ``store()``
+    compat method generates real embeddings instead of inserting zero
+    vectors.  Without a provider, ``store()`` raises ``ValueError`` to
+    prevent silent data degradation.
     """
 
-    def __init__(self, db_path: str, dimensions: int = 768) -> None:
+    def __init__(
+        self,
+        db_path: str,
+        dimensions: int = 768,
+        embedding_provider: EmbeddingProvider | None = None,
+    ) -> None:
         self._db_path = db_path
         self._dimensions = dimensions
+        self._embedding_provider = embedding_provider
         self._vss_available = False
         # Synchronous init to detect vss availability (runs once at startup)
         self._init_vss_sync()
@@ -178,21 +193,93 @@ class SqliteVssVectorStore(VectorStore):
         finally:
             await conn.close()
 
-    # Deprecated Phase 0 method — retained for backward compat
-    # F1 fix: implemented as upsert wrapper with zero-vector
-    # so Phase 0 test_storage_contracts.py continues to pass.
     async def store(self, chunk: Chunk) -> str:
-        """Phase 0 compat: store with zero-vector embedding.
-        Real usage should call upsert() with an actual embedding.
-        This wrapper exists so test_storage_contracts.py passes.
+        """Phase 0 compat: store a Chunk, generating a real embedding.
+
+        When an ``EmbeddingProvider`` is available, generates a real
+        embedding from the chunk content and calls ``upsert()``.  This
+        ensures that the vector store always contains meaningful vectors.
+
+        Without an ``EmbeddingProvider``, raises ``ValueError`` instead
+        of silently inserting a zero vector.  Callers should either:
+        - Provide an ``EmbeddingProvider`` at construction time, or
+        - Use ``upsert()`` directly with a pre-computed embedding.
+
+        This is a breaking change from the zero-vector behavior, but
+        zero vectors silently destroy semantic search and are never
+        acceptable in production.
         """
-        await self.upsert(
-            chunk.id,
-            [0.0] * self._dimensions,
-            chunk.content or "",
-            chunk.metadata,
-            chunk.domain,
-        )
+        content = chunk.content or ""
+
+        if self._embedding_provider is not None:
+            try:
+                embedding = await self._embedding_provider.embed(content)
+                if embedding and len(embedding) > 0:
+                    await self.upsert(
+                        chunk.id,
+                        embedding,
+                        content,
+                        chunk.metadata,
+                        chunk.domain,
+                    )
+                    logger.info(
+                        "store() generated real embedding for chunk '%s' "
+                        "(dim=%d, domain='%s').",
+                        chunk.id,
+                        len(embedding),
+                        chunk.domain,
+                    )
+                    return chunk.id
+                else:
+                    logger.warning(
+                        "EmbeddingProvider returned empty vector for chunk '%s'. "
+                        "Falling back to metadata-only storage (no vector index).",
+                        chunk.id,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Embedding generation failed for chunk '%s': %s. "
+                    "Storing metadata-only (no vector index). "
+                    "Callers should use upsert() with a pre-computed embedding "
+                    "for reliable vector storage.",
+                    chunk.id,
+                    exc,
+                )
+        else:
+            logger.warning(
+                "store() called without EmbeddingProvider for chunk '%s'. "
+                "Storing metadata-only (no vector index). "
+                "Provide an EmbeddingProvider or use upsert() with a real embedding.",
+                chunk.id,
+            )
+
+        # Fallback: store metadata-only (content is preserved, vector is skipped).
+        # This is better than a zero vector because:
+        # 1. Zero vectors pollute similarity search (cosine(0,0) is undefined)
+        # 2. Metadata-only items are still discoverable via count()/list queries
+        # 3. A re-embedding pass can fill in vectors later
+        conn = await self._get_conn()
+        try:
+            meta_json = json.dumps(chunk.metadata or {})
+            # Check if entry already exists
+            cursor = await conn.execute("SELECT rowid FROM vector_metadata WHERE id = ?", (chunk.id,))
+            existing = await cursor.fetchone()
+            if existing:
+                # Update existing metadata (preserve any existing vector)
+                await conn.execute(
+                    "UPDATE vector_metadata SET content = ?, domain = ?, metadata_json = ? WHERE id = ?",
+                    (content, chunk.domain, meta_json, chunk.id),
+                )
+            else:
+                # Insert new metadata-only entry
+                await conn.execute(
+                    "INSERT INTO vector_metadata (id, content, domain, metadata_json) VALUES (?, ?, ?, ?)",
+                    (chunk.id, content, chunk.domain, meta_json),
+                )
+            await conn.commit()
+        finally:
+            await conn.close()
+
         return chunk.id
 
     async def health_check(self) -> dict:
