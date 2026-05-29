@@ -1,4 +1,4 @@
-"""Tests for the review node (CHUNK-4.1).
+"""Tests for the review node.
 
 Updated for honest review behavior:
 - Without eval_fn in CI mode: APPROVED at reduced confidence (0.70)

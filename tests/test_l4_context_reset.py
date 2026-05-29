@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-Tests for L4 Context Reset Protocol Foundation (CHUNK-3.2).
+Tests for L4 Context Reset Protocol Foundation.
 
 Deterministic, zero-token, no network, no LLM.
 Exercises the signal → recommendation + intervention logging path
@@ -44,7 +44,7 @@ class FakeTraceStoreForReset(TraceStore):
         return matching[:limit]
 
     async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
-        # Sexton/CHUNK-3.4 additive compat
+        # Sexton additive compat
         unclassified = [
             e for e in reversed(self._events) if e.get("failure_type") is None and e.get("outcome") == "failure"
         ]

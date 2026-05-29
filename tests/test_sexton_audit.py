@@ -1,4 +1,4 @@
-"""Tests for CHUNK-7.3 Sexton Stale Rule Audit (per Phase 5 ANNEX + prose)."""
+"""Tests for Sexton Stale Rule Audit."""
 
 from unittest.mock import AsyncMock, MagicMock
 

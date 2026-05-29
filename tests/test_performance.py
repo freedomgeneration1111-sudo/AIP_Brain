@@ -1,4 +1,4 @@
-"""Tests for PerformanceProfiler + API + benchmarks (CHUNK-10.4).
+"""Tests for PerformanceProfiler + API + benchmarks.
 
 Hard gate assertions for laptop-viable profile (synthetic deterministic).
 """

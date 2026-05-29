@@ -1,7 +1,7 @@
 """
 Cross-cutting governance test: No network libraries in production code.
 
-Part of CHUNK-1.7 per Rev 1.3.
+Part of the no-network governance test suite.
 Scans foundation/, orchestration/, and adapter/ for imports of
 httpx, openai, anthropic (and similar network/LLM client libraries).
 """

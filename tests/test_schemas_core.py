@@ -1,6 +1,4 @@
-"""Verify Phase 1 schema additions do not break Phase 0.
-CHUNK-1.0a gate per Rev 1.3.
-"""
+"""Core schema dataclasses and protocol methods."""
 
 from aip.foundation.protocols import ArtifactStore, EventStore, TraceStore, VectorStore
 from aip.foundation.schemas import Chunk, EcsState, FailureType, RetrievalResult
@@ -30,34 +28,34 @@ def test_retrieval_result_insufficient():
     assert r.status == "INSUFFICIENT_MEMORY"
 
 
-def test_phase0_enums_still_work():
-    """Phase 0 enums must not be broken by Phase 1 additions."""
+def test_prior_enums_compat():
+    """Prior enums must remain importable and functional."""
     assert EcsState.GENERATED is not None
     assert FailureType is not None
 
 
 def test_vectorstore_protocol_has_required_methods():
-    """VectorStore must have upsert, retrieve, delete per Delta 1.
-    Uses hasattr for deterministic Protocol method detection (per Rev 1.3 R1').
+    """VectorStore must have upsert, retrieve, delete, count, store methods.
+    Uses hasattr for deterministic Protocol method detection.
     """
     assert hasattr(VectorStore, "upsert"), "VectorStore missing upsert method"
     assert hasattr(VectorStore, "retrieve"), "VectorStore missing retrieve method"
     assert hasattr(VectorStore, "delete"), "VectorStore missing delete method"
     assert hasattr(VectorStore, "count"), "VectorStore missing count method"
-    assert hasattr(VectorStore, "store"), "VectorStore missing store method (Phase 0 compat)"
+    assert hasattr(VectorStore, "store"), "VectorStore missing store method"
 
 
 def test_tracestore_protocol_has_write_event():
-    """P1: TraceStore must have write_event method matching CHUNK-1.1 call site."""
+    """TraceStore must have write_event method."""
     assert hasattr(TraceStore, "write_event"), "TraceStore missing write_event method"
 
 
 def test_eventstore_protocol_has_write_event():
-    """P1: EventStore must have write_event method matching CHUNK-1.6 call site."""
+    """EventStore must have write_event method."""
     assert hasattr(EventStore, "write_event"), "EventStore missing write_event method"
 
 
 def test_artifactstore_protocol_has_write_and_read():
-    """P1: ArtifactStore must have write and read methods matching CHUNK-1.6 call sites."""
+    """ArtifactStore must have write and read methods."""
     assert hasattr(ArtifactStore, "write"), "ArtifactStore missing write method"
     assert hasattr(ArtifactStore, "read"), "ArtifactStore missing read method"

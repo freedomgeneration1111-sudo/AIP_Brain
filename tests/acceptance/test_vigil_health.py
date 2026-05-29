@@ -1,6 +1,6 @@
 """Vigil health checking acceptance tests.
 
-Tests Vigil actor functionality per Phase 7 CHUNK-9.0a/9.1:
+Tests Vigil actor functionality:
 - VigilStore protocol is implemented
 - SqliteVigilStore records health checks
 - Canonical health metadata is tracked

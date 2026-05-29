@@ -1,5 +1,5 @@
 """
-Tests for L4 Workflow Activation + DEFINER Surface (CHUNK-3.3).
+Tests for L4 Workflow Activation + DEFINER Surface.
 
 Verifies that the L4 coordinator can be invoked from within a WorkflowContext
 (as done in the reference Workflow 0.1 pipeline) and that a recommendation
@@ -45,7 +45,7 @@ class FakeTraceStoreForIntegration:
         return matching[:limit]
 
     async def get_unclassified_failures(self, limit: int = 100):
-        # Sexton/CHUNK-3.4 additive compat
+        # Sexton additive compat
         unclassified = [
             e for e in reversed(self._events) if e.get("failure_type") is None and e.get("outcome") == "failure"
         ]
@@ -56,7 +56,7 @@ class FakeTraceStoreForIntegration:
 async def test_l4_helper_emits_dialog_event_when_signals_present():
     """
     When the coordinator (pre-seeded with D/F signals) is in the context protocols,
-    calling the CHUNK-3.3 helper causes an "l4_reset_recommended" event to be
+    calling the L4 helper causes an "l4_reset_recommended" event to be
     emitted with the correct structure and model_gen_assumption.
     """
     trace = FakeTraceStoreForIntegration()
@@ -126,9 +126,9 @@ def test_layering_sanity_for_helper():
 
 
 @pytest.mark.asyncio
-async def test_3_6_run_l4_and_sexton_check_integration():
+async def test_l4_and_sexton_check_integration():
     """
-    CHUNK-3.6: The thin runtime helper can be called from a 'node' context
+    The thin runtime helper can be called from a 'node' context
     (simulated here) and triggers both L4 recommendation emission and Sexton
     classification in one call (node-level integration pattern).
     """

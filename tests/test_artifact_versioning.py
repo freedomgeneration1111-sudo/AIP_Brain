@@ -1,4 +1,4 @@
-"""Tests for versioned artifact store (CHUNK-4.3)."""
+"""Tests for versioned artifact store."""
 
 import pytest
 

@@ -1,7 +1,7 @@
 """
 Import boundary enforcement test.
 
-Part of the Phase 1 green gates (extends CHUNK-0.6 / §7.2).
+Part of the import boundary enforcement (extends §7.2).
 
 Enforces the three-layer architecture:
 - foundation/     : may only import stdlib + itself
@@ -110,3 +110,34 @@ def test_import_boundaries_are_respected():
         "Import boundary violations detected (foundation must stay isolated, "
         "orchestration must not reach into adapter):\n\n" + "\n".join(violations)
     )
+
+
+def test_full_l3a_evaluation_in_orchestration_not_foundation():
+    """full_l3a_evaluation must be defined in orchestration, not foundation.
+
+    Per §7.2: multi-stage evaluation with model calls belongs in orchestration.
+    foundation/validation.py may have a backward-compat alias but the real
+    implementation must live in orchestration.l3a_orchestrator.
+    """
+    # Verify the real implementation is in orchestration
+    l3a_file = REPO_ROOT / "orchestration" / "l3a_orchestrator.py"
+    assert l3a_file.exists(), "orchestration/l3a_orchestrator.py must exist"
+
+    source = l3a_file.read_text()
+    assert "async def full_l3a_evaluation" in source, (
+        "full_l3a_evaluation must be defined in orchestration/l3a_orchestrator.py"
+    )
+
+    # Verify foundation has only the backward-compat alias
+    validation_file = REPO_ROOT / "foundation" / "validation.py"
+    source = validation_file.read_text()
+
+    # foundation should have structural_validate as a top-level function
+    assert "def structural_validate" in source, "structural_validate must remain in foundation/validation.py"
+
+    # foundation may have the alias but the alias must delegate to orchestration
+    if "async def full_l3a_evaluation" in source:
+        # It's the alias - should import from orchestration
+        assert "orchestration.l3a_orchestrator" in source or "orchestration.evaluation" in source, (
+            "foundation full_l3a_evaluation alias must delegate to orchestration"
+        )

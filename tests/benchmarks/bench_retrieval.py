@@ -1,4 +1,4 @@
-"""Synthetic deterministic retrieval benchmark (CHUNK-10.4).
+"""Synthetic deterministic retrieval benchmark.
 
 No network, no real models. Measures latency for laptop-viable profile.
 """

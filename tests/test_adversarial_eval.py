@@ -1,4 +1,4 @@
-"""Tests for Adversarial Eval Stub (CHUNK-1.4 per Rev 1.3)."""
+"""Tests for Adversarial Eval Stub."""
 
 import asyncio
 

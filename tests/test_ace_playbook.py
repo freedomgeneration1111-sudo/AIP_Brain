@@ -1,4 +1,4 @@
-"""Tests for CHUNK-7.2 ACE Playbook (per Phase 5 ANNEX + prose)."""
+"""Tests for ACE Playbook."""
 
 import os
 import tempfile

@@ -1,4 +1,4 @@
-"""Phase 2 integration test — full ECS lifecycle through YAML workflow engine (CHUNK-4.7)."""
+"""Workflow lifecycle integration — verifies that YAML workflow definitions load and the engine accepts them."""
 
 import pytest
 
@@ -81,10 +81,10 @@ def full_fakes():
     }
 
 
-def test_full_lifecycle_happy_path_loads_and_runs_structurally(full_fakes):
+def test_synthesis_session_yaml_loads_and_runs(full_fakes):
     """
-    CHUNK-4.7: The full synthesis_session_v1.yaml loads and the engine
-    can at least parse and start executing the modern Phase 2 lifecycle.
+    The synthesis_session_v1.yaml workflow loads and the engine
+    can parse and start executing the lifecycle.
     """
     definition = load_workflow_from_yaml("workflows/synthesis_session_v1.yaml")
     assert "review" in [n.node_id for n in definition.nodes]
@@ -94,4 +94,4 @@ def test_full_lifecycle_happy_path_loads_and_runs_structurally(full_fakes):
     # We only test structural execution up to the point we have fakes for.
     # A full run would require more complete node implementations.
     assert definition is not None
-    print("CHUNK-4.7: Full lifecycle YAML loads and engine accepts it")
+    print("Full lifecycle YAML loads and engine accepts it")

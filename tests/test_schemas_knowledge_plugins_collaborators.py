@@ -1,7 +1,4 @@
-"""Verify Phase 8 schema additions (CHUNK-10.0a) do not break Phase 0–7.
-Exact per AIP_0_1_Phase8_BuildSpec_Rev1.0.md ANNEX + prose gate expectations.
-File Layout: imports use aip. prefix per delta'd spec note.
-"""
+"""Schema contracts for knowledge compilation, plugin management, collaborator access, and performance configuration."""
 
 from typing import get_args
 
@@ -13,9 +10,8 @@ from aip.foundation.protocols import (
     PluginProvider,
 )
 
-# Prior phases (must still work — non-breaking)
+# Prior (must still work — non-breaking)
 from aip.foundation.schemas import (
-    # Phase 0-6 samples
     AuthConfig,
     Chunk,
     CollaboratorConfig,
@@ -23,7 +19,6 @@ from aip.foundation.schemas import (
     CompilationState,
     EcsState,
     FailureType,
-    # Phase 8 additions
     KnowledgeCompilationConfig,
     PerformanceConfig,
     PluginConfig,
@@ -33,8 +28,8 @@ from aip.foundation.schemas import (
 )
 
 
-def test_phase8_config_dataclasses():
-    """(a)(c)(d)(e)(f) New dataclasses instantiate with required fields + defaults."""
+def test_knowledge_plugin_collaborator_configs():
+    """New dataclasses instantiate with required fields + defaults."""
     kcc = KnowledgeCompilationConfig()
     assert kcc.compilation_model_slot == "synthesis"
     assert kcc.evaluation_model_slot == "evaluation"
@@ -54,7 +49,7 @@ def test_phase8_config_dataclasses():
     assert cc.readonly_can_search is True
 
     perf = PerformanceConfig()
-    assert perf.max_memory_mb == 4096  # §2.1 laptop-viable
+    assert perf.max_memory_mb == 4096  # laptop-viable
     assert perf.sqlite_wal_mode is True
     assert perf.vector_query_limit == 50
 
@@ -63,8 +58,8 @@ def test_phase8_config_dataclasses():
     assert rm.architecture_revision == "5.2"
 
 
-def test_phase8_configs_carry_model_gen_assumption():
-    """(b) KnowledgeCompilationConfig, PluginConfig carry model_gen_assumption per §1.8."""
+def test_configs_carry_model_gen_assumption():
+    """KnowledgeCompilationConfig, PluginConfig carry model_gen_assumption per §1.8."""
     kcc = KnowledgeCompilationConfig(model_gen_assumption="test assumption")
     assert kcc.model_gen_assumption == "test assumption"
 
@@ -72,7 +67,7 @@ def test_phase8_configs_carry_model_gen_assumption():
     assert pc.model_gen_assumption == "plugin extensibility"
 
 
-def test_phase8_type_aliases():
+def test_type_aliases():
     """Type aliases exist and have expected members."""
     assert "COMPILED" in get_args(CompilationState)
     assert "APPROVED" in get_args(CompilationState)
@@ -82,8 +77,8 @@ def test_phase8_type_aliases():
     assert "readonly" in get_args(CollaboratorRole)
 
 
-def test_phase8_new_protocols_exist():
-    """(g)(h) KnowledgeStore and PluginProvider Protocols have all declared methods."""
+def test_knowledge_store_and_plugin_provider_protocols():
+    """KnowledgeStore and PluginProvider Protocols have all declared methods."""
     # KnowledgeStore (6 methods)
     assert hasattr(KnowledgeStore, "store_compiled")
     assert hasattr(KnowledgeStore, "get_compiled")
@@ -99,21 +94,21 @@ def test_phase8_new_protocols_exist():
     assert hasattr(PluginProvider, "get_provider_name")
 
 
-def test_phase8_authstore_amendments_exist():
-    """(i) AuthStore has the 4 new collaborator management methods."""
+def test_authstore_collaborator_methods():
+    """AuthStore has the 4 collaborator management methods."""
     assert hasattr(AuthStore, "list_users")
     assert hasattr(AuthStore, "create_user")
     assert hasattr(AuthStore, "update_user_role")
     assert hasattr(AuthStore, "revoke_user")
 
 
-def test_phase0_through_phase7_types_still_work():
-    """(j) All prior Phase 0–7 schema enums and dataclasses are not broken."""
+def test_prior_types_compat():
+    """All prior schema enums and dataclasses are not broken."""
     assert EcsState.GENERATED is not None
     assert "C" in get_args(FailureType)
     c = Chunk(id="x", content="hello", score=0.9, metadata={}, domain="test")
     assert c.id == "x"
-    # Phase 7 still importable and usable
+    # VigilConfig still importable and usable
     vc = VigilConfig(canonical_health_check_interval_seconds=3600)
     assert vc.canonical_health_check_interval_seconds == 3600
     ac = AuthConfig()
@@ -122,23 +117,23 @@ def test_phase0_through_phase7_types_still_work():
     assert "definer" in get_args(CollaboratorRole)
 
 
-def test_collaborator_can_approve_default_is_false():
-    """(k + §1.7) collaborator_can_approve defaults to False — DEFINER sovereignty."""
+def test_collaborator_cannot_approve_by_default():
+    """collaborator_can_approve defaults to False — DEFINER sovereignty."""
     cc = CollaboratorConfig()
     assert cc.collaborator_can_approve is False
 
 
 def test_knowledge_store_is_distinct_protocol():
-    """Appendix D / Process Rule 12: KnowledgeStore is distinct peer (no collapse with CanonicalStore)."""
+    """KnowledgeStore is distinct peer (no collapse with CanonicalStore)."""
     assert KnowledgeStore is not CanonicalStore
     # Methods differ in purpose (provenance vs artifact versioning)
     assert hasattr(KnowledgeStore, "get_provenance")
     assert not hasattr(CanonicalStore, "get_provenance")  # or different semantics
 
 
-# Additional smoke: import of Phase 8 types via the aip. path works (File Layout compliance)
+# Additional smoke: import of types via the aip. path works (File Layout compliance)
 def test_aip_prefixed_imports_work():
-    """Per File Layout & Import Conventions note in spec: aip. imports succeed."""
+    """aip. imports succeed per File Layout & Import Conventions."""
     # Already exercised by the module-level imports above
     assert KnowledgeCompilationConfig is not None
     assert KnowledgeStore is not None

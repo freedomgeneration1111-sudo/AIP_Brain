@@ -1,7 +1,7 @@
 """
 Cross-cutting governance test: No hardcoded model names in production code.
 
-Part of CHUNK-1.7 per Rev 1.3.
+Part of the no-hardcoded-model-names governance test suite.
 Scans foundation/, orchestration/, and adapter/ for literal strings
 that look like model names. The only authoritative place for model
 mappings is config/aip.config.toml (per §4.1).
@@ -105,3 +105,36 @@ def test_no_hardcoded_model_names_in_production_code():
         + "\n".join(violations)
         + "\n\nModel names must only be configured in aip.config.toml (except for required model_gen_assumption tags)."
     )
+
+
+def test_model_gen_assumption_includes_model_reference():
+    """
+    model_gen_assumption fields in ValidationRule and EvalCriterion must include
+    a per-§1.8 tag and a specific behavioral assumption about model output
+    (e.g., "Models may hallucinate specific claims; grounding check compensates per §1.8").
+    """
+    from aip.foundation.validation import DEFAULT_RULES
+    from aip.orchestration.nodes.adversarial_eval import DEFAULT_EVAL_CRITERIA
+
+    for rule in DEFAULT_RULES:
+        if rule.model_gen_assumption:
+            # Must contain §1.8 reference and a specific behavioral assumption
+            assert "§1.8" in rule.model_gen_assumption, (
+                f"ValidationRule '{rule.rule_id}' has model_gen_assumption but no §1.8 reference: "
+                f"{rule.model_gen_assumption!r}"
+            )
+            assert "Models may" in rule.model_gen_assumption, (
+                f"ValidationRule '{rule.rule_id}' has model_gen_assumption but no behavioral assumption: "
+                f"{rule.model_gen_assumption!r}"
+            )
+
+    for criterion in DEFAULT_EVAL_CRITERIA:
+        if criterion.model_gen_assumption:
+            assert "§1.8" in criterion.model_gen_assumption, (
+                f"EvalCriterion '{criterion.criterion_id}' has model_gen_assumption but no §1.8 reference: "
+                f"{criterion.model_gen_assumption!r}"
+            )
+            assert "Models may" in criterion.model_gen_assumption, (
+                f"EvalCriterion '{criterion.criterion_id}' has model_gen_assumption but no behavioral assumption: "
+                f"{criterion.model_gen_assumption!r}"
+            )

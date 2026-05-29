@@ -1,7 +1,7 @@
 """
 Trace schema validation test.
 
-Part of the Phase 1 green gates (CHUNK-0.7).
+Part of the trace schema validation (§5.9).
 
 Validates:
 - The trace_events table exists with the minimum columns defined in Architecture Rev 5.2 §5.9

@@ -1,18 +1,10 @@
-"""
-CHUNK-11.8: Integration Verification & Acceptance Gate Re-run — Phase 9 gate tests.
-
-Verifies:
-- Workflow 0.1 runs from retrieval through canonical promotion (end-to-end)
-- All Phase 1-8 gate tests still pass (regression check)
-- Laptop-viable constraint: system starts and operates with 4GB RAM profile
-- Production hardening: graceful degradation when pgvector unavailable
-"""
+"""System-level acceptance — verifies end-to-end workflow, laptop-viable profile, graceful degradation, and representative acceptance gates."""
 
 import pytest
 
 
 @pytest.mark.asyncio
-async def test_workflow_01_end_to_end_with_canonical_promotion():
+async def test_workflow_end_to_end_canonical_promotion():
     """Full end-to-end test: Workflow 0.1 runs from retrieval through canonical promotion."""
     from aip.orchestration.workflow.context import WorkflowContext
     from aip.orchestration.workflow.node import ConditionNode, ScriptNode
@@ -35,15 +27,12 @@ async def test_workflow_01_end_to_end_with_canonical_promotion():
     assert all(r.success for r in results if r is not None)
 
 
-def test_all_prior_phase_tests_still_pass():
-    """Regression check: all Phase 1-8 gate tests must still pass.
+def test_core_modules_importable():
+    """Verify key production modules can be imported without errors.
 
     This test verifies the test suite runs without collection errors
-    and confirms the overall pass rate. The actual test execution is
-    handled by the pytest runner; this test verifies key imports work.
+    and confirms core imports work.
     """
-    # Verify all Phase 9 gate test modules can be imported
-
     # Verify core production modules can be imported
 
     # All imports successful
@@ -73,10 +62,10 @@ def test_graceful_degradation_pgvector_unavailable():
 
 
 @pytest.mark.asyncio
-async def test_acceptance_gates_01_through_35():
-    """Verify that key acceptance gates from §22 are passing.
+async def test_structural_validate_and_app_factory():
+    """Verify that key acceptance gates are passing.
 
-    This is a representative check, not an exhaustive re-run of all 35 gates.
+    This is a representative check, not an exhaustive re-run of all gates.
     The full test suite (pytest) serves as the comprehensive gate verification.
     """
     from aip.foundation.validation import structural_validate

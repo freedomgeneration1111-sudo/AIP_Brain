@@ -1,4 +1,4 @@
-"""Tests for CHUNK-5.2 Loop Detector (Type D)."""
+"""Tests for Loop Detector (Type D)."""
 
 import pytest
 

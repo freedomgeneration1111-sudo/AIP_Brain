@@ -1,4 +1,4 @@
-"""CHUNK-9.6 gate: Production Packaging (Docker Compose + profiles + scripts are valid and present)."""
+"""Production Packaging tests (Docker Compose + profiles + scripts are valid and present)."""
 
 from __future__ import annotations
 

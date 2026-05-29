@@ -1,4 +1,4 @@
-"""Tests for Commit stub (CHUNK-1.6 per Rev 1.3)."""
+"""Tests for Commit stub."""
 
 import pytest
 

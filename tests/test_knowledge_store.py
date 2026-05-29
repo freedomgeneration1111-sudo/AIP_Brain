@@ -1,4 +1,4 @@
-"""Tests for SqliteKnowledgeStore (CHUNK-10.0b).
+"""Tests for SqliteKnowledgeStore.
 
 Verifies CRUD, provenance, state transitions, search, and — critically —
 that APPROVED compiled knowledge receives real (non-zero) embeddings when

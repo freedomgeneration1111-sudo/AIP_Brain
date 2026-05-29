@@ -1,9 +1,4 @@
-"""
-Tests for CHUNK-4.0a: Schema Additions + Protocol Amendments
-(Architectural Phase 2 / remapped Phase 2 series)
-
-Per AIP_0_1_Phase2_BuildSpec_Rev1.2.md
-"""
+"""Schema contracts for review, ECS transitions, and events."""
 
 from __future__ import annotations
 
@@ -56,7 +51,7 @@ def test_ecs_transition_dataclass():
 
 
 def test_event_dataclass():
-    """S4 fix: Event.timestamp is required, no default."""
+    """Event.timestamp is required, no default."""
     e = Event(
         id=1,
         event_type="ecs_transition",
@@ -70,14 +65,14 @@ def test_event_dataclass():
     assert e.timestamp  # must not be empty
 
 
-def test_phase0_phase1_enums_still_work():
-    """Phase 0/1 enums must not be broken by Phase 2 additions."""
+def test_prior_enums_compat():
+    """Prior enums must remain importable and functional."""
     assert EcsState.GENERATED is not None
     assert "C" in FailureType.__args__  # Literal still contains the expected values
 
 
-def test_phase1_dataclasses_still_work():
-    """Phase 1 dataclasses must not be broken by Phase 2 additions."""
+def test_prior_dataclasses_compat():
+    """Prior dataclasses must remain importable and functional."""
     c = Chunk(id="x", content="hello", score=0.9, metadata={"k": "v"}, domain="test")
     assert c.id == "x"
     r = RetrievalResult(status="OK", hits=[], max_confidence=0.0)
@@ -85,24 +80,24 @@ def test_phase1_dataclasses_still_work():
 
 
 def test_eventstore_protocol_has_query():
-    """Phase 2: EventStore must have query method."""
+    """EventStore must have query method."""
     assert hasattr(EventStore, "query"), "EventStore missing query method"
 
 
 def test_artifactstore_protocol_has_list_versions():
-    """Phase 2: ArtifactStore must have list_versions method."""
+    """ArtifactStore must have list_versions method."""
     assert hasattr(ArtifactStore, "list_versions"), "ArtifactStore missing list_versions method"
 
 
 def test_artifactstore_read_without_version():
-    """S6 fix: ArtifactStore.read(id) must work without version argument (Phase 1 backward compat)."""
+    """ArtifactStore.read(id) must work without version argument (backward compat)."""
     assert hasattr(ArtifactStore, "read"), "ArtifactStore missing read method"
-    # Phase 1 callers use read(id) without version — this must still be valid
+    # Callers use read(id) without version — this must still be valid
     # The version parameter has default None, so read(id) is equivalent to read(id, version=None)
 
 
 def test_ecsstore_protocol_has_current_state():
-    """Phase 2: EcsStore must have current_state method."""
+    """EcsStore must have current_state method."""
     assert hasattr(EcsStore, "current_state"), "EcsStore missing current_state method"
 
 

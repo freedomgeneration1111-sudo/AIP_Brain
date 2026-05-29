@@ -1,4 +1,4 @@
-"""Edge case hardening tests (CHUNK-10.5).
+"""Edge case hardening tests.
 
 Covers the 7 explicit scenarios from prose + gate verifications (c-j).
 Synthetic/deterministic (no real models/network).

@@ -1,4 +1,4 @@
-"""Verify Phase 4 schema additions do not break Phase 0, 1, 2, or 3."""
+"""Schema contracts for vector storage configuration, migration, and evaluation."""
 
 from aip.foundation.protocols import (
     ArtifactStore,
@@ -103,14 +103,14 @@ def test_vector_backend_type_alias():
     assert sq == "sqlite_vss"
 
 
-def test_phase0_phase1_phase2_phase3_enums_still_work():
-    """Phase 0/1/2/3 enums must not be broken by Phase 4 additions."""
+def test_prior_enums_compat():
+    """Prior enums must remain importable and functional."""
     assert EcsState.GENERATED is not None
     assert "C" in FailureType.__args__  # Literal still contains the expected values
 
 
-def test_phase1_phase2_phase3_dataclasses_still_work():
-    """Phase 1/2/3 dataclasses must not be broken by Phase 4 additions."""
+def test_prior_dataclasses_compat():
+    """Prior dataclasses must remain importable and functional."""
     c = Chunk(id="x", content="hello", score=0.9, metadata={"k": "v"}, domain="test")
     assert c.id == "x"
     v = ReviewVerdict(artifact_id="a1", verdict="APPROVED", reviewer="definer")
@@ -127,22 +127,22 @@ def test_phase1_phase2_phase3_dataclasses_still_work():
 
 
 def test_vectorstore_protocol_has_health_check():
-    """Phase 4: VectorStore must have health_check method."""
+    """VectorStore must have health_check method."""
     assert hasattr(VectorStore, "health_check"), "VectorStore missing health_check method"
 
 
 def test_vectorstore_protocol_has_count():
-    """Phase 4: VectorStore must have count method."""
+    """VectorStore must have count method."""
     assert hasattr(VectorStore, "count"), "VectorStore missing count method"
 
 
 def test_existing_protocol_methods_preserved():
-    """Phase 1/2/3 methods must still exist after Phase 4 amendments."""
-    assert hasattr(VectorStore, "upsert"), "VectorStore missing upsert (Phase 1)"
-    assert hasattr(EventStore, "write_event"), "EventStore missing write_event (Phase 1)"
-    assert hasattr(EventStore, "query"), "EventStore missing query (Phase 2)"
-    assert hasattr(ArtifactStore, "list_versions"), "ArtifactStore missing list_versions (Phase 2)"
-    assert hasattr(EcsStore, "current_state"), "EcsStore missing current_state (Phase 2)"
-    assert hasattr(TraceStore, "query_events"), "TraceStore missing query_events (Phase 3)"
-    assert hasattr(ModelProvider, "call"), "ModelProvider missing call (Phase 3)"
-    assert hasattr(EmbeddingProvider, "embed"), "EmbeddingProvider missing embed (Phase 3)"
+    """Prior protocol methods must still exist after amendments."""
+    assert hasattr(VectorStore, "upsert"), "VectorStore missing upsert"
+    assert hasattr(EventStore, "write_event"), "EventStore missing write_event"
+    assert hasattr(EventStore, "query"), "EventStore missing query"
+    assert hasattr(ArtifactStore, "list_versions"), "ArtifactStore missing list_versions"
+    assert hasattr(EcsStore, "current_state"), "EcsStore missing current_state"
+    assert hasattr(TraceStore, "query_events"), "TraceStore missing query_events"
+    assert hasattr(ModelProvider, "call"), "ModelProvider missing call"
+    assert hasattr(EmbeddingProvider, "embed"), "EmbeddingProvider missing embed"

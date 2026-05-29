@@ -1,7 +1,4 @@
-"""Phase 3 integration test — multi-turn session with trajectory regulation, embedding, and context reset (CHUNK-5.8).
-
-Extends CHUNK-4.7 (Phase 2 lifecycle) with L4 trajectory, SessionManager (5.7),
-context reset (5.6), real embedding mock (5.1), and ci_mode resolver (5.0b).
+"""Multi-turn session integration — verifies session management, trajectory regulation, and context reset.
 
 All scenarios run under ci_mode=True for determinism (no network, no hardcoded models).
 """
@@ -11,8 +8,6 @@ import pytest
 from aip.adapter.model_slot_resolver import ModelSlotResolver
 from aip.foundation.schemas import SessionContext, TrajectorySignal
 from aip.orchestration.session import SessionManager
-
-# --- Shared fakes (per ANNEX + extended for Phase 3 scenarios) ---
 
 
 class FakeTraceStore:
@@ -141,7 +136,7 @@ async def test_happy_path_multi_turn(manager, fakes):
 
 @pytest.mark.asyncio
 async def test_trajectory_triggers_context_reset(manager, fakes):
-    """5 turns → D + F signals (2-of-3) → full §10.2 reset via SessionManager.handle."""
+    """5 turns → D + F signals (2-of-3) → full context reset via SessionManager.handle."""
     ctx = manager.create_session("s-reset", "p1")
     # Simulate degradation
     ctx = SessionContext(
@@ -193,9 +188,9 @@ async def test_trajectory_triggers_context_reset(manager, fakes):
     assert len(fakes["ecs"].transitions) >= 1
 
 
-# --- Scenario 3 & 4 placeholders (embedding + ci_mode resolver) ---
+# --- Scenario 3 & 4 (embedding + ci_mode resolver) ---
 # Full wiring requires engine + retrieval integration; these assert the components are
-# reachable in ci_mode and that 5.1/5.0b are used (not fake_embed / hardcoded).
+# reachable in ci_mode.
 
 
 def test_model_slot_resolver_ci_mode_available():
@@ -206,12 +201,12 @@ def test_model_slot_resolver_ci_mode_available():
 
 
 def test_embedding_client_mock_importable():
-    # The 5.1 client is importable and supports mock for CI (detailed test in 5.1)
+    # The embedding client is importable and supports mock for CI
     from aip.adapter.embedding.ollama_embed import MockOllamaEmbeddingClient
 
     client = MockOllamaEmbeddingClient(dimensions=768)
     assert client is not None
 
 
-# Additional regression note: Phase 1/2 gates (layering, zero-token, schema) remain
+# Additional regression note: earlier gate tests (layering, zero-token, schema) remain
 # the responsibility of their own test files; this integration assumes they stay green.

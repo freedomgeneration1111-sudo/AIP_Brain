@@ -1,4 +1,4 @@
-"""Tests for ECS state graph and guardrailed store (CHUNK-4.0b)."""
+"""Tests for ECS state graph and guardrailed store."""
 
 import pytest
 

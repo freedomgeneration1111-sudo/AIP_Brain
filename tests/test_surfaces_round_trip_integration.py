@@ -1,6 +1,5 @@
-"""CHUNK-8.7: Phase 6 Integration Test — 7 scenarios across all surfaces (exact per spec prose).
+"""Surface round-trip integration — verifies CLI, API, MCP, and Admin/Memory surfaces.
 
-Extends 7.6 (Phase 5 self-improvement cycle) with surface round-trips.
 All in-process (CliRunner, TestClient, in-process MCP) — deterministic CI.
 """
 
@@ -24,7 +23,7 @@ from aip.cli.main import cli
 
 
 @pytest.mark.skipif(CliRunner is None, reason="click not installed")
-def test_scenario_1_full_cli_round_trip(tmp_path, monkeypatch):
+def test_cli_round_trip(tmp_path, monkeypatch):
     """CLI: init → project create → session start → status."""
     monkeypatch.chdir(tmp_path)
     runner = CliRunner()
@@ -48,7 +47,7 @@ def test_scenario_1_full_cli_round_trip(tmp_path, monkeypatch):
 
 
 @pytest.mark.skipif(TestClient is None, reason="fastapi not installed")
-def test_scenario_2_full_api_round_trip():
+def test_api_round_trip():
     """API: project/session/chat (gate) → review approve → artifact + canonical."""
     app = create_app()
     client = TestClient(app)
@@ -77,7 +76,7 @@ def test_scenario_2_full_api_round_trip():
 
 
 @pytest.mark.skipif(TestClient is None, reason="fastapi not installed")
-def test_scenario_3_mcp_tool_round_trip():
+def test_mcp_tool_round_trip():
     """MCP: search → artifact_list → artifact_approve (admin gate) → trace_query."""
 
     class MockContainer:
@@ -94,7 +93,7 @@ def test_scenario_3_mcp_tool_round_trip():
 
 
 @pytest.mark.skipif(TestClient is None, reason="fastapi not installed")
-def test_scenario_4_admin_memory_inspector():
+def test_admin_memory_inspector():
     """Admin + Memory: config, sexton, beast, trace, search, entities, canonical."""
     app = create_app()
     client = TestClient(app)

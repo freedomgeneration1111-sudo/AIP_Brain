@@ -1,9 +1,9 @@
 """
-Tests for Sexton Foundation (CHUNK-3.4).
+Tests for Sexton Foundation.
 
 Deterministic, zero-token, no network, no LLM.
 Exercises classification using Appendix E taxonomy on synthetic events
-(including L4-written intervention events from 3.1–3.3), write-back of
+(including L4-written intervention events), write-back of
 failure_type, and basic §1.8 audit hooks.
 
 Part of the gate that also re-runs all prior L4 tests.
@@ -53,7 +53,7 @@ def trace_store():
 @pytest.mark.asyncio
 async def test_sexton_classifies_l4_intervention_events(trace_store):
     """Sexton should see and classify (or leave) L4-written intervention events."""
-    # Simulate an L4-written context reset event (from CHUNK-3.2/3.3)
+    # Simulate an L4-written context reset event
     await trace_store.write_event(
         session_id="sess_l4",
         node_type="L4",
@@ -123,7 +123,7 @@ def test_sexton_audit_model_gen_assumption_stub():
 
 def test_sexton_derives_ace_rules_from_classified_events():
     """
-    CHUNK-3.7: derive_ace_rules produces sensible, §1.8-tagged rules from
+    derive_ace_rules produces sensible, §1.8-tagged rules from
     classified events (including L4-written F events).
     """
     classified = [
@@ -153,7 +153,7 @@ def test_sexton_derives_ace_rules_from_classified_events():
 
 def test_sexton_trust_score_and_stale_rule_audit_3_10():
     """
-    CHUNK-3.10: trust_score and audit_model_gen_assumption work as declared
+    trust_score and audit_model_gen_assumption work as declared
     (minimal deterministic foundation for §16.1 trust + §1.8 stale audit).
     """
     sexton = Sexton(trace_store=FakeTraceStoreForSexton())

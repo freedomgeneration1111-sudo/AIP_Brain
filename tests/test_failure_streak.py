@@ -1,4 +1,4 @@
-"""Tests for CHUNK-5.4 Failure Streak Detector (Type E)."""
+"""Tests for Failure Streak Detector (Type E)."""
 
 import pytest
 

@@ -1,4 +1,4 @@
-"""Tests for CHUNK-5.6 Context Reset Protocol."""
+"""Tests for Context Reset Protocol."""
 
 import pytest
 

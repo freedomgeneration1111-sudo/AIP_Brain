@@ -101,7 +101,7 @@ async def test_adversarial_eval_real_mode(real_resolver):
 
 
 def test_old_adversarial_eval_backward_compat():
-    """Old Phase 1 signature still works and returns ci_fixture=True."""
+    """Legacy signature still works and returns ci_fixture=True."""
     from aip.foundation.validation import ValidationResult
     from aip.orchestration.nodes.synthesis import SynthesisOutput
 

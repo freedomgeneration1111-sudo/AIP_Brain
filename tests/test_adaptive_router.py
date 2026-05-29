@@ -1,4 +1,4 @@
-"""Tests for CHUNK-7.4 Adaptive Router (per Phase 5 ANNEX + prose)."""
+"""Tests for the Adaptive Router."""
 
 from unittest.mock import AsyncMock, MagicMock
 

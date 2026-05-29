@@ -1,4 +1,4 @@
-"""CHUNK-9.4 gate: Minimal Web UI Scaffold (static pages render, reference Phase 6 API, auth/rate limiting context)."""
+"""Minimal Web UI Scaffold tests (static pages render, reference REST API, auth/rate limiting context)."""
 
 from __future__ import annotations
 

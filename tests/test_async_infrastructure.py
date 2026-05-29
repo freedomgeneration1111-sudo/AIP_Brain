@@ -1,12 +1,4 @@
-"""
-CHUNK-11.2: Async Event Loop Fix — Phase 9 gate tests.
-
-Verifies that async test infrastructure is properly configured:
-- pytest-asyncio asyncio_mode="auto" in pyproject.toml
-- No "no current event loop" errors in any test
-- Knowledge store, knowledge compiler, collaborator, plugin, and profiler tests pass
-- All async tests use proper pytest-asyncio fixtures
-"""
+"""Async infrastructure — verifies pytest-asyncio configuration, async component operations, and event loop safety."""
 
 import tomllib
 from pathlib import Path
@@ -16,8 +8,8 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent
 
 
-def test_pytest_asyncio_mode_auto_configured():
-    """pyproject.toml must have asyncio_mode = 'auto' per Phase 9 spec §6."""
+def test_asyncio_mode_auto():
+    """pyproject.toml must have asyncio_mode = 'auto' for pytest-asyncio."""
     pyproject_path = PROJECT_ROOT / "pyproject.toml"
     assert pyproject_path.exists(), "pyproject.toml not found"
 
@@ -28,12 +20,12 @@ def test_pytest_asyncio_mode_auto_configured():
     asyncio_mode = pytest_config.get("asyncio_mode")
     assert asyncio_mode == "auto", (
         f"Expected asyncio_mode='auto', got '{asyncio_mode}'. "
-        "Per Phase 9 spec §6: pytest-asyncio asyncio_mode='auto' is required."
+        "pytest-asyncio asyncio_mode='auto' is required."
     )
 
 
 @pytest.mark.asyncio
-async def test_knowledge_store_crud_no_event_loop_error():
+async def test_knowledge_store_async_crud():
     """KnowledgeStore async operations must not raise 'no current event loop' errors."""
     import tempfile
 
@@ -89,7 +81,7 @@ async def test_knowledge_store_crud_no_event_loop_error():
 
 
 @pytest.mark.asyncio
-async def test_knowledge_compiler_produces_artifact():
+async def test_knowledge_compiler_async():
     """KnowledgeCompiler must produce an artifact without event loop errors.
 
     The compiler requires many injected dependencies. We provide mocks
@@ -206,7 +198,7 @@ async def test_collaborator_role_enforcement():
 
 
 @pytest.mark.asyncio
-async def test_plugin_manager_health_check():
+async def test_plugin_manager_async_health():
     """PluginManager health_check must work without event loop errors."""
     from aip.foundation.schemas import PluginConfig
     from aip.orchestration.plugins import PluginManager
@@ -222,7 +214,7 @@ async def test_plugin_manager_health_check():
 
 
 @pytest.mark.asyncio
-async def test_performance_profiler_metrics():
+async def test_profiler_async_metrics():
     """PerformanceProfiler must return real metrics without event loop errors."""
     from aip.foundation.schemas import PerformanceConfig
     from aip.orchestration.perf import PerformanceProfiler
@@ -234,5 +226,5 @@ async def test_performance_profiler_metrics():
     assert "cpu_percent" in metrics
     assert "memory_mb" in metrics
     assert isinstance(metrics["memory_mb"], (int, float))
-    # psutil should be available (installed as Phase 9 dependency)
+    # psutil should report positive memory usage
     assert metrics["memory_mb"] > 0, "psutil should report positive memory usage"

@@ -1,5 +1,5 @@
 """
-Tests for L4 Trajectory Monitor Foundation (CHUNK-3.1).
+Tests for L4 Trajectory Monitor Foundation.
 
 Deterministic, zero-token, no network, no LLM.
 Exercises the basic 2-of-3 signal detection heuristics against synthetic
@@ -29,7 +29,7 @@ class FakeTraceStoreForL4(TraceStore):
                 "outcome": outcome,
                 "detail": detail,
                 "created_at": "2025-01-01T00:00:00Z",
-                **kw,  # support extra fields like token_count_out for L4b heuristics (CHUNK-3.5)
+                **kw,  # support extra fields like token_count_out for L4b heuristics
             },
         )
 
@@ -39,7 +39,7 @@ class FakeTraceStoreForL4(TraceStore):
         return matching[:limit]
 
     async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
-        # Sexton/CHUNK-3.4 additive compat
+        # Sexton additive compat
         unclassified = [
             e for e in reversed(self._events) if e.get("failure_type") is None and e.get("outcome") == "failure"
         ]
@@ -101,7 +101,7 @@ async def test_combined_2of3_when_both_d_and_f_present(trace_store):
 @pytest.mark.asyncio
 async def test_l4b_detects_context_anxiety_from_hedging_language(trace_store):
     """
-    L4b (CHUNK-3.5): Hedging language in event details triggers context_anxiety_f
+    L4b extended heuristics: Hedging language in event details triggers context_anxiety_f
     with L4b model_gen_assumption, even without pre-labeled failure_type="F".
     """
     await trace_store.write_event(
@@ -133,7 +133,7 @@ async def test_l4b_detects_context_anxiety_from_hedging_language(trace_store):
 @pytest.mark.asyncio
 async def test_l4b_detects_context_anxiety_from_length_decline_and_pressure(trace_store):
     """
-    L4b (CHUNK-3.5): Declining token_count_out + high event pressure triggers
+    L4b extended heuristics: Declining token_count_out + high event pressure triggers
     stronger context_anxiety_f signal with L4b assumption.
     """
     # Simulate declining output lengths + several recent events (pressure)

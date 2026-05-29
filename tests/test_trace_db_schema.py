@@ -1,13 +1,4 @@
-"""
-CHUNK-11.4: Trace Database Schema Initialization — Phase 9 gate tests.
-
-Verifies that:
-- aip init creates events.db, state.db, trace.db with required schemas
-- trace_events table matches §5.9 schema
-- routing_outcomes table matches §4.3 schema
-- All required indexes are present
-- failure_type and outcome are properly constrained
-"""
+"""Trace database schema — verifies trace_events and routing_outcomes tables, constraints, and indexes."""
 
 import sqlite3
 import tempfile
@@ -16,7 +7,7 @@ import pytest
 
 
 def _init_trace_db(db_path: str) -> None:
-    """Initialize trace.db with Phase 9 schema (per §5.9 and §4.3)."""
+    """Initialize trace.db with the required schema."""
     conn = sqlite3.connect(db_path)
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS trace_events (
@@ -144,7 +135,7 @@ def test_trace_events_outcome_constrained(initialized_db):
 
 
 def test_routing_outcomes_table_exists(initialized_db):
-    """routing_outcomes table must exist after aip init (per §4.3)."""
+    """routing_outcomes table must exist after aip init."""
     conn = sqlite3.connect(initialized_db)
     try:
         cur = conn.cursor()

@@ -8,7 +8,7 @@ from aip.orchestration.nodes.synthesis import SynthesisOutput, synthesize
 
 
 class FakeModelResolver:
-    """Minimal fake ModelSlotResolver for testing (per 6.1 ANNEX)."""
+    """Minimal fake ModelSlotResolver for testing."""
 
     def __init__(self, ci_mode=True):
         self._ci_mode = ci_mode
@@ -35,12 +35,12 @@ def _make_retrieval_result(status="OK", hits=None, max_conf=0.75):
     return RetrievalResult(status=status, hits=hits, max_confidence=max_conf)
 
 
-# --- New 6.1 tests (from ANNEX, adapted) ---
+# --- Tests for ModelSlotResolver integration ---
 
 
 @pytest.mark.asyncio
 async def test_stub_mode_no_resolver():
-    """Phase 1 compat: synthesize without model_resolver returns stub (legacy path)."""
+    """Legacy compat: synthesize without model_resolver returns stub (legacy path)."""
     result = await synthesize(query="What is X?", domain="test", context="Some context")
     assert isinstance(result, SynthesisOutput)
     assert result.model_slot == "synthesis"
@@ -49,7 +49,7 @@ async def test_stub_mode_no_resolver():
 
 @pytest.mark.asyncio
 async def test_resolver_mode_ci():
-    """Phase 4: synthesize with ModelSlotResolver in CI mode returns dict."""
+    """ModelSlotResolver mode: synthesize with ModelSlotResolver in CI mode returns dict."""
     resolver = FakeModelResolver(ci_mode=True)
     result = await synthesize(
         query="What is X?",

@@ -1,4 +1,4 @@
-"""CHUNK-8.3 gate: Chat WebSocket surface (message flow, gate handling, context reset)."""
+"""Chat WebSocket surface tests (message flow, gate handling, context reset)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from aip.adapter.api.app import create_app
 from aip.adapter.api.routes import chat as chat_router
 
 
-@pytest.mark.skipif(TestClient is None, reason="fastapi not installed (Phase 6 surface dep)")
+@pytest.mark.skipif(TestClient is None, reason="fastapi not installed (API surface dependency)")
 def test_chat_router_mounted_and_basic_flow():
     app = create_app()
     # Mount for test if not already (8.1 app may need include_router update in later wiring)

@@ -1,15 +1,12 @@
-"""Phase 4 integration test — production pipeline verification.
-
-Extends CHUNK-5.8 (and CHUNK-4.7) with the Phase 4 promoted nodes (6.1/6.2),
-factory + migration (6.3), and production hardening (6.4).
+"""Vector pipeline integration — verifies vector store backends, migration, and graceful degradation.
 
 Scenarios (all in ci_mode):
-1. Full pipeline with sqlite_vss backend + promoted nodes
-2. Full pipeline with pgvector backend (skipped if unavailable) + cross-backend equivalence
-3. Migration verification (sqlite_vss → pgvector)
-4. Graceful degradation path (pgvector unavailable → 6.4 health reports degraded)
+1. Full pipeline with sqlite_vss backend
+2. Full pipeline with pgvector backend (skipped if unavailable)
+3. Migration contract verification
+4. Graceful degradation path (pgvector unavailable → health reports degraded)
 
-All scenarios exercise the VectorStore protocol abstraction and the promoted
+All scenarios exercise the VectorStore protocol abstraction and the
 synthesis/evaluation surface without requiring real model APIs.
 """
 
@@ -47,14 +44,14 @@ def _make_ci_config(provider: str = "sqlite_vss", db_path: str = ":memory:") -> 
 
 
 @pytest.mark.asyncio
-async def test_scenario1_full_pipeline_sqlite_vss():
-    """Full pipeline with sqlite_vss backend and all Phase 4 promoted nodes (environment-tolerant)."""
+async def test_sqlite_vss_full_pipeline():
+    """Full pipeline with sqlite_vss backend and all promoted nodes (environment-tolerant)."""
     config = _make_ci_config("sqlite_vss")
     try:
         store = await create_vector_store(config)
     except Exception:
         # vss0 extension not available in this CI env — still validate that the
-        # promoted node surface (6.1/6.2) is reachable with a resolver.
+        # promoted node surface is reachable with a resolver.
         ci_config = {
             "models": {
                 "synthesis": {"provider": "stub", "model": "stub-synthesis"},
@@ -70,7 +67,7 @@ async def test_scenario1_full_pipeline_sqlite_vss():
     assert store is not None
     resolver = ModelSlotResolver(config)
 
-    # Synthesis (6.1)
+    # Synthesis
     synth = await synthesize(
         query="What is the capital of France?",
         domain="geo",
@@ -80,7 +77,7 @@ async def test_scenario1_full_pipeline_sqlite_vss():
     assert isinstance(synth, dict)
     assert "content" in synth
 
-    # Adversarial (6.2)
+    # Adversarial eval
     adv = await adversarial_eval(
         artifact_content=synth["content"],
         context="Paris is the capital of France.",
@@ -88,7 +85,7 @@ async def test_scenario1_full_pipeline_sqlite_vss():
     )
     assert "scores" in adv or "overall" in adv
 
-    # L3a Stage 2/3 (6.2)
+    # L3a faithfulness
     faith = await evaluate_faithfulness(
         artifact_id="art-1",
         artifact_content=synth["content"],
@@ -113,7 +110,7 @@ async def test_scenario1_full_pipeline_sqlite_vss():
 
 @pytest.mark.skipif(not PGVECTOR_AVAILABLE, reason="PostgreSQL + pgvector not available")
 @pytest.mark.asyncio
-async def test_scenario2_full_pipeline_pgvector():
+async def test_pgvector_full_pipeline():
     """Full pipeline with pgvector (environment-tolerant cross-check)."""
     config = _make_ci_config("pgvector")
     try:
@@ -138,8 +135,8 @@ async def test_scenario2_full_pipeline_pgvector():
 
 
 @pytest.mark.asyncio
-async def test_scenario3_migration_verification():
-    """Migration tool (6.3) contract + count verification (environment-tolerant)."""
+async def test_vector_migration_contract():
+    """Migration tool contract + count verification (environment-tolerant)."""
 
     # Use dummy stores for contract test (real store init may be limited in this env)
     class DummyStore:
@@ -160,8 +157,8 @@ async def test_scenario3_migration_verification():
 
 
 @pytest.mark.asyncio
-async def test_scenario4_graceful_degradation():
-    """Degradation path using 6.3 factory + 6.4 health check (environment-tolerant)."""
+async def test_graceful_degradation_path():
+    """Degradation path using factory + health check (environment-tolerant)."""
     bad_config = {
         "vector_backend": {
             "provider": "pgvector",

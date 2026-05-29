@@ -7,7 +7,7 @@ from aip.orchestration.nodes.adversarial_eval import EvalResult
 from aip.orchestration.nodes.synthesis import SynthesisOutput
 from aip.orchestration.workflow.context import WorkflowContext
 from aip.orchestration.workflow.definition import WorkflowDefinition
-from aip.orchestration.workflow.node import DialogNode, NodeResult, ParallelNode, ScriptNode
+from aip.orchestration.workflow.node import ConditionNode, DialogNode, NodeResult, ParallelNode, ScriptNode
 from aip.orchestration.workflow.runner import SequentialRunner
 
 
@@ -98,8 +98,8 @@ async def test_parallel_node_executes_children_concurrently():
 
 
 @pytest.mark.asyncio
-async def test_agent_node_wires_to_phase1_synthesis(monkeypatch):
-    """Smoke test that AgentNode now calls the real Phase 1 retrieve + synthesis path via protocols."""
+async def test_agent_node_wires_to_synthesis(monkeypatch):
+    """Smoke test that AgentNode calls the real retrieve + synthesis path via protocols."""
     from aip.foundation.schemas import Chunk
     from aip.orchestration.workflow.node import AgentNode
 
@@ -465,7 +465,7 @@ async def test_complete_workflow_01_reference_happy_path():
     pipeline (retrieve → synthesis → definer gate → commit) using the
     high-level public API.
 
-    This is the capstone test for the Phase 2 foundation (CHUNK-2.13).
+    This is the capstone test for the workflow engine foundation.
     """
     from aip.orchestration.workflow.engine import WorkflowEngine
 
@@ -560,8 +560,92 @@ nodes:
     assert result is not None
 
 
+@pytest.mark.asyncio
+async def test_all_five_node_types_executable():
+    """All five node types (script, agent, condition, dialog, parallel) must be exercisable."""
+    nodes = [
+        ScriptNode("step1", code="result = 42"),
+        ConditionNode("step2", condition="{{ step1_result }}"),
+        DialogNode("step3", prompt="Review step 1"),
+        ParallelNode("step4", children=["step4a", "step4b"]),
+        ScriptNode("step4a", code="parallel_a = True"),
+        ScriptNode("step4b", code="parallel_b = True"),
+    ]
+
+    ctx = WorkflowContext()
+    runner = SequentialRunner(nodes, ctx)
+    results = await runner.run()
+
+    # All nodes should execute (though dialog may pause)
+    assert len(results) >= 2, f"Expected at least 2 results, got {len(results)}"
+    # First result is script
+    assert results[0].success is True
+
+
+def test_suspended_workflow_resumes_from_correct_position():
+    """SequentialRunner.from_suspended must create a runner that continues from the paused position."""
+    from aip.orchestration.workflow.instance import SuspendedWorkflow
+
+    nodes = [
+        ScriptNode("step1", code="x = 1"),
+        DialogNode("step2", prompt="Review"),
+        ScriptNode("step3", code="y = 2"),
+    ]
+
+    suspended = SuspendedWorkflow(
+        workflow_id="test-wf",
+        run_id="test-run",
+        status="suspended",
+        current_node_id="step2",
+        variables={"step1": {"output": "done"}},
+        suspended_nodes=[{"executed": "step2", "type": "dialog"}],
+    )
+
+    # from_suspended should skip past step2 and start at step3
+    runner = SequentialRunner.from_suspended(
+        suspended=suspended,
+        decision={"action": "approve"},
+        nodes=nodes,
+    )
+
+    # Runner should have remaining nodes (step3 onwards)
+    assert len(runner.nodes) >= 1
+    # The first remaining node should be step3
+    assert runner.nodes[0].node_id == "step3"
+
+
+@pytest.mark.asyncio
+async def test_commit_handles_none_stores_gracefully():
+    """Commit node must handle None event_store gracefully (defensive guard)."""
+    from aip.orchestration.nodes.commit import commit_artifact
+    from aip.orchestration.nodes.definer_gate import DefinerDecision
+    from aip.orchestration.nodes.synthesis import SynthesisOutput
+
+    synthesis = SynthesisOutput(
+        content="Test synthesis output content",
+        model_slot="synthesis",
+        model_name="test-model",
+        token_count_in=10,
+        token_count_out=20,
+        latency_ms=100,
+    )
+    decision = DefinerDecision(action="approve", reason="Test approval")
+
+    # Should not raise even with None stores
+    result = await commit_artifact(
+        synthesis=synthesis,
+        decision=decision,
+        project_id="test-project",
+        work_unit_id="test-wu",
+        artifact_store=None,
+        ecs_store=None,
+        event_store=None,
+    )
+    assert result.artifact_id is not None
+
+
 def test_budget_store_basic_consumption_3_11():
-    """CHUNK-3.11: Basic budget consumption via context + engine wiring."""
+    """Basic budget consumption via context + engine wiring."""
     from aip.orchestration.budget import InMemoryBudgetStore
     from aip.orchestration.workflow.context import WorkflowContext
 
@@ -578,11 +662,11 @@ def test_budget_store_basic_consumption_3_11():
     assert ctx2.consume_budget(100) is False
 
 
-# CHUNK-3.12 tests (added after CC documented in WORKLOG; exactly per declared scope)
+# Budget store and autonomy gate integration tests
 
 
 def test_budget_exhaustion_from_store_actually_blocks_3_12():
-    """CHUNK-3.12: Injected BudgetStore returning False now correctly blocks (contract fix)."""
+    """Injected BudgetStore returning False now correctly blocks (contract fix)."""
     from aip.orchestration.budget import InMemoryBudgetStore
     from aip.orchestration.workflow.context import WorkflowContext
 
@@ -598,7 +682,7 @@ def test_budget_exhaustion_from_store_actually_blocks_3_12():
 
 
 def test_autonomy_gate_injection_and_level_decisions_3_12():
-    """CHUNK-3.12: AutonomyGate wires through engine/context and honors level stub."""
+    """AutonomyGate wires through engine/context and honors level stub."""
     from aip.orchestration.budget import SimpleAutonomyGate
     from aip.orchestration.workflow.context import WorkflowContext
     from aip.orchestration.workflow.engine import WorkflowEngine
@@ -606,9 +690,9 @@ def test_autonomy_gate_injection_and_level_decisions_3_12():
     gate = SimpleAutonomyGate()
     ctx = WorkflowContext(protocols={"autonomy_gate": gate})
 
-    assert ctx.request_autonomy(0) is True  # Phase 1
-    assert ctx.request_autonomy(1) is True  # Phase 1 boundary
-    assert ctx.request_autonomy(2) is False  # Phase 2 stub denies
+    assert ctx.request_autonomy(0) is True  # level 0 (auto-granted)
+    assert ctx.request_autonomy(1) is True  # level 1 (auto-granted)
+    assert ctx.request_autonomy(2) is False  # level 2 (stub denies)
 
     # Engine default wiring
     eng = WorkflowEngine()
@@ -618,7 +702,7 @@ def test_autonomy_gate_injection_and_level_decisions_3_12():
 
 
 def test_parallel_context_inherits_budget_and_autonomy_protocols_3_12():
-    """CHUNK-3.12: fork_for_parallel preserves the protocol injections (budget + autonomy)."""
+    """fork_for_parallel preserves the protocol injections (budget + autonomy)."""
     from aip.orchestration.budget import InMemoryBudgetStore, SimpleAutonomyGate
     from aip.orchestration.workflow.context import WorkflowContext
 
@@ -638,11 +722,11 @@ def test_parallel_context_inherits_budget_and_autonomy_protocols_3_12():
     assert child.budget_remaining == 1000
 
 
-# --- CHUNK-4.5 smoke test for new node types (additive) ---
+# --- Smoke tests for review and re-synthesis node types ---
 
 
 def test_loads_yaml_with_review_node():
-    """CHUNK-4.5: The engine/loader should accept workflows using the new review node type."""
+    """The engine/loader should accept workflows using the review node type."""
     import os
     import tempfile
 
@@ -672,7 +756,7 @@ nodes:
 
 def test_review_re_synthesize_cycle_basic():
     """
-    CHUNK-4.5: Basic smoke that a workflow with review + re_synthesize nodes
+    Basic smoke that a workflow with review + re_synthesize nodes
     can be loaded and the nodes participate in execution (using fakes).
     This validates the pause + re-synthesis flow at the engine level.
     """
@@ -705,4 +789,4 @@ nodes:
         # We don't have full stores wired, so we only test that loading + basic
         # node presence works. Full execution would require more wiring.
         assert any("Review" in type(n).__name__ for n in definition.nodes)  # structural check
-        print("CHUNK-4.5 cycle smoke: YAML with review + re_synthesize loaded successfully")
+        print("Review + re-synthesis cycle smoke: YAML loaded successfully")

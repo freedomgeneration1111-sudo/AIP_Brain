@@ -1,4 +1,4 @@
-"""Verify Phase 6 schema additions do not break Phase 0, 1, 2, 3, 4, or 5."""
+"""Schema contracts for surface configuration, autonomy gates, and MCP tool definitions."""
 
 from aip.foundation.protocols import (
     AutonomyGate,
@@ -116,16 +116,16 @@ def test_mcp_autonomy_level_type_alias():
     assert ml_admin == "admin"
 
 
-def test_phase0_through_phase5_enums_still_work():
-    """Phase 0/1/2/3/4/5 enums must not be broken by Phase 6 additions."""
+def test_prior_enums_compat():
+    """Prior enums must remain importable and functional."""
     assert EcsState.GENERATED is not None
     from typing import get_args
 
     assert "C" in get_args(FailureType)
 
 
-def test_phase0_through_phase5_dataclasses_still_work():
-    """Phase 0/1/2/3/4/5 dataclasses must not be broken by Phase 6 additions."""
+def test_prior_dataclasses_compat():
+    """Prior dataclasses must remain importable and functional."""
     c = Chunk(id="x", content="hello", score=0.9, metadata={"k": "v"}, domain="test")
     assert c.id == "x"
     v = ReviewVerdict(artifact_id="a1", verdict="APPROVED", reviewer="definer")
@@ -150,28 +150,28 @@ def test_phase0_through_phase5_dataclasses_still_work():
 
 
 def test_autonomy_gate_protocol_methods():
-    """Phase 6: AutonomyGate must have check, escalate, audit_log methods."""
+    """AutonomyGate must have check, escalate, audit_log methods."""
     assert hasattr(AutonomyGate, "check"), "AutonomyGate missing check method"
     assert hasattr(AutonomyGate, "escalate"), "AutonomyGate missing escalate method"
     assert hasattr(AutonomyGate, "audit_log"), "AutonomyGate missing audit_log method"
 
 
 def test_lexical_store_protocol_methods():
-    """Phase 6: LexicalStore must have search, index_document, delete_document methods."""
+    """LexicalStore must have search, index_document, delete_document methods."""
     assert hasattr(LexicalStore, "search"), "LexicalStore missing search method"
     assert hasattr(LexicalStore, "index_document"), "LexicalStore missing index_document method"
     assert hasattr(LexicalStore, "delete_document"), "LexicalStore missing delete_document method"
 
 
 def test_canonical_store_new_methods():
-    """Phase 6: CanonicalStore must have read_canonical, write_canonical, list_canonical."""
+    """CanonicalStore must have read_canonical, write_canonical, list_canonical."""
     assert hasattr(CanonicalStore, "read_canonical"), "CanonicalStore missing read_canonical"
     assert hasattr(CanonicalStore, "write_canonical"), "CanonicalStore missing write_canonical"
     assert hasattr(CanonicalStore, "list_canonical"), "CanonicalStore missing list_canonical"
 
 
 def test_entity_store_new_methods():
-    """Phase 6: EntityStore must have get_entity, list_entities, update_entity."""
+    """EntityStore must have get_entity, list_entities, update_entity."""
     assert hasattr(EntityStore, "get_entity"), "EntityStore missing get_entity"
     assert hasattr(EntityStore, "list_entities"), "EntityStore missing list_entities"
     assert hasattr(EntityStore, "update_entity"), "EntityStore missing update_entity"

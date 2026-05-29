@@ -1,4 +1,4 @@
-"""Tests for the re-synthesis loop (CHUNK-4.2)."""
+"""Tests for the re-synthesis loop."""
 
 import pytest
 

@@ -1,4 +1,4 @@
-"""Tests for PluginManager + CLI/API surfaces (CHUNK-10.2).
+"""Tests for PluginManager + CLI/API surfaces.
 
 Covers the 11 gate verifications (a-k) from spec prose.
 """

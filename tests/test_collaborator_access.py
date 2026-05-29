@@ -1,7 +1,7 @@
-"""Tests for CollaboratorManager + CLI/API surfaces (CHUNK-10.3).
+"""Tests for CollaboratorManager + CLI/API surfaces.
 
 Covers the 12 gate verifications (a-l) from spec prose + layering.
-Note: In base env without bcrypt (Phase 7 auth dep), full integration tests may skip collection;
+Note: In base env without bcrypt (auth dependency), full integration tests may skip collection;
 the critical new behaviors + static layering check still execute.
 """
 

@@ -1,4 +1,4 @@
-"""Tests for CHUNK-5.5 Trajectory Regulator."""
+"""Tests for the Trajectory Regulator."""
 
 import pytest
 

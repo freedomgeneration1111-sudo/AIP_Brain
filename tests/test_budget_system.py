@@ -1,4 +1,4 @@
-"""Tests for CHUNK-7.0b Token Budget System (exact per Phase 5 ANNEX + prose)."""
+"""Tests for the Token Budget System (per spec prose)."""
 
 import os
 import tempfile

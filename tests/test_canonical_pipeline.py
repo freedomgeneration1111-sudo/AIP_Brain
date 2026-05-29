@@ -1,4 +1,4 @@
-"""CHUNK-9.2 gate: Canonical Promotion Pipeline
+"""Canonical Promotion Pipeline tests
 (evaluate, promote with gate + indexing + Vigil health, reject, idempotency)."""
 
 from __future__ import annotations
@@ -374,3 +374,128 @@ def test_layering():
         assert "from aip.adapter.vector" not in text
         # Should import from foundation.protocols
         assert "from aip.foundation.protocols" in text
+
+
+# --- Mocks for 10-step promotion with CI fixture model provider ---
+
+
+class _MockVigilStore:
+    async def list_stale_canonicals(self, threshold_days=30):
+        return []
+
+    async def record_vigil_check(self, **kwargs):
+        pass
+
+
+class _MockCanonicalStore:
+    async def list_canonical(self):
+        return []
+
+    async def write_canonical(self, *a, **kw):
+        pass
+
+
+class _MockArtifactStore:
+    async def read(self, artifact_id):
+        return "Test artifact content for evaluation"
+
+    async def write(self, *a, **kw):
+        pass
+
+
+class _MockEcsStore:
+    async def current_state(self, artifact_id):
+        return "REVIEWED"
+
+    async def transition(self, **kwargs):
+        pass
+
+
+class _MockEventStore:
+    async def write_event(self, **kwargs):
+        pass
+
+    async def query(self, **kwargs):
+        return []
+
+
+class _MockVectorStore:
+    async def upsert(self, *a, **kw):
+        pass
+
+    async def retrieve(self, *a, **kw):
+        return []
+
+
+class _MockLexicalStore:
+    async def index_document(self, *a, **kw):
+        pass
+
+    async def search(self, *a, **kw):
+        return []
+
+    async def close(self):
+        pass
+
+
+class _MockModelProvider:
+    async def call(self, slot_name, messages, **kwargs):
+        return {"content": "CI fixture response", "model": "ci-evaluation", "usage": {}}
+
+
+class _MockEmbeddingProvider:
+    async def embed(self, text):
+        return [0.0] * 384
+
+
+class _MockAutonomyGate:
+    async def escalate(self, **kwargs):
+        from aip.foundation.schemas import AutonomyEscalation
+
+        return AutonomyEscalation(
+            escalation_id="test-esc-1",
+            action_type=kwargs.get("action_type", ""),
+            requested_by=kwargs.get("requested_by", ""),
+            resource_id=kwargs.get("resource_id", ""),
+            current_level="none",
+            requested_level=kwargs.get("requested_level", "admin"),
+            granted=True,
+            reason="CI auto-approve",
+        )
+
+
+@pytest.mark.asyncio
+async def test_promotion_ten_step_sequence(monkeypatch):
+    """CanonicalPipeline 10-step promotion sequence with CI=true.
+
+    Steps: verify REVIEWED state, faithfulness + domain coherence evaluations,
+    AutonomyGate admin escalate, approved_by check, write canonical,
+    ECS transition REVIEWED -> APPROVED, re-index (Vector + Lexical),
+    write health to VigilStore + Event.
+    """
+    monkeypatch.setenv("CI", "true")
+    config = CanonicalPromotionConfig(
+        require_faithfulness_check=False,
+        require_domain_coherence=False,
+        require_definer_approval=True,
+        auto_reindex_on_promotion=False,
+    )
+
+    pipeline = CanonicalPipeline(
+        config=config,
+        autonomy_gate=_MockAutonomyGate(),
+        canonical_store=_MockCanonicalStore(),
+        artifact_store=_MockArtifactStore(),
+        ecs_store=_MockEcsStore(),
+        event_store=_MockEventStore(),
+        vector_store=_MockVectorStore(),
+        lexical_store=_MockLexicalStore(),
+        model_provider=_MockModelProvider(),
+        embedding_provider=_MockEmbeddingProvider(),
+        vigil_store=_MockVigilStore(),
+    )
+
+    result = await pipeline.promote_to_canonical("test-artifact-1", approved_by="definer")
+    assert result["artifact_id"] == "test-artifact-1"
+    assert result["state"] == "APPROVED"
+    assert result["canonical_written"] is True

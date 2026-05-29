@@ -1,4 +1,4 @@
-"""Verify Phase 5 schema additions do not break Phase 0, 1, 2, 3, or 4."""
+"""Schema contracts for actor configuration, budget enforcement, and ACE playbook."""
 
 from aip.foundation.protocols import (
     ArtifactStore,
@@ -133,14 +133,14 @@ def test_budget_scope_type_alias():
     assert d == "daily"
 
 
-def test_phase0_phase1_phase2_phase3_phase4_enums_still_work():
-    """Phase 0/1/2/3/4 enums must not be broken by Phase 5 additions."""
+def test_prior_enums_compat():
+    """Prior enums must remain importable and functional."""
     assert EcsState.GENERATED is not None
-    assert "C" in FailureType.__args__  # Literal still contains the expected values (matches Phase 2 test pattern)
+    assert "C" in FailureType.__args__  # Literal still contains the expected values
 
 
-def test_phase1_phase2_phase3_phase4_dataclasses_still_work():
-    """Phase 1/2/3/4 dataclasses must not be broken by Phase 5 additions."""
+def test_prior_dataclasses_compat():
+    """Prior dataclasses must remain importable and functional."""
     c = Chunk(id="x", content="hello", score=0.9, metadata={"k": "v"}, domain="test")
     assert c.id == "x"
     v = ReviewVerdict(artifact_id="a1", verdict="APPROVED", reviewer="definer")
@@ -165,26 +165,26 @@ def test_phase1_phase2_phase3_phase4_dataclasses_still_work():
 
 
 def test_budgetstore_protocol_has_methods():
-    """Phase 5: BudgetStore must have get_budget, record_usage, check_limit."""
+    """BudgetStore must have get_budget, record_usage, check_limit."""
     assert hasattr(BudgetStore, "get_budget"), "BudgetStore missing get_budget"
     assert hasattr(BudgetStore, "record_usage"), "BudgetStore missing record_usage"
     assert hasattr(BudgetStore, "check_limit"), "BudgetStore missing check_limit"
 
 
 def test_projectstore_protocol_has_list_projects():
-    """Phase 5: ProjectStore must have list_projects method."""
+    """ProjectStore must have list_projects method."""
     assert hasattr(ProjectStore, "list_projects"), "ProjectStore missing list_projects"
 
 
 def test_existing_protocol_methods_preserved():
-    """Phase 1/2/3/4 methods must still exist after Phase 5 amendments."""
-    assert hasattr(VectorStore, "upsert"), "VectorStore missing upsert (Phase 1)"
-    assert hasattr(VectorStore, "health_check"), "VectorStore missing health_check (Phase 4)"
-    assert hasattr(VectorStore, "count"), "VectorStore missing count (Phase 4)"
-    assert hasattr(EventStore, "write_event"), "EventStore missing write_event (Phase 1)"
-    assert hasattr(EventStore, "query"), "EventStore missing query (Phase 2)"
-    assert hasattr(ArtifactStore, "list_versions"), "ArtifactStore missing list_versions (Phase 2)"
-    assert hasattr(EcsStore, "current_state"), "EcsStore missing current_state (Phase 2)"
-    assert hasattr(TraceStore, "query_events"), "TraceStore missing query_events (Phase 3)"
-    assert hasattr(ModelProvider, "call"), "ModelProvider missing call (Phase 3)"
-    assert hasattr(EmbeddingProvider, "embed"), "EmbeddingProvider missing embed (Phase 3)"
+    """Prior protocol methods must still exist after amendments."""
+    assert hasattr(VectorStore, "upsert"), "VectorStore missing upsert"
+    assert hasattr(VectorStore, "health_check"), "VectorStore missing health_check"
+    assert hasattr(VectorStore, "count"), "VectorStore missing count"
+    assert hasattr(EventStore, "write_event"), "EventStore missing write_event"
+    assert hasattr(EventStore, "query"), "EventStore missing query"
+    assert hasattr(ArtifactStore, "list_versions"), "ArtifactStore missing list_versions"
+    assert hasattr(EcsStore, "current_state"), "EcsStore missing current_state"
+    assert hasattr(TraceStore, "query_events"), "TraceStore missing query_events"
+    assert hasattr(ModelProvider, "call"), "ModelProvider missing call"
+    assert hasattr(EmbeddingProvider, "embed"), "EmbeddingProvider missing embed"

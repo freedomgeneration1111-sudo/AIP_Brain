@@ -1,4 +1,4 @@
-"""CHUNK-9.3 gate: Extended Workflow Templates (three new YAMLs + Registry discovery + engine compatibility)."""
+"""Extended Workflow Templates tests (three new YAMLs + Registry discovery + engine compatibility)."""
 
 from __future__ import annotations
 

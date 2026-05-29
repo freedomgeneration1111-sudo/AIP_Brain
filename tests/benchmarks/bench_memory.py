@@ -1,4 +1,4 @@
-"""Synthetic deterministic memory footprint benchmark (CHUNK-10.4, laptop-viable profile)."""
+"""Synthetic deterministic memory footprint benchmark (laptop-viable profile)."""
 
 import pytest
 

@@ -1,4 +1,4 @@
-"""CHUNK-8.1 gate: FastAPI scaffold + Project/Session REST (exact per spec)."""
+"""FastAPI scaffold + Project/Session REST tests."""
 
 import pytest
 
@@ -16,7 +16,7 @@ def test_create_app_returns_fastapi_instance():
     assert app.title == "AIP 0.1 Surfaces"
 
 
-@pytest.mark.skipif(TestClient is None, reason="fastapi not installed (Phase 6 surface dep)")
+@pytest.mark.skipif(TestClient is None, reason="fastapi not installed (API surface dependency)")
 def test_health_endpoint_returns_200_and_shape():
     app = create_app()
     client = TestClient(app)
@@ -28,7 +28,7 @@ def test_health_endpoint_returns_200_and_shape():
     assert "model_slots" in data
 
 
-@pytest.mark.skipif(TestClient is None, reason="fastapi not installed (Phase 6 surface dep)")
+@pytest.mark.skipif(TestClient is None, reason="fastapi not installed (API surface dependency)")
 def test_projects_crud_through_testclient():
     app = create_app()
     client = TestClient(app)
@@ -46,7 +46,7 @@ def test_projects_crud_through_testclient():
     assert r.status_code in (200, 503)
 
 
-@pytest.mark.skipif(TestClient is None, reason="fastapi not installed (Phase 6 surface dep)")
+@pytest.mark.skipif(TestClient is None, reason="fastapi not installed (API surface dependency)")
 def test_session_creation_loads_ace_playbook_shape():
     app = create_app()
     client = TestClient(app)

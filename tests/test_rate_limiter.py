@@ -1,4 +1,4 @@
-"""CHUNK-9.0c gate: Rate limiter (token bucket, middleware, overrides)."""
+"""Rate limiter tests (token bucket, middleware, overrides)."""
 
 from __future__ import annotations
 

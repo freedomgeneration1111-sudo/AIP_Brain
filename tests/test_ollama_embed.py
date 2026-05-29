@@ -1,4 +1,4 @@
-"""Tests for CHUNK-5.1 Ollama Embedding Client (using mock for CI)."""
+"""Tests for Ollama Embedding Client (using mock for CI)."""
 
 import pytest
 

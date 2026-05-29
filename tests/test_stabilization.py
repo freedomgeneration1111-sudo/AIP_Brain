@@ -1,4 +1,4 @@
-"""Tests for WorkflowRecovery + SqliteConcurrencyManager (CHUNK-10.5).
+"""Tests for WorkflowRecovery + SqliteConcurrencyManager.
 
 Covers gate verifications (a-b, etc.) from spec prose.
 Note: In base env without aiosqlite (optional dep for surfaces), full integration may skip;

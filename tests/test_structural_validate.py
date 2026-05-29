@@ -1,4 +1,4 @@
-"""Tests for structural_validate (CHUNK-1.2 per Rev 1.3)."""
+"""Tests for structural_validate."""
 
 from aip.foundation.validation import (
     DEFAULT_RULES,

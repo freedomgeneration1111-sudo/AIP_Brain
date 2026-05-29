@@ -1,4 +1,4 @@
-"""Tests for DEFINER gate (CHUNK-1.5 per Rev 1.3).
+"""Tests for DEFINER gate.
 
 Updated for honest gate behavior:
 - CI mode: auto-approve with stub:auto_approve_ci marker

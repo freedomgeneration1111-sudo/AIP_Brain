@@ -1,6 +1,6 @@
 """End-to-end canonical pipeline acceptance test.
 
-Tests the full canonical pipeline per CHUNK-9.2:
+Tests the full canonical pipeline:
 SPECIFIED → GENERATED → REVIEWED → (faithfulness + domain coherence evaluation)
 → AutonomyGate → APPROVED → canonical write + re-index + Vigil health recording.
 

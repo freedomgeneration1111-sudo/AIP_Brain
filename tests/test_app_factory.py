@@ -1,12 +1,4 @@
-"""
-CHUNK-11.1: FastAPI Application Factory Repair — Phase 9 gate tests.
-
-Verifies that:
-- create_app() returns a working FastAPI instance
-- All route modules import and mount without error
-- Health, Projects, Sessions, Review, Artifacts, Admin, Memory endpoints respond
-- AipContainer provides real adapter instances
-"""
+"""FastAPI application factory — verifies create_app(), route mounting, and endpoint responses."""
 
 import pytest
 

@@ -1,4 +1,4 @@
-"""Synthetic deterministic VectorStore query benchmark (CHUNK-10.4)."""
+"""Synthetic deterministic VectorStore query benchmark."""
 
 import time
 

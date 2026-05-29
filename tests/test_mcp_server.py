@@ -1,4 +1,4 @@
-"""CHUNK-8.5 gate: MCP Server (tool listing, autonomy enforcement, Protocol access, Appendix D)."""
+"""MCP Server tests (tool listing, autonomy enforcement, Protocol access, Appendix D)."""
 
 from __future__ import annotations
 

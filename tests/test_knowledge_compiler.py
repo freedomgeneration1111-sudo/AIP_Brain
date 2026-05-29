@@ -1,4 +1,4 @@
-"""Tests for KnowledgeCompiler (CHUNK-10.1).
+"""Tests for KnowledgeCompiler.
 
 Verifies all 11 gate expectations (a-k) from spec prose.
 """

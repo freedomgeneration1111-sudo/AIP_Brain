@@ -1,4 +1,4 @@
-"""Tests for queryable event store (CHUNK-4.4)."""
+"""Tests for queryable event store."""
 
 import pytest
 

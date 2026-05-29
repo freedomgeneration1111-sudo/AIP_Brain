@@ -1,4 +1,4 @@
-"""CHUNK-9.0b gate: Auth system (sessions, API keys, middleware, dependencies)."""
+"""Auth system tests (sessions, API keys, middleware, dependencies)."""
 
 from __future__ import annotations
 

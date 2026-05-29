@@ -1,4 +1,4 @@
-"""Verify Phase 7 schema additions do not break Phase 0–6."""
+"""Schema contracts for vigil configuration, authentication, rate limiting, and workflow templates."""
 
 from aip.foundation.protocols import (
     AuthStore,
@@ -6,7 +6,7 @@ from aip.foundation.protocols import (
     VigilStore,
 )
 from aip.foundation.schemas import (
-    # Prior phases (must still work)
+    # Prior (must still work)
     AuthConfig,
     CanonicalPromotionConfig,
     Chunk,
@@ -20,7 +20,7 @@ from aip.foundation.schemas import (
 )
 
 
-def test_phase7_config_dataclasses():
+def test_vigil_auth_rate_limit_configs():
     vc = VigilConfig(canonical_health_check_interval_seconds=3600, stale_threshold_days=30)
     assert vc.canonical_health_check_interval_seconds == 3600
 
@@ -40,13 +40,13 @@ def test_phase7_config_dataclasses():
     assert dp.profile_name == "laptop"
 
 
-def test_phase7_new_protocols_exist():
+def test_vigilstore_authstore_protocols():
     assert hasattr(VigilStore, "list_stale_canonicals")
     assert hasattr(AuthStore, "validate_api_key")
 
 
-def test_phase0_through_phase6_types_still_work():
-    """All prior phase types must remain importable and functional."""
+def test_prior_types_compat():
+    """All prior types must remain importable and functional."""
     assert EcsState.GENERATED is not None
     from typing import get_args
 

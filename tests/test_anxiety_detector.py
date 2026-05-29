@@ -1,4 +1,4 @@
-"""Tests for CHUNK-5.3 Context Anxiety Detector (Type F)."""
+"""Tests for Context Anxiety Detector (Type F)."""
 
 import pytest
 

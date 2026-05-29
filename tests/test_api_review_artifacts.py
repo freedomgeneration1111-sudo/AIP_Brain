@@ -1,4 +1,4 @@
-"""CHUNK-8.4 gate: Review Queue + Artifact Browser (approve/reject with gates, ECS, canonical, browser)."""
+"""Review Queue + Artifact Browser tests."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ except ImportError:
 from aip.adapter.api.app import create_app
 
 
-@pytest.mark.skipif(TestClient is None, reason="fastapi not installed (Phase 6 surface dep)")
+@pytest.mark.skipif(TestClient is None, reason="fastapi not installed (API surface dependency)")
 def test_review_queue_and_approve_flow():
     app = create_app()
     client = TestClient(app)
@@ -46,7 +46,7 @@ def test_artifact_browser_read_only():
 
 
 def test_layering_and_no_bypass():
-    """Layering + sovereignty (enforced in combined gate with test_layering + phase6_gates later)."""
+    """Layering + sovereignty (enforced in combined gate with test_layering + surface gates later)."""
     from pathlib import Path
 
     for f in ["review.py", "artifacts.py"]:

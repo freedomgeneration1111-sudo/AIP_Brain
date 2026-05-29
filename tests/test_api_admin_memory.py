@@ -1,4 +1,4 @@
-"""CHUNK-8.6 gate: Admin Console + Memory Inspector (gated writes, read-only actor/status data)."""
+"""Admin Console + Memory Inspector tests (gated writes, read-only actor/status data)."""
 
 from __future__ import annotations
 

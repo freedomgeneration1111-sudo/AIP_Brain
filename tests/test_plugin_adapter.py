@@ -1,4 +1,4 @@
-"""Tests for PluginLoader + YamlPluginProvider (CHUNK-10.0b).
+"""Tests for PluginLoader + YamlPluginProvider.
 
 Verifies:
 - Implements contracts

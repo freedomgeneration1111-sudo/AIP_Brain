@@ -1,16 +1,4 @@
-"""
-CHUNK-11.6: Adapter Stub Promotion — Phase 9 gate tests.
-
-Verifies promotion of adapter stubs to working implementations:
-- SqliteSessionStore works with bcrypt (session create/validate/revoke, API key CRUD)
-- Auth dependencies enforce roles (get_current_identity, require_definer)
-- MCP search tool delegates to LexicalStore
-- MCP artifacts tool delegates to ArtifactStore
-- PluginLoader discovers YAML plugins
-- PerformanceProfiler returns real metrics (psutil)
-
-Each promoted stub references the original spec chunk it was specified in.
-"""
+"""Adapter promotion integration — verifies promoted adapter implementations for auth, MCP, plugins, and profiling."""
 
 import tempfile
 
@@ -18,8 +6,8 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_session_store_crud_with_bcrypt():
-    """Promotes CHUNK-9.0b SqliteSessionStore — full CRUD with bcrypt hashing."""
+async def test_session_store_bcrypt_crud():
+    """SqliteSessionStore — full CRUD with bcrypt hashing."""
     from aip.adapter.auth.session_store import SqliteSessionStore
     from aip.foundation.schemas import AuthConfig
 
@@ -67,8 +55,8 @@ async def test_session_store_crud_with_bcrypt():
 
 
 @pytest.mark.asyncio
-async def test_auth_dependencies_enforce_roles():
-    """Promotes CHUNK-9.0b auth dependencies — role enforcement."""
+async def test_auth_role_enforcement():
+    """Auth dependencies — role enforcement."""
 
     # require_definer should reject non-definer roles
     class MockIdentity:
@@ -93,8 +81,8 @@ async def test_auth_dependencies_enforce_roles():
 
 
 @pytest.mark.asyncio
-async def test_mcp_search_uses_lexical_store():
-    """Promotes CHUNK-8.5 MCP search tool — delegates to LexicalStore."""
+async def test_mcp_search_lexical_delegation():
+    """MCP search tool — delegates to LexicalStore."""
     from aip.adapter.mcp.tools.search import aip_search
 
     class _MockContainer:
@@ -115,8 +103,8 @@ async def test_mcp_search_uses_lexical_store():
 
 
 @pytest.mark.asyncio
-async def test_mcp_artifacts_uses_artifact_store():
-    """Promotes CHUNK-8.5 MCP artifacts tool — delegates to ArtifactStore."""
+async def test_mcp_artifact_store_delegation():
+    """MCP artifacts tool — delegates to ArtifactStore."""
     from aip.adapter.mcp.tools.artifacts import aip_artifact_approve
 
     class _MockEcsStore:
@@ -141,8 +129,8 @@ async def test_mcp_artifacts_uses_artifact_store():
     assert result["approved"] is True
 
 
-def test_plugin_loader_discovers_yaml():
-    """Promotes CHUNK-10.0b PluginLoader — YAML-based plugin discovery."""
+def test_plugin_loader_yaml_discovery():
+    """PluginLoader — YAML-based plugin discovery."""
     from aip.adapter.plugins.plugin_loader import PluginLoader
     from aip.foundation.schemas import PluginConfig
 
@@ -182,8 +170,8 @@ api_key_env: TEST_API_KEY
 
 
 @pytest.mark.asyncio
-async def test_profiler_returns_real_metrics():
-    """Promotes CHUNK-10.4 PerformanceProfiler — real metrics via psutil."""
+async def test_profiler_real_metrics():
+    """PerformanceProfiler — real metrics via psutil."""
     from aip.foundation.schemas import PerformanceConfig
     from aip.orchestration.perf import PerformanceProfiler
 

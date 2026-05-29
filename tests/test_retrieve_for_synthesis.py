@@ -1,4 +1,4 @@
-"""Tests for retrieve_for_synthesis (CHUNK-1.1 per Rev 1.3)."""
+"""Tests for retrieve_for_synthesis."""
 
 import asyncio
 import math
@@ -57,7 +57,7 @@ class FakeTraceStore(TraceStore):
         return list(reversed([e for e in self.events if e.get("session_id") == session_id]))[:limit]
 
     async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
-        # Sexton/CHUNK-3.4 additive compat
+        # Sexton additive compat
         unclassified = [
             e for e in reversed(self.events) if e.get("failure_type") is None and e.get("outcome") == "failure"
         ]
@@ -216,7 +216,7 @@ def test_config_model_dump_fallback():
 
 
 def test_embedding_provider_from_config_fake_default():
-    """CHUNK-3.9: get_embed_fn respects config [embedding] (fake by default for foundation)."""
+    """get_embed_fn respects config [embedding] (fake by default for foundation)."""
     from aip.orchestration.embed_providers import get_embed_fn
 
     # No embedding section -> fake
@@ -232,7 +232,7 @@ def test_embedding_provider_from_config_fake_default():
 
 
 def test_ace_rules_boost_procedural_hits():
-    """CHUNK-3.8: Passing ace_rules from Sexton should have observable effect (boost for procedural)."""
+    """Passing ace_rules from Sexton should have observable effect (boost for procedural)."""
     # Rule suggesting procedural match for certain content
     ace_rule = {
         "failure_type": "B",

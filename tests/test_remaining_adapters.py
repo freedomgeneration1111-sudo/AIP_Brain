@@ -1,6 +1,6 @@
-"""CHUNK-8.0b gate tests: Remaining Protocol adapters (Lexical, Canonical, Entity, AutonomyGate).
+"""Tests for remaining Protocol adapters (Lexical, Canonical, Entity, AutonomyGate).
 
-Exact per Phase 6 spec prose + ANNEX verification list.
+Exact per spec prose verification list.
 """
 
 import asyncio

@@ -1,4 +1,4 @@
-"""CHUNK-8.2 gate: CLI (aip init, status, config, project, session) using CliRunner."""
+"""CLI tests (aip init, status, config, project, session) using CliRunner."""
 
 from __future__ import annotations
 

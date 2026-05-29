@@ -1,6 +1,5 @@
-"""Phase 5 Integration Test (CHUNK-7.6) — full self-improvement cycle.
+"""Actor and budget integration — verifies Beast corpus maintenance and budget hard-stop enforcement.
 
-Extends CHUNK-6.5 with actor-level verification on top of the production pipeline.
 All scenarios use CI mode (deterministic fixtures).
 """
 
@@ -14,7 +13,7 @@ from aip.orchestration.budget import BudgetManager, InMemoryBudgetStore
 
 
 @pytest.mark.asyncio
-async def test_scenario_4_beast_corpus_maintenance():
+async def test_beast_corpus_maintenance_cycle():
     cfg = BeastCadenceConfig()
     vs = AsyncMock()
     vs.count.return_value = 10
@@ -28,7 +27,7 @@ async def test_scenario_4_beast_corpus_maintenance():
 
 
 @pytest.mark.asyncio
-async def test_scenario_5_budget_enforcement():
+async def test_budget_hard_stop_enforcement():
     cfg = BudgetConfig(session_token_limit=10, budget_hard_stop=True)
     store = InMemoryBudgetStore()
     mgr = BudgetManager(cfg, store)

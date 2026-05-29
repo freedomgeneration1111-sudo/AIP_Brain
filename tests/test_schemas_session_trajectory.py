@@ -1,4 +1,4 @@
-"""Tests for CHUNK-5.0a: Phase 3 Schema + Protocol Additions."""
+"""Schema contracts for session management, trajectory signals, and model slot configuration."""
 
 from aip.foundation.protocols import (
     EmbeddingProvider,
