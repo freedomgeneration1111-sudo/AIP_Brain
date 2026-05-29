@@ -62,6 +62,8 @@ def status() -> None:
     When stores are not initialized, reports "not configured" clearly
     instead of showing fake placeholder data.
     """
+    from aip.cli._db_path import get_default_db_path, get_default_lexical_db_path
+
     click.echo("=== AIP Status ===")
 
     # --- Config file ---
@@ -73,19 +75,26 @@ def status() -> None:
             content = config_path.read_text()
             for line in content.splitlines():
                 stripped = line.strip()
-                if stripped.startswith("provider") or stripped.startswith("host") or stripped.startswith("port"):
+                if stripped.startswith("provider") or stripped.startswith("host") or stripped.startswith("port") or stripped.startswith("db_path"):
                     click.echo(f"  {stripped}")
         except Exception:
             click.echo("  (could not read config)")
     else:
         click.echo("config: not found (run `aip init` to create)")
 
+    # --- Effective database paths ---
+    main_db = get_default_db_path()
+    lexical_db = get_default_lexical_db_path()
+    click.echo(f"\nEffective database paths:")
+    click.echo(f"  Main DB:    {main_db}")
+    click.echo(f"  Lexical DB: {lexical_db}")
+
     # --- Databases ---
     db_dir = Path("db")
     expected_dbs = {
-        "state.db": "Entity/Canonical/Project data",
+        "state.db": "Core: artifacts, projects, events, ECS, canonicals",
         "trace.db": "Trace events and routing outcomes",
-        "events.db": "Event store (append-only)",
+        "events.db": "Event store (append-only, legacy)",
         "lexical.db": "FTS5 full-text search index",
         "vectors.db": "SQLite-VSS vector index",
         "ace_playbook.db": "ACE playbook rules",
@@ -102,6 +111,10 @@ def status() -> None:
             db_total_rows += total
             if total > 0:
                 click.echo(f"db/{name}: {info['tables']} tables, {total} rows — {description}")
+                # Show row counts per table for state.db
+                if name == "state.db" and info.get("row_counts"):
+                    for table, count in info["row_counts"].items():
+                        click.echo(f"    {table}: {count} rows")
             else:
                 click.echo(f"db/{name}: empty ({info['tables']} tables) — {description}")
         else:

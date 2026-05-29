@@ -206,3 +206,6 @@ auth_enabled = false
 workers = 1
 memory_limit_mb = 4096
 
+
+[database]
+db_path = "db/state.db"

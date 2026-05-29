@@ -8,7 +8,6 @@ Provides ``aip export`` with subcommands:
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 
 import click
@@ -29,7 +28,7 @@ def export() -> None:
 @click.option("--format", "fmt", type=click.Choice(["markdown"]), default="markdown", help="Export format (default: markdown).")
 @click.option("--out", required=True, help="Output file path.")
 @click.option("--force", is_flag=True, default=False, help="Force export of rejected or unreviewed artifacts.")
-@click.option("--db-path", default=None, help="SQLite database path (default: data/aip.db).")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
 def export_artifact(artifact_id: str, fmt: str, out: str, force: bool, db_path: str | None) -> None:
     """Export an artifact to a markdown file.
 
@@ -50,7 +49,7 @@ def export_artifact(artifact_id: str, fmt: str, out: str, force: bool, db_path: 
 @click.option("--format", "fmt", type=click.Choice(["markdown"]), default="markdown", help="Export format (default: markdown).")
 @click.option("--out", required=True, help="Output file path.")
 @click.option("--include-unreviewed", is_flag=True, default=False, help="Include GENERATED/REVIEWED artifacts (default: APPROVED only).")
-@click.option("--db-path", default=None, help="SQLite database path (default: data/aip.db).")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
 def export_project(project_name: str, fmt: str, out: str, include_unreviewed: bool, db_path: str | None) -> None:
     """Export approved artifacts for a project to a markdown bundle.
 
@@ -72,9 +71,11 @@ def export_project(project_name: str, fmt: str, out: str, include_unreviewed: bo
 
 
 def _get_db_path(db_path: str | None) -> str:
+    from aip.cli._db_path import ensure_db_dir, get_default_db_path
+
     if db_path is None:
-        os.makedirs("data", exist_ok=True)
-        return "data/aip.db"
+        db_path = get_default_db_path()
+    ensure_db_dir(db_path)
     return db_path
 
 

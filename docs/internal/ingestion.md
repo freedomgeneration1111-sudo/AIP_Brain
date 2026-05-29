@@ -24,12 +24,25 @@ aip ingest file chat.md --format markdown
 # Import with a custom domain tag
 aip ingest file meeting.txt --domain meetings
 
+# Import into a specific project
+aip ingest file meeting.txt --project my_project
+
 # Import all files in a directory
 aip ingest directory ./transcripts/ --domain imported
 
 # Recurse into subdirectories
 aip ingest directory ./exports/ --recursive
 ```
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--project` | (none) | Project name to associate ingested conversations with |
+| `--domain` | (none) | Domain tag for the ingested conversations |
+| `--format` | (auto-detected) | Explicit format override (`chatgpt_json`, `markdown`, `plaintext`) |
+| `--recursive` | `false` | Recurse into subdirectories (directory mode only) |
+| `--db-path` | `db/state.db` | SQLite database path |
 
 ## How It Works
 
@@ -111,7 +124,7 @@ from aip.orchestration.ingestion import ingest_file, ingest_conversation
 from aip.orchestration.ingestion.pipeline import create_ingestion_stores
 
 # Create stores (encapsulates adapter-layer imports)
-stores = await create_ingestion_stores("data/aip.db")
+stores = await create_ingestion_stores("db/state.db")
 
 # Ingest a file (auto-detects format)
 results = await ingest_file(

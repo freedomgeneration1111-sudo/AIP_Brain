@@ -10,12 +10,12 @@ The ask pipeline reuses the same persistent stores that `aip ingest` writes to:
 
 | Store | Implementation | Persistence | Used by ingest | Used by ask |
 |-------|---------------|-------------|----------------|-------------|
-| ArtifactStore | VersionedArtifactStore | SQLite (data/aip.db) | Writes conversation artifacts | Reads artifacts, saves answers |
+| ArtifactStore | VersionedArtifactStore | SQLite (db/state.db) | Writes conversation artifacts | Reads artifacts, saves answers |
 | LexicalStore | SqliteFts5LexicalStore | SQLite FTS5 (data/lexical.db) | Indexes conversation chunks | Primary search backend |
 | VectorStore | InMemoryVectorStore | Ephemeral | Indexes chunks (when embedding available) | Supplementary semantic search |
-| EventStore | QueryableEventStore | SQLite (data/aip.db) | Records ingestion events | Records ask traces |
-| ProjectStore | SqliteProjectStore | SQLite (data/aip.db) | N/A | Resolves projects |
-| EcsStore | PersistentEcsStore | SQLite (data/aip.db) | N/A | Lifecycle transitions for saved artifacts |
+| EventStore | QueryableEventStore | SQLite (db/state.db) | Records ingestion events | Records ask traces |
+| ProjectStore | SqliteProjectStore | SQLite (db/state.db) | N/A | Resolves projects |
+| EcsStore | PersistentEcsStore | SQLite (db/state.db) | N/A | Lifecycle transitions for saved artifacts |
 
 **Critical design choice**: LexicalStore (FTS5) is the primary search backend
 because it is persistent. Content ingested via `aip ingest` survives process
@@ -60,7 +60,7 @@ default implementation is in-memory and ephemeral.
 | `--model-slot` | `synthesis` | Model slot to use for generation |
 | `--show-context` | `false` | Display retrieved context before generation |
 | `--session` | (auto-generated) | Session ID for continuity |
-| `--db-path` | `data/aip.db` | SQLite database path |
+| `--db-path` | `db/state.db` | SQLite database path |
 
 ## Source Grounding
 

@@ -103,8 +103,8 @@ async def _create_project_and_artifact(
         "prompt": "What is the AIP architecture?",
         "model_slot": "synthesis",
         "model_name": "test-model",
-        "source_ids": source_ids or ["chunk:conv1:0", "chunk:conv1:1"],
-        "source_types": source_types or ["conversation_chunk", "conversation_chunk"],
+        "source_ids": source_ids if source_ids is not None else ["chunk:conv1:0", "chunk:conv1:1"],
+        "source_types": source_types if source_types is not None else ["conversation_chunk", "conversation_chunk"],
         "session_id": "ask:test-session",
         "generated_at": "2025-01-15T10:00:00+00:00",
     }

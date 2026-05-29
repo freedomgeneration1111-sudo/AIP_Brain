@@ -44,13 +44,14 @@ def ingest() -> None:
     help="Source format (default: auto-detect).",
 )
 @click.option("--domain", default="imported", help="Domain tag for indexed content (default: imported).")
-@click.option("--db-path", default=None, help="SQLite database path (default: data/aip.db).")
-def ingest_file_cmd(path: str, source_format: str, domain: str, db_path: str | None) -> None:
+@click.option("--project", default=None, help="Project name — resolves domain automatically from project.")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
+def ingest_file_cmd(path: str, source_format: str, domain: str, project: str | None, db_path: str | None) -> None:
     """Import a conversation file into AIP.
 
     PATH is the file to import (ChatGPT JSON, markdown, or plain text).
     """
-    _run_ingest_file(path, source_format, domain, db_path)
+    _run_ingest_file(path, source_format, domain, project, db_path)
 
 
 @ingest.command("directory")
@@ -63,12 +64,14 @@ def ingest_file_cmd(path: str, source_format: str, domain: str, db_path: str | N
     help="Source format for all files (default: auto-detect each).",
 )
 @click.option("--domain", default="imported", help="Domain tag for indexed content (default: imported).")
-@click.option("--db-path", default=None, help="SQLite database path (default: data/aip.db).")
+@click.option("--project", default=None, help="Project name — resolves domain automatically from project.")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
 @click.option("--recursive/--no-recursive", default=False, help="Recurse into subdirectories.")
 def ingest_directory_cmd(
     directory: str,
     source_format: str,
     domain: str,
+    project: str | None,
     db_path: str | None,
     recursive: bool,
 ) -> None:
@@ -76,18 +79,53 @@ def ingest_directory_cmd(
 
     DIRECTORY is the folder containing files to import.
     """
-    _run_ingest_directory(directory, source_format, domain, db_path, recursive)
+    _run_ingest_directory(directory, source_format, domain, project, db_path, recursive)
 
 
-def _run_ingest_file(path: str, source_format: str, domain: str, db_path: str | None) -> None:
+def _resolve_domain(domain: str, project: str | None, db_path: str) -> str:
+    """Resolve domain from --project or --domain.
+
+    If --project is given, look up the project's domain from the store.
+    If both are given, --project takes precedence (with a warning if they differ).
+    Falls back to the --domain value.
+    """
+    if project is None:
+        return domain
+
+    # Try to resolve project domain from the store
+    try:
+        import sqlite3
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute("SELECT domain FROM projects WHERE name = ? OR project_id = ?", (project, project))
+        row = cursor.fetchone()
+        conn.close()
+        if row and row["domain"]:
+            resolved = row["domain"]
+            if domain != "imported" and domain != resolved:
+                click.echo(f"Warning: --domain '{domain}' differs from project domain '{resolved}'. Using project domain.")
+            return resolved
+    except Exception:
+        pass
+
+    # Fallback: use project name as domain if not explicitly set
+    if domain == "imported":
+        return project
+    return domain
+
+
+def _run_ingest_file(path: str, source_format: str, domain: str, project: str | None, db_path: str | None) -> None:
     """Synchronous entry point that runs async ingestion."""
     try:
-        results = asyncio.run(_ingest_file_async(path, source_format, domain, db_path))
+        results = asyncio.run(_ingest_file_async(path, source_format, domain, project, db_path))
         for result in results:
             _print_result(result)
         total_chunks = sum(r.chunk_count for r in results)
         total_turns = sum(r.turn_count for r in results)
         click.echo(f"\nImported {len(results)} conversation(s): {total_turns} turns, {total_chunks} chunks indexed.")
+        # Show the domain that was indexed into
+        effective_domain = domain if project is None else _resolve_domain_sync(domain, project, db_path)
+        click.echo(f"Indexed into domain: {effective_domain}")
     except FileNotFoundError as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
@@ -96,10 +134,31 @@ def _run_ingest_file(path: str, source_format: str, domain: str, db_path: str | 
         sys.exit(1)
 
 
+def _resolve_domain_sync(domain: str, project: str | None, db_path: str | None) -> str:
+    """Synchronous domain resolution for output messages."""
+    from aip.cli._db_path import get_default_db_path
+    resolved_db = db_path or get_default_db_path()
+    if project is None:
+        return domain
+    try:
+        import sqlite3
+        conn = sqlite3.connect(f"file:{resolved_db}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute("SELECT domain FROM projects WHERE name = ? OR project_id = ?", (project, project))
+        row = cursor.fetchone()
+        conn.close()
+        if row and row["domain"]:
+            return row["domain"]
+    except Exception:
+        pass
+    return domain if domain != "imported" else (project or domain)
+
+
 def _run_ingest_directory(
     directory: str,
     source_format: str,
     domain: str,
+    project: str | None,
     db_path: str | None,
     recursive: bool,
 ) -> None:
@@ -128,7 +187,7 @@ def _run_ingest_directory(
     for fpath in sorted(files):
         click.echo(f"\nImporting: {fpath}")
         try:
-            results = asyncio.run(_ingest_file_async(fpath, source_format, domain, db_path))
+            results = asyncio.run(_ingest_file_async(fpath, source_format, domain, project, db_path))
             for result in results:
                 _print_result(result)
             all_results.extend(results)
@@ -141,6 +200,9 @@ def _run_ingest_directory(
         f"\nImported {len(all_results)} conversation(s) "
         f"from {len(files)} file(s): {total_turns} turns, {total_chunks} chunks."
     )
+    # Show the domain that was indexed into
+    effective_domain = domain if project is None else _resolve_domain_sync(domain, project, db_path)
+    click.echo(f"Indexed into domain: {effective_domain}")
 
 
 def _print_result(result) -> None:
@@ -158,13 +220,18 @@ def _print_result(result) -> None:
             click.echo(f"    Warning: {err}")
 
 
-async def _ingest_file_async(path: str, source_format: str, domain: str, db_path: str | None):
+async def _ingest_file_async(path: str, source_format: str, domain: str, project: str | None, db_path: str | None):
     """Async ingestion implementation."""
+    from aip.cli._db_path import ensure_db_dir, get_default_db_path, get_default_lexical_db_path
     from aip.orchestration.ingestion import pipeline as _pipeline
 
     if db_path is None:
-        os.makedirs("data", exist_ok=True)
-        db_path = "data/aip.db"
+        db_path = get_default_db_path()
+
+    ensure_db_dir(db_path)
+
+    # Resolve domain from project if --project is given
+    effective_domain = _resolve_domain(domain, project, db_path)
 
     stores = await _pipeline.create_ingestion_stores(db_path)
 
@@ -179,7 +246,7 @@ async def _ingest_file_async(path: str, source_format: str, domain: str, db_path
             embedding_provider=None,  # CLI runs offline-first, no Ollama assumed
             event_store=stores.event_store,
             source_format=fmt,
-            domain=domain,
+            domain=effective_domain,
         )
         return results
     finally:

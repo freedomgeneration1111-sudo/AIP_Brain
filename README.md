@@ -3,11 +3,120 @@
 [![CI](https://github.com/freedomgeneration1111-sudo/aip/actions/workflows/ci.yml/badge.svg)](https://github.com/freedomgeneration1111-sudo/aip/actions/workflows/ci.yml)
 
 **Product:** AI Poiesis (AIP) v0.1
-**Status:** Alpha — stabilization pass complete, no fake runtime success paths
+**Status:** Alpha — dogfood-ready vertical slice (ingest → ask → review → approve → export)
 
 A local-first sovereign knowledge engine with a three-layer architecture (foundation, orchestration, adapter), Protocol-based dependency injection, and an honest evaluation pipeline.
 
 > **No artifact may bypass DEFINER gates (§1.7).**
+
+## Quick Start — Dogfood Loop
+
+From a clean checkout, the following path works without source-code inspection:
+
+```bash
+# Install
+git clone https://github.com/freedomgeneration1111-sudo/aip.git
+cd aip
+uv sync
+
+# Initialize
+uv run aip init
+
+# Create a project
+uv run aip project create --name aip_loom --domain aip_loom
+
+# Ingest conversations
+uv run aip ingest directory examples/sample_threads --project aip_loom
+
+# Ask a question (works without model — shows NEEDS_CONFIGURATION + retrieved sources)
+uv run aip ask "What have we decided about artifact storage?" \
+  --project aip_loom \
+  --source all \
+  --show-context
+
+# With a model configured, save the answer as a reviewable artifact
+export AIP_SYNTHESIS_BASE_URL="https://api.openai.com/v1"
+export AIP_SYNTHESIS_MODEL="gpt-4o"
+export AIP_SYNTHESIS_API_KEY="sk-..."
+
+uv run aip ask "What have we decided about artifact storage?" \
+  --project aip_loom \
+  --source all \
+  --show-context \
+  --save-artifact
+
+# Review and approve
+uv run aip review list --project aip_loom
+uv run aip review show <artifact_id>
+uv run aip review sources <artifact_id>
+uv run aip review approve <artifact_id>
+
+# Export to markdown
+uv run aip export artifact <artifact_id> \
+  --format markdown \
+  --out ./exports/output.md
+```
+
+**Full first-run guide:** [`DOGFOOD_READY.md`](DOGFOOD_READY.md)
+
+## CLI Usage
+
+```bash
+# System
+uv run aip init                              # Initialize databases and config
+uv run aip status                            # Show system status and store health
+
+# Project management
+uv run aip project create --name X --domain Y  # Create a project
+uv run aip project list                       # List projects
+
+# Ingestion
+uv run aip ingest file <path> --project X     # Import a conversation file
+uv run aip ingest directory <path> --project X # Import all files in a directory
+# (also supports --domain instead of --project)
+
+# Ask
+uv run aip ask "<question>" --project X       # Ask a source-grounded question
+uv run aip ask "<question>" --project X --save-artifact  # Save answer as draft artifact
+uv run aip ask "<question>" --project X --show-context   # Show retrieved context
+
+# Review
+uv run aip review list --project X            # List artifacts pending review
+uv run aip review show <artifact_id>          # Show artifact content and lifecycle
+uv run aip review sources <artifact_id>       # Show source/provenance links
+uv run aip review approve <artifact_id>       # Approve (GENERATED → REVIEWED → APPROVED)
+uv run aip review reject <artifact_id> --note "reason"  # Reject artifact
+uv run aip review needs-revision <artifact_id> --note "instruction"  # Request revision
+
+# Export
+uv run aip export artifact <artifact_id> --format markdown --out ./out.md
+uv run aip export project <name> --format markdown --out ./out.md
+```
+
+## Running Tests
+
+```bash
+# Full test suite (900+ tests)
+uv run pytest
+
+# Dogfood smoke test (clean-checkout verification)
+bash scripts/dogfood_smoke_test.sh
+
+# Specific modules
+uv run pytest tests/test_ingestion.py
+uv run pytest tests/test_ask.py
+uv run pytest tests/test_review_export.py
+
+# With coverage
+uv run pytest --cov=aip --cov-report=term-missing
+```
+
+## Lint & Format
+
+```bash
+uv run ruff format .     # Format all Python files
+uv run ruff check .      # Lint check (blocking in CI)
+```
 
 ## What AIP Does
 
@@ -19,8 +128,9 @@ flagged (`ci_fixture=True`) and blocked from production promotion. Default score
 failure.
 - **Real model dispatch**: `ModelSlotResolver` supports Ollama and OpenAI-compatible HTTP calls with environment variable configuration. No model call silently returns a placeholder.
 - **Async-safe storage**: All adapter-layer SQLite stores use `aiosqlite` — no blocking `sqlite3.connect()` inside async methods.
-- **L4 trajectory monitoring**: Failure streak detection, anxiety detection, and loop detection with configurable thresholds and context reset.
-- **Autonomy gate**: All privileged writes (admin escalation, artifact promotion) go through an audited AutonomyGate. Non-DEFINERs cannot bypass authorization.
+- **Unified datastore**: All CLI commands use the same database path (initialized by `aip init`). No manual `--db-path` needed for the normal dogfood path.
+- **Source-grounded answers**: Every generated answer includes provenance back to ingested sources. No fabricated information.
+- **Review and export**: Artifacts go through explicit ECS lifecycle transitions. Only APPROVED artifacts export without `--force`.
 
 ## Architecture
 
@@ -29,111 +139,37 @@ src/aip/
 ├── foundation/          # Pure validation, schemas, protocols, ECS graph
 │   ├── ecs_graph.py     # Declarative ECS state machine (gold standard)
 │   ├── protocols/       # Protocol interfaces for DI (7 domain modules)
-│   │   ├── storage.py   # VectorStore, LexicalStore, CanonicalStore, ArtifactStore, etc.
-│   │   ├── model.py     # ModelProvider, EmbeddingProvider
-│   │   ├── auth.py      # AuthStore, AutonomyGate
-│   │   ├── budget.py    # BudgetStore
-│   │   ├── actors.py    # VigilStore
-│   │   ├── knowledge.py # KnowledgeStore
-│   │   └── plugin.py    # PluginProvider
-│   ├── schemas/         # Dataclass definitions (11 domain modules)
-│   │   ├── base.py      # EcsState, ContractRule, Event, etc.
-│   │   ├── auth.py      # AutonomyLevel, AuthRole, CollaboratorConfig
-│   │   ├── evaluation.py # EvaluationScore, FaithfulnessResult, FailureClassification
-│   │   ├── review.py    # ReviewVerdict, CanonicalPromotionConfig
-│   │   └── ...          # retrieval, trajectory, workflow, vector, budget, surface, config
+│   ├── schemas/         # Dataclass definitions (ingestion, ask, review, etc.)
 │   └── validation.py    # Structural validation rules
 ├── orchestration/       # Business logic, evaluation, actors
+│   ├── ingestion/       # Parse → persist → chunk → index pipeline
+│   ├── ask_pipeline.py  # Retrieve → assemble → dispatch → persist pipeline
+│   ├── review_export_pipeline.py  # Review, approve, reject, export pipeline
 │   ├── actors/          # Beast (health/corpus), Vigil (canonical monitoring)
-│   │   ├── beast.py     # Health checks, corpus maintenance, entity consistency
-│   │   └── vigil.py     # Canonical health monitoring, model-slot re-evaluation
-│   ├── sexton/          # Failure classification, intervention rules, ACE playbooks
-│   ├── workflow/        # YAML-driven workflow engine
-│   │   ├── node.py      # ScriptNode (disabled), AgentNode, ConditionNode, ReviewNode, etc.
-│   │   ├── runner.py    # SequentialRunner with pause/resume
-│   │   ├── loader.py    # YAML workflow parser
-│   │   └── workflow_01.py # Default workflow with evaluation + commit pipeline
-│   ├── canonical_pipeline.py # Artifact evaluation + promotion pipeline
-│   ├── review.py        # Review orchestration (PENDING verdicts in production)
-│   └── ...              # retrieval, session, router, budget, recovery, embed_providers
+│   ├── sexton/          # Failure classification, intervention rules
+│   └── workflow/        # YAML-driven workflow engine
 └── adapter/             # External interfaces and storage
     ├── api/             # FastAPI app + 11 routers
-    ├── auth/            # Session store, middleware, collaborator management
-    ├── cli/             # Click-based CLI (init, status, session, project, config)
-    ├── mcp/             # MCP tool server (scaffold — returns structured NOT_IMPLEMENTED)
-    ├── vector/          # pgvector / sqlite-vss / in-memory factory + migration
+    ├── cli/             # Click-based CLI (init, status, ingest, ask, review, export)
+    ├── artifact_store_versioned.py # Version-preserved artifact storage
+    ├── ecs_store_persistent.py # Persistent ECS state machine
+    ├── event_store_queryable.py  # Append-only event store with query
+    ├── lexical/         # FTS5 full-text search store
+    ├── vector/          # pgvector / sqlite-vss / in-memory factory
     ├── canonical/       # Canonical store with DEFINER enforcement
-    ├── autonomy/        # AutonomyGate with audit trail
-    ├── ecs_store_persistent.py # SQLite-backed ECS store (survives restart)
-    ├── review_queue_store.py   # SQLite-backed review queue for MANUAL mode
-    └── ...              # Entity, event, budget, vigil, lexical, embedding stores
+    ├── project/         # SQLite project store
+    └── ...              # Auth, budget, vigil, embedding, autonomy stores
 ```
 
 Layer discipline: `adapter` → `foundation` only; `orchestration` → `foundation` only; `adapter` never imports `orchestration` directly.
-
-## Quick Start
-
-### Prerequisites
-
-- Python 3.11+
-- [uv](https://github.com/astral-sh/uv) (recommended) or pip
-- Ollama (optional, for real model inference)
-
-### Install & Run
-
-```bash
-# Clone and install
-git clone https://github.com/freedomgeneration1111-sudo/aip.git
-cd aip
-uv sync
-
-# Initialize a project (creates config, database files)
-uv run aip init
-
-# Start the API server
-uv run uvicorn aip.adapter.api.app:create_app --factory --reload
-
-# Or use Docker (laptop profile — SQLite + Ollama)
-cd deploy
-docker compose --profile laptop up --build
-```
-
-### Running Tests
-
-```bash
-# Full test suite (760+ tests)
-uv run pytest
-
-# Specific modules
-uv run pytest tests/test_definer_gate.py
-uv run pytest tests/acceptance/
-
-# With coverage
-uv run pytest --cov=aip --cov-report=term-missing
-```
-
-### CLI Usage
-
-```bash
-uv run aip init          # Initialize project with hardware detection
-uv run aip status        # Show system status and store health
-uv run aip session start # Start a new session
-uv run aip project list  # List projects
-uv run aip config show   # Display current configuration
-```
-
-### Lint & Format
-
-```bash
-uv run ruff format .     # Format all Python files
-uv run ruff check .      # Lint check (blocking in CI)
-```
 
 ## Configuration
 
 Primary config file: `config/aip.config.toml`
 
 Key sections:
+- `[database]` — `db_path` (default: `db/state.db`)
+- `[vector_backend]` — provider, host, port
 - `[embedding]` — provider ("fake" for CI, "ollama" for real)
 - `[auth]` — auth_enabled, session timeout, bcrypt rounds
 - `[deployment]` — profile (laptop/production), vector backend, model provider
@@ -142,8 +178,11 @@ Key sections:
 - `[review]` — faithfulness/coherence thresholds, definer approval requirements
 
 Environment variable overrides:
+- `AIP_DB_PATH` — Override default database path
+- `AIP_SYNTHESIS_BASE_URL` — Synthesis model API endpoint
+- `AIP_SYNTHESIS_MODEL` — Synthesis model name
+- `AIP_SYNTHESIS_API_KEY` — Synthesis model API key
 - `AIP_OLLAMA_BASE_URL` — Ollama endpoint (default: `http://localhost:11434`)
-- `AIP_OPENAI_API_KEY` — OpenAI-compatible API key
 - `AIP_<SLOT>_BASE_URL` — Per-slot provider URL override
 - `CI=true` — CI mode (deterministic fixtures, no network calls)
 
@@ -151,32 +190,28 @@ Environment variable overrides:
 
 | Capability | Status | Notes |
 |---|---|---|
-| Artifact CRUD + versioned storage | Working | |
-| ECS state machine (persistent SQLite) | Working | Survives restart |
-| Structural validation (3 rules) | Working | |
-| L3a evaluation (faithfulness, domain coherence) | Working | Model dispatch or CI fixture |
-| L3b adversarial evaluation | Working | Model dispatch or CI fixture |
+| Conversation ingestion (ChatGPT, markdown, plaintext) | Working | `aip ingest file/directory` |
+| FTS5 full-text search | Working | Persistent lexical index |
+| Source-grounded ask pipeline | Working | `aip ask` with provenance |
+| ECS state machine (persistent SQLite) | Working | SPECIFIED→GENERATED→REVIEWED→APPROVED→SUPERSEDED |
+| Review, approve, reject, needs-revision | Working | `aip review list/show/sources/approve/reject/needs-revision` |
+| Markdown export with metadata | Working | `aip export artifact/project` |
+| Unified datastore (single db/state.db) | Working | All CLI commands share same DB |
+| Project-domain alignment (--project on ingest) | Working | `aip ingest --project X` resolves domain |
+| Model provider dispatch (Ollama, OpenAI) | Working | Environment variable configuration |
 | DEFINER gate (AUTO_APPROVE_STUB + MANUAL) | Working | MANUAL uses ReviewQueueStore |
-| Review pipeline (PENDING verdicts) | Working | No auto-approve in production |
 | Canonical promotion with DEFINER approval | Working | |
-| Model provider dispatch (Ollama, OpenAI) | Working | |
-| Ollama embedding client | Working | |
 | Beast actor (health, corpus, entity checks) | Working | Background scheduler |
 | Autonomy gate with audit trail | Working | |
 | FastAPI API (11 routers) | Working | |
-| CLI (init, status, session, project, config) | Working | |
-| Rate limiting (token bucket) | Working | |
-| FTS5 full-text search | Working | |
-| Vector search (pgvector / sqlite-vss / in-memory) | Working | |
-| Vector migration (cursor + probe) | Working | Cursor-based when supported |
-| Budget tracking | Working | |
 | L4 trajectory monitoring | Working | |
-| Vigil model-slot re-evaluation | Working | Marks canonicals for re-evaluation |
-| Sexton intervention derivation | Working | Deterministic rules for known conditions |
-| Performance API | Working | Returns DISABLED/BACKEND_UNAVAILABLE when unconfigured |
-| MCP tool server | Scaffold | Tool listing + autonomy gate real; dispatch returns structured NOT_IMPLEMENTED |
-| ScriptNode execution | Disabled | Returns structured DISABLED in production; fixture mode only for tests |
-| Config safety validation | Working | Blocks unsafe production configs at startup |
+| Vigil model-slot re-evaluation | Working | |
+| Sexton intervention derivation | Working | |
+| Config safety validation | Working | |
+| Vector search (pgvector / sqlite-vss / in-memory) | Working | |
+| Dogfood smoke test | Working | `bash scripts/dogfood_smoke_test.sh` |
+| MCP tool server | Scaffold | Returns structured NOT_IMPLEMENTED |
+| ScriptNode execution | Disabled | Production safe |
 
 ## CI
 
@@ -184,28 +219,15 @@ CI runs on every push and pull request to `main`. The workflow (`.github/workflo
 dependencies with `uv`, runs both `ruff format --check .` and `ruff check .` as **blocking gates**, and executes
 the full test suite with `CI=true`.
 
-## Alpha Limitations
-
-- **MCP dispatch is scaffold**: Tool listing and autonomy gate are real, but actual tool dispatch returns
-  structured `NOT_IMPLEMENTED` responses. Search, approval, and config operations do not execute real logic
-  through MCP yet.
-- **ScriptNode is disabled**: Production workflows cannot execute arbitrary scripts. Fixture mode allows test
-  simulation only.
-- **Adaptive router is not adaptive**: `update_weights()` is a no-op. Exploration/exploitation uses random
-  sampling.
-- **Review queue UI is minimal**: MANUAL mode review is functional via API/CLI, but there is no web-based
-  approval interface.
-- **Per-component performance metrics are estimated**: The PerformanceProfiler uses proportional breakdown
-  rather than per-component measurement.
-- **Vigil marks all canonicals on model-slot change**: Conservative re-evaluation marking; a more targeted
-  approach is deferred.
-
 ## Documentation
 
+- [`DOGFOOD_READY.md`](DOGFOOD_READY.md) — First-run dogfood guide (start here!)
 - `STATUS.md` — Current project status, maturity, and known issues
 - `docs/ARCHITECTURE.md` — Architecture overview and design principles
 - `docs/CONFIGURATION.md` — Configuration reference
-- `docs/implementation_status.md` — Detailed module-by-module analysis
+- `docs/internal/ingestion.md` — Ingestion pipeline documentation
+- `docs/internal/ask.md` — Ask pipeline documentation
+- `docs/internal/review_export.md` — Review and export pipeline documentation
 - `deploy/README.md` — Docker deployment guide
 
 ## License

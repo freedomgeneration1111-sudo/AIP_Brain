@@ -147,7 +147,7 @@ artifacts. Use `--state` to filter by other states.
 Options:
 - `--project` (required): Project name
 - `--state`: Filter by lifecycle state (can be specified multiple times; default: GENERATED)
-- `--db-path`: SQLite database path
+- `--db-path`: SQLite database path (default: `db/state.db`)
 
 ### `aip review show <artifact_id>`
 
@@ -201,7 +201,7 @@ Options:
 - `--format`: Export format (currently only "markdown")
 - `--out` (required): Output file path
 - `--force`: Force export of rejected or unreviewed artifacts
-- `--db-path`: SQLite database path
+- `--db-path`: SQLite database path (default: `db/state.db`)
 
 ### `aip export project <project_name> --format markdown --out <path>`
 
@@ -218,7 +218,7 @@ Options:
 - `--format`: Export format (currently only "markdown")
 - `--out` (required): Output file path
 - `--include-unreviewed`: Include GENERATED/REVIEWED artifacts
-- `--db-path`: SQLite database path
+- `--db-path`: SQLite database path (default: `db/state.db`)
 
 ## How Review Notes Are Stored
 

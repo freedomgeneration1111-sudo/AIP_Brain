@@ -13,15 +13,9 @@ import click
 
 
 def _get_db_path() -> str:
-    """Resolve database path from config or default."""
-    config_path = Path("config/aip.config.toml")
-    if config_path.exists():
-        for line in config_path.read_text().splitlines():
-            stripped = line.strip()
-            if stripped.startswith("db_path"):
-                _, _, val = stripped.partition("=")
-                return val.strip().strip('"').strip("'")
-    return "db/state.db"
+    """Resolve database path from shared config utility."""
+    from aip.cli._db_path import get_default_db_path
+    return get_default_db_path()
 
 
 @click.group("project")
@@ -57,6 +51,7 @@ def list_projects() -> None:
 
         if not rows:
             click.echo("No projects found.")
+            click.echo("Create one with: aip project create --name <name> --domain <domain>")
             return
 
         click.echo(f"Projects ({len(rows)}):")
@@ -93,6 +88,9 @@ def create_project(name: str, domain: str) -> None:
         project_id = str(uuid.uuid4())[:8]
         _result = asyncio.run(store.create_project(project_id=project_id, name=name, domain=domain))
         click.echo(f"Created project: {project_id} — {name} [{domain}]")
+        click.echo(f"  Ingest with: aip ingest directory <path> --project {name}")
+        click.echo(f"  Or: aip ingest directory <path> --domain {domain}")
+        click.echo(f"  Ask with: aip ask \"<question>\" --project {name}")
     except ImportError:
         # Fallback: direct SQL
         try:
@@ -105,6 +103,8 @@ def create_project(name: str, domain: str) -> None:
             conn.commit()
             conn.close()
             click.echo(f"Created project: {project_id} — {name} [{domain}]")
+            click.echo(f"  Ingest with: aip ingest directory <path> --project {name}")
+            click.echo(f"  Ask with: aip ask \"<question>\" --project {name}")
         except Exception as exc:
             click.echo(f"Error creating project: {exc}")
     except Exception as exc:

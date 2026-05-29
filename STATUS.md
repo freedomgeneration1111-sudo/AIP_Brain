@@ -36,6 +36,7 @@ Production configuration is **enforced programmatically**. Unsafe configs fail a
 
 - **Tests:** 763 passing, 15 skipped (sqlite_vss extension), 0 failures
 - **Architecture:** Three-layer (foundation → orchestration → adapter)
+- **Default DB path:** `db/state.db` (SQLite, laptop profile)
 - **Scaffolding:** ~5-8% overall (MCP dispatch, adaptive router, ScriptNode sandbox)
 - **Docker:** Laptop and production profiles with programmatic config validation
 - **Lint:** ruff format + ruff check (E, F, W, I) — all passing, blocking in CI
@@ -115,6 +116,13 @@ production-ready for deployment with real user data. Specific blockers:
 3. No sandbox for ScriptNode execution
 4. No review queue web UI for MANUAL mode
 5. Per-component performance metrics are estimated, not measured
+
+## Dogfood Loop
+
+AIP runs its own ingest → ask → review → export pipeline on AIP development
+conversations. The project eats its own dog food: architecture decisions, design
+discussions, and meeting transcripts are ingested into `db/state.db` and queried
+via `aip ask` to ground future design work in prior decisions.
 
 ## Next Priorities
 

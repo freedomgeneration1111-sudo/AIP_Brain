@@ -12,7 +12,6 @@ Provides ``aip review`` with subcommands:
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 
 import click
@@ -31,7 +30,7 @@ def review() -> None:
 @review.command("list")
 @click.option("--project", required=True, help="Project name to list artifacts for.")
 @click.option("--state", multiple=True, help="Filter by lifecycle state (default: GENERATED).")
-@click.option("--db-path", default=None, help="SQLite database path (default: data/aip.db).")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
 def review_list(project: str, state: tuple[str, ...], db_path: str | None) -> None:
     """List artifacts pending review for a project.
 
@@ -39,7 +38,7 @@ def review_list(project: str, state: tuple[str, ...], db_path: str | None) -> No
     """
     try:
         result = asyncio.run(_review_list_async(project, state, db_path))
-        _print_list_result(result)
+        _print_list_result(result, project)
     except Exception as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
@@ -47,7 +46,7 @@ def review_list(project: str, state: tuple[str, ...], db_path: str | None) -> No
 
 @review.command("show")
 @click.argument("artifact_id")
-@click.option("--db-path", default=None, help="SQLite database path (default: data/aip.db).")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
 def review_show(artifact_id: str, db_path: str | None) -> None:
     """Show artifact content and lifecycle details.
 
@@ -64,7 +63,7 @@ def review_show(artifact_id: str, db_path: str | None) -> None:
 
 @review.command("sources")
 @click.argument("artifact_id")
-@click.option("--db-path", default=None, help="SQLite database path (default: data/aip.db).")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
 def review_sources(artifact_id: str, db_path: str | None) -> None:
     """Display source/provenance links for an artifact.
 
@@ -81,7 +80,7 @@ def review_sources(artifact_id: str, db_path: str | None) -> None:
 
 @review.command("approve")
 @click.argument("artifact_id")
-@click.option("--db-path", default=None, help="SQLite database path (default: data/aip.db).")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
 def review_approve(artifact_id: str, db_path: str | None) -> None:
     """Approve a generated artifact through the existing ECS lifecycle.
 
@@ -101,7 +100,7 @@ def review_approve(artifact_id: str, db_path: str | None) -> None:
 @review.command("reject")
 @click.argument("artifact_id")
 @click.option("--note", default="", help="Reason for rejection.")
-@click.option("--db-path", default=None, help="SQLite database path (default: data/aip.db).")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
 def review_reject(artifact_id: str, note: str, db_path: str | None) -> None:
     """Reject a generated artifact. Preserves artifact and source links.
 
@@ -119,7 +118,7 @@ def review_reject(artifact_id: str, note: str, db_path: str | None) -> None:
 @review.command("needs-revision")
 @click.argument("artifact_id")
 @click.option("--note", default="", help="Revision instruction for the artifact.")
-@click.option("--db-path", default=None, help="SQLite database path (default: data/aip.db).")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
 def review_needs_revision(artifact_id: str, note: str, db_path: str | None) -> None:
     """Mark artifact as needing revision. Preserves artifact and source links.
 
@@ -140,9 +139,11 @@ def review_needs_revision(artifact_id: str, note: str, db_path: str | None) -> N
 
 
 def _get_db_path(db_path: str | None) -> str:
+    from aip.cli._db_path import ensure_db_dir, get_default_db_path
+
     if db_path is None:
-        os.makedirs("data", exist_ok=True)
-        return "data/aip.db"
+        db_path = get_default_db_path()
+    ensure_db_dir(db_path)
     return db_path
 
 
@@ -212,17 +213,20 @@ async def _review_needs_revision_async(artifact_id: str, note: str, db_path: str
 # ---------------------------------------------------------------------------
 
 
-def _print_list_result(result: dict) -> None:
+def _print_list_result(result: dict, project_name: str = "") -> None:
     if "error" in result:
         err = result["error"]
         click.echo(f"Error: {err['message']}", err=True)
+        if "NOT_FOUND" in err.get("code", ""):
+            click.echo(f"Create it with: aip project create --name {project_name} --domain {project_name}")
         sys.exit(1)
 
     artifacts = result.get("artifacts", [])
-    project = result.get("project", "")
+    project = result.get("project", project_name)
 
     if not artifacts:
         click.echo(f"No artifacts found for project '{project}'.")
+        click.echo(f"Generate one with: aip ask \"<question>\" --project {project} --save-artifact")
         return
 
     click.echo(f"Artifacts for project '{project}':")
