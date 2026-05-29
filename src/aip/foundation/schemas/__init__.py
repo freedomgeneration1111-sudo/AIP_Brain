@@ -8,7 +8,7 @@ continue to work unchanged.
 
 The actual definitions live in domain-specific sub-modules:
     base, retrieval, review, evaluation, trajectory,
-    workflow, vector, auth, budget, surface, config
+    workflow, vector, auth, budget, surface, config, ingestion
 """
 
 from __future__ import annotations
@@ -65,6 +65,14 @@ from .evaluation import (
     FaithfulnessResult,
     KnowledgeCompilationConfig,
     SextonConfig,
+)
+
+# -- ingestion --
+from .ingestion import (
+    ConversationTurn,
+    ImportedConversation,
+    IngestionResult,
+    SourceFormat,
 )
 
 # -- retrieval --
@@ -155,6 +163,11 @@ __all__ = [
     "BeastCadenceConfig",
     "WorkflowTemplate",
     "DeploymentProfile",
+    # ingestion
+    "SourceFormat",
+    "ConversationTurn",
+    "ImportedConversation",
+    "IngestionResult",
     # vector
     "VectorBackendType",
     "PgvectorConfig",

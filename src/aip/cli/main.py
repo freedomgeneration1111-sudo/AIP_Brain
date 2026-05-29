@@ -11,6 +11,7 @@ from pathlib import Path
 import click
 
 from aip.cli import config as config_cmd
+from aip.cli import ingest as ingest_cmd
 from aip.cli import init as init_cmd
 from aip.cli import project as project_cmd
 from aip.cli import session as session_cmd
@@ -31,6 +32,7 @@ def cli() -> None:
       aip validate  Validate config for production-safety issues
       aip project   Manage projects (list, create, show)
       aip session   Manage sessions (start, resume, list)
+      aip ingest    Import conversations into the knowledge substrate
     """
     pass
 
@@ -68,6 +70,7 @@ cli.add_command(status_cmd.status)
 cli.add_command(config_cmd.config)
 cli.add_command(project_cmd.project)
 cli.add_command(session_cmd.session)
+cli.add_command(ingest_cmd.ingest)
 cli.add_command(validate)
 
 
