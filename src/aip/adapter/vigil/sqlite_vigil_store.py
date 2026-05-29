@@ -1,8 +1,8 @@
 """SqliteVigilStore — implements VigilStore.
 
 Per spec: health table for canonicals + vigil_checks audit log.
-Read-only actor support (populated by 9.2 canonical pipeline).
-Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
+Read-only actor support (populated by canonical pipeline).
+Uses aiosqlite for async-safe database access.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from aip.foundation.protocols import VigilStore
 
 
 class SqliteVigilStore(VigilStore):
-    """SQLite implementation of VigilStore Protocol (Phase 7).
+    """SQLite implementation of VigilStore Protocol.
 
     Uses aiosqlite for async-compatible database access.
     """

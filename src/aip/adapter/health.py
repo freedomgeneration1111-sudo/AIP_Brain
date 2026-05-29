@@ -1,6 +1,5 @@
 """System health check — verifies all AIP components are operational.
 
-Per Phase 0: aip status command backend.
 Reports vector backend status and degradation.
 """
 

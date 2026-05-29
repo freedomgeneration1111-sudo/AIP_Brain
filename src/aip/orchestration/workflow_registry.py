@@ -1,6 +1,6 @@
 """WorkflowRegistry.
 
-Discovers YAML workflow templates (frontmatter + body) beyond the Phase 2 0.1 template.
+Discovers YAML workflow templates (frontmatter + body) beyond the default 0.1 template.
 Used by admin console and CLI.
 
 Updated for WorkflowTemplate schema: template_id, name, description, yaml_path,
@@ -18,7 +18,7 @@ from aip.foundation.schemas import WorkflowTemplate
 
 
 class WorkflowRegistry:
-    """Registry for extended workflow templates (Phase 7)."""
+    """Registry for extended workflow templates."""
 
     def __init__(self, workflows_dir: str = "workflows") -> None:
         self.workflows_dir = Path(workflows_dir)
@@ -66,12 +66,12 @@ class WorkflowRegistry:
             except Exception:
                 continue
 
-        # Always include the original Phase 2 template
+        # Always include the default synthesis session template
         if "synthesis_session_v1" not in self._templates:
             self._templates["synthesis_session_v1"] = WorkflowTemplate(
                 template_id="synthesis_session_v1",
                 name="Synthesis Session v1",
-                description="Original synthesis workflow from Phase 2",
+                description="Original synthesis workflow",
                 yaml_path="synthesis_session_v1.yaml",
             )
 

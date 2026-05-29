@@ -1,4 +1,4 @@
-"""Orchestration actors (Phase 5 + Phase 7)."""
+"""Orchestration actors."""
 
 from .beast import Beast
 from .vigil import Vigil

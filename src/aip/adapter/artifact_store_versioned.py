@@ -2,7 +2,7 @@
 
 Each write appends a new version; no version is ever overwritten.
 Uses SQLite for persistence.
-Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
+Uses aiosqlite for async-safe database access.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ class VersionedArtifactStore:
 
     Every version is preserved for provenance.
     Generated ≠ canonical — versions support separation.
-    Per Appendix D: artifact hash ≠ approval; supersession ≠ deletion.
+    Per architecture spec: artifact hash is not approval; supersession marks old entries, does not delete them.
 
     Uses aiosqlite for async-compatible database access.
     """

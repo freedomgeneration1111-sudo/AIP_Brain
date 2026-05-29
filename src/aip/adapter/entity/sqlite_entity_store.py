@@ -1,8 +1,7 @@
 """SQLite implementation of EntityStore Protocol.
 
-Per prose + ANNEX (exact).
-Separate from ProjectStore per Appendix D.
-Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
+Separate from ProjectStore per architecture spec.
+Uses aiosqlite for async-safe database access.
 """
 
 from __future__ import annotations

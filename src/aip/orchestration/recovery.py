@@ -1,6 +1,5 @@
 """WorkflowRecovery — orchestration component for interrupted workflow recovery.
 
-Per AIP_0_1_Phase8_BuildSpec_Rev1.0.md exact prose + box + ANNEX.
 Handles post-crash/restart resumption from checkpoints in state.db.
 Records recovery in trace_events.
 

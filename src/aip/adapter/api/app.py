@@ -1,7 +1,7 @@
 """FastAPI application factory + lifespan for AIP surfaces.
 
 Per spec prose + interfaces (exact).
-Wires 8.0a/8.0b adapters + full Phase 5 actor layer into AipContainer.
+Wires adapters and actor layer into AipContainer.
 All privileged writes go through AutonomyGate.
 
 Startup Classification
@@ -431,12 +431,12 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(memory.router, prefix="/api/v1", tags=["memory"])
     app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
 
-    # Phase 8 routers (.x)
+    # Additional routers
     app.include_router(collaborators.router, prefix="/api/v1", tags=["collaborators"])
     app.include_router(plugins.router, prefix="/api/v1", tags=["plugins"])
     app.include_router(performance.router, prefix="/api/v1", tags=["performance"])
 
-    # 9.4 Web UI static (minimal HTMX dashboard)
+    # Web UI static (HTMX dashboard)
     import pathlib
 
     from fastapi.staticfiles import StaticFiles

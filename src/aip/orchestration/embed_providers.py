@@ -1,8 +1,7 @@
-"""Embedding Providers (foundation for Phase 3 real embedding slot).
+"""Embedding Providers — configurable provider slots.
 
-Per Rev 1.3 Phase 3 notes and Architecture.
-In Phase 1/CI: always fake_embed (deterministic, zero external deps).
-In Phase 3+: can load a real provider (e.g. local Ollama embeddings or API)
+CI/stub mode: always fake_embed (deterministic, zero external deps).
+Production mode: can load a real provider (e.g. local Ollama embeddings or API)
 based on [embedding] section in config.
 
 This file provides the loader. Real provider support is now wired:

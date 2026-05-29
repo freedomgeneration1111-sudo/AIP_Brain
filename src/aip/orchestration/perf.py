@@ -1,7 +1,6 @@
 """PerformanceProfiler — orchestration component for profiling and metrics.
 
-Per AIP_0_1_Phase8_BuildSpec_Rev1.0.md exact prose + box + ANNEX.
-Cross-cutting. Uses PerformanceConfig (10.0a) + TraceStore.
+Cross-cutting. Uses PerformanceConfig + TraceStore.
 Synthetic deterministic (no real models/network in benchmarks).
 
 Issue 24: Fix get_slow_operations to query trace_store. Fix profile_operation

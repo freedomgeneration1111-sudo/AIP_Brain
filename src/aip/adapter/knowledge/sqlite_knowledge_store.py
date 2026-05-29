@@ -1,11 +1,10 @@
 """SQLite implementation of KnowledgeStore Protocol.
 
-Per AIP_0_1_Phase8_BuildSpec_Rev1.0.md exact prose + interfaces.
 Pure adapter-layer. Implements deferred compiled knowledge persistence
 with provenance and dual indexing into VectorStore + LexicalStore
-only on APPROVED state (same pattern as 9.2 canonical pipeline).
-Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
-Phase 10: real embeddings via injected EmbeddingProvider instead of zero vectors.
+only on APPROVED state.
+Uses aiosqlite for async-safe database access.
+Real embeddings via injected EmbeddingProvider.
 """
 
 from __future__ import annotations
@@ -32,8 +31,8 @@ logger = logging.getLogger(__name__)
 class SqliteKnowledgeStore(KnowledgeStore):
     """SQLite-backed KnowledgeStore.
 
-    Stores compiled knowledge artifacts (distinct from canonical artifacts per
-    Appendix D / Process Rule 12). Maintains separate provenance table for
+    Stores compiled knowledge artifacts (distinct from canonical artifacts —
+    no collapse). Maintains separate provenance table for
     source canonical chain.
 
     Dual-indexes content into VectorStore + LexicalStore **only** when state

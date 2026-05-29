@@ -12,7 +12,7 @@ router = APIRouter()
 async def list_projects(container: AipContainer = Depends(get_container)):
     if not container.project_store:
         raise HTTPException(503, "ProjectStore not wired")
-    # In real 8.1 the container.project_store would be the real one from Phase 3/4
+    # The container.project_store would be the real one
     return {"projects": []}  # scaffold shape
 
 

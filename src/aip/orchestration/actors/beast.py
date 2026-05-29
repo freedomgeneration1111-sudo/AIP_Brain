@@ -3,11 +3,10 @@
 Beast — cadence / corpus / entity maintenance.
 Deterministic (no LLM in main paths). Uses injected Protocols only.
 
-Phase 3 hardening: replaced fake health checks with real connectivity probes,
-replaced placeholder re-index loop with actual stale-vector detection via
+Real health checks with connectivity probes, stale-vector detection via
 list_stale_vectors() + re-embedding via EmbeddingProvider, properly
-injected EntityStore instead of getattr access, made ProjectStore optional,
-and added cadence run_cycle() for periodic scheduling.
+injected EntityStore, optional ProjectStore,
+and cadence run_cycle() for periodic scheduling.
 
 Usage via AipContainer:
     Beast is wired during application lifespan (app.py). To use it:
@@ -46,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 
 class Beast:
-    """Beast maintenance actor per Phase 5 prose + ANNEX.
+    """Beast maintenance actor.
 
     Performs real corpus maintenance (stale vector detection + re-embedding),
     entity consistency checks, and honest health reporting across all

@@ -1,4 +1,4 @@
-"""Embedding adapter package (Phase 3).
+"""Embedding adapter package.
 
 Currently contains the Ollama embedding client (real + mock for CI).
 """

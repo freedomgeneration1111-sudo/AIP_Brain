@@ -46,7 +46,7 @@ class RerankWeights:
 
 
 def fake_embed(text: str, dimensions: int = 768) -> list[float]:
-    """Deterministic fake embedding for Phase 1 CI (no real model calls).
+    """Deterministic fake embedding for CI (no real model calls).
 
     Uses SHA-256 hash for determinism (same input always produces same output,
     regardless of Python version or platform). Per spec.

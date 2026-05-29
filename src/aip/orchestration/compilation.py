@@ -1,10 +1,9 @@
 """KnowledgeCompiler — orchestration component for the Deferred Compiled Knowledge Layer.
 
-Per AIP_0_1_Phase8_BuildSpec_Rev1.0.md exact prose + box + ANNEX.
 Orchestration-layer only. Composes injected Protocols (no direct adapter impl imports).
 Fulfills "Deferred Compiled Knowledge Layer" (complementary to Vigil).
-Respects Appendix D non-collapse (KnowledgeStore is distinct peer).
-Uses only named model slots + config from 10.0a.
+Compiled knowledge and canonical artifacts are distinct (no collapse).
+Uses only named model slots + config.
 """
 
 from __future__ import annotations
@@ -32,7 +31,7 @@ class KnowledgeCompiler:
     """Orchestration-layer knowledge compiler.
 
     Synthesizes canonical artifacts into structured, indexed, retrievable
-    compiled knowledge (the "Wiki/Codex" functionality from Appendix D).
+    compiled knowledge (the "Wiki/Codex" functionality).
     """
 
     def __init__(

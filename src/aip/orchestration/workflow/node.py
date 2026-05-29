@@ -4,8 +4,7 @@ L5 Workflow Node abstractions (foundation).
 Defines the common contract and the five node type bases required by
 Architecture Rev 5.2.
 
-All storage access must go through injected protocols (enforced by
-the Phase 1 layering rules).
+All storage access must go through injected protocols.
 """
 
 from __future__ import annotations
@@ -103,7 +102,7 @@ class AgentNode(WorkflowNode):
         """
         Real agent execution for.
 
-        Uses the Phase 1 retrieval + synthesis path.
+        Uses the existing retrieval + synthesis path.
         Expects the following to be available via context.protocols or context:
           - vector_store (VectorStore protocol)
           - embed_fn (callable)
@@ -294,7 +293,7 @@ class ParallelNode(WorkflowNode):
         )
 
 
-# extensions: Review and Re-Synthesis nodes (additive)
+# extensions: Review and Re-Synthesis nodes
 
 from aip.orchestration.re_synthesize import re_synthesize
 from aip.orchestration.review import review_artifact
@@ -406,7 +405,7 @@ def _build_default_eval_fn(model_provider: Any, config: Any) -> Any:
 
 
 class ReviewNode(WorkflowNode):
-    """Node that runs the Phase 2 review gate (4.1).
+    """Node that runs the review gate (4.1).
 
     Evaluation function resolution order:
     1. Explicit eval_fn protocol in context
@@ -425,7 +424,7 @@ class ReviewNode(WorkflowNode):
         super().__init__(node_id, NodeType.DIALOG, config)  # Treated as dialog-like for pausing semantics
 
     async def run(self, context: "WorkflowContext") -> NodeResult:
-        # Prefer the Phase 2 versioned/queryable stores (4.3/4.4) when available
+        # Prefer the versioned/queryable stores when available
         artifact_store = context.get_protocol("versioned_artifact_store") or context.get_protocol("artifact_store")
         ecs_store = context.get_protocol("guardrailed_ecs_store") or context.get_protocol("ecs_store")
         event_store = context.get_protocol("queryable_event_store") or context.get_protocol("event_store")
@@ -526,7 +525,7 @@ class ReSynthesizeNode(WorkflowNode):
         super().__init__(node_id, NodeType.AGENT, config)  # Agent-like (can consume tokens)
 
     async def run(self, context: "WorkflowContext") -> NodeResult:
-        # Prefer the Phase 2 versioned/queryable stores (4.3/4.4) when available
+        # Prefer the versioned/queryable stores when available
         artifact_store = context.get_protocol("versioned_artifact_store") or context.get_protocol("artifact_store")
         ecs_store = context.get_protocol("guardrailed_ecs_store") or context.get_protocol("ecs_store")
         event_store = context.get_protocol("queryable_event_store") or context.get_protocol("event_store")
@@ -549,7 +548,7 @@ class ReSynthesizeNode(WorkflowNode):
             )
 
         try:
-            # Use the Phase 1 synthesis stub as the synthesize_fn for now
+            # Use the synthesis stub as the synthesize_fn for now
             from aip.orchestration.nodes.synthesis import synthesize as phase1_synth
 
             async def synth_wrapper(artifact_id, failure_context):

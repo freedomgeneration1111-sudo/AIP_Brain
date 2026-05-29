@@ -3,7 +3,7 @@
 Append-only: events are never modified or deleted.
 Supports query by artifact_id and event_type for review,
 DEFINER audit, and Sexton failure analysis.
-Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
+Uses aiosqlite for async-safe database access.
 """
 
 from __future__ import annotations

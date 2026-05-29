@@ -33,7 +33,7 @@ async def get_artifact(artifact_id: str, container: AipContainer = Depends(get_c
 
 @router.get("/artifacts/{artifact_id}/versions")
 async def get_versions(artifact_id: str, container: AipContainer = Depends(get_container)):
-    # Uses VersionedArtifactStore from 4.0b/Phase 2
+    # Uses VersionedArtifactStore
     return {"artifact_id": artifact_id, "versions": []}
 
 

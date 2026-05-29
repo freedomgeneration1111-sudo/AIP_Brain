@@ -49,7 +49,7 @@ class McpToolDef:
     """A single MCP tool definition.
 
     MCP/API surface.
-    Per Appendix D: "MCP ≠ bypass", "MCP ≠ vector_store.retrieve() directly."
+    MCP routes through Protocols, not around them.
     model_gen_assumption tags what model limitation this tool compensates for.
     """
 

@@ -2,9 +2,6 @@
 
 Minimal implementation: provides list_projects() so Beast and other
 actors can iterate over projects for corpus maintenance and health checks.
-
-Phase 3 addition: fills the gap where ProjectStore had only a Protocol
-and no concrete adapter, leaving container.project_store as None.
 """
 
 from __future__ import annotations

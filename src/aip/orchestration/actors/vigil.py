@@ -1,7 +1,7 @@
 """Vigil actor.
 
 Last missing orchestration actor.
-Read-only (per Appendix D + Process Rule 12): monitors, detects,
+Read-only: monitors, detects,
 creates trace events for Sexton; never modifies canonicals.
 Complementary to Sexton (classifies failures) and Beast (maintains vectors).
 """
@@ -22,7 +22,7 @@ from aip.foundation.schemas import ModelSlotConfig, VigilConfig
 
 
 class Vigil:
-    """Vigil — compiled knowledge maintenance actor (Phase 7)."""
+    """Vigil — compiled knowledge maintenance actor."""
 
     def __init__(
         self,

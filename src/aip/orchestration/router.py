@@ -8,7 +8,7 @@ recommend_exploration_weight. Records to routing_outcomes and consumption.
 Placed at orchestration/router.py per spec. All storage access via injected
 Protocols (ModelSlotResolver + BudgetManager). No direct adapter imports.
 
-Phase 3: update_weights() now uses real routing outcome history.
+update_weights() uses real routing outcome history.
 recommend_exploration_weight() derives from actual domain sample counts.
 """
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class AdaptiveRouter:
-    """Adaptive Router per Phase 5 and prose/ANNEX.
+    """Adaptive Router.
 
     Maintains a per-(slot, domain) weight table that is updated from
     routing outcome history. Exploration vs exploitation is driven by

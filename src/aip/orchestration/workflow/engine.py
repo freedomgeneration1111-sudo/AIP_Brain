@@ -22,7 +22,7 @@ from aip.orchestration.workflow.definition import WorkflowDefinition
 from aip.orchestration.workflow.loader import load_workflow_from_yaml
 from aip.orchestration.workflow.runner import SequentialRunner
 
-# L4 wiring (additive, backward safe) — lazy to avoid circular imports at module load time
+# L4 wiring — lazy to avoid circular imports at module load time
 # from aip.orchestration.l4.monitor import TrajectoryMonitor
 # from aip.orchestration.l4.reset import L4ResetCoordinator
 
@@ -65,7 +65,7 @@ class WorkflowEngine:
     ):
         self.vector_store = vector_store
         # Use config-driven embed provider (fake by default for CI/tests;
-        # real provider when [embedding] section specifies one in Phase 3+).
+        # real provider when configured
         if embed_fn is not None:
             self.embed_fn = embed_fn
         else:
@@ -111,10 +111,10 @@ class WorkflowEngine:
                 pass
 
             async def get_recent_events(self, session_id: str, limit: int = 100) -> list[dict]:
-                return []  # L4/additive compat for no-op path
+                return []  # L4 compat for no-op path
 
             async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
-                return []  # Sexton/additive compat for no-op path
+                return []  # Sexton compat for no-op path
 
         class _NoopStore:
             async def write(self, *a, **k):
@@ -126,7 +126,7 @@ class WorkflowEngine:
         trace_for_use = self.trace_store or _NoopTraceStore()
         artifact_for_use = self.artifact_store or _NoopStore()
 
-        # L4 default wiring (additive, backward-compatible):
+        # L4 default wiring:
         # Any caller supplying a real trace_store automatically gets a
         # TrajectoryMonitor + L4ResetCoordinator in the protocol dict.
         # Existing call sites and nodes continue to work unchanged.

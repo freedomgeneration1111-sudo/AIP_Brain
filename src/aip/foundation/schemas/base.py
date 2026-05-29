@@ -1,6 +1,6 @@
 """Core enums, base types, and event-sourcing primitives.
 
-Phase 0 foundation types: contracts, ECS lifecycle, failure taxonomy,
+Foundation types: contracts, ECS lifecycle, failure taxonomy,
 and event-store read models. These are the bedrock types that other
 domain modules may reference but never depend on higher-level schemas.
 """
@@ -35,19 +35,19 @@ class EcsState(Enum):
 # Literal type aliases
 # ---------------------------------------------------------------------------
 
-# Phase 0 model slot names
+# Standard model slot names
 ModelSlotName = Literal["synthesis", "evaluation", "sexton", "embedding"]
 
-# Phase 0 / Appendix E failure type codes
+# Failure type codes (see architecture Appendix E)
 FailureType = Literal["A", "B", "C", "D", "E", "F"]
 
-# Phase 0 outcome types
+# Standard outcome types
 OutcomeType = Literal["success", "failure", "timeout", "gate_blocked", "insufficient_memory"]
 
-# Phase 2 alias (same values as FailureType, kept for backward compat)
+# Alias for backward compatibility (same values as FailureType)
 FailureTypeCode = Literal["A", "B", "C", "D", "E", "F"]
 
-# Phase 7 Vigil health status
+# Vigil health status
 VigilHealthStatus = Literal["healthy", "stale", "degraded", "unknown"]
 
 

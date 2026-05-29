@@ -1,8 +1,7 @@
 """sqlite_vss implementation of the VectorStore protocol.
-Phase 1 vector backend. pgvector adapter is deferred to Phase 4.
-sqlite_vss is the permitted fallback for Phase 0-2 alpha.
-Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
-Phase 10: store() compat method no longer inserts zero vectors.
+SQLite-based vector backend. pgvector adapter available for production.
+Uses aiosqlite for async-safe database access.
+store() compat method generates real embeddings via EmbeddingProvider.
 
 Note: sqlite_vss extension loading requires enable_load_extension.
 aiosqlite supports this via conn.enable_load_extension() after connecting.
@@ -196,7 +195,7 @@ class SqliteVssVectorStore(VectorStore):
             await conn.close()
 
     async def store(self, chunk: Chunk) -> str:
-        """Phase 0 compat: store a Chunk, generating a real embedding.
+        """Store a Chunk, generating a real embedding.
 
         When an ``EmbeddingProvider`` is available, generates a real
         embedding from the chunk content and calls ``upsert()``.  This

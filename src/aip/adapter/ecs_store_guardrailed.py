@@ -40,7 +40,7 @@ class GuardrailedEcsStore(EcsStore):
     ) -> None:
         """Transition artifact between ECS states with guardrail validation.
 
-        S1 fix: superseded_by param preserved from Phase 1 signature.
+        S1 fix: superseded_by param preserved for backward compatibility.
 
         1. Query current state
         2. Assert from_state precondition if provided

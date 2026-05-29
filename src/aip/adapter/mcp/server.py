@@ -2,7 +2,7 @@
 
 Per spec: takes AipContainer, supports stdio/sse, list_tools() with McpToolDef
 (autonomy_level + model_gen_assumption), enforces gate for write/admin tools before dispatch.
-Appendix D: MCP ≠ bypass, MCP ≠ vector_store.retrieve() directly (all via Protocols).
+Appendix D: MCP routes through Protocols, not around them (no direct store access).
 """
 
 from __future__ import annotations

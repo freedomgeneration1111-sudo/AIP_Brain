@@ -1,7 +1,4 @@
-"""Memory Inspector routes  — all read-only, no AutonomyGate.
-
-Phase 3: added logging for silent exception handling.
-"""
+"""Memory Inspector routes  — all read-only, no AutonomyGate."""
 
 from __future__ import annotations
 
@@ -18,7 +15,7 @@ router = APIRouter()
 
 @router.get("/memory/trace/{session_id}")
 async def get_trace(session_id: str, container: AipContainer = Depends(get_container)):
-    # From TraceStore (Phase 3/5)
+    # From TraceStore
     if container.trace_store:
         try:
             events = await container.trace_store.query_events(session_id=session_id)

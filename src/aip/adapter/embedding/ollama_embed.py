@@ -1,4 +1,4 @@
-"""Ollama Embedding Client — Phase 3 real embedding slot.
+"""Ollama Embedding Client — real embedding via injected EmbeddingProvider.
 
 Implements EmbeddingProvider. Uses Ollama local embeddings.
 Supports deterministic mock mode for CI (no real Ollama required for the gate).

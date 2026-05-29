@@ -1,4 +1,4 @@
-"""Model Slot Resolver — Phase 3 real model wiring.
+"""Model Slot Resolver — real model wiring via configurable provider slots.
 
 Resolves named slots to concrete provider + model + base_url.
 Supports ci_mode for fully deterministic tests (no network).

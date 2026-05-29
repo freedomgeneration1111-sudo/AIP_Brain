@@ -113,7 +113,7 @@ class LexicalStore(Protocol):
     async def delete_document(self, doc_id: str) -> None:
         """Remove a document from the FTS5 index.
 
-        Per Appendix D: "Supersession ≠ deletion" — but stale
+        Per architecture spec: supersession marks old entries, does not delete them — but stale
         FTS5 entries should be cleaned up.
         """
         ...

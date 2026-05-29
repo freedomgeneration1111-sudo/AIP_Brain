@@ -1,10 +1,9 @@
 """Sexton Stale Rule Audit.
 
-Extends the delivered orchestration/sexton/ location (per Rule #10 reconciliation
-from the pre-7.3 CC and the 7.1 path decision). Reuses foundation audit helpers
+Extends the orchestration/sexton/ location. Reuses foundation audit helpers
 already present in sexton.py (audit_model_gen_assumption, trust_score).
 
-Per Phase 5 spec: reactive audit (triggered on slot change or DEFINER command),
+Reactive audit (triggered on slot change or DEFINER command),
 uses "sexton" slot via resolver for real assessments, deterministic heuristics
 in CI mode, writes EventStore events, and calls AcePlaybook.deprecate_entry for
 stale playbook entries (DEFINER retains final authority on ContractRules).
@@ -22,9 +21,7 @@ from aip.foundation.schemas import AcePlaybookEntry, ContractRule, ModelSlotConf
 class SextonAudit:
     """Sexton stale rule audit actor (orchestration layer).
 
-    Placed in the delivered sexton/ package to honor the permanent Rule #10
-    decision to extend real delivered files rather than create parallel
-    wrong-path actors/ implementations.
+    Placed in the sexton/ package alongside the base Sexton class.
     """
 
     def __init__(self, model_resolver: ModelProvider, event_store: EventStore) -> None:

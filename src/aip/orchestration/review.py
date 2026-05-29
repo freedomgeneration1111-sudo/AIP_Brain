@@ -76,7 +76,7 @@ async def review_artifact(
     context = ReviewContext(
         artifact_id=artifact_id,
         artifact_content=content,
-        artifact_version=1,  # will be populated by ArtifactStore in Phase 4.3
+        artifact_version=1,  # populated by ArtifactStore
         trace_events=[e.__dict__ if hasattr(e, "__dict__") else e for e in prior_events],
         prior_verdicts=prior_verdicts,
     )

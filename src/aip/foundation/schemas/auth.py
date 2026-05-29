@@ -79,7 +79,7 @@ class AuthConfig:
     """Configuration for the authentication system.
 
     Enforces DEFINER sovereignty at the identity level.
-    Phase 7 scope: single-DEFINER with API key support for non-interactive access (CLI/MCP).
+    Single-DEFINER with API key support for non-interactive access (CLI/MCP).
     Per INTERFACES: auth_enabled, session_timeout_seconds, api_key_enabled,
     bcrypt_rounds, definer_identity.
     """
@@ -95,7 +95,7 @@ class AuthConfig:
 class RateLimitConfig:
     """Token-bucket rate limiting configuration.
 
-    Per Phase 7 scope: prevents any single surface (Beast cadence, MCP, chat) from starving others.
+    Prevents any single surface (Beast cadence, MCP, chat) from starving others.
     Configurable.
     Per INTERFACES: requests_per_minute, burst_size, per_endpoint_overrides,
     model_budget_protection.

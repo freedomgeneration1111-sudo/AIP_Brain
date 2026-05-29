@@ -4,8 +4,7 @@ Provides the exact interface expected by the ANNEX and SessionManager:
 - regulate_trajectory
 - should_intervene
 
-This is an additive extension layer (per PHASE2_IMPORT_NOTES
-and "extend existing rather than replace" strategy). It re-uses the 5.5
+This is an extension layer. It re-uses the
 TrajectoryRegulator class (l4/regulator.py) for the 2-of-3 decision logic while
 providing the free-function shape the session manager and later engine integration
 expect.

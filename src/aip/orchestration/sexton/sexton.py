@@ -26,7 +26,7 @@ class Sexton:
     Sexton failure classification actor (implementation extending the
     foundation stub).
 
-    Per Phase 5 spec: receives SextonConfig + ModelSlotResolver ("sexton" slot)
+    Receives SextonConfig + ModelSlotResolver ("sexton" slot)
     + TraceStore + EventStore via injection. Never imports adapter storage
     implementations directly. Uses resolver for real classification; falls back
     to deterministic foundation logic in CI mode.
@@ -95,7 +95,7 @@ class Sexton:
 
         return classified
 
-    # full Sexton interface per Phase 5 spec (extends foundation)
+    # Full Sexton interface (extends foundation)
 
     async def classify_failures(self) -> list[FailureClassification]:
         """Batch classify unclassified failures (7.1 prose)."""
@@ -278,7 +278,7 @@ class Sexton:
                 # Sexton can leave them or confirm
                 return None
 
-        # Retrieval / L2 patterns (from Phase 1 code)
+        # Retrieval / L2 patterns (from existing retrieval code)
         if node_type == "L2" and (
             "insufficient" in detail or "max confidence" in detail or "below threshold" in detail
         ):

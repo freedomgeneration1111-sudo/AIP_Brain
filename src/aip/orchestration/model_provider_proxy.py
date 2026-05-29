@@ -3,9 +3,9 @@
 Orchestration-layer proxy that re-exports ModelSlotResolver via Protocol
 so orchestration code does not import adapter directly.
 
-Per Phase 9 spec Process Rule #10: "Orchestration may not import adapter.
+Per layering rules: orchestration may not import adapter directly.
 A proxy module in orchestration re-exports adapter protocols through a
-foundation-defined interface."
+foundation-defined interface.
 
 This module provides the orchestration-safe interface for model resolution
 without creating a direct adapter dependency. The real ModelSlotResolver

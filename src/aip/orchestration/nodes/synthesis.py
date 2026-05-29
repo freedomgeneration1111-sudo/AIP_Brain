@@ -1,8 +1,8 @@
 """
 Synthesis node — primary generation via model slot.
 
-Phase 1: deterministic fixture stub.
-Phase 4: real ModelSlotResolver integration with CI mode fallback.
+CI/stub mode: deterministic fixture.
+Production mode: real ModelSlotResolver integration with CI mode fallback.
 
 Harness mediates everything the model sees.
 Models are replaceable execution engines.
@@ -23,7 +23,7 @@ from aip.foundation.validation import structural_validate
 
 @dataclass
 class SynthesisOutput:
-    """Legacy dataclass for Phase 1/2/3 compatibility."""
+    """Legacy dataclass for backward compatibility."""
 
     content: str
     model_slot: str
@@ -33,7 +33,7 @@ class SynthesisOutput:
     latency_ms: int
 
 
-# Phase 1 backward-compatible stub (used when model_resolver is None)
+# Backward-compatible stub (used when model_resolver is None)
 def _stub_synthesize(query: str, domain: str, context: str) -> str:
     """Deterministic fixture for CI testing — no model call."""
     input_hash = hashlib.sha256(f"{query}:{domain}:{context}".encode()).hexdigest()[:8]
@@ -83,24 +83,24 @@ async def synthesize(
 ) -> dict | SynthesisOutput:
     """Synthesize output from query, domain, and retrieved context.
 
-    Phase 4 promoted version:
+    Production mode:
     - Accepts optional model_resolver (from ModelSlotResolver).
     - Loads prompts/synthesis.md when available.
     - Assembles messages.
     - Calls resolver for real (or CI fixture) synthesis.
     - Returns dict with content, model, usage, latency_ms, cost_usd.
 
-    Backward compatibility (Rule #10 reconciliation):
+    Backward compatibility:
     - Old callers passing retrieval_result=... continue to work.
-    - When model_resolver is None, falls back to deterministic stub (Phase 1 path).
-    - Old path returns SynthesisOutput; new resolver path returns dict.
+    - When model_resolver is None, falls back to deterministic stub.
+    - Stub path returns SynthesisOutput; resolver path returns dict.
     """
     # Handle legacy calling convention (retrieval_result instead of context str)
     effective_context = context
     if not effective_context and retrieval_result is not None:
         effective_context = _build_context_from_retrieval(retrieval_result)
 
-    # Phase 1 backward compatibility: no model resolver → stub (return legacy type for compat)
+    # Backward compatibility: no model resolver → stub (return legacy type for compat)
     if model_resolver is None:
         stub_content = _stub_synthesize(query, domain, effective_context or "no context")
         # Preserve old behavior for callers expecting SynthesisOutput
@@ -120,7 +120,7 @@ async def synthesize(
             latency_ms=latency_ms,
         )
 
-    # Phase 4: real model call via ModelSlotResolver
+    # Production: real model call via ModelSlotResolver
     max_tokens = token_budget or 4096
 
     # Load synthesis prompt template (new in 6.1)

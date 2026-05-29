@@ -4,17 +4,17 @@ Workflow 0.1 Executor.
 Provides a high-level, opinionated runner for the canonical "Synthesis Session" workflow
 defined in Architecture Appendix F.
 
-This wires the sophisticated Phase 1 nodes (retrieve, structural_validate, adversarial_eval,
-definer_gate, commit) into the Phase 2 workflow engine with sensible defaults.
+This wires the synthesis nodes (retrieve, structural_validate, adversarial_eval,
+definer_gate, commit) into the workflow engine with sensible defaults.
 
-Intended as the "reference implementation" of Workflow 0.1 on top of the engine built in 2.1–2.7.
+Intended as the default workflow runner on top of the engine.
 """
 
 from __future__ import annotations
 
 from typing import Any, Callable
 
-# L4 wiring (additive, backward safe)
+# L4 integration (lazy import to avoid circular deps)
 from aip.orchestration.l4.monitor import TrajectoryMonitor
 from aip.orchestration.l4.reset import L4ResetCoordinator, check_l4_and_surface_if_needed, run_l4_and_sexton_check
 from aip.orchestration.nodes.adversarial_eval import adversarial_eval
@@ -64,7 +64,7 @@ class _CommitNode(WorkflowNode):
 
         decision = DefinerDecision(
             action="approve",
-            reason="Auto-approved by Workflow 0.1 reference runner",
+            reason="Auto-approved by Workflow 0.1 default runner",
             approved_by="workflow-01-runner",
         )
 
@@ -182,7 +182,7 @@ class Workflow01Runner:
             # entirely so the pipeline reaches the final commit step in one go.
             _AlwaysApproveDialogNode(
                 node_id="definer_gate",
-                prompt="Please review the synthesis output (auto-approved in reference runner)",
+                prompt="Please review the synthesis output (auto-approved in default runner)",
             ),
             # L6: Commit (only reached on approve) – real commit when stores are available
             _CommitNode(
@@ -201,10 +201,10 @@ class Workflow01Runner:
                 pass
 
             async def get_recent_events(self, session_id: str, limit: int = 100) -> list[dict]:
-                return []  # L4/additive compat for no-op path
+                return []  # L4 compat for no-op path
 
             async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
-                return []  # Sexton/additive compat for no-op path
+                return []  # Sexton compat for no-op path
 
         class _NoopStore:
             async def write(self, *a, **k):
@@ -216,7 +216,7 @@ class Workflow01Runner:
         trace_for_use = self.trace_store or _NoopTraceStore()
         artifact_for_use = self.artifact_store or _NoopStore()
 
-        # L4 default wiring (additive, backward-compatible)
+        # L4 default wiring
         monitor = TrajectoryMonitor(trace_store=trace_for_use)
         coordinator = L4ResetCoordinator(
             trajectory_monitor=monitor,
@@ -232,7 +232,7 @@ class Workflow01Runner:
             "ecs_store": self.ecs_store or _NoopStore(),
             "event_store": self.event_store or _NoopStore(),
             "config": self.config,
-            # The definer gate is special – we can inject the Phase 1 function
+            # The definer gate is special – we can inject the function
             "definer_gate": definer_gate,
             # L4 (3.1 + 3.2)
             "trajectory_monitor": monitor,
@@ -241,20 +241,20 @@ class Workflow01Runner:
 
         ctx = WorkflowContext(protocols=protocols, metadata={"config": self.config})
 
-        # 3.6 L4 + Sexton activation point (additive)
+        # 3.6 L4 + Sexton activation point
         # Uses the 3.6 thin helper (run_l4_and_sexton_check) which invokes both
         # the L4 coordinator (emitting the standard event for DEFINER surface)
         # and optionally Sexton for classification of recent events.
         # This is the runtime node-level integration pattern for the full L4/Sexton stack.
         l4_sexton_result = await run_l4_and_sexton_check(ctx, session_id=f"wf01-{id(self)}", also_run_sexton=True)
 
-        # demo wiring (additive): the derived rules from Sexton can now be
+        # demo wiring: the derived rules from Sexton can now be
         # passed to retrieve_for_synthesis (see retrieval.py) for procedural boost.
         # In a real node this would happen inside the synthesis/retrieval step.
         # (ace_rules = l4_sexton_result.get("sexton_classifications") or similar)
 
         # For a real Workflow 0.1 we would want a proper graph runner.
-        # For this foundation chunk we use the SequentialRunner + the fact that
+        # For this module we use the SequentialRunner + the fact that
         # DialogNode will pause the flow when it needs DEFINER input.
         runner = SequentialRunner(nodes, ctx)
 

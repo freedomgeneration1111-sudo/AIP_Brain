@@ -1,11 +1,10 @@
 """Vector migration tool — sqlite_vss to pgvector.
 
-Per Phase Scope Definition: migration must be idempotent and resumable.
-Preserves IDs, domains, metadata, and **real embeddings** across backends.
+Migration is idempotent and resumable.
+Preserves IDs, domains, metadata, and real embeddings across backends.
 
-Phase 10: Eliminated zero-vector usage. When an EmbeddingProvider is
-provided, missing embeddings are regenerated. When no provider is
-available, vectors without embeddings are skipped with clear logging
+Missing embeddings are regenerated via EmbeddingProvider when provided.
+When no provider is available, vectors without embeddings are skipped with clear logging
 rather than being silently destroyed with zero-vector fallbacks.
 """
 

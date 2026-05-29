@@ -127,7 +127,7 @@ class WorkflowContext:
                     exc,
                 )
 
-        # Fallback / shadow counter (existing Phase 2 behavior, preserved exactly)
+        # Fallback / shadow counter (existing behavior, preserved exactly)
         if self.budget_remaining is None:
             if not self._warned_infinite_budget:
                 logger.warning(

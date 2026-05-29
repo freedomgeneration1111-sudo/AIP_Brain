@@ -36,7 +36,7 @@ class PgvectorConfig:
 class MigrationStatus:
     """Tracks the state of a sqlite_vss → pgvector migration.
 
-    Per Phase Scope Definition: migration must be idempotent and resumable.
+    Migration is idempotent and resumable.
     checkpoint_id enables resuming from last successful vector.
     """
 

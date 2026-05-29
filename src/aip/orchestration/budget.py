@@ -42,7 +42,7 @@ class InMemoryBudgetStore(BudgetStore):
         else:
             self._budgets.pop(budget_id, None)
 
-    # --- Phase 5 extension (support extended BudgetStore Protocol for CI) ---
+    # --- Extended BudgetStore Protocol support (for CI) ---
     async def get_budget(self, scope: str, scope_id: str) -> dict:
         """Support extended Protocol (track consumed per scope_id for CI tests)."""
         key = f"{scope}:{scope_id}"
@@ -65,10 +65,10 @@ class SimpleAutonomyGate(AutonomyGate):
     """Two-phase autonomy gate stub (foundation)."""
 
     async def request_autonomy(self, level: int, context: dict[str, Any]) -> bool:
-        # Phase 1: always allow low levels in foundation
+        # Always allow low autonomy levels (foundation default)
         if level <= 1:
             return True
-        # Phase 2: stub — would check DEFINER or policy in real impl
+        # Stub — would check DEFINER or policy in real implementation
         return False
 
     async def record_autonomy_use(self, level: int, context: dict[str, Any]) -> None:
@@ -76,7 +76,7 @@ class SimpleAutonomyGate(AutonomyGate):
         pass
 
 
-# --- Phase 5 additions (extend existing file per Rule #10) ---
+# --- BudgetManager (extension, preserves existing code) ---
 
 from aip.foundation.protocols import BudgetStore, EventStore
 from aip.foundation.schemas import BudgetConfig, BudgetScope
@@ -87,7 +87,7 @@ class BudgetManager:
 
     Composes BudgetStore (persistence) and BudgetConfig (limits).
     Optionally writes warning events to EventStore when thresholds are crossed.
-    Per prose + ANNEX.
+    See architecture spec.
     """
 
     def __init__(

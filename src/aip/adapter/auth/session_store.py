@@ -19,7 +19,7 @@ from aip.foundation.schemas import AuthConfig
 
 
 class SqliteSessionStore(AuthStore):
-    """SQLite implementation of AuthStore Protocol (Phase 7)."""
+    """SQLite implementation of AuthStore Protocol."""
 
     def __init__(self, db_path: str, config: AuthConfig) -> None:
         self._db_path = db_path
@@ -178,7 +178,7 @@ class SqliteSessionStore(AuthStore):
             await conn.close()
             self._conn = None
 
-    # --- AuthStore Protocol methods (Phase 8 ) ---
+    # --- AuthStore Protocol methods ---
 
     async def get_definer_identity(self) -> dict | None:
         """Return the single DEFINER identity (or None if not configured)."""

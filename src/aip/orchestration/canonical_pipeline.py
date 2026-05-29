@@ -46,7 +46,7 @@ def _is_ci_environment() -> bool:
 
 
 class CanonicalPipeline:
-    """Canonical promotion pipeline (Phase 7)."""
+    """Canonical promotion pipeline."""
 
     def __init__(
         self,

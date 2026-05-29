@@ -33,13 +33,13 @@ from aip.foundation.protocols import (
 
 
 class AipContainer:
-    """Central DI container for all Phase 6 surfaces.
+    """Central DI container for all API surfaces.
 
-    Populated in lifespan startup from config + the various adapter/foundation
-    implementations delivered in 8.0a/8.0b + Phase 5 orchestration layer.
+    Populated in lifespan startup from config + adapter and orchestration
+    implementations.
 
     Orchestration components are typed as Any (injected at runtime) to avoid
-    adapter→orchestration import dependency per Phase 9.
+    direct adapter→orchestration import dependency.
     """
 
     def __init__(self, config: dict) -> None:

@@ -1,9 +1,8 @@
 """PluginManager — orchestration component for extensible model providers.
 
-Per AIP_0_1_Phase8_BuildSpec_Rev1.0.md exact prose + box + ANNEX.
-Orchestration-layer. Wraps 10.0b PluginLoader, registers with ModelSlotResolver
-(Phase 5/3) and AdaptiveRouter (Phase 5) so plugins become transparent slot
-providers. Sandbox mode (from 10.0a config) catches errors without crashing.
+Orchestration-layer. Wraps PluginLoader, registers with ModelSlotResolver
+and AdaptiveRouter so plugins become transparent slot
+providers. Sandbox mode catches errors without crashing.
 
 Issue 25: Fix _sandbox_wrap to catch exceptions, log to trace, disable plugin
 gracefully, and fall back instead of raising RuntimeError.
@@ -24,8 +23,8 @@ logger = logging.getLogger(__name__)
 class PluginManager:
     """Manages lifecycle of plugin-provided model providers.
 
-    Composes the concrete PluginLoader (10.0b) and integrates it into the
-    existing ModelSlotResolver + AdaptiveRouter so that plugin call_model
+    Composes PluginLoader and integrates it into the
+    ModelSlotResolver + AdaptiveRouter so that plugin call_model
     becomes a drop-in replacement for any named slot.
     """
 

@@ -133,7 +133,7 @@ class KnowledgeCompilationConfig:
 
     Deferred Compiled Knowledge Layer — finally implemented.
     model_gen_assumption tags what the compilation criteria assume.
-    Per Appendix D: compiled knowledge ≠ canonical artifact.
+    Per Appendix D: compiled knowledge and canonical artifacts are distinct (no collapse).
     """
 
     compilation_model_slot: str = "synthesis"

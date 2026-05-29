@@ -15,8 +15,8 @@ class KnowledgeStore(Protocol):
     """Abstraction for the Deferred Compiled Knowledge Layer.
 
     Compiled knowledge must track provenance to source canonicals.
-    Per Appendix D: compiled knowledge ≠ canonical artifact.
-    Per Process Rule 12: CompilationState is distinct from ECS states.
+    Compiled knowledge and canonical artifacts are distinct (no collapse).
+    CompilationState is distinct from ECS states.
     """
 
     async def store_compiled(

@@ -27,7 +27,7 @@ class ValidationResult:
     checks_failed: list[str]
 
 
-# Default Phase 1 rules
+# Default validation rules
 DEFAULT_RULES: list[ValidationRule] = [
     ValidationRule(
         rule_id="min_length",
@@ -77,7 +77,7 @@ def structural_validate(output: str, rules: list[ValidationRule] | None = None) 
 
 # Backward-compatible alias — new code should import from
 # aip.orchestration.l3a_orchestrator  instead.
-# This alias preserves backward compat for any Phase 1-8 callers.
+# This alias preserves backward compatibility for existing callers.
 async def full_l3a_evaluation(*args, **kwargs):
     """Moved to orchestration.l3a_orchestrator. This alias preserves backward compat."""
     import importlib

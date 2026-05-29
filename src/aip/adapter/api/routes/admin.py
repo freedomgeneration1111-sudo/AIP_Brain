@@ -1,8 +1,7 @@
 """Admin Console routes.
 
 Writes (config) go through AutonomyGate (admin).
-Reads from delivered actors (Sexton 7.1, Beast 7.5, Router 7.4, Budget 7.0b, etc.).
-Phase 3: added logging for silent exception handling.
+Reads from actors (Sexton, Beast, Router, Budget, etc.).
 """
 
 from __future__ import annotations

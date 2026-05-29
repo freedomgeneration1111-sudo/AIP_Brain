@@ -1,7 +1,6 @@
 """CollaboratorManager — adapter-layer manager for collaborator/readonly roles.
 
-Per AIP_0_1_Phase8_BuildSpec_Rev1.0.md exact prose + box + ANNEX.
-Extends Phase 7 AuthStore (9.0b) + uses CollaboratorConfig (10.0a) + AutonomyGate.
+Extends AuthStore + uses CollaboratorConfig + AutonomyGate.
 collaborator_can_approve defaults to False (DEFINER sovereignty).
 All privileged paths go through AutonomyGate.
 Pure adapter-layer (no orchestration imports).
@@ -49,7 +48,7 @@ class CollaboratorManager:
 
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
-        # Delegate to AuthStore extension (added in 10.0a)
+        # Delegate to AuthStore extension
         success = await self.auth_store.create_user(identity, role, password_hash)
 
         if success:
@@ -73,6 +72,6 @@ class CollaboratorManager:
 
     async def list_collaborators(self) -> list[dict]:
         """List all non-DEFINER users."""
-        # Delegate to AuthStore extension (added in 10.0a)
+        # Delegate to AuthStore extension
         users = await self.auth_store.list_users()
         return [u for u in users if u.get("role") != "definer"]

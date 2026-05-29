@@ -1,9 +1,8 @@
 """AutonomyGateImpl — SQLite-backed enforcement of DEFINER sovereignty.
 
-Per prose + ANNEX (exact).
 No UI, workflow, Beast, MCP, or queued task may bypass the DEFINER gates.
 Adapter only (composes Foundation Protocols/schemas; no orchestration imports).
-Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
+Uses aiosqlite for async-safe database access.
 """
 
 from __future__ import annotations

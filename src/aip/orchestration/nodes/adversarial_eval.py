@@ -1,8 +1,8 @@
 """
-Adversarial Evaluation (L3b) — promoted in Phase 4.
+Adversarial Evaluation (L3b).
 
-Phase 1: deterministic stub.
-Phase 4: real ModelSlotResolver integration with skeptic prompt.
+CI/stub mode: deterministic fixture.
+Production mode: real ModelSlotResolver integration with skeptic prompt.
 
 Adversarial evaluation applies to canonical-bound outputs and marginal L3a passes; requires separate skeptic prompt.
 
@@ -57,7 +57,7 @@ class EvalResult:
     ci_fixture: bool = True  # True when scores are fixtures/fallbacks, not real evaluation
 
 
-# Default Phase 1 L3b adversarial criteria
+# Default L3b adversarial criteria
 DEFAULT_EVAL_CRITERIA: list[EvalCriterion] = [
     EvalCriterion(
         criterion_id="grounding",
@@ -106,7 +106,7 @@ async def adversarial_eval(
     synthesis_output: SynthesisOutput | None = None,
     validation_result: ValidationResult | None = None,
     eval_criteria: list[EvalCriterion] | None = None,
-    # Phase 4 promoted parameters
+    # Production-mode parameters
     artifact_content: str | None = None,
     context: str | None = None,
     model_resolver: Any = None,
@@ -115,8 +115,8 @@ async def adversarial_eval(
     """
     L3b adversarial evaluation.
 
-    Phase 1 backward compat: accepts SynthesisOutput + ValidationResult for stub mode.
-    Phase 4 promoted: accepts artifact_content, context, model_resolver for real eval.
+    CI/stub mode: accepts SynthesisOutput + ValidationResult for fixture mode.
+    Production mode: accepts artifact_content, context, model_resolver for real eval.
 
     When model_resolver is provided, uses it for model-based evaluation (skeptic prompt).
     Otherwise falls back to honest zero-score stub with ``ci_fixture=True``.
@@ -127,7 +127,7 @@ async def adversarial_eval(
         - Real response with parseable JSON: returns parsed scores, ci_fixture=False
         - Real response with unparseable JSON: returns 0.0 scores, ci_fixture=True, logs warning
     """
-    # Phase 4 path: model_resolver provided
+    # Production path: model_resolver provided
     if model_resolver is not None:
         prompt_path = Path(__file__).parent.parent.parent / "prompts" / "adversarial_eval.md"
         system_prompt = ""
@@ -249,7 +249,7 @@ async def adversarial_eval(
                 "passed": False,
             }
 
-    # Phase 1 stub path (backward compat — no model_resolver)
+    # CI/stub path (backward compatible — no model_resolver)
     # Return honest 0.0 scores with ci_fixture=True so promotion is blocked
     logger.info("Adversarial eval called without model_resolver; returning ci_fixture scores (0.0)")
 

@@ -1,10 +1,9 @@
 """SQLite FTS5 implementation of LexicalStore Protocol.
 
-Per prose + ANNEX (exact).
-LexicalStore Protocol (added in 8.0a).
+LexicalStore Protocol.
 Adapter imports only foundation (schemas + protocols).
 Local, deterministic, laptop-viable (no external services).
-Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
+Uses aiosqlite for async-safe database access.
 """
 
 from __future__ import annotations

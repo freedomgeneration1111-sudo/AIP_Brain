@@ -64,7 +64,7 @@ def load_workflow_from_yaml(path: str | Path) -> WorkflowDefinition:
             node_id = node_def["id"]
             raw_type = node_def["type"]
 
-            # Support new Phase 2 node types as strings (additive)
+            # Support additional node types as strings
             if raw_type == "review":
                 nodes.append(ReviewNode(node_id, config=node_def))
                 continue
