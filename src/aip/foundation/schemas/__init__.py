@@ -67,6 +67,13 @@ from .evaluation import (
     SextonConfig,
 )
 
+# -- ask --
+from .ask import (
+    AskResult,
+    AskSource,
+    SourceReference,
+)
+
 # -- ingestion --
 from .ingestion import (
     ConversationTurn,
@@ -163,6 +170,10 @@ __all__ = [
     "BeastCadenceConfig",
     "WorkflowTemplate",
     "DeploymentProfile",
+    # ask
+    "AskSource",
+    "SourceReference",
+    "AskResult",
     # ingestion
     "SourceFormat",
     "ConversationTurn",

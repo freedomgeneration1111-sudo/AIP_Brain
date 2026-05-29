@@ -10,6 +10,7 @@ from pathlib import Path
 
 import click
 
+from aip.cli import ask as ask_cmd
 from aip.cli import config as config_cmd
 from aip.cli import ingest as ingest_cmd
 from aip.cli import init as init_cmd
@@ -33,6 +34,7 @@ def cli() -> None:
       aip project   Manage projects (list, create, show)
       aip session   Manage sessions (start, resume, list)
       aip ingest    Import conversations into the knowledge substrate
+      aip ask       Ask a source-grounded question about a project
     """
     pass
 
@@ -71,6 +73,7 @@ cli.add_command(config_cmd.config)
 cli.add_command(project_cmd.project)
 cli.add_command(session_cmd.session)
 cli.add_command(ingest_cmd.ingest)
+cli.add_command(ask_cmd.ask_cmd)
 cli.add_command(validate)
 
 
