@@ -1,5 +1,7 @@
 # AIP — AI Poiesis
 
+[![CI](https://github.com/freedomgeneration1111-sudo/aip/actions/workflows/ci.yml/badge.svg)](https://github.com/freedomgeneration1111-sudo/aip/actions/workflows/ci.yml)
+
 **Product:** AI Poiesis (AIP) v0.1
 **Status:** Alpha — Phase 9 stabilization complete, core architecture sound
 
@@ -136,6 +138,10 @@ Environment variable overrides:
 | Vector search (pgvector / sqlite-vss / in-memory) | Working |
 | Budget tracking | Working |
 | L4 trajectory monitoring | Working |
+
+## CI
+
+CI runs on every push and pull request to `main`. The workflow (`.github/workflows/ci.yml`) installs dependencies with `uv`, runs `ruff check` (soft — non-blocking for now), and executes the full test suite with `CI=true`.
 
 ## Known Limitations
 

@@ -46,9 +46,22 @@
 | `perf.py` | Memory usage returns fake proportional breakdown | Medium | 45% |
 | `context.py` | Infinite budget by default (`budget_remaining=None`) | Critical | 30% |
 
+## CI
+
+A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on every push and pull request to `main`:
+
+1. **Checkout** the repository
+2. **Install uv** with caching
+3. **Set up Python 3.12**
+4. **Install dependencies** with `uv sync --dev`
+5. **Lint with ruff** (`ruff check .`) — currently soft (non-blocking) due to ~500 historic findings
+6. **Run the test suite** with `CI=true` via `uv run pytest`
+
+The workflow requires no secrets and runs in under 10 minutes.
+
 ## Test Suite
 
-- **640 tests** total (627 passing, 3 pre-existing failures in layer-import boundary checks)
+- **640 tests** total (624 passing, 6 pre-existing failures)
 - **51 `assert True` no-op tests** across 23 test files
 - Key test files: `test_definer_gate.py` (15 tests), `test_commit_node.py` (7 tests), `test_definer_sovereignty.py` (11 acceptance tests)
 
