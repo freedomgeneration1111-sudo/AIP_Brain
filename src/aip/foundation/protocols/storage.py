@@ -4,6 +4,7 @@ Abstractions for all persistent stores: vector search, full-text search,
 artifact management, ECS governance, event sourcing, trace logging,
 entity management, and project state.
 """
+
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
@@ -59,7 +60,10 @@ class VectorStore(Protocol):
         ...
 
     async def list_stale_vectors(
-        self, threshold_days: int = 30, domain: str | None = None, limit: int = 100
+        self,
+        threshold_days: int = 30,
+        domain: str | None = None,
+        limit: int = 100,
     ) -> list[dict]:
         """List vectors that have not been updated within threshold_days.
 
@@ -127,9 +131,7 @@ class CanonicalStore(Protocol):
         """
         ...
 
-    async def write_canonical(
-        self, artifact_id: str, content: dict, approved_by: str
-    ) -> None:
+    async def write_canonical(self, artifact_id: str, content: dict, approved_by: str) -> None:
         """Write a canonical artifact.
 
         Only called after DEFINER approval (ECS APPROVED state).
@@ -137,9 +139,7 @@ class CanonicalStore(Protocol):
         """
         ...
 
-    async def list_canonical(
-        self, domain: str | None = None
-    ) -> list[dict]:
+    async def list_canonical(self, domain: str | None = None) -> list[dict]:
         """List canonical artifacts, optionally filtered by domain.
 
         Returns list of dicts with artifact_id, domain, approved_by, created_at.
@@ -201,9 +201,7 @@ class TraceStore(Protocol):
         """
         ...
 
-    async def get_recent_events(
-        self, session_id: str, limit: int = 100
-    ) -> list[dict]:
+    async def get_recent_events(self, session_id: str, limit: int = 100) -> list[dict]:
         """Return recent trace events for a session.
 
         Events returned in descending created_at order (most recent first).
@@ -230,18 +228,14 @@ class EntityStore(Protocol):
         """
         ...
 
-    async def list_entities(
-        self, entity_type: str | None = None
-    ) -> list[dict]:
+    async def list_entities(self, entity_type: str | None = None) -> list[dict]:
         """List entities, optionally filtered by type.
 
         Returns list of dicts with entity_id, entity_type, name, metadata.
         """
         ...
 
-    async def update_entity(
-        self, entity_id: str, updates: dict
-    ) -> None:
+    async def update_entity(self, entity_id: str, updates: dict) -> None:
         """Update entity fields.
 
         updates is a dict of field->value pairs to apply.

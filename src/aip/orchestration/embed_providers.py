@@ -61,8 +61,7 @@ def get_embed_fn(config: dict | Any | None = None) -> Callable[[str], list[float
 
     # Unknown provider — fall back to fake_embed with a warning
     logger.warning(
-        "Unknown embedding provider '%s'; falling back to fake_embed. "
-        "Supported providers: fake, ollama.",
+        "Unknown embedding provider '%s'; falling back to fake_embed. Supported providers: fake, ollama.",
         provider,
     )
     return fake_embed
@@ -98,7 +97,7 @@ def get_embed_fn_async(config: dict | Any | None = None) -> Any:
         if not model:
             logger.warning(
                 "Ollama embedding provider selected but no model specified in config "
-                "[embedding].model. Falling back to MockOllamaEmbeddingClient."
+                "[embedding].model. Falling back to MockOllamaEmbeddingClient.",
             )
             return _make_mock_client(dimensions=dimensions)
         try:
@@ -107,7 +106,9 @@ def get_embed_fn_async(config: dict | Any | None = None) -> Any:
             logger.warning(
                 "Failed to create OllamaEmbeddingClient (base_url=%s, model=%s): %s. "
                 "Falling back to MockOllamaEmbeddingClient.",
-                base_url, model, exc,
+                base_url,
+                model,
+                exc,
             )
             return _make_mock_client(dimensions=dimensions)
 
@@ -137,7 +138,7 @@ def _make_ollama_embed_fn(emb_cfg: dict) -> Callable[[str], list[float]]:
     if not model:
         logger.warning(
             "Ollama embedding provider selected but no model specified in config "
-            "[embedding].model. Falling back to fake_embed."
+            "[embedding].model. Falling back to fake_embed.",
         )
         return fake_embed
 
@@ -145,8 +146,7 @@ def _make_ollama_embed_fn(emb_cfg: dict) -> Callable[[str], list[float]]:
         client = _make_ollama_client(base_url=base_url, model=model, dimensions=dimensions)
     except Exception as exc:
         logger.warning(
-            "Failed to create OllamaEmbeddingClient for sync wrapper: %s. "
-            "Falling back to fake_embed.",
+            "Failed to create OllamaEmbeddingClient for sync wrapper: %s. Falling back to fake_embed.",
             exc,
         )
         return fake_embed
@@ -159,6 +159,7 @@ def _make_ollama_embed_fn(emb_cfg: dict) -> Callable[[str], list[float]]:
                 # We're inside an existing event loop (e.g. Jupyter, FastAPI).
                 # Can't call asyncio.run() — create a task instead.
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                     future = pool.submit(asyncio.run, client.embed(text))
                     return future.result(timeout=30.0)
@@ -178,6 +179,7 @@ def _make_ollama_embed_fn(emb_cfg: dict) -> Callable[[str], list[float]]:
 # Lazy adapter loaders — use importlib to avoid AST-detectable cross-layer
 # imports. Orchestration must not have top-level imports from adapter (§7.2).
 # ---------------------------------------------------------------------------
+
 
 def _make_ollama_client(base_url: str, model: str, dimensions: int = 768) -> Any:
     """Create an OllamaEmbeddingClient via lazy import.

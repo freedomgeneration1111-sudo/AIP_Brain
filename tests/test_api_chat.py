@@ -40,9 +40,8 @@ def test_chat_router_mounted_and_basic_flow():
 def test_chat_layering_and_no_orchestration_storage_imports():
     """Layering (same as all prior gates)."""
     from pathlib import Path
+
     chat_file = Path(__file__).parent.parent / "src/aip/adapter/api/routes/chat.py"
     text = chat_file.read_text()
     assert "from aip.adapter.budget_store" not in text
     assert "from aip.adapter.vector" not in text
-
-

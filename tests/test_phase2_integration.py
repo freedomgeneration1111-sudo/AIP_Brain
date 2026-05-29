@@ -1,4 +1,5 @@
 """Phase 2 integration test — full ECS lifecycle through YAML workflow engine (CHUNK-4.7)."""
+
 import pytest
 
 from aip.orchestration.workflow.engine import WorkflowEngine
@@ -7,9 +8,12 @@ from aip.orchestration.workflow.loader import load_workflow_from_yaml
 
 # Minimal fake stores for the integration test
 class FakeVectorStore:
-    async def upsert(self, *a, **k): pass
-    async def retrieve(self, *a, **k): 
+    async def upsert(self, *a, **k):
+        pass
+
+    async def retrieve(self, *a, **k):
         from aip.foundation.schemas import Chunk
+
         return [Chunk(id="c1", content="fake context", score=0.9)]
 
 
@@ -52,7 +56,7 @@ class FakeArtifactStore:
             return ""
         if version is None:
             return versions[-1]
-        return versions[version-1] if version <= len(versions) else ""
+        return versions[version - 1] if version <= len(versions) else ""
 
     async def list_versions(self, id):
         return list(range(1, len(self._versions.get(id, [])) + 1))

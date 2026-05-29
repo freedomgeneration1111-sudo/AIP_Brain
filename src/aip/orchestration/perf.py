@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Callable, Awaitable
+from typing import Any, Awaitable, Callable
 
 from aip.foundation.schemas import PerformanceConfig
 
@@ -107,6 +107,7 @@ class PerformanceProfiler:
         memory_mb = 0.0
         try:
             import psutil
+
             cpu_percent = psutil.cpu_percent(interval=0.1)
             memory_info = psutil.virtual_memory()
             memory_mb = memory_info.used / (1024 * 1024)
@@ -147,11 +148,15 @@ class PerformanceProfiler:
                     except (ValueError, IndexError):
                         continue
                 if duration_ms_val >= threshold_ms:
-                    slow_ops.append({
-                        "operation": detail.split("operation=")[1].split(",")[0] if "operation=" in detail else "unknown",
-                        "duration_ms": duration_ms_val,
-                        "timestamp": ev.get("session_id", ""),
-                    })
+                    slow_ops.append(
+                        {
+                            "operation": detail.split("operation=")[1].split(",")[0]
+                            if "operation=" in detail
+                            else "unknown",
+                            "duration_ms": duration_ms_val,
+                            "timestamp": ev.get("session_id", ""),
+                        },
+                    )
             return slow_ops
         except Exception:
             return []
@@ -164,6 +169,7 @@ class PerformanceProfiler:
         total_mb = 0.0
         try:
             import psutil
+
             total_mb = psutil.virtual_memory().used / (1024 * 1024)
         except ImportError:
             _, total_mb = _read_meminfo_fallback()

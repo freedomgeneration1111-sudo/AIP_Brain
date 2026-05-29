@@ -5,7 +5,6 @@ import pytest
 from aip.adapter.health import system_health_check
 from aip.adapter.vector.connection_manager import VectorStoreConnectionManager
 
-
 HEALTH_CONFIG = {
     "vector_backend": {
         "provider": "sqlite_vss",

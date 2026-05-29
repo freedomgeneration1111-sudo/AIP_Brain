@@ -5,6 +5,7 @@ Supports query by artifact_id and event_type for review,
 DEFINER audit, and Sexton failure analysis.
 Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
 """
+
 from __future__ import annotations
 
 import json
@@ -114,7 +115,9 @@ class QueryableEventStore:
             now = datetime.now(timezone.utc).isoformat()
             meta_json = json.dumps(kwargs) if kwargs else "{}"
             await conn.execute(
-                "INSERT INTO events (event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO events "
+                "(event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (event_type, actor, artifact_id, from_state, to_state, meta_json, now),
             )
             await conn.commit()
@@ -142,7 +145,11 @@ class QueryableEventStore:
                 params.append(event_type)
 
             where = " AND ".join(conditions) if conditions else "1=1"
-            sql = f"SELECT id, event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at FROM events WHERE {where} ORDER BY created_at DESC LIMIT ?"
+            sql = (
+                f"SELECT id, event_type, actor, artifact_id, from_state, to_state, "
+                f"metadata_json, created_at FROM events WHERE {where} "
+                f"ORDER BY created_at DESC LIMIT ?"
+            )
             params.append(limit)
 
             cursor = await conn.execute(sql, params)
@@ -150,16 +157,18 @@ class QueryableEventStore:
             results = []
             for row in rows:
                 id_, et, actor, aid, fs, ts, mj, ca = row
-                results.append(Event(
-                    id=id_,
-                    event_type=et,
-                    actor=actor,
-                    artifact_id=aid,
-                    from_state=fs,
-                    to_state=ts,
-                    timestamp=ca,
-                    metadata=json.loads(mj) if mj else {},
-                ))
+                results.append(
+                    Event(
+                        id=id_,
+                        event_type=et,
+                        actor=actor,
+                        artifact_id=aid,
+                        from_state=fs,
+                        to_state=ts,
+                        timestamp=ca,
+                        metadata=json.loads(mj) if mj else {},
+                    ),
+                )
             return results
         finally:
             await conn.close()

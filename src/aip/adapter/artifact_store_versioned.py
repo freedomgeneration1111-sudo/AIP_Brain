@@ -4,6 +4,7 @@ Each write appends a new version; no version is ever overwritten.
 Uses SQLite for persistence.
 Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
 """
+
 from __future__ import annotations
 
 import json

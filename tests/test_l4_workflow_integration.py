@@ -46,7 +46,9 @@ class FakeTraceStoreForIntegration:
 
     async def get_unclassified_failures(self, limit: int = 100):
         # Sexton/CHUNK-3.4 additive compat
-        unclassified = [e for e in reversed(self._events) if e.get("failure_type") is None and e.get("outcome") == "failure"]
+        unclassified = [
+            e for e in reversed(self._events) if e.get("failure_type") is None and e.get("outcome") == "failure"
+        ]
         return unclassified[:limit]
 
 
@@ -137,37 +139,22 @@ async def test_3_6_run_l4_and_sexton_check_integration():
         node_type="L4",
         failure_type=None,
         outcome="failure",
-        detail="Context pressure high, output shortening perhaps maybe I think"
+        detail="Context pressure high, output shortening perhaps maybe I think",
     )
     # Add some token decline for L4b
-    await trace.write_event(
-        session_id="node_level",
-        node_type="L5",
-        outcome="success",
-        token_count_out=800
-    )
-    await trace.write_event(
-        session_id="node_level",
-        node_type="L5",
-        outcome="success",
-        token_count_out=450
-    )
+    await trace.write_event(session_id="node_level", node_type="L5", outcome="success", token_count_out=800)
+    await trace.write_event(session_id="node_level", node_type="L5", outcome="success", token_count_out=450)
 
     monitor = TrajectoryMonitor(trace)
     coordinator = L4ResetCoordinator(trajectory_monitor=monitor, trace_store=trace)
 
-    ctx = WorkflowContext(protocols={
-        "l4_coordinator": coordinator,
-        "trace_store": trace
-    })
+    ctx = WorkflowContext(protocols={"l4_coordinator": coordinator, "trace_store": trace})
 
     # This is the 3.6 node-level integration call
     result = await run_l4_and_sexton_check(ctx, session_id="node_level", also_run_sexton=True)
 
     # L4 side should have produced a recommendation (due to hedging + length decline + pressure)
-    assert result["l4_recommendations"] or any(
-        e.get("type") == "l4_reset_recommended" for e in ctx.events
-    )
+    assert result["l4_recommendations"] or any(e.get("type") == "l4_reset_recommended" for e in ctx.events)
 
     # Sexton side should have run (may return [] or classifications)
     assert isinstance(result["sexton_classifications"], list)

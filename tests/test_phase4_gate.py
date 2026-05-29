@@ -3,6 +3,7 @@
 Extends CHUNK-4.8 and CHUNK-5.9 gates for Phase 4 code.
 Verifies: deterministic CI, import boundaries, no hardcoded model names.
 """
+
 import ast
 import importlib
 import inspect
@@ -10,7 +11,6 @@ import os
 from pathlib import Path
 
 import pytest
-
 
 # Phase 4 modules to check
 # (module names use the actual importable package paths under "aip" for this repo layout)
@@ -73,9 +73,7 @@ class TestNetworkIsolation:
                         if name in FORBIDDEN_NETWORK_IMPORTS:
                             violations.append(name)
 
-            assert not violations, (
-                f"{module_name} imports network libraries: {violations}"
-            )
+            assert not violations, f"{module_name} imports network libraries: {violations}"
         except ImportError:
             pytest.skip(f"Module {module_name} not yet built")
 
@@ -106,9 +104,7 @@ class TestImportBoundaries:
                     for n in names:
                         if n and n.split(".")[0] == "orchestration":
                             violations.append(n)
-            assert not violations, (
-                f"{module_name} imports orchestration (violates §7.2): {violations}"
-            )
+            assert not violations, f"{module_name} imports orchestration (violates §7.2): {violations}"
         except ImportError:
             pytest.skip(f"Module {module_name} not yet built")
 
@@ -130,9 +126,7 @@ class TestImportBoundaries:
                 if isinstance(node, ast.ImportFrom):
                     if node.module and node.module.split(".")[0] == "orchestration":
                         violations.append(node.module)
-            assert not violations, (
-                f"{module_name} imports orchestration (violates §7.2): {violations}"
-            )
+            assert not violations, f"{module_name} imports orchestration (violates §7.2): {violations}"
         except ImportError:
             pytest.skip(f"Module {module_name} not yet built")
 
@@ -147,8 +141,6 @@ class TestNoHardcodedModelNames:
             mod = importlib.import_module(module_name)
             source = inspect.getsource(mod)
             for name in FORBIDDEN_MODEL_NAMES:
-                assert name.lower() not in source.lower(), (
-                    f"{module_name} contains hardcoded model name: {name}"
-                )
+                assert name.lower() not in source.lower(), f"{module_name} contains hardcoded model name: {name}"
         except ImportError:
             pytest.skip(f"Module {module_name} not yet built")

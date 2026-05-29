@@ -6,6 +6,7 @@ Adapter may import foundation but not orchestration.
 Per ANNEX (exact).
 Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -134,8 +135,7 @@ class SqliteBudgetStore(BudgetStore):
         conn = await self._get_conn()
         try:
             await conn.execute(
-                "INSERT INTO budget_ledger (scope, scope_id, tokens_used, cost_usd, model_slot) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO budget_ledger (scope, scope_id, tokens_used, cost_usd, model_slot) VALUES (?, ?, ?, ?, ?)",
                 (scope, scope_id, tokens_used, cost_usd, model_slot),
             )
             await conn.commit()

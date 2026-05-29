@@ -14,7 +14,9 @@ A local-first sovereign knowledge engine with a three-layer architecture (founda
 AIP manages the lifecycle of knowledge artifacts — from specification through synthesis, evaluation, and canonical promotion — with:
 
 - **DEFINER sovereignty**: Every artifact promotion requires gate approval. No UI, workflow, Beast cadence, MCP call, or queued task may bypass the DEFINER gates.
-- **Honest evaluation pipeline**: The evaluation pipeline does not silently pass artifacts. CI fixture data is flagged (`ci_fixture=True`) and blocked from production promotion. Default scores are 0.0 on evaluation failure.
+- **Honest evaluation pipeline**: The evaluation pipeline does not silently pass artifacts. CI fixture data is
+flagged (`ci_fixture=True`) and blocked from production promotion. Default scores are 0.0 on evaluation
+failure.
 - **Real model dispatch**: `ModelSlotResolver` supports Ollama and OpenAI-compatible HTTP calls with environment variable configuration. No model call silently returns a placeholder.
 - **Async-safe storage**: All adapter-layer SQLite stores use `aiosqlite` — no blocking `sqlite3.connect()` inside async methods.
 - **L4 trajectory monitoring**: Failure streak detection, anxiety detection, and loop detection with configurable thresholds and context reset.
@@ -141,7 +143,9 @@ Environment variable overrides:
 
 ## CI
 
-CI runs on every push and pull request to `main`. The workflow (`.github/workflows/ci.yml`) installs dependencies with `uv`, runs `ruff check` (soft — non-blocking for now), and executes the full test suite with `CI=true`.
+CI runs on every push and pull request to `main`. The workflow (`.github/workflows/ci.yml`) installs
+dependencies with `uv`, runs `ruff check` (soft — non-blocking for now), and executes the full test suite with
+`CI=true`.
 
 ## Known Limitations
 

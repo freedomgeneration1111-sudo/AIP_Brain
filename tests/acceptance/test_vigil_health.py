@@ -7,8 +7,10 @@ Tests Vigil actor functionality per Phase 7 CHUNK-9.0a/9.1:
 - Staleness detection works
 - VigilConfig has correct defaults
 """
+
 import os
 import tempfile
+
 import pytest
 
 

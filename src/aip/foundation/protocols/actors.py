@@ -3,6 +3,7 @@
 Storage interface for the Vigil actor: canonical health monitoring,
 stale detection, and health check recording.
 """
+
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable

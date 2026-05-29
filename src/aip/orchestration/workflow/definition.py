@@ -26,6 +26,7 @@ class WorkflowDefinition:
     - on_error_nodes: nodes that run only on failure paths (compensation).
     - metadata: arbitrary workflow-level configuration.
     """
+
     nodes: list[WorkflowNode]
     finally_nodes: list[WorkflowNode] = field(default_factory=list)
     on_error_nodes: list[WorkflowNode] = field(default_factory=list)

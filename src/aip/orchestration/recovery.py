@@ -36,7 +36,8 @@ class WorkflowRecovery:
                 )
             """)
             await db.execute(
-                "INSERT OR REPLACE INTO workflow_checkpoints (session_id, node_id, state, updated_at) VALUES (?, ?, ?, datetime('now'))",
+                "INSERT OR REPLACE INTO workflow_checkpoints "
+                "(session_id, node_id, state, updated_at) VALUES (?, ?, ?, datetime('now'))",
                 (session_id, node_id, str(state)),
             )
             await db.commit()
@@ -71,8 +72,11 @@ class WorkflowRecovery:
                     try:
                         # Parse state dict to find artifact IDs produced by prior nodes
                         import ast
+
                         state_dict = ast.literal_eval(cp["state"]) if isinstance(cp["state"], str) else cp["state"]
-                        prior_artifacts = state_dict.get("artifacts_produced", []) if isinstance(state_dict, dict) else []
+                        prior_artifacts = (
+                            state_dict.get("artifacts_produced", []) if isinstance(state_dict, dict) else []
+                        )
                         missing = []
                         for art_id in prior_artifacts:
                             try:

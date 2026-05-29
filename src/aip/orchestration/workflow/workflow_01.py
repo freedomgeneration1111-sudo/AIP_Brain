@@ -14,6 +14,9 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+# L4 wiring (additive, backward safe)
+from aip.orchestration.l4.monitor import TrajectoryMonitor
+from aip.orchestration.l4.reset import L4ResetCoordinator, check_l4_and_surface_if_needed, run_l4_and_sexton_check
 from aip.orchestration.nodes.adversarial_eval import adversarial_eval
 from aip.orchestration.nodes.commit import commit_artifact
 from aip.orchestration.nodes.definer_gate import definer_gate
@@ -29,11 +32,6 @@ from aip.orchestration.workflow.node import (
 )
 from aip.orchestration.workflow.runner import SequentialRunner
 
-# L4 wiring (additive, backward safe)
-from aip.orchestration.l4.monitor import TrajectoryMonitor
-from aip.orchestration.l4.reset import L4ResetCoordinator, check_l4_and_surface_if_needed, run_l4_and_sexton_check
-
-
 
 class _CommitNode(WorkflowNode):
     """Internal node that performs the real commit when the reference
@@ -41,6 +39,7 @@ class _CommitNode(WorkflowNode):
 
     def __init__(self, node_id: str, artifact_store, ecs_store, event_store):
         from aip.orchestration.workflow.node import NodeType
+
         super().__init__(node_id, NodeType.SCRIPT)
         self.artifact_store = artifact_store
         self.ecs_store = ecs_store
@@ -87,7 +86,6 @@ class _CommitNode(WorkflowNode):
         )
 
 
-
 class _AlwaysApproveDialogNode(WorkflowNode):
     """Special dialog node used only by the reference Workflow 0.1 happy-path runner.
     It never pauses — it always behaves as if the DEFINER auto-approved.
@@ -95,6 +93,7 @@ class _AlwaysApproveDialogNode(WorkflowNode):
 
     def __init__(self, node_id: str, prompt: str):
         from aip.orchestration.workflow.node import NodeType
+
         super().__init__(node_id, NodeType.DIALOG)
         self.prompt = prompt
 
@@ -148,6 +147,7 @@ class Workflow01Runner:
     async def _always_approve_gate(synthesis_output, validation_result, eval_result):
         """Helper used by the reference Workflow 0.1 runner for happy-path tests."""
         from aip.orchestration.nodes.definer_gate import DefinerDecision
+
         return DefinerDecision(
             action="approve",
             reason="Auto-approved by reference Workflow 0.1 runner (happy path)",
@@ -199,14 +199,17 @@ class Workflow01Runner:
         class _NoopTraceStore:
             async def write_event(self, *a, **k):
                 pass
+
             async def get_recent_events(self, session_id: str, limit: int = 100) -> list[dict]:
                 return []  # L4/additive compat for no-op path
+
             async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
                 return []  # Sexton/additive compat for no-op path
 
         class _NoopStore:
             async def write(self, *a, **k):
                 pass
+
             async def read(self, *a, **k):
                 return ""
 

@@ -3,6 +3,7 @@
 Protocols for auth storage (sessions, API keys, user management)
 and the two-phase autonomy gate that enforces DEFINER sovereignty.
 """
+
 from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable

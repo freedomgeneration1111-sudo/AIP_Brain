@@ -72,5 +72,3 @@ def test_adapter_layer_does_not_import_orchestration_impls():
         text = py.read_text()
         for bad in forbidden:
             assert bad not in text, f"{py} imports concrete adapter storage"
-
-

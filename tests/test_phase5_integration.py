@@ -3,19 +3,17 @@
 Extends CHUNK-6.5 with actor-level verification on top of the production pipeline.
 All scenarios use CI mode (deterministic fixtures).
 """
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock
 
-from aip.foundation.schemas import BeastCadenceConfig, SextonConfig
-from aip.orchestration.sexton.sexton import Sexton
+import pytest
+
+from aip.foundation.schemas import BeastCadenceConfig, BudgetConfig, SextonConfig
 from aip.orchestration.ace_playbook import AcePlaybook
-from aip.orchestration.router import AdaptiveRouter
 from aip.orchestration.actors.beast import Beast
 from aip.orchestration.budget import BudgetManager, InMemoryBudgetStore
-from aip.foundation.schemas import BudgetConfig
-
-
-
+from aip.orchestration.router import AdaptiveRouter
+from aip.orchestration.sexton.sexton import Sexton
 
 
 @pytest.mark.asyncio
@@ -39,6 +37,3 @@ async def test_scenario_5_budget_enforcement():
     mgr = BudgetManager(cfg, store)
     ok = await mgr.check_before_call("session", "s1", 100)
     assert ok is False
-
-
-

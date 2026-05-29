@@ -8,9 +8,8 @@
 
 import pytest
 
-from aip.orchestration.workflow.context import WorkflowContext, DEFAULT_WORKFLOW_BUDGET
 from aip.foundation.schemas import ReviewVerdict
-
+from aip.orchestration.workflow.context import DEFAULT_WORKFLOW_BUDGET, WorkflowContext
 
 # --- Task 1: WorkflowContext budget defaults ---
 
@@ -61,6 +60,7 @@ class TestWorkflowContextBudgetDefault:
     def test_budget_exhaustion_is_logged(self, caplog):
         """Budget exhaustion should log a warning."""
         import logging
+
         ctx = WorkflowContext(budget_remaining=50)
         with caplog.at_level(logging.WARNING, logger="aip.orchestration.workflow.context"):
             result = ctx.consume_budget(100)
@@ -82,20 +82,32 @@ class TestEvalErrorHandling:
         from aip.orchestration.review import review_artifact
 
         class FakeArtifactStore:
-            async def write(self, id, content, metadata): pass
-            async def read(self, id, version=None): return "content"
-            async def list_versions(self, id): return [1]
+            async def write(self, id, content, metadata):
+                pass
+
+            async def read(self, id, version=None):
+                return "content"
+
+            async def list_versions(self, id):
+                return [1]
 
         class FakeEcsStore:
-            async def transition(self, **kw): pass
-            async def current_state(self, id): return "GENERATED"
+            async def transition(self, **kw):
+                pass
+
+            async def current_state(self, id):
+                return "GENERATED"
 
         class FakeEventStore:
-            async def write_event(self, **kw): pass
-            async def query(self, **kw): return []
+            async def write_event(self, **kw):
+                pass
+
+            async def query(self, **kw):
+                return []
 
         class FakeTraceStore:
-            async def write_event(self, **kw): pass
+            async def write_event(self, **kw):
+                pass
 
         async def failing_eval(content, artifact_id):
             return {
@@ -125,20 +137,32 @@ class TestEvalErrorHandling:
         from aip.orchestration.review import review_artifact
 
         class FakeArtifactStore:
-            async def write(self, id, content, metadata): pass
-            async def read(self, id, version=None): return "content"
-            async def list_versions(self, id): return [1]
+            async def write(self, id, content, metadata):
+                pass
+
+            async def read(self, id, version=None):
+                return "content"
+
+            async def list_versions(self, id):
+                return [1]
 
         class FakeEcsStore:
-            async def transition(self, **kw): pass
-            async def current_state(self, id): return "GENERATED"
+            async def transition(self, **kw):
+                pass
+
+            async def current_state(self, id):
+                return "GENERATED"
 
         class FakeEventStore:
-            async def write_event(self, **kw): pass
-            async def query(self, **kw): return []
+            async def write_event(self, **kw):
+                pass
+
+            async def query(self, **kw):
+                return []
 
         class FakeTraceStore:
-            async def write_event(self, **kw): pass
+            async def write_event(self, **kw):
+                pass
 
         async def crashing_eval(content, artifact_id):
             raise RuntimeError("Model endpoint unavailable")
@@ -163,20 +187,32 @@ class TestEvalErrorHandling:
         from aip.orchestration.review import review_artifact
 
         class FakeArtifactStore:
-            async def write(self, id, content, metadata): pass
-            async def read(self, id, version=None): return "content"
-            async def list_versions(self, id): return [1]
+            async def write(self, id, content, metadata):
+                pass
+
+            async def read(self, id, version=None):
+                return "content"
+
+            async def list_versions(self, id):
+                return [1]
 
         class FakeEcsStore:
-            async def transition(self, **kw): pass
-            async def current_state(self, id): return "GENERATED"
+            async def transition(self, **kw):
+                pass
+
+            async def current_state(self, id):
+                return "GENERATED"
 
         class FakeEventStore:
-            async def write_event(self, **kw): pass
-            async def query(self, **kw): return []
+            async def write_event(self, **kw):
+                pass
+
+            async def query(self, **kw):
+                return []
 
         class FakeTraceStore:
-            async def write_event(self, **kw): pass
+            async def write_event(self, **kw):
+                pass
 
         async def crashing_eval(content, artifact_id):
             raise ConnectionError("Ollama not running")
@@ -202,20 +238,32 @@ class TestEvalErrorHandling:
         from aip.orchestration.review import review_artifact
 
         class FakeArtifactStore:
-            async def write(self, id, content, metadata): pass
-            async def read(self, id, version=None): return "content"
-            async def list_versions(self, id): return [1]
+            async def write(self, id, content, metadata):
+                pass
+
+            async def read(self, id, version=None):
+                return "content"
+
+            async def list_versions(self, id):
+                return [1]
 
         class FakeEcsStore:
-            async def transition(self, **kw): pass
-            async def current_state(self, id): return "GENERATED"
+            async def transition(self, **kw):
+                pass
+
+            async def current_state(self, id):
+                return "GENERATED"
 
         class FakeEventStore:
-            async def write_event(self, **kw): pass
-            async def query(self, **kw): return []
+            async def write_event(self, **kw):
+                pass
+
+            async def query(self, **kw):
+                return []
 
         class FakeTraceStore:
-            async def write_event(self, **kw): pass
+            async def write_event(self, **kw):
+                pass
 
         async def error_eval(content, artifact_id):
             return {

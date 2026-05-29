@@ -18,15 +18,15 @@ import logging
 import os
 
 from aip.foundation.protocols import (
+    ArtifactStore,
     AutonomyGate,
     CanonicalStore,
-    ArtifactStore,
     EcsStore,
+    EmbeddingProvider,
     EventStore,
-    VectorStore,
     LexicalStore,
     ModelProvider,
-    EmbeddingProvider,
+    VectorStore,
     VigilStore,
 )
 from aip.foundation.schemas import CanonicalPromotionConfig, coerce_autonomy_level
@@ -102,6 +102,7 @@ class CanonicalPipeline:
             content = await self.artifact_store.read(artifact_id)
             content_str = str(content) if content else ""
             from aip.orchestration.nodes.faithfulness import evaluate_faithfulness
+
             stage2 = await evaluate_faithfulness(
                 artifact_id=artifact_id,
                 artifact_content=content_str,
@@ -113,10 +114,12 @@ class CanonicalPipeline:
                 ci_fixture = True
                 logger.info(
                     "Faithfulness evaluation for %s returned ci_fixture=True (score=%.2f)",
-                    artifact_id, faithfulness_score,
+                    artifact_id,
+                    faithfulness_score,
                 )
 
             from aip.orchestration.nodes.domain_coherence import evaluate_domain_coherence
+
             stage3 = await evaluate_domain_coherence(
                 artifact_id=artifact_id,
                 artifact_content=content_str,
@@ -128,12 +131,17 @@ class CanonicalPipeline:
                 ci_fixture = True
                 logger.info(
                     "Domain coherence evaluation for %s returned ci_fixture=True (score=%.2f)",
-                    artifact_id, domain_coherence_score,
+                    artifact_id,
+                    domain_coherence_score,
                 )
 
             evaluation_succeeded = True
         except Exception:
-            logger.error("Evaluation FAILED for artifact %s; scores set to 0.0 (will not pass threshold)", artifact_id, exc_info=True)
+            logger.error(
+                "Evaluation FAILED for artifact %s; scores set to 0.0 (will not pass threshold)",
+                artifact_id,
+                exc_info=True,
+            )
 
         # In production mode, block promotion if evaluation used CI fixtures
         ci_fixture_blocked = False
@@ -150,7 +158,10 @@ class CanonicalPipeline:
             evaluation_succeeded
             and not ci_fixture_blocked
             and (not self.config.require_faithfulness_check or faithfulness_score >= self.config.faithfulness_threshold)
-            and (not self.config.require_domain_coherence or domain_coherence_score >= self.config.domain_coherence_threshold)
+            and (
+                not self.config.require_domain_coherence
+                or domain_coherence_score >= self.config.domain_coherence_threshold
+            )
         )
 
         return {
@@ -188,6 +199,7 @@ class CanonicalPipeline:
         ci_fixture = False
         try:
             from aip.orchestration.nodes.faithfulness import evaluate_faithfulness
+
             stage2 = await evaluate_faithfulness(
                 artifact_id=artifact_id,
                 artifact_content=content_str,
@@ -199,6 +211,7 @@ class CanonicalPipeline:
                 ci_fixture = True
 
             from aip.orchestration.nodes.domain_coherence import evaluate_domain_coherence
+
             stage3 = await evaluate_domain_coherence(
                 artifact_id=artifact_id,
                 artifact_content=content_str,
@@ -211,7 +224,11 @@ class CanonicalPipeline:
 
             evaluation_succeeded = True
         except Exception:
-            logger.error("Evaluation FAILED for artifact %s; scores set to 0.0 — promotion will be blocked", artifact_id, exc_info=True)
+            logger.error(
+                "Evaluation FAILED for artifact %s; scores set to 0.0 — promotion will be blocked",
+                artifact_id,
+                exc_info=True,
+            )
 
         if not evaluation_succeeded:
             raise ValueError(f"Evaluation failed for artifact {artifact_id}; cannot proceed with promotion")
@@ -226,7 +243,7 @@ class CanonicalPipeline:
             )
             raise ValueError(
                 f"Promotion blocked for artifact {artifact_id}: evaluation used CI fixture "
-                f"scores (ci_fixture=True) in production mode. Real model evaluation is required."
+                f"scores (ci_fixture=True) in production mode. Real model evaluation is required.",
             )
 
         # Issue 12: Use config thresholds instead of hardcoded values
@@ -265,17 +282,25 @@ class CanonicalPipeline:
             # Simplified: re-embed + re-index
             embedding = await self.embedding_provider.embed(str(content))
             await self.vector_store.upsert(
-                artifact_id, embedding, str(content),
-                {"source": "canonical_promotion"}, domain="canonical",
+                artifact_id,
+                embedding,
+                str(content),
+                {"source": "canonical_promotion"},
+                domain="canonical",
             )
             await self.lexical_store.index_document(
-                artifact_id, str(content), "canonical", {"source": "canonical_promotion"}
+                artifact_id,
+                str(content),
+                "canonical",
+                {"source": "canonical_promotion"},
             )
 
         # 10. Write health to VigilStore + Event
         # Issue 11: Use correct VigilStore method
         await self.vigil_store.record_vigil_check(
-            canonical_count=1, stale_count=0, status="healthy",
+            canonical_count=1,
+            stale_count=0,
+            status="healthy",
         )
         # Issue 10: Use proper EventStore Protocol signature
         await self.event_store.write_event(
@@ -310,7 +335,7 @@ class CanonicalPipeline:
             events = await self.event_store.query(event_type="ecs_transition", limit=500)
             reviewed = set()
             for ev in events:
-                if hasattr(ev, 'to_state') and ev.to_state == "REVIEWED":
+                if hasattr(ev, "to_state") and ev.to_state == "REVIEWED":
                     reviewed.add(ev.artifact_id)
                 elif isinstance(ev, dict) and ev.get("to_state") == "REVIEWED":
                     reviewed.add(ev.get("artifact_id", ""))

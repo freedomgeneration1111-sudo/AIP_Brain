@@ -27,6 +27,7 @@ def collaborator_list(ctx):
         click.echo("CollaboratorManager not available.")
         return
     import asyncio
+
     users = asyncio.get_event_loop().run_until_complete(cm.list_collaborators())
     for u in users:
         click.echo(f"{u.get('identity')} ({u.get('role')})")
@@ -45,6 +46,7 @@ def collaborator_add(ctx, identity, role, password):
         click.echo("CollaboratorManager not available.")
         return
     import asyncio
+
     result = asyncio.get_event_loop().run_until_complete(cm.create_collaborator(identity, role, password))
     click.echo(result)
 
@@ -61,6 +63,7 @@ def collaborator_update(ctx, identity, role):
         click.echo("CollaboratorManager not available.")
         return
     import asyncio
+
     result = asyncio.get_event_loop().run_until_complete(cm.update_role(identity, role, "definer"))
     click.echo(result)
 
@@ -76,5 +79,6 @@ def collaborator_remove(ctx, identity):
         click.echo("CollaboratorManager not available.")
         return
     import asyncio
+
     result = asyncio.get_event_loop().run_until_complete(cm.revoke_collaborator(identity, "definer"))
     click.echo(result)

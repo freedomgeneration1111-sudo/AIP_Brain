@@ -35,7 +35,12 @@ async def enable_plugin(slot_name: str, config_path: str, container=Depends(get_
 
 
 @router.post("/disable")
-async def disable_plugin(slot_name: str, provider_name: str, container=Depends(get_container), _=Depends(require_definer)):
+async def disable_plugin(
+    slot_name: str,
+    provider_name: str,
+    container=Depends(get_container),
+    _=Depends(require_definer),
+):
     pm = getattr(container, "plugin_manager", None)
     if pm is None:
         raise HTTPException(503, "PluginManager not available")

@@ -57,7 +57,9 @@ class WorkflowRegistry:
                             template_id=tid,
                             name=data.get("name", yaml_file.stem),
                             description=data.get("description", ""),
-                            yaml_path=str(yaml_file.relative_to(self.workflows_dir)) if yaml_file.is_relative_to(self.workflows_dir) else str(yaml_file),
+                            yaml_path=str(yaml_file.relative_to(self.workflows_dir))
+                            if yaml_file.is_relative_to(self.workflows_dir)
+                            else str(yaml_file),
                             trigger=data.get("trigger", "manual"),
                             domains=data.get("domains", []),
                         )

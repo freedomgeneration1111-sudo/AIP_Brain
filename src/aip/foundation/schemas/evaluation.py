@@ -4,11 +4,11 @@ Evaluation scores (faithfulness, domain coherence), Sexton configuration
 and classification output, ACE playbook entries, and knowledge compilation
 configuration.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Literal
-
 
 # Type alias for compiled knowledge lifecycle
 CompilationState = Literal["SPECIFIED", "COMPILED", "REVIEWED", "APPROVED", "FAILED"]
@@ -21,6 +21,7 @@ class EvaluationScore:
     model_gen_assumption tags what model limitation this evaluation
     compensates for. Sexton audits these when model slots change.
     """
+
     dimension: str
     score: float = 0.0
     rationale: str | None = None
@@ -41,6 +42,7 @@ class FaithfulnessResult:
     not from a real model evaluation. Callers MUST check this flag to
     avoid treating fixture scores as genuine quality measurements.
     """
+
     artifact_id: str
     faithfulness_score: float = 0.0
     context_coverage: float = 0.0
@@ -60,6 +62,7 @@ class DomainCoherenceResult:
     not from a real model evaluation. Callers MUST check this flag to
     avoid treating fixture scores as genuine quality measurements.
     """
+
     artifact_id: str
     coherence_score: float = 0.0
     domain: str = ""
@@ -75,6 +78,7 @@ class SextonConfig:
     Sexton reads trace_events and classifies failures A-F.
     Sexton audits stale model assumptions on slot changes.
     """
+
     classification_batch_size: int = 50
     classification_interval_seconds: int = 300
     audit_on_slot_change: bool = True
@@ -90,6 +94,7 @@ class AcePlaybookEntry:
     Every rule must carry model_gen_assumption.
     Per Appendix E Type B: "Add or strengthen playbook entry."
     """
+
     entry_id: str
     domain: str
     failure_type: str  # A-F per Appendix E
@@ -111,6 +116,7 @@ class FailureClassification:
     Writes back to trace_events.failure_type.
     Every classification carries model_gen_assumption.
     """
+
     trace_event_id: int
     failure_type: str  # A-F per Appendix E
     confidence: float = 0.0
@@ -129,6 +135,7 @@ class KnowledgeCompilationConfig:
     model_gen_assumption tags what the compilation criteria assume.
     Per Appendix D: compiled knowledge ≠ canonical artifact.
     """
+
     compilation_model_slot: str = "synthesis"
     evaluation_model_slot: str = "evaluation"
     max_source_canonicals: int = 10

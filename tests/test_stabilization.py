@@ -6,15 +6,17 @@ core logic + layering still verified.
 """
 
 import asyncio
-import tempfile
 import os
+import tempfile
+
 import pytest
 
 from aip.foundation.schemas import PerformanceConfig
 
 try:
-    from aip.orchestration.recovery import WorkflowRecovery
     from aip.adapter.db.sqlite_concurrency import SqliteConcurrencyManager
+
+    from aip.orchestration.recovery import WorkflowRecovery
 except Exception:
     WorkflowRecovery = None  # type: ignore
     SqliteConcurrencyManager = None  # type: ignore

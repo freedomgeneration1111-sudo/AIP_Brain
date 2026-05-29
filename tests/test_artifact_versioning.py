@@ -1,4 +1,5 @@
 """Tests for versioned artifact store (CHUNK-4.3)."""
+
 import pytest
 
 from aip.adapter.artifact_store_versioned import VersionedArtifactStore

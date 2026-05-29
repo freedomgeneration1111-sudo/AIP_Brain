@@ -7,8 +7,10 @@ SPECIFIED → GENERATED → REVIEWED → (faithfulness + domain coherence evalua
 This test wires together real adapter implementations to verify the pipeline
 completes end-to-end without stubs.
 """
+
 import os
 import tempfile
+
 import pytest
 
 
@@ -163,14 +165,15 @@ def _make_vigil_store():
 async def test_canonical_pipeline_importable():
     """CanonicalPipeline is importable from orchestration."""
     from aip.orchestration.canonical_pipeline import CanonicalPipeline
+
     assert CanonicalPipeline is not None
 
 
 @pytest.mark.asyncio
 async def test_canonical_pipeline_evaluate_for_promotion():
     """CanonicalPipeline.evaluate_for_promotion runs without error."""
-    from aip.orchestration.canonical_pipeline import CanonicalPipeline
     from aip.foundation.schemas import CanonicalPromotionConfig
+    from aip.orchestration.canonical_pipeline import CanonicalPipeline
 
     gate = _make_gate({"escalation_requires_definer": True})
     try:
@@ -210,8 +213,8 @@ async def test_canonical_pipeline_promote_to_canonical():
     In CI mode (CI=true), fixture-based evaluation scores are allowed through.
     Without CI=true, ci_fixture scores would block promotion in production mode.
     """
-    from aip.orchestration.canonical_pipeline import CanonicalPipeline
     from aip.foundation.schemas import CanonicalPromotionConfig
+    from aip.orchestration.canonical_pipeline import CanonicalPipeline
 
     gate = _make_gate({"escalation_requires_definer": True})
     # Set CI=true so ci_fixture evaluation scores don't block promotion
@@ -252,8 +255,8 @@ async def test_canonical_pipeline_rejects_non_definer():
 
     In CI mode so that ci_fixture scores don't block before the definer check.
     """
-    from aip.orchestration.canonical_pipeline import CanonicalPipeline
     from aip.foundation.schemas import CanonicalPromotionConfig
+    from aip.orchestration.canonical_pipeline import CanonicalPipeline
 
     gate = _make_gate({"escalation_requires_definer": True})
     os.environ["CI"] = "true"
@@ -283,8 +286,8 @@ async def test_canonical_pipeline_rejects_non_definer():
 @pytest.mark.asyncio
 async def test_canonical_pipeline_rejection():
     """CanonicalPipeline.reject_promotion records rejection event."""
-    from aip.orchestration.canonical_pipeline import CanonicalPipeline
     from aip.foundation.schemas import CanonicalPromotionConfig
+    from aip.orchestration.canonical_pipeline import CanonicalPipeline
 
     gate = _make_gate()
     try:

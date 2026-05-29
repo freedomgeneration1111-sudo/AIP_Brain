@@ -36,20 +36,33 @@ def test_pytest_asyncio_mode_auto_configured():
 @pytest.mark.asyncio
 async def test_knowledge_store_crud_no_event_loop_error():
     """KnowledgeStore async operations must not raise 'no current event loop' errors."""
-    from aip.adapter.knowledge.sqlite_knowledge_store import SqliteKnowledgeStore
     import tempfile
+
+    from aip.adapter.knowledge.sqlite_knowledge_store import SqliteKnowledgeStore
 
     # Need mock vector_store and lexical_store for the constructor
     class MockVectorStore:
-        async def upsert(self, *a, **kw): pass
-        async def retrieve(self, *a, **kw): return []
-        async def delete(self, *a, **kw): pass
-        async def count(self, *a, **kw): return 0
+        async def upsert(self, *a, **kw):
+            pass
+
+        async def retrieve(self, *a, **kw):
+            return []
+
+        async def delete(self, *a, **kw):
+            pass
+
+        async def count(self, *a, **kw):
+            return 0
 
     class MockLexicalStore:
-        async def index_document(self, *a, **kw): pass
-        async def search(self, *a, **kw): return []
-        async def close(self): pass
+        async def index_document(self, *a, **kw):
+            pass
+
+        async def search(self, *a, **kw):
+            return []
+
+        async def close(self):
+            pass
 
     with tempfile.TemporaryDirectory() as tmp:
         store = SqliteKnowledgeStore(
@@ -83,29 +96,66 @@ async def test_knowledge_compiler_produces_artifact():
     The compiler requires many injected dependencies. We provide mocks
     to verify the async pipeline works without event loop issues.
     """
-    from aip.orchestration.compilation import KnowledgeCompiler
     from aip.foundation.schemas import KnowledgeCompilationConfig
+    from aip.orchestration.compilation import KnowledgeCompiler
 
     class _MockStore:
-        async def store_compiled(self, *a, **kw): pass
-        async def get_compiled(self, *a, **kw): return None
-        async def list_compiled(self, *a, **kw): return []
-        async def update_state(self, *a, **kw): pass
-        async def get_provenance(self, *a, **kw): return []
-        async def search_compiled(self, *a, **kw): return []
-        async def list_canonical(self, *a, **kw): return []
-        async def write_canonical(self, *a, **kw): pass
-        async def upsert(self, *a, **kw): pass
-        async def retrieve(self, *a, **kw): return []
-        async def index_document(self, *a, **kw): pass
-        async def search(self, *a, **kw): return []
-        async def write_event(self, *a, **kw): pass
-        async def query(self, *a, **kw): return []
-        async def current_state(self, *a, **kw): return "REVIEWED"
-        async def read(self, *a, **kw): return "content"
-        async def record_vigil_check(self, *a, **kw): pass
-        async def transition(self, *a, **kw): pass
-        async def embed(self, text): return [0.0] * 384
+        async def store_compiled(self, *a, **kw):
+            pass
+
+        async def get_compiled(self, *a, **kw):
+            return None
+
+        async def list_compiled(self, *a, **kw):
+            return []
+
+        async def update_state(self, *a, **kw):
+            pass
+
+        async def get_provenance(self, *a, **kw):
+            return []
+
+        async def search_compiled(self, *a, **kw):
+            return []
+
+        async def list_canonical(self, *a, **kw):
+            return []
+
+        async def write_canonical(self, *a, **kw):
+            pass
+
+        async def upsert(self, *a, **kw):
+            pass
+
+        async def retrieve(self, *a, **kw):
+            return []
+
+        async def index_document(self, *a, **kw):
+            pass
+
+        async def search(self, *a, **kw):
+            return []
+
+        async def write_event(self, *a, **kw):
+            pass
+
+        async def query(self, *a, **kw):
+            return []
+
+        async def current_state(self, *a, **kw):
+            return "REVIEWED"
+
+        async def read(self, *a, **kw):
+            return "content"
+
+        async def record_vigil_check(self, *a, **kw):
+            pass
+
+        async def transition(self, *a, **kw):
+            pass
+
+        async def embed(self, text):
+            return [0.0] * 384
 
     config = KnowledgeCompilationConfig()
     mock = _MockStore()
@@ -135,9 +185,10 @@ async def test_knowledge_compiler_produces_artifact():
 @pytest.mark.asyncio
 async def test_collaborator_role_enforcement():
     """Collaborator access must enforce role restrictions without event loop errors."""
+    import tempfile
+
     from aip.adapter.auth.session_store import SqliteSessionStore
     from aip.foundation.schemas import AuthConfig
-    import tempfile
 
     with tempfile.TemporaryDirectory() as tmp:
         auth_config = AuthConfig()
@@ -158,8 +209,8 @@ async def test_collaborator_role_enforcement():
 @pytest.mark.asyncio
 async def test_plugin_manager_health_check():
     """PluginManager health_check must work without event loop errors."""
-    from aip.orchestration.plugins import PluginManager
     from aip.foundation.schemas import PluginConfig
+    from aip.orchestration.plugins import PluginManager
 
     config = PluginConfig(sandbox_mode=True)
     pm = PluginManager(
@@ -174,8 +225,8 @@ async def test_plugin_manager_health_check():
 @pytest.mark.asyncio
 async def test_performance_profiler_metrics():
     """PerformanceProfiler must return real metrics without event loop errors."""
-    from aip.orchestration.perf import PerformanceProfiler
     from aip.foundation.schemas import PerformanceConfig
+    from aip.orchestration.perf import PerformanceProfiler
 
     config = PerformanceConfig()
     profiler = PerformanceProfiler(config=config, trace_store=None)

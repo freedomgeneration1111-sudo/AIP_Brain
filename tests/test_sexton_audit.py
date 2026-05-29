@@ -1,10 +1,12 @@
 """Tests for CHUNK-7.3 Sexton Stale Rule Audit (per Phase 5 ANNEX + prose)."""
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock
 
-from aip.foundation.schemas import AcePlaybookEntry, ContractRule, ModelSlotConfig
-from aip.foundation.protocols import EventStore
+import pytest
+
 from aip.adapter.model_slot_resolver import ModelSlotResolver
+from aip.foundation.protocols import EventStore
+from aip.foundation.schemas import AcePlaybookEntry, ContractRule, ModelSlotConfig
 from aip.orchestration.sexton.sexton_audit import SextonAudit
 
 
@@ -26,7 +28,9 @@ async def test_audit_stale_assumptions_produces_results_with_model_gen_assumptio
     class _FakeRule:
         def __init__(self, **kw):
             self.__dict__.update(kw)
+
         model_gen_assumption = None
+
     rules = [
         _FakeRule(rule_id="cr1", text="test rule", model_gen_assumption="Models may not handle long context well"),
     ]
@@ -41,8 +45,10 @@ async def test_audit_stale_assumptions_produces_results_with_model_gen_assumptio
             created_at="2026-05-28",
         ),
     ]
+
     class _FakeSlot:
         model = "qwen3-coder"
+
     slots = {"sexton": _FakeSlot()}
 
     results = await audit.audit_stale_assumptions(rules, entries, slots)
@@ -63,8 +69,22 @@ async def test_flag_deprecated_rules_writes_events_and_deprecates_playbook():
     audit = SextonAudit(model_resolver=MagicMock(), event_store=event_store)
 
     results = [
-        {"rule_id": "ace1", "type": "playbook_entry", "still_valid": False, "confidence": 0.9, "assumption": "old", "reason": "test"},
-        {"rule_id": "cr1", "type": "contract_rule", "still_valid": False, "confidence": 0.85, "assumption": "old", "reason": "test"},
+        {
+            "rule_id": "ace1",
+            "type": "playbook_entry",
+            "still_valid": False,
+            "confidence": 0.9,
+            "assumption": "old",
+            "reason": "test",
+        },
+        {
+            "rule_id": "cr1",
+            "type": "contract_rule",
+            "still_valid": False,
+            "confidence": 0.85,
+            "assumption": "old",
+            "reason": "test",
+        },
     ]
 
     await audit.flag_deprecated_rules(results)

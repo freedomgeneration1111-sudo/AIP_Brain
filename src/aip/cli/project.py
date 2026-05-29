@@ -43,15 +43,16 @@ def list_projects() -> None:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         # Check if projects table exists
-        tables = [r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='projects'"
-        ).fetchall()]
+        tables = [
+            r[0]
+            for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='projects'").fetchall()
+        ]
         if not tables:
             click.echo("Projects table not found — database may need initialization.")
             return
 
         rows = conn.execute(
-            "SELECT project_id, name, domain, created_at, updated_at FROM projects ORDER BY created_at DESC"
+            "SELECT project_id, name, domain, created_at, updated_at FROM projects ORDER BY created_at DESC",
         ).fetchall()
         conn.close()
 
@@ -76,6 +77,7 @@ def create_project(name: str, domain: str) -> None:
     Currently creates directly in the store.
     """
     import uuid
+
     db_path = _get_db_path()
     if not Path(db_path).exists():
         click.echo("No database found — run `aip init` first.")
@@ -84,13 +86,13 @@ def create_project(name: str, domain: str) -> None:
     # TODO: Wire through AutonomyGate for admin-level write approval
     try:
         from aip.adapter.project.sqlite_project_store import SqliteProjectStore
+
         store = SqliteProjectStore(db_path)
         import asyncio
+
         asyncio.run(store.initialize())
         project_id = str(uuid.uuid4())[:8]
-        result = asyncio.run(store.create_project(
-            project_id=project_id, name=name, domain=domain
-        ))
+        result = asyncio.run(store.create_project(project_id=project_id, name=name, domain=domain))
         click.echo(f"Created project: {project_id} — {name} [{domain}]")
     except ImportError:
         # Fallback: direct SQL
@@ -122,9 +124,7 @@ def show_project(project_id: str) -> None:
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT * FROM projects WHERE project_id = ?", (project_id,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM projects WHERE project_id = ?", (project_id,)).fetchone()
         conn.close()
 
         if row:

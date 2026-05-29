@@ -7,6 +7,7 @@ Tests that surfaces (API, CLI, MCP, Chat) respect isolation per §7.2:
 - Rate limiting applies to all surfaces
 - Each surface respects the same sovereignty model
 """
+
 import pytest
 
 
@@ -126,6 +127,7 @@ def test_collaborator_permissions_isolation():
 def test_autonomy_level_hierarchy():
     """Autonomy levels follow none < read < write < admin hierarchy."""
     import tempfile
+
     from aip.adapter.autonomy.autonomy_gate import AutonomyGateImpl
 
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -137,4 +139,5 @@ def test_autonomy_level_hierarchy():
         assert gate._level_rank("write") < gate._level_rank("admin")
     finally:
         import os
+
         os.unlink(tmp.name)

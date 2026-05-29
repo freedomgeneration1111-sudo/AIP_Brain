@@ -20,9 +20,10 @@ class SuspendedWorkflow:
     This object is designed to be easily serialized (JSON) and stored,
     then later resumed when a DEFINER decision arrives.
     """
+
     workflow_id: str
     run_id: str
-    status: str = "suspended"          # running | suspended | completed | failed
+    status: str = "suspended"  # running | suspended | completed | failed
     current_node_id: str | None = None
     variables: dict[str, Any] = field(default_factory=dict)
     completed_nodes: list[dict[str, Any]] = field(default_factory=list)  # node_id + result summary
@@ -44,6 +45,7 @@ class WorkflowResumeRequest:
     Data needed to resume a suspended workflow.
     Typically contains the DEFINER decision for a dialog node.
     """
+
     run_id: str
-    decision: dict[str, Any]   # serialized DefinerDecision
+    decision: dict[str, Any]  # serialized DefinerDecision
     metadata: dict[str, Any] = field(default_factory=dict)

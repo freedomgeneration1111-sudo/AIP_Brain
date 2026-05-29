@@ -5,14 +5,15 @@ import asyncio
 import pytest
 
 from aip.foundation.schemas import Chunk, EvaluationScore
-from aip.orchestration.nodes.adversarial_eval import adversarial_eval, EvalResult
-from aip.orchestration.nodes.faithfulness import evaluate_faithfulness
+from aip.foundation.validation import full_l3a_evaluation, structural_validate
+from aip.orchestration.nodes.adversarial_eval import EvalResult, adversarial_eval
 from aip.orchestration.nodes.domain_coherence import evaluate_domain_coherence
-from aip.foundation.validation import structural_validate, full_l3a_evaluation
+from aip.orchestration.nodes.faithfulness import evaluate_faithfulness
 
 
 class FakeModelResolver:
     """Minimal fake ModelSlotResolver for testing — returns CI fixture responses."""
+
     def __init__(self, ci_mode=True):
         self._ci_mode = ci_mode
 
@@ -28,13 +29,19 @@ class FakeModelResolver:
 
 class FakeModelResolverReal:
     """Fake ModelSlotResolver that returns real-looking JSON responses."""
+
     def __init__(self):
         pass
 
     async def call(self, slot_name, messages, **kwargs):
         if slot_name == "evaluation":
             return {
-                "content": '{"scores": {"framework_integrity": 0.85, "logic": 0.80, "honesty": 0.88, "completeness": 0.82}, "overall": 0.84, "critique": "Artifact is well-grounded and coherent."}',
+                "content": (
+                    '{"scores": {"framework_integrity": 0.85, '
+                    '"logic": 0.80, "honesty": 0.88, '
+                    '"completeness": 0.82}, "overall": 0.84, '
+                    '"critique": "Artifact is well-grounded and coherent."}'
+                ),
                 "model": "test-model-v1",
                 "usage": {"prompt_tokens": 50, "completion_tokens": 100, "total_tokens": 150},
                 "latency_ms": 200,
@@ -42,7 +49,12 @@ class FakeModelResolverReal:
             }
         # Default: faithfulness/domain_coherence response
         return {
-            "content": '{"faithfulness_score": 0.88, "context_coverage": 0.85, "hallucination_flags": [], "rationale": "Well-grounded"}',
+            "content": (
+                '{"faithfulness_score": 0.88, '
+                '"context_coverage": 0.85, '
+                '"hallucination_flags": [], '
+                '"rationale": "Well-grounded"}'
+            ),
             "model": "test-model-v1",
             "usage": {"prompt_tokens": 50, "completion_tokens": 100, "total_tokens": 150},
             "latency_ms": 150,
@@ -90,8 +102,8 @@ async def test_adversarial_eval_real_mode(real_resolver):
 
 def test_old_adversarial_eval_backward_compat():
     """Old Phase 1 signature still works and returns ci_fixture=True."""
-    from aip.orchestration.nodes.synthesis import SynthesisOutput
     from aip.foundation.validation import ValidationResult
+    from aip.orchestration.nodes.synthesis import SynthesisOutput
 
     synth = SynthesisOutput(
         content="Test synthesis output that is long enough to pass basic checks.",
@@ -172,7 +184,10 @@ async def test_full_l3a_evaluation_orchestration(resolver):
     """full_l3a_evaluation runs Stage 1 + 2 + 3 when Stage 1 passes."""
     result = await full_l3a_evaluation(
         artifact_id="a1",
-        artifact_content="A reasonably long piece of synthesized content that should pass the minimum length and marker checks for structural validation.",
+        artifact_content=(
+            "A reasonably long piece of synthesized content that "
+            "should pass the minimum length and marker checks for structural validation."
+        ),
         domain="test",
         retrieved_context=[Chunk(id="c1", content="Some context", score=0.8, metadata={}, domain="test")],
         model_resolver=resolver,

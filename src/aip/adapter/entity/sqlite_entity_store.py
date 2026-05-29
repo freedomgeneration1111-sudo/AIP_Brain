@@ -81,7 +81,8 @@ class SqliteEntityStore(EntityStore):
         conn = await self._get_conn()
         try:
             cursor = await conn.execute(
-                "SELECT entity_id, entity_type, name, metadata, created_at, updated_at FROM entities WHERE entity_id = ?",
+                "SELECT entity_id, entity_type, name, metadata, created_at, updated_at "
+                "FROM entities WHERE entity_id = ?",
                 (entity_id,),
             )
             row = await cursor.fetchone()
@@ -111,20 +112,22 @@ class SqliteEntityStore(EntityStore):
             else:
                 cursor = await conn.execute(
                     "SELECT entity_id, entity_type, name, metadata, created_at, updated_at "
-                    "FROM entities ORDER BY updated_at DESC"
+                    "FROM entities ORDER BY updated_at DESC",
                 )
 
             rows = await cursor.fetchall()
             results = []
             for row in rows:
-                results.append({
-                    "entity_id": row["entity_id"],
-                    "entity_type": row["entity_type"],
-                    "name": row["name"],
-                    "metadata": json.loads(row["metadata"]) if row["metadata"] else {},
-                    "created_at": row["created_at"],
-                    "updated_at": row["updated_at"],
-                })
+                results.append(
+                    {
+                        "entity_id": row["entity_id"],
+                        "entity_type": row["entity_type"],
+                        "name": row["name"],
+                        "metadata": json.loads(row["metadata"]) if row["metadata"] else {},
+                        "created_at": row["created_at"],
+                        "updated_at": row["updated_at"],
+                    },
+                )
             return results
         finally:
             await conn.close()

@@ -6,6 +6,7 @@ actors can iterate over projects for corpus maintenance and health checks.
 Phase 3 addition: fills the gap where ProjectStore had only a Protocol
 and no concrete adapter, leaving container.project_store as None.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -92,20 +93,22 @@ class SqliteProjectStore(ProjectStore):
             else:
                 cursor = await conn.execute(
                     "SELECT project_id, name, status, domain, created_at, updated_at "
-                    "FROM projects ORDER BY updated_at DESC"
+                    "FROM projects ORDER BY updated_at DESC",
                 )
 
             rows = await cursor.fetchall()
             results = []
             for row in rows:
-                results.append({
-                    "project_id": row["project_id"],
-                    "name": row["name"],
-                    "status": row["status"],
-                    "domain": row["domain"],
-                    "created_at": row["created_at"],
-                    "updated_at": row["updated_at"],
-                })
+                results.append(
+                    {
+                        "project_id": row["project_id"],
+                        "name": row["name"],
+                        "status": row["status"],
+                        "domain": row["domain"],
+                        "created_at": row["created_at"],
+                        "updated_at": row["updated_at"],
+                    },
+                )
             return results
         finally:
             await conn.close()

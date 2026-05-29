@@ -78,10 +78,12 @@ def test_no_hardcoded_model_names_in_production_code():
                 docstring = ast.get_docstring(node)
                 if docstring:
                     # The docstring is the first statement's value
-                    if (node.body
+                    if (
+                        node.body
                         and isinstance(node.body[0], ast.Expr)
                         and isinstance(node.body[0].value, ast.Constant)
-                        and isinstance(node.body[0].value.value, str)):
+                        and isinstance(node.body[0].value.value, str)
+                    ):
                         docstring_lines.add(node.body[0].value.lineno)
 
         for node in ast.walk(tree):
@@ -97,8 +99,7 @@ def test_no_hardcoded_model_names_in_production_code():
                     if len(val) > 40:  # Long strings are likely assumption descriptions, not model references
                         continue
                     violations.append(
-                        f"{py_file.relative_to(repo_root)}:{node.lineno}: "
-                        f"possible hardcoded model name {val!r}"
+                        f"{py_file.relative_to(repo_root)}:{node.lineno}: possible hardcoded model name {val!r}",
                     )
 
     assert not violations, (

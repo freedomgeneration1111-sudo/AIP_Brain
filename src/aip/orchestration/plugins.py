@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from aip.foundation.protocols import PluginProvider, ModelProvider, TraceStore
+from aip.foundation.protocols import ModelProvider, PluginProvider, TraceStore
 from aip.foundation.schemas import PluginConfig
 from aip.orchestration.router import AdaptiveRouter
 
@@ -135,7 +135,7 @@ class PluginManager:
 
                 # Disable the plugin gracefully
                 for key, plugin in manager._registered.items():
-                    if hasattr(plugin, 'call_model') and getattr(plugin, 'call_model', None) == func:
+                    if hasattr(plugin, "call_model") and getattr(plugin, "call_model", None) == func:
                         manager._disabled.add(key)
                         logger.warning(f"Plugin {key} disabled due to error: {e}")
                         break
@@ -148,4 +148,5 @@ class PluginManager:
                     "latency_ms": 0,
                     "cost_usd": 0.0,
                 }
+
         return wrapped

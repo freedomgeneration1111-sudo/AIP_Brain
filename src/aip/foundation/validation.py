@@ -38,10 +38,14 @@ DEFAULT_RULES: list[ValidationRule] = [
     ),
     ValidationRule(
         rule_id="no_false_success_patterns",
-        check=lambda s: not any(p in s.lower() for p in ["task complete", "all done", "finished successfully"]) or len(s) > 200,
+        check=lambda s: (
+            not any(p in s.lower() for p in ["task complete", "all done", "finished successfully"]) or len(s) > 200
+        ),
         failure_type="E",
         message="Claims completion without sufficient substance.",
-        model_gen_assumption="Models may falsely claim completion without sufficient substance; false-success check compensates per §1.8",
+        model_gen_assumption=(
+            "Models may falsely claim completion without sufficient substance; false-success check compensates per §1.8"
+        ),
     ),
     ValidationRule(
         rule_id="required_section_markers",
@@ -53,9 +57,7 @@ DEFAULT_RULES: list[ValidationRule] = [
 ]
 
 
-def structural_validate(
-    output: str, rules: list[ValidationRule] | None = None
-) -> ValidationResult:
+def structural_validate(output: str, rules: list[ValidationRule] | None = None) -> ValidationResult:
     """Pure L3a validation. No model calls. Zero tokens."""
     rules = rules or DEFAULT_RULES
     failed = []
@@ -79,6 +81,7 @@ def structural_validate(
 async def full_l3a_evaluation(*args, **kwargs):
     """Moved to orchestration.l3a_orchestrator. This alias preserves backward compat."""
     import importlib
+
     _mod = importlib.import_module("aip.orchestration.l3a_orchestrator")
     _real = _mod.full_l3a_evaluation
     return await _real(*args, **kwargs)

@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import click
 
-from aip.cli import init as init_cmd
-from aip.cli import status as status_cmd
 from aip.cli import config as config_cmd
+from aip.cli import init as init_cmd
 from aip.cli import project as project_cmd
 from aip.cli import session as session_cmd
+from aip.cli import status as status_cmd
 
 
 @click.group()

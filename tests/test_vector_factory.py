@@ -2,10 +2,10 @@
 
 import pytest
 
+from aip.adapter.vector._in_memory import InMemoryVectorStore
 from aip.adapter.vector.factory import create_vector_store
 from aip.adapter.vector.pgvector_store import PgvectorStore
 from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
-from aip.adapter.vector._in_memory import InMemoryVectorStore
 from aip.foundation.schemas import PgvectorConfig
 
 
@@ -15,7 +15,7 @@ async def test_factory_returns_sqlite_for_sqlite_provider():
         "vector_backend": {
             "provider": "sqlite_vss",
             "db_path": ":memory:",
-        }
+        },
     }
     try:
         store = await create_vector_store(config)
@@ -39,7 +39,7 @@ async def test_factory_returns_pgvector_when_available(monkeypatch):
                 "pool_min_size": 1,
                 "pool_max_size": 2,
             },
-        }
+        },
     }
 
     # We can't easily test real Postgres here, so we test the code path
@@ -63,7 +63,7 @@ async def test_factory_graceful_degradation_to_sqlite(monkeypatch):
         "vector_backend": {
             "provider": "pgvector",
             "connection_string": "postgresql://nonexistent:5432/bad",
-        }
+        },
     }
 
     try:

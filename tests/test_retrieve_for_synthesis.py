@@ -41,15 +41,16 @@ class FakeTraceStore(TraceStore):
     def __init__(self):
         self.events = []
 
-    async def write_event(self, session_id, node_type, failure_type=None,
-                          outcome=None, detail=None, **kw):
-        self.events.append({
-            "session_id": session_id,
-            "node_type": node_type,
-            "failure_type": failure_type,
-            "outcome": outcome,
-            "detail": detail,
-        })
+    async def write_event(self, session_id, node_type, failure_type=None, outcome=None, detail=None, **kw):
+        self.events.append(
+            {
+                "session_id": session_id,
+                "node_type": node_type,
+                "failure_type": failure_type,
+                "outcome": outcome,
+                "detail": detail,
+            },
+        )
 
     async def get_recent_events(self, session_id: str, limit: int = 100) -> list[dict]:
         # Return in reverse chrono (most recent first) to match production expectation
@@ -57,12 +58,19 @@ class FakeTraceStore(TraceStore):
 
     async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
         # Sexton/CHUNK-3.4 additive compat
-        unclassified = [e for e in reversed(self.events) if e.get("failure_type") is None and e.get("outcome") == "failure"]
+        unclassified = [
+            e for e in reversed(self.events) if e.get("failure_type") is None and e.get("outcome") == "failure"
+        ]
         return unclassified[:limit]
 
 
-def _chunk(id: str, score: float, authority: str = "raw",
-           created_at: str | None = None, access_count: int = 0) -> Chunk:
+def _chunk(
+    id: str,
+    score: float,
+    authority: str = "raw",
+    created_at: str | None = None,
+    access_count: int = 0,
+) -> Chunk:
     return Chunk(
         id=id,
         content=f"Content for {id}",
@@ -84,7 +92,7 @@ def _default_config() -> dict:
             "weight_recency": 0.15,
             "weight_authority": 0.15,
             "weight_frequency": 0.10,
-        }
+        },
     }
 
 
@@ -109,9 +117,7 @@ def test_fake_embed_is_unit_vector():
 async def test_insufficient_memory_empty_results():
     store = FakeVectorStore(hits=[])
     trace = FakeTraceStore()
-    result = await retrieve_for_synthesis(
-        "query", "test", store, fake_embed, trace, _default_config()
-    )
+    result = await retrieve_for_synthesis("query", "test", store, fake_embed, trace, _default_config())
     assert result.status == "INSUFFICIENT_MEMORY"
     assert result.max_confidence == 0.0
     # R2: trace event logged
@@ -124,9 +130,7 @@ async def test_insufficient_memory_below_threshold():
     low_hits = [_chunk("doc1", 0.10), _chunk("doc2", 0.20)]
     store = FakeVectorStore(hits=low_hits)
     trace = FakeTraceStore()
-    result = await retrieve_for_synthesis(
-        "query", "test", store, fake_embed, trace, _default_config()
-    )
+    result = await retrieve_for_synthesis("query", "test", store, fake_embed, trace, _default_config())
     assert result.status == "INSUFFICIENT_MEMORY"
     assert len(trace.events) == 1
 
@@ -136,9 +140,7 @@ async def test_ok_above_threshold():
     hits = [_chunk("doc1", 0.80), _chunk("doc2", 0.50)]
     store = FakeVectorStore(hits=hits)
     trace = FakeTraceStore()
-    result = await retrieve_for_synthesis(
-        "query", "test", store, fake_embed, trace, _default_config()
-    )
+    result = await retrieve_for_synthesis("query", "test", store, fake_embed, trace, _default_config())
     assert result.status == "OK"
     assert len(result.hits) == 2
     assert result.hits[0].score >= result.hits[1].score
@@ -166,7 +168,7 @@ def test_rerank_weights_config_overrides_defaults():
             "weight_recency": 0.0,
             "weight_authority": 0.0,
             "weight_frequency": 0.0,
-        }
+        },
     }
     w = RerankWeights.from_config(config)
     assert w.semantic == 1.0
@@ -196,23 +198,20 @@ def test_config_accepts_dict():
     store = FakeVectorStore(hits=[_chunk("d1", 0.80)])
     trace = FakeTraceStore()
     # Should not raise
-    result = asyncio.run(
-        retrieve_for_synthesis("query", "test", store, fake_embed, trace, _default_config())
-    )
+    result = asyncio.run(retrieve_for_synthesis("query", "test", store, fake_embed, trace, _default_config()))
     assert result.status == "OK"
 
 
 def test_config_model_dump_fallback():
     """F3: If config has model_dump (Pydantic AipConfig), it should be called."""
+
     class FakeAipConfig:
         def model_dump(self) -> dict:
             return _default_config()
 
     store = FakeVectorStore(hits=[_chunk("d1", 0.80)])
     trace = FakeTraceStore()
-    result = asyncio.run(
-        retrieve_for_synthesis("query", "test", store, fake_embed, trace, FakeAipConfig())
-    )
+    result = asyncio.run(retrieve_for_synthesis("query", "test", store, fake_embed, trace, FakeAipConfig()))
     assert result.status == "OK"
 
 
@@ -244,7 +243,7 @@ def test_ace_rules_boost_procedural_hits():
     store = FakeVectorStore(hits=[_chunk("procedural test content", 0.70), _chunk("unrelated", 0.80)])
     trace = FakeTraceStore()
     result = asyncio.run(
-        retrieve_for_synthesis("query", "test", store, fake_embed, trace, _default_config(), ace_rules=[ace_rule])
+        retrieve_for_synthesis("query", "test", store, fake_embed, trace, _default_config(), ace_rules=[ace_rule]),
     )
     assert result.status == "OK"
     # The procedural hit (id "procedural test content") should have been boosted by the rule

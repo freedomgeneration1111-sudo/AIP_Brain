@@ -9,8 +9,10 @@ Verifies:
 - Collaborator cannot approve artifacts
 - API routes with autonomy_gate=True enforce sovereignty
 """
+
 import os
 import tempfile
+
 import pytest
 
 
@@ -124,7 +126,7 @@ def test_collaborator_config_cannot_approve():
 
 def test_definer_gate_module_importable():
     """DEFINER gate node is importable."""
-    from aip.orchestration.nodes.definer_gate import definer_gate, DefinerGateMode, DefinerDecision
+    from aip.orchestration.nodes.definer_gate import DefinerDecision, DefinerGateMode, definer_gate
 
     assert DefinerGateMode.AUTO_APPROVE_STUB.value == "auto_approve_stub"
 

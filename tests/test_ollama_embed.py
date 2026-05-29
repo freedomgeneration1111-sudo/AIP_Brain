@@ -1,4 +1,5 @@
 """Tests for CHUNK-5.1 Ollama Embedding Client (using mock for CI)."""
+
 import pytest
 
 from aip.adapter.embedding.ollama_embed import MockOllamaEmbeddingClient

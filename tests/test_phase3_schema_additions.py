@@ -1,14 +1,15 @@
 """Tests for CHUNK-5.0a: Phase 3 Schema + Protocol Additions."""
-from aip.foundation.schemas import (
-    TrajectorySignal,
-    SessionContext,
-    ModelSlotConfig,
-    TrajectorySignalType,
-)
+
 from aip.foundation.protocols import (
-    TraceStore,
-    ModelProvider,
     EmbeddingProvider,
+    ModelProvider,
+    TraceStore,
+)
+from aip.foundation.schemas import (
+    ModelSlotConfig,
+    SessionContext,
+    TrajectorySignal,
+    TrajectorySignalType,
 )
 
 

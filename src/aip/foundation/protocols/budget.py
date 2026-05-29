@@ -2,6 +2,7 @@
 
 Token budget tracking across session, project, and daily scopes.
 """
+
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable

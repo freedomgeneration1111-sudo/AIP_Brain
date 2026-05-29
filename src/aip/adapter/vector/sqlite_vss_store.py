@@ -158,13 +158,15 @@ class SqliteVssVectorStore(VectorStore):
             for row in rows:
                 id_, content, distance, domain_val, meta_json = row
                 score = max(0.0, 1.0 - distance) if distance is not None else 0.0
-                results.append(Chunk(
-                    id=id_,
-                    content=content,
-                    score=score,
-                    metadata=json.loads(meta_json) if meta_json else {},
-                    domain=domain_val,
-                ))
+                results.append(
+                    Chunk(
+                        id=id_,
+                        content=content,
+                        score=score,
+                        metadata=json.loads(meta_json) if meta_json else {},
+                        domain=domain_val,
+                    ),
+                )
             return results
         finally:
             await conn.close()
@@ -223,8 +225,7 @@ class SqliteVssVectorStore(VectorStore):
                         chunk.domain,
                     )
                     logger.info(
-                        "store() generated real embedding for chunk '%s' "
-                        "(dim=%d, domain='%s').",
+                        "store() generated real embedding for chunk '%s' (dim=%d, domain='%s').",
                         chunk.id,
                         len(embedding),
                         chunk.domain,
@@ -305,7 +306,10 @@ class SqliteVssVectorStore(VectorStore):
             await conn.close()
 
     async def list_stale_vectors(
-        self, threshold_days: int = 30, domain: str | None = None, limit: int = 100
+        self,
+        threshold_days: int = 30,
+        domain: str | None = None,
+        limit: int = 100,
     ) -> list[dict]:
         """List vectors not updated within threshold_days.
 
@@ -332,12 +336,14 @@ class SqliteVssVectorStore(VectorStore):
             results = []
             for row in rows:
                 meta = json.loads(row[3]) if row[3] else {}
-                results.append({
-                    "id": row[0],
-                    "domain": row[1],
-                    "created_at": row[2],
-                    "metadata": meta,
-                })
+                results.append(
+                    {
+                        "id": row[0],
+                        "domain": row[1],
+                        "created_at": row[2],
+                        "metadata": meta,
+                    },
+                )
             return results
         finally:
             await conn.close()

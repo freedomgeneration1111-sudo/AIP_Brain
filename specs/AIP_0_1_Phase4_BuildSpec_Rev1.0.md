@@ -17,22 +17,51 @@
 
 | Item | Decision | Rationale |
 |---|---|---|
-| pgvector adapter | `adapter/vector/pgvector_store.py` — `PgvectorStore` implements VectorStore Protocol with asyncpg connection pool | §2.2: PostgreSQL 16 + pgvector becomes the required production path from Phase 3+; sqlite_vss remains supported for constrained hardware; the VectorStore protocol abstraction makes the swap transparent to orchestration |
-| Adapter factory | `adapter/vector/factory.py` — `create_vector_store(config)` reads `[vector_backend]` provider and returns appropriate implementation | §2.2: configuration flag switches between "pgvector" and "sqlite_vss"; §7.2: adapter layer selects implementation at runtime; orchestration code never knows which backend is active |
-| Migration tool | `adapter/vector/migrate.py` — reads all vectors and metadata from sqlite_vss, writes them to pgvector, idempotent and resumable | Phase Scope Definition: "alpha users who start with sqlite_vss on constrained hardware must have a clean upgrade path when they move to PostgreSQL"; migration must be idempotent and resumable |
-| Synthesis node promotion | Update `orchestration/nodes/synthesis.py` from deterministic fixture stub to real ModelSlotResolver integration | Phase 3 delivers ModelSlotResolver (CHUNK-5.0b) but does not update the synthesis stub; Phase 4 is the production readiness phase that wires real model calls into all nodes |
-| Adversarial eval promotion | Update `orchestration/nodes/adversarial_eval.py` from deterministic score stub to real evaluation with scoring rubric | §9.2: adversarial evaluation applies to canonical-bound outputs and marginal L3a passes; requires separate skeptic prompt; Phase 4 wires the real model infrastructure |
-| L3a Stage 2/3 | `orchestration/nodes/faithfulness.py` + `orchestration/nodes/domain_coherence.py` — faithfulness and domain coherence evaluation using evaluation model slot | §9.1: three-stage L3a validation — Stage 1 (deterministic, Phase 1) + Stage 2 (faithfulness) + Stage 3 (domain coherence); Stages 2/3 require model calls; deferred from Phase 1 to Phase 4 as production hardening |
-| Production hardening | Connection pool lifecycle, health checks, graceful degradation, retry logic | Phase Scope Definition: "production hardening includes connection pooling and error handling for PostgreSQL"; graceful degradation: pgvector unavailable → sqlite_vss fallback with warning |
-| Config additions | `[vector_backend]` extended with pgvector-specific options; `[evaluation]` section for L3a Stage 2/3 thresholds | §1.8 toggleable; connection pool size, HNSW index config, evaluation thresholds all configurable |
+| pgvector adapter | `adapter/vector/pgvector_store.py` — `PgvectorStore` implements VectorStore Protocol with
+asyncpg connection pool | §2.2: PostgreSQL 16 + pgvector becomes the required production path from Phase 3+;
+sqlite_vss remains supported for constrained hardware; the VectorStore protocol abstraction makes the swap
+transparent to orchestration |
+| Adapter factory | `adapter/vector/factory.py` — `create_vector_store(config)` reads `[vector_backend]`
+provider and returns appropriate implementation | §2.2: configuration flag switches between "pgvector" and
+"sqlite_vss"; §7.2: adapter layer selects implementation at runtime; orchestration code never knows which
+backend is active |
+| Migration tool | `adapter/vector/migrate.py` — reads all vectors and metadata from sqlite_vss, writes them
+to pgvector, idempotent and resumable | Phase Scope Definition: "alpha users who start with sqlite_vss on
+constrained hardware must have a clean upgrade path when they move to PostgreSQL"; migration must be
+idempotent and resumable |
+| Synthesis node promotion | Update `orchestration/nodes/synthesis.py` from deterministic fixture stub to real
+ModelSlotResolver integration | Phase 3 delivers ModelSlotResolver (CHUNK-5.0b) but does not update the
+synthesis stub; Phase 4 is the production readiness phase that wires real model calls into all nodes |
+| Adversarial eval promotion | Update `orchestration/nodes/adversarial_eval.py` from deterministic score stub
+to real evaluation with scoring rubric | §9.2: adversarial evaluation applies to canonical-bound outputs and
+marginal L3a passes; requires separate skeptic prompt; Phase 4 wires the real model infrastructure |
+| L3a Stage 2/3 | `orchestration/nodes/faithfulness.py` + `orchestration/nodes/domain_coherence.py` —
+faithfulness and domain coherence evaluation using evaluation model slot | §9.1: three-stage L3a validation —
+Stage 1 (deterministic, Phase 1) + Stage 2 (faithfulness) + Stage 3 (domain coherence); Stages 2/3 require
+model calls; deferred from Phase 1 to Phase 4 as production hardening |
+| Production hardening | Connection pool lifecycle, health checks, graceful degradation, retry logic | Phase
+Scope Definition: "production hardening includes connection pooling and error handling for PostgreSQL";
+graceful degradation: pgvector unavailable → sqlite_vss fallback with warning |
+| Config additions | `[vector_backend]` extended with pgvector-specific options; `[evaluation]` section for
+L3a Stage 2/3 thresholds | §1.8 toggleable; connection pool size, HNSW index config, evaluation thresholds all
+configurable |
 
 ---
 
 ## Phase 4 Scope
 
-Phase 4 is the production readiness phase. It delivers the pgvector VectorStore adapter as the production-grade persistence backend, wires real model calls into all node stubs left from Phase 1, implements the remaining L3a evaluation stages (faithfulness and domain coherence), and hardens the system for production deployment with connection management, health checks, and graceful degradation.
+Phase 4 is the production readiness phase. It delivers the pgvector VectorStore adapter as the
+production-grade persistence backend, wires real model calls into all node stubs left from Phase 1, implements
+the remaining L3a evaluation stages (faithfulness and domain coherence), and hardens the system for production
+deployment with connection management, health checks, and graceful degradation.
 
-Phase 3 delivered the embedding pipeline and L4 trajectory regulation, but the synthesis, adversarial evaluation, and DEFINER gate nodes remain stubs that return deterministic fixtures. Phase 4 promotes these nodes to production implementations that use the ModelSlotResolver from CHUNK-5.0b for real model API calls, while maintaining CI compatibility through the existing ci_mode toggle. This ensures that every code path exercised in production has been tested in CI with deterministic fixtures, and every production path has a CI-safe fallback.
+Phase 3 delivered the embedding pipeline and L4 trajectory regulation, but the synthesis, adversarial
+evaluation, and DEFINER gate nodes remain stubs that return deterministic fixtures. Phase 4 promotes these
+nodes to production implementations that use the ModelSlotResolver from CHUNK-5.0b
+for real model API calls, while maintaining CI compatibility through the existing ci_mode toggle. This ensures
+that every code path exercised in production has been tested in CI
+with deterministic fixtures, and every production path has a CI-safe fallback.
+```
 
 **In scope:**
 
@@ -95,7 +124,10 @@ Phase 1 dependencies (transitive through Phase 2/3):
 
 **Critical note on CHUNK-6.0a:** This chunk appends to `foundation/schemas.py` and amends `foundation/protocols.py` — the same append-only/amend-by-addition pattern as CHUNK-1.0a, CHUNK-4.0a, and CHUNK-5.0a. No existing Phase 0, Phase 1, Phase 2, or Phase 3 code is deleted or rewritten.
 
-**Continuity note:** The pgvector adapter chunks (6.0a, 6.0b) depend only on Phase 0/1 deliverables (VectorStore Protocol, SqliteVssVectorStore). They can be built in parallel with Phase 3 work. The node promotion chunks (6.1, 6.2) depend on Phase 3's ModelSlotResolver (CHUNK-5.0b). The integration test (6.5) depends on both paths being complete.
+**Continuity note:** The pgvector adapter chunks (6.0a, 6.0b) depend only on Phase 0/1 deliverables
+(VectorStore Protocol, SqliteVssVectorStore). They can be built in parallel with Phase 3 work. The node
+promotion chunks (6.1, 6.2) depend on Phase 3's ModelSlotResolver (CHUNK-5.0b). The integration test (6.5)
+depends on both paths being complete.
 
 If any Phase 3 chunk is not merged, the depending Phase 4 chunk cannot start — but the pgvector path can proceed independently.
 
@@ -137,7 +169,10 @@ Parallel groups:
   Group H: [6.6] (after all)                                — cross-cutting gate
 ```
 
-The key architectural insight: **Group B and Groups C–D are independent parallel paths.** The pgvector path (6.0b → 6.3 → 6.4) touches only the adapter layer and never imports orchestration code. The node promotion path (6.1 → 6.2) touches only the orchestration layer and depends on the ModelSlotResolver from Phase 3. Both paths converge at the integration test (6.5), which verifies the complete production pipeline.
+The key architectural insight: **Group B and Groups C–D are independent parallel paths.** The pgvector path
+(6.0b → 6.3 → 6.4) touches only the adapter layer and never imports orchestration code. The node promotion
+path (6.1 → 6.2) touches only the orchestration layer and depends on the ModelSlotResolver from Phase 3. Both
+paths converge at the integration test (6.5), which verifies the complete production pipeline.
 
 ---
 
@@ -218,15 +253,42 @@ GATE: uv run pytest tests/test_phase4_schema_additions.py -xvs
 
 This chunk establishes the shared data types, protocol amendments, and configuration extensions that all subsequent Phase 4 chunks depend on. It does six things:
 
-**1. Append `PgvectorConfig` dataclass to `foundation/schemas.py`.** The `PgvectorConfig` dataclass captures all pgvector-specific configuration: the PostgreSQL connection string, asyncpg connection pool parameters (minimum and maximum pool size, acquisition timeout), per-query statement timeout, and HNSW index parameters (M for connections per layer, ef_construction for index build quality, ef_search for query-time accuracy). These parameters map directly to the `[vector_backend.pgvector]` config section that Phase 4 adds. The HNSW parameters are exposed because different use cases (small personal corpora vs. large project libraries) require different index tuning, and per §1.8 these must be toggleable rather than hardcoded. Append only — do not modify or reorder any existing definitions.
+**1. Append `PgvectorConfig` dataclass to `foundation/schemas.py`.** The `PgvectorConfig` dataclass captures
+all pgvector-specific configuration: the PostgreSQL connection string, asyncpg connection pool parameters
+(minimum and maximum pool size, acquisition timeout), per-query statement timeout, and HNSW index parameters
+(M for connections per layer, ef_construction for index build quality, ef_search for query-time accuracy).
+These parameters map directly to the `[vector_backend.pgvector]` config section that Phase 4 adds. The HNSW
+parameters are exposed because different use cases (small personal corpora vs. large project libraries)
+require different index tuning, and per §1.8 these must be toggleable rather than hardcoded. Append only — do
+not modify or reorder any existing definitions.
 
-**2. Append `MigrationStatus` and `MigrationCheckpoint` dataclasses.** The `MigrationStatus` dataclass tracks the state of a sqlite_vss → pgvector migration: source and target backends, total/migrated/failed vector counts, timestamps, and an optional checkpoint ID for resumable migrations. The `MigrationCheckpoint` dataclass records a resumable migration point: the checkpoint ID, the last migrated vector ID, and the total count migrated so far. Together these enable the migration tool (CHUNK-6.3) to be idempotent and resumable — if the migration is interrupted, it can resume from the last checkpoint without duplicating data. This is a Phase Scope Definition requirement.
+**2. Append `MigrationStatus` and `MigrationCheckpoint` dataclasses.** The `MigrationStatus` dataclass tracks the state of a sqlite_vss → pgvector migration: source and target backends, total/migrated/failed vector counts, timestamps, and an optional checkpoint ID
+for resumable migrations. The `MigrationCheckpoint` dataclass records a resumable migration point: the checkpoint ID, the last migrated vector ID, and the total count migrated so far. Together these enable the migration tool (CHUNK-6.3) to be idempotent and resumable —
+if the migration is interrupted, it can resume from the last checkpoint without duplicating data. This is a Phase Scope Definition requirement.
+```
 
-**3. Append `EvaluationScore`, `FaithfulnessResult`, and `DomainCoherenceResult` dataclasses.** These support L3a Stage 2 (faithfulness) and Stage 3 (domain coherence) evaluation. The `EvaluationScore` dataclass captures a single evaluation dimension: the dimension name, a 0–1 score, optional rationale, the model slot used, tokens consumed, and crucially a `model_gen_assumption` field per §1.8 — every model-based evaluation encodes an assumption about model capability (e.g., "models may miss subtle factual contradictions"), and Sexton must audit these when model slots change. The `FaithfulnessResult` dataclass captures faithfulness evaluation output: the artifact under evaluation, a faithfulness score, context coverage (what fraction of retrieved context was addressed), hallucination flags (specific claims not grounded in context), and the detailed evaluation scores. The `DomainCoherenceResult` dataclass captures domain coherence evaluation output: the artifact, coherence score, domain, domain-specific violations, and evaluation scores. These types enable the evaluation pipeline (CHUNK-6.2) to produce structured, inspectable results that can be reviewed by the DEFINER and analyzed by Sexton.
+**3. Append `EvaluationScore`, `FaithfulnessResult`, and `DomainCoherenceResult` dataclasses.** These support
+L3a Stage 2 (faithfulness) and Stage 3 (domain coherence) evaluation. The `EvaluationScore` dataclass captures
+a single evaluation dimension: the dimension name, a 0–1 score, optional rationale, the model slot used,
+tokens consumed, and crucially a `model_gen_assumption` field per §1.8 — every model-based evaluation encodes
+an assumption about model capability (e.g., "models may miss subtle factual contradictions"), and Sexton must
+audit these when model slots change. The `FaithfulnessResult` dataclass captures faithfulness evaluation
+output: the artifact under evaluation, a faithfulness score, context coverage (what fraction of retrieved
+context was addressed), hallucination flags (specific claims not grounded in context), and the detailed
+evaluation scores. The `DomainCoherenceResult` dataclass captures domain coherence evaluation output: the
+artifact, coherence score, domain, domain-specific violations, and evaluation scores. These types enable the
+evaluation pipeline (CHUNK-6.2) to produce structured, inspectable results that can be reviewed by the DEFINER
+and analyzed by Sexton.
 
-**4. Add `VectorBackendType` type alias.** A `Literal["pgvector", "sqlite_vss"]` type alias that the adapter factory (CHUNK-6.3) uses to select the backend implementation. This maps to the `[vector_backend]` provider config flag from §2.2.
+**4. Add `VectorBackendType` type alias.** A `Literal["pgvector", "sqlite_vss"]` type alias that the adapter
+factory (CHUNK-6.3) uses to select the backend implementation. This maps to the `[vector_backend]` provider
+config flag from §2.2.
 
-**5. Amend `VectorStore` Protocol in `foundation/protocols.py`.** Phase 1 (CHUNK-1.0a) added `upsert` and `retrieve`. Phase 4 adds `health_check()` → `dict` (returns backend status: connected, pool_size, latency_ms) and `count(domain)` → `int` (returns total vector count, optionally filtered by domain). These are needed by the health check system (CHUNK-6.4) and the migration tool (CHUNK-6.3) to verify data integrity. This is an addition to the existing Protocol, not a replacement — Phase 1 `upsert` and `retrieve` must still pass.
+**5. Amend `VectorStore` Protocol in `foundation/protocols.py`.** Phase 1 (CHUNK-1.0a) added `upsert` and
+`retrieve`. Phase 4 adds `health_check()` → `dict` (returns backend status: connected, pool_size, latency_ms)
+and `count(domain)` → `int` (returns total vector count, optionally filtered by domain). These are needed by
+the health check system (CHUNK-6.4) and the migration tool (CHUNK-6.3) to verify data integrity. This is an
+addition to the existing Protocol, not a replacement — Phase 1 `upsert` and `retrieve` must still pass.
 
 **6. Config additions.** Phase 4 extends `config/aip.config.toml` with:
 
@@ -252,7 +314,11 @@ adversarial_threshold = 0.75          # below this → surfaced to DEFINER
 ci_mode = true                        # true in CI (deterministic fixtures), false in production
 ```
 
-The gate test verifies: (a) all new dataclasses can be instantiated with required fields, (b) `EvaluationScore` carries `model_gen_assumption` field per §1.8, (c) `PgvectorConfig` has all HNSW and pool parameters, (d) `MigrationStatus` and `MigrationCheckpoint` are instantiable, (e) `VectorStore` Protocol has `health_check` and `count` methods, (f) existing Phase 0/1/2/3 schema enums and dataclasses are not broken, (g) existing Protocol methods still exist.
+The gate test verifies: (a) all new dataclasses can be instantiated with required fields, (b)
+`EvaluationScore` carries `model_gen_assumption` field per §1.8, (c) `PgvectorConfig` has all HNSW and pool
+parameters, (d) `MigrationStatus` and `MigrationCheckpoint` are instantiable, (e) `VectorStore` Protocol has
+`health_check` and `count` methods, (f) existing Phase 0/1/2/3 schema enums and dataclasses are not broken,
+(g) existing Protocol methods still exist.
 
 ### ANNEX
 
@@ -581,25 +647,70 @@ GATE: uv run pytest tests/test_pgvector_store.py tests/test_layering.py -xvs
 
 ### Prose
 
-This chunk implements the pgvector VectorStore adapter that replaces sqlite_vss as the production-grade vector backend. Per §2.2, PostgreSQL 16 + pgvector becomes the required production path from Phase 3+ (stabilizing), while sqlite_vss remains supported for constrained hardware. The VectorStore protocol abstraction (established in Phase 0, amended in Phase 1 and Phase 4) makes this swap transparent to orchestration code: both backends implement the same interface and pass the same test suite.
+This chunk implements the pgvector VectorStore adapter that replaces sqlite_vss as the production-grade vector
+backend. Per §2.2, PostgreSQL 16 + pgvector becomes the required production path from Phase 3+ (stabilizing),
+while sqlite_vss remains supported for constrained hardware. The VectorStore protocol abstraction (established
+in Phase 0, amended in Phase 1 and Phase 4) makes this swap transparent to orchestration code: both backends
+implement the same interface and pass the same test suite.
 
-**PgvectorStore class.** The `PgvectorStore` class implements the `VectorStore` Protocol from `foundation/protocols.py`. It uses `asyncpg` for async PostgreSQL connectivity with a connection pool. The `initialize()` method: (1) creates the connection pool, (2) creates the `vectors` table if not exists with columns `id TEXT PRIMARY KEY, vector vector({dimensions}), metadata JSONB, domain TEXT, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ`, (3) creates the HNSW index `CREATE INDEX IF NOT EXISTS idx_vectors_hnsw ON vectors USING hnsw (vector vector_cosine_ops) WITH (m = {hnsw_m}, ef_construction = {hnsw_ef_construction})`, (4) creates a domain index `CREATE INDEX IF NOT EXISTS idx_vectors_domain ON vectors (domain)`. The `close()` method gracefully closes the connection pool. The `initialize()` / `close()` lifecycle is managed by the factory (CHUNK-6.3) and the production hardening layer (CHUNK-6.4).
+**PgvectorStore class.** The `PgvectorStore` class implements the `VectorStore` Protocol from
+`foundation/protocols.py`. It uses `asyncpg` for async PostgreSQL connectivity
+with a connection pool. The `initialize()` method: (1) creates the connection pool, (2) creates the `vectors`
+table
+if not exists
+with columns `id TEXT PRIMARY KEY, vector vector({dimensions}), metadata JSONB, domain TEXT, created_at
+TIMESTAMPTZ, updated_at TIMESTAMPTZ`, (3) creates the HNSW index `CREATE INDEX IF NOT EXISTS idx_vectors_hnsw
+ON vectors USING hnsw (vector vector_cosine_ops) WITH (m = {hnsw_m}, ef_construction =
+{hnsw_ef_construction})`, (4) creates a domain index `CREATE INDEX IF NOT EXISTS idx_vectors_domain ON vectors
+(domain)`. The `close()` method gracefully closes the connection pool. The `initialize()` / `close()`
+lifecycle is managed by the factory (CHUNK-6.3) and the production hardening layer (CHUNK-6.4).
+```
 
-**Upsert operation.** The `upsert(id, vector, metadata, domain)` method: (1) serializes the metadata dict to JSON, (2) executes `INSERT INTO vectors (id, vector, metadata, domain, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW()) ON CONFLICT (id) DO UPDATE SET vector = $2, metadata = $3, domain = $4, updated_at = NOW()`. The upsert semantics match sqlite_vss: writing the same ID updates the vector and metadata rather than creating a duplicate. The vector is stored using pgvector's native `vector` type, which supports cosine, L2, and inner product distance operators. Cosine distance is the default, matching the semantic similarity requirement in §8.3.
+**Upsert operation.** The `upsert(id, vector, metadata, domain)` method: (1) serializes the metadata dict to
+JSON, (2) executes `INSERT INTO vectors (id, vector, metadata, domain, created_at, updated_at) VALUES ($1, $2,
+$3, $4, NOW(), NOW()) ON CONFLICT (id) DO UPDATE SET vector = $2, metadata = $3, domain = $4, updated_at =
+NOW()`. The upsert semantics match sqlite_vss: writing the same ID updates the vector and metadata rather than
+creating a duplicate. The vector is stored using pgvector's native `vector` type, which supports cosine, L2,
+and inner product distance operators. Cosine distance is the default, matching the semantic similarity
+requirement in §8.3.
 
-**Retrieve operation.** The `retrieve(query_vector, domain, limit)` method: (1) sets the search parameter `SET LOCAL hnsw.ef_search = {hnsw_ef_search}`, (2) executes `SELECT id, vector, metadata, domain, 1 - (vector <=> $1) AS score FROM vectors WHERE domain = $2 ORDER BY vector <=> $1 LIMIT $3`, (3) maps each row to a `Chunk` dataclass from `foundation/schemas.py`. The `<=>` operator is pgvector's cosine distance operator. The score is converted from distance to similarity (1 - distance) to match the 0–1 scale used by `retrieve_for_synthesis` and the `RerankWeights` system. The domain filter ensures retrieval respects the domain routing specified in §8.1.
+**Retrieve operation.** The `retrieve(query_vector, domain, limit)` method: (1) sets the search parameter `SET LOCAL hnsw.ef_search
+= {hnsw_ef_search}`, (2) executes `SELECT id, vector, metadata, domain, 1 - (vector <=> $1) AS score FROM vectors WHERE domain
+= $2 ORDER BY vector <=> $1 LIMIT $3`,
+    (3) maps each row to a `Chunk` dataclass from `foundation/schemas.py`. The `<=>` operator is pgvector's cosine distance operator. The score is converted from distance to similarity (1 - distance) to match the 0–1 scale used by `retrieve_for_synthesis` and the `RerankWeights` system. The domain filter ensures retrieval respects the domain routing specified in §8.1.
+```
 
-**Delete operation.** The `delete(id)` method executes `DELETE FROM vectors WHERE id = $1`. This is needed for the migration tool (CHUNK-6.3) to handle failed migration rows and for future administrative operations. It is not called by the normal workflow path — artifacts are superseded, not deleted (§1.5, §1.6, Appendix D: "Supersession ≠ deletion"). But vector cleanup of stale entries may be needed for storage hygiene.
+**Delete operation.** The `delete(id)` method executes `DELETE FROM vectors WHERE id = $1`. This is needed for
+the migration tool (CHUNK-6.3) to handle failed migration rows and for future administrative operations. It is
+not called by the normal workflow path — artifacts are superseded, not deleted (§1.5, §1.6, Appendix D:
+"Supersession ≠ deletion"). But vector cleanup of stale entries may be needed for storage hygiene.
 
-**Health check.** The `health_check()` method: (1) executes `SELECT 1`, (2) measures round-trip latency, (3) queries pool statistics from `pg_stat_activity`, (4) returns a dict with `connected: bool`, `pool_size: int`, `latency_ms: int`, `backend_name: "pgvector"`, `database: str`. This is used by `aip status` (CHUNK-6.4) and the graceful degradation system.
+**Health check.** The `health_check()` method: (1) executes `SELECT 1`, (2) measures round-trip latency, (3)
+queries pool statistics from `pg_stat_activity`, (4) returns a dict with `connected: bool`, `pool_size: int`,
+`latency_ms: int`, `backend_name: "pgvector"`, `database: str`. This is used by `aip status` (CHUNK-6.4) and
+the graceful degradation system.
 
-**Count.** The `count(domain)` method executes `SELECT COUNT(*) FROM vectors` (with optional `WHERE domain = $1`). This is used by the migration tool (CHUNK-6.3) to verify data integrity after migration and by `aip status` for inventory reporting.
+**Count.** The `count(domain)` method executes `SELECT COUNT(*) FROM vectors` (with optional `WHERE domain =
+$1`). This is used by the migration tool (CHUNK-6.3) to verify data integrity after migration and by `aip
+status` for inventory reporting.
 
-**CI mode.** The gate test uses `pytest.mark.skipif` when PostgreSQL is not available, with a mock PgvectorStore that inherits from a shared test fixture. The mock exercises the same code paths as the real adapter but against an in-memory data structure. All Phase 0/1/2/3 tests continue to pass with sqlite_vss; the pgvector tests are additive. The `test_layering.py` gate verifies that `adapter/vector/pgvector_store.py` does not import orchestration or foundation implementation code (only Protocol and schema imports are allowed).
+**CI mode.** The gate test uses `pytest.mark.skipif` when PostgreSQL is not available, with a mock
+PgvectorStore that inherits from a shared test fixture. The mock exercises the same code paths as the real
+adapter but against an in-memory data structure. All Phase 0/1/2/3 tests continue to pass
+with sqlite_vss; the pgvector tests are additive. The `test_layering.py` gate verifies that
+`adapter/vector/pgvector_store.py` does not
+import orchestration or foundation implementation code (only Protocol and schema imports are allowed).
+```
 
-**Batch upsert.** The PgvectorStore also provides a `batch_upsert(items: list[tuple[str, list[float], dict, str]])` method for the migration tool (CHUNK-6.3). This uses `asyncpg.extras` or a manual transaction with `executemany` for performance, wrapping the batch in a single transaction. Batch sizes of 500–1000 vectors per transaction provide good throughput without excessive memory usage.
+**Batch upsert.** The PgvectorStore also provides a `batch_upsert(items: list[tuple[str, list[float], dict,
+str]])` method for the migration tool (CHUNK-6.3). This uses `asyncpg.extras` or a manual transaction with
+`executemany` for performance, wrapping the batch in a single transaction. Batch sizes of 500–1000 vectors per
+transaction provide good throughput without excessive memory usage.
 
-The gate test verifies: (a) `PgvectorStore` implements `VectorStore` Protocol, (b) upsert + retrieve round-trip works, (c) upsert with same ID updates the vector, (d) domain filtering works, (e) health_check returns valid dict, (f) count returns correct number, (g) delete removes the vector, (h) adapter layer does not import orchestration, (i) existing `SqliteVssVectorStore` tests still pass.
+The gate test verifies: (a) `PgvectorStore` implements `VectorStore` Protocol, (b) upsert + retrieve
+round-trip works, (c) upsert with same ID updates the vector, (d) domain filtering works, (e) health_check
+returns valid dict, (f) count returns correct number, (g) delete removes the vector, (h) adapter layer does
+not import orchestration, (i) existing `SqliteVssVectorStore` tests still pass.
 
 ### ANNEX
 
@@ -784,7 +895,8 @@ class PgvectorStore(VectorStore):
                 id=row["id"],
                 content="",  # content stored in metadata or artifact store
                 score=float(row["score"]),
-                metadata=json.loads(row["metadata"]) if isinstance(row["metadata"], str) else dict(row["metadata"] or {}),
+                metadata=json.loads(row["metadata"]) if isinstance(row["metadata"], str) else
+dict(row["metadata"] or {}),
                 domain=row["domain"],
             )
             for row in rows
@@ -1049,21 +1161,54 @@ GATE: uv run pytest tests/test_synthesis_node.py tests/test_layering.py -xvs
 
 ### Prose
 
-This chunk promotes the synthesis node from a Phase 1 deterministic fixture stub to a production implementation that uses the ModelSlotResolver for real model API calls. Phase 3 delivered the ModelSlotResolver (CHUNK-5.0b) which resolves named model slots to provider/model configurations and supports the `ci_mode` toggle. Phase 4 wires this resolver into the synthesis node so that in production, the node calls the configured synthesis model (DeepSeek-V3 by default per §4.1), and in CI mode, the resolver returns deterministic fixtures.
+This chunk promotes the synthesis node from a Phase 1 deterministic fixture stub to a production
+implementation that uses the ModelSlotResolver for real model API calls. Phase 3 delivered the
+ModelSlotResolver (CHUNK-5.0b) which resolves named model slots to provider/model configurations and supports
+the `ci_mode` toggle. Phase 4 wires this resolver into the synthesis node so that in production, the node
+calls the configured synthesis model (DeepSeek-V3 by default per §4.1), and in CI mode, the resolver returns
+deterministic fixtures.
 
-**Synthesis node function.** The `synthesize(query, domain, context, model_resolver, config, token_budget)` function: (1) assembles the model context package from the query, domain, and retrieved context per §1.3 (the harness mediates everything the model sees), (2) loads the synthesis prompt template from `prompts/synthesis.md` (referenced in Appendix F Workflow 0.1), (3) calls `model_resolver.call("synthesis", messages, temperature=0.7, max_tokens=token_budget or 4096)` which routes to the configured model, (4) returns a dict with `content`, `model`, `usage` (token counts), `latency_ms`, and `cost_usd`. The function is async because the model call is async.
+**Synthesis node function.** The `synthesize(query, domain, context, model_resolver, config, token_budget)`
+function: (1) assembles the model context package from the query, domain, and retrieved context per §1.3 (the
+harness mediates everything the model sees), (2) loads the synthesis prompt template from
+`prompts/synthesis.md` (referenced in Appendix F Workflow 0.1), (3) calls `model_resolver.call("synthesis",
+messages, temperature=0.7, max_tokens=token_budget or 4096)` which routes to the configured model, (4) returns
+a dict with `content`, `model`, `usage` (token counts), `latency_ms`, and `cost_usd`. The function is async
+because the model call is async.
 
-**Context assembly.** The messages list is: (1) system message from `prompts/synthesis.md`, (2) context message with the retrieved chunks and their metadata, (3) user message with the query and domain. This structure ensures the model receives the full context package that the harness has assembled, per §1.2 (retrieval is deterministic) and §1.3 (context is assembled from explicit stores). The context message includes the domain, the retrieval results (Chunk objects with scores and metadata), and any prior review verdicts if this is a re-synthesis (retrieved from ReviewContext per CHUNK-4.2).
+**Context assembly.** The messages list is: (1) system message from `prompts/synthesis.md`, (2) context
+message with the retrieved chunks and their metadata, (3) user message with the query and domain. This
+structure ensures the model receives the full context package that the harness has assembled, per §1.2
+(retrieval is deterministic) and §1.3 (context is assembled from explicit stores). The context message
+includes the domain, the retrieval results (Chunk objects with scores and metadata), and any prior review
+verdicts if this is a re-synthesis (retrieved from ReviewContext per CHUNK-4.2).
 
-**Token budget tracking.** The `token_budget` parameter allows the workflow engine (CHUNK-4.5) to enforce budget constraints. If the cumulative token usage across a workflow run exceeds the budget, the engine fails fast rather than silently exceeding it. This aligns with the anti-token-burn doctrine (§7.3) and ensures cost predictability. The synthesis node reports its token usage back to the engine via the return dict's `usage` field.
+**Token budget tracking.** The `token_budget` parameter allows the workflow engine (CHUNK-4.5) to enforce
+budget constraints. If the cumulative token usage across a workflow run exceeds the budget, the engine fails
+fast rather than silently exceeding it. This aligns with the anti-token-burn doctrine (§7.3) and ensures cost
+predictability. The synthesis node reports its token usage back to the engine via the return dict's `usage`
+field.
 
-**CI mode.** When `model_resolver._ci_mode == True`, the resolver returns deterministic fixtures. The synthesis node tests use this mode exclusively — no real API calls in CI. The fixture content is derived from the input hash, ensuring reproducibility. The production integration test (CHUNK-6.5) tests both modes.
+**CI mode.** When `model_resolver._ci_mode == True`, the resolver returns deterministic fixtures. The
+synthesis node tests use this mode exclusively — no real API calls in CI. The fixture content is derived from
+the input hash, ensuring reproducibility. The production integration test (CHUNK-6.5) tests both modes.
 
-**Prompt template.** `prompts/synthesis.md` is a new file that defines the system prompt for the synthesis model. It includes: (1) the AIP context (you are a synthesis engine within the AI Poiesis harness), (2) the output format requirements (what structure the response must follow), (3) the domain constraints (stay within the specified domain), (4) the provenance requirements (cite retrieved context by ID). This template is source-controlled and machine-readable per §11.1 node contract invariants.
+**Prompt template.** `prompts/synthesis.md` is a new file that defines the system prompt for the synthesis
+model. It includes: (1) the AIP context (you are a synthesis engine within the AI Poiesis harness), (2) the
+output format requirements (what structure the response must follow), (3) the domain constraints (stay within
+the specified domain), (4) the provenance requirements (cite retrieved context by ID). This template is
+source-controlled and machine-readable per §11.1 node contract invariants.
 
-**Backward compatibility.** The synthesis node's existing Phase 1 stub signature is `async def synthesize(query: str, domain: str, context: str) -> str`. Phase 4 extends this to accept `model_resolver` and `config` parameters with defaults that preserve the stub behavior. When `model_resolver` is None, the node falls back to the deterministic fixture. This ensures all Phase 1/2/3 tests that call the stub directly continue to pass without modification.
+**Backward compatibility.** The synthesis node's existing Phase 1 stub signature is `async
+def synthesize(query: str, domain: str, context: str) -> str`. Phase 4 extends this to accept `model_resolver` and `config` parameters
+with defaults that preserve the stub behavior. When `model_resolver` is None, the node falls back to the deterministic fixture. This ensures all Phase 1/2/3 tests that call the stub directly continue to pass
+without modification.
+```
 
-The gate test verifies: (a) synthesis with ModelSlotResolver returns a valid dict in CI mode, (b) synthesis without ModelSlotResolver returns deterministic fixture (Phase 1 compat), (c) token budget is tracked and reported, (d) prompt template loads correctly, (e) context assembly follows §1.3 pattern, (f) no hardcoded model names in synthesis code, (g) adapter layer does not import orchestration.
+The gate test verifies: (a) synthesis with ModelSlotResolver returns a valid dict in CI mode, (b) synthesis
+without ModelSlotResolver returns deterministic fixture (Phase 1 compat), (c) token budget is tracked and
+reported, (d) prompt template loads correctly, (e) context assembly follows §1.3 pattern, (f) no hardcoded
+model names in synthesis code, (g) adapter layer does not import orchestration.
 
 ### ANNEX
 
@@ -1278,19 +1423,62 @@ GATE: uv run pytest tests/test_evaluation_pipeline.py tests/test_layering.py -xv
 
 ### Prose
 
-This chunk implements the complete L3 evaluation pipeline: promotes the adversarial evaluation stub from Phase 1 to a production implementation, and delivers L3a Stage 2 (faithfulness evaluation) and Stage 3 (domain coherence evaluation) which were deferred from Phase 1. Per §9.1, the three-stage L3a validation is: Stage 1 — deterministic Python checks (Phase 1, CHUNK-1.2), Stage 2 — faithfulness to retrieved context (model call via evaluation slot), Stage 3 — domain-specific coherence checks (model call via evaluation slot). Per §9.2, L3b adversarial evaluation applies to canonical-bound outputs and uses a separate skeptic prompt.
+This chunk implements the complete L3 evaluation pipeline: promotes the adversarial evaluation stub from Phase
+1 to a production implementation, and delivers L3a Stage 2 (faithfulness evaluation) and Stage 3 (domain
+coherence evaluation) which were deferred from Phase 1. Per §9.1, the three-stage L3a validation is: Stage 1 —
+deterministic Python checks (Phase 1, CHUNK-1.2), Stage 2 — faithfulness to retrieved context (model call via
+evaluation slot), Stage 3 — domain-specific coherence checks (model call via evaluation slot). Per §9.2, L3b
+adversarial evaluation applies to canonical-bound outputs and uses a separate skeptic prompt.
 
-**Adversarial evaluation promotion.** The Phase 1 `adversarial_eval` stub returned a deterministic score. Phase 4 promotes it to use the ModelSlotResolver for real model calls via the evaluation slot (DeepSeek-V3 by default per §4.1). The `adversarial_evaluate(artifact_content, context, model_resolver, config)` function: (1) loads the adversarial evaluation prompt template from `prompts/adversarial_eval.md`, (2) assembles messages with the artifact content and a separate context that does not share synthesis context blindly (per §9.2), (3) calls `model_resolver.call("evaluation", messages, temperature=0.3)`, (4) parses the response into a structured dict with scores for framework integrity, logic, honesty, and completeness, (5) returns the result. In CI mode, the resolver returns deterministic fixtures. The adversarial evaluation is distinct from L3a Stages 2/3: L3a is quality evaluation, L3b is adversarial (skeptic perspective).
+**Adversarial evaluation promotion.** The Phase 1 `adversarial_eval` stub returned a deterministic score.
+Phase 4 promotes it to use the ModelSlotResolver for real model calls via the evaluation slot (DeepSeek-V3 by
+default per §4.1). The `adversarial_evaluate(artifact_content, context, model_resolver, config)` function: (1)
+loads the adversarial evaluation prompt template from `prompts/adversarial_eval.md`, (2) assembles messages
+with the artifact content and a separate context that does not share synthesis context blindly (per §9.2), (3)
+calls `model_resolver.call("evaluation", messages, temperature=0.3)`, (4) parses the response into a
+structured dict with scores for framework integrity, logic, honesty, and completeness, (5) returns the result.
+In CI mode, the resolver returns deterministic fixtures. The adversarial evaluation is distinct from L3a
+Stages 2/3: L3a is quality evaluation, L3b is adversarial (skeptic perspective).
 
-**L3a Stage 2 — Faithfulness evaluation.** The `evaluate_faithfulness(artifact_id, artifact_content, retrieved_context, model_resolver)` function: (1) loads the faithfulness evaluation prompt from `prompts/faithfulness.md`, (2) assembles messages with the artifact content and the retrieved context chunks, (3) instructs the model to identify claims in the artifact that are not grounded in the retrieved context (hallucination detection), (4) calls `model_resolver.call("evaluation", messages)`, (5) parses the response into a `FaithfulnessResult` with faithfulness_score, context_coverage, hallucination_flags, and evaluation_scores. Each `EvaluationScore` carries a `model_gen_assumption` field per §1.8, e.g., "Models may produce plausible-sounding but ungrounded claims when context is insufficient." The faithfulness threshold is configurable (default 0.70 from config `[evaluation].faithfulness_threshold`); below this threshold, the artifact is flagged for review with failure_type A (Context Framing Failure per Appendix E), because the synthesis model has produced output that diverges from the retrieved context — indicating a context framing problem.
+**L3a Stage 2 — Faithfulness evaluation.** The `evaluate_faithfulness(artifact_id, artifact_content,
+retrieved_context, model_resolver)` function: (1) loads the faithfulness evaluation prompt from
+`prompts/faithfulness.md`, (2) assembles messages with the artifact content and the retrieved context chunks,
+(3) instructs the model to identify claims in the artifact that are not grounded in the retrieved context
+(hallucination detection), (4) calls `model_resolver.call("evaluation", messages)`, (5) parses the response
+into a `FaithfulnessResult` with faithfulness_score, context_coverage, hallucination_flags, and
+evaluation_scores. Each `EvaluationScore` carries a `model_gen_assumption` field per §1.8, e.g., "Models may
+produce plausible-sounding but ungrounded claims when context is insufficient." The faithfulness threshold is
+configurable (default 0.70 from config `[evaluation].faithfulness_threshold`); below this threshold, the
+artifact is flagged for review with failure_type A (Context Framing Failure per Appendix E), because the
+synthesis model has produced output that diverges from the retrieved context — indicating a context framing
+problem.
 
-**L3a Stage 3 — Domain coherence evaluation.** The `evaluate_domain_coherence(artifact_id, artifact_content, domain, model_resolver)` function: (1) loads the domain coherence prompt from `prompts/domain_coherence.md`, (2) assembles messages with the artifact content and the domain, (3) instructs the model to check domain-specific quality (does the artifact meet the standards of the specified domain?), (4) calls `model_resolver.call("evaluation", messages)`, (5) parses the response into a `DomainCoherenceResult` with coherence_score, domain, violations, and evaluation_scores. The domain coherence threshold is configurable (default 0.60 from config `[evaluation].domain_coherence_threshold`); below this threshold, the artifact is flagged for review.
+**L3a Stage 3 — Domain coherence evaluation.** The `evaluate_domain_coherence(artifact_id, artifact_content,
+domain, model_resolver)` function: (1) loads the domain coherence prompt from `prompts/domain_coherence.md`,
+(2) assembles messages with the artifact content and the domain, (3) instructs the model to check
+domain-specific quality (does the artifact meet the standards of the specified domain?), (4) calls
+`model_resolver.call("evaluation", messages)`, (5) parses the response into a `DomainCoherenceResult` with
+coherence_score, domain, violations, and evaluation_scores. The domain coherence threshold is configurable
+(default 0.60 from config `[evaluation].domain_coherence_threshold`); below this threshold, the artifact is
+flagged for review.
 
-**Full L3a evaluation orchestration.** The `full_l3a_evaluation(artifact_id, artifact_content, domain, retrieved_context, model_resolver, config)` function orchestrates all three stages: (1) Stage 1 via `structural_validate` (Phase 1, deterministic), (2) Stage 2 via `evaluate_faithfulness` (Phase 4, model-based), (3) Stage 3 via `evaluate_domain_coherence` (Phase 4, model-based). If Stage 1 fails with failure_type C or E, Stages 2 and 3 are skipped (the artifact is structurally invalid, so model evaluation would waste tokens — aligning with the anti-token-burn doctrine, §7.3). The function returns a dict with all stage results, a combined pass/fail verdict, and the failure types detected.
+**Full L3a evaluation orchestration.** The `full_l3a_evaluation(artifact_id, artifact_content, domain,
+retrieved_context, model_resolver, config)` function orchestrates all three stages: (1) Stage 1 via
+`structural_validate` (Phase 1, deterministic), (2) Stage 2 via `evaluate_faithfulness` (Phase 4,
+model-based), (3) Stage 3 via `evaluate_domain_coherence` (Phase 4, model-based). If Stage 1 fails with
+failure_type C or E, Stages 2 and 3 are skipped (the artifact is structurally invalid, so model evaluation
+would waste tokens — aligning with the anti-token-burn doctrine, §7.3). The function returns a dict with all
+stage results, a combined pass/fail verdict, and the failure types detected.
 
-**Backward compatibility.** The Phase 1 `adversarial_eval` stub accepted `(content: str, domain: str) -> float`. Phase 4 extends the signature with `model_resolver` and `context` parameters with defaults that preserve the stub behavior. All Phase 1/2/3 tests that call the stub directly continue to pass.
+**Backward compatibility.** The Phase 1 `adversarial_eval` stub accepted `(content: str, domain: str) ->
+float`. Phase 4 extends the signature with `model_resolver` and `context` parameters with defaults that
+preserve the stub behavior. All Phase 1/2/3 tests that call the stub directly continue to pass.
 
-The gate test verifies: (a) adversarial evaluation returns structured scores in CI mode, (b) faithfulness evaluation returns `FaithfulnessResult` with hallucination flags, (c) domain coherence evaluation returns `DomainCoherenceResult` with violations, (d) full L3a evaluation orchestrates all three stages, (e) Stage 2/3 are skipped when Stage 1 fails, (f) `EvaluationScore` carries `model_gen_assumption`, (g) threshold-based rejection works, (h) Phase 1/2/3 tests still pass.
+The gate test verifies: (a) adversarial evaluation returns structured scores in CI mode, (b) faithfulness
+evaluation returns `FaithfulnessResult` with hallucination flags, (c) domain coherence evaluation returns
+`DomainCoherenceResult` with violations, (d) full L3a evaluation orchestrates all three stages, (e) Stage 2/3
+are skipped when Stage 1 fails, (f) `EvaluationScore` carries `model_gen_assumption`, (g) threshold-based
+rejection works, (h) Phase 1/2/3 tests still pass.
 
 ### ANNEX
 
@@ -1609,17 +1797,47 @@ GATE: uv run pytest tests/test_vector_factory.py tests/test_vector_migration.py 
 
 ### Prose
 
-This chunk delivers the vector store factory function and the migration tool that together enable the production deployment path from sqlite_vss to pgvector. Per §2.2, the configuration flag in `[vector_backend]` provider switches between "pgvector" and "sqlite_vss", and the adapter factory selects the implementation at runtime. The migration tool reads all vectors and metadata from sqlite_vss and writes them to pgvector, preserving IDs, domains, and metadata.
+This chunk delivers the vector store factory function and the migration tool that together enable the
+production deployment path from sqlite_vss to pgvector. Per §2.2, the configuration flag in `[vector_backend]`
+provider switches between "pgvector" and "sqlite_vss", and the adapter factory selects the implementation at
+runtime. The migration tool reads all vectors and metadata from sqlite_vss and writes them to pgvector,
+preserving IDs, domains, and metadata.
 
-**Vector store factory.** The `create_vector_store(config)` function: (1) reads `[vector_backend]` provider from config, (2) if "pgvector": creates a `PgvectorConfig` from the config, instantiates `PgvectorStore`, calls `initialize()`, returns the store, (3) if "sqlite_vss": creates a `SqliteVssVectorStore` from the config, returns it, (4) if provider is "pgvector" but PostgreSQL is not available: logs a warning, falls back to sqlite_vss (graceful degradation), (5) returns a `VectorStore` Protocol instance — orchestration code never knows which backend is active. This is the core of the §2.2 portability design: "the VectorStore protocol abstraction makes this swap transparent to orchestration code."
+**Vector store factory.** The `create_vector_store(config)` function: (1) reads `[vector_backend]` provider
+from config, (2) if "pgvector": creates a `PgvectorConfig` from the config, instantiates `PgvectorStore`,
+calls `initialize()`, returns the store, (3) if "sqlite_vss": creates a `SqliteVssVectorStore` from the
+config, returns it, (4) if provider is "pgvector" but PostgreSQL is not available: logs a warning, falls back
+to sqlite_vss (graceful degradation), (5) returns a `VectorStore` Protocol instance — orchestration code never
+knows which backend is active. This is the core of the §2.2 portability design: "the VectorStore protocol
+abstraction makes this swap transparent to orchestration code."
 
-**Migration tool.** The `migrate_vectors(source, target, batch_size, checkpoint_callback)` function: (1) counts total vectors in the source store, (2) reads vectors from source in batches (using retrieve or a custom scan), (3) writes each batch to the target store using `batch_upsert`, (4) after each batch, creates a `MigrationCheckpoint` and calls the optional checkpoint_callback, (5) on completion, verifies target count matches source count, (6) returns a `MigrationStatus` with the final counts. The migration is idempotent: upsert semantics mean re-running it on already-migrated data simply updates the vectors without creating duplicates. It is resumable: if interrupted, the checkpoint_callback records the last migrated ID, and re-running the migration starts from that point.
+**Migration tool.** The `migrate_vectors(source, target, batch_size, checkpoint_callback)` function: (1)
+counts total vectors in the source store, (2) reads vectors from source in batches (using retrieve or a custom
+scan), (3) writes each batch to the target store using `batch_upsert`, (4) after each batch, creates a
+`MigrationCheckpoint` and calls the optional checkpoint_callback, (5) on completion, verifies target count
+matches source count, (6) returns a `MigrationStatus` with the final counts. The migration is idempotent:
+upsert semantics mean re-running it on already-migrated data simply updates the vectors without creating
+duplicates. It is resumable: if interrupted, the checkpoint_callback records the last migrated ID, and
+re-running the migration starts from that point.
 
-**Graceful degradation.** The factory implements a fallback chain: if the configured provider is "pgvector" but the connection fails, the factory: (1) logs a warning with the connection error, (2) checks if sqlite_vss is available, (3) if yes, falls back to sqlite_vss and returns it with a warning flag, (4) if no, raises an error. This ensures the system degrades gracefully when PostgreSQL is unavailable rather than crashing. The degradation event is logged to trace_events with `intervention_type="backend_fallback"`.
+**Graceful degradation.** The factory implements a fallback chain: if the configured provider is "pgvector"
+but the connection fails, the factory: (1) logs a warning with the connection error, (2) checks if sqlite_vss
+is available, (3) if yes, falls back to sqlite_vss and returns it with a warning flag, (4) if no, raises an
+error. This ensures the system degrades gracefully when PostgreSQL is unavailable rather than crashing. The
+degradation event is logged to trace_events with `intervention_type="backend_fallback"`.
 
-**CLI integration.** The migration tool is exposed via `aip migrate-vectors` CLI command (registered in the Phase 0 CLI stub from CHUNK-0.8). The command accepts `--source`, `--target`, `--batch-size`, and `--dry-run` flags. The `--dry-run` flag counts vectors and verifies connectivity without actually migrating data.
+**CLI integration.** The migration tool is exposed via `aip migrate-vectors` CLI command (registered in the
+Phase 0 CLI stub from CHUNK-0.8). The command accepts `--source`, `--target`, `--batch-size`, and `--dry-run`
+flags. The `--dry-run` flag counts vectors and verifies connectivity without actually migrating data.
 
-The gate test verifies: (a) `create_vector_store` returns SqliteVssVectorStore for "sqlite_vss" provider, (b) `create_vector_store` returns PgvectorStore for "pgvector" provider (or skips if PostgreSQL unavailable), (c) graceful degradation falls back to sqlite_vss when pgvector is unavailable, (d) migration moves vectors from source to target, (e) migration is idempotent (re-running doesn't duplicate), (f) migration is resumable from checkpoint, (g) target count matches source count after migration, (h) factory does not import orchestration.
+The gate test verifies: (a) `create_vector_store` returns SqliteVssVectorStore for "sqlite_vss" provider, (b)
+`create_vector_store` returns PgvectorStore for "pgvector" provider (or skips
+if PostgreSQL unavailable), (c) graceful degradation falls back to sqlite_vss when pgvector is unavailable,
+(d) migration moves vectors from source to target, (e) migration is idempotent (re-running doesn't duplicate),
+(f) migration is resumable from checkpoint, (g) target count matches source count after migration, (h) factory
+does not
+import orchestration.
+```
 
 ### ANNEX
 
@@ -1848,17 +2066,44 @@ GATE: uv run pytest tests/test_production_hardening.py tests/test_layering.py -x
 
 ### Prose
 
-This chunk delivers the production hardening layer that manages the VectorStore lifecycle, provides system-wide health checks, and implements graceful degradation. Per the Phase Scope Definition, "production hardening includes connection pooling and error handling for PostgreSQL, and comprehensive integration tests." Connection pooling is already implemented inside PgvectorStore (CHUNK-6.0b); this chunk manages the pool lifecycle and adds the system-level health and degradation infrastructure.
+This chunk delivers the production hardening layer that manages the VectorStore lifecycle, provides
+system-wide health checks, and implements graceful degradation. Per the Phase Scope Definition, "production
+hardening includes connection pooling and error handling for PostgreSQL, and comprehensive integration tests."
+Connection pooling is already implemented inside PgvectorStore (CHUNK-6.0b); this chunk manages the pool
+lifecycle and adds the system-level health and degradation infrastructure.
 
-**VectorStoreConnectionManager.** A long-lived object that manages the VectorStore instance for the application lifetime. The `get_store()` method returns the current active VectorStore (lazily initialized on first call via the factory from CHUNK-6.3). The `shutdown()` method gracefully closes the connection pool when the application exits. The connection manager wraps the factory with retry logic: if the initial pgvector connection fails, it retries with exponential backoff (3 attempts, 1s/2s/4s delays) before falling back to sqlite_vss. This ensures that transient PostgreSQL startup issues (e.g., container orchestration delays) don't immediately degrade the system.
+**VectorStoreConnectionManager.** A long-lived object that manages the VectorStore instance for the
+application lifetime. The `get_store()` method returns the current active VectorStore (lazily initialized on
+first call via the factory from CHUNK-6.3). The `shutdown()` method gracefully closes the connection pool when
+the application exits. The connection manager wraps the factory with retry logic: if the initial pgvector
+connection fails, it retries with exponential backoff (3 attempts, 1s/2s/4s delays) before falling back to
+sqlite_vss. This ensures that transient PostgreSQL startup issues (e.g., container orchestration delays) don't
+immediately degrade the system.
 
-**System health check.** The `system_health_check(config)` function: (1) creates a VectorStore via the factory, (2) calls `health_check()` on the VectorStore, (3) also checks Ollama connectivity (embedding slot), (4) returns a dict with the status of each component: `vector_store`, `embedding`, `overall_healthy`. This is the backend for the `aip status` CLI command from Phase 0 (CHUNK-0.8). When all components are healthy, the command prints a green summary; when any component is degraded, it prints warnings with suggested fixes.
+**System health check.** The `system_health_check(config)` function: (1) creates a VectorStore via the
+factory, (2) calls `health_check()` on the VectorStore, (3) also checks Ollama connectivity (embedding slot),
+(4) returns a dict with the status of each component: `vector_store`, `embedding`, `overall_healthy`. This is
+the backend for the `aip status` CLI command from Phase 0 (CHUNK-0.8). When all components are healthy, the
+command prints a green summary; when any component is degraded, it prints warnings with suggested fixes.
 
-**Graceful degradation.** The degradation strategy is a fallback chain: pgvector → sqlite_vss → in-memory stub. When pgvector is unavailable: (1) the factory falls back to sqlite_vss with a logged warning, (2) a trace_event is written with `intervention_type="backend_fallback"`, (3) the DEFINER is surfaced a notification that the system is running in degraded mode, (4) the health check reports `degraded: true`. When sqlite_vss is also unavailable (e.g., extension not compiled): (1) the factory creates an in-memory stub that accepts writes but returns empty retrieval results, (2) the health check reports `unhealthy: true`. This three-tier degradation ensures the system never crashes due to persistence unavailability, while clearly communicating the degraded state to the DEFINER.
+**Graceful degradation.** The degradation strategy is a fallback chain: pgvector → sqlite_vss → in-memory
+stub. When pgvector is unavailable: (1) the factory falls back to sqlite_vss with a logged warning, (2) a
+trace_event is written with `intervention_type="backend_fallback"`, (3) the DEFINER is surfaced a notification
+that the system is running in degraded mode, (4) the health check reports `degraded: true`. When sqlite_vss is
+also unavailable (e.g., extension not compiled): (1) the factory creates an in-memory stub that accepts writes
+but returns empty retrieval results, (2) the health check reports `unhealthy: true`. This three-tier
+degradation ensures the system never crashes due to persistence unavailability, while clearly communicating
+the degraded state to the DEFINER.
 
-**Retry logic.** The connection manager implements exponential backoff for transient failures: (1) on connection failure, wait 1s and retry, (2) on second failure, wait 2s and retry, (3) on third failure, fall back to sqlite_vss. The retry is only for connection failures, not for query errors (which are logged and surfaced). This prevents the system from hanging on startup when PostgreSQL is starting up concurrently.
+**Retry logic.** The connection manager implements exponential backoff for transient failures: (1) on
+connection failure, wait 1s and retry, (2) on second failure, wait 2s and retry, (3) on third failure, fall
+back to sqlite_vss. The retry is only for connection failures, not for query errors (which are logged and
+surfaced). This prevents the system from hanging on startup when PostgreSQL is starting up concurrently.
 
-The gate test verifies: (a) connection manager returns a working VectorStore, (b) health check returns valid status for sqlite_vss, (c) graceful degradation works when pgvector is unavailable, (d) shutdown closes the connection pool, (e) retry logic attempts 3 times before fallback, (f) adapter layer does not import orchestration.
+The gate test verifies: (a) connection manager returns a working VectorStore, (b) health check returns valid
+status for sqlite_vss, (c) graceful degradation works when pgvector is unavailable, (d) shutdown closes the
+connection pool, (e) retry logic attempts 3 times before fallback, (f) adapter layer does not import
+orchestration.
 
 ### ANNEX
 
@@ -1999,19 +2244,42 @@ GATE: uv run pytest tests/test_phase4_integration.py -xvs
 
 ### Prose
 
-This chunk delivers the Phase 4 integration test that verifies the complete production pipeline: pgvector backend, real model calls (in CI mode), promoted synthesis and evaluation nodes, and the migration tool. It extends the Phase 2 integration test (CHUNK-4.7) and Phase 3 integration test (CHUNK-5.8) with four new scenarios.
+This chunk delivers the Phase 4 integration test that verifies the complete production pipeline: pgvector
+backend, real model calls (in CI mode), promoted synthesis and evaluation nodes, and the migration tool. It
+extends the Phase 2 integration test (CHUNK-4.7) and Phase 3 integration test (CHUNK-5.8) with four new
+scenarios.
 
-**Scenario 1: Full pipeline with sqlite_vss backend.** Runs Workflow 0.1 end-to-end with the sqlite_vss backend: retrieve → synthesize (with ModelSlotResolver in CI mode) → structural validate → adversarial evaluate (with ModelSlotResolver) → L3a Stage 2 (faithfulness) → L3a Stage 3 (domain coherence) → DEFINER gate → commit. Verifies that the promoted nodes produce valid output and that the full ECS lifecycle (SPECIFIED→GENERATED→REVIEWED→APPROVED) completes successfully with the sqlite_vss backend.
+**Scenario 1: Full pipeline with sqlite_vss backend.** Runs Workflow 0.1 end-to-end with the sqlite_vss
+backend: retrieve → synthesize (with ModelSlotResolver in CI mode) → structural validate → adversarial
+evaluate (with ModelSlotResolver) → L3a Stage 2 (faithfulness) → L3a Stage 3 (domain coherence) → DEFINER gate
+→ commit. Verifies that the promoted nodes produce valid output and that the full ECS lifecycle
+(SPECIFIED→GENERATED→REVIEWED→APPROVED) completes successfully with the sqlite_vss backend.
 
-**Scenario 2: Full pipeline with pgvector backend.** Same as Scenario 1 but with the pgvector backend (skipped if PostgreSQL is not available). Verifies that all Phase 0/1/2/3/4 code works identically with pgvector — the core guarantee of the VectorStore protocol abstraction. Cross-checks retrieval results between backends: the same query should return the same (or equivalent) chunks from both backends when they contain the same data.
+**Scenario 2: Full pipeline
+with pgvector backend.** Same as Scenario 1 but
+with the pgvector backend (skipped
+if PostgreSQL is not available). Verifies that all Phase 0/1/2/3/4 code works identically
+with pgvector — the core guarantee of the VectorStore protocol abstraction. Cross-checks retrieval results between backends: the same query should
+return the same (or equivalent) chunks from both backends when they contain the same data.
+```
 
-**Scenario 3: Migration verification.** Populates sqlite_vss with test vectors, runs the migration tool to pgvector, verifies that the target count matches the source count, and then runs a retrieval query against both backends to confirm they return equivalent results. This validates the migration tool's idempotency (running it twice produces the same result) and data integrity (no vectors are lost or corrupted during migration).
+**Scenario 3: Migration verification.** Populates sqlite_vss with test vectors, runs the migration tool to
+pgvector, verifies that the target count matches the source count, and then runs a retrieval query against
+both backends to confirm they return equivalent results. This validates the migration tool's idempotency
+(running it twice produces the same result) and data integrity (no vectors are lost or corrupted during
+migration).
 
-**Scenario 4: Production hardening — degradation path.** Simulates pgvector unavailability by providing an invalid connection string, verifies that the factory falls back to sqlite_vss, runs the health check to confirm it reports degraded status, and then runs a retrieval query to confirm the system still functions (in degraded mode). This validates the graceful degradation chain: pgvector → sqlite_vss → in-memory stub.
+**Scenario 4: Production hardening — degradation path.** Simulates pgvector unavailability by providing an
+invalid connection string, verifies that the factory falls back to sqlite_vss, runs the health check to
+confirm it reports degraded status, and then runs a retrieval query to confirm the system still functions (in
+degraded mode). This validates the graceful degradation chain: pgvector → sqlite_vss → in-memory stub.
 
-All scenarios run in CI mode (deterministic fixtures for model calls) and do not require real API keys, Ollama, or PostgreSQL. The pgvector scenarios are conditionally skipped when PostgreSQL is not available, using the `AIP_PGVECTOR_TEST` environment variable flag.
+All scenarios run in CI mode (deterministic fixtures for model calls) and do not require real API keys,
+Ollama, or PostgreSQL. The pgvector scenarios are conditionally skipped when PostgreSQL is not available,
+using the `AIP_PGVECTOR_TEST` environment variable flag.
 
-The gate test verifies: (a) all four scenarios pass, (b) no regression in Phase 0/1/2/3 tests, (c) cross-backend retrieval equivalence, (d) migration idempotency, (e) graceful degradation reporting.
+The gate test verifies: (a) all four scenarios pass, (b) no regression in Phase 0/1/2/3 tests, (c)
+cross-backend retrieval equivalence, (d) migration idempotency, (e) graceful degradation reporting.
 
 ### ANNEX
 
@@ -2144,15 +2412,36 @@ GATE: uv run pytest tests/test_phase4_gate.py -xvs
 
 ### Prose
 
-This chunk extends the cross-cutting network isolation and model-name gate tests from Phase 2 (CHUNK-4.8) and Phase 3 (CHUNK-5.9) to cover all Phase 4 code. It verifies three architectural invariants that must hold for every chunk in every phase: (1) deterministic CI — all Phase 4 tests pass without network, API keys, or secrets, (2) import boundaries — foundation does not import orchestration or adapter, adapter does not import orchestration, and (3) no hardcoded model names — no Phase 4 code names a specific model directly.
+This chunk extends the cross-cutting network isolation and model-name gate tests from Phase 2 (CHUNK-4.8) and
+Phase 3 (CHUNK-5.9) to cover all Phase 4 code. It verifies three architectural invariants that must hold
+for every chunk in every phase: (1) deterministic CI — all Phase 4 tests pass
+without network, API keys, or secrets, (2)
+import boundaries — foundation does not
+import orchestration or adapter, adapter does not
+import orchestration, and (3) no hardcoded model names — no Phase 4 code names a specific model directly.
+```
 
-**Network isolation.** The test verifies that: (a) `adapter/vector/pgvector_store.py` imports only `asyncpg` and foundation modules (no `openai`, `anthropic`, `httpx` in foundation or orchestration), (b) `adapter/vector/migrate.py` imports only foundation protocols and adapter vector modules, (c) `adapter/health.py` imports only foundation and adapter modules, (d) all Phase 4 tests pass with `AIP_PGVECTOR_TEST=0` (pgvector unavailable) without attempting network connections, (e) the `PgvectorStore` class only makes network connections when explicitly initialized (not on import).
+**Network isolation.** The test verifies that: (a) `adapter/vector/pgvector_store.py` imports only `asyncpg`
+and foundation modules (no `openai`, `anthropic`, `httpx` in foundation or orchestration), (b)
+`adapter/vector/migrate.py` imports only foundation protocols and adapter vector modules, (c)
+`adapter/health.py` imports only foundation and adapter modules, (d) all Phase 4 tests pass with
+`AIP_PGVECTOR_TEST=0` (pgvector unavailable) without attempting network connections, (e) the `PgvectorStore`
+class only makes network connections when explicitly initialized (not on import).
 
-**Import boundaries.** The test verifies that: (a) `orchestration/nodes/synthesis.py` imports from `foundation.schemas` and `adapter.model_slot_resolver` (allowed: orchestration may import both), (b) `orchestration/nodes/faithfulness.py` and `domain_coherence.py` import from `foundation.schemas` and accept `model_resolver` as a parameter (no direct adapter import — the resolver is injected), (c) `adapter/vector/pgvector_store.py` imports only from `foundation.protocols` and `foundation.schemas` (allowed: adapter may import foundation), (d) `adapter/vector/factory.py` imports adapter vector modules and foundation schemas (allowed: adapter composes foundation and adapter), (e) no Phase 4 foundation module imports orchestration or adapter.
+**Import boundaries.** The test verifies that: (a) `orchestration/nodes/synthesis.py` imports from `foundation.schemas` and `adapter.model_slot_resolver` (allowed: orchestration may
+import both), (b) `orchestration/nodes/faithfulness.py` and `domain_coherence.py` import from `foundation.schemas` and accept `model_resolver` as a parameter (no direct adapter
+import — the resolver is injected), (c) `adapter/vector/pgvector_store.py` imports only from `foundation.protocols` and `foundation.schemas` (allowed: adapter may
+import foundation), (d) `adapter/vector/factory.py` imports adapter vector modules and foundation schemas (allowed: adapter composes foundation and adapter), (e) no Phase 4 foundation module imports orchestration or adapter.
+```
 
-**Model name check.** The test scans all Phase 4 Python files for hardcoded model names: "deepseek", "claude", "gpt", "qwen", "nomic", "openai", "anthropic". These names are only allowed in: (a) config files (`.toml`), (b) test fixtures (hardcoded for verification), (c) docstrings and comments. Application code must resolve all model references through the named slot system from `ModelSlotResolver`.
+**Model name check.** The test scans all Phase 4 Python files for hardcoded model names: "deepseek", "claude",
+"gpt", "qwen", "nomic", "openai", "anthropic". These names are only allowed in: (a) config files (`.toml`),
+(b) test fixtures (hardcoded for verification), (c) docstrings and comments. Application code must resolve all
+model references through the named slot system from `ModelSlotResolver`.
 
-The gate test verifies: (a) no network-dependent imports in foundation or orchestration, (b) import boundary compliance for all Phase 4 files, (c) no hardcoded model names in application code, (d) all Phase 4 tests pass in CI mode without network access.
+The gate test verifies: (a) no network-dependent imports in foundation or orchestration, (b) import boundary
+compliance for all Phase 4 files, (c) no hardcoded model names in application code, (d) all Phase 4 tests pass
+in CI mode without network access.
 
 ### ANNEX
 
@@ -2264,25 +2553,36 @@ class TestNoHardcodedModelNames:
 
 These rules are binding for all work against the Phase 4 BuildSpec:
 
-1. **Continuity Check.** Before starting any chunk, read WORKLOG.md and verify the DEPENDS-ON chunks are merged and green. If not, block.
+1. **Continuity Check.** Before starting any chunk, read WORKLOG.md and verify the DEPENDS-ON chunks are
+merged and green. If not, block.
 
-2. **WORKLOG append-only.** Every chunk completion appends a work record to WORKLOG.md. Never overwrite existing entries.
+2. **WORKLOG append-only.** Every chunk completion appends a work record to WORKLOG.md. Never overwrite
+existing entries.
 
-3. **Amend by addition.** Protocol amendments append method stubs to existing classes. Never redeclare a Protocol class. Schema amendments append new dataclasses. Never modify or reorder existing definitions.
+3. **Amend by addition.** Protocol amendments append method stubs to existing classes. Never redeclare a
+Protocol class. Schema amendments append new dataclasses. Never modify or reorder existing definitions.
 
-4. **Deterministic CI.** All gate tests must pass without network, API keys, or secrets. CI mode returns deterministic fixtures.
+4. **Deterministic CI.** All gate tests must pass without network, API keys, or secrets. CI mode returns
+deterministic fixtures.
 
-5. **Push after each chunk.** After a chunk passes its gate test, commit and push before starting the next chunk.
+5. **Push after each chunk.** After a chunk passes its gate test, commit and push before starting the next
+chunk.
 
-6. **Import boundaries.** Foundation never imports orchestration or adapter. Adapter may import foundation but not orchestration. Orchestration may import foundation and adapter.
+6. **Import boundaries.** Foundation never imports orchestration or adapter. Adapter may import foundation but
+not orchestration. Orchestration may import foundation and adapter.
 
 7. **No hardcoded model names.** Per §4.1, all model references resolve through named slots from config.
 
-8. **Phase references.** Always use qualified terminology (Architectural Phase N, CHUNK-N.x, Repo N.x) — never bare "Phase N".
+8. **Phase references.** Always use qualified terminology (Architectural Phase N, CHUNK-N.x, Repo N.x) — never
+bare "Phase N".
 
-9. **Model-gen-assumption tagging.** Per §1.8, every harness component that compensates for a model limitation must carry a `model_gen_assumption` field. This includes all L4 triggers, L3a evaluation scores, ContractRules, and context reset thresholds. Sexton audits these when model slots change.
+9. **Model-gen-assumption tagging.** Per §1.8, every harness component that compensates for a model limitation
+must carry a `model_gen_assumption` field. This includes all L4 triggers, L3a evaluation scores,
+ContractRules, and context reset thresholds. Sexton audits these when model slots change.
 
-10. **Backend portability.** Per §2.2, both VectorStore backends (pgvector and sqlite_vss) must implement the same VectorStore Protocol interface and pass the same test suite. No backend-specific code paths in orchestration or foundation layers.
+10. **Backend portability.** Per §2.2, both VectorStore backends (pgvector and sqlite_vss) must implement the
+same VectorStore Protocol interface and pass the same test suite. No backend-specific code paths in
+orchestration or foundation layers.
 
 ---
 
@@ -2290,7 +2590,8 @@ These rules are binding for all work against the Phase 4 BuildSpec:
 
 ### What the Architectural Phase 4 Spec expects to exist (but may not)
 
-The Phase 4 BuildSpec was written assuming Phase 0–3 deliverables are complete. The following Phase 4 types and methods are specified but do NOT yet exist in the codebase:
+The Phase 4 BuildSpec was written assuming Phase 0–3 deliverables are complete. The following Phase 4 types
+and methods are specified but do NOT yet exist in the codebase:
 
 | Type/Method | Spec Chunk | Status |
 |---|---|---|
@@ -2326,7 +2627,8 @@ The following deliverables from Phase 0–3 are prerequisites for Phase 4 work:
 **Continuity Check rule:** When building any CHUNK-6.x, the builder MUST:
 1. Read WORKLOG for all prior work on the same files/modules
 2. Check whether repo 2.x or 3.x code already implements part of the spec
-3. If overlap exists, extend existing code to meet the spec (amend by addition) rather than rewriting from scratch
+3. If overlap exists, extend existing code to meet the spec (amend by addition) rather than rewriting from
+scratch
 4. Document any reconciliation in WORKLOG
 
 ---

@@ -109,14 +109,10 @@ class SqliteCanonicalStore(CanonicalStore):
             await conn.close()
             self._conn = None
 
-    async def write_canonical(
-        self, artifact_id: str, content: dict, approved_by: str
-    ) -> None:
+    async def write_canonical(self, artifact_id: str, content: dict, approved_by: str) -> None:
         if approved_by != "definer":
             # Only DEFINER may create canonicals
-            raise PermissionError(
-                f"write_canonical requires approved_by='definer', got {approved_by!r}"
-            )
+            raise PermissionError(f"write_canonical requires approved_by='definer', got {approved_by!r}")
 
         conn = await self._get_conn()
         try:
@@ -128,7 +124,13 @@ class SqliteCanonicalStore(CanonicalStore):
                     (artifact_id, content, approved_by, domain, created_at, superseded_by)
                 VALUES (?, ?, ?, ?, ?, NULL)
                 """,
-                (artifact_id, content_json, approved_by, content.get("domain", "") if isinstance(content, dict) else "", now),
+                (
+                    artifact_id,
+                    content_json,
+                    approved_by,
+                    content.get("domain", "") if isinstance(content, dict) else "",
+                    now,
+                ),
             )
             await conn.commit()
         finally:
@@ -149,20 +151,22 @@ class SqliteCanonicalStore(CanonicalStore):
                 cursor = await conn.execute(
                     "SELECT artifact_id, content, approved_by, domain, created_at, superseded_by "
                     "FROM canonical_artifacts WHERE superseded_by IS NULL "
-                    "ORDER BY created_at DESC"
+                    "ORDER BY created_at DESC",
                 )
 
             rows = await cursor.fetchall()
             results = []
             for row in rows:
-                results.append({
-                    "artifact_id": row["artifact_id"],
-                    "content": json.loads(row["content"]),
-                    "approved_by": row["approved_by"],
-                    "domain": row["domain"],
-                    "created_at": row["created_at"],
-                    "superseded_by": row["superseded_by"],
-                })
+                results.append(
+                    {
+                        "artifact_id": row["artifact_id"],
+                        "content": json.loads(row["content"]),
+                        "approved_by": row["approved_by"],
+                        "domain": row["domain"],
+                        "created_at": row["created_at"],
+                        "superseded_by": row["superseded_by"],
+                    },
+                )
             return results
         finally:
             await conn.close()

@@ -7,33 +7,36 @@ an EmbeddingProvider is configured.
 
 import asyncio
 import hashlib
-import tempfile
 import os
+import tempfile
 
 import pytest
 
-from aip.foundation.schemas import CompilationState
-from aip.foundation.protocols import VectorStore, LexicalStore, KnowledgeStore, EmbeddingProvider
 from aip.adapter.knowledge.sqlite_knowledge_store import SqliteKnowledgeStore
-
+from aip.foundation.protocols import EmbeddingProvider, KnowledgeStore, LexicalStore, VectorStore
+from aip.foundation.schemas import CompilationState
 
 # ---------------------------------------------------------------------------
 # Fakes for VectorStore / LexicalStore (minimal, for basic tests)
 # ---------------------------------------------------------------------------
 
+
 class FakeVectorStore(VectorStore):
     """Records upsert calls so tests can inspect what was stored."""
+
     def __init__(self):
         self.upserted: list[dict] = []
 
     async def upsert(self, id, embedding, content, metadata, domain=None):
-        self.upserted.append({
-            "id": id,
-            "embedding": embedding,
-            "content": content,
-            "metadata": metadata,
-            "domain": domain,
-        })
+        self.upserted.append(
+            {
+                "id": id,
+                "embedding": embedding,
+                "content": content,
+                "metadata": metadata,
+                "domain": domain,
+            },
+        )
 
     async def retrieve(self, query_vector, domain=None, top_k=10):
         # Return any upserted items that match the domain for basic retrieval
@@ -49,6 +52,7 @@ class FakeVectorStore(VectorStore):
 
 class _FakeHit:
     """Minimal search result object with id/content/score attributes."""
+
     def __init__(self, id, content, score):
         self.id = id
         self.content = content
@@ -57,6 +61,7 @@ class _FakeHit:
 
 class FakeLexicalStore(LexicalStore):
     """Records index_document calls so tests can inspect what was indexed."""
+
     def __init__(self):
         self.indexed: list[dict] = []
 
@@ -69,17 +74,20 @@ class FakeLexicalStore(LexicalStore):
         return hits[:limit]
 
     async def index_document(self, id, content, metadata, domain=None):
-        self.indexed.append({
-            "id": id,
-            "content": content,
-            "metadata": metadata,
-            "domain": domain,
-        })
+        self.indexed.append(
+            {
+                "id": id,
+                "content": content,
+                "metadata": metadata,
+                "domain": domain,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
 # Fake EmbeddingProvider — deterministic, non-zero vectors
 # ---------------------------------------------------------------------------
+
 
 class FakeEmbeddingProvider:
     """Deterministic embedding provider for testing.
@@ -108,6 +116,7 @@ class FakeEmbeddingProvider:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def knowledge_store():
     """KnowledgeStore without EmbeddingProvider (backward compat)."""
@@ -126,9 +135,7 @@ def knowledge_store_with_embeddings():
         embed_provider = FakeEmbeddingProvider(dimensions=768)
         vector_store = FakeVectorStore()
         lexical_store = FakeLexicalStore()
-        store = SqliteKnowledgeStore(
-            db, vector_store, lexical_store, embedding_provider=embed_provider
-        )
+        store = SqliteKnowledgeStore(db, vector_store, lexical_store, embedding_provider=embed_provider)
         yield store, vector_store, lexical_store, embed_provider
         asyncio.run(store.close())
 
@@ -137,14 +144,13 @@ def knowledge_store_with_embeddings():
 # Original tests (preserved)
 # ---------------------------------------------------------------------------
 
+
 def test_knowledge_store_implements_protocol(knowledge_store):
     assert isinstance(knowledge_store, KnowledgeStore)
 
 
 async def test_store_and_get_compiled(knowledge_store):
-    await knowledge_store.store_compiled(
-        "k1", "Compiled summary of foo.", ["c1", "c2"], "test", {"state": "COMPILED"}
-    )
+    await knowledge_store.store_compiled("k1", "Compiled summary of foo.", ["c1", "c2"], "test", {"state": "COMPILED"})
     got = await knowledge_store.get_compiled("k1")
     assert got is not None
     assert got["content"].startswith("Compiled")
@@ -163,7 +169,13 @@ async def test_provenance_and_state_transition(knowledge_store):
 
 
 async def test_list_and_search(knowledge_store):
-    await knowledge_store.store_compiled("k3", "searchable compiled text about AIP", ["c1"], "test", {"state": "APPROVED"})
+    await knowledge_store.store_compiled(
+        "k3",
+        "searchable compiled text about AIP",
+        ["c1"],
+        "test",
+        {"state": "APPROVED"},
+    )
     listed = await knowledge_store.list_compiled(state="APPROVED")
     assert any(r["knowledge_id"] == "k3" for r in listed)
 
@@ -175,6 +187,7 @@ async def test_list_and_search(knowledge_store):
 # ---------------------------------------------------------------------------
 # NEW: Embedding tests
 # ---------------------------------------------------------------------------
+
 
 async def test_store_compiled_approved_generates_real_embedding(knowledge_store_with_embeddings):
     """APPROVED compiled knowledge must receive a real (non-zero) embedding."""
@@ -327,7 +340,9 @@ async def test_embedding_failure_graceful_handling():
                 raise ConnectionError("Ollama is not running")
 
         store = SqliteKnowledgeStore(
-            db, vector_store, lexical_store,
+            db,
+            vector_store,
+            lexical_store,
             embedding_provider=FailingEmbeddingProvider(),
         )
 

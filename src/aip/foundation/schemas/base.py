@@ -4,16 +4,17 @@ Phase 0 foundation types: contracts, ECS lifecycle, failure taxonomy,
 and event-store read models. These are the bedrock types that other
 domain modules may reference but never depend on higher-level schemas.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Literal
 
-
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
+
 
 class ContractTier(Enum):
     HARD = "HARD"
@@ -41,9 +42,7 @@ ModelSlotName = Literal["synthesis", "evaluation", "sexton", "embedding"]
 FailureType = Literal["A", "B", "C", "D", "E", "F"]
 
 # Phase 0 outcome types
-OutcomeType = Literal[
-    "success", "failure", "timeout", "gate_blocked", "insufficient_memory"
-]
+OutcomeType = Literal["success", "failure", "timeout", "gate_blocked", "insufficient_memory"]
 
 # Phase 2 alias (same values as FailureType, kept for backward compat)
 FailureTypeCode = Literal["A", "B", "C", "D", "E", "F"]
@@ -56,12 +55,14 @@ VigilHealthStatus = Literal["healthy", "stale", "degraded", "unknown"]
 # Dataclasses
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ContractRule:
     """L1 environment contract rule. Any rule compensating for a model
     limitation must carry a non-null model_gen_assumption. Sexton audits
     these on model slot upgrades.
     """
+
     rule_id: str
     tier: ContractTier
     text: str
@@ -78,6 +79,7 @@ class EcsTransition:
     Every transition is recorded for provenance.
     Actor and reason are mandatory for sovereignty audit.
     """
+
     artifact_id: str
     from_state: str
     to_state: str
@@ -93,6 +95,7 @@ class Event:
     Used for timeline reconstruction, DEFINER audit,
     Sexton failure analysis, and review decisions.
     """
+
     id: int
     event_type: str
     actor: str
@@ -110,6 +113,7 @@ class ReleaseMetadata:
     Written by release verification when all gates pass.
     Serves as the definitive release manifest.
     """
+
     release_version: str = "0.1.0"
     release_date: str = ""  # REQUIRED — ISO 8601
     release_status: str = "alpha"

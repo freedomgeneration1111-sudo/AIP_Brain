@@ -103,9 +103,7 @@ async def migrate_vectors(
                     continue
 
                 try:
-                    embedding = await _resolve_embedding(
-                        chunk, embedding_provider, dimensions
-                    )
+                    embedding = await _resolve_embedding(chunk, embedding_provider, dimensions)
 
                     if embedding is None:
                         # No embedding available and no provider to generate one.
@@ -219,7 +217,7 @@ def _generate_probe_vectors(dimensions: int, num_probes: int = 8) -> list[list[f
         vec = []
         for j in range(dimensions):
             byte_idx = (j * 4 + i * 17) % len(h)
-            val = int.from_bytes(h[byte_idx:byte_idx + 4].ljust(4, b'\x00'), 'big')
+            val = int.from_bytes(h[byte_idx : byte_idx + 4].ljust(4, b"\x00"), "big")
             vec.append(val / (2**32 - 1))
 
         # Normalize to unit vector
@@ -256,8 +254,7 @@ async def _resolve_embedding(
                 return stored_embedding
             else:
                 logger.warning(
-                    "Chunk '%s' has zero-vector in metadata — will not use it. "
-                    "Attempting to regenerate.",
+                    "Chunk '%s' has zero-vector in metadata — will not use it. Attempting to regenerate.",
                     getattr(chunk, "id", "unknown"),
                 )
 
@@ -269,8 +266,7 @@ async def _resolve_embedding(
                 embedding = await embedding_provider.embed(content)
                 if embedding and len(embedding) > 0 and any(v != 0.0 for v in embedding):
                     logger.info(
-                        "Regenerated embedding for chunk '%s' via EmbeddingProvider "
-                        "(dim=%d).",
+                        "Regenerated embedding for chunk '%s' via EmbeddingProvider (dim=%d).",
                         getattr(chunk, "id", "unknown"),
                         len(embedding),
                     )
@@ -282,8 +278,7 @@ async def _resolve_embedding(
                     )
             except Exception as exc:
                 logger.warning(
-                    "Embedding generation failed for chunk '%s': %s. "
-                    "This chunk will be skipped.",
+                    "Embedding generation failed for chunk '%s': %s. This chunk will be skipped.",
                     getattr(chunk, "id", "unknown"),
                     exc,
                 )

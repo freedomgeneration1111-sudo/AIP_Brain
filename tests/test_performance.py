@@ -4,18 +4,25 @@ Hard gate assertions for laptop-viable profile (synthetic deterministic).
 """
 
 import asyncio
+
 import pytest
 
 from aip.foundation.schemas import PerformanceConfig
 
 
 class FakeTraceStore:
-    async def record_event(self, e): pass
+    async def record_event(self, e):
+        pass
 
 
 class FakeProfiler:
     def __init__(self):
-        self.config = PerformanceConfig(max_memory_mb=4096, retrieval_timeout_seconds=30.0, sqlite_wal_mode=True, batch_embed_size=32)
+        self.config = PerformanceConfig(
+            max_memory_mb=4096,
+            retrieval_timeout_seconds=30.0,
+            sqlite_wal_mode=True,
+            batch_embed_size=32,
+        )
 
     async def profile_operation(self, name, op):
         # synthetic
@@ -39,6 +46,7 @@ def profiler():
 async def test_profile_operation(profiler):
     async def dummy():
         return "ok"
+
     res = await profiler.profile_operation("test_op", dummy)
     assert res["success"]
     assert res["duration_ms"] > 0

@@ -6,9 +6,10 @@ missing embeddings via an EmbeddingProvider.
 """
 
 import hashlib
+
 import pytest
 
-from aip.adapter.vector.migrate import migrate_vectors, _resolve_embedding
+from aip.adapter.vector.migrate import _resolve_embedding, migrate_vectors
 from aip.foundation.schemas import Chunk, MigrationStatus
 
 
@@ -38,13 +39,15 @@ class TrackingVectorStore:
         self.upserted: list[dict] = []
 
     async def upsert(self, id, embedding, content, metadata=None, domain=None):
-        self.upserted.append({
-            "id": id,
-            "embedding": embedding,
-            "content": content,
-            "metadata": metadata or {},
-            "domain": domain,
-        })
+        self.upserted.append(
+            {
+                "id": id,
+                "embedding": embedding,
+                "content": content,
+                "metadata": metadata or {},
+                "domain": domain,
+            },
+        )
 
     async def retrieve(self, query_vector, domain=None, top_k=10):
         return self._chunks[:top_k]
@@ -62,6 +65,7 @@ class TrackingVectorStore:
 @pytest.mark.asyncio
 async def test_migration_idempotent_and_resumable():
     """Basic contract: migrate_vectors returns MigrationStatus."""
+
     # Smoke test with minimal dummy objects
     class DummyStore:
         async def count(self, domain=None):
@@ -115,9 +119,7 @@ async def test_migration_skips_items_without_embeddings_when_no_provider():
     # The chunk should NOT be upserted with a zero vector
     for upserted in target.upserted:
         emb = upserted["embedding"]
-        assert any(v != 0.0 for v in emb), (
-            f"Zero vector should not be inserted for item '{upserted['id']}'"
-        )
+        assert any(v != 0.0 for v in emb), f"Zero vector should not be inserted for item '{upserted['id']}'"
 
 
 @pytest.mark.asyncio
@@ -135,8 +137,11 @@ async def test_migration_generates_embeddings_with_provider():
     target = TrackingVectorStore()
 
     status = await migrate_vectors(
-        source, target, batch_size=10,
-        embedding_provider=embed_provider, dimensions=768,
+        source,
+        target,
+        batch_size=10,
+        embedding_provider=embed_provider,
+        dimensions=768,
     )
 
     # The embedding provider should have been called
@@ -163,20 +168,19 @@ async def test_migration_rejects_zero_vector_in_metadata():
     target = TrackingVectorStore()
 
     status = await migrate_vectors(
-        source, target, batch_size=10,
-        embedding_provider=embed_provider, dimensions=768,
+        source,
+        target,
+        batch_size=10,
+        embedding_provider=embed_provider,
+        dimensions=768,
     )
 
     # Zero vector in metadata should be rejected and regenerated
     if len(target.upserted) > 0:
         upserted_emb = target.upserted[0]["embedding"]
-        assert any(v != 0.0 for v in upserted_emb), (
-            "Zero vector from metadata should be replaced with real embedding"
-        )
+        assert any(v != 0.0 for v in upserted_emb), "Zero vector from metadata should be replaced with real embedding"
         # The provider should have been called to regenerate
-        assert len(embed_provider.embed_calls) > 0, (
-            "EmbeddingProvider should have been called to replace zero vector"
-        )
+        assert len(embed_provider.embed_calls) > 0, "EmbeddingProvider should have been called to replace zero vector"
 
 
 @pytest.mark.asyncio

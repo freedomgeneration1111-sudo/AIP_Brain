@@ -10,9 +10,9 @@ against synthetic trace events (Architecture Rev 5.2 §10.2 + §5.9).
 Part of the L4 gate alongside the 3.1 monitor test + cross-cutting gates.
 """
 
-import pytest
-
 from typing import Any
+
+import pytest
 
 from aip.foundation.protocols import ArtifactStore, TraceStore
 from aip.orchestration.l4.monitor import TrajectoryMonitor
@@ -45,7 +45,9 @@ class FakeTraceStoreForReset(TraceStore):
 
     async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
         # Sexton/CHUNK-3.4 additive compat
-        unclassified = [e for e in reversed(self._events) if e.get("failure_type") is None and e.get("outcome") == "failure"]
+        unclassified = [
+            e for e in reversed(self._events) if e.get("failure_type") is None and e.get("outcome") == "failure"
+        ]
         return unclassified[:limit]
 
 
@@ -80,13 +82,9 @@ async def test_coordinator_returns_empty_on_clean_session(trace_store):
 async def test_coordinator_recommends_and_logs_on_d_signal(trace_store):
     """D signal present → recommendation returned + intervention logged with correct fields."""
     for _ in range(2):
-        await trace_store.write_event(
-            session_id="drifty", node_type="L4", failure_type="D", outcome="failure"
-        )
+        await trace_store.write_event(session_id="drifty", node_type="L4", failure_type="D", outcome="failure")
     monitor = TrajectoryMonitor(trace_store, window_limit=20)
-    coord = L4ResetCoordinator(
-        trajectory_monitor=monitor, trace_store=trace_store, artifact_store=FakeArtifactStore()
-    )
+    coord = L4ResetCoordinator(trajectory_monitor=monitor, trace_store=trace_store, artifact_store=FakeArtifactStore())
     recs = await coord.check_and_log_reset("drifty")
     assert len(recs) == 1
     rec = recs[0]

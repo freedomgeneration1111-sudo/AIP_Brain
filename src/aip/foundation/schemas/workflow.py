@@ -3,6 +3,7 @@
 Model slot configuration, domain routing weights, Beast cadence
 configuration, workflow template definitions, and deployment profiles.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -14,6 +15,7 @@ from .vector import VectorBackendType
 @dataclass
 class ModelSlotConfig:
     """Resolved configuration for a named model slot."""
+
     slot_name: str
     provider: str
     model: str
@@ -31,6 +33,7 @@ class RoutingWeight:
     exploration_weight controls probability of non-optimal routing.
     Sexton recommends exploration_weight adjustments per domain.
     """
+
     model_slot: str
     domain: str
     weight: float = 0.5
@@ -46,6 +49,7 @@ class BeastCadenceConfig:
     Beast — cadence / corpus / entity maintenance.
     state.db stores cadence_state.
     """
+
     corpus_reindex_interval_seconds: int = 3600
     entity_maintenance_interval_seconds: int = 1800
     health_check_interval_seconds: int = 60
@@ -59,6 +63,7 @@ class WorkflowTemplate:
     Per INTERFACES: template_id, name, description, yaml_path, trigger, domains,
     model_gen_assumption.
     """
+
     template_id: str
     name: str = ""
     description: str = ""
@@ -75,6 +80,7 @@ class DeploymentProfile:
     Per INTERFACES: profile_name, vector_backend (VectorBackendType),
     model_provider, auth_enabled, workers, memory_limit_mb.
     """
+
     profile_name: str  # "laptop" | "production"
     vector_backend: VectorBackendType = "sqlite_vss"
     model_provider: str = "ollama"

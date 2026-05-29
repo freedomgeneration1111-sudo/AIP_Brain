@@ -81,9 +81,7 @@ class L4ResetCoordinator:
         self._trace_store = trace_store
         self._artifact_store = artifact_store
 
-    async def check_and_log_reset(
-        self, session_id: str
-    ) -> list[ResetRecommendation]:
+    async def check_and_log_reset(self, session_id: str) -> list[ResetRecommendation]:
         """
         Run detection, and if L4-relevant signals are present, log the
         intervention event (step 4) and return recommendation(s).

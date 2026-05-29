@@ -9,25 +9,12 @@ continue to work unchanged.
 The actual definitions live in domain-specific sub-modules:
     storage, model, auth, budget, actors, knowledge, plugin
 """
+
 from __future__ import annotations
 
-# -- storage --
-from .storage import (
-    ArtifactStore,
-    CanonicalStore,
-    EcsStore,
-    EntityStore,
-    EventStore,
-    LexicalStore,
-    ProjectStore,
-    TraceStore,
-    VectorStore,
-)
-
-# -- model --
-from .model import (
-    EmbeddingProvider,
-    ModelProvider,
+# -- actors --
+from .actors import (
+    VigilStore,
 )
 
 # -- auth --
@@ -41,19 +28,33 @@ from .budget import (
     BudgetStore,
 )
 
-# -- actors --
-from .actors import (
-    VigilStore,
-)
-
 # -- knowledge --
 from .knowledge import (
     KnowledgeStore,
 )
 
+# -- model --
+from .model import (
+    EmbeddingProvider,
+    ModelProvider,
+)
+
 # -- plugin --
 from .plugin import (
     PluginProvider,
+)
+
+# -- storage --
+from .storage import (
+    ArtifactStore,
+    CanonicalStore,
+    EcsStore,
+    EntityStore,
+    EventStore,
+    LexicalStore,
+    ProjectStore,
+    TraceStore,
+    VectorStore,
 )
 
 __all__ = [

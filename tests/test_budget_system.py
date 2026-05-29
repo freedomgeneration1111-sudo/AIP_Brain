@@ -1,12 +1,14 @@
 """Tests for CHUNK-7.0b Token Budget System (exact per Phase 5 ANNEX + prose)."""
-import pytest
-import tempfile
-import os
 
-from aip.foundation.schemas import BudgetConfig, BudgetScope
-from aip.foundation.protocols import BudgetStore
-from aip.orchestration.budget import BudgetManager, InMemoryBudgetStore
+import os
+import tempfile
+
+import pytest
+
 from aip.adapter.budget_store_sqlite import SqliteBudgetStore
+from aip.foundation.protocols import BudgetStore
+from aip.foundation.schemas import BudgetConfig, BudgetScope
+from aip.orchestration.budget import BudgetManager, InMemoryBudgetStore
 
 
 def test_budget_config_and_scope():
@@ -66,9 +68,19 @@ async def test_budget_manager_check_before_call_and_record():
 async def test_budget_manager_warning_threshold_emits_event():
     """When threshold crossed, warning event is (optionally) written."""
     events = []
+
     class FakeEventStore:
         async def write_event(self, event_type, actor, artifact_id, from_state=None, to_state=None, **kwargs):
-            events.append({"event_type": event_type, "actor": actor, "artifact_id": artifact_id, "from_state": from_state, "to_state": to_state, **kwargs})
+            events.append(
+                {
+                    "event_type": event_type,
+                    "actor": actor,
+                    "artifact_id": artifact_id,
+                    "from_state": from_state,
+                    "to_state": to_state,
+                    **kwargs,
+                },
+            )
 
     cfg = BudgetConfig(session_token_limit=100, budget_warning_threshold=0.5, budget_hard_stop=False)
     store = InMemoryBudgetStore()
@@ -103,4 +115,5 @@ def test_layering_and_no_orchestration_in_adapter():
     """7.0b adapter must not import orchestration (enforced by import in test + layering gate)."""
     # The module import itself succeeds without pulling orchestration
     from aip.adapter.budget_store_sqlite import SqliteBudgetStore
+
     assert SqliteBudgetStore is not None

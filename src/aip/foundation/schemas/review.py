@@ -3,6 +3,7 @@
 Review gate verdicts, review context assembly, review queue entries,
 Vigil configuration, and canonical promotion pipeline configuration.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -19,6 +20,7 @@ class ReviewVerdict:
     DEFINER sovereignty for APPROVED state.
     failure_types use Appendix E taxonomy codes.
     """
+
     artifact_id: str
     verdict: Literal["APPROVED", "REJECTED", "NEEDS_REVISION", "PENDING"]
     reviewer: str  # "automated" | "definer"
@@ -34,6 +36,7 @@ class ReviewContext:
     Contains everything a reviewer needs: the artifact content,
     its version history, recent trace events, and prior verdicts.
     """
+
     artifact_id: str
     artifact_content: str
     artifact_version: int
@@ -49,6 +52,7 @@ class ReviewQueueEntry:
     ECS transitions REVIEWED→APPROVED or REVIEWED→FAILED.
     Canonical promotion requires DEFINER approval.
     """
+
     artifact_id: str
     artifact_version: int = 1
     ecs_state: str = "GENERATED"
@@ -68,6 +72,7 @@ class VigilConfig:
     Per INTERFACES: canonical_health_check_interval_seconds, stale_threshold_days,
     re_evaluate_on_slot_change, max_re_evaluate_batch_size, entity_consistency_check.
     """
+
     canonical_health_check_interval_seconds: int = 3600
     stale_threshold_days: int = 30
     re_evaluate_on_slot_change: bool = True
@@ -83,6 +88,7 @@ class CanonicalPromotionConfig:
     Per INTERFACES: faithfulness_threshold, domain_coherence_threshold,
     model_gen_assumption.
     """
+
     faithfulness_threshold: float = 0.85
     domain_coherence_threshold: float = 0.80
     model_gen_assumption: str | None = None

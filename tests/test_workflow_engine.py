@@ -1,26 +1,40 @@
-
 import asyncio
+
 import pytest
 
-from aip.orchestration.workflow.definition import WorkflowDefinition
-from aip.orchestration.workflow.node import DialogNode, NodeType, ScriptNode, ParallelNode, NodeResult
-from aip.orchestration.workflow.context import WorkflowContext
-from aip.orchestration.workflow.runner import SequentialRunner
-from aip.orchestration.nodes.synthesis import SynthesisOutput
 from aip.foundation.validation import ValidationResult
 from aip.orchestration.nodes.adversarial_eval import EvalResult
+from aip.orchestration.nodes.synthesis import SynthesisOutput
+from aip.orchestration.workflow.context import WorkflowContext
+from aip.orchestration.workflow.definition import WorkflowDefinition
+from aip.orchestration.workflow.node import DialogNode, NodeResult, NodeType, ParallelNode, ScriptNode
+from aip.orchestration.workflow.runner import SequentialRunner
+
 
 def _make_synth():
     return SynthesisOutput(
-        content="Test synthesis for dialog", model_slot="synthesis", model_name="stub",
-        token_count_in=50, token_count_out=40, latency_ms=30
+        content="Test synthesis for dialog",
+        model_slot="synthesis",
+        model_name="stub",
+        token_count_in=50,
+        token_count_out=40,
+        latency_ms=30,
     )
 
+
 def _make_val(passed=True):
-    return ValidationResult(passed=passed, failure_type=None, failure_detail=None, checks_run=3, checks_failed=[] if passed else ["min_length"])
+    return ValidationResult(
+        passed=passed,
+        failure_type=None,
+        failure_detail=None,
+        checks_run=3,
+        checks_failed=[] if passed else ["min_length"],
+    )
+
 
 def _make_eval(passed=True):
     return EvalResult(passed=passed, scores={"grounding": 0.8}, requires_deep_eval=not passed)
+
 
 @pytest.mark.asyncio
 async def test_dialog_node_emits_pause_event_and_stops_runner():
@@ -28,8 +42,13 @@ async def test_dialog_node_emits_pause_event_and_stops_runner():
     val = _make_val(passed=True)
     ev = _make_eval(passed=True)
 
-    dialog = DialogNode("review_step", prompt="Please review this output",
-                        synthesis_output=synth, validation_result=val, eval_result=ev)
+    dialog = DialogNode(
+        "review_step",
+        prompt="Please review this output",
+        synthesis_output=synth,
+        validation_result=val,
+        eval_result=ev,
+    )
 
     nodes = [dialog]
     ctx = WorkflowContext()
@@ -40,6 +59,7 @@ async def test_dialog_node_emits_pause_event_and_stops_runner():
     assert ctx.events[0]["type"] == "workflow.dialog.paused"
     assert results[-1].output.get("paused") is True
     assert results[-1].output.get("type") == "dialog"
+
 
 @pytest.mark.asyncio
 async def test_parallel_node_basic_execution():
@@ -56,6 +76,7 @@ async def test_parallel_node_basic_execution():
     # The parallel node itself plus its children should have run
     executed_types = [r.output.get("type") for r in results if isinstance(r.output, dict)]
     assert "parallel" in executed_types
+
 
 @pytest.mark.asyncio
 async def test_parallel_node_executes_children_concurrently():
@@ -75,11 +96,12 @@ async def test_parallel_node_executes_children_concurrently():
     assert "par" in executed or any("parallel" in str(r) for r in executed)
     assert "after" in executed
 
+
 @pytest.mark.asyncio
 async def test_agent_node_wires_to_phase1_synthesis(monkeypatch):
     """Smoke test that AgentNode now calls the real Phase 1 retrieve + synthesis path via protocols."""
-    from aip.orchestration.workflow.node import AgentNode
     from aip.foundation.schemas import Chunk, RetrievalResult
+    from aip.orchestration.workflow.node import AgentNode
 
     # Fake minimal vector store
     class FakeVS:
@@ -95,7 +117,7 @@ async def test_agent_node_wires_to_phase1_synthesis(monkeypatch):
         protocols={
             "vector_store": FakeVS(),
             "embed_fn": fake_embed,
-        }
+        },
     )
     runner = SequentialRunner(nodes, ctx)
     results = await runner.run()
@@ -103,19 +125,23 @@ async def test_agent_node_wires_to_phase1_synthesis(monkeypatch):
     assert results[0].success
     assert hasattr(results[0].output, "content")  # Should be a real SynthesisOutput
 
+
 @pytest.mark.asyncio
 async def test_workflow_suspend_and_resume_via_dialog():
     """End-to-end smoke test of suspend + resume using the new persistence primitives."""
-    from aip.orchestration.workflow.instance import SuspendedWorkflow
     from aip.orchestration.nodes.definer_gate import DefinerDecision
+    from aip.orchestration.workflow.instance import SuspendedWorkflow
 
     # Simple workflow with a dialog in the middle
     nodes = [
         ScriptNode("start", code="begin"),
-        DialogNode("review", prompt="Please approve this", 
-                   synthesis_output=_make_synth_for_test(), 
-                   validation_result=_make_val_for_test(), 
-                   eval_result=_make_eval_for_test()),
+        DialogNode(
+            "review",
+            prompt="Please approve this",
+            synthesis_output=_make_synth_for_test(),
+            validation_result=_make_val_for_test(),
+            eval_result=_make_eval_for_test(),
+        ),
         ScriptNode("finish", code="done"),
     ]
 
@@ -138,18 +164,32 @@ async def test_workflow_suspend_and_resume_via_dialog():
     executed = [r.output.get("executed") for r in final_results if isinstance(r.output, dict)]
     assert "finish" in executed
 
+
 # Helper fakes for the test
 def _make_synth_for_test():
     from aip.orchestration.nodes.synthesis import SynthesisOutput
-    return SynthesisOutput(content="test", model_slot="s", model_name="stub", token_count_in=10, token_count_out=5, latency_ms=10)
+
+    return SynthesisOutput(
+        content="test",
+        model_slot="s",
+        model_name="stub",
+        token_count_in=10,
+        token_count_out=5,
+        latency_ms=10,
+    )
+
 
 def _make_val_for_test():
     from aip.foundation.validation import ValidationResult
+
     return ValidationResult(passed=True, failure_type=None, failure_detail=None, checks_run=1, checks_failed=[])
+
 
 def _make_eval_for_test():
     from aip.orchestration.nodes.adversarial_eval import EvalResult
+
     return EvalResult(passed=True, scores={}, requires_deep_eval=False)
+
 
 @pytest.mark.asyncio
 async def test_richer_data_flow_between_nodes():
@@ -169,6 +209,7 @@ async def test_richer_data_flow_between_nodes():
     # After step2, "previous" should point to step2
     assert ctx.variables["previous"]["output"]["executed"] == "step2"
     assert ctx.variables["step2"] is not None
+
 
 @pytest.mark.asyncio
 async def test_end_to_end_workflow_01_happy_path():
@@ -213,20 +254,24 @@ async def test_end_to_end_workflow_01_happy_path():
     # We expect the run to have produced at least one result (even if it paused at the dialog)
     assert result is not None
 
+
 @pytest.mark.asyncio
 async def test_production_persistence_suspend_resume(tmp_path):
     """End-to-end test using the real FileWorkflowInstanceStore to simulate restart."""
-    from aip.orchestration.workflow.instance_store import FileWorkflowInstanceStore
     from aip.orchestration.nodes.definer_gate import DefinerDecision
+    from aip.orchestration.workflow.instance_store import FileWorkflowInstanceStore
 
     store = FileWorkflowInstanceStore(tmp_path / "wf_instances")
 
     nodes = [
         ScriptNode("start", code="begin"),
-        DialogNode("review", prompt="Approve?",
-                   synthesis_output=_make_synth_for_test(),
-                   validation_result=_make_val_for_test(),
-                   eval_result=_make_eval_for_test()),
+        DialogNode(
+            "review",
+            prompt="Approve?",
+            synthesis_output=_make_synth_for_test(),
+            validation_result=_make_val_for_test(),
+            eval_result=_make_eval_for_test(),
+        ),
         ScriptNode("finish", code="done"),
     ]
 
@@ -256,6 +301,7 @@ async def test_production_persistence_suspend_resume(tmp_path):
     # Clean up the stored instance (optional)
     await store.delete(suspended.run_id)
 
+
 @pytest.mark.asyncio
 async def test_advanced_parallel_with_dependencies_and_error_handling():
     """Test that parallel respects dependencies and continue_on_error."""
@@ -264,12 +310,11 @@ async def test_advanced_parallel_with_dependencies_and_error_handling():
         ScriptNode("a", code="a"),
         ScriptNode("b", code="b"),
         ScriptNode("c", code="c"),
-        ParallelNode("par", children=["a", "b", "c"],
-                     config={
-                         "dependencies": {"b": ["a"]},
-                         "continue_on_error": True,
-                         "merge_strategy": "collect_all"
-                     }),
+        ParallelNode(
+            "par",
+            children=["a", "b", "c"],
+            config={"dependencies": {"b": ["a"]}, "continue_on_error": True, "merge_strategy": "collect_all"},
+        ),
     ]
     ctx = WorkflowContext()
     runner = SequentialRunner(nodes, ctx)
@@ -278,6 +323,7 @@ async def test_advanced_parallel_with_dependencies_and_error_handling():
     # We mainly care that it didn't crash and ran the parallel block
     par_results = [r for r in results if isinstance(r.output, dict) and r.output.get("type") == "parallel"]
     assert len(par_results) >= 1 or any("par" in str(r) for r in results)
+
 
 @pytest.mark.asyncio
 async def test_finally_and_on_error_handlers():
@@ -311,6 +357,7 @@ async def test_finally_and_on_error_handlers():
 
     # Failure path - on_error + finally should run
     execution_log.clear()
+
     def failing_run(self, context):
         execution_log.append("main_fail")
         return NodeResult(success=False, error="boom")
@@ -333,6 +380,7 @@ async def test_finally_and_on_error_handlers():
     assert "main_fail" in execution_log
     assert "compensate" in execution_log
     assert "finally" in execution_log
+
 
 @pytest.mark.asyncio
 async def test_workflow_definition_finally_and_on_error():
@@ -366,6 +414,7 @@ async def test_workflow_definition_finally_and_on_error():
     assert "main" in execution
     assert "compensate" in execution
     assert "finally" in execution
+
 
 @pytest.mark.asyncio
 async def test_high_level_workflow_engine_api():
@@ -410,6 +459,7 @@ nodes:
     result2 = await engine.run_workflow_01(query="Test query", domain="test")
     assert result2 is not None
 
+
 @pytest.mark.asyncio
 async def test_complete_workflow_01_reference_happy_path():
     """
@@ -424,8 +474,14 @@ async def test_complete_workflow_01_reference_happy_path():
     class FakeVectorStore:
         async def retrieve(self, query_vector, domain=None, top_k=10):
             from aip.foundation.schemas import Chunk
+
             return [
-                Chunk(id="c1", content="Sovereign memory must be local-first and inspectable.", score=0.92, domain=domain),
+                Chunk(
+                    id="c1",
+                    content="Sovereign memory must be local-first and inspectable.",
+                    score=0.92,
+                    domain=domain,
+                ),
             ]
 
     async def fake_embed(text):
@@ -434,8 +490,10 @@ async def test_complete_workflow_01_reference_happy_path():
     class CapturingArtifactStore:
         def __init__(self):
             self.writes = []
+
         async def write(self, id: str, content: str, metadata: dict):
             self.writes.append((id, content, metadata))
+
         async def read(self, id: str):
             for wid, content, _ in self.writes:
                 if wid == id:
@@ -445,6 +503,7 @@ async def test_complete_workflow_01_reference_happy_path():
     class CapturingEcsStore:
         def __init__(self):
             self.transitions = []
+
         async def transition(self, **kwargs):
             self.transitions.append(kwargs)
 
@@ -523,6 +582,7 @@ def test_budget_store_basic_consumption_3_11():
 
 # CHUNK-3.12 tests (added after CC documented in WORKLOG; exactly per declared scope)
 
+
 def test_budget_exhaustion_from_store_actually_blocks_3_12():
     """CHUNK-3.12: Injected BudgetStore returning False now correctly blocks (contract fix)."""
     from aip.orchestration.budget import InMemoryBudgetStore
@@ -536,6 +596,7 @@ def test_budget_exhaustion_from_store_actually_blocks_3_12():
     # Store state should reflect the attempted (but failed) consumption
     # (remaining still 50 because consume short-circuited)
     import asyncio
+
     assert asyncio.run(budget.remaining()) == 50
 
 
@@ -548,8 +609,8 @@ def test_autonomy_gate_injection_and_level_decisions_3_12():
     gate = SimpleAutonomyGate()
     ctx = WorkflowContext(protocols={"autonomy_gate": gate})
 
-    assert ctx.request_autonomy(0) is True   # Phase 1
-    assert ctx.request_autonomy(1) is True   # Phase 1 boundary
+    assert ctx.request_autonomy(0) is True  # Phase 1
+    assert ctx.request_autonomy(1) is True  # Phase 1 boundary
     assert ctx.request_autonomy(2) is False  # Phase 2 stub denies
 
     # Engine default wiring
@@ -579,12 +640,16 @@ def test_parallel_context_inherits_budget_and_autonomy_protocols_3_12():
     # Shadow budget copied at fork time (per existing invariant)
     assert child.budget_remaining == 1000
 
+
 # --- CHUNK-4.5 smoke test for new node types (additive) ---
+
 
 def test_loads_yaml_with_review_node():
     """CHUNK-4.5: The engine/loader should accept workflows using the new review node type."""
+    import os
+    import tempfile
+
     from aip.orchestration.workflow.loader import load_workflow_from_yaml
-    import tempfile, os
 
     yaml_content = """
 name: minimal_review_test
@@ -604,6 +669,7 @@ nodes:
         assert definition.nodes[0].node_id == "review_step"
         # The node class should be our extended one
         from aip.orchestration.workflow.node import ReviewNode
+
         assert isinstance(definition.nodes[0], ReviewNode)
 
 
@@ -613,9 +679,11 @@ def test_review_re_synthesize_cycle_basic():
     can be loaded and the nodes participate in execution (using fakes).
     This validates the pause + re-synthesis flow at the engine level.
     """
-    from aip.orchestration.workflow.loader import load_workflow_from_yaml
+    import os
+    import tempfile
+
     from aip.orchestration.workflow.engine import WorkflowEngine
-    import tempfile, os
+    from aip.orchestration.workflow.loader import load_workflow_from_yaml
 
     yaml_content = """
 name: review_re_synth_smoke

@@ -26,9 +26,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from aip.foundation.schemas import TrajectorySignal
-from aip.orchestration.l4.loop_detector import LoopDetector
 from aip.orchestration.l4.anxiety_detector import ContextAnxietyDetector
 from aip.orchestration.l4.failure_streak import FailureStreakDetector
+from aip.orchestration.l4.loop_detector import LoopDetector
 from aip.orchestration.l4.regulator import TrajectoryRegulator
 
 logger = logging.getLogger(__name__)
@@ -89,11 +89,7 @@ async def regulate_trajectory(
         recent_events = []
         if hasattr(trace_store, "query_events"):
             recent_events = await trace_store.query_events(session_id=session_id, limit=10)
-        recent_outputs = [
-            e.get("content", "") or e.get("detail", "")
-            for e in recent_events
-            if isinstance(e, dict)
-        ]
+        recent_outputs = [e.get("content", "") or e.get("detail", "") for e in recent_events if isinstance(e, dict)]
         anxiety_signal = await anxiety_detector.detect(
             session_id=session_id,
             recent_outputs=recent_outputs if recent_outputs else None,
@@ -113,7 +109,10 @@ async def regulate_trajectory(
             recent_outcomes = [
                 {
                     "claimed_done": "done" in str(e.get("outcome", "")).lower() or e.get("outcome") == "success",
-                    "substance_score": e.get("substance_score", _DEFAULT_SUBSTANCE_SCORE),  # default below 0.4 threshold so Type E can fire
+                    "substance_score": e.get(
+                        "substance_score",
+                        _DEFAULT_SUBSTANCE_SCORE,
+                    ),  # default below 0.4 threshold so Type E can fire
                 }
                 for e in recent_events
                 if isinstance(e, dict)

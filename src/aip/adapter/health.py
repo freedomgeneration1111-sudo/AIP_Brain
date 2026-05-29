@@ -62,6 +62,7 @@ async def system_health_check(config: Any) -> dict:
     model_slots = {}
     try:
         from aip.adapter.model_slot_resolver import ModelSlotResolver
+
         resolver = ModelSlotResolver(config)
         for slot_name in resolver.list_slots():
             try:
@@ -81,8 +82,7 @@ async def system_health_check(config: Any) -> dict:
         pass
 
     overall_healthy = (
-        vector_status.get("status") in ("healthy", "degraded")
-        and embedding_status.get("status") == "healthy"
+        vector_status.get("status") in ("healthy", "degraded") and embedding_status.get("status") == "healthy"
     )
 
     return {

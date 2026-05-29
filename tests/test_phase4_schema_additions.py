@@ -1,6 +1,16 @@
 """Verify Phase 4 schema additions do not break Phase 0, 1, 2, or 3."""
+
 import pytest
 
+from aip.foundation.protocols import (
+    ArtifactStore,
+    EcsStore,
+    EmbeddingProvider,
+    EventStore,
+    ModelProvider,
+    TraceStore,
+    VectorStore,
+)
 from aip.foundation.schemas import (
     Chunk,
     ContractRule,
@@ -9,8 +19,8 @@ from aip.foundation.schemas import (
     EcsTransition,
     EvaluationScore,
     Event,
-    FaithfulnessResult,
     FailureType,
+    FaithfulnessResult,
     MigrationCheckpoint,
     MigrationStatus,
     ModelSlotConfig,
@@ -21,15 +31,6 @@ from aip.foundation.schemas import (
     SessionContext,
     TrajectorySignal,
     VectorBackendType,
-)
-from aip.foundation.protocols import (
-    ArtifactStore,
-    EmbeddingProvider,
-    EcsStore,
-    EventStore,
-    ModelProvider,
-    TraceStore,
-    VectorStore,
 )
 
 

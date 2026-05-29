@@ -1,4 +1,5 @@
 """Tests for ECS state graph and guardrailed store (CHUNK-4.0b)."""
+
 import pytest
 
 from aip.foundation.ecs_graph import (
@@ -10,8 +11,8 @@ from aip.foundation.ecs_graph import (
 )
 from aip.foundation.protocols import EcsStore, EventStore
 
-
 # --- Pure graph validation tests ---
+
 
 def test_all_valid_transitions_pass():
     """Every transition in VALID_TRANSITIONS must pass validation."""
@@ -23,12 +24,12 @@ def test_all_valid_transitions_pass():
 def test_invalid_transitions_raise():
     """Known invalid transitions must raise InvalidTransitionError."""
     invalid = [
-        ("SPECIFIED", "APPROVED"),    # skip GENERATED and REVIEWED
-        ("GENERATED", "APPROVED"),     # skip REVIEWED
-        ("REVIEWED", "GENERATED"),     # cannot go back to GENERATED
-        ("APPROVED", "GENERATED"),     # cannot go back
-        ("SUPERSEDED", "APPROVED"),    # terminal state
-        ("SUPERSEDED", "SPECIFIED"),   # terminal state
+        ("SPECIFIED", "APPROVED"),  # skip GENERATED and REVIEWED
+        ("GENERATED", "APPROVED"),  # skip REVIEWED
+        ("REVIEWED", "GENERATED"),  # cannot go back to GENERATED
+        ("APPROVED", "GENERATED"),  # cannot go back
+        ("SUPERSEDED", "APPROVED"),  # terminal state
+        ("SUPERSEDED", "SPECIFIED"),  # terminal state
     ]
     for from_state, to_state in invalid:
         with pytest.raises(InvalidTransitionError):
@@ -51,6 +52,7 @@ def test_all_states_accounted_for():
 
 # --- Minimal fake stores for guardrail testing ---
 
+
 class FakeEcsStore(EcsStore):
     def __init__(self):
         self._states: dict[str, str] = {}
@@ -67,13 +69,15 @@ class FakeEventStore(EventStore):
         self.events = []
 
     async def write_event(self, event_type, actor, artifact_id, from_state=None, to_state=None, **kwargs):
-        self.events.append({
-            "event_type": event_type,
-            "actor": actor,
-            "artifact_id": artifact_id,
-            "from_state": from_state,
-            "to_state": to_state,
-        })
+        self.events.append(
+            {
+                "event_type": event_type,
+                "actor": actor,
+                "artifact_id": artifact_id,
+                "from_state": from_state,
+                "to_state": to_state,
+            },
+        )
 
     async def query(self, *a, **k):
         return []
@@ -82,6 +86,7 @@ class FakeEventStore(EventStore):
 import asyncio
 
 # --- GuardrailedEcsStore tests ---
+
 
 def test_guardrailed_store_valid_transition_writes_event():
     from aip.adapter.ecs_store_guardrailed import GuardrailedEcsStore
@@ -92,6 +97,7 @@ def test_guardrailed_store_valid_transition_writes_event():
 
     # First transition: SPECIFIED → GENERATED (no current state yet)
     import asyncio
+
     asyncio.run(guard.transition("art1", None, "GENERATED", "definer", "initial generation"))
 
     assert guard._state["art1"] == "GENERATED"

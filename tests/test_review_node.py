@@ -7,6 +7,7 @@ Updated for honest review behavior:
 - With eval_fn returning ci_fixture=True in CI: proceeds normally
 - With real eval_fn: APPROVED/REJECTED/NEEDS_REVISION based on results
 """
+
 import os
 
 import pytest
@@ -36,7 +37,16 @@ class FakeEcsStore:
 
     async def transition(self, artifact_id, from_state, to_state, actor, reason, superseded_by=None):
         self._state[artifact_id] = to_state
-        self.transitions.append({"artifact_id": artifact_id, "from_state": from_state, "to_state": to_state, "actor": actor, "reason": reason, "superseded_by": superseded_by})
+        self.transitions.append(
+            {
+                "artifact_id": artifact_id,
+                "from_state": from_state,
+                "to_state": to_state,
+                "actor": actor,
+                "reason": reason,
+                "superseded_by": superseded_by,
+            },
+        )
 
     async def current_state(self, artifact_id):
         return self._state.get(artifact_id)
@@ -47,7 +57,16 @@ class FakeEventStore:
         self.events = []
 
     async def write_event(self, event_type, actor, artifact_id, from_state=None, to_state=None, **kwargs):
-        self.events.append({"event_type": event_type, "actor": actor, "artifact_id": artifact_id, "from_state": from_state, "to_state": to_state, **kwargs})
+        self.events.append(
+            {
+                "event_type": event_type,
+                "actor": actor,
+                "artifact_id": artifact_id,
+                "from_state": from_state,
+                "to_state": to_state,
+                **kwargs,
+            },
+        )
 
     async def query(self, artifact_id=None, event_type=None, limit=100):
         return []
@@ -58,7 +77,15 @@ class FakeTraceStore:
         self.events = []
 
     async def write_event(self, session_id, node_type, failure_type, outcome, detail=None):
-        self.events.append({"session_id": session_id, "node_type": node_type, "failure_type": failure_type, "outcome": outcome, "detail": detail})
+        self.events.append(
+            {
+                "session_id": session_id,
+                "node_type": node_type,
+                "failure_type": failure_type,
+                "outcome": outcome,
+                "detail": detail,
+            },
+        )
 
 
 @pytest.fixture
@@ -217,8 +244,13 @@ async def test_definer_review_production_ci_fixture_blocked(stores, monkeypatch)
 
     config = {"review": {"mode": "definer"}}
     verdict = await review_artifact(
-        "d3", artifact, ecs, events, trace,
-        eval_fn=ci_fixture_eval, config=config,
+        "d3",
+        artifact,
+        ecs,
+        events,
+        trace,
+        eval_fn=ci_fixture_eval,
+        config=config,
     )
     assert verdict.verdict == "NEEDS_REVISION"
     assert "ci_fixture" in verdict.failure_types
@@ -239,8 +271,13 @@ async def test_definer_review_production_with_real_eval_pending(stores, monkeypa
 
     config = {"review": {"mode": "definer"}}
     verdict = await review_artifact(
-        "d4", artifact, ecs, events, trace,
-        eval_fn=real_eval, config=config,
+        "d4",
+        artifact,
+        ecs,
+        events,
+        trace,
+        eval_fn=real_eval,
+        config=config,
     )
     assert verdict.verdict == "PENDING"
     assert verdict.reviewer == "definer"
@@ -261,8 +298,13 @@ async def test_definer_review_production_with_eval_failures(stores, monkeypatch)
 
     config = {"review": {"mode": "definer"}}
     verdict = await review_artifact(
-        "d5", artifact, ecs, events, trace,
-        eval_fn=failing_eval, config=config,
+        "d5",
+        artifact,
+        ecs,
+        events,
+        trace,
+        eval_fn=failing_eval,
+        config=config,
     )
     assert verdict.verdict == "NEEDS_REVISION"
     assert "B" in verdict.failure_types

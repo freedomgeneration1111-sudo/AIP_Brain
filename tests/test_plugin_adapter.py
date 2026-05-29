@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from aip.foundation.protocols import PluginProvider
 from aip.adapter.plugins.plugin_loader import PluginLoader
 from aip.adapter.plugins.yaml_plugin_provider import YamlPluginProvider
+from aip.foundation.protocols import PluginProvider
 from aip.foundation.schemas import PluginConfig
 
 
@@ -24,9 +24,7 @@ def test_yaml_plugin_provider_implements_protocol():
     # Minimal valid config (no real key needed for fixture mode)
     with tempfile.TemporaryDirectory() as tmp:
         cfg = Path(tmp) / "test.yaml"
-        cfg.write_text(
-            "slot_name: test\nprovider_name: fixture\nbase_url: http://example\nmodel: test\n"
-        )
+        cfg.write_text("slot_name: test\nprovider_name: fixture\nbase_url: http://example\nmodel: test\n")
         p = YamlPluginProvider(str(cfg))
         assert isinstance(p, PluginProvider)
         assert p.get_slot_name() == "test"
@@ -54,9 +52,7 @@ async def test_ci_deterministic_mode_for_provider():
     os.environ["AIP_CI_MODE"] = "1"
     with tempfile.TemporaryDirectory() as tmp:
         cfg = Path(tmp) / "ci.yaml"
-        cfg.write_text(
-            "slot_name: ci\nprovider_name: ci-fixture\nbase_url: http://example\nmodel: test\n"
-        )
+        cfg.write_text("slot_name: ci\nprovider_name: ci-fixture\nbase_url: http://example\nmodel: test\n")
         p = YamlPluginProvider(str(cfg))
         resp = await p.call_model("hello world", {})
         assert "[CI-FIXTURE]" in resp

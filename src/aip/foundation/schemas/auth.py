@@ -3,11 +3,11 @@
 Authentication configuration, autonomy level definitions and coercion
 helpers, escalation tracking, collaborator access, and rate limiting.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Literal
-
 
 # ---------------------------------------------------------------------------
 # Literal type aliases
@@ -22,6 +22,7 @@ CollaboratorRole = Literal["definer", "collaborator", "readonly"]
 # ---------------------------------------------------------------------------
 # Coercion helpers
 # ---------------------------------------------------------------------------
+
 
 def coerce_autonomy_level(level: str | AutonomyLevel) -> AutonomyLevel:
     """Convert a string autonomy level to the proper AutonomyLevel Literal type.
@@ -51,6 +52,7 @@ def coerce_mcp_autonomy_level(level: str | McpAutonomyLevel) -> McpAutonomyLevel
 # Dataclasses
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class AutonomyEscalation:
     """A single autonomy escalation request and its resolution.
@@ -59,6 +61,7 @@ class AutonomyEscalation:
     may bypass the DEFINER gates."
     model_gen_assumption tags what assumption this escalation encodes.
     """
+
     escalation_id: str
     action_type: str
     requested_by: str
@@ -80,6 +83,7 @@ class AuthConfig:
     Per INTERFACES: auth_enabled, session_timeout_seconds, api_key_enabled,
     bcrypt_rounds, definer_identity.
     """
+
     auth_enabled: bool = False
     session_timeout_seconds: int = 86400
     api_key_enabled: bool = True
@@ -96,6 +100,7 @@ class RateLimitConfig:
     Per INTERFACES: requests_per_minute, burst_size, per_endpoint_overrides,
     model_budget_protection.
     """
+
     enabled: bool = True
     requests_per_minute: int = 60
     burst_size: int = 10
@@ -111,6 +116,7 @@ class CollaboratorConfig:
     enabled is toggleable.
     Per Process Rule 11: collaborator_can_approve defaults to False.
     """
+
     enabled: bool = False
     max_collaborators: int = 5
     collaborator_can_create_drafts: bool = True

@@ -9,8 +9,9 @@ Pure adapter-layer (no orchestration imports).
 
 from __future__ import annotations
 
-import bcrypt
 from typing import Any
+
+import bcrypt
 
 from aip.foundation.protocols import AuthStore, AutonomyGate
 from aip.foundation.schemas import CollaboratorConfig, CollaboratorRole

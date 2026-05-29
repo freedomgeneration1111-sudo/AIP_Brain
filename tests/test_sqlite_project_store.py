@@ -1,6 +1,8 @@
 """Tests for SqliteProjectStore — concrete ProjectStore implementation."""
+
 import os
 import tempfile
+
 import pytest
 
 from aip.adapter.project.sqlite_project_store import SqliteProjectStore

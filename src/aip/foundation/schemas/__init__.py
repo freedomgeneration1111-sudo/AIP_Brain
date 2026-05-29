@@ -10,7 +10,22 @@ The actual definitions live in domain-specific sub-modules:
     base, retrieval, review, evaluation, trajectory,
     workflow, vector, auth, budget, surface, config
 """
+
 from __future__ import annotations
+
+# -- auth --
+from .auth import (
+    AuthConfig,
+    AuthRole,
+    AutonomyEscalation,
+    AutonomyLevel,
+    CollaboratorConfig,
+    CollaboratorRole,
+    McpAutonomyLevel,
+    RateLimitConfig,
+    coerce_autonomy_level,
+    coerce_mcp_autonomy_level,
+)
 
 # -- base --
 from .base import (
@@ -25,6 +40,31 @@ from .base import (
     OutcomeType,
     ReleaseMetadata,
     VigilHealthStatus,
+)
+
+# -- budget --
+from .budget import (
+    BudgetConfig,
+    BudgetScope,
+)
+
+# -- config --
+from .config import (
+    PerformanceConfig,
+    PluginConfig,
+    PluginStatus,
+)
+
+# -- evaluation --
+from .evaluation import (
+    AcePlaybookEntry,
+    CompilationState,
+    DomainCoherenceResult,
+    EvaluationScore,
+    FailureClassification,
+    FaithfulnessResult,
+    KnowledgeCompilationConfig,
+    SextonConfig,
 )
 
 # -- retrieval --
@@ -42,16 +82,12 @@ from .review import (
     VigilConfig,
 )
 
-# -- evaluation --
-from .evaluation import (
-    AcePlaybookEntry,
-    CompilationState,
-    DomainCoherenceResult,
-    EvaluationScore,
-    FaithfulnessResult,
-    FailureClassification,
-    KnowledgeCompilationConfig,
-    SextonConfig,
+# -- surface --
+from .surface import (
+    ApiRoute,
+    ChatMessage,
+    McpToolDef,
+    SurfaceConfig,
 )
 
 # -- trajectory --
@@ -59,15 +95,6 @@ from .trajectory import (
     SessionContext,
     TrajectorySignal,
     TrajectorySignalType,
-)
-
-# -- workflow --
-from .workflow import (
-    BeastCadenceConfig,
-    DeploymentProfile,
-    ModelSlotConfig,
-    RoutingWeight,
-    WorkflowTemplate,
 )
 
 # -- vector --
@@ -78,39 +105,13 @@ from .vector import (
     VectorBackendType,
 )
 
-# -- auth --
-from .auth import (
-    AuthConfig,
-    AuthRole,
-    AutonomyEscalation,
-    AutonomyLevel,
-    CollaboratorConfig,
-    CollaboratorRole,
-    McpAutonomyLevel,
-    RateLimitConfig,
-    coerce_autonomy_level,
-    coerce_mcp_autonomy_level,
-)
-
-# -- budget --
-from .budget import (
-    BudgetConfig,
-    BudgetScope,
-)
-
-# -- surface --
-from .surface import (
-    ApiRoute,
-    ChatMessage,
-    McpToolDef,
-    SurfaceConfig,
-)
-
-# -- config --
-from .config import (
-    PerformanceConfig,
-    PluginConfig,
-    PluginStatus,
+# -- workflow --
+from .workflow import (
+    BeastCadenceConfig,
+    DeploymentProfile,
+    ModelSlotConfig,
+    RoutingWeight,
+    WorkflowTemplate,
 )
 
 __all__ = [

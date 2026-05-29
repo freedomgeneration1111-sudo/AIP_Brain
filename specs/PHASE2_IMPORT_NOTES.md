@@ -6,7 +6,10 @@
 
 ## 1. Purpose
 
-This document records the chunk-number remapping, terminology conventions, and process rules that govern spec-to-code mapping across all architectural phases. It exists because the spec chunk numbers (e.g., "Phase 2 spec chunks 2.0a–2.8") collide with existing git history chunk series (repo 2.x, 3.x). The remapping avoids confusion.
+This document records the chunk-number remapping, terminology conventions, and process rules that govern
+spec-to-code mapping across all architectural phases. It exists because the spec chunk numbers (e.g., "Phase 2
+spec chunks 2.0a–2.8") collide with existing git history chunk series (repo 2.x, 3.x). The remapping avoids
+confusion.
 
 ---
 
@@ -76,7 +79,8 @@ Always use qualified terms. Avoid bare "Phase N" without context.
 
 ## 4. Process Rules
 
-1. **Amend by addition.** Protocol amendments append method stubs to existing classes. Schema amendments append new dataclasses. Never redeclare a Protocol class or modify/reorder existing definitions.
+1. **Amend by addition.** Protocol amendments append method stubs to existing classes. Schema amendments
+append new dataclasses. Never redeclare a Protocol class or modify/reorder existing definitions.
 
 2. **Deterministic CI.** All gate tests must pass without network, API keys, or secrets. CI mode returns deterministic fixtures.
 

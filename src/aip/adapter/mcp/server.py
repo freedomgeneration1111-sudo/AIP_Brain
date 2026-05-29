@@ -1,6 +1,7 @@
 """AipMcpServer.
 
-Per spec: takes AipContainer, supports stdio/sse, list_tools() with McpToolDef (autonomy_level + model_gen_assumption), enforces gate for write/admin tools before dispatch.
+Per spec: takes AipContainer, supports stdio/sse, list_tools() with McpToolDef
+(autonomy_level + model_gen_assumption), enforces gate for write/admin tools before dispatch.
 Appendix D: MCP ≠ bypass, MCP ≠ vector_store.retrieve() directly (all via Protocols).
 """
 
@@ -12,14 +13,29 @@ from aip.foundation.schemas import McpToolDef, coerce_autonomy_level, coerce_mcp
 
 # Tool registry (autonomy declared per spec)
 TOOLS: list[dict[str, Any]] = [
-    {"name": "aip_search", "autonomy": "read", "model_gen": "Models may hallucinate without retrieved context", "desc": "Hybrid lexical + semantic search via Protocols"},
+    {
+        "name": "aip_search",
+        "autonomy": "read",
+        "model_gen": "Models may hallucinate without retrieved context",
+        "desc": "Hybrid lexical + semantic search via Protocols",
+    },
     {"name": "aip_project_list", "autonomy": "read", "model_gen": None, "desc": "List projects"},
     {"name": "aip_project_create", "autonomy": "write", "model_gen": None, "desc": "Create project (write gate)"},
     {"name": "aip_artifact_list", "autonomy": "read", "model_gen": None, "desc": "List artifacts"},
-    {"name": "aip_artifact_approve", "autonomy": "admin", "model_gen": "Models should not autonomously approve artifacts", "desc": "Approve artifact (admin gate + canonical promotion)"},
+    {
+        "name": "aip_artifact_approve",
+        "autonomy": "admin",
+        "model_gen": "Models should not autonomously approve artifacts",
+        "desc": "Approve artifact (admin gate + canonical promotion)",
+    },
     {"name": "aip_trace_query", "autonomy": "read", "model_gen": None, "desc": "Query trace events"},
     {"name": "aip_config_read", "autonomy": "read", "model_gen": None, "desc": "Read config"},
-    {"name": "aip_config_write", "autonomy": "admin", "model_gen": "Models should not autonomously modify harness config", "desc": "Write config (admin gate)"},
+    {
+        "name": "aip_config_write",
+        "autonomy": "admin",
+        "model_gen": "Models should not autonomously modify harness config",
+        "desc": "Write config (admin gate)",
+    },
 ]
 
 
@@ -39,13 +55,15 @@ class AipMcpServer:
     def list_tools(self) -> list[McpToolDef]:
         defs = []
         for t in TOOLS:
-            defs.append(McpToolDef(
-                tool_name=t["name"],
-                description=t["desc"],
-                input_schema={},
-                autonomy_level=coerce_mcp_autonomy_level(t["autonomy"]),
-                model_gen_assumption=t["model_gen"],
-            ))
+            defs.append(
+                McpToolDef(
+                    tool_name=t["name"],
+                    description=t["desc"],
+                    input_schema={},
+                    autonomy_level=coerce_mcp_autonomy_level(t["autonomy"]),
+                    model_gen_assumption=t["model_gen"],
+                ),
+            )
         return defs
 
     async def call_tool(self, name: str, arguments: dict) -> dict:

@@ -23,9 +23,7 @@ def _check_db(db_path: str) -> dict:
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
-        cur = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-        )
+        cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         tables = [row["name"] for row in cur.fetchall()]
         info["tables"] = len(tables)
         for t in tables[:10]:  # cap at 10 tables to avoid noise
@@ -46,6 +44,7 @@ def _check_ollama() -> dict:
     info: dict = {"reachable": False, "models": []}
     try:
         import httpx
+
         r = httpx.get("http://127.0.0.1:11434/api/tags", timeout=2)
         if r.status_code == 200:
             info["reachable"] = True
@@ -125,6 +124,7 @@ def status() -> None:
     # CLI (foundation layer) should not directly import adapter code.
     try:
         import importlib
+
         importlib.import_module("aip.adapter.vector.factory")
         click.echo("vector_backend: factory available (will auto-select pgvector → sqlite-vss → in-memory)")
     except ImportError:
@@ -133,6 +133,7 @@ def status() -> None:
     # --- Beast ---
     try:
         from aip.orchestration.actors.beast import Beast
+
         click.echo("beast: actor module available (runs via API lifespan scheduler)")
     except ImportError:
         click.echo("beast: not available")

@@ -11,20 +11,20 @@ Verifies that:
 
 import pytest
 
-from aip.orchestration.workflow.node import (
-    NodeResult,
-    NodeType,
-    ScriptNode,
-    AgentNode,
-    ConditionNode,
-    DialogNode,
-    ParallelNode,
-    WorkflowNode,
-)
-from aip.orchestration.workflow.runner import SequentialRunner
 from aip.orchestration.workflow.context import WorkflowContext
 from aip.orchestration.workflow.definition import WorkflowDefinition
 from aip.orchestration.workflow.instance import SuspendedWorkflow
+from aip.orchestration.workflow.node import (
+    AgentNode,
+    ConditionNode,
+    DialogNode,
+    NodeResult,
+    NodeType,
+    ParallelNode,
+    ScriptNode,
+    WorkflowNode,
+)
+from aip.orchestration.workflow.runner import SequentialRunner
 
 
 @pytest.mark.asyncio
@@ -113,8 +113,8 @@ def test_from_suspended_resumes_correctly():
 async def test_commit_with_none_stores_graceful():
     """Commit node must handle None event_store gracefully (defensive guard)."""
     from aip.orchestration.nodes.commit import commit_artifact
-    from aip.orchestration.nodes.synthesis import SynthesisOutput
     from aip.orchestration.nodes.definer_gate import DefinerDecision
+    from aip.orchestration.nodes.synthesis import SynthesisOutput
 
     synthesis = SynthesisOutput(
         content="Test synthesis output content",

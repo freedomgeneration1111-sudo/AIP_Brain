@@ -53,9 +53,7 @@ async def create_vector_store(config: Any, embedding_provider: Any = None) -> Ve
             logger.info("VectorStore: pgvector backend initialized")
             return store
         except Exception as e:
-            logger.warning(
-                f"pgvector unavailable ({e}), falling back to sqlite_vss"
-            )
+            logger.warning(f"pgvector unavailable ({e}), falling back to sqlite_vss")
             # Graceful degradation
             return await _create_sqlite_vss(vector_cfg, embedding_provider)
 
@@ -64,7 +62,7 @@ async def create_vector_store(config: Any, embedding_provider: Any = None) -> Ve
 
 async def _create_sqlite_vss(vector_cfg: dict, embedding_provider: Any = None) -> VectorStore:
     """Create SqliteVssVectorStore as default or fallback.
-    
+
     If sqlite_vss is not available, returns an InMemoryVectorStore
     as a last-resort fallback (graceful degradation).
 
@@ -84,13 +82,11 @@ async def _create_sqlite_vss(vector_cfg: dict, embedding_provider: Any = None) -
         )
         if store._vss_available:
             if embedding_provider is not None:
-                logger.info(
-                    "VectorStore: sqlite_vss backend initialized with EmbeddingProvider"
-                )
+                logger.info("VectorStore: sqlite_vss backend initialized with EmbeddingProvider")
             else:
                 logger.info(
                     "VectorStore: sqlite_vss backend initialized (no EmbeddingProvider — "
-                    "store() will use metadata-only fallback)"
+                    "store() will use metadata-only fallback)",
                 )
             return store
         else:
@@ -100,4 +96,5 @@ async def _create_sqlite_vss(vector_cfg: dict, embedding_provider: Any = None) -
 
     # Last-resort in-memory fallback
     from aip.adapter.vector._in_memory import InMemoryVectorStore
+
     return InMemoryVectorStore()

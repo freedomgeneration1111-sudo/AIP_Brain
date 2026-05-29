@@ -82,7 +82,21 @@ def test_import_boundaries_are_respected():
 
             for imp in imports:
                 # Skip stdlib and known safe things
-                if imp in {"__future__", "dataclasses", "enum", "typing", "pathlib", "hashlib", "json", "sqlite3", "math", "time", "re", "ast", "pytest"}:
+                if imp in {
+                    "__future__",
+                    "dataclasses",
+                    "enum",
+                    "typing",
+                    "pathlib",
+                    "hashlib",
+                    "json",
+                    "sqlite3",
+                    "math",
+                    "time",
+                    "re",
+                    "ast",
+                    "pytest",
+                }:
                     continue
 
                 # Check against forbidden cross-layer imports
@@ -91,11 +105,10 @@ def test_import_boundaries_are_respected():
                         if (current_layer, forbidden_layer) in FORBIDDEN_CROSS_IMPORTS:
                             violations.append(
                                 f"{py_file.relative_to(REPO_ROOT)} imports from '{forbidden_layer}' "
-                                f"(current layer: {current_layer})"
+                                f"(current layer: {current_layer})",
                             )
 
     assert not violations, (
         "Import boundary violations detected (foundation must stay isolated, "
-        "orchestration must not reach into adapter):\n\n"
-        + "\n".join(violations)
+        "orchestration must not reach into adapter):\n\n" + "\n".join(violations)
     )

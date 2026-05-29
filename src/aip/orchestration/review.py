@@ -3,6 +3,7 @@
 Implements GENERATED → REVIEWED | REJECTED.
 No bypass of DEFINER gates.
 """
+
 from __future__ import annotations
 
 import logging
@@ -194,9 +195,9 @@ async def _automated_review(
         except Exception as exc:
             # eval_fn itself raised — treat as evaluation failure, not approval
             logger.warning(
-                "Automated review: eval_fn raised for artifact %s: %s. "
-                "Returning NEEDS_REVISION (evaluation failed).",
-                context.artifact_id, exc,
+                "Automated review: eval_fn raised for artifact %s: %s. Returning NEEDS_REVISION (evaluation failed).",
+                context.artifact_id,
+                exc,
             )
             return ReviewVerdict(
                 artifact_id=context.artifact_id,
@@ -205,7 +206,7 @@ async def _automated_review(
                 confidence=0.0,
                 failure_types=["eval_error"],
                 detail=f"Evaluation function raised an error: {exc}. "
-                       f"The artifact cannot be approved without successful evaluation.",
+                f"The artifact cannot be approved without successful evaluation.",
             )
 
         confidence = result.get("confidence", 0.0)
@@ -247,13 +248,15 @@ async def _automated_review(
                 confidence=confidence,
                 failure_types=["ci_fixture"],
                 detail="Evaluation used CI fixture data — not suitable for production approval. "
-                       "Provide a real eval_fn or run in CI environment.",
+                "Provide a real eval_fn or run in CI environment.",
             )
 
         if confidence >= confidence_threshold and not failure_types:
             logger.info(
                 "Automated review APPROVED artifact %s (confidence=%.2f, ci_fixture=%s).",
-                context.artifact_id, confidence, ci_fixture,
+                context.artifact_id,
+                confidence,
+                ci_fixture,
             )
             return ReviewVerdict(
                 artifact_id=context.artifact_id,
@@ -262,12 +265,13 @@ async def _automated_review(
                 confidence=confidence,
             )
         else:
-            verdict = (
-                "REJECTED" if confidence < confidence_threshold else "NEEDS_REVISION"
-            )
+            verdict = "REJECTED" if confidence < confidence_threshold else "NEEDS_REVISION"
             logger.info(
                 "Automated review %s artifact %s (confidence=%.2f, failure_types=%s).",
-                verdict, context.artifact_id, confidence, failure_types,
+                verdict,
+                context.artifact_id,
+                confidence,
+                failure_types,
             )
             return ReviewVerdict(
                 artifact_id=context.artifact_id,
@@ -307,7 +311,7 @@ async def _automated_review(
                 reviewer="automated",
                 confidence=0.0,
                 detail="No evaluation function provided — cannot approve without quality assessment. "
-                       "Provide an eval_fn or configure review.mode=definer for human review.",
+                "Provide an eval_fn or configure review.mode=definer for human review.",
             )
 
 
@@ -339,9 +343,9 @@ async def _definer_review(
         except Exception as exc:
             # eval_fn raised — treat as evaluation failure
             logger.warning(
-                "Definer review: eval_fn raised for artifact %s: %s. "
-                "Returning NEEDS_REVISION (evaluation failed).",
-                context.artifact_id, exc,
+                "Definer review: eval_fn raised for artifact %s: %s. Returning NEEDS_REVISION (evaluation failed).",
+                context.artifact_id,
+                exc,
             )
             return ReviewVerdict(
                 artifact_id=context.artifact_id,
@@ -350,7 +354,7 @@ async def _definer_review(
                 confidence=0.0,
                 failure_types=["eval_error"],
                 detail=f"Evaluation function raised an error: {exc}. "
-                       f"Cannot proceed with DEFINER review without evaluation data.",
+                f"Cannot proceed with DEFINER review without evaluation data.",
             )
 
         eval_confidence = result.get("confidence", 0.0)
@@ -379,9 +383,10 @@ async def _definer_review(
     if _is_ci_environment():
         # CI mode: deterministic fixture for testing workflows
         logger.info(
-            "Definer review: CI mode fixture for artifact %s "
-            "(eval_confidence=%.2f, eval_ci_fixture=%s).",
-            context.artifact_id, eval_confidence, eval_ci_fixture,
+            "Definer review: CI mode fixture for artifact %s (eval_confidence=%.2f, eval_ci_fixture=%s).",
+            context.artifact_id,
+            eval_confidence,
+            eval_ci_fixture,
         )
         return ReviewVerdict(
             artifact_id=context.artifact_id,
@@ -404,7 +409,7 @@ async def _definer_review(
                 reviewer="definer",
                 confidence=0.0,
                 detail="No evaluation data available for DEFINER review. "
-                       "Provide an eval_fn or configure review.mode=automated.",
+                "Provide an eval_fn or configure review.mode=automated.",
             )
 
         # Eval data exists — check if it's CI fixture data
@@ -421,7 +426,7 @@ async def _definer_review(
                 confidence=eval_confidence,
                 failure_types=["ci_fixture"],
                 detail="Evaluation used CI fixture data — not suitable for DEFINER approval. "
-                       "Provide real evaluation results.",
+                "Provide real evaluation results.",
             )
 
         # Real evaluation data exists — the actual DEFINER decision is made
@@ -431,7 +436,8 @@ async def _definer_review(
             logger.info(
                 "Definer review: evaluation found failures for artifact %s "
                 "(failure_types=%s). Returning NEEDS_REVISION.",
-                context.artifact_id, eval_failure_types,
+                context.artifact_id,
+                eval_failure_types,
             )
             return ReviewVerdict(
                 artifact_id=context.artifact_id,
@@ -446,7 +452,8 @@ async def _definer_review(
         logger.info(
             "Definer review: evaluation passed for artifact %s (confidence=%.2f). "
             "Returning PENDING for DEFINER gate decision.",
-            context.artifact_id, eval_confidence,
+            context.artifact_id,
+            eval_confidence,
         )
         return ReviewVerdict(
             artifact_id=context.artifact_id,

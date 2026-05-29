@@ -43,27 +43,33 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                 # For 8.3 scaffold we echo + demonstrate gate flow
                 if "gate" in content.lower():
                     # Simulate hitting a dialog node
-                    await websocket.send_json({
-                        "type": "gate",
-                        "gate_type": "definer_review",
-                        "artifact_id": "art-demo-123",
-                        "preview": "Proposed design decision..."
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "gate",
+                            "gate_type": "definer_review",
+                            "artifact_id": "art-demo-123",
+                            "preview": "Proposed design decision...",
+                        },
+                    )
                 else:
-                    await websocket.send_json({
-                        "type": "response",
-                        "content": f"Echo (scaffold): {content}",
-                        "artifacts": [],
-                        "tokens_used": 42
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "response",
+                            "content": f"Echo (scaffold): {content}",
+                            "artifacts": [],
+                            "tokens_used": 42,
+                        },
+                    )
             elif msg.get("type") == "gate_response":
                 approved = msg.get("approved", False)
-                await websocket.send_json({
-                    "type": "response",
-                    "content": f"Gate {'approved' if approved else 'rejected'} (workflow resumed)",
-                    "artifacts": ["art-demo-123"] if approved else [],
-                    "tokens_used": 10
-                })
+                await websocket.send_json(
+                    {
+                        "type": "response",
+                        "content": f"Gate {'approved' if approved else 'rejected'} (workflow resumed)",
+                        "artifacts": ["art-demo-123"] if approved else [],
+                        "tokens_used": 10,
+                    },
+                )
             else:
                 await websocket.send_json({"type": "error", "content": "unknown message type"})
     except WebSocketDisconnect:

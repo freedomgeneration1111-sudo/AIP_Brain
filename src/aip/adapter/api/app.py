@@ -39,11 +39,10 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from aip.adapter.api import collaborators, performance, plugins
 from aip.adapter.api.dependencies import AipContainer, get_container
-from aip.adapter.api.routes import health, projects, sessions
-from aip.adapter.api.routes import review, artifacts, admin, memory, chat
-from aip.adapter.api import collaborators, plugins, performance
-from aip.foundation.schemas import SurfaceConfig, BeastCadenceConfig
+from aip.adapter.api.routes import admin, artifacts, chat, health, memory, projects, review, sessions
+from aip.foundation.schemas import BeastCadenceConfig, SurfaceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -72,37 +71,40 @@ async def lifespan(app: FastAPI):
     # Entity store — artifact metadata, collaborator data
     try:
         from aip.adapter.entity.sqlite_entity_store import SqliteEntityStore
+
         container.entity_store = SqliteEntityStore(db_path)
         await container.entity_store.initialize()
         logger.info("Entity store initialized (required)")
     except Exception as exc:
         raise StartupError(
             f"REQUIRED component failed: Entity store could not initialize. "
-            f"Reason: {exc}. The application cannot start without entity storage."
+            f"Reason: {exc}. The application cannot start without entity storage.",
         ) from exc
 
     # Canonical store — canonical artifact storage
     try:
         from aip.adapter.canonical.sqlite_canonical_store import SqliteCanonicalStore
+
         container.canonical_store = SqliteCanonicalStore(db_path)
         await container.canonical_store.initialize()
         logger.info("Canonical store initialized (required)")
     except Exception as exc:
         raise StartupError(
             f"REQUIRED component failed: Canonical store could not initialize. "
-            f"Reason: {exc}. The application cannot start without canonical storage."
+            f"Reason: {exc}. The application cannot start without canonical storage.",
         ) from exc
 
     # Event store — audit trail, trace events
     try:
         from aip.adapter.event_store_queryable import QueryableEventStore
+
         container.event_store = QueryableEventStore(db_path)
         await container.event_store.initialize()
         logger.info("Event store initialized (required)")
     except Exception as exc:
         raise StartupError(
             f"REQUIRED component failed: Event store could not initialize. "
-            f"Reason: {exc}. The application cannot start without event storage."
+            f"Reason: {exc}. The application cannot start without event storage.",
         ) from exc
 
     # Autonomy gate — authorization enforcement (core security)
@@ -115,7 +117,7 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         raise StartupError(
             f"REQUIRED component failed: Autonomy gate could not initialize. "
-            f"Reason: {exc}. The application cannot start without authorization enforcement."
+            f"Reason: {exc}. The application cannot start without authorization enforcement.",
         ) from exc
 
     # Artifact store (versioned) — artifact versioned storage
@@ -128,7 +130,7 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         raise StartupError(
             f"REQUIRED component failed: Artifact store could not initialize. "
-            f"Reason: {exc}. The application cannot start without artifact storage."
+            f"Reason: {exc}. The application cannot start without artifact storage.",
         ) from exc
 
     # =====================================================================
@@ -143,9 +145,7 @@ async def lifespan(app: FastAPI):
         await container.lexical_store.initialize()
         logger.info("Lexical store initialized (optional)")
     except Exception as exc:
-        logger.warning(
-            "Lexical store initialization failed (optional — text search degraded): %s", exc
-        )
+        logger.warning("Lexical store initialization failed (optional — text search degraded): %s", exc)
 
     # Embedding provider — vector embedding (degrades to fake_embed)
     # NOTE: Initialized before vector store so it can be passed to the factory
@@ -155,18 +155,18 @@ async def lifespan(app: FastAPI):
         provider = embed_cfg.get("provider", "mock")
         if provider == "ollama":
             from aip.adapter.embedding.ollama_embed import OllamaEmbeddingClient
+
             container.embedding_provider = OllamaEmbeddingClient(
                 base_url=embed_cfg.get("base_url", "http://localhost:11434"),
                 model=embed_cfg.get("model", "nomic-embed-text"),
             )
         else:
             from aip.adapter.embedding.ollama_embed import MockOllamaEmbeddingClient
+
             container.embedding_provider = MockOllamaEmbeddingClient()
         logger.info("Embedding provider initialized (optional, provider=%s)", provider)
     except Exception as exc:
-        logger.warning(
-            "Embedding provider initialization failed (optional — using fake_embed): %s", exc
-        )
+        logger.warning("Embedding provider initialization failed (optional — using fake_embed): %s", exc)
 
     # Vector store — semantic search (degrades to keyword-only)
     # Passes embedding_provider so SqliteVssVectorStore.store() can generate
@@ -174,25 +174,20 @@ async def lifespan(app: FastAPI):
     try:
         _vs_mod = importlib.import_module("aip.adapter.vector.factory")
         _create_vector_store = _vs_mod.create_vector_store
-        container.vector_store = await _create_vector_store(
-            config, embedding_provider=container.embedding_provider
-        )
+        container.vector_store = await _create_vector_store(config, embedding_provider=container.embedding_provider)
         logger.info("Vector store initialized (optional)")
     except Exception as exc:
-        logger.warning(
-            "Vector store initialization failed (optional — semantic search degraded): %s", exc
-        )
+        logger.warning("Vector store initialization failed (optional — semantic search degraded): %s", exc)
 
     # Project store — project management (degrades to empty projects)
     try:
         from aip.adapter.project.sqlite_project_store import SqliteProjectStore
+
         container.project_store = SqliteProjectStore(db_path)
         await container.project_store.initialize()
         logger.info("Project store initialized (optional)")
     except Exception as exc:
-        logger.warning(
-            "Project store initialization failed (optional — project management degraded): %s", exc
-        )
+        logger.warning("Project store initialization failed (optional — project management degraded): %s", exc)
 
     # Budget store — token budget tracking (degrades to unlimited)
     try:
@@ -202,9 +197,7 @@ async def lifespan(app: FastAPI):
         await container.budget_store.initialize()
         logger.info("Budget store initialized (optional)")
     except Exception as exc:
-        logger.warning(
-            "Budget store initialization failed (optional — budget tracking disabled): %s", exc
-        )
+        logger.warning("Budget store initialization failed (optional — budget tracking disabled): %s", exc)
 
     # Vigil store — canonical health monitoring (degrades to no monitoring)
     try:
@@ -214,13 +207,12 @@ async def lifespan(app: FastAPI):
         await container.vigil_store.initialize()
         logger.info("Vigil store initialized (optional)")
     except Exception as exc:
-        logger.warning(
-            "Vigil store initialization failed (optional — health monitoring degraded): %s", exc
-        )
+        logger.warning("Vigil store initialization failed (optional — health monitoring degraded): %s", exc)
 
     # Model provider — LLM dispatch (degrades to stub responses)
     try:
         from aip.adapter.model_slot_resolver import ModelSlotResolver
+
         container.model_provider = ModelSlotResolver(config)
         logger.info("Model provider initialized (optional)")
     except Exception as exc:
@@ -247,13 +239,13 @@ async def lifespan(app: FastAPI):
             if container.embedding_provider is not None:
                 logger.info(
                     "Knowledge store initialized with EmbeddingProvider "
-                    "(optional — semantic search for compiled knowledge enabled)"
+                    "(optional — semantic search for compiled knowledge enabled)",
                 )
             else:
                 logger.warning(
                     "Knowledge store initialized without EmbeddingProvider "
                     "(optional — compiled knowledge search degrades to lexical-only). "
-                    "Configure an embedding provider for full semantic search."
+                    "Configure an embedding provider for full semantic search.",
                 )
         except Exception as exc:
             logger.warning(
@@ -261,9 +253,7 @@ async def lifespan(app: FastAPI):
                 exc,
             )
     else:
-        logger.info(
-            "Knowledge store not wired: missing vector_store or lexical_store"
-        )
+        logger.info("Knowledge store not wired: missing vector_store or lexical_store")
 
     # --- Wire orchestration components (lazy import to preserve layer discipline) ---
     # Beast actor — requires vector_store + embedding_provider at minimum
@@ -272,8 +262,7 @@ async def lifespan(app: FastAPI):
             _beast_mod = importlib.import_module("aip.orchestration.actors.beast")
             _Beast = _beast_mod.Beast
             beast_config = BeastCadenceConfig(
-                **{k: v for k, v in config.get("beast", {}).items()
-                   if k in BeastCadenceConfig.__dataclass_fields__}
+                **{k: v for k, v in config.get("beast", {}).items() if k in BeastCadenceConfig.__dataclass_fields__},
             )
             container.beast = _Beast(
                 config=beast_config,
@@ -296,6 +285,7 @@ async def lifespan(app: FastAPI):
     # --- Beast background scheduler ---
     beast_task: asyncio.Task | None = None
     if container.beast is not None:
+
         async def _beast_scheduler():
             """Lightweight background loop that calls beast.run_cycle() periodically.
 
@@ -403,17 +393,20 @@ def create_app(config: dict | None = None) -> "FastAPI":
     )
 
     # Wire AuthMiddleware + RateLimitMiddleware
-    from aip.foundation.schemas import AuthConfig, RateLimitConfig
     from aip.adapter.auth.middleware import AuthMiddleware
     from aip.adapter.middleware.rate_limiter import RateLimitMiddleware, TokenBucketRateLimiter
+    from aip.foundation.schemas import AuthConfig, RateLimitConfig
 
     auth_cfg = AuthConfig(**{k: v for k, v in cfg.get("auth", {}).items() if k in AuthConfig.__dataclass_fields__})
-    rl_cfg = RateLimitConfig(**{k: v for k, v in cfg.get("rate_limit", {}).items() if k in RateLimitConfig.__dataclass_fields__})
+    rl_cfg = RateLimitConfig(
+        **{k: v for k, v in cfg.get("rate_limit", {}).items() if k in RateLimitConfig.__dataclass_fields__},
+    )
 
     # Auth store will be wired in lifespan; middleware references container
     # We use a lightweight factory that defers to the container
     class _AuthStoreProxy:
         """Proxy that delegates to the container's auth_store once available."""
+
         def __getattr__(self, name):
             container = getattr(app.state, "container", None)
             if container is not None:
@@ -444,8 +437,10 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(performance.router, prefix="/api/v1", tags=["performance"])
 
     # 9.4 Web UI static (minimal HTMX dashboard)
-    from fastapi.staticfiles import StaticFiles
     import pathlib
+
+    from fastapi.staticfiles import StaticFiles
+
     _static_dir = pathlib.Path(__file__).parent / "static"
     if _static_dir.is_dir():
         app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")

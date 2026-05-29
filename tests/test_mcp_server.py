@@ -29,6 +29,7 @@ async def test_mcp_admin_tool_enforces_gate():
 def test_mcp_uses_protocols_not_direct_storage():
     """Appendix D: MCP ≠ vector_store.retrieve() directly, MCP ≠ bypass."""
     from pathlib import Path
+
     server_file = Path(__file__).parent.parent / "src/aip/adapter/mcp/server.py"
     text = server_file.read_text()
     assert "import sqlite3" not in text
@@ -39,10 +40,9 @@ def test_mcp_uses_protocols_not_direct_storage():
 def test_layering_and_no_orchestration_impl_imports():
     """Layering (enforced in combined gate)."""
     from pathlib import Path
+
     for f in ["server.py"]:
         p = Path(__file__).parent.parent / "src/aip/adapter/mcp" / f
         if p.exists():
             text = p.read_text()
             assert "from aip.orchestration.nodes" not in text  # only types via container
-
-

@@ -8,6 +8,7 @@ Six-step reset:
 5. Surface to DEFINER
 6. Start fresh session with progress summary as seed
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -15,17 +16,16 @@ from datetime import datetime, timezone
 from aip.foundation.protocols import ArtifactStore, EcsStore, EventStore, TraceStore
 from aip.foundation.schemas import SessionContext, TrajectorySignal
 
-
 # Recovery instruction templates per Appendix E failure type
 _RECOVERY_TEMPLATES = {
     "D": "Session drift detected. Avoid repeating prior outputs. "
-         "Introduce new perspectives and expand the analysis scope.",
+    "Introduce new perspectives and expand the analysis scope.",
     "E": "False completion detected. Do NOT report completion until "
-         "all required deliverables are verified present. Include a "
-         "self-verification step before finalizing any output.",
+    "all required deliverables are verified present. Include a "
+    "self-verification step before finalizing any output.",
     "F": "Context anxiety detected. Do not rush to conclude. "
-         "Maintain output depth and completeness regardless of "
-         "perceived context pressure.",
+    "Maintain output depth and completeness regardless of "
+    "perceived context pressure.",
 }
 
 
@@ -147,6 +147,5 @@ async def inject_deterministic_recovery(
 
     return (
         "TRAJECTORY REGULATION — CORRECTIVE INSTRUCTION:\n"
-        f"Detected issues: {', '.join(detected_types)}\n"
-        + "\n".join(instructions)
+        f"Detected issues: {', '.join(detected_types)}\n" + "\n".join(instructions)
     )

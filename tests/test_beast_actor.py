@@ -11,11 +11,20 @@ Covers:
 - Graceful degradation when stores are unavailable
 - Backward compatibility with old constructor signatures
 """
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from aip.foundation.protocols import (
+    CanonicalStore,
+    EmbeddingProvider,
+    EntityStore,
+    EventStore,
+    ProjectStore,
+    VectorStore,
+)
 from aip.foundation.schemas import BeastCadenceConfig
-from aip.foundation.protocols import VectorStore, EmbeddingProvider, ProjectStore, EventStore, EntityStore, CanonicalStore
 from aip.orchestration.actors.beast import Beast
 
 
@@ -67,6 +76,7 @@ def _make_beast(
 # Instantiation
 # -----------------------------------------------------------------------
 
+
 class TestBeastInstantiation:
     def test_default_config(self):
         b = _make_beast()
@@ -113,6 +123,7 @@ class TestBeastInstantiation:
 # -----------------------------------------------------------------------
 # run_health_check()
 # -----------------------------------------------------------------------
+
 
 class TestRunHealthCheck:
     @pytest.mark.asyncio
@@ -238,6 +249,7 @@ class TestRunHealthCheck:
 # -----------------------------------------------------------------------
 # run_corpus_maintenance()
 # -----------------------------------------------------------------------
+
 
 class TestRunCorpusMaintenance:
     @pytest.mark.asyncio
@@ -365,13 +377,17 @@ class TestRunCorpusMaintenance:
 # run_corpus_maintenance() — global mode (no project_store)
 # -----------------------------------------------------------------------
 
+
 class TestCorpusMaintenanceGlobal:
     @pytest.mark.asyncio
     async def test_global_mode_without_project_store(self):
         """When project_store is None, corpus maintenance runs in global mode."""
-        b = _make_beast(project_store=None, vs_stale=[
-            {"id": "v1", "metadata": {"content": "hello"}},
-        ])
+        b = _make_beast(
+            project_store=None,
+            vs_stale=[
+                {"id": "v1", "metadata": {"content": "hello"}},
+            ],
+        )
         result = await b.run_corpus_maintenance()
 
         assert result["mode"] == "global_no_project_store"
@@ -406,6 +422,7 @@ class TestCorpusMaintenanceGlobal:
 # -----------------------------------------------------------------------
 # run_entity_maintenance()
 # -----------------------------------------------------------------------
+
 
 class TestRunEntityMaintenance:
     @pytest.mark.asyncio
@@ -443,7 +460,9 @@ class TestRunEntityMaintenance:
             {"entity_id": "e1", "entity_type": "concept"},
         ]
         es.get_entity.return_value = {
-            "entity_id": "e1", "entity_type": "concept", "updated_since_canonical": False,
+            "entity_id": "e1",
+            "entity_type": "concept",
+            "updated_since_canonical": False,
         }
 
         b = _make_beast(entity_store=es)
@@ -472,15 +491,16 @@ class TestRunEntityMaintenance:
             {"entity_id": "e1"},
         ]
         es.get_entity.return_value = {
-            "entity_id": "e1", "entity_type": "concept", "updated_since_canonical": True,
+            "entity_id": "e1",
+            "entity_type": "concept",
+            "updated_since_canonical": True,
         }
 
         b = _make_beast(entity_store=es, event_store=ev)
         await b.run_entity_maintenance()
 
         stale_calls = [
-            c for c in ev.write_event.call_args_list
-            if c.kwargs.get("event_type") == "beast_entity_stale_detected"
+            c for c in ev.write_event.call_args_list if c.kwargs.get("event_type") == "beast_entity_stale_detected"
         ]
         assert len(stale_calls) == 1
         assert stale_calls[0].kwargs["actor"] == "beast"
@@ -493,15 +513,15 @@ class TestRunEntityMaintenance:
             {"entity_id": "e1"},
         ]
         es.get_entity.return_value = {
-            "entity_id": "e1", "updated_since_canonical": False,
+            "entity_id": "e1",
+            "updated_since_canonical": False,
         }
 
         b = _make_beast(entity_store=es, event_store=ev)
         await b.run_entity_maintenance()
 
         stale_calls = [
-            c for c in ev.write_event.call_args_list
-            if c.kwargs.get("event_type") == "beast_entity_stale_detected"
+            c for c in ev.write_event.call_args_list if c.kwargs.get("event_type") == "beast_entity_stale_detected"
         ]
         assert len(stale_calls) == 0
 
@@ -509,6 +529,7 @@ class TestRunEntityMaintenance:
 # -----------------------------------------------------------------------
 # run_cycle() — cadence method
 # -----------------------------------------------------------------------
+
 
 class TestRunCycle:
     @pytest.mark.asyncio
@@ -538,8 +559,7 @@ class TestRunCycle:
 
         # Should emit at least: health_check, corpus_maintenance, cycle_complete
         cycle_events = [
-            c for c in ev.write_event.call_args_list
-            if c.kwargs.get("event_type") == "beast_cycle_complete"
+            c for c in ev.write_event.call_args_list if c.kwargs.get("event_type") == "beast_cycle_complete"
         ]
         assert len(cycle_events) == 1
         assert "cycle_elapsed_seconds" in cycle_events[0].kwargs
@@ -556,6 +576,7 @@ class TestRunCycle:
 # -----------------------------------------------------------------------
 # Event emission helper
 # -----------------------------------------------------------------------
+
 
 class TestEventEmission:
     @pytest.mark.asyncio
@@ -592,6 +613,7 @@ class TestEventEmission:
 # -----------------------------------------------------------------------
 # Backward compatibility
 # -----------------------------------------------------------------------
+
 
 class TestBackwardCompatibility:
     @pytest.mark.asyncio

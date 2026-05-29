@@ -10,6 +10,7 @@ in CI mode, writes EventStore events, and calls AcePlaybook.deprecate_entry for
 stale playbook entries (DEFINER retains final authority on ContractRules).
 All results carry model_gen_assumption context.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -48,12 +49,14 @@ class SextonAudit:
                 assumption=rule.model_gen_assumption,
                 current_slots=current_model_slots,
             )
-            results.append({
-                "rule_id": getattr(rule, "id", str(id(rule))),
-                "type": "contract_rule",
-                "assumption": rule.model_gen_assumption,
-                **assessment,
-            })
+            results.append(
+                {
+                    "rule_id": getattr(rule, "id", str(id(rule))),
+                    "type": "contract_rule",
+                    "assumption": rule.model_gen_assumption,
+                    **assessment,
+                },
+            )
 
         # Audit AcePlaybookEntries
         for entry in playbook_entries:
@@ -64,12 +67,14 @@ class SextonAudit:
                 assumption=entry.model_gen_assumption,
                 current_slots=current_model_slots,
             )
-            results.append({
-                "rule_id": entry.entry_id,
-                "type": "playbook_entry",
-                "assumption": entry.model_gen_assumption,
-                **assessment,
-            })
+            results.append(
+                {
+                    "rule_id": entry.entry_id,
+                    "type": "playbook_entry",
+                    "assumption": entry.model_gen_assumption,
+                    **assessment,
+                },
+            )
 
         return results
 
@@ -83,7 +88,9 @@ class SextonAudit:
             if res.get("confidence", 0.0) < 0.70:
                 continue
 
-            reason = f"Stale assumption: {res.get('reason', 'model slot upgrade invalidated the documented limitation')}"
+            reason = (
+                f"Stale assumption: {res.get('reason', 'model slot upgrade invalidated the documented limitation')}"
+            )
 
             if res["type"] == "playbook_entry":
                 # Auto-deprecate playbook entries (procedural)
@@ -94,14 +101,16 @@ class SextonAudit:
             # Always surface to DEFINER via EventStore for both types (especially ContractRules)
             if self._event_store is not None:
                 try:
-                    await self._event_store.write_event({
-                        "event_type": "stale_assumption_detected",
-                        "rule_id": res["rule_id"],
-                        "type": res["type"],
-                        "assumption": res["assumption"],
-                        "reason": reason,
-                        "confidence": res.get("confidence"),
-                    })
+                    await self._event_store.write_event(
+                        {
+                            "event_type": "stale_assumption_detected",
+                            "rule_id": res["rule_id"],
+                            "type": res["type"],
+                            "assumption": res["assumption"],
+                            "reason": reason,
+                            "confidence": res.get("confidence"),
+                        },
+                    )
                 except Exception:
                     pass
 
@@ -118,12 +127,13 @@ class SextonAudit:
                 f"Documented assumption: {assumption}\n"
                 f"Current model slots: { {k: v.model for k, v in current_slots.items()} }\n\n"
                 "Is the assumption still valid for the current models? "
-                "Return JSON: {\"still_valid\": bool, \"confidence\": 0.0-1.0, \"reason\": str}"
+                'Return JSON: {"still_valid": bool, "confidence": 0.0-1.0, "reason": str}'
             )
             try:
                 resp = await self._model_resolver.call("sexton", [{"role": "user", "content": prompt}])
                 content = resp.get("content", "{}")
                 import json
+
                 parsed = json.loads(content)
                 return {
                     "still_valid": bool(parsed.get("still_valid", True)),

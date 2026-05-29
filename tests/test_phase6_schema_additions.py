@@ -1,6 +1,22 @@
 """Verify Phase 6 schema additions do not break Phase 0, 1, 2, 3, 4, or 5."""
+
 import pytest
 
+from aip.foundation.protocols import (
+    ArtifactStore,
+    AutonomyGate,
+    BudgetStore,
+    CanonicalStore,
+    EcsStore,
+    EmbeddingProvider,
+    EntityStore,
+    EventStore,
+    LexicalStore,
+    ModelProvider,
+    ProjectStore,
+    TraceStore,
+    VectorStore,
+)
 from aip.foundation.schemas import (
     AcePlaybookEntry,
     ApiRoute,
@@ -36,21 +52,6 @@ from aip.foundation.schemas import (
     SurfaceConfig,
     TrajectorySignal,
     VectorBackendType,
-)
-from aip.foundation.protocols import (
-    ArtifactStore,
-    AutonomyGate,
-    BudgetStore,
-    CanonicalStore,
-    EmbeddingProvider,
-    EcsStore,
-    EntityStore,
-    EventStore,
-    LexicalStore,
-    ModelProvider,
-    ProjectStore,
-    TraceStore,
-    VectorStore,
 )
 
 
@@ -150,6 +151,7 @@ def test_phase0_through_phase5_enums_still_work():
     """Phase 0/1/2/3/4/5 enums must not be broken by Phase 6 additions."""
     assert EcsState.GENERATED is not None
     from typing import get_args
+
     assert "C" in get_args(FailureType)
 
 

@@ -67,7 +67,7 @@ async def commit_artifact(
     if artifact_store is not None:
         await artifact_store.write(artifact_id, synthesis.content, metadata)
 
-    from_state = "SPECIFIED"   # typical starting state before commit
+    from_state = "SPECIFIED"  # typical starting state before commit
     to_state = "GENERATED"
 
     # P2 fix: must pass actor and reason
@@ -82,6 +82,7 @@ async def commit_artifact(
 
     # R3: record the ECS transition in the event log
     import datetime
+
     committed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     if event_store is not None:

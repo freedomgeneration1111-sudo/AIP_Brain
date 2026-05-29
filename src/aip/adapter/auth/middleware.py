@@ -48,7 +48,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 "This is only acceptable for local/laptop development. "
                 "Set auth.auth_enabled=true in production deployments. "
                 "Every request will have full admin access including artifact "
-                "promotion, autonomy escalation, and collaborator management."
+                "promotion, autonomy escalation, and collaborator management.",
             )
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
@@ -59,13 +59,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
             # Log a warning on every request (throttled to once per 100 requests)
             # to make the security posture explicitly visible.
-            if not hasattr(self, '_auth_disabled_request_count'):
+            if not hasattr(self, "_auth_disabled_request_count"):
                 self._auth_disabled_request_count = 0
             self._auth_disabled_request_count += 1
             if self._auth_disabled_request_count <= 5 or self._auth_disabled_request_count % 100 == 0:
                 logger.warning(
-                    "AUTH DISABLED: Request to %s %s treated as DEFINER. "
-                    "Enable auth in production!",
+                    "AUTH DISABLED: Request to %s %s treated as DEFINER. Enable auth in production!",
                     request.method,
                     request.url.path,
                 )

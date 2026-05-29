@@ -3,6 +3,7 @@
 Abstractions for LLM model calls and text-to-vector embedding,
 ensuring orchestration code never imports provider SDKs directly.
 """
+
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable

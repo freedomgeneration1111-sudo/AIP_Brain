@@ -5,6 +5,7 @@ Different failure types produce different correction instructions.
 Retry budget from config prevents infinite loops.
 DEFINER notified when budget exhausted.
 """
+
 from __future__ import annotations
 
 from typing import Callable
@@ -12,21 +13,20 @@ from typing import Callable
 from aip.foundation.protocols import ArtifactStore, EcsStore, EventStore, TraceStore
 from aip.foundation.schemas import ReviewVerdict
 
-
 # Correction instructions per failure type (Appendix E)
 _CORRECTION_INSTRUCTIONS = {
     "A": "The previous synthesis lacked sufficient context. "
-         "Expand retrieval scope and include additional source material. "
-         "Ensure all relevant domain knowledge is represented.",
+    "Expand retrieval scope and include additional source material. "
+    "Ensure all relevant domain knowledge is represented.",
     "B": "A known procedural playbook entry was not applied. "
-         "Retrieve and follow the established procedure for this task type. "
-         "Do not improvise when a known-good procedure exists.",
+    "Retrieve and follow the established procedure for this task type. "
+    "Do not improvise when a known-good procedure exists.",
     "C": "The output did not conform to the required format. "
-         "Follow the template structure exactly. "
-         "Ensure all required sections, markers, and schema fields are present.",
+    "Follow the template structure exactly. "
+    "Ensure all required sections, markers, and schema fields are present.",
     "E": "The model claimed completion but the result was incomplete. "
-         "Do NOT report completion until all required deliverables are present. "
-         "Include a self-verification step before finalizing.",
+    "Do NOT report completion until all required deliverables are present. "
+    "Include a self-verification step before finalizing.",
 }
 
 

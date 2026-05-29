@@ -7,22 +7,23 @@ Tests verify:
   - Error handling returns structured error results
   - Configuration resolution merges dict config with env vars
 """
+
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from aip.adapter.model_slot_resolver import (
-    ModelSlotResolver,
+    _DEFAULT_OLLAMA_BASE_URL,
     PROVIDER_OLLAMA,
     PROVIDER_OPENAI_COMPATIBLE,
-    _DEFAULT_OLLAMA_BASE_URL,
+    ModelSlotResolver,
 )
-
 
 # ----------------------------------------------------------------
 # Fixtures
 # ----------------------------------------------------------------
+
 
 @pytest.fixture
 def ci_config():
@@ -32,7 +33,7 @@ def ci_config():
             "ci_mode": True,
             "synthesis": {"provider": "ollama", "model": "qwen2.5:32b"},
             "embedding": {"provider": "ollama", "model": "nomic-embed-text", "dimensions": 768},
-        }
+        },
     }
 
 
@@ -53,7 +54,7 @@ def real_config():
                 "base_url": "https://api.openai.com",
                 "api_key": "test-key-123",
             },
-        }
+        },
     }
 
 
@@ -64,13 +65,14 @@ def minimal_real_config():
         "models": {
             "ci_mode": False,
             "synthesis": {"provider": "ollama", "model": "qwen2.5:32b"},
-        }
+        },
     }
 
 
 # ----------------------------------------------------------------
 # Existing CI mode tests (preserved)
 # ----------------------------------------------------------------
+
 
 def test_resolve_slot(ci_config):
     resolver = ModelSlotResolver(ci_config)
@@ -81,6 +83,7 @@ def test_resolve_slot(ci_config):
 
 def test_ci_mode_returns_fixture(ci_config):
     import asyncio
+
     resolver = ModelSlotResolver(ci_config)
     result = asyncio.run(resolver.call("synthesis", [{"role": "user", "content": "hello"}]))
     assert "CI-FIXTURE" in result["content"]
@@ -97,6 +100,7 @@ def test_list_slots(ci_config):
 # ----------------------------------------------------------------
 # New CI mode tests
 # ----------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_ci_mode_fixture_has_model_name(ci_config):
@@ -127,6 +131,7 @@ async def test_ci_mode_no_error_flag(ci_config):
 # ----------------------------------------------------------------
 # Configuration resolution tests
 # ----------------------------------------------------------------
+
 
 def test_resolve_defaults_to_ollama_base_url(real_config):
     """When base_url is not set for ollama slot, defaults to localhost:11434."""
@@ -174,7 +179,7 @@ def test_resolve_global_ollama_default():
         "models": {
             "ci_mode": False,
             "synthesis": {"provider": "ollama", "model": "test"},
-        }
+        },
     }
     with patch.dict(os.environ, {"AIP_OLLAMA_BASE_URL": "http://ollama-server:11434"}):
         resolver = ModelSlotResolver(config)
@@ -188,12 +193,15 @@ def test_resolve_global_openai_default():
         "models": {
             "ci_mode": False,
             "eval_slot": {"provider": "openai_compatible", "model": "gpt-4"},
-        }
+        },
     }
-    with patch.dict(os.environ, {
-        "AIP_OPENAI_BASE_URL": "https://api.deepseek.com",
-        "AIP_OPENAI_API_KEY": "sk-global-key",
-    }):
+    with patch.dict(
+        os.environ,
+        {
+            "AIP_OPENAI_BASE_URL": "https://api.deepseek.com",
+            "AIP_OPENAI_API_KEY": "sk-global-key",
+        },
+    ):
         resolver = ModelSlotResolver(config)
         resolved = resolver._resolve_slot_config("eval_slot")
         assert resolved["base_url"] == "https://api.deepseek.com"
@@ -210,6 +218,7 @@ def test_resolve_unknown_slot_raises(real_config):
 # ----------------------------------------------------------------
 # Real dispatch tests (mocked HTTP)
 # ----------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_ollama_dispatch_success(real_config):
@@ -263,9 +272,7 @@ async def test_openai_compatible_dispatch_success(real_config):
     mock_response.raise_for_status = MagicMock()
     mock_response.json.return_value = {
         "model": "gpt-4o-mini",
-        "choices": [
-            {"message": {"role": "assistant", "content": "Hello from OpenAI!"}}
-        ],
+        "choices": [{"message": {"role": "assistant", "content": "Hello from OpenAI!"}}],
         "usage": {"prompt_tokens": 15, "completion_tokens": 8, "total_tokens": 23},
     }
 
@@ -324,9 +331,7 @@ async def test_openai_dispatch_auth_error(real_config):
 
     mock_response = MagicMock()
     mock_response.status_code = 401
-    mock_response.raise_for_status = MagicMock(
-        side_effect=Exception("401 Unauthorized")
-    )
+    mock_response.raise_for_status = MagicMock(side_effect=Exception("401 Unauthorized"))
 
     mock_client = AsyncMock()
     mock_client.post = AsyncMock(return_value=mock_response)
@@ -386,6 +391,7 @@ async def test_real_call_measures_latency(real_config):
 # Lazy client and close tests
 # ----------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_close_cleans_up_client(real_config):
     """close() properly cleans up the httpx client."""
@@ -421,6 +427,7 @@ def test_get_http_client_raises_without_httpx(real_config):
 # ----------------------------------------------------------------
 # Ollama options mapping tests
 # ----------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_ollama_maps_max_tokens_to_num_predict(real_config):

@@ -1,7 +1,8 @@
 """Vigil actor.
 
 Last missing orchestration actor.
-Read-only (per Appendix D + Process Rule 12): monitors, detects, creates trace events for Sexton; never modifies canonicals.
+Read-only (per Appendix D + Process Rule 12): monitors, detects,
+creates trace events for Sexton; never modifies canonicals.
 Complementary to Sexton (classifies failures) and Beast (maintains vectors).
 """
 
@@ -11,13 +12,13 @@ from datetime import datetime
 from typing import Any
 
 from aip.foundation.protocols import (
-    VigilStore,
     CanonicalStore,
     EntityStore,
     ModelProvider,
     TraceStore,
+    VigilStore,
 )
-from aip.foundation.schemas import VigilConfig, ModelSlotConfig
+from aip.foundation.schemas import ModelSlotConfig, VigilConfig
 
 
 class Vigil:
@@ -93,7 +94,10 @@ class Vigil:
             return []
 
     async def on_model_slot_change(
-        self, slot_name: str, old_config: ModelSlotConfig, new_config: ModelSlotConfig
+        self,
+        slot_name: str,
+        old_config: ModelSlotConfig,
+        new_config: ModelSlotConfig,
     ) -> None:
         """Audit for stale assumptions on model slot upgrade."""
         if self.config.re_evaluate_on_slot_change:

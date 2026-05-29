@@ -8,7 +8,7 @@ from typing import Dict
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import Response, JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from aip.foundation.schemas import RateLimitConfig
 
@@ -23,10 +23,7 @@ class TokenBucketRateLimiter:
         now = time.time()
         elapsed = now - bucket["last"]
         refill_rate = self.config.requests_per_minute / 60.0
-        bucket["tokens"] = min(
-            float(self.config.burst_size),
-            bucket["tokens"] + elapsed * refill_rate
-        )
+        bucket["tokens"] = min(float(self.config.burst_size), bucket["tokens"] + elapsed * refill_rate)
         bucket["last"] = now
 
     def allow_request(self, key: str) -> bool:
@@ -82,7 +79,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 {"detail": "Rate limit exceeded"},
                 status_code=429,
-                headers={"X-RateLimit-Remaining": "0"}
+                headers={"X-RateLimit-Remaining": "0"},
             )
 
         response = await call_next(request)

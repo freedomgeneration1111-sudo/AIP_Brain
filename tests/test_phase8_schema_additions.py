@@ -3,28 +3,56 @@ Exact per AIP_0_1_Phase8_BuildSpec_Rev1.0.md ANNEX + prose gate expectations.
 File Layout: imports use aip. prefix per delta'd spec note.
 """
 
-import pytest
 from typing import get_args
+
+import pytest
+
+from aip.foundation.protocols import (
+    AuthStore,
+    # Prior
+    AutonomyGate,
+    CanonicalStore,
+    EntityStore,
+    # Phase 8 new Protocols
+    KnowledgeStore,
+    LexicalStore,
+    PluginProvider,
+    # Phase 7
+    VigilStore,
+)
 
 # Prior phases (must still work — non-breaking)
 from aip.foundation.schemas import (
     # Phase 0-6 samples
     AcePlaybookEntry,
     ApiRoute,
+    AuthConfig,
     AutonomyEscalation,
     AutonomyLevel,
     BeastCadenceConfig,
     BudgetConfig,
     BudgetScope,
+    CanonicalPromotionConfig,
     ChatMessage,
     Chunk,
+    CollaboratorConfig,
+    CollaboratorRole,
+    CompilationState,
     ContractRule,
+    DeploymentProfile,
     EcsState,
     FailureClassification,
     FailureType,
+    # Phase 8 additions
+    KnowledgeCompilationConfig,
     McpAutonomyLevel,
     McpToolDef,
     ModelSlotConfig,
+    PerformanceConfig,
+    PluginConfig,
+    PluginStatus,
+    RateLimitConfig,
+    ReleaseMetadata,
     ReviewQueueEntry,
     ReviewVerdict,
     SessionContext,
@@ -33,34 +61,7 @@ from aip.foundation.schemas import (
     TrajectorySignal,
     # Phase 7 additions (still work)
     VigilConfig,
-    AuthConfig,
-    RateLimitConfig,
-    CanonicalPromotionConfig,
     WorkflowTemplate,
-    DeploymentProfile,
-    # Phase 8 additions
-    KnowledgeCompilationConfig,
-    PluginConfig,
-    CollaboratorConfig,
-    PerformanceConfig,
-    ReleaseMetadata,
-    CompilationState,
-    PluginStatus,
-    CollaboratorRole,
-)
-
-from aip.foundation.protocols import (
-    # Phase 7
-    VigilStore,
-    AuthStore,
-    # Prior
-    AutonomyGate,
-    LexicalStore,
-    CanonicalStore,
-    EntityStore,
-    # Phase 8 new Protocols
-    KnowledgeStore,
-    PluginProvider,
 )
 
 

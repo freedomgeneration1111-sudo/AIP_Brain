@@ -1,4 +1,5 @@
-"""CHUNK-9.2 gate: Canonical Promotion Pipeline (evaluate, promote with gate + indexing + Vigil health, reject, idempotency)."""
+"""CHUNK-9.2 gate: Canonical Promotion Pipeline
+(evaluate, promote with gate + indexing + Vigil health, reject, idempotency)."""
 
 from __future__ import annotations
 
@@ -6,28 +7,43 @@ import os
 
 import pytest
 
-from aip.foundation.schemas import CanonicalPromotionConfig, AutonomyEscalation
+from aip.foundation.schemas import AutonomyEscalation, CanonicalPromotionConfig
 from aip.orchestration.canonical_pipeline import CanonicalPipeline, _is_ci_environment
 
-
 # --- Minimal fakes for injected Protocols ---
+
 
 class FakeAutonomyGate:
     async def check(self, action_type, resource_id, requested_level, requested_by):
         return AutonomyEscalation(
-            escalation_id="esc-1", action_type=action_type, requested_by=requested_by,
-            resource_id=resource_id, requested_level=requested_level, granted=True, reason="ok",
+            escalation_id="esc-1",
+            action_type=action_type,
+            requested_by=requested_by,
+            resource_id=resource_id,
+            requested_level=requested_level,
+            granted=True,
+            reason="ok",
         )
 
     async def escalate(self, action_type, resource_id, requested_level, requested_by):
         if requested_by == "definer":
             return AutonomyEscalation(
-                escalation_id="esc-2", action_type=action_type, requested_by=requested_by,
-                resource_id=resource_id, requested_level=requested_level, granted=True, reason="definer approved",
+                escalation_id="esc-2",
+                action_type=action_type,
+                requested_by=requested_by,
+                resource_id=resource_id,
+                requested_level=requested_level,
+                granted=True,
+                reason="definer approved",
             )
         return AutonomyEscalation(
-            escalation_id="esc-3", action_type=action_type, requested_by=requested_by,
-            resource_id=resource_id, requested_level=requested_level, granted=False, reason="DEFINER required",
+            escalation_id="esc-3",
+            action_type=action_type,
+            requested_by=requested_by,
+            resource_id=resource_id,
+            requested_level=requested_level,
+            granted=False,
+            reason="DEFINER required",
         )
 
 
@@ -102,6 +118,7 @@ class FakeModelProvider:
     Returns valid JSON so faithfulness.py and domain_coherence.py can parse
     real scores and set ci_fixture=False, allowing promotion in tests.
     """
+
     async def call(self, slot, messages, **kw):
         if slot == "evaluation":
             # Return valid JSON for faithfulness/domain_coherence evaluators
@@ -109,7 +126,10 @@ class FakeModelProvider:
             last_msg = messages[-1]["content"] if messages else ""
             if "Retrieved Context:" in last_msg or "faithfulness" in str(messages).lower():
                 return {
-                    "content": '{"faithfulness_score": 0.92, "context_coverage": 0.88, "hallucination_flags": [], "rationale": "Well-grounded"}',
+                    "content": (
+                        '{"faithfulness_score": 0.92, "context_coverage": 0.88, '
+                        '"hallucination_flags": [], "rationale": "Well-grounded"}'
+                    ),
                     "model": "test-model",
                     "usage": {"prompt_tokens": 50, "completion_tokens": 100, "total_tokens": 150},
                     "latency_ms": 100,
@@ -126,6 +146,7 @@ class FakeModelProvider:
 
 class FakeModelProviderFixture:
     """Fake model provider that returns CI fixture responses (ci-evaluation model name)."""
+
     async def call(self, slot, messages, **kw):
         return {
             "content": "[CI fixture for evaluation]",
@@ -344,6 +365,7 @@ def test_is_ci_environment():
 def test_layering():
     """Orchestration component imports only Protocols."""
     from pathlib import Path
+
     pipeline_file = Path(__file__).parent.parent / "src/aip/orchestration/canonical_pipeline.py"
     if pipeline_file.exists():
         text = pipeline_file.read_text()

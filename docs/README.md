@@ -2,7 +2,9 @@
 
 **Local-first sovereign knowledge engine**
 
-AIP (AI Poiesis) is a local-first, sovereign knowledge synthesis engine that guides an artifact from specification through generation, review, and canonical promotion — with the human DEFINER retaining absolute sovereignty at every stage.
+AIP (AI Poiesis) is a local-first, sovereign knowledge synthesis engine that guides an artifact from
+specification through generation, review, and canonical promotion — with the human DEFINER retaining absolute
+sovereignty at every stage.
 
 ## Core Principles
 

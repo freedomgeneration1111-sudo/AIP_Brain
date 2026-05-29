@@ -1,6 +1,7 @@
 """Admin Console routes.
 
-Writes (config) go through AutonomyGate (admin). Reads from delivered actors (Sexton 7.1, Beast 7.5, Router 7.4, Budget 7.0b, etc.).
+Writes (config) go through AutonomyGate (admin).
+Reads from delivered actors (Sexton 7.1, Beast 7.5, Router 7.4, Budget 7.0b, etc.).
 Phase 3: added logging for silent exception handling.
 """
 
@@ -45,7 +46,12 @@ async def get_sexton_classifications(container: AipContainer = Depends(get_conta
     if container.sexton:
         try:
             classifications = await container.sexton.classify_failures()
-            return {"classifications": [{"failure_type": fc.failure_type, "trace_event_id": fc.trace_event_id, "confidence": fc.confidence} for fc in classifications]}
+            return {
+                "classifications": [
+                    {"failure_type": fc.failure_type, "trace_event_id": fc.trace_event_id, "confidence": fc.confidence}
+                    for fc in classifications
+                ],
+            }
         except Exception:
             logger.warning("Sexton classification failed", exc_info=True)
     return {"classifications": []}
@@ -57,7 +63,9 @@ async def get_sexton_audit(container: AipContainer = Depends(get_container)):
     if container.sexton:
         try:
             classified = await container.sexton.classify_failures()
-            rules = container.sexton.derive_ace_rules([fc.__dict__ if hasattr(fc, '__dict__') else dict(fc) for fc in classified])
+            rules = container.sexton.derive_ace_rules(
+                [fc.__dict__ if hasattr(fc, "__dict__") else dict(fc) for fc in classified],
+            )
             stale = container.sexton.audit_model_gen_assumption(rules)
             return {"audits": stale}
         except Exception:
@@ -95,7 +103,7 @@ async def get_router_weights(container: AipContainer = Depends(get_container)):
     if container.adaptive_router:
         try:
             weights = await container.adaptive_router.get_routing_weights()
-            return {"weights": [w.__dict__ if hasattr(w, '__dict__') else w for w in weights]}
+            return {"weights": [w.__dict__ if hasattr(w, "__dict__") else w for w in weights]}
         except Exception:
             logger.warning("Router weights retrieval failed", exc_info=True)
     return {"weights": []}

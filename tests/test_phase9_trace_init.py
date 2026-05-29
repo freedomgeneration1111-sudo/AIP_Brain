@@ -34,7 +34,8 @@ def _init_trace_db(db_path: str) -> None:
             detail TEXT,
             intervention_applied INTEGER DEFAULT 0,
             intervention_type TEXT,
-            outcome TEXT CHECK (outcome IS NULL OR outcome IN ('success', 'failure', 'timeout', 'gate_blocked', 'insufficient_memory', 'detected', 'stale_detected')),
+            outcome TEXT CHECK (outcome IS NULL OR outcome IN
+                ('success', 'failure', 'timeout', 'gate_blocked', 'insufficient_memory', 'detected', 'stale_detected')),
             created_at TEXT DEFAULT (datetime('now'))
         );
 
@@ -96,7 +97,7 @@ def test_trace_events_failure_type_constrained(initialized_db):
     conn = sqlite3.connect(initialized_db)
     try:
         # Valid values should work
-        for ft in ('A', 'B', 'C', 'D', 'E', 'F'):
+        for ft in ("A", "B", "C", "D", "E", "F"):
             conn.execute(
                 "INSERT INTO trace_events (session_id, node_type, failure_type, outcome) VALUES (?, ?, ?, ?)",
                 ("test-session", "test", ft, "failure"),
@@ -125,7 +126,7 @@ def test_trace_events_outcome_constrained(initialized_db):
     conn = sqlite3.connect(initialized_db)
     try:
         # Valid values should work
-        for outcome in ('success', 'failure', 'timeout', 'gate_blocked', 'insufficient_memory'):
+        for outcome in ("success", "failure", "timeout", "gate_blocked", "insufficient_memory"):
             conn.execute(
                 "INSERT INTO trace_events (session_id, node_type, failure_type, outcome) VALUES (?, ?, ?, ?)",
                 ("test-session", "test", None, outcome),

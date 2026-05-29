@@ -139,15 +139,14 @@ class SqliteSessionStore(AuthStore):
     async def validate_api_key(self, api_key: str) -> dict | None:
         conn = await self._get_conn()
         try:
-            cursor = await conn.execute(
-                "SELECT identity, role, key_hash FROM api_keys WHERE revoked = 0"
-            )
+            cursor = await conn.execute("SELECT identity, role, key_hash FROM api_keys WHERE revoked = 0")
             rows = await cursor.fetchall()
             for row in rows:
                 if bcrypt.checkpw(api_key.encode(), row["key_hash"].encode()):
                     # Update last_used_at (best effort)
                     await conn.execute(
-                        "UPDATE api_keys SET last_used_at = ? WHERE key_name = (SELECT key_name FROM api_keys WHERE key_hash = ? LIMIT 1)",
+                        "UPDATE api_keys SET last_used_at = ? "
+                        "WHERE key_name = (SELECT key_name FROM api_keys WHERE key_hash = ? LIMIT 1)",
                         (datetime.now(timezone.utc).isoformat() + "Z", row["key_hash"]),
                     )
                     await conn.commit()
@@ -170,7 +169,8 @@ class SqliteSessionStore(AuthStore):
         conn = await self._get_conn()
         try:
             cursor = await conn.execute(
-                "SELECT key_name, identity, role, created_at, last_used_at, revoked FROM api_keys ORDER BY created_at DESC"
+                "SELECT key_name, identity, role, created_at, last_used_at, revoked "
+                "FROM api_keys ORDER BY created_at DESC",
             )
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
@@ -185,7 +185,7 @@ class SqliteSessionStore(AuthStore):
         conn = await self._get_conn()
         try:
             cursor = await conn.execute(
-                "SELECT identity, role, created_at FROM users WHERE role = 'definer' AND revoked = 0 LIMIT 1"
+                "SELECT identity, role, created_at FROM users WHERE role = 'definer' AND revoked = 0 LIMIT 1",
             )
             row = await cursor.fetchone()
             if row:
@@ -200,7 +200,7 @@ class SqliteSessionStore(AuthStore):
         conn = await self._get_conn()
         try:
             cursor = await conn.execute(
-                "SELECT identity, role, created_at, last_active_at, revoked FROM users ORDER BY created_at DESC"
+                "SELECT identity, role, created_at, last_active_at, revoked FROM users ORDER BY created_at DESC",
             )
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
@@ -220,9 +220,7 @@ class SqliteSessionStore(AuthStore):
             )
             await conn.commit()
             # Return True if created, False if already exists
-            cursor = await conn.execute(
-                "SELECT identity FROM users WHERE identity = ? AND revoked = 0", (identity,)
-            )
+            cursor = await conn.execute("SELECT identity FROM users WHERE identity = ? AND revoked = 0", (identity,))
             row = await cursor.fetchone()
             return row is not None
         except Exception:
@@ -233,15 +231,11 @@ class SqliteSessionStore(AuthStore):
         conn = await self._get_conn()
         try:
             # Check that user exists and is not definer
-            cursor = await conn.execute(
-                "SELECT role FROM users WHERE identity = ? AND revoked = 0", (identity,)
-            )
+            cursor = await conn.execute("SELECT role FROM users WHERE identity = ? AND revoked = 0", (identity,))
             row = await cursor.fetchone()
             if not row or row["role"] == "definer":
                 return False
-            await conn.execute(
-                "UPDATE users SET role = ? WHERE identity = ?", (new_role, identity)
-            )
+            await conn.execute("UPDATE users SET role = ? WHERE identity = ?", (new_role, identity))
             await conn.commit()
             return True
         except Exception:
@@ -252,24 +246,16 @@ class SqliteSessionStore(AuthStore):
         conn = await self._get_conn()
         try:
             # Check that user exists and is not definer
-            cursor = await conn.execute(
-                "SELECT role FROM users WHERE identity = ? AND revoked = 0", (identity,)
-            )
+            cursor = await conn.execute("SELECT role FROM users WHERE identity = ? AND revoked = 0", (identity,))
             row = await cursor.fetchone()
             if not row or row["role"] == "definer":
                 return False
             # Revoke user
-            await conn.execute(
-                "UPDATE users SET revoked = 1 WHERE identity = ?", (identity,)
-            )
+            await conn.execute("UPDATE users SET revoked = 1 WHERE identity = ?", (identity,))
             # Revoke all sessions for this user
-            await conn.execute(
-                "DELETE FROM sessions WHERE identity = ?", (identity,)
-            )
+            await conn.execute("DELETE FROM sessions WHERE identity = ?", (identity,))
             # Revoke all API keys for this user
-            await conn.execute(
-                "UPDATE api_keys SET revoked = 1 WHERE identity = ?", (identity,)
-            )
+            await conn.execute("UPDATE api_keys SET revoked = 1 WHERE identity = ?", (identity,))
             await conn.commit()
             return True
         except Exception:

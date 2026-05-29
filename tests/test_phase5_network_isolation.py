@@ -2,8 +2,10 @@
 
 Extends the CHUNK-6.6 pattern for all new Phase 5 surfaces.
 """
+
 import ast
 from pathlib import Path
+
 import pytest
 
 FORBIDDEN_NETWORK = {"openai", "anthropic", "httpx", "requests", "aiohttp"}
@@ -32,7 +34,13 @@ def test_phase5_code_has_no_network_imports():
     """CHUNK-7.7: Phase 5 code must not contain network/LLM client imports."""
     src_root = Path("src/aip")
     violations = []
-    phase5_roots = ["orchestration/actors", "orchestration/router.py", "orchestration/ace_playbook.py", "orchestration/budget.py", "orchestration/sexton"]
+    phase5_roots = [
+        "orchestration/actors",
+        "orchestration/router.py",
+        "orchestration/ace_playbook.py",
+        "orchestration/budget.py",
+        "orchestration/sexton",
+    ]
     for root in phase5_roots:
         for py_file in (src_root / root).rglob("*.py") if (src_root / root).exists() else []:
             if "test" in py_file.parts or "__pycache__" in str(py_file):
@@ -45,7 +53,13 @@ def test_phase5_no_hardcoded_model_names():
     """CHUNK-7.7: No hardcoded model names in Phase 5 code (except allowed 'sexton' slot)."""
     src_root = Path("src/aip")
     violations = []
-    phase5_roots = ["orchestration/actors", "orchestration/router.py", "orchestration/ace_playbook.py", "orchestration/budget.py", "orchestration/sexton"]
+    phase5_roots = [
+        "orchestration/actors",
+        "orchestration/router.py",
+        "orchestration/ace_playbook.py",
+        "orchestration/budget.py",
+        "orchestration/sexton",
+    ]
     for root in phase5_roots:
         for py_file in (src_root / root).rglob("*.py") if (src_root / root).exists() else []:
             if "test" in py_file.parts or "__pycache__" in str(py_file):
@@ -61,6 +75,7 @@ def test_phase5_import_boundaries_respected():
     """CHUNK-7.7: Phase 5 modules respect §7.2 layering."""
     # The existing test_layering.py already covers the new surfaces; verify key files exist
     from pathlib import Path
+
     phase5_files = [
         Path("src/aip/orchestration/actors"),
         Path("src/aip/orchestration/router.py"),

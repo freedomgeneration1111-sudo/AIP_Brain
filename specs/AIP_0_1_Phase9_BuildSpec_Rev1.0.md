@@ -11,23 +11,35 @@ Status: Build Specification — forward-carrying
 
 # 0. Document Purpose and Phase 9 Rationale
 
-Phase 9 is the first post-Phase-8 remediation phase. A full code-against-spec inventory across Phases 1 through 8 has revealed 52 failing tests, 4 collection errors, systematic import boundary violations, a broken FastAPI application factory, incomplete adapter wiring, and several spec-to-code gaps where deliverables were partially implemented but never closed. Phase 9 exists to close those gaps without introducing new features.
+Phase 9 is the first post-Phase-8 remediation phase. A full code-against-spec inventory across Phases 1
+through 8 has revealed 52 failing tests, 4 collection errors, systematic import boundary violations, a broken
+FastAPI application factory, incomplete adapter wiring, and several spec-to-code gaps where deliverables were
+partially implemented but never closed. Phase 9 exists to close those gaps without introducing new features.
 
-Phase 9 does not add new architectural capability. It delivers what Phases 1-8 specified but did not fully complete, and it remediates the regressions and cross-cutting violations that accumulated across eight phases of iterative development. The phase is structured as a series of targeted fix chunks, each with its own gate test, following the same discipline as all prior phases.
+Phase 9 does not add new architectural capability. It delivers what Phases 1-8 specified but did not fully
+complete, and it remediates the regressions and cross-cutting violations that accumulated across eight phases
+of iterative development. The phase is structured as a series of targeted fix chunks, each with its own gate
+test, following the same discipline as all prior phases.
 
 ## 0.1 Scope
 
 Phase 9 addresses three categories of work:
 
-1. SPEC-TO-CODE GAPS — deliverables specified in Phases 1-8 that exist as stubs, scaffolds, or missing implementations.
+1. SPEC-TO-CODE GAPS — deliverables specified in Phases 1-8 that exist as stubs, scaffolds, or missing
+implementations.
 
-2. CROSS-CUTTING VIOLATIONS — import boundary violations, hardcoded model names, forbidden network imports, and broken gate tests that accumulated across phases.
+2. CROSS-CUTTING VIOLATIONS — import boundary violations, hardcoded model names, forbidden network imports,
+and broken gate tests that accumulated across phases.
 
-3. INTEGRATION REMEDIATION — broken FastAPI wiring, async event loop issues, missing database schemas, and end-to-end pipeline gaps that prevent the system from running as a coherent whole.
+3. INTEGRATION REMEDIATION — broken FastAPI wiring, async event loop issues, missing database schemas, and
+end-to-end pipeline gaps that prevent the system from running as a coherent whole.
 
 ## 0.2 What Phase 9 Is Not
 
-Phase 9 is NOT a feature phase. No new schemas, protocols, config sections, or architectural concepts are introduced. No new YAML workflows are added. The Phase 9 chunk numbering follows CHUNK-11.x to continue the established sequence (Phase 1=1.x, Phase 2=2.x/4.x, Phase 3=5.x, Phase 4=6.x, Phase 5=7.x, Phase 6=8.x, Phase 7=9.x, Phase 8=10.x, Phase 9=11.x).
+Phase 9 is NOT a feature phase. No new schemas, protocols, config sections, or architectural concepts are
+introduced. No new YAML workflows are added. The Phase 9 chunk numbering follows CHUNK-11.x to continue the
+established sequence (Phase 1=1.x, Phase 2=2.x/4.x, Phase 3=5.x, Phase 4=6.x, Phase 5=7.x, Phase 6=8.x, Phase
+7=9.x, Phase 8=10.x, Phase 9=11.x).
 
 # 1. Phase 1-8 Inventory Summary
 
@@ -207,18 +219,25 @@ GAPS:
 
 # 2. Phase 9 Deliverables
 
-Phase 9 delivers CHUNK-11.x. Each chunk targets a specific category of remediation. Chunks are ordered by dependency: cross-cutting violations first, then broken wiring, then stub promotion, then integration verification.
+Phase 9 delivers CHUNK-11.x. Each chunk targets a specific category of remediation. Chunks are ordered by
+dependency: cross-cutting violations first, then broken wiring, then stub promotion, then integration
+verification.
 
 ## CHUNK-11.0a: Cross-Cutting Gate Fixes
 
 Layer: L1/L2
 
 Delivers:
-- Fix model_gen_assumption fields in validation.py and adversarial_eval.py to include specific model name references (e.g., "DeepSeek-V3 and Qwen3 models may produce...") so gate tests pass
-- Fix sqlite_vss extension loading to handle missing vss0.so gracefully in CI (skip test when extension unavailable rather than fail)
-- Update hardcoded-model-name detection regex to exclude docstrings, comments, and model_gen_assumption fields (only flag application logic references)
-- Add httpx to allowed network import list for adapter layer (adapter is the correct layer for HTTP calls per §7.2; only foundation and orchestration are network-free)
-- Fix foundation/validation.py to remove orchestration imports — move full_l3a_evaluation() to orchestration layer where it belongs
+- Fix model_gen_assumption fields in validation.py and adversarial_eval.py to include specific model name
+references (e.g., "DeepSeek-V3 and Qwen3 models may produce...") so gate tests pass
+- Fix sqlite_vss extension loading to handle missing vss0.so gracefully in CI (skip test when extension
+unavailable rather than fail)
+- Update hardcoded-model-name detection regex to exclude docstrings, comments, and model_gen_assumption fields
+(only flag application logic references)
+- Add httpx to allowed network import list for adapter layer (adapter is the correct layer for HTTP calls per
+§7.2; only foundation and orchestration are network-free)
+- Fix foundation/validation.py to remove orchestration imports — move full_l3a_evaluation() to orchestration
+layer where it belongs
 
 Gate test: tests/test_phase9_cross_cutting_gates.py
   - test_no_hardcoded_model_names_in_application_logic (revised regex)
@@ -232,9 +251,13 @@ Gate test: tests/test_phase9_cross_cutting_gates.py
 Layer: L1/L2
 
 Delivers:
-- Move full_l3a_evaluation() from foundation/validation.py to orchestration/l3a_orchestrator.py (new file). foundation/validation.py retains only structural_validate() and dataclasses.
-- Create orchestration/model_provider_proxy.py that re-exports ModelSlotResolver via Protocol so orchestration code does not import adapter directly. Sexton, router, and plugins import from the proxy instead of aip.adapter.model_slot_resolver.
-- Update all orchestration imports that currently reference adapter.model_slot_resolver to use orchestration.model_provider_proxy
+- Move full_l3a_evaluation() from foundation/validation.py to orchestration/l3a_orchestrator.py (new file).
+foundation/validation.py retains only structural_validate() and dataclasses.
+- Create orchestration/model_provider_proxy.py that re-exports ModelSlotResolver via Protocol so orchestration
+code does not import adapter directly. Sexton, router, and plugins import from the proxy instead of
+aip.adapter.model_slot_resolver.
+- Update all orchestration imports that currently reference adapter.model_slot_resolver to use
+orchestration.model_provider_proxy
 - Add gate test verifying no orchestration file imports from adapter
 
 Gate test: tests/test_phase9_layer_violations.py
@@ -250,7 +273,8 @@ Layer: Adapter (L6/Surfaces)
 Delivers:
 - Fix app.py: add missing imports for review, artifacts, admin, memory, chat route modules
 - Fix chat.py: verify indentation fix (already applied) and add proper async WebSocket handling
-- Wire AipContainer to provide real adapter instances (VectorStore, EcsStore, EventStore, ArtifactStore, CanonicalStore, EntityStore, LexicalStore, AutonomyGate, BudgetStore)
+- Wire AipContainer to provide real adapter instances (VectorStore, EcsStore, EventStore, ArtifactStore,
+CanonicalStore, EntityStore, LexicalStore, AutonomyGate, BudgetStore)
 - Add db/ directory initialization to create required SQLite databases at startup
 - Ensure all route modules have working stubs that return valid JSON
 
@@ -270,7 +294,8 @@ Layer: Cross-cutting (test infrastructure)
 Delivers:
 - Add pytest-asyncio configuration to pyproject.toml with asyncio_mode="auto"
 - Convert all async test functions to use @pytest.mark.asyncio decorator consistently
-- Fix KnowledgeStore, KnowledgeCompiler, CollaboratorAccess, PluginManager, and PerformanceProfiler tests to use proper async fixtures
+- Fix KnowledgeStore, KnowledgeCompiler, CollaboratorAccess, PluginManager, and PerformanceProfiler tests to
+use proper async fixtures
 - Ensure all test teardown properly closes async resources
 
 Gate test: tests/test_phase9_async_fix.py
@@ -337,9 +362,11 @@ Gate test: tests/test_phase9_sexton_completion.py
 Layer: Adapter
 
 Delivers:
-- Promote SqliteSessionStore from stub to working implementation (bcrypt hashing, session create/validate/revoke, API key create/validate/revoke/list)
+- Promote SqliteSessionStore from stub to working implementation (bcrypt hashing, session
+create/validate/revoke, API key create/validate/revoke/list)
 - Promote Auth dependencies (get_current_identity, require_definer) from stubs to working FastAPI dependencies
-- Promote MCP search tool and artifacts tool from stubs to working implementations that delegate to LexicalStore and ArtifactStore respectively
+- Promote MCP search tool and artifacts tool from stubs to working implementations that delegate to
+LexicalStore and ArtifactStore respectively
 - Promote PluginLoader from stub to working YAML-based plugin discovery
 - Promote YamlPluginProvider from stub to working model provider via httpx
 - Promote PerformanceProfiler from hardcoded stubs to real system metrics (psutil)
@@ -393,7 +420,9 @@ Layer: Cross-cutting
 Delivers:
 - Network isolation gate: adapter layer may import httpx; foundation and orchestration may not
 - Model name gate: no hardcoded model names in application logic; docstrings/comments exempt
-- Import boundary gate: three-layer enforcement (foundation <- adapter <- orchestration corrected to: foundation has no upward imports; orchestration imports foundation only; adapter imports foundation only, never orchestration directly)
+- Import boundary gate: three-layer enforcement (foundation <- adapter <- orchestration corrected to:
+foundation has no upward imports; orchestration imports foundation only; adapter imports foundation only,
+never orchestration directly)
 - DEFINER sovereignty gate: no surface bypasses AutonomyGate for canonical modifications
 - Appendix D constraint verification
 
@@ -406,9 +435,11 @@ Gate test: tests/test_phase9_cross_cutting.py
 
 # 3. Dependency DAG
 
-CHUNK-11.0a (cross-cutting gate fixes) and CHUNK-11.0b (layer violations) have no dependencies and may be built in parallel.
+CHUNK-11.0a (cross-cutting gate fixes) and CHUNK-11.0b (layer violations) have no dependencies and may be
+built in parallel.
 
-CHUNK-11.1 (app factory) depends on 11.0b (layer violations must be fixed first so app.py imports resolve correctly).
+CHUNK-11.1 (app factory) depends on 11.0b (layer violations must be fixed first so app.py imports resolve
+correctly).
 
 CHUNK-11.2 (async fix) has no code dependencies but should be done early to unblock Phase 8 test fixes.
 
@@ -497,11 +528,13 @@ tests/test_phase9_acceptance.py passes.
 
 Phase 9 inherits all binding rules from Phases 1-8. The following are emphasized or added:
 
-1. CONTINUITY CHECK — Read WORKLOG.md before each chunk. Phase 9 chunks must document which Phase 1-8 gap they close.
+1. CONTINUITY CHECK — Read WORKLOG.md before each chunk. Phase 9 chunks must document which Phase 1-8 gap they
+close.
 
 2. WORKLOG APPEND-ONLY — Never overwrite. Each chunk appends.
 
-3. AMEND BY ADDITION — schemas.py and protocols.py are NOT modified in Phase 9. No new dataclasses or protocols are added. This is a remediation phase.
+3. AMEND BY ADDITION — schemas.py and protocols.py are NOT modified in Phase 9. No new dataclasses or
+protocols are added. This is a remediation phase.
 
 4. DETERMINISTIC CI — All gate tests pass without network, API keys, Ollama, or PostgreSQL.
 
@@ -509,19 +542,24 @@ Phase 9 inherits all binding rules from Phases 1-8. The following are emphasized
 
 6. IMPORT BOUNDARIES — Three-layer enforcement is the PRIMARY deliverable of Phase 9.
 
-7. NO HARDCODED MODEL NAMES — In application logic only. Docstrings, comments, and model_gen_assumption fields are exempt from the gate test.
+7. NO HARDCODED MODEL NAMES — In application logic only. Docstrings, comments, and model_gen_assumption fields
+are exempt from the gate test.
 
 8. NO NEW FEATURES — Phase 9 does not add capabilities. It closes gaps.
 
 9. REGRESSION GUARANTEE — Every chunk must pass all prior phase tests plus its own gate.
 
-10. LAYER VIOLATION PROXY — Orchestration may not import adapter. A proxy module in orchestration re-exports adapter protocols through a foundation-defined interface.
+10. LAYER VIOLATION PROXY — Orchestration may not import adapter. A proxy module in orchestration re-exports
+adapter protocols through a foundation-defined interface.
 
-11. NETWORK IMPORT SCOPING — httpx is permitted in adapter layer ONLY. Foundation and orchestration remain network-free. The gate test uses a per-layer allow-list.
+11. NETWORK IMPORT SCOPING — httpx is permitted in adapter layer ONLY. Foundation and orchestration remain
+network-free. The gate test uses a per-layer allow-list.
 
-12. ASYNC FIXTURE STANDARD — All async tests use @pytest.mark.asyncio. No manual event loop creation. pytest-asyncio asyncio_mode="auto" in pyproject.toml.
+12. ASYNC FIXTURE STANDARD — All async tests use @pytest.mark.asyncio. No manual event loop creation.
+pytest-asyncio asyncio_mode="auto" in pyproject.toml.
 
-13. STUB PROMOTION ACCOUNTABILITY — Each promoted stub must reference the original spec chunk it was specified in (e.g., "Promotes CHUNK-8.0b SqliteSessionStore").
+13. STUB PROMOTION ACCOUNTABILITY — Each promoted stub must reference the original spec chunk it was specified
+in (e.g., "Promotes CHUNK-8.0b SqliteSessionStore").
 
 14. 100% GATE TARGET — Phase 9 is not complete until all 433 tests pass with zero failures and zero errors.
 
@@ -540,8 +578,13 @@ No changes to aip.config.toml. Phase 9 fixes code, not configuration.
 
 | Risk | Likelihood | Impact | Mitigation |
 | --- | --- | --- | --- |
-| Layer refactoring breaks existing tests | Medium | High | Run full test suite after each chunk. No chunk merged unless all prior tests pass. |
-| Import proxy introduces circular dependency | Low | High | Proxy module imports only from foundation.protocols. No circular path possible. |
-| Async fixture migration causes subtle test ordering issues | Medium | Medium | Use asyncio_mode="auto" for deterministic fixture scoping. Run with -x flag. |
-| Promoting stubs reveals deeper design issues | Medium | Medium | Chunk 11.6 is the largest. Break into sub-chunks if stubs reveal gaps beyond spec. |
-| sqlite_vss unavailable in all CI environments | High | Low | Skip sqlite_vss tests gracefully. pgvector is the production path. |
+| Layer refactoring breaks existing tests | Medium | High | Run full test suite after each chunk. No chunk
+merged unless all prior tests pass. |
+| Import proxy introduces circular dependency | Low | High | Proxy module imports only from
+foundation.protocols. No circular path possible. |
+| Async fixture migration causes subtle test ordering issues | Medium | Medium | Use asyncio_mode="auto" for
+deterministic fixture scoping. Run with -x flag. |
+| Promoting stubs reveals deeper design issues | Medium | Medium | Chunk 11.6 is the largest. Break into
+sub-chunks if stubs reveal gaps beyond spec. |
+| sqlite_vss unavailable in all CI environments | High | Low | Skip sqlite_vss tests gracefully. pgvector is
+the production path. |

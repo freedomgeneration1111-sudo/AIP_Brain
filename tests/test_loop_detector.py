@@ -1,4 +1,5 @@
 """Tests for CHUNK-5.2 Loop Detector (Type D)."""
+
 import pytest
 
 from aip.foundation.protocols import TraceStore

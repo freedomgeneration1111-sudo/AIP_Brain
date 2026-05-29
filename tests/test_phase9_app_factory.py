@@ -22,6 +22,7 @@ pytestmark = pytest.mark.skipif(TestClient is None, reason="fastapi not availabl
 def app_client():
     """Create a test client with a real FastAPI app."""
     from aip.adapter.api.app import create_app
+
     app = create_app(config={"auth": {"auth_enabled": False}, "rate_limit": {"enabled": False}})
     client = TestClient(app)
     return client
@@ -29,8 +30,10 @@ def app_client():
 
 def test_create_app_returns_fastapi_instance():
     """create_app() must return a working FastAPI instance."""
-    from aip.adapter.api.app import create_app
     from fastapi import FastAPI
+
+    from aip.adapter.api.app import create_app
+
     app = create_app()
     assert isinstance(app, FastAPI)
 

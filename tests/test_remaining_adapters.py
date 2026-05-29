@@ -4,18 +4,18 @@ Exact per Phase 6 spec prose + ANNEX verification list.
 """
 
 import asyncio
-import tempfile
 import os
+import tempfile
 from pathlib import Path
 
 import pytest
 
-from aip.foundation.protocols import LexicalStore, CanonicalStore, EntityStore, AutonomyGate
-from aip.foundation.schemas import Chunk, AutonomyLevel
-from aip.adapter.lexical.sqlite_fts5_store import SqliteFts5LexicalStore
+from aip.adapter.autonomy.autonomy_gate import AutonomyGateImpl
 from aip.adapter.canonical.sqlite_canonical_store import SqliteCanonicalStore
 from aip.adapter.entity.sqlite_entity_store import SqliteEntityStore
-from aip.adapter.autonomy.autonomy_gate import AutonomyGateImpl
+from aip.adapter.lexical.sqlite_fts5_store import SqliteFts5LexicalStore
+from aip.foundation.protocols import AutonomyGate, CanonicalStore, EntityStore, LexicalStore
+from aip.foundation.schemas import AutonomyLevel, Chunk
 
 
 @pytest.fixture
@@ -37,9 +37,7 @@ async def test_fts5_search_returns_ranked_chunks(temp_db):
     store = SqliteFts5LexicalStore(temp_db)
     await store.initialize()
 
-    await store.index_document(
-        "doc-1", "The quick brown fox jumps over the lazy dog", "test_domain", {"k": "v"}
-    )
+    await store.index_document("doc-1", "The quick brown fox jumps over the lazy dog", "test_domain", {"k": "v"})
     await store.index_document("doc-2", "unrelated content about something else", "test_domain", {})
 
     results = await store.search("quick fox", domain="test_domain", limit=5)
@@ -133,6 +131,3 @@ def test_adapter_layer_does_not_import_orchestration():
     text = src.read_text()
     assert "from aip.orchestration" not in text
     assert "import aip.orchestration" not in text
-
-
-

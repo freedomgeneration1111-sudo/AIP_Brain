@@ -45,7 +45,7 @@ class WorkflowContext:
     """
 
     variables: dict[str, Any] = field(default_factory=dict)
-    budget_remaining: Optional[int] = DEFAULT_WORKFLOW_BUDGET   # tokens or abstract units
+    budget_remaining: Optional[int] = DEFAULT_WORKFLOW_BUDGET  # tokens or abstract units
     protocols: dict[str, Any] = field(default_factory=dict)  # name -> protocol instance
     events: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -65,10 +65,12 @@ class WorkflowContext:
 
     def emit_event(self, event_type: str, payload: dict[str, Any] | None = None) -> None:
         """Emit an event (used by dialog nodes and the engine itself)."""
-        self.events.append({
-            "type": event_type,
-            "payload": payload or {},
-        })
+        self.events.append(
+            {
+                "type": event_type,
+                "payload": payload or {},
+            },
+        )
 
     def consume_budget(self, amount: int) -> bool:
         """Consume budget and enforce limits.
@@ -91,6 +93,7 @@ class WorkflowContext:
             try:
                 coro = budget_store.consume(amount, "default")
                 import asyncio
+
                 try:
                     loop = asyncio.get_running_loop()
                 except RuntimeError:
@@ -100,9 +103,9 @@ class WorkflowContext:
                     result = asyncio.run(coro)
                     if not result:
                         logger.warning(
-                            "Budget denied by store: %d tokens requested, store refused "
-                            "(budget_remaining shadow=%s).",
-                            amount, self.budget_remaining,
+                            "Budget denied by store: %d tokens requested, store refused (budget_remaining shadow=%s).",
+                            amount,
+                            self.budget_remaining,
                         )
                     else:
                         # Sync the local shadow counter with the store's decision
@@ -110,7 +113,8 @@ class WorkflowContext:
                             self.budget_remaining -= amount
                         logger.debug(
                             "Budget consumed: %d tokens (remaining shadow=%s).",
-                            amount, self.budget_remaining,
+                            amount,
+                            self.budget_remaining,
                         )
                     return result
                 else:
@@ -129,7 +133,7 @@ class WorkflowContext:
                 logger.warning(
                     "WorkflowContext has budget_remaining=None (infinite budget). "
                     "This allows unlimited token consumption — set an explicit budget "
-                    "for production workflows. This warning will not repeat."
+                    "for production workflows. This warning will not repeat.",
                 )
                 # We can't mutate a dataclass field from a method if it's defined
                 # with field(default=False), but we can use object.__setattr__
@@ -141,15 +145,16 @@ class WorkflowContext:
             return True
         if amount > self.budget_remaining:
             logger.warning(
-                "Budget exhausted: %d tokens requested but only %d remaining. "
-                "Consumption denied.",
-                amount, self.budget_remaining,
+                "Budget exhausted: %d tokens requested but only %d remaining. Consumption denied.",
+                amount,
+                self.budget_remaining,
             )
             return False
         self.budget_remaining -= amount
         logger.debug(
             "Budget consumed: %d tokens (remaining=%d).",
-            amount, self.budget_remaining,
+            amount,
+            self.budget_remaining,
         )
         return True
 
@@ -167,6 +172,7 @@ class WorkflowContext:
             try:
                 coro = gate.request_autonomy(level, ctx)
                 import asyncio
+
                 try:
                     loop = asyncio.get_running_loop()
                 except RuntimeError:
@@ -195,6 +201,6 @@ class WorkflowContext:
             variables=self.variables.copy(),
             budget_remaining=self.budget_remaining,
             protocols=self.protocols,  # shared protocols
-            events=self.events,        # shared event log for now
+            events=self.events,  # shared event log for now
             metadata={"parent": id(self)},
         )

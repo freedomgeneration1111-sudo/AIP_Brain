@@ -1,14 +1,15 @@
-"""CHUNK-9.1 gate: Vigil actor (read-only health checks, stale detection, model slot change, trace events for Sexton)."""
+"""CHUNK-9.1 gate: Vigil actor
+(read-only health checks, stale detection, model slot change, trace events for Sexton)."""
 
 from __future__ import annotations
 
 import pytest
 
-from aip.foundation.schemas import VigilConfig, ModelSlotConfig
+from aip.foundation.schemas import ModelSlotConfig, VigilConfig
 from aip.orchestration.actors.vigil import Vigil
 
-
 # --- Minimal fakes ---
+
 
 class FakeVigilStore:
     def __init__(self):
@@ -120,6 +121,7 @@ async def test_vigil_on_model_slot_change_creates_trace_event(vigil):
 def test_vigil_is_read_only_by_design():
     """Per Appendix D + Process Rule 12: Vigil never modifies canonicals."""
     from pathlib import Path
+
     vigil_file = Path(__file__).parent.parent / "src/aip/orchestration/actors/vigil.py"
     if vigil_file.exists():
         text = vigil_file.read_text()
@@ -132,6 +134,7 @@ def test_vigil_is_read_only_by_design():
 def test_layering_and_no_storage_bypass():
     """Orchestration actor imports only Protocols (no direct adapter storage)."""
     from pathlib import Path
+
     vigil_file = Path(__file__).parent.parent / "src/aip/orchestration/actors/vigil.py"
     if vigil_file.exists():
         text = vigil_file.read_text()

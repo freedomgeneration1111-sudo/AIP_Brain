@@ -10,13 +10,13 @@ the Phase 1 layering rules).
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
 import jinja2
-import logging
 
 
 class NodeType(str, Enum):
@@ -30,6 +30,7 @@ class NodeType(str, Enum):
 @dataclass
 class NodeResult:
     """Result returned by any node execution."""
+
     success: bool
     output: Any = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -110,8 +111,8 @@ class AgentNode(WorkflowNode):
           - config (optional)
         Falls back to fake_embed + no-op stores when running in minimal test mode.
         """
-        from aip.orchestration.retrieval import retrieve_for_synthesis, fake_embed
         from aip.orchestration.nodes.synthesis import synthesize as phase1_synthesize
+        from aip.orchestration.retrieval import fake_embed, retrieve_for_synthesis
 
         # Resolve dependencies from context (with safe fallbacks)
         vector_store = context.get_protocol("vector_store")
@@ -122,6 +123,7 @@ class AgentNode(WorkflowNode):
             # Wrap sync fake_embed in an async wrapper for consistent calling
             def _sync_embed_wrapper(text: str) -> list[float]:
                 return fake_embed(text)
+
             embed_fn = _sync_embed_wrapper
         trace_store = context.get_protocol("trace_store")
         config = context.get_protocol("config") or context.metadata.get("config")
@@ -186,7 +188,7 @@ class ConditionNode(WorkflowNode):
         return NodeResult(
             success=True,
             output={"result": result, "rendered": rendered},
-            metadata={"condition": self.condition}
+            metadata={"condition": self.condition},
         )
 
 
@@ -197,7 +199,7 @@ class DialogNode(WorkflowNode):
         self,
         node_id: str,
         prompt: str,
-        gate_callable=None,   # Optional callable: async def(synthesis, validation, eval) -> DefinerDecision
+        gate_callable=None,  # Optional callable: async def(synthesis, validation, eval) -> DefinerDecision
         synthesis_output=None,
         validation_result=None,
         eval_result=None,
@@ -288,14 +290,14 @@ class ParallelNode(WorkflowNode):
                 "dependencies": self.dependencies,
                 "merge_strategy": self.merge_strategy,
                 "continue_on_error": self.continue_on_error,
-            }
+            },
         )
 
 
 # extensions: Review and Re-Synthesis nodes (additive)
 
-from aip.orchestration.review import review_artifact
 from aip.orchestration.re_synthesize import re_synthesize
+from aip.orchestration.review import review_artifact
 
 
 def _build_default_eval_fn(model_provider: Any, config: Any) -> Any:
@@ -322,7 +324,8 @@ def _build_default_eval_fn(model_provider: Any, config: Any) -> Any:
         # Check if the model provider is in CI mode (deterministic fixture)
         if hasattr(model_provider, "_ci_mode") and model_provider._ci_mode:
             _eval_logger.info(
-                "Default eval_fn: CI mode fixture for artifact %s.", artifact_id,
+                "Default eval_fn: CI mode fixture for artifact %s.",
+                artifact_id,
             )
             return {
                 "confidence": 0.75,
@@ -338,10 +341,10 @@ def _build_default_eval_fn(model_provider: Any, config: Any) -> Any:
                 "content": (
                     "You are a quality evaluator for generated content. "
                     "Assess the following artifact content and respond with a JSON object "
-                    "containing: \"confidence\" (0.0-1.0 overall quality score), "
-                    "\"failure_types\" (list of issue codes: A=faithfulness, "
+                    'containing: "confidence" (0.0-1.0 overall quality score), '
+                    '"failure_types" (list of issue codes: A=faithfulness, '
                     "B=domain_mismatch, C=structural, D=safety, E=emptiness), "
-                    "and \"detail\" (brief explanation). "
+                    'and "detail" (brief explanation). '
                     "Respond with ONLY the JSON object, no other text."
                 ),
             },
@@ -357,6 +360,7 @@ def _build_default_eval_fn(model_provider: Any, config: Any) -> Any:
 
             # Try to parse JSON from model response
             import json
+
             # Handle markdown code blocks
             json_str = content.strip()
             if json_str.startswith("```"):
@@ -367,9 +371,10 @@ def _build_default_eval_fn(model_provider: Any, config: Any) -> Any:
             confidence = float(parsed.get("confidence", 0.0))
             failure_types = list(parsed.get("failure_types", []))
             _eval_logger.info(
-                "Default eval_fn: model evaluation completed for artifact %s "
-                "(confidence=%.2f, failure_types=%s).",
-                artifact_id, confidence, failure_types,
+                "Default eval_fn: model evaluation completed for artifact %s (confidence=%.2f, failure_types=%s).",
+                artifact_id,
+                confidence,
+                failure_types,
             )
             return {
                 "confidence": confidence,
@@ -385,9 +390,9 @@ def _build_default_eval_fn(model_provider: Any, config: Any) -> Any:
             # block it differently. Instead, we return eval_error=True so the
             # review layer can distinguish "model failed" from "CI fixture".
             _eval_logger.warning(
-                "Default eval_fn: model evaluation failed for artifact %s (%s). "
-                "Returning low-confidence result.",
-                artifact_id, exc,
+                "Default eval_fn: model evaluation failed for artifact %s (%s). Returning low-confidence result.",
+                artifact_id,
+                exc,
             )
             return {
                 "confidence": 0.0,
@@ -441,13 +446,15 @@ class ReviewNode(WorkflowNode):
                 eval_fn = _build_default_eval_fn(model_provider, config)
                 self._review_logger.info(
                     "ReviewNode %s: built default eval_fn from model_provider for artifact %s.",
-                    self.node_id, artifact_id,
+                    self.node_id,
+                    artifact_id,
                 )
             else:
                 self._review_logger.info(
                     "ReviewNode %s: no eval_fn and no model_provider for artifact %s. "
                     "Review will return PENDING in production, APPROVED in CI.",
-                    self.node_id, artifact_id,
+                    self.node_id,
+                    artifact_id,
                 )
 
         try:
@@ -471,8 +478,11 @@ class ReviewNode(WorkflowNode):
 
             self._review_logger.info(
                 "ReviewNode %s: verdict=%s for artifact %s (confidence=%.2f, paused=%s).",
-                self.node_id, verdict.verdict, artifact_id,
-                verdict.confidence, is_pause,
+                self.node_id,
+                verdict.verdict,
+                artifact_id,
+                verdict.confidence,
+                is_pause,
             )
 
             return NodeResult(
@@ -486,11 +496,13 @@ class ReviewNode(WorkflowNode):
             # This prevents the workflow from crashing on transient errors and
             # ensures the artifact stays in a safe state for re-evaluation.
             self._review_logger.error(
-                "ReviewNode %s: review_artifact raised for artifact %s: %s. "
-                "Returning PENDING verdict (safe default).",
-                self.node_id, artifact_id, e,
+                "ReviewNode %s: review_artifact raised for artifact %s: %s. Returning PENDING verdict (safe default).",
+                self.node_id,
+                artifact_id,
+                e,
             )
             from aip.foundation.schemas import ReviewVerdict
+
             safe_verdict = ReviewVerdict(
                 artifact_id=artifact_id,
                 verdict="PENDING",
@@ -531,7 +543,10 @@ class ReSynthesizeNode(WorkflowNode):
         )
 
         if not artifact_id or not rejection:
-            return NodeResult(success=False, error="ReSynthesizeNode requires artifact_id and review_verdict in context")
+            return NodeResult(
+                success=False,
+                error="ReSynthesizeNode requires artifact_id and review_verdict in context",
+            )
 
         try:
             # Use the Phase 1 synthesis stub as the synthesize_fn for now

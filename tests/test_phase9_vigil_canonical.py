@@ -9,27 +9,33 @@ Verifies that:
 """
 
 import tempfile
+from datetime import datetime, timedelta, timezone
 from typing import Any
-from datetime import datetime, timezone, timedelta
 
 import pytest
 
-from aip.orchestration.actors.vigil import Vigil
-from aip.orchestration.canonical_pipeline import CanonicalPipeline
 from aip.foundation.schemas import (
-    VigilConfig,
     CanonicalPromotionConfig,
     ModelSlotConfig,
+    SextonConfig,
+    VigilConfig,
 )
+from aip.orchestration.actors.vigil import Vigil
+from aip.orchestration.canonical_pipeline import CanonicalPipeline
 from aip.orchestration.sexton.sexton import Sexton
-from aip.foundation.schemas import SextonConfig
 
 
 class _MockVigilStore:
     async def list_stale_canonicals(self, threshold_days=30):
         return [
-            {"artifact_id": "stale-1", "last_updated": (datetime.now(timezone.utc) - timedelta(days=threshold_days + 10)).isoformat()},
-            {"artifact_id": "stale-2", "last_updated": (datetime.now(timezone.utc) - timedelta(days=threshold_days + 5)).isoformat()},
+            {
+                "artifact_id": "stale-1",
+                "last_updated": (datetime.now(timezone.utc) - timedelta(days=threshold_days + 10)).isoformat(),
+            },
+            {
+                "artifact_id": "stale-2",
+                "last_updated": (datetime.now(timezone.utc) - timedelta(days=threshold_days + 5)).isoformat(),
+            },
         ]
 
     async def record_vigil_check(self, **kwargs):
@@ -124,6 +130,7 @@ class _MockEmbeddingProvider:
 class _MockAutonomyGate:
     async def escalate(self, **kwargs):
         from aip.foundation.schemas import AutonomyEscalation
+
         return AutonomyEscalation(
             escalation_id="test-esc-1",
             action_type=kwargs.get("action_type", ""),

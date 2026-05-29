@@ -1,6 +1,7 @@
 """CHUNK-9.7: Final Cross-Cutting Gates for Phase 7 (extending 8.8 for all Phase 7 surfaces).
 
-Per spec: 7 categories — network isolation, model-name, DEFINER sovereignty, import boundary, Appendix D, config toggleability (§1.8), existing 0–9.6 gates still pass.
+Per spec: 7 categories — network isolation, model-name, DEFINER sovereignty,
+import boundary, Appendix D, config toggleability (§1.8), existing 0–9.6 gates still pass.
 """
 
 from __future__ import annotations
@@ -76,10 +77,12 @@ def test_phase7_no_hardcoded_model_names_in_new_surfaces():
 
 
 def test_phase7_definer_sovereignty_no_bypass_for_admin_actions():
-    """Every admin action across new 9.x surfaces goes through AutonomyGate (Canonical requires DEFINER, Vigil read-only, auth enforces identity)."""
+    """Every admin action across new 9.x surfaces goes through AutonomyGate
+    (Canonical requires DEFINER, Vigil read-only, auth enforces identity)."""
     try:
         from aip.adapter.auth.dependencies import require_definer  # type: ignore
         from aip.orchestration.canonical_pipeline import CanonicalPipeline
+
         assert require_definer is not None
         assert hasattr(CanonicalPipeline, "promote_to_canonical") or hasattr(CanonicalPipeline, "__init__")
     except Exception:
@@ -90,7 +93,9 @@ def test_phase7_definer_sovereignty_no_bypass_for_admin_actions():
 
 
 def test_phase7_import_boundaries_and_storage_contracts_still_pass():
-    """Phase 7 respects §7.2 three-layer boundaries (adapter/* does not import orchestration impls directly; orchestration/actors only via Protocols)."""
+    """Phase 7 respects §7.2 three-layer boundaries
+    (adapter/* does not import orchestration impls directly;
+    orchestration/actors only via Protocols)."""
     boundary_violations = []
     # adapter/auth/ must not import from aip.orchestration (except foundation protocols/schemas)
     for py in Path("src/aip/adapter/auth").rglob("*.py"):
@@ -117,7 +122,8 @@ def test_phase7_import_boundaries_and_storage_contracts_still_pass():
 
 
 def test_phase7_appendix_d_constraints():
-    """UI ≠ authority, MCP ≠ bypass, Vigil ≠ Beast/Sexton, Supersession ≠ deletion, Entity ≠ project (extended to 9.x)."""
+    """UI ≠ authority, MCP ≠ bypass, Vigil ≠ Beast/Sexton, Supersession ≠ deletion,
+    Entity ≠ project (extended to 9.x)."""
     # Vigil and Beast are separate actors (distinct files + responsibilities)
     vigil = Path("src/aip/orchestration/actors/vigil.py")
     beast = Path("src/aip/orchestration/actors/beast.py")
@@ -129,7 +135,9 @@ def test_phase7_appendix_d_constraints():
     ]:
         if bad.exists():
             text = bad.read_text(encoding="utf-8").lower()
-            assert "vector_store.retrieve" not in text or "container" in text or "protocol" in text, f"Appendix D violation in {bad}"
+            assert "vector_store.retrieve" not in text or "container" in text or "protocol" in text, (
+                f"Appendix D violation in {bad}"
+            )
     # Canonical promotion must preserve (supersede) rather than delete
     canon = Path("src/aip/orchestration/canonical_pipeline.py")
     if canon.exists():
@@ -138,10 +146,16 @@ def test_phase7_appendix_d_constraints():
 
 
 def test_phase7_config_toggleability_all_new_sections():
-    """All Phase 7 config sections ([vigil], [auth], [rate_limit], [canonical_pipeline], [deployment]) are §1.8 toggleable and loadable."""
+    """All Phase 7 config sections ([vigil], [auth], [rate_limit], [canonical_pipeline],
+    [deployment]) are §1.8 toggleable and loadable."""
     from aip.foundation.schemas import (
-        VigilConfig, AuthConfig, RateLimitConfig, CanonicalPromotionConfig, DeploymentProfile
+        AuthConfig,
+        CanonicalPromotionConfig,
+        DeploymentProfile,
+        RateLimitConfig,
+        VigilConfig,
     )
+
     v = VigilConfig()
     assert hasattr(v, "canonical_health_check_interval_seconds") and hasattr(v, "stale_threshold_days")
     a = AuthConfig()

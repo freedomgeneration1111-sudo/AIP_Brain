@@ -77,11 +77,13 @@ def load_workflow_from_yaml(path: str | Path) -> WorkflowDefinition:
             if node_type == NodeType.SCRIPT:
                 nodes.append(ScriptNode(node_id, code=node_def.get("code", "")))
             elif node_type == NodeType.AGENT:
-                nodes.append(AgentNode(
-                    node_id,
-                    model_slot=node_def["model_slot"],
-                    prompt_template=node_def.get("prompt", ""),
-                ))
+                nodes.append(
+                    AgentNode(
+                        node_id,
+                        model_slot=node_def["model_slot"],
+                        prompt_template=node_def.get("prompt", ""),
+                    ),
+                )
             elif node_type == NodeType.CONDITION:
                 cfg = {
                     "next_on_true": node_def.get("next_on_true"),

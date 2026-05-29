@@ -65,6 +65,5 @@ def test_no_network_imports_in_production_code():
                         violations.append(f"{py_file.relative_to(repo_root)}: from {name} import ...")
 
     assert not violations, (
-        "The following foundation/orchestration files import forbidden network libraries:\n"
-        + "\n".join(violations)
+        "The following foundation/orchestration files import forbidden network libraries:\n" + "\n".join(violations)
     )

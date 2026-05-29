@@ -44,9 +44,7 @@ class SessionManager:
             last_reset_at=None,
         )
 
-    async def advance_turn(
-        self, session_context: SessionContext, output_tokens: int
-    ) -> SessionContext:
+    async def advance_turn(self, session_context: SessionContext, output_tokens: int) -> SessionContext:
         """Advance the session by one turn.
 
         Increments turn count and updates context token estimate.
@@ -64,7 +62,9 @@ class SessionManager:
         )
 
     async def check_trajectory(
-        self, session_context: SessionContext, trace_store: TraceStore
+        self,
+        session_context: SessionContext,
+        trace_store: TraceStore,
     ) -> tuple[list[TrajectorySignal], bool]:
         """Run trajectory regulation and check if intervention is needed.
 
@@ -97,8 +97,12 @@ class SessionManager:
         # Full reset for drift (D) or anxiety (F)
         if "D" in failure_types or "F" in failure_types:
             return await execute_context_reset(
-                session_context, signals,
-                artifact_store, trace_store, event_store, ecs_store,
+                session_context,
+                signals,
+                artifact_store,
+                trace_store,
+                event_store,
+                ecs_store,
                 self._config,
             )
 

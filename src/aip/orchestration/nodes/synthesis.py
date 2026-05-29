@@ -24,6 +24,7 @@ from aip.foundation.validation import structural_validate
 @dataclass
 class SynthesisOutput:
     """Legacy dataclass for Phase 1/2/3 compatibility."""
+
     content: str
     model_slot: str
     model_name: str
@@ -132,10 +133,12 @@ async def synthesize(
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
-    messages.append({
-        "role": "user",
-        "content": f"Domain: {domain}\n\nRetrieved Context:\n{effective_context}\n\nQuery: {query}",
-    })
+    messages.append(
+        {
+            "role": "user",
+            "content": f"Domain: {domain}\n\nRetrieved Context:\n{effective_context}\n\nQuery: {query}",
+        },
+    )
 
     # Call model via synthesis slot
     result = await model_resolver.call(

@@ -3,6 +3,7 @@
 Abstraction for plugin-provided model providers, enabling
 extensibility without hardcoding model names.
 """
+
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable

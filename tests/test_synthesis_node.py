@@ -4,11 +4,12 @@ import asyncio
 
 import pytest
 
-from aip.orchestration.nodes.synthesis import synthesize, SynthesisOutput
+from aip.orchestration.nodes.synthesis import SynthesisOutput, synthesize
 
 
 class FakeModelResolver:
     """Minimal fake ModelSlotResolver for testing (per 6.1 ANNEX)."""
+
     def __init__(self, ci_mode=True):
         self._ci_mode = ci_mode
 
@@ -25,6 +26,7 @@ class FakeModelResolver:
 def _make_retrieval_result(status="OK", hits=None, max_conf=0.75):
     # Legacy helper kept for old-style compat tests
     from aip.foundation.schemas import Chunk, RetrievalResult
+
     if hits is None:
         hits = [
             Chunk(id="h1", content="Important context about the domain.", score=0.82, domain="test"),
@@ -34,6 +36,7 @@ def _make_retrieval_result(status="OK", hits=None, max_conf=0.75):
 
 
 # --- New 6.1 tests (from ANNEX, adapted) ---
+
 
 @pytest.mark.asyncio
 async def test_stub_mode_no_resolver():
@@ -77,7 +80,9 @@ async def test_token_budget_passed():
 def test_no_hardcoded_model_names():
     """Per §4.1: no hardcoded model names in synthesis code."""
     import inspect
+
     from aip.orchestration.nodes.synthesis import synthesize
+
     source = inspect.getsource(synthesize)
     forbidden = ["deepseek", "claude", "gpt", "qwen", "nomic"]
     for name in forbidden:
@@ -86,13 +91,10 @@ def test_no_hardcoded_model_names():
 
 # --- Legacy compat tests (preserved/updated for old callers) ---
 
+
 def test_synthesize_resolves_model_name_from_config():
     retrieval = _make_retrieval_result()
-    config = {
-        "models": {
-            "synthesis": {"model": "stub-test-model"}
-        }
-    }
+    config = {"models": {"synthesis": {"model": "stub-test-model"}}}
     result = asyncio.run(synthesize("q", "d", retrieval_result=retrieval, model_slot="synthesis", config=config))
     assert isinstance(result, SynthesisOutput)
     assert result.model_name == "stub-test-model"

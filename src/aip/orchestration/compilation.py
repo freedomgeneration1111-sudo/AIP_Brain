@@ -14,18 +14,18 @@ from datetime import datetime, timezone
 from typing import Any
 
 from aip.foundation.protocols import (
-    KnowledgeStore,
     CanonicalStore,
-    VectorStore,
+    EcsStore,
+    EmbeddingProvider,
+    EventStore,
+    KnowledgeStore,
     LexicalStore,
     ModelProvider,
-    EmbeddingProvider,
     TraceStore,
-    EventStore,
-    EcsStore,
+    VectorStore,
     VigilStore,
 )
-from aip.foundation.schemas import KnowledgeCompilationConfig, CompilationState
+from aip.foundation.schemas import CompilationState, KnowledgeCompilationConfig
 
 
 class KnowledgeCompiler:
@@ -61,7 +61,13 @@ class KnowledgeCompiler:
         self.ecs_store = ecs_store
         self.vigil_store = vigil_store
 
-    async def _record_trace(self, node_type: str, failure_type: str = "", outcome: str = "success", detail: str | None = None) -> None:
+    async def _record_trace(
+        self,
+        node_type: str,
+        failure_type: str = "",
+        outcome: str = "success",
+        detail: str | None = None,
+    ) -> None:
         """Helper to record trace events for every compilation step.
 
         Issue 23: Use trace_store.write_event(session_id, node_type, failure_type, outcome, detail)
@@ -99,7 +105,11 @@ class KnowledgeCompiler:
             source_canonical_ids = [f"canon-{i}" for i in range(min(3, self.config.max_source_canonicals))]
 
         # Simplified prompt assembly (real would include full content)
-        prompt = f"Topic: {topic}\nDomain: {domain}\nSynthesize structured knowledge from these canonicals: {source_canonical_ids}\nOutput: concise cross-referenced summary preserving provenance."
+        prompt = (
+            f"Topic: {topic}\nDomain: {domain}\n"
+            f"Synthesize structured knowledge from these canonicals: {source_canonical_ids}\n"
+            f"Output: concise cross-referenced summary preserving provenance."
+        )
 
         # Use synthesis slot (from 10.0a config)
         slot = self.config.compilation_model_slot or "synthesis"
@@ -107,7 +117,10 @@ class KnowledgeCompiler:
         # Call model (ModelProvider abstraction — no hardcoded names)
         try:
             response = await self.model_provider.call(slot, [{"role": "user", "content": prompt}])
-            compiled_content = response.get("content", f"[COMPILED] {topic} summary from {len(source_canonical_ids)} sources.")
+            compiled_content = response.get(
+                "content",
+                f"[COMPILED] {topic} summary from {len(source_canonical_ids)} sources.",
+            )
         except Exception as e:
             compiled_content = f"[ERROR] Synthesis failed: {e}"
 
@@ -134,7 +147,11 @@ class KnowledgeCompiler:
 
         await self.knowledge_store.update_state(knowledge_id, "COMPILED")
 
-        await self._record_trace("knowledge_compiler", outcome="success", detail=f"compile_from_canonicals: knowledge_id={knowledge_id}, domain={domain}, topic={topic}")
+        await self._record_trace(
+            "knowledge_compiler",
+            outcome="success",
+            detail=f"compile_from_canonicals: knowledge_id={knowledge_id}, domain={domain}, topic={topic}",
+        )
 
         return {
             "knowledge_id": knowledge_id,
@@ -156,17 +173,24 @@ class KnowledgeCompiler:
             return {"error": "not found"}
 
         # Simplified cross-ref (real would use vector similarity on topic/domain)
-        cross_refs = [{"related_knowledge_id": f"related-{i}", "score": 0.8 - i*0.1} for i in range(3)]
+        cross_refs = [{"related_knowledge_id": f"related-{i}", "score": 0.8 - i * 0.1} for i in range(3)]
 
         # Store as metadata update (simplified)
         metadata = existing.get("metadata", {})
         metadata["cross_references"] = cross_refs
         await self.knowledge_store.store_compiled(
-            knowledge_id, existing["content"], existing["source_canonical_ids"],
-            existing["domain"], {**metadata, "state": "COMPILED"}
+            knowledge_id,
+            existing["content"],
+            existing["source_canonical_ids"],
+            existing["domain"],
+            {**metadata, "state": "COMPILED"},
         )
 
-        await self._record_trace("knowledge_compiler", outcome="success", detail=f"cross_reference: knowledge_id={knowledge_id}")
+        await self._record_trace(
+            "knowledge_compiler",
+            outcome="success",
+            detail=f"cross_reference: knowledge_id={knowledge_id}",
+        )
         return {"knowledge_id": knowledge_id, "cross_references": cross_refs}
 
     async def evaluate_compiled(self, knowledge_id: str) -> dict:
@@ -177,7 +201,10 @@ class KnowledgeCompiler:
 
         # Call evaluation slot (from 10.0a config)
         eval_slot = self.config.evaluation_model_slot or "evaluation"
-        prompt = f"Evaluate faithfulness and domain coherence for: {existing['content'][:500]} against sources {existing['source_canonical_ids']}"
+        prompt = (
+            f"Evaluate faithfulness and domain coherence for: "
+            f"{existing['content'][:500]} against sources {existing['source_canonical_ids']}"
+        )
 
         try:
             resp = await self.model_provider.call(eval_slot, [{"role": "user", "content": prompt}])
@@ -191,7 +218,11 @@ class KnowledgeCompiler:
         new_state = "REVIEWED" if passed else "FAILED"
         await self.knowledge_store.update_state(knowledge_id, new_state)
 
-        await self._record_trace("knowledge_compiler", outcome="success" if passed else "failure", detail=f"evaluate: knowledge_id={knowledge_id}, passed={passed}, new_state={new_state}")
+        await self._record_trace(
+            "knowledge_compiler",
+            outcome="success" if passed else "failure",
+            detail=f"evaluate: knowledge_id={knowledge_id}, passed={passed}, new_state={new_state}",
+        )
 
         return {"knowledge_id": knowledge_id, "scores": scores, "passed": passed, "new_state": new_state}
 

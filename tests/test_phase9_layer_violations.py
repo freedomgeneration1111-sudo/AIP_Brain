@@ -55,12 +55,11 @@ def test_foundation_no_orchestration_imports():
         for imp in imports:
             if imp in ("orchestration", "adapter"):
                 violations.append(
-                    f"{py_file.relative_to(REPO_ROOT)} imports from '{imp}' (foundation must stay isolated)"
+                    f"{py_file.relative_to(REPO_ROOT)} imports from '{imp}' (foundation must stay isolated)",
                 )
 
-    assert not violations, (
-        "foundation/ has upward imports (must import only stdlib + itself):\n"
-        + "\n".join(violations)
+    assert not violations, "foundation/ has upward imports (must import only stdlib + itself):\n" + "\n".join(
+        violations,
     )
 
 
@@ -85,12 +84,11 @@ def test_orchestration_no_adapter_imports():
                 # but flag any top-level adapter import
                 violations.append(
                     f"{py_file.relative_to(REPO_ROOT)} imports from 'adapter' "
-                    f"(use orchestration.model_provider_proxy instead)"
+                    f"(use orchestration.model_provider_proxy instead)",
                 )
 
-    assert not violations, (
-        "orchestration/ has direct adapter imports (use model_provider_proxy):\n"
-        + "\n".join(violations)
+    assert not violations, "orchestration/ has direct adapter imports (use model_provider_proxy):\n" + "\n".join(
+        violations,
     )
 
 
@@ -109,12 +107,11 @@ def test_adapter_may_import_foundation_and_orchestration():
             if imp == "orchestration":
                 violations.append(
                     f"{py_file.relative_to(REPO_ROOT)} imports from 'orchestration' "
-                    f"(adapter should not depend on orchestration)"
+                    f"(adapter should not depend on orchestration)",
                 )
 
-    assert not violations, (
-        "adapter/ has orchestration imports (should not depend on orchestration):\n"
-        + "\n".join(violations)
+    assert not violations, "adapter/ has orchestration imports (should not depend on orchestration):\n" + "\n".join(
+        violations,
     )
 
 
@@ -139,9 +136,7 @@ def test_full_l3a_evaluation_in_orchestration_not_foundation():
     source = validation_file.read_text()
 
     # foundation should have structural_validate as a top-level function
-    assert "def structural_validate" in source, (
-        "structural_validate must remain in foundation/validation.py"
-    )
+    assert "def structural_validate" in source, "structural_validate must remain in foundation/validation.py"
 
     # foundation may have the alias but the alias must delegate to orchestration
     if "async def full_l3a_evaluation" in source:

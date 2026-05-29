@@ -9,21 +9,21 @@ from __future__ import annotations
 
 import pytest
 
-from aip.foundation.schemas import (
-    Chunk,
-    RetrievalResult,
-    ReviewVerdict,
-    ReviewContext,
-    EcsTransition,
-    Event,
-    FailureTypeCode,
-    EcsState,
-    FailureType,
-)
 from aip.foundation.protocols import (
-    EventStore,
     ArtifactStore,
     EcsStore,
+    EventStore,
+)
+from aip.foundation.schemas import (
+    Chunk,
+    EcsState,
+    EcsTransition,
+    Event,
+    FailureType,
+    FailureTypeCode,
+    RetrievalResult,
+    ReviewContext,
+    ReviewVerdict,
 )
 
 

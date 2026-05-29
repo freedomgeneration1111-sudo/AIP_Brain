@@ -1,10 +1,12 @@
 """Tests for CHUNK-7.1 Sexton Failure Classification (per Phase 5 ANNEX + prose)."""
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock
 
-from aip.foundation.schemas import SextonConfig, FailureClassification
-from aip.foundation.protocols import TraceStore, EventStore
+import pytest
+
 from aip.adapter.model_slot_resolver import ModelSlotResolver
+from aip.foundation.protocols import EventStore, TraceStore
+from aip.foundation.schemas import FailureClassification, SextonConfig
 from aip.orchestration.sexton.sexton import Sexton
 
 
@@ -28,7 +30,7 @@ async def test_classify_failures_produces_failure_classification_with_model_gen_
     resolver._ci_mode = True  # force deterministic foundation path
     trace = AsyncMock(spec=TraceStore)
     trace.get_unclassified_failures.return_value = [
-        {"id": 42, "node_type": "L3a", "outcome": "failure", "detail": "malformation in schema"}
+        {"id": 42, "node_type": "L3a", "outcome": "failure", "detail": "malformation in schema"},
     ]
     trace.write_event = AsyncMock()
 
@@ -39,7 +41,11 @@ async def test_classify_failures_produces_failure_classification_with_model_gen_
     fc = results[0]
     assert isinstance(fc, FailureClassification)
     assert fc.failure_type in ("A", "B", "C", "D", "E", "F")
-    assert fc.model_gen_assumption is not None and "§1.8" in fc.model_gen_assumption or "model" in fc.model_gen_assumption.lower()
+    assert (
+        fc.model_gen_assumption is not None
+        and "§1.8" in fc.model_gen_assumption
+        or "model" in fc.model_gen_assumption.lower()
+    )
 
 
 @pytest.mark.asyncio
@@ -49,7 +55,7 @@ async def test_ci_mode_uses_deterministic_fixtures():
     resolver._ci_mode = True
     trace = AsyncMock(spec=TraceStore)
     trace.get_unclassified_failures.return_value = [
-        {"id": 1, "node_type": "L4", "outcome": "failure", "detail": "loop detected"}
+        {"id": 1, "node_type": "L4", "outcome": "failure", "detail": "loop detected"},
     ]
     trace.write_event = AsyncMock()
 
@@ -79,4 +85,5 @@ def test_layering_no_adapter_imports_in_sexton():
     """Sexton (orchestration) must not import concrete adapter storage (only Protocols + resolver)."""
     # Importing the module succeeds without pulling forbidden adapter storage
     from aip.orchestration.sexton.sexton import Sexton
+
     assert Sexton is not None

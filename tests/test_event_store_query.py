@@ -1,4 +1,5 @@
 """Tests for queryable event store (CHUNK-4.4)."""
+
 import pytest
 
 from aip.adapter.event_store_queryable import QueryableEventStore

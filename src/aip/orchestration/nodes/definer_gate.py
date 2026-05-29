@@ -75,6 +75,7 @@ def _is_ci_environment() -> bool:
 # Exceptions
 # ---------------------------------------------------------------------------
 
+
 class ManualReviewRequired(Exception):
     """Raised when the DEFINER gate is in MANUAL mode and requires human review.
 
@@ -114,6 +115,7 @@ class ManualReviewRequired(Exception):
 # Data classes
 # ---------------------------------------------------------------------------
 
+
 class DefinerGateMode(Enum):
     AUTO_APPROVE_STUB = "auto_approve_stub"
     MANUAL = "manual"
@@ -123,6 +125,7 @@ class DefinerGateMode(Enum):
 @dataclass
 class DefinerDecision:
     """Result of the DEFINER gate."""
+
     action: str  # "approve" | "reject" | "revise"
     reason: str | None = None
     approved_by: str | None = None
@@ -135,6 +138,7 @@ class _ManualGateContext:
     Used to build the :class:`ManualReviewRequired` exception with all the
     information a review queue UI would need.
     """
+
     validation_passed: bool
     validation_detail: str | None
     eval_passed: bool
@@ -150,24 +154,21 @@ class _ManualGateContext:
         if not self.validation_passed:
             parts.append(
                 f"Structural validation FAILED (detail: {self.validation_detail}). "
-                "A DEFINER must decide whether to revise or reject."
+                "A DEFINER must decide whether to revise or reject.",
             )
         elif not self.eval_passed:
-            parts.append(
-                "Adversarial evaluation FAILED. "
-                "A DEFINER must decide whether to reject or request revision."
-            )
+            parts.append("Adversarial evaluation FAILED. A DEFINER must decide whether to reject or request revision.")
         elif self.eval_is_fixture and not self.is_ci:
             parts.append(
                 "Evaluation used CI fixture data in production mode. "
                 "A DEFINER must verify that real evaluation is performed "
-                "before approving."
+                "before approving.",
             )
         else:
             parts.append(
                 "Both validation and evaluation passed. "
                 "A DEFINER must explicitly approve before the artifact "
-                "can be promoted."
+                "can be promoted.",
             )
 
         return ManualReviewRequired(
@@ -188,6 +189,7 @@ class _ManualGateContext:
 # ---------------------------------------------------------------------------
 # Gate implementation
 # ---------------------------------------------------------------------------
+
 
 async def definer_gate(
     synthesis_output: SynthesisOutput,
@@ -261,8 +263,7 @@ async def definer_gate(
     # Step 1: Check structural validation
     if not validation_result.passed:
         logger.info(
-            "DEFINER gate: validation failed for synthesis output. "
-            "Returning 'revise'. Detail: %s",
+            "DEFINER gate: validation failed for synthesis output. Returning 'revise'. Detail: %s",
             validation_result.failure_detail,
         )
         return DefinerDecision(
@@ -274,8 +275,7 @@ async def definer_gate(
     # Step 2: Check adversarial evaluation
     if not eval_result.passed:
         logger.info(
-            "DEFINER gate: adversarial evaluation did not pass. "
-            "Returning 'reject'. Critique: %s",
+            "DEFINER gate: adversarial evaluation did not pass. Returning 'reject'. Critique: %s",
             getattr(eval_result, "critique", None),
         )
         return DefinerDecision(
@@ -293,12 +293,12 @@ async def definer_gate(
         logger.warning(
             "DEFINER gate: evaluation results are CI fixtures (ci_fixture=True) "
             "in production mode. Refusing to auto-approve. Returning 'revise'. "
-            "Real evaluation results are required for DEFINER approval in production."
+            "Real evaluation results are required for DEFINER approval in production.",
         )
         return DefinerDecision(
             action="revise",
             reason="Cannot auto-approve: evaluation used CI fixture data. "
-                   "Real evaluation results are required for production DEFINER approval.",
+            "Real evaluation results are required for production DEFINER approval.",
             approved_by=None,
         )
 
@@ -306,7 +306,7 @@ async def definer_gate(
     if is_ci:
         logger.info(
             "DEFINER gate: CI mode auto-approve (stub). "
-            "Validation and evaluation both passed. approved_by=stub:auto_approve_ci."
+            "Validation and evaluation both passed. approved_by=stub:auto_approve_ci.",
         )
         return DefinerDecision(
             action="approve",
@@ -320,12 +320,12 @@ async def definer_gate(
             "Auto-approving artifact because both validation and evaluation passed, "
             "but no real DEFINER reviewed this artifact. "
             "approved_by=stub:auto_approve. Consider switching to MANUAL mode "
-            "for production DEFINER review."
+            "for production DEFINER review.",
         )
         return DefinerDecision(
             action="approve",
             reason="Auto-approved (stub): structural validation and adversarial eval both passed. "
-                   "NOTE: No real DEFINER reviewed this artifact — approval is automated.",
+            "NOTE: No real DEFINER reviewed this artifact — approval is automated.",
             approved_by="stub:auto_approve",
         )
 

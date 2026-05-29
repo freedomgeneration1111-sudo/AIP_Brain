@@ -6,6 +6,7 @@ the critical new behaviors + static layering check still execute.
 """
 
 import asyncio
+
 import pytest
 
 from aip.foundation.schemas import CollaboratorConfig, CollaboratorRole
@@ -19,21 +20,25 @@ except Exception:
 class FakeAuthStore:
     def __init__(self):
         self.users = {}
+
     async def create_user(self, identity, role, password_hash):
         if identity in self.users:
             return False
         self.users[identity] = {"role": role}
         return True
+
     async def update_user_role(self, identity, new_role):
         if identity not in self.users or self.users[identity]["role"] == "definer":
             return False
         self.users[identity]["role"] = new_role
         return True
+
     async def revoke_user(self, identity):
         if identity not in self.users or self.users[identity]["role"] == "definer":
             return False
         del self.users[identity]
         return True
+
     async def list_users(self):
         return [{"identity": k, "role": v["role"]} for k, v in self.users.items()]
 
@@ -83,8 +88,10 @@ async def test_list_excludes_definer(cm):
 
 
 def test_layering_adapter_does_not_import_orchestration():
-    """Static check for gate item (l) — reads source as text to avoid triggering optional deps (bcrypt) at collection time."""
+    """Static check for gate item (l) — reads source as text
+    to avoid triggering optional deps (bcrypt) at collection time."""
     import os
+
     # test file is in tests/; go up to aip/ root
     test_dir = os.path.dirname(os.path.abspath(__file__))
     aip_root = os.path.dirname(test_dir)

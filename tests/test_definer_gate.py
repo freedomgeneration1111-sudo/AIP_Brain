@@ -14,10 +14,10 @@ import pytest
 from aip.foundation.validation import ValidationResult
 from aip.orchestration.nodes.adversarial_eval import EvalResult
 from aip.orchestration.nodes.definer_gate import (
-    definer_gate,
     DefinerDecision,
     DefinerGateMode,
     ManualReviewRequired,
+    definer_gate,
 )
 from aip.orchestration.nodes.synthesis import SynthesisOutput
 
@@ -56,6 +56,7 @@ def _make_eval_result(passed=True, ci_fixture=False):
 # ---------------------------------------------------------------
 # AUTO_APPROVE_STUB mode tests (unchanged behavior)
 # ---------------------------------------------------------------
+
 
 def test_auto_approve_when_both_pass_ci_mode(monkeypatch):
     """In CI mode, both pass -> approve with stub:auto_approve_ci marker."""
@@ -145,6 +146,7 @@ def test_reject_when_validation_passes_but_eval_fails():
 # ---------------------------------------------------------------
 # MANUAL mode tests
 # ---------------------------------------------------------------
+
 
 def test_manual_mode_raises_manual_review_required():
     """MANUAL mode raises ManualReviewRequired (not NotImplementedError)."""

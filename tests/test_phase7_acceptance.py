@@ -19,9 +19,9 @@ try:
 except ImportError:
     TestClient = None  # type: ignore
 
-from aip.cli.main import cli
 from aip.adapter.api.app import create_app
 from aip.adapter.mcp.server import AipMcpServer
+from aip.cli.main import cli
 
 
 @pytest.mark.skipif(CliRunner is None, reason="click not installed")
@@ -72,7 +72,11 @@ def test_scenario_2_full_api_round_trip():
 @pytest.mark.skipif(TestClient is None, reason="fastapi not installed")
 def test_scenario_3_mcp_tool_round_trip():
     """3. MCP tool round trip (search → artifact_list → artifact_approve with admin gate → trace_query)."""
-    container = type("C", (), {"autonomy_gate": None, "lexical_store": None, "ecs_store": None, "canonical_store": None, "trace_store": None})()
+    container = type(
+        "C",
+        (),
+        {"autonomy_gate": None, "lexical_store": None, "ecs_store": None, "canonical_store": None, "trace_store": None},
+    )()
     server = AipMcpServer(container)
     tools = server.list_tools()
     assert any(t.tool_name == "aip_search" for t in tools)
@@ -81,7 +85,8 @@ def test_scenario_3_mcp_tool_round_trip():
 
 @pytest.mark.skipif(TestClient is None, reason="fastapi not installed")
 def test_scenario_4_admin_memory_inspector():
-    """4. Admin + Memory inspector (config, Sexton, Beast, Router, Budget, Autonomy log + trace/events/search/entities/canonical)."""
+    """4. Admin + Memory inspector (config, Sexton, Beast, Router, Budget,
+    Autonomy log + trace/events/search/entities/canonical)."""
     app = create_app()
     client = TestClient(app)
 
@@ -96,6 +101,3 @@ def test_scenario_4_admin_memory_inspector():
 
     r = client.get("/api/v1/memory/canonical")
     assert r.status_code in (200, 503)
-
-
-

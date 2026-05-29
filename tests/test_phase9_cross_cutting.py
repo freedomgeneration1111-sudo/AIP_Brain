@@ -55,8 +55,14 @@ def test_network_imports_allowed_in_adapter_only():
 def test_no_hardcoded_models_in_application_logic():
     """No hardcoded model names in application logic. Docstrings/comments/model_gen_assumption exempt."""
     MODEL_NAME_PATTERNS = [
-        r"deepseek", r"claude", r"gpt-", r"qwen",
-        r"\bllama\b", r"mistral", r"gemini", r"o1-",
+        r"deepseek",
+        r"claude",
+        r"gpt-",
+        r"qwen",
+        r"\bllama\b",
+        r"mistral",
+        r"gemini",
+        r"o1-",
     ]
 
     violations = []
@@ -140,9 +146,7 @@ def test_three_layer_import_boundaries():
                     if (layer_dir, imp) in FORBIDDEN:
                         violations.append(f"{py_file.relative_to(REPO_ROOT)}: {layer_dir} imports {imp}")
 
-    assert not violations, (
-        "Import boundary violations:\n" + "\n".join(violations)
-    )
+    assert not violations, "Import boundary violations:\n" + "\n".join(violations)
 
 
 def test_definer_sovereignty_on_canonical_writes():
@@ -153,6 +157,7 @@ def test_definer_sovereignty_on_canonical_writes():
     """
     # Verify CanonicalPipeline uses AutonomyGate
     from aip.orchestration.canonical_pipeline import CanonicalPipeline
+
     source = Path(__file__).parent.parent / "src" / "aip" / "orchestration" / "canonical_pipeline.py"
     content = source.read_text()
     assert "autonomy_gate" in content, "CanonicalPipeline must reference autonomy_gate"
@@ -160,6 +165,7 @@ def test_definer_sovereignty_on_canonical_writes():
 
     # Verify MCP artifacts tool uses gate
     from aip.adapter.mcp.tools.artifacts import aip_artifact_approve
+
     source = Path(__file__).parent.parent / "src" / "aip" / "adapter" / "mcp" / "tools" / "artifacts.py"
     content = source.read_text()
     # MCP artifacts already checked by server (autonomy enforcement per spec)
@@ -171,8 +177,8 @@ def test_appendix_d_constraints():
 
     Per Appendix D / Process Rule 12: knowledge store must be separate from canonical store.
     """
-    from aip.adapter.knowledge.sqlite_knowledge_store import SqliteKnowledgeStore
     from aip.adapter.canonical.sqlite_canonical_store import SqliteCanonicalStore
+    from aip.adapter.knowledge.sqlite_knowledge_store import SqliteKnowledgeStore
 
     # Knowledge store and canonical store are separate classes
     assert SqliteKnowledgeStore is not SqliteCanonicalStore

@@ -2,11 +2,11 @@
 
 Plugin system configuration, performance tuning, and plugin status tracking.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Literal
-
 
 # Type alias for plugin status
 PluginStatus = Literal["loaded", "error", "disabled"]
@@ -20,6 +20,7 @@ class PluginConfig:
     enabled and sandbox_mode are toggleable.
     model_gen_assumption tags what model limitations plugins compensate for.
     """
+
     plugins_dir: str = "plugins"
     enabled: bool = True
     auto_discover: bool = True
@@ -34,6 +35,7 @@ class PerformanceConfig:
     Laptop-viable — must work on 4-6 GB RAM.
     profiling_enabled is toggleable.
     """
+
     profiling_enabled: bool = False
     max_memory_mb: int = 4096
     retrieval_timeout_seconds: float = 30.0

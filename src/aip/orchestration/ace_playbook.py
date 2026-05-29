@@ -5,6 +5,7 @@ Derive and update from Sexton FailureClassification output.
 Per Appendix D: deprecation (supersession) not deletion.
 Uses AcePlaybookEntry (7.0a) which carries model_gen_assumption.
 """
+
 from __future__ import annotations
 
 import json
@@ -92,6 +93,7 @@ class AcePlaybook:
         conn = sqlite3.connect(self._db_path)
         try:
             from datetime import datetime, timezone
+
             conn.execute(
                 "UPDATE ace_playbook SET deprecated_at = ?, deprecated_reason = ? WHERE entry_id = ?",
                 (datetime.now(timezone.utc).isoformat(), reason, entry_id),
@@ -101,7 +103,9 @@ class AcePlaybook:
             conn.close()
 
     async def derive_from_classification(
-        self, classification: FailureClassification, trace_event: dict[str, Any]
+        self,
+        classification: FailureClassification,
+        trace_event: dict[str, Any],
     ) -> AcePlaybookEntry | None:
         """Bridge from 7.1 Sexton output to persistent playbook entry (per 7.2 prose)."""
         from datetime import datetime, timezone
@@ -132,9 +136,7 @@ class AcePlaybook:
             return entry
         return entry  # return for DEFINER review if not auto-promoted
 
-    async def get_active_entries(
-        self, domain: str, failure_type: str | None = None
-    ) -> list[AcePlaybookEntry]:
+    async def get_active_entries(self, domain: str, failure_type: str | None = None) -> list[AcePlaybookEntry]:
         conn = sqlite3.connect(self._db_path)
         try:
             query = "SELECT * FROM ace_playbook WHERE deprecated_at IS NULL AND domain = ?"

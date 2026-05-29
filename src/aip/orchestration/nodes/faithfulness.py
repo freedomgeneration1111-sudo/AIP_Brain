@@ -24,7 +24,6 @@ from aip.foundation.schemas import (
     FaithfulnessResult,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -64,10 +63,13 @@ async def evaluate_faithfulness(
     if model_resolver is not None:
         try:
             # Format context chunks for the model
-            context_text = "\n\n".join(
-                f"[{c.id}] (score: {c.score:.2f}, domain: {c.domain}):\n{c.content}"
-                for c in retrieved_context
-            ) if retrieved_context else "(No context retrieved)"
+            context_text = (
+                "\n\n".join(
+                    f"[{c.id}] (score: {c.score:.2f}, domain: {c.domain}):\n{c.content}" for c in retrieved_context
+                )
+                if retrieved_context
+                else "(No context retrieved)"
+            )
 
             messages = [
                 {
@@ -77,8 +79,8 @@ async def evaluate_faithfulness(
                         "the retrieved context it was based on, identify any claims in the "
                         "artifact that are NOT grounded in the context. Score faithfulness "
                         "0.0-1.0. Also estimate context coverage (fraction of context addressed). "
-                        "Return JSON: {\"faithfulness_score\": float, \"context_coverage\": float, "
-                        "\"hallucination_flags\": [str], \"rationale\": str}"
+                        'Return JSON: {"faithfulness_score": float, "context_coverage": float, '
+                        '"hallucination_flags": [str], "rationale": str}'
                     ),
                 },
                 {
@@ -105,8 +107,11 @@ async def evaluate_faithfulness(
                             rationale="CI fixture — automatic pass (model returned fixture response)",
                             model_slot_used="evaluation",
                             tokens_consumed=tokens_consumed,
-                            model_gen_assumption="Models may produce plausible-sounding but ungrounded claims when context is insufficient",
-                        )
+                            model_gen_assumption=(
+                                "Models may produce plausible-sounding but ungrounded "
+                                "claims when context is insufficient"
+                            ),
+                        ),
                     ],
                     ci_fixture=True,
                 )
@@ -139,8 +144,10 @@ async def evaluate_faithfulness(
                 rationale=rationale,
                 model_slot_used=model_slot_used,
                 tokens_consumed=tokens_consumed,
-                model_gen_assumption="Models may produce plausible-sounding but ungrounded claims when context is insufficient",
-            )
+                model_gen_assumption=(
+                    "Models may produce plausible-sounding but ungrounded claims when context is insufficient"
+                ),
+            ),
         ],
         ci_fixture=ci_fixture,
     )

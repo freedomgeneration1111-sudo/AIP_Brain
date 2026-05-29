@@ -87,7 +87,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
                     canonical_state TEXT,
                     PRIMARY KEY (knowledge_id, canonical_id)
                 );
-                """
+                """,
             )
         finally:
             conn.close()
@@ -123,7 +123,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
                     canonical_state TEXT,
                     PRIMARY KEY (knowledge_id, canonical_id)
                 );
-                """
+                """,
             )
         finally:
             await conn.close()
@@ -200,8 +200,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
                     domain,
                 )
                 logger.info(
-                    "Indexed compiled knowledge '%s' into vector store "
-                    "(embedding dim=%d, domain='%s').",
+                    "Indexed compiled knowledge '%s' into vector store (embedding dim=%d, domain='%s').",
                     knowledge_id,
                     len(embedding),
                     domain,
@@ -215,8 +214,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 )
         else:
             logger.info(
-                "No embedding available for compiled knowledge '%s' — "
-                "skipping vector index. Lexical index only.",
+                "No embedding available for compiled knowledge '%s' — skipping vector index. Lexical index only.",
                 knowledge_id,
             )
 
@@ -260,7 +258,8 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 """
                 INSERT OR REPLACE INTO compiled_knowledge
                 (knowledge_id, content, source_canonical_ids, domain, state, metadata, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM compiled_knowledge WHERE knowledge_id=?), ?), ?)
+                VALUES (?, ?, ?, ?, ?, ?,
+                        COALESCE((SELECT created_at FROM compiled_knowledge WHERE knowledge_id=?), ?), ?)
                 """,
                 (
                     knowledge_id,
@@ -280,7 +279,8 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 await conn.execute(
                     """
                     INSERT OR IGNORE INTO compiled_knowledge_provenance
-                    (knowledge_id, canonical_id, canonical_domain, canonical_title, canonical_evaluation_scores, canonical_state)
+                    (knowledge_id, canonical_id, canonical_domain,
+                     canonical_title, canonical_evaluation_scores, canonical_state)
                     VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (knowledge_id, cid, domain, "", "[]", "APPROVED"),
@@ -319,9 +319,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
             await conn.close()
             self._conn = None
 
-    async def list_compiled(
-        self, domain: str | None = None, state: CompilationState | None = None
-    ) -> list[dict]:
+    async def list_compiled(self, domain: str | None = None, state: CompilationState | None = None) -> list[dict]:
         conn = await self._get_conn()
         try:
             query = "SELECT * FROM compiled_knowledge WHERE 1=1"
@@ -432,9 +430,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
             await conn.close()
             self._conn = None
 
-    async def search_compiled(
-        self, query: str, domain: str | None = None, limit: int = 10
-    ) -> list[dict]:
+    async def search_compiled(self, query: str, domain: str | None = None, limit: int = 10) -> list[dict]:
         """Search across Vector + Lexical stores with semantic and text matching.
 
         When an EmbeddingProvider is available, performs parallel vector
@@ -454,7 +450,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
                         "content": h.content if hasattr(h, "content") else "",
                         "score": h.score if hasattr(h, "score") else 0.0,
                         "source": "lexical",
-                    }
+                    },
                 )
         except Exception as exc:
             logger.debug("Lexical search failed for query '%s': %s", query[:100], exc)
@@ -464,21 +460,15 @@ class SqliteKnowledgeStore(KnowledgeStore):
             query_vec = await self._generate_embedding(query)
             if query_vec is not None:
                 try:
-                    vec_hits = await self._vector_store.retrieve(
-                        query_vec, domain=domain, top_k=limit
-                    )
+                    vec_hits = await self._vector_store.retrieve(query_vec, domain=domain, top_k=limit)
                     for h in vec_hits:
                         results.append(
                             {
-                                "knowledge_id": (
-                                    h.id.replace("compiled:", "")
-                                    if hasattr(h, "id")
-                                    else ""
-                                ),
+                                "knowledge_id": (h.id.replace("compiled:", "") if hasattr(h, "id") else ""),
                                 "content": h.content if hasattr(h, "content") else "",
                                 "score": h.score if hasattr(h, "score") else 0.0,
                                 "source": "vector",
-                            }
+                            },
                         )
                 except Exception as exc:
                     logger.debug(

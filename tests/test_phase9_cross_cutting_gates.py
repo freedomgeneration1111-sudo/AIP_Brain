@@ -54,7 +54,7 @@ def _get_python_files(base: Path, layers: list[str] | None = None) -> list[Path]
 def test_no_hardcoded_model_names_in_application_logic():
     """
     Model names must not be hardcoded in application logic.
-    
+
     Exceptions (per Phase 9 spec):
     - docstrings and comments are documentation, not application logic
     - model_gen_assumption fields are REQUIRED by §1.8 to contain model name references
@@ -76,10 +76,12 @@ def test_no_hardcoded_model_names_in_application_logic():
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
                 docstring = ast.get_docstring(node)
                 if docstring:
-                    if (node.body
+                    if (
+                        node.body
                         and isinstance(node.body[0], ast.Expr)
                         and isinstance(node.body[0].value, ast.Constant)
-                        and isinstance(node.body[0].value.value, str)):
+                        and isinstance(node.body[0].value.value, str)
+                    ):
                         docstring_lines.add(node.body[0].value.lineno)
 
         # Collect comment lines to skip
@@ -105,14 +107,14 @@ def test_no_hardcoded_model_names_in_application_logic():
                     if len(val) > 40:  # Long strings are likely assumption descriptions, not model references
                         continue
                     violations.append(
-                        f"{py_file.relative_to(REPO_ROOT)}:{node.lineno}: "
-                        f"possible hardcoded model name {val!r}"
+                        f"{py_file.relative_to(REPO_ROOT)}:{node.lineno}: possible hardcoded model name {val!r}",
                     )
 
     assert not violations, (
         "The following locations contain what appear to be hardcoded model names in application logic:\n"
         + "\n".join(violations)
-        + "\n\nModel names must only be configured in aip.config.toml (except for required model_gen_assumption tags, docstrings, and comments)."
+        + "\n\nModel names must only be configured in aip.config.toml "
+        "(except for required model_gen_assumption tags, docstrings, and comments)."
     )
 
 
@@ -120,7 +122,7 @@ def test_network_imports_only_in_adapter():
     """
     Network libraries (httpx, openai, etc.) are permitted in adapter layer ONLY.
     Foundation and orchestration remain network-free per §7.2.
-    
+
     Phase 9 fix: httpx is now on the adapter allow-list explicitly.
     """
     FORBIDDEN_IMPORTS = {
@@ -173,7 +175,7 @@ def test_import_boundaries_three_layer():
     - foundation: may only import stdlib + itself (no orchestration or adapter imports)
     - orchestration: may import from foundation only (not adapter directly)
     - adapter: may import from foundation only (not orchestration)
-    
+
     Phase 9 fix: orchestration uses model_provider_proxy instead of direct adapter imports.
     """
     LAYERS = {
@@ -189,11 +191,36 @@ def test_import_boundaries_three_layer():
     }
 
     STDLIB_SAFE = {
-        "__future__", "dataclasses", "enum", "typing", "pathlib", "hashlib",
-        "json", "sqlite3", "math", "time", "re", "ast", "pytest", "abc",
-        "datetime", "collections", "functools", "itertools", "logging",
-        "uuid", "asyncio", "copy", "contextlib", "secrets", "os",
-        "importlib", "textwrap", "traceback", "io", "csv",
+        "__future__",
+        "dataclasses",
+        "enum",
+        "typing",
+        "pathlib",
+        "hashlib",
+        "json",
+        "sqlite3",
+        "math",
+        "time",
+        "re",
+        "ast",
+        "pytest",
+        "abc",
+        "datetime",
+        "collections",
+        "functools",
+        "itertools",
+        "logging",
+        "uuid",
+        "asyncio",
+        "copy",
+        "contextlib",
+        "secrets",
+        "os",
+        "importlib",
+        "textwrap",
+        "traceback",
+        "io",
+        "csv",
     }
 
     violations = []
@@ -232,8 +259,8 @@ def test_import_boundaries_three_layer():
 
                     if (layer_name, imp_layer) in FORBIDDEN_CROSS_IMPORTS:
                         violations.append(
-                            f"{py_file.relative_to(REPO_ROOT)} imports from '{imp_layer}' "
-                            f"(current layer: {layer_name})"
+                            f"{py_file.relative_to(REPO_ROOT)} imports from "
+                            f"'{imp_layer}' (current layer: {layer_name})",
                         )
 
     assert not violations, (
@@ -284,8 +311,9 @@ def test_sqlite_vss_graceful_skip_in_ci():
     When the extension is unavailable, the store should set _vss_available=False
     and not crash during initialization.
     """
-    from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
     import tempfile
+
+    from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
 
     # This test should work even when vss0.so is not available
     with tempfile.TemporaryDirectory() as tmp:

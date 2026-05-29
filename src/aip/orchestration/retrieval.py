@@ -52,14 +52,15 @@ def fake_embed(text: str, dimensions: int = 768) -> list[float]:
     regardless of Python version or platform). Per spec.
     """
     import hashlib
+
     digest = hashlib.sha256(text.encode()).digest()
     vec = []
     for i in range(dimensions):
         byte_idx = (i * 4) % len(digest)
-        val = int.from_bytes(digest[byte_idx:byte_idx+4].ljust(4, b'\x00'), 'big')
+        val = int.from_bytes(digest[byte_idx : byte_idx + 4].ljust(4, b"\x00"), "big")
         vec.append(val / (2**32 - 1))
-    norm = sum(v*v for v in vec) ** 0.5
-    return [v/norm for v in vec] if norm > 0 else vec
+    norm = sum(v * v for v in vec) ** 0.5
+    return [v / norm for v in vec] if norm > 0 else vec
 
 
 def _compute_recency(created_at: str | None) -> float:
@@ -68,6 +69,7 @@ def _compute_recency(created_at: str | None) -> float:
         return 0.0
     try:
         from datetime import datetime, timezone
+
         created_dt = datetime.fromisoformat(created_at)
         if created_dt.tzinfo is None:
             created_dt = created_dt.replace(tzinfo=timezone.utc)

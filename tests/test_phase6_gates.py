@@ -1,6 +1,7 @@
 """CHUNK-8.8: Final Cross-Cutting Gates for Phase 6 (extending 7.7 for all surfaces).
 
-Per spec: 7 categories — network isolation, model-name, DEFINER sovereignty, import boundary, Appendix D, config toggleability (§1.8), existing 0-5/7 gates still pass.
+Per spec: 7 categories — network isolation, model-name, DEFINER sovereignty,
+import boundary, Appendix D, config toggleability (§1.8), existing 0-5/7 gates still pass.
 """
 
 from __future__ import annotations
@@ -77,6 +78,7 @@ def test_phase6_definer_sovereignty_no_bypass_for_admin_actions():
     try:
         from aip.adapter.api.routes.review import router as review_router  # type: ignore
         from aip.adapter.mcp.server import AipMcpServer
+
         assert review_router is not None
         assert hasattr(AipMcpServer, "call_tool")
     except Exception:
@@ -101,6 +103,7 @@ def test_phase6_appendix_d_constraints():
 def test_phase6_config_toggleability_all_sections():
     """All Phase 6 config sections ([api], [cli], [mcp], [chat], [autonomy], [lexical]) are read and respected."""
     from aip.foundation.schemas import SurfaceConfig
+
     cfg = SurfaceConfig()
     assert hasattr(cfg, "api_host")
     assert hasattr(cfg, "chat_max_history_turns")
@@ -108,5 +111,7 @@ def test_phase6_config_toggleability_all_sections():
 
 
 def test_all_prior_phase0_through_8_7_gates_still_pass():
-    """Backward compatibility: all previous gate batteries still green with Phase 6 surfaces installed."""
-    # Core prior gates (layering, phase4, phase5, phase6 schema, remaining adapters, cli, mcp) were green in the 62-pass run
+    """Backward compatibility: all previous gate batteries still green
+    with Phase 6 surfaces installed."""
+    # Core prior gates (layering, phase4, phase5, phase6 schema,
+    # remaining adapters, cli, mcp) were green in the 62-pass run

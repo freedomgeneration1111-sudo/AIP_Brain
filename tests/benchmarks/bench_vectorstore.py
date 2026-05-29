@@ -1,6 +1,7 @@
 """Synthetic deterministic VectorStore query benchmark (CHUNK-10.4)."""
 
 import time
+
 import pytest
 
 

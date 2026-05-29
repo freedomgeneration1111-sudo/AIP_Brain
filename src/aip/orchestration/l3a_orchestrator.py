@@ -32,8 +32,8 @@ async def full_l3a_evaluation(
     Skips expensive model stages when Stage 1 already fails (anti-token-burn).
     Uses thresholds from config [evaluation].
     """
-    from aip.orchestration.nodes.faithfulness import evaluate_faithfulness
     from aip.orchestration.nodes.domain_coherence import evaluate_domain_coherence
+    from aip.orchestration.nodes.faithfulness import evaluate_faithfulness
 
     # Stage 1 (always run)
     stage1 = structural_validate(artifact_content)
@@ -76,7 +76,9 @@ async def full_l3a_evaluation(
             domain_coherence_threshold = 0.60
     else:
         faithfulness_threshold = eval_cfg.get("faithfulness_threshold", 0.70) if isinstance(eval_cfg, dict) else 0.70
-        domain_coherence_threshold = eval_cfg.get("domain_coherence_threshold", 0.60) if isinstance(eval_cfg, dict) else 0.60
+        domain_coherence_threshold = (
+            eval_cfg.get("domain_coherence_threshold", 0.60) if isinstance(eval_cfg, dict) else 0.60
+        )
 
     # Stage 2
     stage2 = await evaluate_faithfulness(

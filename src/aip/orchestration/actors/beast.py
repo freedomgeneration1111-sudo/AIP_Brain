@@ -25,21 +25,22 @@ Usage via AipContainer:
         await beast.run_corpus_maintenance()
         await beast.run_entity_maintenance()
 """
+
 from __future__ import annotations
 
 import logging
 import time
 from typing import Any
 
-from aip.foundation.schemas import BeastCadenceConfig
 from aip.foundation.protocols import (
-    VectorStore,
-    EmbeddingProvider,
-    ProjectStore,
-    EventStore,
-    EntityStore,
     CanonicalStore,
+    EmbeddingProvider,
+    EntityStore,
+    EventStore,
+    ProjectStore,
+    VectorStore,
 )
+from aip.foundation.schemas import BeastCadenceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -242,9 +243,7 @@ class Beast:
                 stale_found += len(stale_vectors)
 
                 # Step 2: Re-embed and upsert each stale vector
-                reembedded_count, failed_count = await self._reembed_stale_vectors(
-                    stale_vectors, pid
-                )
+                reembedded_count, failed_count = await self._reembed_stale_vectors(stale_vectors, pid)
                 reembedded += reembedded_count
                 failed += failed_count
 
@@ -315,9 +314,7 @@ class Beast:
 
         return result
 
-    async def _reembed_stale_vectors(
-        self, stale_vectors: list[dict], domain: str | None = None
-    ) -> tuple[int, int]:
+    async def _reembed_stale_vectors(self, stale_vectors: list[dict], domain: str | None = None) -> tuple[int, int]:
         """Re-embed and upsert stale vectors. Returns (reembedded, failed)."""
         reembedded = 0
         failed = 0
@@ -345,7 +342,8 @@ class Beast:
             except Exception as exc:
                 logger.warning(
                     "Failed to re-embed vector %s: %s",
-                    vec_id, exc,
+                    vec_id,
+                    exc,
                 )
                 failed += 1
 
@@ -391,16 +389,19 @@ class Beast:
                     try:
                         data = await self._entity_store.get_entity(entity_id)
                         if data and data.get("updated_since_canonical"):
-                            stale_entities.append({
-                                "entity_id": entity_id,
-                                "entity_type": data.get("entity_type"),
-                                "name": data.get("name"),
-                                "reason": "updated_since_canonical",
-                            })
+                            stale_entities.append(
+                                {
+                                    "entity_id": entity_id,
+                                    "entity_type": data.get("entity_type"),
+                                    "name": data.get("name"),
+                                    "reason": "updated_since_canonical",
+                                },
+                            )
                     except Exception as exc:
                         logger.warning(
                             "Entity consistency check failed for %s: %s",
-                            entity_id, exc,
+                            entity_id,
+                            exc,
                         )
                         consistency_errors += 1
 

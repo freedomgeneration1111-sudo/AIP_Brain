@@ -1,6 +1,6 @@
 """Phase 3 integration test — multi-turn session with trajectory regulation, embedding, and context reset (CHUNK-5.8).
 
-Extends CHUNK-4.7 (Phase 2 lifecycle) with L4 trajectory, SessionManager (5.7), 
+Extends CHUNK-4.7 (Phase 2 lifecycle) with L4 trajectory, SessionManager (5.7),
 context reset (5.6), real embedding mock (5.1), and ci_mode resolver (5.0b).
 
 All scenarios run under ci_mode=True for determinism (no network, no hardcoded models).
@@ -14,18 +14,24 @@ from aip.orchestration.session import SessionManager
 from aip.orchestration.trajectory.context_reset import execute_context_reset
 from aip.orchestration.trajectory.regulator import should_intervene
 
-
 # --- Shared fakes (per ANNEX + extended for Phase 3 scenarios) ---
+
 
 class FakeTraceStore:
     def __init__(self):
         self.events = []
 
     async def write_event(self, session_id, node_type, failure_type, outcome, detail=None, **kwargs):
-        self.events.append({
-            "session_id": session_id, "node_type": node_type,
-            "failure_type": failure_type, "outcome": outcome, "detail": detail, **kwargs,
-        })
+        self.events.append(
+            {
+                "session_id": session_id,
+                "node_type": node_type,
+                "failure_type": failure_type,
+                "outcome": outcome,
+                "detail": detail,
+                **kwargs,
+            },
+        )
 
     async def query_events(self, session_id, node_type=None, limit=100):
         results = self.events
@@ -105,6 +111,7 @@ def fakes():
 
 # --- Scenario 1: Happy path multi-turn (no intervention) ---
 
+
 @pytest.mark.asyncio
 async def test_happy_path_multi_turn(manager, fakes):
     """3 successful turns, context accumulates, no signals, ECS lifecycle exercised via fakes."""
@@ -133,28 +140,48 @@ async def test_happy_path_multi_turn(manager, fakes):
 
 # --- Scenario 2: Trajectory regulation + context reset ---
 
+
 @pytest.mark.asyncio
 async def test_trajectory_triggers_context_reset(manager, fakes):
     """5 turns → D + F signals (2-of-3) → full §10.2 reset via SessionManager.handle."""
     ctx = manager.create_session("s-reset", "p1")
     # Simulate degradation
     ctx = SessionContext(
-        session_id=ctx.session_id, project_id=ctx.project_id,
-        turn_count=5, context_tokens_estimate=90000, context_window_limit=128000,
+        session_id=ctx.session_id,
+        project_id=ctx.project_id,
+        turn_count=5,
+        context_tokens_estimate=90000,
+        context_window_limit=128000,
         artifacts_produced=["a1", "a2", "a3", "a4", "a5"],
     )
 
     signals = [
-        TrajectorySignal(signal_type="loop", session_id="s-reset", failure_type="D",
-                         confidence=0.9, detail="repetition", detected_at="2026-01-01T00:00:00Z"),
-        TrajectorySignal(signal_type="anxiety", session_id="s-reset", failure_type="F",
-                         confidence=0.85, detail="length collapse", detected_at="2026-01-01T00:00:01Z"),
+        TrajectorySignal(
+            signal_type="loop",
+            session_id="s-reset",
+            failure_type="D",
+            confidence=0.9,
+            detail="repetition",
+            detected_at="2026-01-01T00:00:00Z",
+        ),
+        TrajectorySignal(
+            signal_type="anxiety",
+            session_id="s-reset",
+            failure_type="F",
+            confidence=0.85,
+            detail="length collapse",
+            detected_at="2026-01-01T00:00:01Z",
+        ),
     ]
 
     # Direct handle (simulates what engine would call after check_trajectory)
     new_ctx = await manager.handle_intervention(
-        ctx, signals,
-        fakes["artifact"], fakes["trace"], fakes["event"], fakes["ecs"],
+        ctx,
+        signals,
+        fakes["artifact"],
+        fakes["trace"],
+        fakes["event"],
+        fakes["ecs"],
     )
 
     # Post-reset: fresh context
@@ -172,6 +199,7 @@ async def test_trajectory_triggers_context_reset(manager, fakes):
 # Full wiring requires engine + retrieval integration; these assert the components are
 # reachable in ci_mode and that 5.1/5.0b are used (not fake_embed / hardcoded).
 
+
 def test_model_slot_resolver_ci_mode_available():
     resolver = ModelSlotResolver(TEST_CONFIG)
     slots = resolver.list_slots()
@@ -182,6 +210,7 @@ def test_model_slot_resolver_ci_mode_available():
 def test_embedding_client_mock_importable():
     # The 5.1 client is importable and supports mock for CI (detailed test in 5.1)
     from aip.adapter.embedding.ollama_embed import MockOllamaEmbeddingClient
+
     client = MockOllamaEmbeddingClient(dimensions=768)
     assert client is not None
 

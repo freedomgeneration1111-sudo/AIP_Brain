@@ -15,20 +15,20 @@ from typing import Any
 from fastapi import Depends, Request
 
 from aip.foundation.protocols import (
-    VectorStore,
-    EcsStore,
     ArtifactStore,
-    EventStore,
-    TraceStore,
-    BudgetStore,
-    ProjectStore,
-    EntityStore,
-    LexicalStore,
-    CanonicalStore,
     AutonomyGate,
-    ModelProvider,
+    BudgetStore,
+    CanonicalStore,
+    EcsStore,
     EmbeddingProvider,
+    EntityStore,
+    EventStore,
     KnowledgeStore,
+    LexicalStore,
+    ModelProvider,
+    ProjectStore,
+    TraceStore,
+    VectorStore,
 )
 
 
@@ -85,6 +85,6 @@ def get_container(request: "Request") -> AipContainer:
 # Re-export auth dependencies so route modules can import from this single location
 from aip.adapter.auth.dependencies import (  # noqa: E402
     get_current_identity,
-    require_definer,
     require_collaborator_or_above,
+    require_definer,
 )

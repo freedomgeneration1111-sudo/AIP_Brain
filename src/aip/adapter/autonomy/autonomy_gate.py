@@ -33,7 +33,8 @@ class AutonomyGateImpl(AutonomyGate):
 
     def __init__(self, config: dict | None = None, escalation_store: Any | None = None) -> None:
         self._config = config or {}
-        # escalation_store param accepted for interface compatibility (ignored; we manage table directly like other adapters)
+        # escalation_store param accepted for interface compatibility
+        # (ignored; we manage table directly like other adapters)
         self._db_path = self._config.get("db_path", "db/state.db")  # fallback; tests override via config
         self._conn: aiosqlite.Connection | None = None
         self._ensure_table_sync()
@@ -181,7 +182,7 @@ class AutonomyGateImpl(AutonomyGate):
                         reason=r["reason"],
                         model_gen_assumption=r["model_gen_assumption"],
                         created_at=r["created_at"],
-                    )
+                    ),
                 )
             return results
         finally:

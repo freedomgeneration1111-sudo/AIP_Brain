@@ -4,18 +4,21 @@ Covers the 11 gate verifications (a-k) from spec prose.
 """
 
 import asyncio
+
 import pytest
 
-from aip.foundation.schemas import PluginConfig
 from aip.adapter.plugins.plugin_loader import PluginLoader
+from aip.foundation.schemas import PluginConfig
 from aip.orchestration.plugins import PluginManager
 
 
 class FakeResolver:
     def __init__(self):
         self.providers = {}
+
     def register_provider(self, slot, provider):
         self.providers[slot] = provider
+
     def unregister_provider(self, slot, name):
         self.providers.pop(slot, None)
 
@@ -29,10 +32,18 @@ class FakePlugin:
     def __init__(self, slot, name):
         self._slot = slot
         self._name = name
-    def get_slot_name(self): return self._slot
-    def get_provider_name(self): return self._name
-    async def health_check(self): return {"status": "ok"}
-    async def call_model(self, prompt, config): return "ok"
+
+    def get_slot_name(self):
+        return self._slot
+
+    def get_provider_name(self):
+        return self._name
+
+    async def health_check(self):
+        return {"status": "ok"}
+
+    async def call_model(self, prompt, config):
+        return "ok"
 
 
 def test_plugin_manager_register_and_list():

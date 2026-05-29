@@ -27,15 +27,12 @@ class ModelResolverProtocol(Protocol):
     Orchestration code imports this Protocol instead of the adapter class.
     """
 
-    async def call(self, slot_name: str, messages: list[dict], **kwargs: Any) -> Any:
-        ...
+    async def call(self, slot_name: str, messages: list[dict], **kwargs: Any) -> Any: ...
 
-    def resolve_slot(self, slot_name: str) -> Any:
-        ...
+    def resolve_slot(self, slot_name: str) -> Any: ...
 
     @property
-    def ci_mode(self) -> bool:
-        ...
+    def ci_mode(self) -> bool: ...
 
 
 def get_model_resolver(config_path: str | None = None, **kwargs: Any) -> ModelResolverProtocol:
@@ -50,6 +47,7 @@ def get_model_resolver(config_path: str | None = None, **kwargs: Any) -> ModelRe
     The import uses importlib to avoid a static AST-detectable import from adapter.
     """
     import importlib
+
     _mod = importlib.import_module("aip.adapter.model_slot_resolver")
     _cls = _mod.ModelSlotResolver
     return _cls(config_path=config_path, **kwargs)

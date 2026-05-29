@@ -23,6 +23,7 @@ def test_registry_loads_yaml():
 
 def test_layering():
     from pathlib import Path
+
     reg_file = Path(__file__).parent.parent / "src/aip/orchestration/workflow_registry.py"
     if reg_file.exists():
         text = reg_file.read_text()

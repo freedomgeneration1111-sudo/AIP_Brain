@@ -119,7 +119,7 @@ class SqliteVigilStore(VigilStore):
         conn = await self._get_conn()
         try:
             # Simplified staleness: last_evaluated older than threshold_days
-            cutoff = (datetime.now(timezone.utc) - timedelta(days=threshold_days)).isoformat().replace('+00:00', 'Z')
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=threshold_days)).isoformat().replace("+00:00", "Z")
             cursor = await conn.execute(
                 "SELECT * FROM canonical_health WHERE last_evaluated < ? OR last_evaluated IS NULL",
                 (cutoff,),
@@ -133,7 +133,7 @@ class SqliteVigilStore(VigilStore):
     async def record_vigil_check(self, canonical_count: int, stale_count: int, status: str) -> None:
         conn = await self._get_conn()
         try:
-            now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             await conn.execute(
                 "INSERT INTO vigil_checks (check_time, canonical_count, stale_count, status) VALUES (?, ?, ?, ?)",
                 (now, canonical_count, stale_count, status),
@@ -146,9 +146,7 @@ class SqliteVigilStore(VigilStore):
     async def get_last_vigil_check(self) -> dict | None:
         conn = await self._get_conn()
         try:
-            cursor = await conn.execute(
-                "SELECT * FROM vigil_checks ORDER BY check_time DESC LIMIT 1"
-            )
+            cursor = await conn.execute("SELECT * FROM vigil_checks ORDER BY check_time DESC LIMIT 1")
             row = await cursor.fetchone()
             return dict(row) if row else None
         finally:

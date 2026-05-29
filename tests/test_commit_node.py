@@ -6,15 +6,15 @@ import pytest
 
 from aip.foundation.protocols import ArtifactStore, EcsStore, EventStore
 from aip.orchestration.nodes.commit import (
-    commit_artifact,
-    CommitBlockedError,
     ArtifactRef,
+    CommitBlockedError,
+    commit_artifact,
 )
 from aip.orchestration.nodes.definer_gate import DefinerDecision
 from aip.orchestration.nodes.synthesis import SynthesisOutput
 
-
 # --- Simple Fake Stores for testing ---
+
 
 class FakeArtifactStore(ArtifactStore):
     def __init__(self):
@@ -34,13 +34,15 @@ class FakeEcsStore(EcsStore):
 
     async def transition(self, artifact_id, from_state, to_state, actor, reason, superseded_by=None):
         self._states[artifact_id] = to_state
-        self._transitions.append({
-            "artifact_id": artifact_id,
-            "from_state": from_state,
-            "to_state": to_state,
-            "actor": actor,
-            "reason": reason,
-        })
+        self._transitions.append(
+            {
+                "artifact_id": artifact_id,
+                "from_state": from_state,
+                "to_state": to_state,
+                "actor": actor,
+                "reason": reason,
+            },
+        )
 
     async def get_state(self, artifact_id):
         return self._states.get(artifact_id)
@@ -51,14 +53,16 @@ class FakeEventStore(EventStore):
         self.events = []
 
     async def write_event(self, event_type, actor, artifact_id, from_state=None, to_state=None, **kwargs):
-        self.events.append({
-            "event_type": event_type,
-            "actor": actor,
-            "artifact_id": artifact_id,
-            "from_state": from_state,
-            "to_state": to_state,
-            **kwargs,
-        })
+        self.events.append(
+            {
+                "event_type": event_type,
+                "actor": actor,
+                "artifact_id": artifact_id,
+                "from_state": from_state,
+                "to_state": to_state,
+                **kwargs,
+            },
+        )
 
 
 def _make_synthesis():
@@ -91,8 +95,13 @@ async def test_commit_on_approval():
     event_store = FakeEventStore()
 
     result = await commit_artifact(
-        _make_synthesis(), _make_approved_decision(), "proj1", "wu1",
-        artifact_store, ecs_store, event_store,
+        _make_synthesis(),
+        _make_approved_decision(),
+        "proj1",
+        "wu1",
+        artifact_store,
+        ecs_store,
+        event_store,
     )
 
     assert isinstance(result, ArtifactRef)
@@ -107,8 +116,13 @@ async def test_commit_writes_to_artifact_store():
     event_store = FakeEventStore()
 
     result = await commit_artifact(
-        _make_synthesis(), _make_approved_decision(), "proj1", "wu1",
-        artifact_store, ecs_store, event_store,
+        _make_synthesis(),
+        _make_approved_decision(),
+        "proj1",
+        "wu1",
+        artifact_store,
+        ecs_store,
+        event_store,
     )
 
     stored = await artifact_store.read(result.artifact_id)
@@ -122,8 +136,13 @@ async def test_commit_transitions_ecs_state():
     event_store = FakeEventStore()
 
     result = await commit_artifact(
-        _make_synthesis(), _make_approved_decision(), "proj1", "wu1",
-        artifact_store, ecs_store, event_store,
+        _make_synthesis(),
+        _make_approved_decision(),
+        "proj1",
+        "wu1",
+        artifact_store,
+        ecs_store,
+        event_store,
     )
 
     state = await ecs_store.get_state(result.artifact_id)
@@ -138,8 +157,13 @@ async def test_r3_ecs_transition_recorded_in_event_log():
     event_store = FakeEventStore()
 
     result = await commit_artifact(
-        _make_synthesis(), _make_approved_decision(), "proj1", "wu1",
-        artifact_store, ecs_store, event_store,
+        _make_synthesis(),
+        _make_approved_decision(),
+        "proj1",
+        "wu1",
+        artifact_store,
+        ecs_store,
+        event_store,
     )
 
     assert len(event_store.events) == 1
@@ -159,8 +183,13 @@ async def test_p2_ecs_transition_includes_actor_and_reason():
     event_store = FakeEventStore()
 
     await commit_artifact(
-        _make_synthesis(), _make_approved_decision(), "proj1", "wu1",
-        artifact_store, ecs_store, event_store,
+        _make_synthesis(),
+        _make_approved_decision(),
+        "proj1",
+        "wu1",
+        artifact_store,
+        ecs_store,
+        event_store,
     )
 
     assert len(ecs_store._transitions) == 1
@@ -179,8 +208,13 @@ async def test_commit_blocked_on_reject():
 
     with pytest.raises(CommitBlockedError, match="DEFINER decision was 'reject'"):
         await commit_artifact(
-            _make_synthesis(), _make_rejected_decision(), "proj1", "wu1",
-            artifact_store, ecs_store, event_store,
+            _make_synthesis(),
+            _make_rejected_decision(),
+            "proj1",
+            "wu1",
+            artifact_store,
+            ecs_store,
+            event_store,
         )
 
     # No event logged on blocked commit

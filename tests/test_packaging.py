@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
-import yaml
 from pathlib import Path
+
+import yaml
 
 
 def test_docker_compose_is_valid_yaml():
@@ -23,9 +24,10 @@ def test_deploy_scripts_exist_and_are_executable():
         assert p.exists()
         # On Unix, check executable bit (in CI this is reliable)
         import stat
+
         mode = p.stat().st_mode
         # allow non-Unix CI where executable bit may not be set
-        assert bool(mode & stat.S_IXUSR) or not hasattr(os, 'chmod')  # skip on non-Unix
+        assert bool(mode & stat.S_IXUSR) or not hasattr(os, "chmod")  # skip on non-Unix
 
 
 def test_readme_exists():

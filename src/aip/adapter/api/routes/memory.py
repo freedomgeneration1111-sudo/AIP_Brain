@@ -34,7 +34,7 @@ async def get_events(project_id: str, container: AipContainer = Depends(get_cont
     if container.event_store:
         try:
             events = await container.event_store.query(artifact_id=None, limit=100)
-            return {"project_id": project_id, "timeline": [dict(e) if hasattr(e, '__dict__') else e for e in events]}
+            return {"project_id": project_id, "timeline": [dict(e) if hasattr(e, "__dict__") else e for e in events]}
         except Exception:
             logger.warning("Event query failed for project %s", project_id, exc_info=True)
     return {"project_id": project_id, "timeline": []}
@@ -47,14 +47,18 @@ async def memory_search(q: str, container: AipContainer = Depends(get_container)
     if container.lexical_store:
         try:
             lexical_results = await container.lexical_store.search(q, limit=20)
-            results.extend([{"id": r.id, "content": r.content, "score": r.score, "source": "lexical"} for r in lexical_results])
+            results.extend(
+                [{"id": r.id, "content": r.content, "score": r.score, "source": "lexical"} for r in lexical_results],
+            )
         except Exception:
             logger.warning("Lexical search failed for query '%s'", q[:50], exc_info=True)
     if container.vector_store and container.embedding_provider:
         try:
             query_vector = await container.embedding_provider.embed(q)
             vector_results = await container.vector_store.retrieve(query_vector, top_k=20)
-            results.extend([{"id": r.id, "content": r.content, "score": r.score, "source": "vector"} for r in vector_results])
+            results.extend(
+                [{"id": r.id, "content": r.content, "score": r.score, "source": "vector"} for r in vector_results],
+            )
         except Exception:
             logger.warning("Vector search failed for query '%s'", q[:50], exc_info=True)
     return {"results": results}

@@ -3,6 +3,7 @@
 Implements EmbeddingProvider. Uses Ollama local embeddings.
 Supports deterministic mock mode for CI (no real Ollama required for the gate).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -24,10 +25,10 @@ def fake_embed_via_provider(text: str, dimensions: int = 768) -> list[float]:
     vec = []
     for i in range(dimensions):
         byte_idx = (i * 4) % len(digest)
-        val = int.from_bytes(digest[byte_idx:byte_idx+4].ljust(4, b'\x00'), 'big')
+        val = int.from_bytes(digest[byte_idx : byte_idx + 4].ljust(4, b"\x00"), "big")
         vec.append(val / (2**32 - 1))
-    norm = sum(v*v for v in vec) ** 0.5
-    return [v/norm for v in vec] if norm > 0 else vec
+    norm = sum(v * v for v in vec) ** 0.5
+    return [v / norm for v in vec] if norm > 0 else vec
 
 
 class OllamaEmbeddingClient(EmbeddingProvider):
@@ -41,7 +42,8 @@ class OllamaEmbeddingClient(EmbeddingProvider):
         self.model = model
         self.dimensions = dimensions
         self._client: httpx.AsyncClient = httpx.AsyncClient(
-            base_url=self.base_url, timeout=30.0,
+            base_url=self.base_url,
+            timeout=30.0,
         )
 
     async def embed(self, text: str) -> list[float]:
@@ -61,7 +63,7 @@ class OllamaEmbeddingClient(EmbeddingProvider):
         except Exception as e:
             raise ConnectionError(
                 f"Failed to embed via Ollama at {self.base_url} (model={self.model}). "
-                "Is Ollama running? For CI use mock mode."
+                "Is Ollama running? For CI use mock mode.",
             ) from e
 
     async def close(self) -> None:

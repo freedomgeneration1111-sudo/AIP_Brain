@@ -94,9 +94,7 @@ class SqliteFts5LexicalStore(LexicalStore):
             await self._conn.close()
             self._conn = None
 
-    async def index_document(
-        self, doc_id: str, content: str, domain: str, metadata: dict
-    ) -> None:
+    async def index_document(self, doc_id: str, content: str, domain: str, metadata: dict) -> None:
         conn = await self._get_conn()
         try:
             meta_json = json.dumps(metadata or {})
@@ -112,9 +110,13 @@ class SqliteFts5LexicalStore(LexicalStore):
             )
 
             # Update FTS index (delete old + insert new for idempotency)
-            await conn.execute("DELETE FROM fts_index WHERE rowid = (SELECT rowid FROM fts_documents WHERE doc_id = ?)", (doc_id,))
             await conn.execute(
-                "INSERT INTO fts_index (rowid, content, domain, metadata) VALUES ((SELECT rowid FROM fts_documents WHERE doc_id = ?), ?, ?, ?)",
+                "DELETE FROM fts_index WHERE rowid = (SELECT rowid FROM fts_documents WHERE doc_id = ?)",
+                (doc_id,),
+            )
+            await conn.execute(
+                "INSERT INTO fts_index (rowid, content, domain, metadata) "
+                "VALUES ((SELECT rowid FROM fts_documents WHERE doc_id = ?), ?, ?, ?)",
                 (doc_id, content, domain, meta_json),
             )
             await conn.commit()
@@ -122,9 +124,7 @@ class SqliteFts5LexicalStore(LexicalStore):
             await conn.close()
             self._conn = None
 
-    async def search(
-        self, query: str, domain: str | None = None, limit: int = 10
-    ) -> list[Chunk]:
+    async def search(self, query: str, domain: str | None = None, limit: int = 10) -> list[Chunk]:
         conn = await self._get_conn()
         try:
             sql = """
@@ -152,7 +152,7 @@ class SqliteFts5LexicalStore(LexicalStore):
                         score=float(row["rank"]) if row["rank"] is not None else 0.0,
                         metadata=meta,
                         domain=row["domain"],
-                    )
+                    ),
                 )
             return results
         finally:

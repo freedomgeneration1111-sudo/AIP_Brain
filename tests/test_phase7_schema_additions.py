@@ -2,24 +2,37 @@
 
 import pytest
 
+from aip.foundation.protocols import (
+    AuthStore,
+    # Prior
+    AutonomyGate,
+    CanonicalStore,
+    EntityStore,
+    LexicalStore,
+    VigilStore,
+)
 from aip.foundation.schemas import (
     # Prior phases (must still work)
     AcePlaybookEntry,
     ApiRoute,
+    AuthConfig,
     AutonomyEscalation,
     AutonomyLevel,
     BeastCadenceConfig,
     BudgetConfig,
     BudgetScope,
+    CanonicalPromotionConfig,
     ChatMessage,
     Chunk,
     ContractRule,
+    DeploymentProfile,
     EcsState,
     FailureClassification,
     FailureType,
     McpAutonomyLevel,
     McpToolDef,
     ModelSlotConfig,
+    RateLimitConfig,
     ReviewQueueEntry,
     ReviewVerdict,
     SessionContext,
@@ -28,20 +41,7 @@ from aip.foundation.schemas import (
     TrajectorySignal,
     # Phase 7 additions
     VigilConfig,
-    AuthConfig,
-    RateLimitConfig,
-    CanonicalPromotionConfig,
     WorkflowTemplate,
-    DeploymentProfile,
-)
-from aip.foundation.protocols import (
-    VigilStore,
-    AuthStore,
-    # Prior
-    AutonomyGate,
-    LexicalStore,
-    CanonicalStore,
-    EntityStore,
 )
 
 
@@ -74,6 +74,7 @@ def test_phase0_through_phase6_types_still_work():
     """All prior phase types must remain importable and functional."""
     assert EcsState.GENERATED is not None
     from typing import get_args
+
     assert "C" in get_args(FailureType)
     c = Chunk(id="x", content="hello", score=0.9, metadata={}, domain="test")
     assert c.id == "x"
@@ -84,6 +85,3 @@ def test_phase0_through_phase6_types_still_work():
         classified_at="2026-05-28T00:00:00Z",
     )
     assert fc.failure_type == "A"
-
-
-

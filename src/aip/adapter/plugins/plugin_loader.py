@@ -12,8 +12,8 @@ from typing import Any, Callable
 
 import yaml
 
-from aip.foundation.protocols import PluginProvider
 from aip.adapter.plugins.yaml_plugin_provider import YamlPluginProvider
+from aip.foundation.protocols import PluginProvider
 
 
 class PluginLoader:
@@ -38,7 +38,7 @@ class PluginLoader:
                         "path": str(yml),
                         "slot_name": data.get("slot_name"),
                         "provider_name": data.get("provider_name"),
-                    }
+                    },
                 )
             except Exception:
                 if self.config.sandbox_mode:
@@ -72,7 +72,9 @@ class PluginLoader:
 
     # Optional hook for DI registration (called by higher layers or tests)
     def register_with_container(
-        self, container: Any, register_fn: Callable[[str, PluginProvider], None] | None = None
+        self,
+        container: Any,
+        register_fn: Callable[[str, PluginProvider], None] | None = None,
     ) -> None:
         for slot, provider in self._loaded.items():
             if register_fn:

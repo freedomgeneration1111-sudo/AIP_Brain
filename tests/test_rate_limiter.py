@@ -24,6 +24,7 @@ def test_rate_limiter_disabled_passes_all():
 
 def test_layering():
     from pathlib import Path
+
     rl_file = Path(__file__).parent.parent / "src/aip/adapter/middleware/rate_limiter.py"
     if rl_file.exists():
         text = rl_file.read_text()

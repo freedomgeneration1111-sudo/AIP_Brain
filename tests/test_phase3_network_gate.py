@@ -60,6 +60,7 @@ def test_phase3_code_has_no_hardcoded_models():
     Docstrings and model_gen_assumption strings are allowed per §1.8.
     """
     import ast as _ast
+
     forbidden_keywords = ["DeepSeek", "Qwen", "Claude", "GPT-", "gpt-", "sonnet", "o1-", "nomic-embed"]
 
     src_root = Path("src/aip")
@@ -78,10 +79,12 @@ def test_phase3_code_has_no_hardcoded_models():
         docstring_lines = set()
         for node in _ast.walk(tree):
             if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef, _ast.Module)):
-                if (node.body
+                if (
+                    node.body
                     and isinstance(node.body[0], _ast.Expr)
                     and isinstance(node.body[0].value, _ast.Constant)
-                    and isinstance(node.body[0].value.value, str)):
+                    and isinstance(node.body[0].value.value, str)
+                ):
                     docstring_lines.add(node.body[0].value.lineno)
 
         for node in _ast.walk(tree):
@@ -101,7 +104,8 @@ def test_phase3_code_has_no_hardcoded_models():
 
 
 def test_phase3_import_boundaries():
-    """CHUNK-5.9 + §7.2: Foundation must not import orchestration or adapter; orchestration imports only via protocols."""
+    """CHUNK-5.9 + §7.2: Foundation must not import orchestration or adapter;
+    orchestration imports only via protocols."""
     src_root = Path("src/aip")
 
     foundation_violations = []
@@ -120,10 +124,16 @@ def test_phase3_import_boundaries():
             if isinstance(node, ast.ImportFrom):
                 mod = node.module or ""
                 if str(py_file).startswith("src/aip/foundation"):
-                    if mod.startswith("aip.orchestration") or mod.startswith("aip.adapter") or mod.startswith("orchestration") or mod.startswith("adapter"):
+                    if (
+                        mod.startswith("aip.orchestration")
+                        or mod.startswith("aip.adapter")
+                        or mod.startswith("orchestration")
+                        or mod.startswith("adapter")
+                    ):
                         foundation_violations.append(f"{py_file}: foundation imports {mod}")
                 if str(py_file).startswith("src/aip/orchestration"):
-                    # orchestration may import foundation + aip.orchestration.* but not adapter directly (except protocols)
+                    # orchestration may import foundation + aip.orchestration.*
+                    # but not adapter directly (except protocols)
                     if mod.startswith("aip.adapter") or mod.startswith("adapter"):
                         if "protocols" not in mod:
                             orchestration_adapter_violations.append(f"{py_file}: orchestration imports adapter {mod}")
@@ -137,6 +147,7 @@ def test_phase3_import_boundaries():
 def test_phase1_and_phase2_network_gates_still_pass():
     """CHUNK-5.9: All prior network/model-name gates (1.7/4.8) must still pass after Phase 3 additions."""
     import importlib.util
+
     spec = importlib.util.spec_from_file_location("p2_gate", "tests/test_phase2_no_network.py")
     p2 = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(p2)

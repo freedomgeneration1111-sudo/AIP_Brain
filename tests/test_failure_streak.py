@@ -1,4 +1,5 @@
 """Tests for CHUNK-5.4 Failure Streak Detector (Type E)."""
+
 import pytest
 
 from aip.orchestration.l4.failure_streak import FailureStreakDetector

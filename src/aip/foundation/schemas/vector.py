@@ -3,11 +3,11 @@
 Vector backend selection, pgvector configuration, and migration
 status/checkpoint tracking for the sqlite_vss → pgvector migration path.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Literal
-
 
 # Type alias for vector backend selection
 VectorBackendType = Literal["pgvector", "sqlite_vss"]
@@ -21,6 +21,7 @@ class PgvectorConfig:
     All parameters toggleable via config, not hardcoded.
     HNSW parameters tune index quality vs. build time.
     """
+
     connection_string: str
     pool_min_size: int = 2
     pool_max_size: int = 10
@@ -38,6 +39,7 @@ class MigrationStatus:
     Per Phase Scope Definition: migration must be idempotent and resumable.
     checkpoint_id enables resuming from last successful vector.
     """
+
     source_backend: str
     target_backend: str
     total_vectors: int = 0
@@ -54,6 +56,7 @@ class MigrationCheckpoint:
 
     If migration is interrupted, resume from last_migrated_id + 1.
     """
+
     checkpoint_id: str
     source_backend: str
     target_backend: str

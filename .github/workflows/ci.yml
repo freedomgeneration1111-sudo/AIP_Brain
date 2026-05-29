@@ -34,10 +34,17 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Lint with ruff
-        # Soft check: reports issues but does not block CI.
-        # Existing codebase has ~500 historic lint findings (F401/I001).
-        # Make this blocking once those are resolved.
+      - name: Check formatting with ruff
+        # BLOCKING: All Python code must be formatted with ruff.
+        run: uv run ruff format --check .
+
+      - name: Check lint with ruff (formatting + import order)
+        # BLOCKING: E501, I001, W291, W293, E701 must pass.
+        # COM812 handled by ruff format, not needed here.
+        run: uv run ruff check . --select E501,I001,W291,W293,E701
+
+      - name: Check lint with ruff (full)
+        # Soft check: reports remaining historic findings but does not block.
         continue-on-error: true
         run: uv run ruff check .
 

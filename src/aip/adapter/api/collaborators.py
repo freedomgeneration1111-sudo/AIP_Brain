@@ -22,7 +22,13 @@ async def list_collaborators(container=Depends(get_container)):
 
 
 @router.post("")
-async def create_collaborator(identity: str, role: str, password: str, container=Depends(get_container), _=Depends(require_definer)):
+async def create_collaborator(
+    identity: str,
+    role: str,
+    password: str,
+    container=Depends(get_container),
+    _=Depends(require_definer),
+):
     cm = getattr(container, "collaborator_manager", None)
     if cm is None:
         raise HTTPException(503, "CollaboratorManager not available")
@@ -33,7 +39,13 @@ async def create_collaborator(identity: str, role: str, password: str, container
 
 
 @router.put("/{identity}")
-async def update_role(identity: str, new_role: str, container=Depends(get_container), requested_by: str = "definer", _=Depends(require_definer)):
+async def update_role(
+    identity: str,
+    new_role: str,
+    container=Depends(get_container),
+    requested_by: str = "definer",
+    _=Depends(require_definer),
+):
     cm = getattr(container, "collaborator_manager", None)
     if cm is None:
         raise HTTPException(503, "CollaboratorManager not available")
@@ -44,7 +56,12 @@ async def update_role(identity: str, new_role: str, container=Depends(get_contai
 
 
 @router.delete("/{identity}")
-async def revoke_collaborator(identity: str, container=Depends(get_container), requested_by: str = "definer", _=Depends(require_definer)):
+async def revoke_collaborator(
+    identity: str,
+    container=Depends(get_container),
+    requested_by: str = "definer",
+    _=Depends(require_definer),
+):
     cm = getattr(container, "collaborator_manager", None)
     if cm is None:
         raise HTTPException(503, "CollaboratorManager not available")

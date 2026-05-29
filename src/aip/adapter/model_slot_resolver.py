@@ -19,6 +19,7 @@ Configuration sources (in priority order):
        AIP_OPENAI_BASE_URL   — default base URL for all OpenAI-compatible slots
        AIP_OPENAI_API_KEY    — default API key for all OpenAI-compatible slots
 """
+
 from __future__ import annotations
 
 import logging
@@ -76,8 +77,7 @@ class ModelSlotResolver(ModelProvider):
                 import httpx
             except ImportError:
                 raise RuntimeError(
-                    "httpx is required for real model calls but is not installed. "
-                    "Install it with: pip install httpx"
+                    "httpx is required for real model calls but is not installed. Install it with: pip install httpx",
                 )
             self._http_client = httpx.AsyncClient(timeout=120.0)
         return self._http_client
@@ -125,13 +125,9 @@ class ModelSlotResolver(ModelProvider):
         # Apply global defaults if still missing
         if not resolved["base_url"]:
             if resolved["provider"] == PROVIDER_OLLAMA:
-                resolved["base_url"] = os.environ.get(
-                    "AIP_OLLAMA_BASE_URL", _DEFAULT_OLLAMA_BASE_URL
-                )
+                resolved["base_url"] = os.environ.get("AIP_OLLAMA_BASE_URL", _DEFAULT_OLLAMA_BASE_URL)
             elif resolved["provider"] == PROVIDER_OPENAI_COMPATIBLE:
-                resolved["base_url"] = os.environ.get(
-                    "AIP_OPENAI_BASE_URL", "https://api.openai.com"
-                )
+                resolved["base_url"] = os.environ.get("AIP_OPENAI_BASE_URL", "https://api.openai.com")
 
         if not resolved["api_key"] and resolved["provider"] == PROVIDER_OPENAI_COMPATIBLE:
             resolved["api_key"] = os.environ.get("AIP_OPENAI_API_KEY")
@@ -201,23 +197,29 @@ class ModelSlotResolver(ModelProvider):
         start = time.perf_counter()
         try:
             if provider == PROVIDER_OLLAMA:
-                result = await self._call_ollama(
-                    base_url, model, messages, **kwargs
-                )
+                result = await self._call_ollama(base_url, model, messages, **kwargs)
             elif provider == PROVIDER_OPENAI_COMPATIBLE:
                 result = await self._call_openai_compatible(
-                    base_url, model, resolved.get("api_key"), messages, **kwargs
+                    base_url,
+                    model,
+                    resolved.get("api_key"),
+                    messages,
+                    **kwargs,
                 )
             else:
                 raise ValueError(
                     f"Unsupported provider '{provider}' for slot '{slot_name}'. "
-                    f"Supported providers: {PROVIDER_OLLAMA}, {PROVIDER_OPENAI_COMPATIBLE}"
+                    f"Supported providers: {PROVIDER_OLLAMA}, {PROVIDER_OPENAI_COMPATIBLE}",
                 )
         except Exception as exc:
             elapsed_ms = int((time.perf_counter() - start) * 1000)
             logger.error(
                 "Model call failed for slot=%s provider=%s model=%s: %s",
-                slot_name, provider, model, exc, exc_info=True,
+                slot_name,
+                provider,
+                model,
+                exc,
+                exc_info=True,
             )
             # Return a structured error result instead of raising
             return {
@@ -228,8 +230,7 @@ class ModelSlotResolver(ModelProvider):
                 "cost_usd": 0.0,
                 "error": True,
                 "error_message": (
-                    f"Model call failed for slot '{slot_name}' "
-                    f"(provider={provider}, model={model}): {exc}"
+                    f"Model call failed for slot '{slot_name}' (provider={provider}, model={model}): {exc}"
                 ),
             }
 

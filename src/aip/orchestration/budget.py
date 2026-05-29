@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from aip.foundation.protocols import BudgetStore, AutonomyGate
+from aip.foundation.protocols import AutonomyGate, BudgetStore
 
 
 class InMemoryBudgetStore(BudgetStore):
@@ -133,7 +133,7 @@ class BudgetManager:
                     "",
                     from_state=None,
                     to_state=None,
-                    detail=f"Budget warning: {scope}/{scope_id} at {consumed}/{limit} ({consumed/limit:.0%})",
+                    detail=f"Budget warning: {scope}/{scope_id} at {consumed}/{limit} ({consumed / limit:.0%})",
                 )
 
         # Check hard stop
@@ -173,4 +173,3 @@ class BudgetManager:
     def is_hard_stop(self) -> bool:
         """Return whether budget is configured to block calls when limit is reached."""
         return self._config.budget_hard_stop
-

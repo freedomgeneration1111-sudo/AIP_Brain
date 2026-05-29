@@ -70,14 +70,16 @@ async def test_session_store_crud_with_bcrypt():
 @pytest.mark.asyncio
 async def test_auth_dependencies_enforce_roles():
     """Promotes CHUNK-9.0b auth dependencies — role enforcement."""
-    from aip.adapter.auth.dependencies import get_current_identity, require_definer, require_collaborator_or_above
+    from aip.adapter.auth.dependencies import get_current_identity, require_collaborator_or_above, require_definer
 
     # require_definer should reject non-definer roles
     class MockIdentity:
         def __init__(self, identity_dict):
             self._dict = identity_dict
+
         def get(self, key, default=None):
             return self._dict.get(key, default)
+
         def __getitem__(self, key):
             return self._dict[key]
 
@@ -85,6 +87,7 @@ async def test_auth_dependencies_enforce_roles():
     collaborator_identity = {"identity": "user1", "role": "collaborator"}
     with pytest.raises(Exception) as exc_info:
         from fastapi import HTTPException
+
         # Simulate the dependency check
         if collaborator_identity.get("role") != "definer":
             raise HTTPException(status_code=403, detail="DEFINER role required")
@@ -100,7 +103,9 @@ async def test_mcp_search_uses_lexical_store():
         class _MockLexical:
             async def search(self, query, domain=None, limit=10):
                 from aip.foundation.schemas import Chunk
+
                 return [Chunk(id="doc1", content="Found content", score=0.9, metadata={}, domain=domain)]
+
         lexical_store = _MockLexical()
         vector_store = None
         embedding_provider = None
@@ -146,6 +151,7 @@ def test_plugin_loader_discovers_yaml():
     with tempfile.TemporaryDirectory() as tmp:
         # Create a test plugin YAML
         import os
+
         plugins_dir = os.path.join(tmp, "plugins")
         os.makedirs(plugins_dir)
 
@@ -180,8 +186,8 @@ api_key_env: TEST_API_KEY
 @pytest.mark.asyncio
 async def test_profiler_returns_real_metrics():
     """Promotes CHUNK-10.4 PerformanceProfiler — real metrics via psutil."""
-    from aip.orchestration.perf import PerformanceProfiler
     from aip.foundation.schemas import PerformanceConfig
+    from aip.orchestration.perf import PerformanceProfiler
 
     config = PerformanceConfig()
     profiler = PerformanceProfiler(config=config, trace_store=None)

@@ -21,15 +21,17 @@ class FakeTraceStoreForL4(TraceStore):
         self._events: list[dict] = []
 
     async def write_event(self, session_id, node_type, failure_type=None, outcome=None, detail=None, **kw):
-        self._events.append({
-            "session_id": session_id,
-            "node_type": node_type,
-            "failure_type": failure_type,
-            "outcome": outcome,
-            "detail": detail,
-            "created_at": "2025-01-01T00:00:00Z",
-            **kw,  # support extra fields like token_count_out for L4b heuristics (CHUNK-3.5)
-        })
+        self._events.append(
+            {
+                "session_id": session_id,
+                "node_type": node_type,
+                "failure_type": failure_type,
+                "outcome": outcome,
+                "detail": detail,
+                "created_at": "2025-01-01T00:00:00Z",
+                **kw,  # support extra fields like token_count_out for L4b heuristics (CHUNK-3.5)
+            },
+        )
 
     async def get_recent_events(self, session_id: str, limit: int = 100) -> list[dict]:
         # Newest first (matches expected production ordering)
@@ -38,7 +40,9 @@ class FakeTraceStoreForL4(TraceStore):
 
     async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
         # Sexton/CHUNK-3.4 additive compat
-        unclassified = [e for e in reversed(self._events) if e.get("failure_type") is None and e.get("outcome") == "failure"]
+        unclassified = [
+            e for e in reversed(self._events) if e.get("failure_type") is None and e.get("outcome") == "failure"
+        ]
         return unclassified[:limit]
 
 
@@ -50,9 +54,7 @@ def trace_store():
 @pytest.mark.asyncio
 async def test_monitor_returns_empty_when_no_signals(trace_store):
     """Happy path: clean session with only success events produces no signals."""
-    await trace_store.write_event(
-        session_id="clean_sess", node_type="L5", outcome="success"
-    )
+    await trace_store.write_event(session_id="clean_sess", node_type="L5", outcome="success")
     monitor = TrajectoryMonitor(trace_store)
     signals = await monitor.detect("clean_sess")
     assert signals == []
@@ -62,9 +64,7 @@ async def test_monitor_returns_empty_when_no_signals(trace_store):
 async def test_detects_d_signal(trace_store):
     """D (drift/loop) events in the window produce a loop_d signal."""
     for i in range(3):
-        await trace_store.write_event(
-            session_id="drifty", node_type="L4", failure_type="D", outcome="failure"
-        )
+        await trace_store.write_event(session_id="drifty", node_type="L4", failure_type="D", outcome="failure")
     monitor = TrajectoryMonitor(trace_store, window_limit=20)
     signals = await monitor.detect("drifty")
     assert any(s.signal_type == "loop" or s.signal_type == "loop_d" for s in signals)
@@ -76,9 +76,7 @@ async def test_detects_d_signal(trace_store):
 @pytest.mark.asyncio
 async def test_detects_f_signal(trace_store):
     """F (context anxiety) events produce a context_anxiety_f signal."""
-    await trace_store.write_event(
-        session_id="anxious", node_type="L4", failure_type="F", outcome="failure"
-    )
+    await trace_store.write_event(session_id="anxious", node_type="L4", failure_type="F", outcome="failure")
     monitor = TrajectoryMonitor(trace_store)
     signals = await monitor.detect("anxious")
     assert any(s.signal_type == "anxiety" or s.signal_type == "context_anxiety_f" for s in signals)
@@ -110,13 +108,13 @@ async def test_l4b_detects_context_anxiety_from_hedging_language(trace_store):
         session_id="hedgy",
         node_type="L5",
         outcome="success",
-        detail="The answer is perhaps approximately correct, I think it might work somewhat."
+        detail="The answer is perhaps approximately correct, I think it might work somewhat.",
     )
     await trace_store.write_event(
         session_id="hedgy",
         node_type="L3a",
         outcome="success",
-        detail="It seems likely that this could be the case."
+        detail="It seems likely that this could be the case.",
     )
     monitor = TrajectoryMonitor(trace_store, window_limit=20)
     signals = await monitor.detect("hedgy")
@@ -125,7 +123,11 @@ async def test_l4b_detects_context_anxiety_from_hedging_language(trace_store):
     f = f_sigs[0]
     assert f.confidence > 0.6
     assert f.model_gen_assumption is not None
-    assert "L4b" in f.model_gen_assumption or "Appendix E" in f.model_gen_assumption or "hedging" in f.model_gen_assumption.lower()
+    assert (
+        "L4b" in f.model_gen_assumption
+        or "Appendix E" in f.model_gen_assumption
+        or "hedging" in f.model_gen_assumption.lower()
+    )
 
 
 @pytest.mark.asyncio
@@ -141,7 +143,7 @@ async def test_l4b_detects_context_anxiety_from_length_decline_and_pressure(trac
             node_type="L5" if i % 2 == 0 else "L3a",
             outcome="success",
             token_count_out=length,
-            detail=f"output version {i}"
+            detail=f"output version {i}",
         )
     monitor = TrajectoryMonitor(trace_store, window_limit=20)
     signals = await monitor.detect("declining")
@@ -150,7 +152,11 @@ async def test_l4b_detects_context_anxiety_from_length_decline_and_pressure(trac
     f = f_sigs[0]
     assert f.confidence >= 0.65
     assert f.model_gen_assumption is not None
-    assert "L4b" in f.model_gen_assumption or "length" in f.model_gen_assumption.lower() or "pressure" in f.model_gen_assumption.lower()
+    assert (
+        "L4b" in f.model_gen_assumption
+        or "length" in f.model_gen_assumption.lower()
+        or "pressure" in f.model_gen_assumption.lower()
+    )
 
 
 @pytest.mark.asyncio

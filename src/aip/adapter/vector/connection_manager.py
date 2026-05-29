@@ -59,15 +59,12 @@ class VectorStoreConnectionManager:
                 except Exception as e:
                     last_exc = e
                     logger.warning(
-                        f"VectorStoreConnectionManager: attempt {attempt} failed ({e}), "
-                        f"retrying in {delay}s"
+                        f"VectorStoreConnectionManager: attempt {attempt} failed ({e}), retrying in {delay}s",
                     )
                     await asyncio.sleep(delay)
 
             # Final fallback after 3 attempts
-            logger.warning(
-                "VectorStoreConnectionManager: all retries exhausted, falling back to sqlite_vss"
-            )
+            logger.warning("VectorStoreConnectionManager: all retries exhausted, falling back to sqlite_vss")
             try:
                 from aip.adapter.vector.factory import create_vector_store
 
@@ -84,7 +81,7 @@ class VectorStoreConnectionManager:
                 # Record degradation event (best-effort; adapter layer)
                 logger.warning(
                     "VectorStoreConnectionManager: degradation to sqlite_vss active "
-                    "(intervention_type=backend_fallback)"
+                    "(intervention_type=backend_fallback)",
                 )
                 return self._store
             except Exception as e:

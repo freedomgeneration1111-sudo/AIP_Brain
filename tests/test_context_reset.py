@@ -1,4 +1,5 @@
 """Tests for CHUNK-5.6 Context Reset Protocol."""
+
 import pytest
 
 from aip.foundation.schemas import SessionContext, TrajectorySignal
@@ -62,9 +63,7 @@ async def test_execute_context_reset_full_protocol():
     events = FakeEventStore()
     ecs = FakeEcsStore()
 
-    new_ctx = await execute_context_reset(
-        session_ctx, signals, artifact, trace, events, ecs
-    )
+    new_ctx = await execute_context_reset(session_ctx, signals, artifact, trace, events, ecs)
 
     # Step 3: progress summary written
     assert any("progress_summary" in k for k in artifact._data.keys())
@@ -84,8 +83,7 @@ async def test_execute_context_reset_full_protocol():
 
     # intervention fields on trace (prose step 4 + historical compatibility)
     assert any(
-        e.get("intervention_type") == "context_reset" and e.get("intervention_applied") == 1
-        for e in trace.events
+        e.get("intervention_type") == "context_reset" and e.get("intervention_applied") == 1 for e in trace.events
     )
 
 

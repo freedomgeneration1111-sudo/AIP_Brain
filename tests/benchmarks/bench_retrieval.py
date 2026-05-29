@@ -4,6 +4,7 @@ No network, no real models. Measures latency for laptop-viable profile.
 """
 
 import time
+
 import pytest
 
 

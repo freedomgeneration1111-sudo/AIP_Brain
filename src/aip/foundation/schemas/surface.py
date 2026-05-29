@@ -3,6 +3,7 @@
 Configuration and definitions for AIP interaction surfaces:
 API routes, MCP tool definitions, chat messages, and surface config.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ class SurfaceConfig:
     Surfaces must respect laptop-viable hardware profile.
     Surfaces are adapter-layer, composing Foundation and Orchestration.
     """
+
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     api_cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:3000"])
@@ -34,6 +36,7 @@ class ApiRoute:
     autonomy_gate=True routes enforce DEFINER sovereignty.
     All routes are adapter-layer compositions.
     """
+
     method: str
     path: str
     handler: str
@@ -49,6 +52,7 @@ class McpToolDef:
     Per Appendix D: "MCP ≠ bypass", "MCP ≠ vector_store.retrieve() directly."
     model_gen_assumption tags what model limitation this tool compensates for.
     """
+
     tool_name: str
     description: str
     input_schema: dict = field(default_factory=dict)
@@ -63,6 +67,7 @@ class ChatMessage:
     Chat surface is the primary DEFINER interaction point.
     Context is assembled from explicit stores, not long chat history.
     """
+
     message_id: str
     session_id: str
     role: str  # user / assistant / system

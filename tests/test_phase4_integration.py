@@ -17,14 +17,14 @@ import os
 
 import pytest
 
-from aip.adapter.vector.factory import create_vector_store
 from aip.adapter.health import system_health_check
-from aip.foundation.schemas import Chunk
 from aip.adapter.model_slot_resolver import ModelSlotResolver
-from aip.orchestration.nodes.synthesis import synthesize
+from aip.adapter.vector.factory import create_vector_store
+from aip.foundation.schemas import Chunk
 from aip.orchestration.nodes.adversarial_eval import adversarial_eval
-from aip.orchestration.nodes.faithfulness import evaluate_faithfulness
 from aip.orchestration.nodes.domain_coherence import evaluate_domain_coherence
+from aip.orchestration.nodes.faithfulness import evaluate_faithfulness
+from aip.orchestration.nodes.synthesis import synthesize
 
 PGVECTOR_AVAILABLE = os.environ.get("AIP_PGVECTOR_TEST") == "1"
 
@@ -60,7 +60,7 @@ async def test_scenario1_full_pipeline_sqlite_vss():
                 "synthesis": {"provider": "stub", "model": "stub-synthesis"},
                 "evaluation": {"provider": "stub", "model": "stub-evaluation"},
                 "ci_mode": True,
-            }
+            },
         }
         resolver = ModelSlotResolver(ci_config)
         synth = await synthesize(query="test", domain="test", context="ctx", model_resolver=resolver)
@@ -92,7 +92,9 @@ async def test_scenario1_full_pipeline_sqlite_vss():
     faith = await evaluate_faithfulness(
         artifact_id="art-1",
         artifact_content=synth["content"],
-        retrieved_context=[Chunk(id="ctx-1", content="Paris is the capital of France.", score=0.95, metadata={}, domain="geo")],
+        retrieved_context=[
+            Chunk(id="ctx-1", content="Paris is the capital of France.", score=0.95, metadata={}, domain="geo"),
+        ],
         model_resolver=resolver,
     )
     assert faith.faithfulness_score > 0.0
@@ -138,16 +140,20 @@ async def test_scenario2_full_pipeline_pgvector():
 @pytest.mark.asyncio
 async def test_scenario3_migration_verification():
     """Migration tool (6.3) contract + count verification (environment-tolerant)."""
+
     # Use dummy stores for contract test (real store init may be limited in this env)
     class DummyStore:
         async def count(self, domain=None):
             return 2
+
         async def upsert(self, *a, **k):
             pass
+
         async def batch_upsert(self, items):
             pass
 
     from aip.adapter.vector.migrate import migrate_vectors
+
     status = await migrate_vectors(DummyStore(), DummyStore(), batch_size=10)
     assert hasattr(status, "total_vectors")
     assert hasattr(status, "migrated_vectors")

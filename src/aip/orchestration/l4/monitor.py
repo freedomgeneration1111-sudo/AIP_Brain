@@ -74,9 +74,7 @@ class TrajectoryMonitor:
 
         # Query via injected protocol only (layering + injection invariant)
         try:
-            events = await self._trace_store.get_recent_events(
-                session_id=session_id, limit=self._window_limit
-            )
+            events = await self._trace_store.get_recent_events(session_id=session_id, limit=self._window_limit)
         except Exception:
             # Defensive: a misbehaving store must not break the caller
             return []
@@ -113,29 +111,32 @@ class TrajectoryMonitor:
                         "growing context pressure or loop formation. See Architecture Rev 5.2 "
                         "§10.1, Appendix E (Types D/F), and §1.8 Harness Evolution Principle."
                     ),
-                )
+                ),
             )
 
         # L4b Context Anxiety heuristics  - Appendix E Type F
-        l4b_f_events, l4b_confidence, l4b_evidence, l4b_assumption = self._run_l4b_context_anxiety_heuristics(events, session_id)
+        l4b_f_events, l4b_confidence, l4b_evidence, l4b_assumption = self._run_l4b_context_anxiety_heuristics(
+            events,
+            session_id,
+        )
 
         if l4b_f_events or l4b_confidence > 0.6:
             # If we have pre-labeled F or strong L4b indicators, emit/enhance the F signal
             combined_f = f_events + l4b_f_events
-            final_conf = max(
-                min(1.0, len(combined_f) / 3.0) if combined_f else 0.0,
-                l4b_confidence
-            )
+            final_conf = max(min(1.0, len(combined_f) / 3.0) if combined_f else 0.0, l4b_confidence)
             signals.append(
                 TrajectorySignal(
                     signal_type="anxiety",
                     session_id=session_id,
                     failure_type="F",
                     confidence=final_conf,
-                    detail=f"Context anxiety detected: {len(combined_f)} F-type events, L4b confidence {l4b_confidence:.2f}",
+                    detail=(
+                        f"Context anxiety detected: {len(combined_f)} F-type events, "
+                        f"L4b confidence {l4b_confidence:.2f}"
+                    ),
                     detected_at=now,
                     model_gen_assumption=l4b_assumption,
-                )
+                ),
             )
         elif f_events:
             # Fallback to basic pre-labeled only
@@ -147,7 +148,7 @@ class TrajectoryMonitor:
                     confidence=min(1.0, len(f_events) / 3.0),
                     detail=f"Detected {len(f_events)} F-type events in session window",
                     detected_at=now,
-                )
+                ),
             )
 
         # Basic "2 of 3" proxy: when we see both primary L4 failure types (D and F)
@@ -169,7 +170,7 @@ class TrajectoryMonitor:
                         "window indicates actionable trajectory degeneration "
                         "requiring intervention. See Architecture §10.1."
                     ),
-                )
+                ),
             )
 
         return signals
@@ -182,9 +183,22 @@ class TrajectoryMonitor:
             return False
         text_lower = text.lower()
         hedging = {
-            "perhaps", "maybe", "possibly", "likely", "somewhat", "approximately",
-            "i think", "it seems", "could be", "might", "probably", "potentially",
-            "to some extent", "fairly", "rather", "quite"
+            "perhaps",
+            "maybe",
+            "possibly",
+            "likely",
+            "somewhat",
+            "approximately",
+            "i think",
+            "it seems",
+            "could be",
+            "might",
+            "probably",
+            "potentially",
+            "to some extent",
+            "fairly",
+            "rather",
+            "quite",
         }
         return any(word in text_lower for word in hedging)
 
@@ -213,14 +227,15 @@ class TrajectoryMonitor:
             return 0.0
         density = min(1.0, len(events) / max(1, self._window_limit))
         heavy_nodes = sum(
-            1 for ev in events[:8]
-            if ev.get("node_type") in ("L2", "L3a", "L3b", "L4") or ev.get("failure_type")
+            1 for ev in events[:8] if ev.get("node_type") in ("L2", "L3a", "L3b", "L4") or ev.get("failure_type")
         )
         heavy_score = min(1.0, heavy_nodes / 5.0)
-        return (density * 0.6 + heavy_score * 0.4)
+        return density * 0.6 + heavy_score * 0.4
 
     def _run_l4b_context_anxiety_heuristics(
-        self, events: list[dict[str, Any]], session_id: str
+        self,
+        events: list[dict[str, Any]],
+        session_id: str,
     ) -> tuple[list[dict[str, Any]], float, list[dict[str, Any]], str | None]:
         """
         L4b Context Anxiety (Type F) detection per Architecture Appendix E.

@@ -39,8 +39,9 @@ def start_session(project_id: str, domain: str) -> None:
     TODO: Wire through SessionManager API once available.
     Currently records session start in the events store.
     """
-    import uuid
     import datetime
+    import uuid
+
     session_id = str(uuid.uuid4())[:8]
 
     db_path = _get_db_path()
@@ -95,7 +96,8 @@ def list_sessions() -> None:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT artifact_id, detail, created_at FROM events WHERE event_type = 'session_start' ORDER BY created_at DESC LIMIT 20"
+            "SELECT artifact_id, detail, created_at FROM events "
+            "WHERE event_type = 'session_start' ORDER BY created_at DESC LIMIT 20",
         ).fetchall()
         conn.close()
 

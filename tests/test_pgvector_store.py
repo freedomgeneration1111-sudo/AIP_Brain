@@ -78,6 +78,7 @@ def mock_store():
 
 # --- Mock-based tests (always run in CI) ---
 
+
 @pytest.mark.asyncio
 async def test_mock_upsert_and_retrieve(mock_store):
     await mock_store.upsert("v1", [0.1] * 768, "hello world", {"source": "test"}, "test_domain")
@@ -130,6 +131,7 @@ async def test_mock_batch_upsert(mock_store):
 
 
 # --- Protocol compliance (lightweight, always runnable) ---
+
 
 @pytest.mark.asyncio
 async def test_pgvector_store_has_required_methods():

@@ -40,8 +40,7 @@ class FakeTraceStoreForSexton(TraceStore):
 
     async def get_unclassified_failures(self, limit: int = 100) -> list[dict]:
         unclassified = [
-            e for e in reversed(self._events)
-            if e.get("failure_type") is None and e.get("outcome") == "failure"
+            e for e in reversed(self._events) if e.get("failure_type") is None and e.get("outcome") == "failure"
         ]
         return unclassified[:limit]
 

@@ -3,6 +3,7 @@
 Detects repeated patterns in a session's trace events (basic loop / session drift detection).
 Emits TrajectorySignal with failure_type="D" when a loop is detected.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -44,9 +45,7 @@ class LoopDetector:
             return None
 
         # Extract node types in order (most recent first from query, so reverse for sequence)
-        node_sequence = [
-            e.get("node_type", "") for e in reversed(events) if e.get("node_type")
-        ]
+        node_sequence = [e.get("node_type", "") for e in reversed(events) if e.get("node_type")]
 
         # Very simple loop detection: look for a short repeated subsequence
         for length in range(2, min(6, len(node_sequence) // self.min_repeats + 1)):
@@ -65,7 +64,8 @@ class LoopDetector:
                         confidence=min(0.5 + (repeats - self.min_repeats) * 0.1, 0.95),
                         detail=f"Detected repeating pattern of length {length} ({repeats} times): {pattern}",
                         detected_at=datetime.now(timezone.utc).isoformat(),
-                        model_gen_assumption=model_gen_assumption or "current models can enter repetitive loops in multi-turn sessions",
+                        model_gen_assumption=model_gen_assumption
+                        or "current models can enter repetitive loops in multi-turn sessions",
                     )
 
         return None

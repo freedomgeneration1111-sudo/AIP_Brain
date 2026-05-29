@@ -1,4 +1,5 @@
 """Tests for multi-turn session context manager."""
+
 import pytest
 
 from aip.foundation.schemas import SessionContext, TrajectorySignal
@@ -69,7 +70,8 @@ async def test_advance_turn(manager):
 def test_context_utilization(manager):
     ctx = manager.create_session("s1", "p1")
     ctx = SessionContext(
-        session_id="s1", project_id="p1",
+        session_id="s1",
+        project_id="p1",
         context_tokens_estimate=64000,
         context_window_limit=128000,
     )
@@ -90,13 +92,21 @@ async def test_handle_intervention_type_d_triggers_reset(manager):
     ctx = SessionContext(session_id="s1", project_id="p1", turn_count=10)
     signals = [
         TrajectorySignal(
-            signal_type="loop", session_id="s1", failure_type="D",
-            confidence=0.8, detail="loop", detected_at="2026-01-01T00:00:00Z",
+            signal_type="loop",
+            session_id="s1",
+            failure_type="D",
+            confidence=0.8,
+            detail="loop",
+            detected_at="2026-01-01T00:00:00Z",
         ),
     ]
     result = await manager.handle_intervention(
-        ctx, signals, FakeArtifactStore(), FakeTraceStore(),
-        FakeEventStore(), FakeEcsStore(),
+        ctx,
+        signals,
+        FakeArtifactStore(),
+        FakeTraceStore(),
+        FakeEventStore(),
+        FakeEcsStore(),
     )
     # Full reset: turn_count should be 0
     assert result.turn_count == 0
@@ -108,13 +118,21 @@ async def test_handle_intervention_type_e_recovery_only(manager):
     ctx = SessionContext(session_id="s1", project_id="p1", turn_count=5)
     signals = [
         TrajectorySignal(
-            signal_type="failure_streak", session_id="s1", failure_type="E",
-            confidence=0.7, detail="streak", detected_at="2026-01-01T00:00:00Z",
+            signal_type="failure_streak",
+            session_id="s1",
+            failure_type="E",
+            confidence=0.7,
+            detail="streak",
+            detected_at="2026-01-01T00:00:00Z",
         ),
     ]
     result = await manager.handle_intervention(
-        ctx, signals, FakeArtifactStore(), FakeTraceStore(),
-        FakeEventStore(), FakeEcsStore(),
+        ctx,
+        signals,
+        FakeArtifactStore(),
+        FakeTraceStore(),
+        FakeEventStore(),
+        FakeEcsStore(),
     )
     # Recovery only: turn_count unchanged (no reset)
     assert result.turn_count == 5

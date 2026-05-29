@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from aip.orchestration.sexton.sexton import Sexton
-from aip.foundation.schemas import SextonConfig
 from aip.foundation.protocols import TraceStore
+from aip.foundation.schemas import SextonConfig
+from aip.orchestration.sexton.sexton import Sexton
 
 
 class _SqliteTraceStore(TraceStore):
@@ -50,7 +50,8 @@ class _SqliteTraceStore(TraceStore):
         if failure_type:
             # Write-back: update an existing unclassified row matching session_id + node_type
             cursor = self._conn.execute(
-                "UPDATE trace_events SET failure_type = ? WHERE session_id = ? AND node_type = ? AND failure_type IS NULL",
+                "UPDATE trace_events SET failure_type = ? "
+                "WHERE session_id = ? AND node_type = ? AND failure_type IS NULL",
                 (failure_type, session_id, node_type),
             )
             if cursor.rowcount > 0:
@@ -59,7 +60,9 @@ class _SqliteTraceStore(TraceStore):
 
         # Otherwise insert new row
         self._conn.execute(
-            "INSERT INTO trace_events (session_id, node_type, failure_type, outcome, detail, intervention_applied, intervention_type) "
+            "INSERT INTO trace_events "
+            "(session_id, node_type, failure_type, outcome, detail, "
+            "intervention_applied, intervention_type) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 session_id,
@@ -103,17 +106,47 @@ async def _seed_all_failure_types(trace_store: _SqliteTraceStore) -> None:
     """Seed trace events that exercise all six failure types (A-F)."""
     test_events = [
         # Type A: Context Framing Failure (insufficient context)
-        {"session_id": "s1", "node_type": "L2", "outcome": "failure", "detail": "Insufficient retrieval results - max confidence below threshold"},
+        {
+            "session_id": "s1",
+            "node_type": "L2",
+            "outcome": "failure",
+            "detail": "Insufficient retrieval results - max confidence below threshold",
+        },
         # Type B: Procedural Gap (generic failure)
-        {"session_id": "s2", "node_type": "SYNTHESIS", "outcome": "failure", "detail": "Synthesis failed due to missing procedure"},
+        {
+            "session_id": "s2",
+            "node_type": "SYNTHESIS",
+            "outcome": "failure",
+            "detail": "Synthesis failed due to missing procedure",
+        },
         # Type C: Output Malformation
-        {"session_id": "s3", "node_type": "L3a", "outcome": "failure", "detail": "Output malformation detected - schema validation failed"},
+        {
+            "session_id": "s3",
+            "node_type": "L3a",
+            "outcome": "failure",
+            "detail": "Output malformation detected - schema validation failed",
+        },
         # Type D: Session Drift / Loop
-        {"session_id": "s4", "node_type": "L4", "outcome": "failure", "detail": "Session drift detected - repetitive loop pattern"},
+        {
+            "session_id": "s4",
+            "node_type": "L4",
+            "outcome": "failure",
+            "detail": "Session drift detected - repetitive loop pattern",
+        },
         # Type E: False Success Reporting
-        {"session_id": "s5", "node_type": "L3b", "outcome": "failure", "detail": "False success reported - validation failed on recheck"},
+        {
+            "session_id": "s5",
+            "node_type": "L3b",
+            "outcome": "failure",
+            "detail": "False success reported - validation failed on recheck",
+        },
         # Type F: Context Anxiety
-        {"session_id": "s6", "node_type": "L4", "outcome": "failure", "detail": "Context anxiety detected - response shortening and hedging"},
+        {
+            "session_id": "s6",
+            "node_type": "L4",
+            "outcome": "failure",
+            "detail": "Context anxiety detected - response shortening and hedging",
+        },
     ]
     for ev in test_events:
         await trace_store.write_event(**ev)

@@ -3,12 +3,13 @@
 Adapter layer: composes EcsStore protocol with EventStore protocol
 and the validate_transition function from foundation.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
 from aip.foundation.ecs_graph import InvalidTransitionError, validate_transition
-from aip.foundation.protocols import EventStore, EcsStore
+from aip.foundation.protocols import EcsStore, EventStore
 
 
 class GuardrailedEcsStore(EcsStore):
@@ -54,8 +55,7 @@ class GuardrailedEcsStore(EcsStore):
             raise InvalidTransitionError(
                 current or "NONE",
                 to_state,
-                f"Precondition failed: expected {from_state!r}, "
-                f"but artifact {artifact_id!r} is in {current!r}",
+                f"Precondition failed: expected {from_state!r}, but artifact {artifact_id!r} is in {current!r}",
             )
 
         # Guardrail validation

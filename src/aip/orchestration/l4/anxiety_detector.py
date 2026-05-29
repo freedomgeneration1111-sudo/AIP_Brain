@@ -3,6 +3,7 @@
 Detects declining output length / quality in recent synthesis turns (proxy for context anxiety / window collapse).
 Emits TrajectorySignal with failure_type="F".
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -40,7 +41,7 @@ class ContextAnxietyDetector:
         # Check for consistent downward trend
         drops = 0
         for i in range(1, len(lengths)):
-            if lengths[i] < lengths[i-1] * (1 - self.min_length_drop / 2):
+            if lengths[i] < lengths[i - 1] * (1 - self.min_length_drop / 2):
                 drops += 1
 
         if drops >= 2:
@@ -50,9 +51,16 @@ class ContextAnxietyDetector:
                 session_id=session_id,
                 failure_type="F",
                 confidence=confidence,
-                detail=f"Output length declining over last {len(lengths)} turns (drops={drops}). Possible context anxiety / window collapse.",
+                detail=(
+                    f"Output length declining over last {len(lengths)} turns "
+                    f"(drops={drops}). Possible context anxiety / window collapse."
+                ),
                 detected_at=datetime.now(timezone.utc).isoformat(),
-                model_gen_assumption=model_gen_assumption or "current models suffer output-length collapse and loss of coherence as context window fills in multi-turn sessions",
+                model_gen_assumption=model_gen_assumption
+                or (
+                    "current models suffer output-length collapse and loss of "
+                    "coherence as context window fills in multi-turn sessions"
+                ),
             )
 
         return None

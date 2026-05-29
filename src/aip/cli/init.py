@@ -24,6 +24,7 @@ def _detect_ram_gb() -> int:
     """Best-effort RAM detection. Falls back to 8 if psutil unavailable."""
     try:
         import psutil
+
         return int(psutil.virtual_memory().total / (1024**3))
     except Exception:
         return 8
@@ -60,7 +61,9 @@ def _init_trace_db(db_path: Path) -> bool:
                 detail TEXT,
                 intervention_applied INTEGER DEFAULT 0,
                 intervention_type TEXT,
-                outcome TEXT CHECK (outcome IS NULL OR outcome IN ('success', 'failure', 'timeout', 'gate_blocked', 'insufficient_memory', 'detected', 'stale_detected')),
+                outcome TEXT CHECK (outcome IS NULL OR outcome IN
+                    ('success', 'failure', 'timeout', 'gate_blocked',
+                     'insufficient_memory', 'detected', 'stale_detected')),
                 created_at TEXT DEFAULT (datetime('now'))
             );
 
@@ -166,6 +169,7 @@ def _check_ollama() -> bool:
     """Check if Ollama is running. Returns True if reachable."""
     try:
         import httpx
+
         r = httpx.get("http://127.0.0.1:11434/api/tags", timeout=2)
         return r.status_code == 200
     except Exception:
@@ -204,7 +208,7 @@ def init(force: bool) -> None:
                 f.write('provider = "sqlite_vss"\n')
             else:
                 f.write('provider = "pgvector"\n')
-            f.write("host = \"127.0.0.1\"\nport = 5432\n")
+            f.write('host = "127.0.0.1"\nport = 5432\n')
         click.echo(f"Configured vector backend in {config_path}")
     else:
         click.echo(f"Vector backend config already present in {config_path}")
@@ -246,8 +250,13 @@ def init(force: bool) -> None:
     # 5. Model slot validation
     try:
         from aip.adapter.model_slot_resolver import ModelSlotResolver
+
         resolver = ModelSlotResolver(config_path=str(config_path))
-        slots = list(resolver._slots.keys()) if hasattr(resolver, "_slots") else ["synthesis", "evaluation", "sexton", "embedding"]
+        slots = (
+            list(resolver._slots.keys())
+            if hasattr(resolver, "_slots")
+            else ["synthesis", "evaluation", "sexton", "embedding"]
+        )
         click.echo(f"Model slots validated: {slots}")
     except Exception as e:
         click.echo(f"Model slot validation skipped: {e}")

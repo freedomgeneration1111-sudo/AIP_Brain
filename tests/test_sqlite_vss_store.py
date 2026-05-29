@@ -4,10 +4,12 @@ All tests run locally with no network calls."""
 
 import hashlib
 import math
+
 import pytest
 
 try:
     import sqlite3
+
     conn = sqlite3.connect(":memory:")
     conn.enable_load_extension(True)
     conn.load_extension("vss0")
@@ -54,9 +56,7 @@ def store(tmp_path):
 def store_with_embeddings(tmp_path):
     db_path = str(tmp_path / "test_vectors_embed.db")
     embed_provider = FakeEmbeddingProvider(dimensions=4)
-    s = SqliteVssVectorStore(
-        db_path=db_path, dimensions=4, embedding_provider=embed_provider
-    )
+    s = SqliteVssVectorStore(db_path=db_path, dimensions=4, embedding_provider=embed_provider)
     yield s, embed_provider
     s.close()
 
@@ -175,7 +175,8 @@ async def test_store_with_failing_embedding_provider_metadata_only(tmp_path):
             raise ConnectionError("Ollama not running")
 
     s = SqliteVssVectorStore(
-        db_path=db_path, dimensions=4,
+        db_path=db_path,
+        dimensions=4,
         embedding_provider=FailingEmbeddingProvider(),
     )
 

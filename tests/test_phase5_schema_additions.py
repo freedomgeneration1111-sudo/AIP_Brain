@@ -1,6 +1,19 @@
 """Verify Phase 5 schema additions do not break Phase 0, 1, 2, 3, or 4."""
+
 import pytest
 
+from aip.foundation.protocols import (
+    ArtifactStore,
+    BudgetStore,
+    EcsStore,
+    EmbeddingProvider,
+    EntityStore,
+    EventStore,
+    ModelProvider,
+    ProjectStore,
+    TraceStore,
+    VectorStore,
+)
 from aip.foundation.schemas import (
     AcePlaybookEntry,
     BeastCadenceConfig,
@@ -28,18 +41,6 @@ from aip.foundation.schemas import (
     SextonConfig,
     TrajectorySignal,
     VectorBackendType,
-)
-from aip.foundation.protocols import (
-    ArtifactStore,
-    BudgetStore,
-    EmbeddingProvider,
-    EcsStore,
-    EntityStore,
-    EventStore,
-    ModelProvider,
-    ProjectStore,
-    TraceStore,
-    VectorStore,
 )
 
 

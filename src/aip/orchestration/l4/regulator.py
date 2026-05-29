@@ -2,6 +2,7 @@
 
 If two or more of the three L4 signals (loop D, anxiety F, failure streak E)
 fire within the session window, it triggers a trajectory correction intervention."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -42,7 +43,11 @@ class TrajectoryRegulator:
                 signals=recent_signals,
                 action="context_reset",
                 reason=f"2-of-3 L4 rule fired: signals = {signal_types}",
-                model_gen_assumption=model_gen_assumption or "L4 interventions are needed when current models enter repetitive or low-value trajectories in multi-turn sessions",
+                model_gen_assumption=model_gen_assumption
+                or (
+                    "L4 interventions are needed when current models enter "
+                    "repetitive or low-value trajectories in multi-turn sessions"
+                ),
             )
 
         return None

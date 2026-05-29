@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from aip.foundation.protocols import ModelProvider, TraceStore, EventStore
-from aip.foundation.schemas import SextonConfig, FailureClassification
+from aip.foundation.protocols import EventStore, ModelProvider, TraceStore
+from aip.foundation.schemas import FailureClassification, SextonConfig
 
 
 class Sexton:
@@ -107,9 +107,7 @@ class Sexton:
             return []
 
         try:
-            events = await self._trace_store.get_unclassified_failures(
-                limit=self._config.classification_batch_size
-            )
+            events = await self._trace_store.get_unclassified_failures(limit=self._config.classification_batch_size)
         except Exception:
             return []
 
@@ -125,7 +123,9 @@ class Sexton:
         return results
 
     async def classify_trace_event(
-        self, trace_event_id: int, event: dict[str, Any] | None = None
+        self,
+        trace_event_id: int,
+        event: dict[str, Any] | None = None,
     ) -> FailureClassification | None:
         """Classify a single trace event (7.1). Produces FailureClassification with model_gen_assumption."""
         if event is None and self._trace_store is not None:
@@ -211,11 +211,13 @@ class Sexton:
 
         if count > self._config.max_unclassified_before_alert and self._event_store is not None:
             try:
-                await self._event_store.write_event({
-                    "event_type": "sexton_alert",
-                    "unclassified_count": count,
-                    "threshold": self._config.max_unclassified_before_alert,
-                })
+                await self._event_store.write_event(
+                    {
+                        "event_type": "sexton_alert",
+                        "unclassified_count": count,
+                        "threshold": self._config.max_unclassified_before_alert,
+                    },
+                )
             except Exception:
                 pass
 
@@ -223,11 +225,13 @@ class Sexton:
 
         if self._event_store is not None:
             try:
-                await self._event_store.write_event({
-                    "event_type": "sexton_cycle_complete",
-                    "classified_count": count,
-                    "tokens_consumed": 0,
-                })
+                await self._event_store.write_event(
+                    {
+                        "event_type": "sexton_cycle_complete",
+                        "classified_count": count,
+                        "tokens_consumed": 0,
+                    },
+                )
             except Exception:
                 pass
 
@@ -243,6 +247,7 @@ class Sexton:
     def _parse_classification_response(self, content: str) -> dict[str, Any]:
         """Very small JSON-ish extractor for the real model path."""
         import json
+
         try:
             return json.loads(content)
         except Exception:
@@ -274,7 +279,9 @@ class Sexton:
                 return None
 
         # Retrieval / L2 patterns (from Phase 1 code)
-        if node_type == "L2" and ("insufficient" in detail or "max confidence" in detail or "below threshold" in detail):
+        if node_type == "L2" and (
+            "insufficient" in detail or "max confidence" in detail or "below threshold" in detail
+        ):
             return "A"  # Context Framing / Missing Context (per retrieval.py R2 logging)
 
         # Structural / L3a malformation patterns
@@ -395,9 +402,14 @@ class Sexton:
         for rule in rules:
             assumption = rule.get("model_gen_assumption", "")
             if not assumption or "§1.8" not in assumption or len(assumption) < 50:
-                stale.append({
-                    **rule,
-                    "audit_reason": "Missing or weak model_gen_assumption tag (per §1.8). Rule may be stale after model upgrade.",
-                    "trust_score": self.trust_score(rule),
-                })
+                stale.append(
+                    {
+                        **rule,
+                        "audit_reason": (
+                            "Missing or weak model_gen_assumption tag "
+                            "(per §1.8). Rule may be stale after model upgrade."
+                        ),
+                        "trust_score": self.trust_score(rule),
+                    },
+                )
         return stale

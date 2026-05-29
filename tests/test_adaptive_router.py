@@ -1,6 +1,8 @@
 """Tests for CHUNK-7.4 Adaptive Router (per Phase 5 ANNEX + prose)."""
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from aip.adapter.model_slot_resolver import ModelSlotResolver
 from aip.orchestration.budget import BudgetManager

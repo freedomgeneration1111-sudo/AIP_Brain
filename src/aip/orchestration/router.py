@@ -51,19 +51,15 @@ class AdaptiveRouter:
         # Decay factor for older outcomes (0-1, higher = slower decay)
         self._decay_factor = self._config.get("weight_decay_factor", 0.95)
 
-    def _record_outcome(
-        self, slot_name: str, domain: str, success: bool, latency_ms: float
-    ) -> None:
+    def _record_outcome(self, slot_name: str, domain: str, success: bool, latency_ms: float) -> None:
         """Record a routing outcome for future weight computation."""
         now = datetime.now(timezone.utc).isoformat()
         self._outcome_history.append((slot_name, domain, success, now, latency_ms))
         # Trim history if it exceeds max
         if len(self._outcome_history) > self._max_history:
-            self._outcome_history = self._outcome_history[-self._max_history:]
+            self._outcome_history = self._outcome_history[-self._max_history :]
 
-    async def resolve_with_routing(
-        self, slot_name: str, domain: str, messages: list[dict], **kwargs
-    ) -> dict:
+    async def resolve_with_routing(self, slot_name: str, domain: str, messages: list[dict], **kwargs) -> dict:
         """Primary entry point. Budget check + exploration/exploitation."""
         # Centralized budget enforcement on all three scopes (per 7.4 prose)
         for scope in ("session", "project", "daily"):
@@ -79,7 +75,10 @@ class AdaptiveRouter:
             resolved_slot = self._pick_non_optimal(slot_name, domain)
             logger.debug(
                 "Router: exploration path for slot=%s domain=%s -> %s (exp_w=%.3f)",
-                slot_name, domain, resolved_slot, exp_w,
+                slot_name,
+                domain,
+                resolved_slot,
+                exp_w,
             )
         else:
             resolved_slot = slot_name  # Exploitation (highest weight assumed to be the named slot)
@@ -94,7 +93,11 @@ class AdaptiveRouter:
 
         # Record consumption (via budget)
         await self._budget.record_consumption(
-            "session", "default", result.get("usage", {}).get("total_tokens", 0), 0.0, resolved_slot
+            "session",
+            "default",
+            result.get("usage", {}).get("total_tokens", 0),
+            0.0,
+            resolved_slot,
         )
 
         return result
@@ -144,6 +147,7 @@ class AdaptiveRouter:
             weight_value = 0.7 * success_rate + 0.3 * latency_score
 
             from datetime import datetime as _dt
+
             new_weights[(slot, domain)] = RoutingWeight(
                 model_slot=slot,
                 domain=domain,
@@ -156,7 +160,8 @@ class AdaptiveRouter:
         self._weights = new_weights
         logger.info(
             "Router: updated weights for %d (slot, domain) pairs from %d outcomes",
-            len(new_weights), len(self._outcome_history),
+            len(new_weights),
+            len(self._outcome_history),
         )
 
     async def get_routing_weights(self, domain: str | None = None) -> list[RoutingWeight]:
@@ -177,9 +182,7 @@ class AdaptiveRouter:
 
         # Count actual outcomes for this domain
         domain_outcomes = [
-            (slot, d, success, ts, lat)
-            for slot, d, success, ts, lat in self._outcome_history
-            if d == domain
+            (slot, d, success, ts, lat) for slot, d, success, ts, lat in self._outcome_history if d == domain
         ]
         count = len(domain_outcomes)
 

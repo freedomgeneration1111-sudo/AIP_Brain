@@ -18,9 +18,9 @@ try:
 except ImportError:
     TestClient = None  # type: ignore
 
-from aip.cli.main import cli
 from aip.adapter.api.app import create_app
 from aip.adapter.mcp.server import AipMcpServer
+from aip.cli.main import cli
 
 
 @pytest.mark.skipif(CliRunner is None, reason="click not installed")
@@ -79,12 +79,14 @@ def test_scenario_2_full_api_round_trip():
 @pytest.mark.skipif(TestClient is None, reason="fastapi not installed")
 def test_scenario_3_mcp_tool_round_trip():
     """MCP: search → artifact_list → artifact_approve (admin gate) → trace_query."""
+
     class MockContainer:
         autonomy_gate = None
         lexical_store = None
         ecs_store = None
         canonical_store = None
         trace_store = None
+
     server = AipMcpServer(MockContainer())
     tools = server.list_tools()
     assert any(t.tool_name == "aip_search" for t in tools)
@@ -108,6 +110,3 @@ def test_scenario_4_admin_memory_inspector():
 
     r = client.get("/api/v1/memory/canonical")
     assert r.status_code in (200, 503)
-
-
-

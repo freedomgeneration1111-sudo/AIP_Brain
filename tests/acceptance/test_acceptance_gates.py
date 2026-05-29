@@ -5,30 +5,32 @@ These tests verify that all §22 acceptance gates pass, covering:
 - Process rules (§11-§16)
 - Appendix constraints (A-E)
 """
+
 import pytest
 
 
 def test_foundation_protocols_importable():
     """Gate: all Foundation Protocol classes are importable."""
     from aip.foundation.protocols import (
-        VectorStore,
-        LexicalStore,
-        CanonicalStore,
         ArtifactStore,
-        TraceStore,
+        AuthStore,
+        AutonomyGate,
+        BudgetStore,
+        CanonicalStore,
+        EcsStore,
+        EmbeddingProvider,
         EntityStore,
         EventStore,
-        ProjectStore,
-        EcsStore,
-        BudgetStore,
-        AutonomyGate,
-        ModelProvider,
-        EmbeddingProvider,
-        VigilStore,
-        AuthStore,
         KnowledgeStore,
+        LexicalStore,
+        ModelProvider,
         PluginProvider,
+        ProjectStore,
+        TraceStore,
+        VectorStore,
+        VigilStore,
     )
+
     # All protocols must be runtime-checkable
     assert hasattr(VectorStore, "__protocol_attrs__") or hasattr(VectorStore, "__abstractmethods__")
 
@@ -36,48 +38,49 @@ def test_foundation_protocols_importable():
 def test_foundation_schemas_importable():
     """Gate: all Foundation schema dataclasses are importable."""
     from aip.foundation.schemas import (
-        EcsState,
-        ContractTier,
-        ContractRule,
-        Chunk,
-        RetrievalResult,
-        ReviewVerdict,
-        ReviewContext,
-        EcsTransition,
-        Event,
-        TrajectorySignal,
-        SessionContext,
-        ModelSlotConfig,
-        PgvectorConfig,
-        MigrationStatus,
-        EvaluationScore,
-        FaithfulnessResult,
-        DomainCoherenceResult,
+        AcePlaybookEntry,
+        ApiRoute,
+        AuthConfig,
+        AutonomyEscalation,
+        BeastCadenceConfig,
         BudgetConfig,
         BudgetScope,
-        SextonConfig,
-        AcePlaybookEntry,
-        RoutingWeight,
-        BeastCadenceConfig,
-        FailureClassification,
-        SurfaceConfig,
-        ApiRoute,
-        McpToolDef,
-        AutonomyEscalation,
-        ChatMessage,
-        ReviewQueueEntry,
-        VigilConfig,
-        AuthConfig,
-        RateLimitConfig,
         CanonicalPromotionConfig,
-        WorkflowTemplate,
-        DeploymentProfile,
-        KnowledgeCompilationConfig,
-        PluginConfig,
+        ChatMessage,
+        Chunk,
         CollaboratorConfig,
+        ContractRule,
+        ContractTier,
+        DeploymentProfile,
+        DomainCoherenceResult,
+        EcsState,
+        EcsTransition,
+        EvaluationScore,
+        Event,
+        FailureClassification,
+        FaithfulnessResult,
+        KnowledgeCompilationConfig,
+        McpToolDef,
+        MigrationStatus,
+        ModelSlotConfig,
         PerformanceConfig,
+        PgvectorConfig,
+        PluginConfig,
+        RateLimitConfig,
         ReleaseMetadata,
+        RetrievalResult,
+        ReviewContext,
+        ReviewQueueEntry,
+        ReviewVerdict,
+        RoutingWeight,
+        SessionContext,
+        SextonConfig,
+        SurfaceConfig,
+        TrajectorySignal,
+        VigilConfig,
+        WorkflowTemplate,
     )
+
     # EcsState must have all required states
     assert EcsState.SPECIFIED.value == "SPECIFIED"
     assert EcsState.GENERATED.value == "GENERATED"
@@ -89,7 +92,7 @@ def test_foundation_schemas_importable():
 
 def test_ecs_graph_valid_transitions():
     """Gate: ECS graph enforces valid transitions per §9.3."""
-    from aip.foundation.ecs_graph import VALID_TRANSITIONS, validate_transition, InvalidTransitionError
+    from aip.foundation.ecs_graph import VALID_TRANSITIONS, InvalidTransitionError, validate_transition
 
     # Valid transitions
     validate_transition("SPECIFIED", "GENERATED")

@@ -22,7 +22,6 @@ from aip.foundation.schemas import (
     EvaluationScore,
 )
 
-
 logger = logging.getLogger(__name__)
 
 # CI fixture values — used when model_resolver is None or on error
@@ -65,8 +64,8 @@ async def evaluate_domain_coherence(
                         "You are a domain coherence evaluator. Given a generated artifact "
                         "and its target domain, evaluate whether it meets the quality standards "
                         "of that domain. Score coherence 0.0-1.0. List any violations. "
-                        "Return JSON: {\"coherence_score\": float, \"violations\": [str], "
-                        "\"rationale\": str}"
+                        'Return JSON: {"coherence_score": float, "violations": [str], '
+                        '"rationale": str}'
                     ),
                 },
                 {
@@ -93,8 +92,11 @@ async def evaluate_domain_coherence(
                             rationale="CI fixture — automatic pass (model returned fixture response)",
                             model_slot_used="evaluation",
                             tokens_consumed=tokens_consumed,
-                            model_gen_assumption="Models may produce structurally valid but domain-incoherent output without explicit domain constraints",
-                        )
+                            model_gen_assumption=(
+                                "Models may produce structurally valid but "
+                                "domain-incoherent output without explicit domain constraints"
+                            ),
+                        ),
                     ],
                     ci_fixture=True,
                 )
@@ -126,8 +128,11 @@ async def evaluate_domain_coherence(
                 rationale=rationale,
                 model_slot_used=model_slot_used,
                 tokens_consumed=tokens_consumed,
-                model_gen_assumption="Models may produce structurally valid but domain-incoherent output without explicit domain constraints",
-            )
+                model_gen_assumption=(
+                    "Models may produce structurally valid but domain-incoherent "
+                    "output without explicit domain constraints"
+                ),
+            ),
         ],
         ci_fixture=ci_fixture,
     )

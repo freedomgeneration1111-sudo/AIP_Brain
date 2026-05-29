@@ -7,12 +7,13 @@ per §9.3 state machine. Verifies that:
 - Terminal states are correctly identified
 - The state graph is structurally sound
 """
+
 import pytest
 
 
 def test_ecs_graph_importable():
     """ECS graph module is importable."""
-    from aip.foundation.ecs_graph import VALID_TRANSITIONS, ALL_STATES
+    from aip.foundation.ecs_graph import ALL_STATES, VALID_TRANSITIONS
 
     assert len(VALID_TRANSITIONS) > 0
     assert "SPECIFIED" in ALL_STATES
@@ -53,7 +54,7 @@ def test_supersession_is_terminal():
 
 def test_no_skip_states():
     """Cannot skip states in the lifecycle (e.g., SPECIFIED → APPROVED)."""
-    from aip.foundation.ecs_graph import validate_transition, InvalidTransitionError
+    from aip.foundation.ecs_graph import InvalidTransitionError, validate_transition
 
     with pytest.raises(InvalidTransitionError):
         validate_transition("SPECIFIED", "APPROVED")
@@ -103,7 +104,7 @@ def test_approved_to_superseded():
 
 def test_no_backward_from_approved():
     """Cannot go backwards from APPROVED (only SUPERSEDED is valid)."""
-    from aip.foundation.ecs_graph import validate_transition, InvalidTransitionError
+    from aip.foundation.ecs_graph import InvalidTransitionError, validate_transition
 
     with pytest.raises(InvalidTransitionError):
         validate_transition("APPROVED", "REVIEWED")

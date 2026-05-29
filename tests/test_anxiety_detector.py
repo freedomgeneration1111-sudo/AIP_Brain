@@ -1,4 +1,5 @@
 """Tests for CHUNK-5.3 Context Anxiety Detector (Type F)."""
+
 import pytest
 
 from aip.orchestration.l4.anxiety_detector import ContextAnxietyDetector

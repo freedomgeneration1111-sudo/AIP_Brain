@@ -27,6 +27,7 @@ def test_auth_middleware_laptop_profile_fallback():
     # When auth disabled, all requests are DEFINER
     # (detailed integration tested via 8.1 app + 9.0b middleware in later gates)
     from aip.adapter.api.app import create_app
+
     app = create_app()
     client = TestClient(app)
     r = client.get("/api/v1/health")
@@ -35,6 +36,7 @@ def test_auth_middleware_laptop_profile_fallback():
 
 def test_layering():
     from pathlib import Path
+
     auth_file = Path(__file__).parent.parent / "src/aip/adapter/auth/session_store.py"
     if auth_file.exists():
         text = auth_file.read_text()

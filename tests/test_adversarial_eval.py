@@ -2,13 +2,13 @@
 
 import asyncio
 
-from aip.orchestration.nodes.synthesis import SynthesisOutput
 from aip.foundation.validation import ValidationResult
 from aip.orchestration.nodes.adversarial_eval import (
-    adversarial_eval,
     DEFAULT_EVAL_CRITERIA,
     EvalResult,
+    adversarial_eval,
 )
+from aip.orchestration.nodes.synthesis import SynthesisOutput
 
 
 def _make_synthesis_output(content="Stub synthesis output with sections."):
@@ -84,5 +84,5 @@ def test_accepts_custom_criteria():
 def test_eval_result_has_ci_fixture_field():
     """EvalResult dataclass includes ci_fixture field."""
     result = EvalResult(passed=False, scores={"grounding": 0.0}, requires_deep_eval=True)
-    assert hasattr(result, 'ci_fixture')
+    assert hasattr(result, "ci_fixture")
     assert result.ci_fixture is True  # Default is True (fixture until proven real)

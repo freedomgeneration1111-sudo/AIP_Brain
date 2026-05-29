@@ -1,6 +1,7 @@
 """Review Queue routes.
 
-Per spec: GET /reviews (paginated ReviewQueueEntry), POST /reviews/{id}/approve (admin AutonomyGate + ECS + Canonical), POST reject (write gate + ECS to FAILED).
+Per spec: GET /reviews (paginated ReviewQueueEntry), POST /reviews/{id}/approve
+(admin AutonomyGate + ECS + Canonical), POST reject (write gate + ECS to FAILED).
 """
 
 from __future__ import annotations

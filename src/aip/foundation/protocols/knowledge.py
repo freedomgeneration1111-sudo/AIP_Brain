@@ -4,6 +4,7 @@ Abstraction for the Deferred Compiled Knowledge Layer.
 Compiled knowledge tracks provenance to source canonicals.
 Per Appendix D: compiled knowledge ≠ canonical artifact.
 """
+
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
@@ -41,9 +42,7 @@ class KnowledgeStore(Protocol):
         """
         ...
 
-    async def list_compiled(
-        self, domain: str | None = None, state: "CompilationState" | None = None
-    ) -> list[dict]:
+    async def list_compiled(self, domain: str | None = None, state: "CompilationState" | None = None) -> list[dict]:
         """List compiled knowledge, optionally filtered."""
         ...
 
@@ -55,9 +54,7 @@ class KnowledgeStore(Protocol):
         """Return the list of source canonicals used to compile this knowledge."""
         ...
 
-    async def search_compiled(
-        self, query: str, domain: str | None = None, limit: int = 10
-    ) -> list[dict]:
+    async def search_compiled(self, query: str, domain: str | None = None, limit: int = 10) -> list[dict]:
         """Search compiled knowledge by query and domain."""
         ...
 

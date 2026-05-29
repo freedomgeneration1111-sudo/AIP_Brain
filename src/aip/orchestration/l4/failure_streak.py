@@ -11,6 +11,7 @@ making Type E detection completely non-functional.
 Both the default_substance_score and substance_threshold are configurable via
 constructor parameters, allowing callers to tune detection sensitivity.
 """
+
 from __future__ import annotations
 
 import logging
@@ -75,7 +76,8 @@ class FailureStreakDetector:
         if streak >= self.streak_threshold:
             logger.info(
                 "Type E failure streak detected: %d consecutive low-substance completions (session=%s)",
-                streak, session_id,
+                streak,
+                session_id,
             )
             return TrajectorySignal(
                 signal_type="failure_streak",
@@ -84,7 +86,11 @@ class FailureStreakDetector:
                 confidence=min(0.55 + (streak - self.streak_threshold) * 0.12, 0.93),
                 detail=f"Detected {streak} consecutive low-substance 'completion' claims.",
                 detected_at=datetime.now(timezone.utc).isoformat(),
-                model_gen_assumption=model_gen_assumption or "current models frequently claim completion while producing incomplete or low-substance outputs (false success)",
+                model_gen_assumption=model_gen_assumption
+                or (
+                    "current models frequently claim completion while producing "
+                    "incomplete or low-substance outputs (false success)"
+                ),
             )
 
         return None

@@ -3,18 +3,18 @@
 Single source of truth for artifact lifecycle state machine.
 No storage, no I/O — pure validation logic in foundation layer.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 # Declarative ECS state graph
 VALID_TRANSITIONS: dict[str, set[str]] = {
     "SPECIFIED": {"GENERATED"},
     "GENERATED": {"REVIEWED", "FAILED"},
     "REVIEWED": {"APPROVED", "REJECTED"},
-    "REJECTED": {"GENERATED"},       # re-synthesis loop
+    "REJECTED": {"GENERATED"},  # re-synthesis loop
     "APPROVED": {"SUPERSEDED"},
-    "FAILED": {"SPECIFIED"},          # re-specify after failure
-    "SUPERSEDED": set(),             # terminal state
+    "FAILED": {"SPECIFIED"},  # re-specify after failure
+    "SUPERSEDED": set(),  # terminal state
 }
 
 # All known states
@@ -32,9 +32,7 @@ class InvalidTransitionError(Exception):
     def __init__(self, from_state: str, to_state: str, message: str = ""):
         self.from_state = from_state
         self.to_state = to_state
-        super().__init__(
-            message or f"Invalid ECS transition: {from_state} → {to_state}"
-        )
+        super().__init__(message or f"Invalid ECS transition: {from_state} → {to_state}")
 
 
 def validate_transition(from_state: str, to_state: str) -> None:
@@ -44,16 +42,16 @@ def validate_transition(from_state: str, to_state: str) -> None:
     """
     if from_state not in VALID_TRANSITIONS:
         raise InvalidTransitionError(
-            from_state, to_state,
-            f"Unknown from_state: {from_state!r}. "
-            f"Known states: {sorted(ALL_STATES)}",
+            from_state,
+            to_state,
+            f"Unknown from_state: {from_state!r}. Known states: {sorted(ALL_STATES)}",
         )
     allowed = VALID_TRANSITIONS[from_state]
     if to_state not in allowed:
         raise InvalidTransitionError(
-            from_state, to_state,
-            f"Transition {from_state} → {to_state} not allowed. "
-            f"Allowed from {from_state}: {sorted(allowed)}",
+            from_state,
+            to_state,
+            f"Transition {from_state} → {to_state} not allowed. Allowed from {from_state}: {sorted(allowed)}",
         )
 
 

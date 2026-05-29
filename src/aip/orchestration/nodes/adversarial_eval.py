@@ -34,8 +34,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from aip.orchestration.nodes.synthesis import SynthesisOutput
 from aip.foundation.validation import ValidationResult
+from aip.orchestration.nodes.synthesis import SynthesisOutput
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +62,11 @@ DEFAULT_EVAL_CRITERIA: list[EvalCriterion] = [
     EvalCriterion(
         criterion_id="grounding",
         name="Grounding / Hallucination",
-        description="Does the synthesis output stay grounded in the provided retrieval context without introducing unsupported claims?",
-        model_gen_assumption="Models may hallucinate specific claims; grounding check compensates per §1.8",
+        description=(
+            "Does the synthesis output stay grounded in the provided "
+            "retrieval context without introducing unsupported claims?"
+        ),
+        model_gen_assumption=("Models may hallucinate specific claims; grounding check compensates per §1.8"),
     ),
     EvalCriterion(
         criterion_id="completeness",
@@ -137,10 +140,12 @@ async def adversarial_eval(
 
         _content = artifact_content or ""
         _context = context or ""
-        messages.append({
-            "role": "user",
-            "content": f"Artifact:\n{_content}\n\nContext (for review):\n{_context}",
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": f"Artifact:\n{_content}\n\nContext (for review):\n{_context}",
+            },
+        )
 
         try:
             result = await model_resolver.call(
@@ -162,8 +167,7 @@ async def adversarial_eval(
         # CI fixture path: model returned a fixture response
         if "CI fixture" in result_content or "ci-evaluation" in result_model:
             logger.info(
-                "Adversarial eval detected CI fixture response (model=%s). "
-                "Returning ci_fixture=True with 0.0 scores.",
+                "Adversarial eval detected CI fixture response (model=%s). Returning ci_fixture=True with 0.0 scores.",
                 result_model,
             )
             return {
@@ -199,7 +203,9 @@ async def adversarial_eval(
                 return {
                     "scores": dict(_CI_FIXTURE_SCORES),
                     "overall": _CI_FIXTURE_OVERALL,
-                    "critique": result_content[:300] if result_content else "Model response received but no scores parsed",
+                    "critique": result_content[:300]
+                    if result_content
+                    else "Model response received but no scores parsed",
                     "model": result_model,
                     "usage": result.get("usage", {}),
                     "latency_ms": result.get("latency_ms", 0),
@@ -248,7 +254,13 @@ async def adversarial_eval(
     logger.info("Adversarial eval called without model_resolver; returning ci_fixture scores (0.0)")
 
     if validation_result is None:
-        validation_result = ValidationResult(passed=True, failure_type=None, failure_detail=None, checks_run=0, checks_failed=[])
+        validation_result = ValidationResult(
+            passed=True,
+            failure_type=None,
+            failure_detail=None,
+            checks_run=0,
+            checks_failed=[],
+        )
 
     criteria = eval_criteria or DEFAULT_EVAL_CRITERIA
 

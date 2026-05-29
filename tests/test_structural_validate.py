@@ -1,14 +1,18 @@
 """Tests for structural_validate (CHUNK-1.2 per Rev 1.3)."""
 
 from aip.foundation.validation import (
-    structural_validate,
     DEFAULT_RULES,
     ValidationRule,
+    structural_validate,
 )
 
 
 def test_passes_good_output():
-    good = "This is a substantial output with multiple sections.\n\n## Step 1\nDetails here with enough text to pass the minimum length requirement of 100 characters easily."
+    good = (
+        "This is a substantial output with multiple sections.\n\n"
+        "## Step 1\nDetails here with enough text to pass the minimum length "
+        "requirement of 100 characters easily."
+    )
     result = structural_validate(good)
     assert result.passed is True
     assert result.checks_failed == []

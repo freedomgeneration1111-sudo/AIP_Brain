@@ -3,11 +3,11 @@
 L4 trajectory detection signals and multi-turn session state
 used by the trajectory regulator and context reset logic.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Literal
-
 
 # Type alias for trajectory signal types
 TrajectorySignalType = Literal["loop", "anxiety", "failure_streak"]
@@ -21,6 +21,7 @@ class TrajectorySignal:
     Every L4 trigger must carry model_gen_assumption.
     D/E/F are the L4 failure type codes.
     """
+
     signal_type: TrajectorySignalType
     session_id: str
     artifact_id: str | None = None
@@ -38,6 +39,7 @@ class SessionContext:
     Tracks turn count, context window usage, artifacts produced,
     and when the last reset occurred.
     """
+
     session_id: str
     project_id: str
     turn_count: int = 0

@@ -48,6 +48,7 @@ def test_artifact_browser_read_only():
 def test_layering_and_no_bypass():
     """Layering + sovereignty (enforced in combined gate with test_layering + phase6_gates later)."""
     from pathlib import Path
+
     for f in ["review.py", "artifacts.py"]:
         p = Path(__file__).parent.parent / "src/aip/adapter/api/routes" / f
         if p.exists():
@@ -58,5 +59,3 @@ def test_layering_and_no_bypass():
             assert "import aip.orchestration" not in text, f"{f} imports from orchestration"
             assert "from aip.adapter.vector" not in text, f"{f} imports concrete vector adapter"
             assert "from aip.adapter.budget_store" not in text, f"{f} imports concrete budget store"
-
-

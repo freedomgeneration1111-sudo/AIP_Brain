@@ -4,6 +4,7 @@ Graceful degradation: when neither vector backend is available,
 this provides a working (but non-persistent) store so the system can still
 operate in CI and development environments.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -20,17 +21,25 @@ class InMemoryVectorStore(VectorStore):
         self._vectors: dict[str, list[float]] = {}
 
     async def upsert(
-        self, id: str, embedding: list[float], content: str,
-        metadata: dict[str, Any] | None = None, domain: str | None = None,
+        self,
+        id: str,
+        embedding: list[float],
+        content: str,
+        metadata: dict[str, Any] | None = None,
+        domain: str | None = None,
     ) -> None:
         self._data[id] = {"content": content, "metadata": metadata or {}, "domain": domain}
         self._vectors[id] = embedding
 
     async def retrieve(
-        self, query_vector: list[float], domain: str | None = None, top_k: int = 10,
+        self,
+        query_vector: list[float],
+        domain: str | None = None,
+        top_k: int = 10,
     ) -> list[Chunk]:
         # Simple cosine similarity fallback
         import math
+
         results = []
         for id_, data in self._data.items():
             if domain and data.get("domain") != domain:
@@ -39,10 +48,15 @@ class InMemoryVectorStore(VectorStore):
             if not vec:
                 continue
             score = self._cosine_similarity(query_vector, vec)
-            results.append(Chunk(
-                id=id_, content=data["content"], score=score,
-                metadata=data["metadata"], domain=data.get("domain"),
-            ))
+            results.append(
+                Chunk(
+                    id=id_,
+                    content=data["content"],
+                    score=score,
+                    metadata=data["metadata"],
+                    domain=data.get("domain"),
+                ),
+            )
         results.sort(key=lambda c: c.score, reverse=True)
         return results[:top_k]
 
@@ -59,7 +73,10 @@ class InMemoryVectorStore(VectorStore):
         return {"connected": True, "backend_name": "in-memory", "count": len(self._data)}
 
     async def list_stale_vectors(
-        self, threshold_days: int = 30, domain: str | None = None, limit: int = 100
+        self,
+        threshold_days: int = 30,
+        domain: str | None = None,
+        limit: int = 100,
     ) -> list[dict]:
         """In-memory store has no timestamps; return empty list (no staleness tracking)."""
         return []

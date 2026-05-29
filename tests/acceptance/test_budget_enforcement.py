@@ -7,6 +7,7 @@ Tests that budget enforcement works per §6:
 - Warning threshold emits events
 - Budget status reporting is accurate
 """
+
 import pytest
 
 
@@ -48,8 +49,8 @@ async def test_budget_store_rejects_overspend():
 @pytest.mark.asyncio
 async def test_budget_manager_enforces_hard_stop():
     """BudgetManager blocks calls that would exceed limit when hard_stop=True."""
-    from aip.orchestration.budget import BudgetManager, InMemoryBudgetStore
     from aip.foundation.schemas import BudgetConfig
+    from aip.orchestration.budget import BudgetManager, InMemoryBudgetStore
 
     config = BudgetConfig(
         session_token_limit=1000,
@@ -69,8 +70,8 @@ async def test_budget_manager_enforces_hard_stop():
 @pytest.mark.asyncio
 async def test_budget_manager_allows_within_limit():
     """BudgetManager allows calls within budget."""
-    from aip.orchestration.budget import BudgetManager, InMemoryBudgetStore
     from aip.foundation.schemas import BudgetConfig
+    from aip.orchestration.budget import BudgetManager, InMemoryBudgetStore
 
     config = BudgetConfig(
         session_token_limit=10000,
@@ -86,8 +87,8 @@ async def test_budget_manager_allows_within_limit():
 @pytest.mark.asyncio
 async def test_budget_manager_soft_limit():
     """BudgetManager allows overspend when hard_stop=False."""
-    from aip.orchestration.budget import BudgetManager, InMemoryBudgetStore
     from aip.foundation.schemas import BudgetConfig
+    from aip.orchestration.budget import BudgetManager, InMemoryBudgetStore
 
     config = BudgetConfig(
         session_token_limit=1000,
@@ -106,8 +107,8 @@ async def test_budget_manager_soft_limit():
 @pytest.mark.asyncio
 async def test_budget_status_report():
     """BudgetManager.get_status returns accurate consumption data."""
-    from aip.orchestration.budget import BudgetManager, InMemoryBudgetStore
     from aip.foundation.schemas import BudgetConfig
+    from aip.orchestration.budget import BudgetManager, InMemoryBudgetStore
 
     config = BudgetConfig(session_token_limit=1000)
     store = InMemoryBudgetStore()

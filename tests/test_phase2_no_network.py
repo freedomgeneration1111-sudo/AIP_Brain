@@ -1,4 +1,5 @@
 """Phase 2 extension of the network isolation and model-name gates (CHUNK-4.8)."""
+
 import ast
 from pathlib import Path
 
@@ -49,6 +50,7 @@ def test_phase2_code_has_no_hardcoded_models():
     Docstrings and model_gen_assumption strings are allowed per §1.8.
     """
     import ast as _ast
+
     forbidden_keywords = ["DeepSeek", "Qwen", "Claude", "GPT-", "gpt-", "sonnet", "o1-"]
 
     src_root = Path("src/aip")
@@ -67,10 +69,12 @@ def test_phase2_code_has_no_hardcoded_models():
         docstring_lines = set()
         for node in _ast.walk(tree):
             if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef, _ast.Module)):
-                if (node.body
+                if (
+                    node.body
                     and isinstance(node.body[0], _ast.Expr)
                     and isinstance(node.body[0].value, _ast.Constant)
-                    and isinstance(node.body[0].value.value, str)):
+                    and isinstance(node.body[0].value.value, str)
+                ):
                     docstring_lines.add(node.body[0].value.lineno)
 
         for node in _ast.walk(tree):

@@ -166,9 +166,7 @@ class PgvectorStore(VectorStore):
 
         async with self._pool.acquire() as conn:
             # Set search parameter for this query
-            await conn.execute(
-                f"SET LOCAL hnsw.ef_search = {self._config.hnsw_ef_search}"
-            )
+            await conn.execute(f"SET LOCAL hnsw.ef_search = {self._config.hnsw_ef_search}")
             if domain:
                 rows = await conn.fetch(
                     """
@@ -201,7 +199,9 @@ class PgvectorStore(VectorStore):
                 id=row["id"],
                 content="",  # content stored in metadata or artifact store (per design)
                 score=float(row["score"]),
-                metadata=json.loads(row["metadata"]) if isinstance(row["metadata"], str) else dict(row["metadata"] or {}),
+                metadata=json.loads(row["metadata"])
+                if isinstance(row["metadata"], str)
+                else dict(row["metadata"] or {}),
                 domain=row["domain"],
             )
             for row in rows
@@ -276,7 +276,10 @@ class PgvectorStore(VectorStore):
         return row["cnt"] if row else 0
 
     async def list_stale_vectors(
-        self, threshold_days: int = 30, domain: str | None = None, limit: int = 100
+        self,
+        threshold_days: int = 30,
+        domain: str | None = None,
+        limit: int = 100,
     ) -> list[dict]:
         """List vectors not updated within threshold_days.
 
@@ -286,7 +289,8 @@ class PgvectorStore(VectorStore):
             return []
 
         from datetime import datetime, timedelta, timezone
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=threshold_days))
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=threshold_days)
 
         async with self._pool.acquire() as conn:
             if domain:
@@ -322,10 +326,14 @@ class PgvectorStore(VectorStore):
                 meta = json.loads(meta)
             elif not isinstance(meta, dict):
                 meta = dict(meta or {})
-            results.append({
-                "id": row["id"],
-                "domain": row["domain"],
-                "updated_at": row["updated_at"].isoformat() if hasattr(row["updated_at"], "isoformat") else str(row["updated_at"]),
-                "metadata": meta,
-            })
+            results.append(
+                {
+                    "id": row["id"],
+                    "domain": row["domain"],
+                    "updated_at": row["updated_at"].isoformat()
+                    if hasattr(row["updated_at"], "isoformat")
+                    else str(row["updated_at"]),
+                    "metadata": meta,
+                },
+            )
         return results

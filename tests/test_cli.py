@@ -53,10 +53,9 @@ def test_adapter_layer_does_not_import_orchestration_impls():
     """Layering invariant (enforced in the combined gate with test_layering.py)."""
     # Source-level guard for the new cli package
     from pathlib import Path
+
     cli_root = Path(__file__).parent.parent / "src/aip/cli"
     for py in cli_root.rglob("*.py"):
         text = py.read_text()
         assert "from aip.adapter.budget_store" not in text
         assert "from aip.adapter.vector" not in text  # direct storage
-
-

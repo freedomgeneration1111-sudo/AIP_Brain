@@ -1,4 +1,5 @@
 """Tests for CHUNK-5.5 Trajectory Regulator."""
+
 import pytest
 
 from aip.foundation.schemas import TrajectorySignal

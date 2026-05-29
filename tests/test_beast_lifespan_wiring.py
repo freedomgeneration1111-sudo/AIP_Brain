@@ -5,11 +5,12 @@ Verifies that:
 - GET /admin/beast/status returns real health data when Beast is wired
 - GET /admin/beast/status returns fallback when Beast is not wired
 """
+
 import os
 import tempfile
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 try:
     from fastapi.testclient import TestClient
@@ -18,7 +19,7 @@ except ImportError:
 
 pytestmark = pytest.mark.skipif(TestClient is None, reason="fastapi not available")
 
-from aip.foundation.protocols import VectorStore, EmbeddingProvider
+from aip.foundation.protocols import EmbeddingProvider, VectorStore
 
 
 def _make_test_config(**overrides):
@@ -80,9 +81,9 @@ class TestBeastLifespanWiring:
     def test_beast_admin_route_works_with_mock_beast(self):
         """When Beast is manually set on container, admin route uses it."""
         from aip.adapter.api.app import create_app
-        from aip.orchestration.actors.beast import Beast
-        from aip.foundation.schemas import BeastCadenceConfig
         from aip.foundation.protocols import ProjectStore
+        from aip.foundation.schemas import BeastCadenceConfig
+        from aip.orchestration.actors.beast import Beast
 
         config, db_path = _make_test_config()
         try:
