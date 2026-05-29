@@ -2,7 +2,7 @@
 
 **Version:** 0.1.0-alpha
 **Architecture Revision:** 5.2
-**Last Updated:** 2026-05-29
+**Last Updated:** 2026-05-30
 
 ## Production Safety Status
 
@@ -34,14 +34,15 @@ Production configuration is **enforced programmatically**. Unsafe configs fail a
 
 ## Module Status
 
-- **Tests:** 763 passing, 15 skipped (sqlite_vss extension)
+- **Tests:** 763 passing, 15 skipped (sqlite_vss extension), 0 failures
 - **Architecture:** Three-layer (foundation → orchestration → adapter)
-- **Scaffolding:** ~5-8% overall
+- **Scaffolding:** ~5-8% overall (MCP dispatch, adaptive router, ScriptNode sandbox)
 - **Docker:** Laptop and production profiles with programmatic config validation
+- **Lint:** ruff format + ruff check (E, F, W, I) — all passing, blocking in CI
 
 ## Runtime Gap Closure (P9)
 
-The following runtime gaps have been addressed. No known gap returns fake success.
+The following runtime gaps have been addressed. No known gap returns fake success from core runtime paths.
 
 | Gap | Status | Implementation | Tests | Remaining limitation |
 |---|---|---|---|---|
@@ -53,6 +54,18 @@ The following runtime gaps have been addressed. No known gap returns fake succes
 | F. ScriptNode.run | Disabled | Production mode returns structured DISABLED; fixture mode returns safe no-op; YAML loader defaults to fixture mode | test_workflow_script_node_contract.py | Safe sandbox not yet implemented |
 | G. Vigil model-slot re-evaluation | Fixed | on_model_slot_change marks affected canonicals for re-evaluation, writes trace events, respects batch size | test_vigil_model_slot_re_evaluation.py | Conservative: all canonicals marked as affected |
 | H. Sexton intervention derivation | Fixed | Deterministic rules for A-F + 7 special conditions; unknown returns None | test_sexton_intervention_derivation.py | Complex multi-signal derivation deferred |
+
+## Known Scaffolding
+
+These surfaces have real structure (tool listing, auth gates, Protocol declarations) but their dispatch
+logic returns scaffold or NOT_IMPLEMENTED responses rather than delegating to real services:
+
+| Surface | What's Real | What's Scaffold |
+|---|---|---|
+| MCP tool dispatch | Tool listing, autonomy gate enforcement, layering discipline | aip_search returns empty; aip_artifact_approve returns hardcoded True; other tools return ok=True |
+| Adaptive router | Budget enforcement, route existence | update_weights() is no-op; exploration/exploitation is random |
+| ScriptNode | Type declaration, fixture mode, YAML parsing | Production execution disabled (returns DISABLED) |
+| MCP start/stop | _running flag | No stdio/SSE transport implementation |
 
 ## Deployment Profiles
 
@@ -91,3 +104,22 @@ uv run ruff format --check .
 uv run ruff check .
 uv run pytest -q --tb=short
 ```
+
+## Production-Readiness Statement
+
+AIP v0.1 is **alpha software**. It is suitable for local development, evaluation, and testing. It is not
+production-ready for deployment with real user data. Specific blockers:
+
+1. MCP tool dispatch is scaffold — no real search/approval/config operations through MCP
+2. Adaptive router does not adapt — exploration/exploitation is random
+3. No sandbox for ScriptNode execution
+4. No review queue web UI for MANUAL mode
+5. Per-component performance metrics are estimated, not measured
+
+## Next Priorities
+
+1. Implement real MCP tool dispatch (search → lexical+vector, approve → review pipeline)
+2. Implement adaptive router weights from routing outcomes
+3. Build review queue web UI for MANUAL mode
+4. Add streaming model support
+5. Add Anthropic provider to ModelSlotResolver

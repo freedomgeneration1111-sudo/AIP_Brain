@@ -144,7 +144,7 @@ Remaining high-risk areas: the Adaptive Router (no real adaptation) and review q
 | **Adapter: autonomy_gate.py** | Real/Mostly Working | 10% | Full SQLite-backed AutonomyGate with audit trail. aiosqlite migrated. | Fix AutonomyLevel type narrowing. | Low |
 | **Adapter: plugin_loader.py** | Real/Mostly Working | 15% | Real YAML discovery, loading, unloading. Sandbox mode works. | Strengthen container registration. | Low |
 | **Adapter: yaml_plugin_provider.py** | Partial/Hybrid | 40% | Real httpx-based API call. CI mode detection correct. | Add provider-specific dispatch. Fail-fast when httpx missing and not CI. | Medium |
-| **Adapter: mcp/server.py** | Mostly Scaffolding | 70% | Tool registry real. `start()` sets `_running=True`. All dispatch returns hardcoded results. | Implement real tool dispatch. Implement stdio/SSE transport. | High |
+| **Adapter: mcp/server.py** | Mostly Scaffolding | 70% | Tool registry + autonomy gate real. `start()` is scaffold. Dispatch returns hardcoded results despite real tool impls existing in `tools/`. | Wire dispatch to `tools/` implementations. Implement stdio/SSE transport. | High |
 | **Adapter: mcp/tools/artifacts.py** | Real/Mostly Working | 10% | Real: calls `ecs_store.transition()` and `canonical_store.write_canonical()`. | None | Low |
 | **Adapter: mcp/tools/search.py** | Real/Mostly Working | 10% | Real search across lexical and vector stores. | Add logging for search failures. | Low |
 | **Adapter: health.py** | Partial/Hybrid | 40% | Vector store health check is real. Embedding status hardcoded healthy. | Implement real embedding health check. Add uptime tracking. | High |
@@ -342,7 +342,7 @@ measured.
 Only supports OpenAI-compatible endpoint.
 
 #### Adapter: mcp/server.py
-Autonomy gate enforcement is real.
+Autonomy gate enforcement is real. Tool listing with `McpToolDef` is real. However, `call_tool()` dispatch returns hardcoded scaffold responses (`{"results": []}`, `{"approved": True, "canonical": True}`, `{"ok": True}`) instead of delegating to the real tool implementations in `tools/artifacts.py` and `tools/search.py`. `start()` is a no-op. All tools declare `input_schema={}`.
 
 #### Adapter: mcp/tools/search.py
 Falls back to fake_embed. Silent exception swallowing.
