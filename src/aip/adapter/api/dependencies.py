@@ -28,6 +28,7 @@ from aip.foundation.protocols import (
     AutonomyGate,
     ModelProvider,
     EmbeddingProvider,
+    KnowledgeStore,
 )
 
 
@@ -57,6 +58,7 @@ class AipContainer:
         self.autonomy_gate: AutonomyGate | None = None
         self.model_provider: ModelProvider | None = None
         self.embedding_provider: EmbeddingProvider | None = None
+        self.knowledge_store: KnowledgeStore | None = None
         # VigilStore and artifact store not in protocols yet — typed as Any
         self.vigil_store: Any = None
         self.artifact_store: Any = None

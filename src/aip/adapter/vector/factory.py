@@ -15,13 +15,17 @@ from aip.foundation.schemas import PgvectorConfig
 logger = logging.getLogger(__name__)
 
 
-async def create_vector_store(config: Any) -> VectorStore:
+async def create_vector_store(config: Any, embedding_provider: Any = None) -> VectorStore:
     """Create the appropriate VectorStore based on config.
 
     Reads [vector_backend] provider from config and returns:
     - PgvectorStore for "pgvector"
     - SqliteVssVectorStore for "sqlite_vss"
     - Falls back to sqlite_vss if pgvector is unavailable
+
+    When ``embedding_provider`` is provided, it is passed to the
+    SqliteVssVectorStore constructor so that the ``store()`` compat
+    method can generate real embeddings instead of inserting zero vectors.
 
     The returned object implements the VectorStore Protocol.
     Orchestration code never knows which backend is active.
@@ -53,24 +57,41 @@ async def create_vector_store(config: Any) -> VectorStore:
                 f"pgvector unavailable ({e}), falling back to sqlite_vss"
             )
             # Graceful degradation
-            return await _create_sqlite_vss(vector_cfg)
+            return await _create_sqlite_vss(vector_cfg, embedding_provider)
 
-    return await _create_sqlite_vss(vector_cfg)
+    return await _create_sqlite_vss(vector_cfg, embedding_provider)
 
 
-async def _create_sqlite_vss(vector_cfg: dict) -> VectorStore:
+async def _create_sqlite_vss(vector_cfg: dict, embedding_provider: Any = None) -> VectorStore:
     """Create SqliteVssVectorStore as default or fallback.
     
     If sqlite_vss is not available, returns an InMemoryVectorStore
     as a last-resort fallback (graceful degradation).
+
+    When ``embedding_provider`` is provided, it is passed to the
+    SqliteVssVectorStore constructor so that the ``store()`` compat
+    method can generate real embeddings.
     """
     try:
         from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
 
         db_path = vector_cfg.get("db_path", "db/vectors.db")
-        store = SqliteVssVectorStore(db_path)
+        dimensions = vector_cfg.get("dimensions", 768)
+        store = SqliteVssVectorStore(
+            db_path=db_path,
+            dimensions=dimensions,
+            embedding_provider=embedding_provider,
+        )
         if store._vss_available:
-            logger.info("VectorStore: sqlite_vss backend initialized")
+            if embedding_provider is not None:
+                logger.info(
+                    "VectorStore: sqlite_vss backend initialized with EmbeddingProvider"
+                )
+            else:
+                logger.info(
+                    "VectorStore: sqlite_vss backend initialized (no EmbeddingProvider — "
+                    "store() will use metadata-only fallback)"
+                )
             return store
         else:
             logger.warning("sqlite_vss extension not available, falling back to in-memory store")

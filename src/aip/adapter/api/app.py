@@ -16,12 +16,14 @@ REQUIRED (startup fails if these cannot initialize):
   - Artifact store: artifact versioned storage
 
 OPTIONAL (startup logs warning, service degrades gracefully):
+  - Lexical store: FTS5 full-text search (degrades to no text search)
   - Vector store: semantic search (degrades to keyword-only)
   - Embedding provider: vector embedding (degrades to fake_embed)
   - Project store: project management (degrades to empty projects)
   - Budget store: token budget tracking (degrades to unlimited)
   - Vigil store: canonical health monitoring (degrades to no monitoring)
   - Model provider: LLM dispatch (degrades to stub responses)
+  - Knowledge store: compiled knowledge with embeddings (degrades to no knowledge compilation)
   - Beast actor: background health + corpus maintenance (degrades to no background tasks)
 """
 
@@ -133,18 +135,21 @@ async def lifespan(app: FastAPI):
     # OPTIONAL COMPONENTS — startup logs warning, service degrades gracefully
     # =====================================================================
 
-    # Vector store — semantic search (degrades to keyword-only)
+    # Lexical store — FTS5 full-text search (degrades to no text search)
     try:
-        _vs_mod = importlib.import_module("aip.adapter.vector.factory")
-        _create_vector_store = _vs_mod.create_vector_store
-        container.vector_store = await _create_vector_store(config)
-        logger.info("Vector store initialized (optional)")
+        _ls_mod = importlib.import_module("aip.adapter.lexical.sqlite_fts5_store")
+        _SqliteFts5LexicalStore = _ls_mod.SqliteFts5LexicalStore
+        container.lexical_store = _SqliteFts5LexicalStore(db_path)
+        await container.lexical_store.initialize()
+        logger.info("Lexical store initialized (optional)")
     except Exception as exc:
         logger.warning(
-            "Vector store initialization failed (optional — semantic search degraded): %s", exc
+            "Lexical store initialization failed (optional — text search degraded): %s", exc
         )
 
     # Embedding provider — vector embedding (degrades to fake_embed)
+    # NOTE: Initialized before vector store so it can be passed to the factory
+    # for SqliteVssVectorStore's store() compat method.
     try:
         embed_cfg = config.get("embedding", {})
         provider = embed_cfg.get("provider", "mock")
@@ -161,6 +166,21 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning(
             "Embedding provider initialization failed (optional — using fake_embed): %s", exc
+        )
+
+    # Vector store — semantic search (degrades to keyword-only)
+    # Passes embedding_provider so SqliteVssVectorStore.store() can generate
+    # real embeddings instead of inserting zero vectors.
+    try:
+        _vs_mod = importlib.import_module("aip.adapter.vector.factory")
+        _create_vector_store = _vs_mod.create_vector_store
+        container.vector_store = await _create_vector_store(
+            config, embedding_provider=container.embedding_provider
+        )
+        logger.info("Vector store initialized (optional)")
+    except Exception as exc:
+        logger.warning(
+            "Vector store initialization failed (optional — semantic search degraded): %s", exc
         )
 
     # Project store — project management (degrades to empty projects)
@@ -207,6 +227,42 @@ async def lifespan(app: FastAPI):
         logger.warning(
             "Model provider initialization failed (optional — model calls will return errors): %s",
             exc,
+        )
+
+    # Knowledge store — compiled knowledge with embeddings
+    # Requires vector_store + lexical_store + optional embedding_provider.
+    # When embedding_provider is available, APPROVED compiled knowledge gets
+    # real embeddings for semantic search. Without it, degrades to lexical-only.
+    if container.vector_store is not None and container.lexical_store is not None:
+        try:
+            _ks_mod = importlib.import_module("aip.adapter.knowledge.sqlite_knowledge_store")
+            _SqliteKnowledgeStore = _ks_mod.SqliteKnowledgeStore
+            container.knowledge_store = _SqliteKnowledgeStore(
+                db_path=db_path,
+                vector_store=container.vector_store,
+                lexical_store=container.lexical_store,
+                embedding_provider=container.embedding_provider,
+            )
+            await container.knowledge_store.initialize()
+            if container.embedding_provider is not None:
+                logger.info(
+                    "Knowledge store initialized with EmbeddingProvider "
+                    "(optional — semantic search for compiled knowledge enabled)"
+                )
+            else:
+                logger.warning(
+                    "Knowledge store initialized without EmbeddingProvider "
+                    "(optional — compiled knowledge search degrades to lexical-only). "
+                    "Configure an embedding provider for full semantic search."
+                )
+        except Exception as exc:
+            logger.warning(
+                "Knowledge store initialization failed (optional — knowledge compilation degraded): %s",
+                exc,
+            )
+    else:
+        logger.info(
+            "Knowledge store not wired: missing vector_store or lexical_store"
         )
 
     # --- Wire orchestration components (lazy import to preserve layer discipline) ---
@@ -275,13 +331,16 @@ async def lifespan(app: FastAPI):
 
     logger.info(
         "AIP startup complete. Required: 5 stores initialized. "
-        "Optional: vector=%s, embedding=%s, project=%s, budget=%s, vigil=%s, model=%s, beast=%s",
+        "Optional: lexical=%s, vector=%s, embedding=%s, project=%s, budget=%s, "
+        "vigil=%s, model=%s, knowledge=%s, beast=%s",
+        container.lexical_store is not None,
         container.vector_store is not None,
         container.embedding_provider is not None,
         container.project_store is not None,
         container.budget_store is not None,
         container.vigil_store is not None,
         container.model_provider is not None,
+        container.knowledge_store is not None,
         container.beast is not None,
     )
 
@@ -298,6 +357,8 @@ async def lifespan(app: FastAPI):
             pass
 
     # shutdown: close any open connections (the individual stores implement close())
+    if container.knowledge_store and hasattr(container.knowledge_store, "close"):
+        await container.knowledge_store.close()
     if container.vector_store and hasattr(container.vector_store, "close"):
         await container.vector_store.close()
     if container.lexical_store and hasattr(container.lexical_store, "close"):
