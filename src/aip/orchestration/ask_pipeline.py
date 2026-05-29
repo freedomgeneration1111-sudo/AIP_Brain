@@ -191,7 +191,11 @@ def _sanitize_fts_query(query: str) -> str:
                   "being", "have", "has", "had", "do", "does", "did", "will",
                   "would", "could", "should", "may", "might", "shall", "can",
                   "of", "in", "to", "for", "with", "on", "at", "by", "from",
-                  "it", "its", "we", "our", "you", "your", "this", "that"}
+                  "it", "its", "we", "our", "you", "your", "this", "that",
+                  "what", "which", "who", "whom", "how", "when", "where", "why",
+                  "about", "there", "here", "these", "those", "been", "some",
+                  "very", "also", "just", "than", "then", "so", "if", "or",
+                  "not", "no", "but", "and", "up", "out", "into", "over"}
     meaningful = [t for t in tokens if len(t) >= 2 and t.lower() not in stop_words]
 
     if not meaningful:
