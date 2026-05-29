@@ -1,9 +1,7 @@
 """
-L5 Workflow Node abstractions (foundation).
+L5 Workflow Node abstractions.
 
-Defines the common contract and the five node type bases required by
-Architecture Rev 5.2.
-
+Defines the common contract and the five node type bases.
 All storage access must go through injected protocols.
 """
 
@@ -170,7 +168,7 @@ class AgentNode(WorkflowNode):
           - config (optional)
         Falls back to fake_embed + no-op stores when running in minimal test mode.
         """
-        from aip.orchestration.nodes.synthesis import synthesize as phase1_synthesize
+        from aip.orchestration.nodes.synthesis import synthesize as _synthesize
         from aip.orchestration.retrieval import fake_embed, retrieve_for_synthesis
 
         # Resolve dependencies from context (with safe fallbacks)
@@ -203,7 +201,7 @@ class AgentNode(WorkflowNode):
             config=config,
         )
 
-        synthesis_output = await phase1_synthesize(
+        synthesis_output = await _synthesize(
             query=query,
             domain=domain,
             retrieval_result=retrieval_result,
@@ -609,11 +607,11 @@ class ReSynthesizeNode(WorkflowNode):
 
         try:
             # Use the synthesis stub as the synthesize_fn for now
-            from aip.orchestration.nodes.synthesis import synthesize as phase1_synth
+            from aip.orchestration.nodes.synthesis import synthesize as _synthesize
 
             async def synth_wrapper(artifact_id, failure_context):
-                # Simplified wrapper — real integration in 4.5 will be richer
-                return await phase1_synth(
+                # Simplified wrapper for re-synthesis
+                return await _synthesize(
                     query=str(failure_context),
                     domain="re_synthesis",
                     retrieval_result=None,

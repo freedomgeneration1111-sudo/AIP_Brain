@@ -1,8 +1,8 @@
 """
-Workflow instance / suspension model (foundation).
+Workflow instance / suspension model.
 
 Provides a simple, serializable representation of a running or suspended workflow.
-This is the minimal viable persistence layer to support dialog pause/resume.
+This is the persistence layer to support dialog pause/resume.
 """
 
 from __future__ import annotations

@@ -49,7 +49,7 @@ class TrajectoryMonitor:
         """
         Run the basic 2-of-3 trajectory signal detection for the given session.
 
-        Current minimal heuristics (will be extended in later L4 chunks):
+        Current heuristics:
         - D signal: presence of recent events with failure_type == "D"
         - F signal: presence of recent events with failure_type == "F"  (enhanced by L4b in 3.5)
         - Combined: if both D and F (or multiple of one type) appear in the window,

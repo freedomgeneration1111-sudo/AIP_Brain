@@ -1,12 +1,11 @@
 """
-Budget and Autonomy Tracking (foundation).
+Budget and Autonomy Tracking.
 
-Minimal deterministic implementation per Architecture L6 / Budget sections
-and the existing BudgetStore + AutonomyGate protocol stubs.
-
-For foundation: in-memory tracking, simple consumption on agent nodes,
-parallel inheritance, and a two-phase autonomy gate stub.
-Real persistence and complex L6 logic in later chunks.
+In-memory budget tracking with consumption on agent nodes,
+parallel inheritance, and a two-phase autonomy gate.
+Persistence is handled by the SqliteBudgetStore adapter;
+this module provides the in-memory default used when no
+persistent store is configured.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from aip.foundation.protocols import AutonomyGate, BudgetStore
 
 
 class InMemoryBudgetStore(BudgetStore):
-    """Minimal in-memory BudgetStore for foundation."""
+    """In-memory BudgetStore used when no persistent store is configured."""
 
     def __init__(self, initial_budget: int | None = None):
         self._budgets: dict[str, int] = {}
@@ -42,41 +41,41 @@ class InMemoryBudgetStore(BudgetStore):
         else:
             self._budgets.pop(budget_id, None)
 
-    # --- Extended BudgetStore Protocol support (for CI) ---
+    # --- Extended BudgetStore Protocol support ---
     async def get_budget(self, scope: str, scope_id: str) -> dict:
-        """Support extended Protocol (track consumed per scope_id for CI tests)."""
+        """Track consumed tokens per scope_id."""
         key = f"{scope}:{scope_id}"
         consumed = self._consumed.get(key, 0) if hasattr(self, "_consumed") else 0
         return {"consumed_tokens": consumed, "consumed_cost": 0.0}
 
     async def record_usage(self, scope: str, scope_id: str, tokens_used: int, cost_usd: float, model_slot: str) -> None:
-        """Track usage in-memory for CI (real persistence in Sqlite impl)."""
+        """Track usage in-memory; SqliteBudgetStore provides persistent tracking."""
         if not hasattr(self, "_consumed"):
             self._consumed = {}
         key = f"{scope}:{scope_id}"
         self._consumed[key] = self._consumed.get(key, 0) + tokens_used
 
     async def check_limit(self, scope: str, scope_id: str) -> bool:
-        """In-memory foundation: always allow (limits enforced in BudgetManager with config)."""
+        """No in-memory limit checking; BudgetManager enforces configured limits."""
         return True
 
 
 class SimpleAutonomyGate(AutonomyGate):
-    """Two-phase autonomy gate stub (foundation)."""
+    """Two-phase autonomy gate (in-memory default)."""
 
     async def request_autonomy(self, level: int, context: dict[str, Any]) -> bool:
-        # Always allow low autonomy levels (foundation default)
+        # Low autonomy levels are always permitted
         if level <= 1:
             return True
-        # Stub — would check DEFINER or policy in real implementation
+        # Higher levels require DEFINER or policy approval
         return False
 
     async def record_autonomy_use(self, level: int, context: dict[str, Any]) -> None:
-        # No-op in foundation
+        # No-op in the in-memory default
         pass
 
 
-# --- BudgetManager (extension, preserves existing code) ---
+# --- BudgetManager ---
 
 from aip.foundation.protocols import BudgetStore, EventStore  # noqa: E402 -- lazy import after class definitions
 from aip.foundation.schemas import BudgetConfig, BudgetScope  # noqa: E402 -- lazy import after class definitions

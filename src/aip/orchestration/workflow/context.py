@@ -1,5 +1,5 @@
 """
-Workflow execution context (foundation).
+Workflow execution context.
 
 Provides the shared state, budget tracking, protocol injection,
 and event emission mechanism that all nodes use.
@@ -159,12 +159,13 @@ class WorkflowContext:
         return True
 
     def request_autonomy(self, level: int, context: dict[str, Any] | None = None) -> bool:
-        """: Delegates to injected AutonomyGate if present (L6 wiring).
+        """Delegates to injected AutonomyGate if present.
 
-        Provides the minimal integration surface for the two-phase gate delivered
-        as a stub in 3.11. Mirrors SimpleAutonomyGate default behavior when no
-        gate is injected. Uses the same async-compat pattern as the fixed
-        consume_budget path so it works from both sync tests and async runners.
+        Delegates to the injected AutonomyGate when available.
+        Mirrors SimpleAutonomyGate default behavior when no gate is
+        injected. Uses the same async-compat pattern as the
+        consume_budget path so it works from both sync tests and
+        async runners.
         """
         gate = self.get_protocol("autonomy_gate")
         if gate is not None:

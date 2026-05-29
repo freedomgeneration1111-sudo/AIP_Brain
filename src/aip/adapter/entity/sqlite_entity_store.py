@@ -1,6 +1,6 @@
 """SQLite implementation of EntityStore Protocol.
 
-Separate from ProjectStore per architecture spec.
+Separate from ProjectStore for clarity and single-responsibility.
 Uses aiosqlite for async-safe database access.
 """
 

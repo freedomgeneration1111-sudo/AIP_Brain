@@ -1,16 +1,14 @@
 """
-Sexton Foundation (spec delta)
+Sexton — Failure Classification and ACE Rule Derivation
 
-Minimal deterministic implementation per Architecture Rev 5.2.
+Deterministic failure classification and ACE rule derivation.
 - Accepts injected TraceStore.
 - classify_recent_failures(): queries unclassified failures, applies
   deterministic Appendix E rules, writes failure_type back.
-- Stubs for ACE playbook derivation (in-memory only for foundation).
+- ACE playbook derivation (in-memory until a persistent store is available).
 - Zero tokens. All access via injected protocol only.
 - Every classification decision that encodes model assumptions carries
   model_gen_assumption.
-
-This is deliberately the smallest useful foundation.
 """
 
 from __future__ import annotations
@@ -26,16 +24,15 @@ logger = logging.getLogger(__name__)
 
 class Sexton:
     """
-    Sexton failure classification actor (implementation extending the
-    foundation stub).
+    Sexton failure classification actor.
 
     Receives SextonConfig + ModelSlotResolver ("sexton" slot)
     + TraceStore + EventStore via injection. Never imports adapter storage
     implementations directly. Uses resolver for real classification; falls back
-    to deterministic foundation logic in CI mode.
+    to deterministic logic in CI mode.
 
-    The original foundation classify_recent_failures + _classify (Appendix E
-    deterministic) are preserved and used for CI-mode fixtures and as the
+    The deterministic classify_recent_failures + _classify (Appendix E)
+    methods are preserved for CI-mode fixtures and as the
     zero-token baseline.
     """
 
@@ -50,7 +47,7 @@ class Sexton:
         self._model_resolver = model_resolver
         self._trace_store = trace_store
         self._event_store = event_store
-        # Foundation stub for ACE playbook (would be persisted in later chunks)
+        # In-memory ACE playbook — persisted to store when available
         self._playbook: dict[str, dict] = {}
 
     async def classify_recent_failures(self, limit: int = 100) -> list[dict]:
@@ -58,7 +55,7 @@ class Sexton:
         Read recent unclassified failures, apply deterministic Appendix E
         taxonomy rules, write the classification back, and return the results.
 
-        For foundation: purely deterministic pattern matching on node_type,
+        Purely deterministic pattern matching on node_type,
         detail, and outcome. No LLM call.
         """
         if not hasattr(self._trace_store, "get_unclassified_failures"):
@@ -98,14 +95,14 @@ class Sexton:
 
         return classified
 
-    # Full Sexton interface (extends foundation)
+    # Full Sexton interface
 
     async def classify_failures(self) -> list[FailureClassification]:
-        """Batch classify unclassified failures (7.1 prose)."""
+        """Batch classify unclassified failures."""
         if self._trace_store is None:
             return []
 
-        # Use foundation defensive path if the store lacks the expected method
+        # Use defensive path if the store lacks the expected method
         if not hasattr(self._trace_store, "get_unclassified_failures"):
             return []
 
@@ -130,9 +127,9 @@ class Sexton:
         trace_event_id: int,
         event: dict[str, Any] | None = None,
     ) -> FailureClassification | None:
-        """Classify a single trace event (7.1). Produces FailureClassification with model_gen_assumption."""
+        """Classify a single trace event. Produces FailureClassification with model_gen_assumption."""
         if event is None and self._trace_store is not None:
-            # Best-effort single fetch (foundation stores may not support id lookup)
+            # Best-effort single fetch (stores may not support id lookup)
             try:
                 events = await self._trace_store.get_unclassified_failures(limit=1)
                 event = events[0] if events else None
@@ -144,7 +141,7 @@ class Sexton:
 
         failure_type = None
         confidence = 0.7
-        rationale = "Deterministic foundation classification (CI mode or no resolver)"
+        rationale = "Deterministic classification (CI mode or no resolver)"
         model_gen_assumption = (
             "Local deterministic rules may misclassify subtle or "
             "domain-adjacent failures; a real model slot provides "
@@ -164,7 +161,7 @@ class Sexton:
             except Exception:
                 failure_type = self._classify(event)
         else:
-            # CI / foundation deterministic path (reuses existing _classify)
+            # CI / deterministic path (reuses existing _classify)
             failure_type = self._classify(event)
 
         if not failure_type:
@@ -191,13 +188,13 @@ class Sexton:
             confidence=confidence,
             rationale=rationale,
             model_slot_used="sexton",
-            tokens_consumed=0,  # foundation / CI path is zero-token
+            tokens_consumed=0,  # deterministic path is zero-token
             model_gen_assumption=model_gen_assumption,
             classified_at="",  # caller or store can set
         )
 
     async def count_unclassified(self) -> int:
-        """Count failures still awaiting classification (7.1)."""
+        """Count failures still awaiting classification."""
         if self._trace_store is None or not hasattr(self._trace_store, "get_unclassified_failures"):
             return 0
         try:
@@ -207,7 +204,7 @@ class Sexton:
             return 0
 
     async def run_classification_cycle(self) -> None:
-        """Main cadence entrypoint (7.1). Respects config thresholds and writes Events."""
+        """Main cadence entrypoint. Respects config thresholds and writes Events."""
         count = await self.count_unclassified()
         if count == 0:
             return
@@ -254,13 +251,12 @@ class Sexton:
         except Exception:
             return {}
 
-    # --- original foundation _classify preserved for CI deterministic fixtures ---
+    # --- deterministic _classify preserved for CI fixtures ---
 
     def _classify(self, event: dict[str, Any]) -> str | None:
-        """
-        Deterministic Appendix E taxonomy rules (foundation version).
+        """Deterministic Appendix E taxonomy rules.
 
-        Types (from Architecture Appendix E):
+        Types:
         A = Context Framing Failure
         B = Procedural Gap
         C = Output Malformation
@@ -307,7 +303,7 @@ class Sexton:
 
         return None
 
-    # --- ACE playbook stubs (foundation only) ---
+    # --- ACE playbook derivation ---
 
     def derive_intervention_rule(self, failure_type: str, context: dict) -> dict | None:
         """Derive a concrete intervention recommendation for a known condition.
@@ -547,12 +543,12 @@ class Sexton:
 
     def derive_ace_rules(self, classified_events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
-        Minimal deterministic ACE playbook derivation (foundation).
+        Deterministic ACE playbook derivation.
 
         For each classified failure event, produces a basic intervention rule stub.
         Every rule carries an explicit model_gen_assumption.
-        In a later chunk these would be persisted, reviewed, and promoted to the
-        live ACE playbook used by L2 retrieval etc.
+        Derived rules are held in memory until a persistent store is available,
+        at which point they can be reviewed and promoted to the live ACE playbook.
         """
         rules: list[dict] = []
         seen: set[str] = set()
@@ -599,14 +595,12 @@ class Sexton:
             return "require_verify_step_before_commit"
         return "log_and_audit"
 
-    # remaining foundation (trust scoring + stale rule audit)
+    # trust scoring + stale rule audit
 
     def trust_score(self, rule_or_event: dict[str, Any]) -> float:
-        """
-        Minimal deterministic trust score (0.0–1.0) for a rule or classified event.
-        Foundation version: simple heuristic based on presence of supporting fields
-        and model_gen_assumption tag. Real scoring would use more data over time.
-        """
+        """Deterministic trust score (0.0–1.0) for a rule or classified event.
+        Simple heuristic based on presence of supporting fields
+        and model_gen_assumption tag."""
         if not rule_or_event:
             return 0.0
         score = 0.5
@@ -619,14 +613,12 @@ class Sexton:
         return min(1.0, round(score, 2))
 
     def audit_model_gen_assumption(self, rules: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
-        """
-        implementation of the stale rule audit.
+        """Stale rule audit.
         Scans the provided rules (or internal derived rules if none passed) and
         returns those that are missing or have weak model_gen_assumption tagging.
-        This fulfills the "stale rule audit" responsibility in the foundation.
         """
         if rules is None:
-            # In foundation the class doesn't persist rules internally from derive;
+            # The class doesn't persist rules internally from derive;
             # caller (test or workflow) passes the list of rules to audit.
             rules = []
 

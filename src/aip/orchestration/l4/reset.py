@@ -58,7 +58,7 @@ class ResetRecommendation:
 
 class L4ResetCoordinator:
     """
-    Deterministic coordinator for the Context Reset Protocol (foundation).
+    Deterministic coordinator for the Context Reset Protocol.
 
     Usage (typical, via WorkflowContext injection or direct test construction):
         coordinator = L4ResetCoordinator(

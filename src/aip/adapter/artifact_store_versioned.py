@@ -19,7 +19,7 @@ class VersionedArtifactStore:
 
     Every version is preserved for provenance.
     Generated ≠ canonical — versions support separation.
-    Per architecture spec: artifact hash is not approval; supersession marks old entries, does not delete them.
+    Artifact hash is not approval; supersession marks old entries, does not delete them.
 
     Uses aiosqlite for async-compatible database access.
     """

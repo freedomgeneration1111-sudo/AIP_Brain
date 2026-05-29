@@ -1,6 +1,5 @@
 """FastAPI application factory + lifespan for AIP surfaces.
 
-Per spec prose + interfaces (exact).
 Wires adapters and actor layer into AipContainer.
 All privileged writes go through AutonomyGate.
 

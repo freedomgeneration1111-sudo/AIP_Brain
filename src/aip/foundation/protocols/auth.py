@@ -17,7 +17,6 @@ class AutonomyGate(Protocol):
     """Two-phase autonomy gate.
 
     Low levels are local; higher levels require DEFINER/policy approval.
-    Per Architecture L6.
     """
 
     async def request_autonomy(self, level: int, context: dict[str, Any]) -> bool:

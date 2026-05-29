@@ -1,9 +1,8 @@
 """
-Minimal YAML loader for workflows (foundation).
+YAML loader for workflow definitions.
 
-Parses a simple YAML structure into a list of node definitions.
-This is intentionally minimal — full validation, Jinja templating in conditions,
-and rich node configuration will be expanded in later chunks.
+Parses a YAML structure into a list of node definitions.
+Supports the core node types and optional top-level finally/on_error lists.
 """
 
 from __future__ import annotations
