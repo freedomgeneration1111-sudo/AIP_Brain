@@ -96,14 +96,13 @@ class SextonAudit:
             if self._event_store is not None:
                 try:
                     await self._event_store.write_event(
-                        {
-                            "event_type": "stale_assumption_detected",
-                            "rule_id": res["rule_id"],
-                            "type": res["type"],
-                            "assumption": res["assumption"],
-                            "reason": reason,
-                            "confidence": res.get("confidence"),
-                        },
+                        event_type="stale_assumption_detected",
+                        actor="sexton_audit",
+                        artifact_id=res.get("rule_id", ""),
+                        from_state=res.get("type"),
+                        to_state="deprecated",
+                        reason=reason,
+                        confidence=str(res.get("confidence")),
                     )
                 except Exception:
                     pass

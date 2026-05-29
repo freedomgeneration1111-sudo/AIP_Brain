@@ -81,6 +81,35 @@ class InMemoryVectorStore(VectorStore):
         """In-memory store has no timestamps; return empty list (no staleness tracking)."""
         return []
 
+    async def list_all_ids(
+        self,
+        offset: int = 0,
+        limit: int = 500,
+        domain: str | None = None,
+    ) -> list[str]:
+        """List all vector IDs with cursor-based pagination.
+
+        In-memory store can iterate all keys directly.
+        """
+        ids = list(self._data.keys())
+        if domain:
+            ids = [id_ for id_ in ids if self._data[id_].get("domain") == domain]
+        return ids[offset : offset + limit]
+
+    async def get_by_id(self, chunk_id: str) -> Chunk | None:
+        """Retrieve a chunk by its ID directly."""
+        data = self._data.get(chunk_id)
+        if data is None:
+            return None
+        self._vectors.get(chunk_id, [])
+        return Chunk(
+            id=chunk_id,
+            content=data["content"],
+            score=1.0,
+            metadata=data["metadata"],
+            domain=data.get("domain"),
+        )
+
     @staticmethod
     def _cosine_similarity(a: list[float], b: list[float]) -> float:
         dot = sum(x * y for x, y in zip(a, b))

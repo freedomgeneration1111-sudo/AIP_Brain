@@ -1,4 +1,5 @@
-"""System-level acceptance — verifies end-to-end workflow, laptop-viable profile, graceful degradation, and representative acceptance gates."""
+"""System-level acceptance — end-to-end workflow, laptop-viable profile,
+graceful degradation, and representative acceptance gates."""
 
 import pytest
 
@@ -12,9 +13,9 @@ async def test_workflow_end_to_end_canonical_promotion():
 
     # Simulate a minimal Workflow 0.1 sequence
     nodes = [
-        ScriptNode("retrieval", code="results = []"),
-        ScriptNode("synthesis", code="output = 'synthesized content'"),
-        ScriptNode("validation", code="passed = True"),
+        ScriptNode("retrieval", code="results = []", config={"script_fixture_mode": True}),
+        ScriptNode("synthesis", code="output = 'synthesized content'", config={"script_fixture_mode": True}),
+        ScriptNode("validation", code="passed = True", config={"script_fixture_mode": True}),
         ConditionNode("quality_gate", condition="{{ passed }}"),
     ]
 

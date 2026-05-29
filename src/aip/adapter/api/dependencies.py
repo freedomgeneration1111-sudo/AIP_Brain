@@ -69,6 +69,12 @@ class AipContainer:
         self.sexton: Any = None
         self.beast: Any = None
         self.ace_playbook: Any = None
+        # PerformanceProfiler — None when not configured (API returns BACKEND_UNAVAILABLE)
+        self.performance_profiler: Any = None
+        # CollaboratorManager — None when auth not fully wired
+        self.collaborator_manager: Any = None
+        # ReviewQueueStore — None when not initialized
+        self.review_queue_store: Any = None
 
 
 def get_container(request: "Request") -> AipContainer:

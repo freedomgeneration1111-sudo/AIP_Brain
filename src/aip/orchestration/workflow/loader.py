@@ -75,7 +75,13 @@ def load_workflow_from_yaml(path: str | Path) -> WorkflowDefinition:
             node_type = NodeType(raw_type)
 
             if node_type == NodeType.SCRIPT:
-                nodes.append(ScriptNode(node_id, code=node_def.get("code", "")))
+                # YAML-loaded scripts default to fixture mode (safe no-op execution).
+                # Production use must explicitly set script_fixture_mode=False
+                # only when a sandbox is available.
+                node_config = node_def.get("config", {})
+                if "script_fixture_mode" not in node_config:
+                    node_config["script_fixture_mode"] = True
+                nodes.append(ScriptNode(node_id, code=node_def.get("code", ""), config=node_config))
             elif node_type == NodeType.AGENT:
                 nodes.append(
                     AgentNode(

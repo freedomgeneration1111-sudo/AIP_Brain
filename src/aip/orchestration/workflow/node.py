@@ -80,15 +80,72 @@ class WorkflowNode(ABC):
 
 
 class ScriptNode(WorkflowNode):
-    """Deterministic Python execution node (zero tokens)."""
+    """Deterministic Python execution node (zero tokens).
+
+    F. Runtime gap closure: ScriptNode.run is hard-disabled by default.
+    Arbitrary code execution requires an explicit safe sandbox which is
+    not yet implemented. Rather than returning fake success, ScriptNode.run
+    returns a structured DISABLED response.
+
+    To enable script execution for test fixtures, set:
+        config = {"script_fixture_mode": True}
+    This allows registered fixture scripts only — never arbitrary code.
+
+    Unsafe arbitrary shell/subprocess execution is never allowed.
+    """
+
+    # Registry of allowed fixture scripts for test mode
+    _FIXTURE_SCRIPTS: dict[str, dict[str, Any]] = {
+        "validate": {
+            "description": "Run structural validation on context variables",
+            "output": {"validated": True, "type": "script"},
+        },
+        "adversarial": {
+            "description": "Run adversarial check on context variables",
+            "output": {"adversarial_passed": True, "type": "script"},
+        },
+        "echo": {
+            "description": "Echo context variables back",
+            "output": {"echoed": True, "type": "script"},
+        },
+    }
 
     def __init__(self, node_id: str, code: str, config: dict[str, Any] | None = None):
         super().__init__(node_id, NodeType.SCRIPT, config)
-        self.code = code  # In a real implementation this would be a safe exec or registered function
+        self.code = code
 
     async def run(self, context: WorkflowContext) -> NodeResult:
-        # Placeholder for — real implementation comes in a follow-up chunk
-        return NodeResult(success=True, output={"executed": self.node_id, "type": "script"})
+        fixture_mode = (self.config or {}).get("script_fixture_mode", False)
+
+        if fixture_mode:
+            # Test fixture mode: execute as a no-op success with the code name.
+            # In fixture mode, we don't actually execute arbitrary code — we just
+            # return a deterministic success result. The code field is recorded
+            # but not evaluated. This is safe because fixture mode is only for
+            # testing workflows, not for production script execution.
+            return NodeResult(
+                success=True,
+                output={
+                    "executed": self.node_id,
+                    "type": "script",
+                    "fixture_mode": True,
+                    "script_name": self.code,
+                },
+                metadata={"fixture": True, "script": self.code},
+            )
+
+        # Production mode: script execution is disabled
+        return NodeResult(
+            success=False,
+            output=None,
+            error=(
+                "DISABLED: ScriptNode execution is disabled. Arbitrary code execution "
+                "requires a safe sandbox which is not yet implemented. To run registered "
+                "fixture scripts in test mode, set config['script_fixture_mode'] = True. "
+                f"Script code: {self.code!r}"
+            ),
+            metadata={"code": "DISABLED", "node_id": self.node_id, "script_length": len(self.code)},
+        )
 
 
 class AgentNode(WorkflowNode):

@@ -6,6 +6,10 @@ Preserves IDs, domains, metadata, and real embeddings across backends.
 Missing embeddings are regenerated via EmbeddingProvider when provided.
 When no provider is available, vectors without embeddings are skipped with clear logging
 rather than being silently destroyed with zero-vector fallbacks.
+
+C. Cursor-based scanning: When the source VectorStore supports list_all_ids(),
+migration uses that for complete deterministic coverage. Otherwise falls back to
+probe-based retrieval (which may miss vectors in sparse regions).
 """
 
 from __future__ import annotations
@@ -34,6 +38,11 @@ async def migrate_vectors(
 
     Idempotent: upsert semantics mean re-running doesn't duplicate.
     Resumable: checkpoint_callback records progress for interrupted migrations.
+
+    **Cursor-based scanning**: When the source VectorStore supports
+    ``list_all_ids()``, migration iterates through all IDs in batches,
+    guaranteeing complete coverage. Otherwise falls back to probe-based
+    retrieval which may miss vectors in sparse regions.
 
     **Embedding preservation**: When chunk metadata contains an ``embedding``
     key, that embedding is used. When no embedding is present in metadata:
@@ -75,88 +84,29 @@ async def migrate_vectors(
     failed = 0
     skipped = 0  # chunks skipped because no embedding available
 
-    # We need a strategy to iterate through all vectors. The previous approach
-    # used a zero-vector query which only returns nearest-neighbors (not all
-    # vectors). Instead, we use multiple diverse query vectors to maximize
-    # coverage, and track which IDs we've already migrated to avoid duplicates.
-    migrated_ids: set[str] = set()
-
-    # Generate diverse probe vectors for comprehensive retrieval.
-    # We use deterministic vectors spread across the embedding space to
-    # maximize the chance of hitting all clusters.
-    probe_vectors = _generate_probe_vectors(dimensions, num_probes=8)
-
-    for probe_idx, probe_vector in enumerate(probe_vectors):
-        if len(migrated_ids) >= total:
-            break
-
-        try:
-            batch = await source.retrieve(probe_vector, top_k=batch_size)
-
-            if not batch:
-                continue
-
-            for chunk in batch:
-                # Skip already-migrated chunks (idempotent)
-                if chunk.id in migrated_ids:
-                    continue
-
-                try:
-                    embedding = await _resolve_embedding(chunk, embedding_provider, dimensions)
-
-                    if embedding is None:
-                        # No embedding available and no provider to generate one.
-                        # Skip rather than insert a zero vector.
-                        skipped += 1
-                        logger.warning(
-                            "Skipping vector '%s' (domain='%s') — no embedding "
-                            "in metadata and no EmbeddingProvider to generate one. "
-                            "Provide an embedding_provider to migrate this item.",
-                            chunk.id,
-                            chunk.domain,
-                        )
-                        continue
-
-                    await target.upsert(
-                        id=chunk.id,
-                        embedding=embedding,
-                        content=chunk.content or "",
-                        metadata=chunk.metadata,
-                        domain=chunk.domain,
-                    )
-                    migrated += 1
-                    migrated_ids.add(chunk.id)
-
-                except Exception as exc:
-                    failed += 1
-                    logger.warning(
-                        "Failed to migrate vector '%s': %s",
-                        chunk.id,
-                        exc,
-                    )
-
-            # Record checkpoint after each probe batch
-            if checkpoint_callback:
-                ckpt = MigrationCheckpoint(
-                    checkpoint_id=str(uuid.uuid4()),
-                    source_backend="sqlite_vss",
-                    target_backend="pgvector",
-                    last_migrated_id=len(migrated_ids),
-                    total_migrated=migrated,
-                    created_at=datetime.now(timezone.utc).isoformat(),
-                )
-                if asyncio.iscoroutinefunction(checkpoint_callback):
-                    await checkpoint_callback(ckpt)
-                else:
-                    checkpoint_callback(ckpt)
-
-        except Exception as exc:
-            failed += 1
-            logger.error(
-                "Batch retrieval failed for probe %d: %s",
-                probe_idx,
-                exc,
-            )
+    # Strategy: prefer cursor-based (list_all_ids) for deterministic coverage
+    if _source_supports_list_all_ids(source):
+        migrated, failed, skipped = await _migrate_via_cursor(
+            source=source,
+            target=target,
+            total=total,
+            batch_size=batch_size,
+            embedding_provider=embedding_provider,
+            dimensions=dimensions,
+            checkpoint_callback=checkpoint_callback,
+            status=status,
+        )
+    else:
+        migrated, failed, skipped = await _migrate_via_probes(
+            source=source,
+            target=target,
+            total=total,
+            batch_size=batch_size,
+            embedding_provider=embedding_provider,
+            dimensions=dimensions,
+            checkpoint_callback=checkpoint_callback,
+            status=status,
+        )
 
     status.migrated_vectors = migrated
     status.failed_vectors = failed
@@ -169,7 +119,7 @@ async def migrate_vectors(
             skipped,
         )
 
-    # Verify target count (in real run this would reflect actual upserts)
+    # Verify target count
     target_count = await target.count()
     if target_count >= total:
         status.completed_at = datetime.now(timezone.utc).isoformat()
@@ -192,24 +142,230 @@ async def migrate_vectors(
     return status
 
 
+def _source_supports_list_all_ids(source: VectorStore) -> bool:
+    """Check if the source VectorStore supports list_all_ids() for cursor scanning."""
+    return hasattr(source, "list_all_ids") and callable(getattr(source, "list_all_ids"))
+
+
+async def _migrate_via_cursor(
+    source: VectorStore,
+    target: VectorStore,
+    total: int,
+    batch_size: int,
+    embedding_provider: EmbeddingProvider | None,
+    dimensions: int,
+    checkpoint_callback: Callable | None,
+    status: MigrationStatus,
+) -> tuple[int, int, int]:
+    """Migrate using cursor/list_all_ids for complete deterministic coverage.
+
+    Iterates through all vector IDs in batches, ensuring no vector is missed.
+    """
+    migrated = 0
+    failed = 0
+    skipped = 0
+    migrated_ids: set[str] = set()
+    offset = 0
+
+    while offset < total:
+        # Fetch next batch of IDs
+        try:
+            batch_ids = await source.list_all_ids(offset=offset, limit=batch_size)  # type: ignore[union-attr]
+        except Exception as exc:
+            logger.error("list_all_ids failed at offset %d: %s", offset, exc)
+            break
+
+        if not batch_ids:
+            break
+
+        for chunk_id in batch_ids:
+            if chunk_id in migrated_ids:
+                continue
+
+            try:
+                # Retrieve the chunk by its ID using retrieve with a dummy vector
+                # The source store must support retrieving by ID through metadata
+                chunk = await _get_chunk_by_id(source, chunk_id, dimensions)
+                if chunk is None:
+                    logger.warning("Could not retrieve chunk '%s' during cursor migration", chunk_id)
+                    skipped += 1
+                    continue
+
+                embedding = await _resolve_embedding(chunk, embedding_provider, dimensions)
+
+                if embedding is None:
+                    skipped += 1
+                    logger.warning(
+                        "Skipping vector '%s' — no embedding in metadata and no EmbeddingProvider.",
+                        chunk.id,
+                    )
+                    continue
+
+                await target.upsert(
+                    id=chunk.id,
+                    embedding=embedding,
+                    content=chunk.content or "",
+                    metadata=chunk.metadata,
+                    domain=chunk.domain,
+                )
+                migrated += 1
+                migrated_ids.add(chunk.id)
+
+            except Exception as exc:
+                failed += 1
+                logger.warning("Failed to migrate vector '%s': %s", chunk_id, exc)
+
+        offset += len(batch_ids)
+
+        # Record checkpoint after each batch
+        if checkpoint_callback:
+            ckpt = MigrationCheckpoint(
+                checkpoint_id=str(uuid.uuid4()),
+                source_backend="sqlite_vss",
+                target_backend="pgvector",
+                last_migrated_id=offset,
+                total_migrated=migrated,
+                created_at=datetime.now(timezone.utc).isoformat(),
+            )
+            if asyncio.iscoroutinefunction(checkpoint_callback):
+                await checkpoint_callback(ckpt)
+            else:
+                checkpoint_callback(ckpt)
+
+    return migrated, failed, skipped
+
+
+async def _migrate_via_probes(
+    source: VectorStore,
+    target: VectorStore,
+    total: int,
+    batch_size: int,
+    embedding_provider: EmbeddingProvider | None,
+    dimensions: int,
+    checkpoint_callback: Callable | None,
+    status: MigrationStatus,
+) -> tuple[int, int, int]:
+    """Fallback: migrate using diverse probe vectors for retrieval-based scanning.
+
+    This approach may miss vectors in sparse regions of the embedding space.
+    A warning is logged recommending list_all_ids support.
+    """
+    logger.warning(
+        "Source VectorStore does not support list_all_ids(). "
+        "Using probe-based retrieval which may miss vectors in sparse regions. "
+        "Consider adding list_all_ids() to the source store for complete coverage.",
+    )
+
+    migrated = 0
+    failed = 0
+    skipped = 0
+    migrated_ids: set[str] = set()
+
+    # Generate diverse probe vectors for comprehensive retrieval.
+    probe_vectors = _generate_probe_vectors(dimensions, num_probes=8)
+
+    for probe_idx, probe_vector in enumerate(probe_vectors):
+        if len(migrated_ids) >= total:
+            break
+
+        try:
+            batch = await source.retrieve(probe_vector, top_k=batch_size)
+
+            if not batch:
+                continue
+
+            for chunk in batch:
+                if chunk.id in migrated_ids:
+                    continue
+
+                try:
+                    embedding = await _resolve_embedding(chunk, embedding_provider, dimensions)
+
+                    if embedding is None:
+                        skipped += 1
+                        logger.warning(
+                            "Skipping vector '%s' (domain='%s') — no embedding "
+                            "in metadata and no EmbeddingProvider to generate one.",
+                            chunk.id,
+                            chunk.domain,
+                        )
+                        continue
+
+                    await target.upsert(
+                        id=chunk.id,
+                        embedding=embedding,
+                        content=chunk.content or "",
+                        metadata=chunk.metadata,
+                        domain=chunk.domain,
+                    )
+                    migrated += 1
+                    migrated_ids.add(chunk.id)
+
+                except Exception as exc:
+                    failed += 1
+                    logger.warning("Failed to migrate vector '%s': %s", chunk.id, exc)
+
+            # Record checkpoint after each probe batch
+            if checkpoint_callback:
+                ckpt = MigrationCheckpoint(
+                    checkpoint_id=str(uuid.uuid4()),
+                    source_backend="sqlite_vss",
+                    target_backend="pgvector",
+                    last_migrated_id=len(migrated_ids),
+                    total_migrated=migrated,
+                    created_at=datetime.now(timezone.utc).isoformat(),
+                )
+                if asyncio.iscoroutinefunction(checkpoint_callback):
+                    await checkpoint_callback(ckpt)
+                else:
+                    checkpoint_callback(ckpt)
+
+        except Exception as exc:
+            failed += 1
+            logger.error("Batch retrieval failed for probe %d: %s", probe_idx, exc)
+
+    return migrated, failed, skipped
+
+
+async def _get_chunk_by_id(source: VectorStore, chunk_id: str, dimensions: int) -> Any:
+    """Retrieve a specific chunk by ID from the source store.
+
+    Uses a zero-vector probe if the store doesn't support direct ID lookup,
+    then filters results by ID.
+    """
+    # If the source has a get_by_id method, use it directly
+    if hasattr(source, "get_by_id") and callable(getattr(source, "get_by_id")):
+        try:
+            return await source.get_by_id(chunk_id)  # type: ignore[union-attr]
+        except Exception:
+            pass
+
+    # Fallback: use a small probe vector and filter
+    # This is less efficient but works with any VectorStore implementation
+    probe = [0.01] * dimensions
+    try:
+        results = await source.retrieve(probe, top_k=1)
+        # This is a best-effort approach; in practice, stores that support
+        # cursor scanning should also support get_by_id
+        for chunk in results:
+            if chunk.id == chunk_id:
+                return chunk
+    except Exception:
+        pass
+
+    return None
+
+
 def _generate_probe_vectors(dimensions: int, num_probes: int = 8) -> list[list[float]]:
     """Generate diverse probe vectors for retrieval-based migration scanning.
 
     Creates deterministic unit vectors spread across different dimensions
-    to maximize coverage of the vector space. Each probe activates a
-    different subset of dimensions, ensuring that nearest-neighbor
-    retrieval reaches different clusters.
-
-    This is a practical workaround for the fact that VectorStore.retrieve()
-    is similarity-based and doesn't support cursor-based iteration. By
-    using diverse probes, we maximize the chance of retrieving all stored
-    vectors.
+    to maximize coverage of the vector space.
     """
     import hashlib
 
     probes = []
     for i in range(num_probes):
-        # Create a deterministic seed for each probe
         seed = f"migration_probe_{i}".encode("utf-8")
         h = hashlib.sha256(seed).digest()
 
@@ -243,12 +399,10 @@ async def _resolve_embedding(
 
     This function never returns a zero vector.
     """
-    # Check metadata for pre-existing embedding
     metadata = chunk.metadata if hasattr(chunk, "metadata") else {}
     if isinstance(metadata, dict):
         stored_embedding = metadata.get("embedding")
         if stored_embedding and isinstance(stored_embedding, list):
-            # Validate it's not a zero vector
             if any(v != 0.0 for v in stored_embedding):
                 return stored_embedding
             else:
@@ -257,7 +411,6 @@ async def _resolve_embedding(
                     getattr(chunk, "id", "unknown"),
                 )
 
-    # Try generating via EmbeddingProvider
     if embedding_provider is not None:
         content = chunk.content if hasattr(chunk, "content") else ""
         if content:
@@ -282,5 +435,4 @@ async def _resolve_embedding(
                     exc,
                 )
 
-    # No embedding available — return None (caller must skip, not use zero vector)
     return None

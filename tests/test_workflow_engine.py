@@ -65,8 +65,8 @@ async def test_dialog_node_emits_pause_event_and_stops_runner():
 async def test_parallel_node_basic_execution():
     """Basic smoke test that ParallelNode runs its children concurrently via the runner."""
     nodes = [
-        ScriptNode("p1", code="parallel one"),
-        ScriptNode("p2", code="parallel two"),
+        ScriptNode("p1", code="parallel one", config={"script_fixture_mode": True}),
+        ScriptNode("p2", code="parallel two", config={"script_fixture_mode": True}),
         ParallelNode("par", children=["p1", "p2"]),
     ]
     ctx = WorkflowContext()
@@ -82,10 +82,10 @@ async def test_parallel_node_basic_execution():
 async def test_parallel_node_executes_children_concurrently():
     """Verify that ParallelNode actually runs its children via the runner with forked contexts."""
     nodes = [
-        ScriptNode("p1", code="branch one"),
-        ScriptNode("p2", code="branch two"),
+        ScriptNode("p1", code="branch one", config={"script_fixture_mode": True}),
+        ScriptNode("p2", code="branch two", config={"script_fixture_mode": True}),
         ParallelNode("par", children=["p1", "p2"]),
-        ScriptNode("after", code="after parallel"),
+        ScriptNode("after", code="after parallel", config={"script_fixture_mode": True}),
     ]
     ctx = WorkflowContext()
     runner = SequentialRunner(nodes, ctx)
@@ -133,7 +133,7 @@ async def test_workflow_suspend_and_resume_via_dialog():
 
     # Simple workflow with a dialog in the middle
     nodes = [
-        ScriptNode("start", code="begin"),
+        ScriptNode("start", code="begin", config={"script_fixture_mode": True}),
         DialogNode(
             "review",
             prompt="Please approve this",
@@ -141,7 +141,7 @@ async def test_workflow_suspend_and_resume_via_dialog():
             validation_result=_make_val_for_test(),
             eval_result=_make_eval_for_test(),
         ),
-        ScriptNode("finish", code="done"),
+        ScriptNode("finish", code="done", config={"script_fixture_mode": True}),
     ]
 
     ctx = WorkflowContext()
@@ -194,8 +194,8 @@ def _make_eval_for_test():
 async def test_richer_data_flow_between_nodes():
     """Verify that node outputs are automatically promoted to context under node_id and 'previous'."""
     nodes = [
-        ScriptNode("step1", code="one"),
-        ScriptNode("step2", code="two"),
+        ScriptNode("step1", code="one", config={"script_fixture_mode": True}),
+        ScriptNode("step2", code="two", config={"script_fixture_mode": True}),
     ]
     ctx = WorkflowContext()
     runner = SequentialRunner(nodes, ctx)
@@ -262,7 +262,7 @@ async def test_production_persistence_suspend_resume(tmp_path):
     store = FileWorkflowInstanceStore(tmp_path / "wf_instances")
 
     nodes = [
-        ScriptNode("start", code="begin"),
+        ScriptNode("start", code="begin", config={"script_fixture_mode": True}),
         DialogNode(
             "review",
             prompt="Approve?",
@@ -270,7 +270,7 @@ async def test_production_persistence_suspend_resume(tmp_path):
             validation_result=_make_val_for_test(),
             eval_result=_make_eval_for_test(),
         ),
-        ScriptNode("finish", code="done"),
+        ScriptNode("finish", code="done", config={"script_fixture_mode": True}),
     ]
 
     ctx = WorkflowContext()
@@ -305,9 +305,9 @@ async def test_advanced_parallel_with_dependencies_and_error_handling():
     """Test that parallel respects dependencies and continue_on_error."""
     # Child "b" depends on "a"
     nodes = [
-        ScriptNode("a", code="a"),
-        ScriptNode("b", code="b"),
-        ScriptNode("c", code="c"),
+        ScriptNode("a", code="a", config={"script_fixture_mode": True}),
+        ScriptNode("b", code="b", config={"script_fixture_mode": True}),
+        ScriptNode("c", code="c", config={"script_fixture_mode": True}),
         ParallelNode(
             "par",
             children=["a", "b", "c"],
@@ -564,12 +564,12 @@ nodes:
 async def test_all_five_node_types_executable():
     """All five node types (script, agent, condition, dialog, parallel) must be exercisable."""
     nodes = [
-        ScriptNode("step1", code="result = 42"),
+        ScriptNode("step1", code="result = 42", config={"script_fixture_mode": True}),
         ConditionNode("step2", condition="{{ step1_result }}"),
         DialogNode("step3", prompt="Review step 1"),
         ParallelNode("step4", children=["step4a", "step4b"]),
-        ScriptNode("step4a", code="parallel_a = True"),
-        ScriptNode("step4b", code="parallel_b = True"),
+        ScriptNode("step4a", code="parallel_a = True", config={"script_fixture_mode": True}),
+        ScriptNode("step4b", code="parallel_b = True", config={"script_fixture_mode": True}),
     ]
 
     ctx = WorkflowContext()
@@ -587,9 +587,9 @@ def test_suspended_workflow_resumes_from_correct_position():
     from aip.orchestration.workflow.instance import SuspendedWorkflow
 
     nodes = [
-        ScriptNode("step1", code="x = 1"),
+        ScriptNode("step1", code="x = 1", config={"script_fixture_mode": True}),
         DialogNode("step2", prompt="Review"),
-        ScriptNode("step3", code="y = 2"),
+        ScriptNode("step3", code="y = 2", config={"script_fixture_mode": True}),
     ]
 
     suspended = SuspendedWorkflow(

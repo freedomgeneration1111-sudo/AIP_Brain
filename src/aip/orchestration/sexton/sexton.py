@@ -212,11 +212,10 @@ class Sexton:
         if count > self._config.max_unclassified_before_alert and self._event_store is not None:
             try:
                 await self._event_store.write_event(
-                    {
-                        "event_type": "sexton_alert",
-                        "unclassified_count": count,
-                        "threshold": self._config.max_unclassified_before_alert,
-                    },
+                    event_type="sexton_alert",
+                    actor="sexton",
+                    artifact_id="",
+                    metadata_json=str(count),
                 )
             except Exception:
                 pass
@@ -226,11 +225,10 @@ class Sexton:
         if self._event_store is not None:
             try:
                 await self._event_store.write_event(
-                    {
-                        "event_type": "sexton_cycle_complete",
-                        "classified_count": count,
-                        "tokens_consumed": 0,
-                    },
+                    event_type="sexton_cycle_complete",
+                    actor="sexton",
+                    artifact_id="",
+                    metadata_json=str(count),
                 )
             except Exception:
                 pass
@@ -309,7 +307,253 @@ class Sexton:
     # --- ACE playbook stubs (foundation only) ---
 
     def derive_intervention_rule(self, failure_type: str, context: dict) -> dict | None:
-        """Stub — returns None in foundation. Real derivation in later chunks."""
+        """Derive a concrete intervention recommendation for a known condition.
+
+        H. Runtime gap closure: Implements deterministic rule derivation for a
+        small set of known conditions. For unknown conditions, returns None
+        honestly instead of producing vague placeholder advice.
+
+        Priority order:
+        1. Special conditions (repeated failure, fixture leakage, etc.) — these
+           provide more specific context and override generic type-based rules.
+        2. Failure type codes (A-F) — generic rules based on classification.
+
+        Each intervention includes:
+        - reason: Why this intervention is recommended
+        - severity: How urgent (critical, high, medium, low)
+        - affected_component: What part of the system is affected
+        - proposed_action: What should be done
+        - requires_approval: Whether DEFINER approval is needed before acting
+        """
+        # --- Special conditions (higher priority than type-based rules) ---
+        condition = context.get("condition", "")
+
+        # Repeated evaluation failure
+        if condition == "repeated_evaluation_failure":
+            return {
+                "intervention_id": f"intv_repeat_eval_{context.get('artifact_id', 'unknown')}",
+                "failure_type": failure_type,
+                "reason": "Repeated evaluation failure — the same artifact has failed "
+                "evaluation multiple times. This may indicate a systemic issue with "
+                "the evaluation pipeline or the artifact's quality.",
+                "severity": "high",
+                "affected_component": "evaluation",
+                "proposed_action": "escalate_to_definer_with_full_context",
+                "requires_approval": True,
+                "model_gen_assumption": (
+                    "Deterministic rule: Repeated failures indicate a systemic issue, "
+                    "not a transient one. Per §16.1 and §1.8."
+                ),
+            }
+
+        # Fixture leakage attempt
+        if condition == "fixture_leakage_attempt":
+            return {
+                "intervention_id": f"intv_fixture_leak_{context.get('artifact_id', 'unknown')}",
+                "failure_type": failure_type,
+                "reason": "CI fixture data detected in production path — this indicates "
+                "a potential safety bypass where test fixtures are being treated as "
+                "real evaluation results.",
+                "severity": "critical",
+                "affected_component": "evaluation",
+                "proposed_action": "block_promotion_and_alert_definer",
+                "requires_approval": True,  # Must be reviewed by DEFINER
+                "model_gen_assumption": (
+                    "Deterministic rule: Fixture leakage in production is a critical "
+                    "safety concern. Per §16.1 and §1.8."
+                ),
+            }
+
+        # Canonical promotion blocked
+        if condition == "canonical_promotion_blocked":
+            return {
+                "intervention_id": f"intv_promo_blocked_{context.get('artifact_id', 'unknown')}",
+                "failure_type": failure_type,
+                "reason": "Canonical promotion was blocked — the artifact met some "
+                "criteria but failed others. A DEFINER review is needed to determine "
+                "if the artifact can be improved or should be rejected.",
+                "severity": "medium",
+                "affected_component": "canonical_pipeline",
+                "proposed_action": "request_definer_review_with_evaluation_context",
+                "requires_approval": True,
+                "model_gen_assumption": (
+                    "Deterministic rule: Blocked promotions need human review. Per §16.1 and §1.8."
+                ),
+            }
+
+        # Model-slot drift
+        if condition == "model_slot_drift":
+            return {
+                "intervention_id": f"intv_slot_drift_{context.get('artifact_id', 'unknown')}",
+                "failure_type": failure_type,
+                "reason": "Model slot drift — the model configuration has changed since "
+                "the artifact was last evaluated. Existing evaluations may be stale.",
+                "severity": "high",
+                "affected_component": "model_slot_resolver",
+                "proposed_action": "trigger_vigil_re_evaluation",
+                "requires_approval": False,  # Re-evaluation is a standard safety action
+                "model_gen_assumption": (
+                    "Deterministic rule: Model slot changes invalidate prior evaluations. Per §16.1 and §1.8."
+                ),
+            }
+
+        # Budget breach
+        if condition == "budget_breach":
+            return {
+                "intervention_id": f"intv_budget_{context.get('artifact_id', 'unknown')}",
+                "failure_type": failure_type,
+                "reason": "Budget breach — token consumption has exceeded configured limits. "
+                "Further generation should be paused until budget is reviewed.",
+                "severity": "high",
+                "affected_component": "budget_manager",
+                "proposed_action": "pause_generation_and_alert_definer",
+                "requires_approval": True,
+                "model_gen_assumption": (
+                    "Deterministic rule: Budget breaches require review before resuming. Per §16.1 and §1.8."
+                ),
+            }
+
+        # Auth/security violation
+        if condition == "auth_security_violation":
+            return {
+                "intervention_id": f"intv_auth_{context.get('artifact_id', 'unknown')}",
+                "failure_type": failure_type,
+                "reason": "Authentication or authorization violation — an unauthorized "
+                "actor attempted a privileged operation. This is a security event "
+                "that requires DEFINER attention.",
+                "severity": "critical",
+                "affected_component": "auth",
+                "proposed_action": "log_security_event_and_block_operation",
+                "requires_approval": True,  # Security events always require review
+                "model_gen_assumption": (
+                    "Deterministic rule: Auth violations are always critical. Per §16.1 and §1.8."
+                ),
+            }
+
+        # Workflow stuck waiting for approval
+        if condition == "workflow_stuck_approval":
+            return {
+                "intervention_id": f"intv_stuck_{context.get('artifact_id', 'unknown')}",
+                "failure_type": failure_type,
+                "reason": "Workflow is stuck waiting for approval — a MANUAL review "
+                "item has been pending beyond an expected timeframe. This may indicate "
+                "a missing DEFINER review or a forgotten workflow.",
+                "severity": "medium",
+                "affected_component": "review_queue",
+                "proposed_action": "notify_definer_of_pending_review",
+                "requires_approval": False,  # Notification is safe to auto-send
+                "model_gen_assumption": (
+                    "Deterministic rule: Stuck workflows benefit from reminders. Per §16.1 and §1.8."
+                ),
+            }
+
+        # --- Failure type codes (A-F) — generic rules ---
+
+        # Type A: Context Framing Failure / Missing Context
+        if failure_type == "A":
+            return {
+                "intervention_id": f"intv_A_{context.get('artifact_id', 'unknown')}",
+                "failure_type": "A",
+                "reason": "Context framing failure — insufficient or stale context was used for generation. "
+                "The artifact may contain hallucinations or unsubstantiated claims.",
+                "severity": "high",
+                "affected_component": context.get("node_type", "retrieval"),
+                "proposed_action": "strengthen_contract_rule_or_improve_retrieval",
+                "requires_approval": True,
+                "model_gen_assumption": (
+                    "Deterministic rule: Type A failures indicate retrieval gaps that may "
+                    "recur under similar conditions. Per §16.1 and §1.8."
+                ),
+            }
+
+        # Type B: Procedural Gap
+        if failure_type == "B":
+            return {
+                "intervention_id": f"intv_B_{context.get('artifact_id', 'unknown')}",
+                "failure_type": "B",
+                "reason": "Procedural gap — the system lacks a procedural rule to handle "
+                "this failure pattern. ACE playbook entry may be missing or stale.",
+                "severity": "medium",
+                "affected_component": context.get("node_type", "orchestration"),
+                "proposed_action": "add_or_retrieve_ace_playbook_entry",
+                "requires_approval": True,
+                "model_gen_assumption": (
+                    "Deterministic rule: Type B failures indicate missing procedural coverage. Per §16.1 and §1.8."
+                ),
+            }
+
+        # Type C: Output Malformation
+        if failure_type == "C":
+            return {
+                "intervention_id": f"intv_C_{context.get('artifact_id', 'unknown')}",
+                "failure_type": "C",
+                "reason": "Output malformation — generated content does not conform to "
+                "expected schema or structure. Structural validation may need strengthening.",
+                "severity": "medium",
+                "affected_component": context.get("node_type", "synthesis"),
+                "proposed_action": "apply_structural_validation_or_repair",
+                "requires_approval": False,  # Validation/repair is safe to auto-apply
+                "model_gen_assumption": (
+                    "Deterministic rule: Type C failures indicate structural quality issues "
+                    "that validation can catch. Per §16.1 and §1.8."
+                ),
+            }
+
+        # Type D: Session Drift / Loop
+        if failure_type == "D":
+            return {
+                "intervention_id": f"intv_D_{context.get('artifact_id', 'unknown')}",
+                "failure_type": "D",
+                "reason": "Session drift or loop detected — the generation is stuck in "
+                "a repetitive pattern or diverging from the intended trajectory. "
+                "Context reset may be needed.",
+                "severity": "high",
+                "affected_component": "session",
+                "proposed_action": "trigger_context_reset_or_l4_intervention",
+                "requires_approval": False,  # Context reset is a standard recovery action
+                "model_gen_assumption": (
+                    "Deterministic rule: Type D failures indicate trajectory problems "
+                    "that L4 can address. Per §16.1 and §1.8."
+                ),
+            }
+
+        # Type E: False Success Reporting
+        if failure_type == "E":
+            return {
+                "intervention_id": f"intv_E_{context.get('artifact_id', 'unknown')}",
+                "failure_type": "E",
+                "reason": "False success reporting — the system reported success but "
+                "the output lacks substance or failed quality checks. This is a "
+                "critical safety concern that requires immediate verification.",
+                "severity": "critical",
+                "affected_component": context.get("node_type", "evaluation"),
+                "proposed_action": "require_verify_step_before_commit",
+                "requires_approval": True,  # Must be approved — do not auto-commit
+                "model_gen_assumption": (
+                    "Deterministic rule: Type E failures are the most dangerous — they "
+                    "indicate the system may approve low-quality content. Per §16.1 and §1.8."
+                ),
+            }
+
+        # Type F: Context Anxiety
+        if failure_type == "F":
+            return {
+                "intervention_id": f"intv_F_{context.get('artifact_id', 'unknown')}",
+                "failure_type": "F",
+                "reason": "Context anxiety — generated content shows signs of hedging, "
+                "shortening, or uncertainty. The model may be operating at the edge "
+                "of its capability.",
+                "severity": "medium",
+                "affected_component": "synthesis",
+                "proposed_action": "trigger_context_reset_or_l4_intervention",
+                "requires_approval": False,
+                "model_gen_assumption": (
+                    "Deterministic rule: Type F failures indicate model confidence issues "
+                    "that may benefit from context refresh. Per §16.1 and §1.8."
+                ),
+            }
+
+        # Unknown condition — return None honestly
         return None
 
     def derive_ace_rules(self, classified_events: list[dict[str, Any]]) -> list[dict[str, Any]]:

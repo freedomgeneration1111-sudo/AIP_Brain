@@ -29,6 +29,7 @@ REPO_ROOT = Path(__file__).parent.parent / "src" / "aip"
 # 1. Knowledge store is distinct from canonical store
 # ---------------------------------------------------------------------------
 
+
 def test_knowledge_store_and_canonical_store_are_distinct_protocols():
     """KnowledgeStore and CanonicalStore must be separate Protocol types.
 
@@ -62,6 +63,7 @@ def test_knowledge_store_and_canonical_store_implementations_are_distinct():
 # 2. Knowledge store uses compiled_knowledge table, not canonicals
 # ---------------------------------------------------------------------------
 
+
 def test_knowledge_store_uses_compiled_knowledge_table():
     """KnowledgeStore persistence layer must use a dedicated compiled_knowledge table.
 
@@ -70,9 +72,7 @@ def test_knowledge_store_uses_compiled_knowledge_table():
     """
     source = REPO_ROOT / "adapter" / "knowledge" / "sqlite_knowledge_store.py"
     content = source.read_text()
-    assert "compiled_knowledge" in content, (
-        "KnowledgeStore must use compiled_knowledge table (not canonicals)"
-    )
+    assert "compiled_knowledge" in content, "KnowledgeStore must use compiled_knowledge table (not canonicals)"
 
 
 def test_canonical_store_uses_canonical_artifacts_table():
@@ -85,6 +85,7 @@ def test_canonical_store_uses_canonical_artifacts_table():
 # ---------------------------------------------------------------------------
 # 3. UI is not authority, MCP is not bypass
 # ---------------------------------------------------------------------------
+
 
 def test_ui_is_not_authority():
     """The UI surface must not bypass DEFINER sovereignty.
@@ -109,14 +110,13 @@ def test_mcp_is_not_bypass():
     artifacts = REPO_ROOT / "adapter" / "mcp" / "tools" / "artifacts.py"
     if artifacts.exists():
         content = artifacts.read_text()
-        assert "container" in content, (
-            "MCP tools must use container (which wires AutonomyGate)"
-        )
+        assert "container" in content, "MCP tools must use container (which wires AutonomyGate)"
 
 
 # ---------------------------------------------------------------------------
 # 4. MCP does not call vector_store.retrieve() directly
 # ---------------------------------------------------------------------------
+
 
 def test_mcp_search_does_not_call_vector_store_retrieve_directly():
     """MCP search tool must not call vector_store.retrieve() directly.
@@ -150,15 +150,15 @@ def test_ui_routes_do_not_call_vector_store_retrieve_directly():
         if "vector_store.retrieve" in text and "container" not in text and "protocol" not in text:
             violations.append(str(route_file))
 
-    assert not violations, (
-        "Appendix D violation: UI routes call vector_store.retrieve() directly:\n"
-        + "\n".join(violations)
+    assert not violations, "Appendix D violation: UI routes call vector_store.retrieve() directly:\n" + "\n".join(
+        violations
     )
 
 
 # ---------------------------------------------------------------------------
 # 5. Vigil is separate from Beast/Sexton
 # ---------------------------------------------------------------------------
+
 
 def test_vigil_and_beast_are_separate_actors():
     """Vigil and Beast must be separate actors with distinct files.
@@ -168,9 +168,7 @@ def test_vigil_and_beast_are_separate_actors():
     """
     vigil = REPO_ROOT / "orchestration" / "actors" / "vigil.py"
     beast = REPO_ROOT / "orchestration" / "actors" / "beast.py"
-    assert vigil.exists() and beast.exists(), (
-        "Vigil and Beast must exist as separate actor files per Appendix D"
-    )
+    assert vigil.exists() and beast.exists(), "Vigil and Beast must exist as separate actor files per Appendix D"
 
 
 def test_vigil_is_separate_from_sexton():
@@ -181,14 +179,13 @@ def test_vigil_is_separate_from_sexton():
     """
     vigil = REPO_ROOT / "orchestration" / "actors" / "vigil.py"
     sexton = REPO_ROOT / "orchestration" / "sexton" / "sexton.py"
-    assert vigil.exists() and sexton.exists(), (
-        "Vigil and Sexton must exist as separate modules per Appendix D"
-    )
+    assert vigil.exists() and sexton.exists(), "Vigil and Sexton must exist as separate modules per Appendix D"
 
 
 # ---------------------------------------------------------------------------
 # 6. Canonical promotion preserves (supersedes) rather than deletes
 # ---------------------------------------------------------------------------
+
 
 def test_canonical_promotion_supersedes_rather_than_deletes():
     """Canonical promotion must preserve history via supersession, not deletion.
@@ -201,8 +198,7 @@ def test_canonical_promotion_supersedes_rather_than_deletes():
     if canon_store.exists():
         content = canon_store.read_text().lower()
         assert "superseded" in content, (
-            "CanonicalStore must support supersession (superseded_by column) "
-            "rather than deletion per Appendix D"
+            "CanonicalStore must support supersession (superseded_by column) rather than deletion per Appendix D"
         )
 
     # Check the pipeline uses promote/supersede semantics
@@ -210,14 +206,14 @@ def test_canonical_promotion_supersedes_rather_than_deletes():
     if pipeline.exists():
         content = pipeline.read_text().lower()
         assert "promote" in content, (
-            "CanonicalPipeline must use promote semantics (supersession) "
-            "rather than delete per Appendix D"
+            "CanonicalPipeline must use promote semantics (supersession) rather than delete per Appendix D"
         )
 
 
 # ---------------------------------------------------------------------------
 # 7. Entity store is distinct from project store
 # ---------------------------------------------------------------------------
+
 
 def test_entity_store_and_project_store_are_distinct_protocols():
     """EntityStore and ProjectStore must be separate Protocol types.

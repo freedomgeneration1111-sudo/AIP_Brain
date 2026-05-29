@@ -19,8 +19,7 @@ def test_asyncio_mode_auto():
     pytest_config = config.get("tool", {}).get("pytest", {}).get("ini_options", {})
     asyncio_mode = pytest_config.get("asyncio_mode")
     assert asyncio_mode == "auto", (
-        f"Expected asyncio_mode='auto', got '{asyncio_mode}'. "
-        "pytest-asyncio asyncio_mode='auto' is required."
+        f"Expected asyncio_mode='auto', got '{asyncio_mode}'. pytest-asyncio asyncio_mode='auto' is required."
     )
 
 

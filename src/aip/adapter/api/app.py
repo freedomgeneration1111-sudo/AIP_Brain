@@ -279,6 +279,55 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Beast actor not wired: missing vector_store or embedding_provider")
 
+    # PerformanceProfiler — optional, only wired when profiling_enabled=True
+    try:
+        _perf_mod = importlib.import_module("aip.orchestration.perf")
+        _PerformanceProfiler = _perf_mod.PerformanceProfiler
+        _PerfConfig = importlib.import_module("aip.foundation.schemas.config").PerformanceConfig
+        perf_cfg = _PerfConfig(
+            **{k: v for k, v in config.get("performance", {}).items() if k in _PerfConfig.__dataclass_fields__},
+        )
+        if perf_cfg.profiling_enabled and container.event_store is not None:
+            container.performance_profiler = _PerformanceProfiler(
+                config=perf_cfg,
+                trace_store=container.event_store,
+            )
+            logger.info("PerformanceProfiler initialized (profiling_enabled=True)")
+        else:
+            logger.info("PerformanceProfiler not wired (profiling_enabled=%s)", perf_cfg.profiling_enabled)
+    except Exception as exc:
+        logger.warning(
+            "PerformanceProfiler initialization failed (optional — performance API returns DISABLED): %s", exc
+        )
+
+    # ReviewQueueStore — optional, for MANUAL mode review queue persistence
+    try:
+        _rqs_mod = importlib.import_module("aip.adapter.review_queue_store")
+        _ReviewQueueStore = _rqs_mod.ReviewQueueStore
+        container.review_queue_store = _ReviewQueueStore(db_path=db_path)
+        await container.review_queue_store.initialize()
+        logger.info("Review queue store initialized (optional)")
+    except Exception as exc:
+        logger.warning(
+            "Review queue store initialization failed (optional — MANUAL mode review queue degraded): %s", exc
+        )
+
+    # ECS store — use PersistentEcsStore for state that survives restart
+    try:
+        _ecs_mod = importlib.import_module("aip.adapter.ecs_store_persistent")
+        _PersistentEcsStore = _ecs_mod.PersistentEcsStore
+        container.ecs_store = _PersistentEcsStore(
+            db_path=db_path,
+            event_store=container.event_store,
+        )
+        await container.ecs_store.initialize()
+        logger.info("ECS store initialized (persistent, with EventStore)")
+    except Exception as exc:
+        logger.warning(
+            "Persistent ECS store initialization failed (optional — falling back to guardrailed in-memory): %s",
+            exc,
+        )
+
     app.state.container = container
     app.state.start_time = time.time()
 
@@ -372,6 +421,12 @@ async def lifespan(app: FastAPI):
     # Close model provider httpx client (if wired)
     if container.model_provider and hasattr(container.model_provider, "close"):
         await container.model_provider.close()
+    # Close ECS store (persistent)
+    if container.ecs_store and hasattr(container.ecs_store, "close"):
+        await container.ecs_store.close()
+    # Close review queue store
+    if container.review_queue_store and hasattr(container.review_queue_store, "close"):
+        await container.review_queue_store.close()
 
 
 def create_app(config: dict | None = None) -> "FastAPI":

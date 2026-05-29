@@ -336,3 +336,70 @@ class PgvectorStore(VectorStore):
                 },
             )
         return results
+
+    async def list_all_ids(
+        self,
+        offset: int = 0,
+        limit: int = 500,
+        domain: str | None = None,
+    ) -> list[str]:
+        """List all vector IDs with cursor-based pagination.
+
+        Used by vector migration for deterministic complete scanning.
+        """
+        if self._pool is None:
+            return []
+
+        async with self._pool.acquire() as conn:
+            if domain:
+                rows = await conn.fetch(
+                    "SELECT id FROM vectors WHERE domain = $1 ORDER BY id OFFSET $2 LIMIT $3",
+                    domain,
+                    offset,
+                    limit,
+                )
+            else:
+                rows = await conn.fetch(
+                    "SELECT id FROM vectors ORDER BY id OFFSET $1 LIMIT $2",
+                    offset,
+                    limit,
+                )
+        return [row["id"] for row in rows]
+
+    async def get_by_id(self, chunk_id: str) -> Chunk | None:
+        """Retrieve a chunk by its ID directly (no vector similarity)."""
+        if self._pool is None:
+            return None
+
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT id, metadata, domain FROM vectors WHERE id = $1",
+                chunk_id,
+            )
+        if row is None:
+            return None
+        meta = row["metadata"]
+        if isinstance(meta, str):
+            meta = json.loads(meta)
+        elif not isinstance(meta, dict):
+            meta = dict(meta or {})
+        return Chunk(
+            id=row["id"],
+            content=meta.get("content", ""),
+            score=1.0,
+            metadata=meta,
+            domain=row["domain"],
+        )
+
+    async def store(self, chunk: Chunk) -> str:
+        """Store a Chunk using its embedding from metadata if available."""
+        embedding = chunk.metadata.get("embedding") if chunk.metadata else None
+        if embedding and isinstance(embedding, list):
+            await self.upsert(
+                id=chunk.id,
+                embedding=embedding,
+                content=chunk.content or "",
+                metadata=chunk.metadata,
+                domain=chunk.domain,
+            )
+        return chunk.id

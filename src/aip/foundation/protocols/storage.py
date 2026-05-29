@@ -77,6 +77,28 @@ class VectorStore(Protocol):
         """
         ...
 
+    async def list_all_ids(
+        self,
+        offset: int = 0,
+        limit: int = 500,
+        domain: str | None = None,
+    ) -> list[str]:
+        """List all vector IDs with cursor-based pagination.
+
+        Used by vector migration for deterministic complete scanning.
+        Without this method, migration falls back to probe-based retrieval
+        which may miss vectors in sparse regions.
+
+        Args:
+            offset: Number of IDs to skip (for pagination).
+            limit: Maximum number of IDs to return.
+            domain: Optional domain filter.
+
+        Returns:
+            List of vector ID strings.
+        """
+        ...
+
 
 @runtime_checkable
 class LexicalStore(Protocol):

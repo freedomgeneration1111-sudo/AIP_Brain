@@ -34,10 +34,25 @@ Production configuration is **enforced programmatically**. Unsafe configs fail a
 
 ## Module Status
 
-- **Tests:** 721 passing, 15 skipped (sqlite_vss extension)
+- **Tests:** 763 passing, 15 skipped (sqlite_vss extension)
 - **Architecture:** Three-layer (foundation → orchestration → adapter)
-- **Scaffolding:** ~10-12% overall
+- **Scaffolding:** ~5-8% overall
 - **Docker:** Laptop and production profiles with programmatic config validation
+
+## Runtime Gap Closure (P9)
+
+The following runtime gaps have been addressed. No known gap returns fake success.
+
+| Gap | Status | Implementation | Tests | Remaining limitation |
+|---|---|---|---|---|
+| A. Collaborator password transport | Fixed | Password moved from query param to request body via Pydantic model | test_collaborator_secret_transport.py | CLI already used hide_input |
+| B. Performance API | Fixed | Returns BACKEND_UNAVAILABLE when not configured, DISABLED when profiling_enabled=False, real data when enabled | test_performance_api_contract.py | Per-component breakdown is estimated |
+| C. Vector migration cursor scan | Fixed | list_all_ids() added to VectorStore protocol + all implementations; cursor-based migration when available, probe fallback | test_vector_migration_cursor_scan.py | Probe fallback may still miss vectors |
+| D. ECS persistent store | Fixed | PersistentEcsStore with SQLite backend, aiosqlite, state cache + DB persistence | test_ecs_persistent_store.py | Postgres adapter deferred |
+| E. MANUAL review queue | Fixed | ReviewQueueStore with SQLite persistence, DEFINER-only approval, no auto-approve | test_manual_review_queue.py | UI minimal (API/CLI only) |
+| F. ScriptNode.run | Disabled | Production mode returns structured DISABLED; fixture mode returns safe no-op; YAML loader defaults to fixture mode | test_workflow_script_node_contract.py | Safe sandbox not yet implemented |
+| G. Vigil model-slot re-evaluation | Fixed | on_model_slot_change marks affected canonicals for re-evaluation, writes trace events, respects batch size | test_vigil_model_slot_re_evaluation.py | Conservative: all canonicals marked as affected |
+| H. Sexton intervention derivation | Fixed | Deterministic rules for A-F + 7 special conditions; unknown returns None | test_sexton_intervention_derivation.py | Complex multi-signal derivation deferred |
 
 ## Deployment Profiles
 

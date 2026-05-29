@@ -347,6 +347,56 @@ class SqliteVssVectorStore(VectorStore):
         finally:
             await conn.close()
 
+    async def list_all_ids(
+        self,
+        offset: int = 0,
+        limit: int = 500,
+        domain: str | None = None,
+    ) -> list[str]:
+        """List all vector IDs with cursor-based pagination.
+
+        Used by vector migration for deterministic complete scanning.
+        Queries vector_metadata table directly — no vector similarity needed.
+        """
+        conn = await self._get_conn()
+        try:
+            if domain:
+                cursor = await conn.execute(
+                    "SELECT id FROM vector_metadata WHERE domain = ? ORDER BY rowid ASC LIMIT ? OFFSET ?",
+                    (domain, limit, offset),
+                )
+            else:
+                cursor = await conn.execute(
+                    "SELECT id FROM vector_metadata ORDER BY rowid ASC LIMIT ? OFFSET ?",
+                    (limit, offset),
+                )
+            rows = await cursor.fetchall()
+            return [row[0] for row in rows]
+        finally:
+            await conn.close()
+
+    async def get_by_id(self, chunk_id: str) -> Chunk | None:
+        """Retrieve a chunk by its ID directly (no vector similarity)."""
+        conn = await self._get_conn()
+        try:
+            cursor = await conn.execute(
+                "SELECT id, content, domain, metadata_json FROM vector_metadata WHERE id = ?",
+                (chunk_id,),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return None
+            id_, content, domain_val, meta_json = row
+            return Chunk(
+                id=id_,
+                content=content,
+                score=1.0,
+                metadata=json.loads(meta_json) if meta_json else {},
+                domain=domain_val,
+            )
+        finally:
+            await conn.close()
+
     async def close(self) -> None:
         # No persistent connection to close (each method opens/closes its own)
         pass
