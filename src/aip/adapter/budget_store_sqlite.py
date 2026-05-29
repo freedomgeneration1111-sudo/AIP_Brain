@@ -27,6 +27,7 @@ class SqliteBudgetStore(BudgetStore):
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
+        self._conn: aiosqlite.Connection | None = None
         self._ensure_table_sync()
 
     def _ensure_table_sync(self) -> None:
@@ -51,6 +52,12 @@ class SqliteBudgetStore(BudgetStore):
             conn.commit()
         finally:
             conn.close()
+
+    async def _get_conn(self) -> aiosqlite.Connection:
+        if self._conn is None:
+            self._conn = await aiosqlite.connect(self._db_path)
+            self._conn.row_factory = sqlite3.Row
+        return self._conn
 
     async def _ensure_table(self) -> None:
         conn = await aiosqlite.connect(self._db_path)
@@ -77,8 +84,13 @@ class SqliteBudgetStore(BudgetStore):
     async def initialize(self) -> None:
         await self._ensure_table()
 
+    async def close(self) -> None:
+        if self._conn is not None:
+            await self._conn.close()
+            self._conn = None
+
     async def get_budget(self, scope: BudgetScope, scope_id: str) -> dict:
-        conn = await aiosqlite.connect(self._db_path)
+        conn = await self._get_conn()
         try:
             cursor = await conn.execute(
                 "SELECT COALESCE(SUM(tokens_used), 0), COALESCE(SUM(cost_usd), 0.0) "
@@ -109,6 +121,7 @@ class SqliteBudgetStore(BudgetStore):
             }
         finally:
             await conn.close()
+            self._conn = None
 
     async def record_usage(
         self,
@@ -118,7 +131,7 @@ class SqliteBudgetStore(BudgetStore):
         cost_usd: float,
         model_slot: str,
     ) -> None:
-        conn = await aiosqlite.connect(self._db_path)
+        conn = await self._get_conn()
         try:
             await conn.execute(
                 "INSERT INTO budget_ledger (scope, scope_id, tokens_used, cost_usd, model_slot) "
@@ -128,6 +141,7 @@ class SqliteBudgetStore(BudgetStore):
             await conn.commit()
         finally:
             await conn.close()
+            self._conn = None
 
     async def check_limit(self, scope: BudgetScope, scope_id: str) -> bool:
         """Check whether budget has remaining capacity.

@@ -134,42 +134,46 @@ class SqliteKnowledgeStore(KnowledgeStore):
         If state == "APPROVED", also indexes into VectorStore + LexicalStore.
         """
         conn = await self._get_conn()
-        now = datetime.now(timezone.utc).isoformat()
+        try:
+            now = datetime.now(timezone.utc).isoformat()
 
-        state = metadata.get("state", "SPECIFIED")
-        source_ids_json = json.dumps(source_canonical_ids or [])
+            state = metadata.get("state", "SPECIFIED")
+            source_ids_json = json.dumps(source_canonical_ids or [])
 
-        await conn.execute(
-            """
-            INSERT OR REPLACE INTO compiled_knowledge
-            (knowledge_id, content, source_canonical_ids, domain, state, metadata, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM compiled_knowledge WHERE knowledge_id=?), ?), ?)
-            """,
-            (
-                knowledge_id,
-                content,
-                source_ids_json,
-                domain,
-                state,
-                json.dumps(metadata),
-                knowledge_id,
-                now,
-                now,
-            ),
-        )
-
-        # Provenance links (simplified — full details come via get_provenance join in real usage)
-        for cid in source_canonical_ids or []:
             await conn.execute(
                 """
-                INSERT OR IGNORE INTO compiled_knowledge_provenance
-                (knowledge_id, canonical_id, canonical_domain, canonical_title, canonical_evaluation_scores, canonical_state)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO compiled_knowledge
+                (knowledge_id, content, source_canonical_ids, domain, state, metadata, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM compiled_knowledge WHERE knowledge_id=?), ?), ?)
                 """,
-                (knowledge_id, cid, domain, "", "[]", "APPROVED"),
+                (
+                    knowledge_id,
+                    content,
+                    source_ids_json,
+                    domain,
+                    state,
+                    json.dumps(metadata),
+                    knowledge_id,
+                    now,
+                    now,
+                ),
             )
 
-        await conn.commit()
+            # Provenance links (simplified — full details come via get_provenance join in real usage)
+            for cid in source_canonical_ids or []:
+                await conn.execute(
+                    """
+                    INSERT OR IGNORE INTO compiled_knowledge_provenance
+                    (knowledge_id, canonical_id, canonical_domain, canonical_title, canonical_evaluation_scores, canonical_state)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (knowledge_id, cid, domain, "", "[]", "APPROVED"),
+                )
+
+            await conn.commit()
+        finally:
+            await conn.close()
+            self._conn = None
 
         # Dual index only on APPROVED (exact per prose)
         if state == "APPROVED":
@@ -199,52 +203,60 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
     async def get_compiled(self, knowledge_id: str) -> dict | None:
         conn = await self._get_conn()
-        cursor = await conn.execute(
-            "SELECT * FROM compiled_knowledge WHERE knowledge_id = ?",
-            (knowledge_id,),
-        )
-        row = await cursor.fetchone()
-        if not row:
-            return None
-        return {
-            "knowledge_id": row["knowledge_id"],
-            "content": row["content"],
-            "source_canonical_ids": json.loads(row["source_canonical_ids"] or "[]"),
-            "domain": row["domain"],
-            "state": row["state"],
-            "metadata": json.loads(row["metadata"] or "{}"),
-            "created_at": row["created_at"],
-            "updated_at": row["updated_at"],
-        }
+        try:
+            cursor = await conn.execute(
+                "SELECT * FROM compiled_knowledge WHERE knowledge_id = ?",
+                (knowledge_id,),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "knowledge_id": row["knowledge_id"],
+                "content": row["content"],
+                "source_canonical_ids": json.loads(row["source_canonical_ids"] or "[]"),
+                "domain": row["domain"],
+                "state": row["state"],
+                "metadata": json.loads(row["metadata"] or "{}"),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+        finally:
+            await conn.close()
+            self._conn = None
 
     async def list_compiled(
         self, domain: str | None = None, state: CompilationState | None = None
     ) -> list[dict]:
         conn = await self._get_conn()
-        query = "SELECT * FROM compiled_knowledge WHERE 1=1"
-        params: list[Any] = []
-        if domain:
-            query += " AND domain = ?"
-            params.append(domain)
-        if state:
-            query += " AND state = ?"
-            params.append(state)
-        query += " ORDER BY updated_at DESC"
-        cursor = await conn.execute(query, params)
-        rows = await cursor.fetchall()
-        return [
-            {
-                "knowledge_id": r["knowledge_id"],
-                "content": r["content"],
-                "source_canonical_ids": json.loads(r["source_canonical_ids"] or "[]"),
-                "domain": r["domain"],
-                "state": r["state"],
-                "metadata": json.loads(r["metadata"] or "{}"),
-                "created_at": r["created_at"],
-                "updated_at": r["updated_at"],
-            }
-            for r in rows
-        ]
+        try:
+            query = "SELECT * FROM compiled_knowledge WHERE 1=1"
+            params: list[Any] = []
+            if domain:
+                query += " AND domain = ?"
+                params.append(domain)
+            if state:
+                query += " AND state = ?"
+                params.append(state)
+            query += " ORDER BY updated_at DESC"
+            cursor = await conn.execute(query, params)
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "knowledge_id": r["knowledge_id"],
+                    "content": r["content"],
+                    "source_canonical_ids": json.loads(r["source_canonical_ids"] or "[]"),
+                    "domain": r["domain"],
+                    "state": r["state"],
+                    "metadata": json.loads(r["metadata"] or "{}"),
+                    "created_at": r["created_at"],
+                    "updated_at": r["updated_at"],
+                }
+                for r in rows
+            ]
+        finally:
+            await conn.close()
+            self._conn = None
 
     async def update_state(self, knowledge_id: str, new_state: CompilationState) -> None:
         """Validate and perform state transition."""
@@ -264,35 +276,43 @@ class SqliteKnowledgeStore(KnowledgeStore):
             pass
 
         conn = await self._get_conn()
-        now = datetime.now(timezone.utc).isoformat()
-        await conn.execute(
-            "UPDATE compiled_knowledge SET state = ?, updated_at = ? WHERE knowledge_id = ?",
-            (new_state, now, knowledge_id),
-        )
-        await conn.commit()
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            await conn.execute(
+                "UPDATE compiled_knowledge SET state = ?, updated_at = ? WHERE knowledge_id = ?",
+                (new_state, now, knowledge_id),
+            )
+            await conn.commit()
+        finally:
+            await conn.close()
+            self._conn = None
 
     async def get_provenance(self, knowledge_id: str) -> list[dict]:
         conn = await self._get_conn()
-        cursor = await conn.execute(
-            """
-            SELECT canonical_id, canonical_domain, canonical_title,
-                   canonical_evaluation_scores, canonical_state
-            FROM compiled_knowledge_provenance
-            WHERE knowledge_id = ?
-            """,
-            (knowledge_id,),
-        )
-        rows = await cursor.fetchall()
-        return [
-            {
-                "canonical_id": r["canonical_id"],
-                "canonical_domain": r["canonical_domain"],
-                "canonical_title": r["canonical_title"],
-                "canonical_evaluation_scores": json.loads(r["canonical_evaluation_scores"] or "[]"),
-                "canonical_state": r["canonical_state"],
-            }
-            for r in rows
-        ]
+        try:
+            cursor = await conn.execute(
+                """
+                SELECT canonical_id, canonical_domain, canonical_title,
+                       canonical_evaluation_scores, canonical_state
+                FROM compiled_knowledge_provenance
+                WHERE knowledge_id = ?
+                """,
+                (knowledge_id,),
+            )
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "canonical_id": r["canonical_id"],
+                    "canonical_domain": r["canonical_domain"],
+                    "canonical_title": r["canonical_title"],
+                    "canonical_evaluation_scores": json.loads(r["canonical_evaluation_scores"] or "[]"),
+                    "canonical_state": r["canonical_state"],
+                }
+                for r in rows
+            ]
+        finally:
+            await conn.close()
+            self._conn = None
 
     async def search_compiled(
         self, query: str, domain: str | None = None, limit: int = 10

@@ -110,13 +110,17 @@ class QueryableEventStore:
     ) -> None:
         """Write an event. Append-only — never modifies or deletes."""
         conn = await self._get_conn()
-        now = datetime.now(timezone.utc).isoformat()
-        meta_json = json.dumps(kwargs) if kwargs else "{}"
-        await conn.execute(
-            "INSERT INTO events (event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (event_type, actor, artifact_id, from_state, to_state, meta_json, now),
-        )
-        await conn.commit()
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            meta_json = json.dumps(kwargs) if kwargs else "{}"
+            await conn.execute(
+                "INSERT INTO events (event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (event_type, actor, artifact_id, from_state, to_state, meta_json, now),
+            )
+            await conn.commit()
+        finally:
+            await conn.close()
+            self._conn = None
 
     async def query(
         self,
@@ -126,36 +130,40 @@ class QueryableEventStore:
     ) -> list[Event]:
         """Query events by filters, most recent first."""
         conn = await self._get_conn()
-        conditions = []
-        params: list = []
+        try:
+            conditions = []
+            params: list = []
 
-        if artifact_id is not None:
-            conditions.append("artifact_id = ?")
-            params.append(artifact_id)
-        if event_type is not None:
-            conditions.append("event_type = ?")
-            params.append(event_type)
+            if artifact_id is not None:
+                conditions.append("artifact_id = ?")
+                params.append(artifact_id)
+            if event_type is not None:
+                conditions.append("event_type = ?")
+                params.append(event_type)
 
-        where = " AND ".join(conditions) if conditions else "1=1"
-        sql = f"SELECT id, event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at FROM events WHERE {where} ORDER BY created_at DESC LIMIT ?"
-        params.append(limit)
+            where = " AND ".join(conditions) if conditions else "1=1"
+            sql = f"SELECT id, event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at FROM events WHERE {where} ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
 
-        cursor = await conn.execute(sql, params)
-        rows = await cursor.fetchall()
-        results = []
-        for row in rows:
-            id_, et, actor, aid, fs, ts, mj, ca = row
-            results.append(Event(
-                id=id_,
-                event_type=et,
-                actor=actor,
-                artifact_id=aid,
-                from_state=fs,
-                to_state=ts,
-                timestamp=ca,
-                metadata=json.loads(mj) if mj else {},
-            ))
-        return results
+            cursor = await conn.execute(sql, params)
+            rows = await cursor.fetchall()
+            results = []
+            for row in rows:
+                id_, et, actor, aid, fs, ts, mj, ca = row
+                results.append(Event(
+                    id=id_,
+                    event_type=et,
+                    actor=actor,
+                    artifact_id=aid,
+                    from_state=fs,
+                    to_state=ts,
+                    timestamp=ca,
+                    metadata=json.loads(mj) if mj else {},
+                ))
+            return results
+        finally:
+            await conn.close()
+            self._conn = None
 
     async def close(self) -> None:
         if self._conn is not None:

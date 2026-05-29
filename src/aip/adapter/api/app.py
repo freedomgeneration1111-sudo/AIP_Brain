@@ -91,6 +91,42 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Project store initialization failed: %s", exc)
 
+    # Budget store
+    try:
+        _bs_mod = importlib.import_module("aip.adapter.budget_store_sqlite")
+        _SqliteBudgetStore = _bs_mod.SqliteBudgetStore
+        container.budget_store = _SqliteBudgetStore(db_path)
+        await container.budget_store.initialize()
+    except Exception as exc:
+        logger.warning("Budget store initialization failed: %s", exc)
+
+    # Vigil store
+    try:
+        _vs2_mod = importlib.import_module("aip.adapter.vigil.sqlite_vigil_store")
+        _SqliteVigilStore = _vs2_mod.SqliteVigilStore
+        container.vigil_store = _SqliteVigilStore(db_path)
+        await container.vigil_store.initialize()
+    except Exception as exc:
+        logger.warning("Vigil store initialization failed: %s", exc)
+
+    # Autonomy gate
+    try:
+        _ag_mod = importlib.import_module("aip.adapter.autonomy.autonomy_gate")
+        _AutonomyGateImpl = _ag_mod.AutonomyGateImpl
+        container.autonomy_gate = _AutonomyGateImpl(config={**config, "db_path": db_path})
+        await container.autonomy_gate.initialize()
+    except Exception as exc:
+        logger.warning("Autonomy gate initialization failed: %s", exc)
+
+    # Artifact store (versioned)
+    try:
+        _as_mod = importlib.import_module("aip.adapter.artifact_store_versioned")
+        _VersionedArtifactStore = _as_mod.VersionedArtifactStore
+        container.artifact_store = _VersionedArtifactStore(db_path)
+        await container.artifact_store.initialize()
+    except Exception as exc:
+        logger.warning("Artifact store initialization failed: %s", exc)
+
     # Model provider (ModelSlotResolver)
     try:
         from aip.adapter.model_slot_resolver import ModelSlotResolver
@@ -175,18 +211,26 @@ async def lifespan(app: FastAPI):
             pass
 
     # shutdown: close any open connections (the individual stores implement close())
-    if container.lexical_store:
+    if container.vector_store and hasattr(container.vector_store, "close"):
+        await container.vector_store.close()
+    if container.lexical_store and hasattr(container.lexical_store, "close"):
         await container.lexical_store.close()
-    if container.canonical_store:
+    if container.canonical_store and hasattr(container.canonical_store, "close"):
         await container.canonical_store.close()
-    if container.entity_store:
+    if container.entity_store and hasattr(container.entity_store, "close"):
         await container.entity_store.close()
-    if container.autonomy_gate:
-        await container.autonomy_gate.close()
-    if container.event_store:
+    if container.event_store and hasattr(container.event_store, "close"):
         await container.event_store.close()
-    if container.project_store:
+    if container.project_store and hasattr(container.project_store, "close"):
         await container.project_store.close()
+    if container.budget_store and hasattr(container.budget_store, "close"):
+        await container.budget_store.close()
+    if hasattr(container, "vigil_store") and container.vigil_store and hasattr(container.vigil_store, "close"):
+        await container.vigil_store.close()
+    if container.autonomy_gate and hasattr(container.autonomy_gate, "close"):
+        await container.autonomy_gate.close()
+    if container.artifact_store and hasattr(container.artifact_store, "close"):
+        await container.artifact_store.close()
     # Close model provider httpx client (if wired)
     if container.model_provider and hasattr(container.model_provider, "close"):
         await container.model_provider.close()

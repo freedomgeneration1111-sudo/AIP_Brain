@@ -5,11 +5,11 @@ from aip.adapter.event_store_queryable import QueryableEventStore
 
 
 @pytest.fixture
-def store(tmp_path):
+async def store(tmp_path):
     db_path = str(tmp_path / "test_events.db")
     s = QueryableEventStore(db_path)
     yield s
-    s.close()
+    await s.close()
 
 
 @pytest.mark.asyncio

@@ -3,15 +3,17 @@
 Per prose + ANNEX (exact).
 No UI, workflow, Beast, MCP, or queued task may bypass the DEFINER gates.
 Adapter only (composes Foundation Protocols/schemas; no orchestration imports).
+Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
 """
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+
+import aiosqlite
 
 from aip.foundation.protocols import AutonomyGate
 from aip.foundation.schemas import AutonomyEscalation, AutonomyLevel, coerce_autonomy_level
@@ -25,20 +27,19 @@ class AutonomyGateImpl(AutonomyGate):
     - escalate(): blocking for admin when escalation_requires_definer=True (returns granted=False).
     - Auto-grants read/write.
     - Writes full audit trail to autonomy_escalations in the provided state db.
+
+    Uses aiosqlite for async-compatible database access.
     """
 
     def __init__(self, config: dict | None = None, escalation_store: Any | None = None) -> None:
         self._config = config or {}
         # escalation_store param accepted for interface compatibility (ignored; we manage table directly like other adapters)
         self._db_path = self._config.get("db_path", "db/state.db")  # fallback; tests override via config
-        self._ensure_table()
+        self._conn: aiosqlite.Connection | None = None
+        self._ensure_table_sync()
 
-    def _get_conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self._db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
-
-    def _ensure_table(self) -> None:
+    def _ensure_table_sync(self) -> None:
+        """Synchronous table creation during init (runs once at startup)."""
         conn = sqlite3.connect(self._db_path)
         try:
             conn.execute("""
@@ -59,12 +60,40 @@ class AutonomyGateImpl(AutonomyGate):
         finally:
             conn.close()
 
+    async def _get_conn(self) -> aiosqlite.Connection:
+        if self._conn is None:
+            self._conn = await aiosqlite.connect(self._db_path)
+            self._conn.row_factory = sqlite3.Row
+        return self._conn
+
+    async def _ensure_table(self) -> None:
+        conn = await aiosqlite.connect(self._db_path)
+        try:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS autonomy_escalations (
+                    escalation_id TEXT PRIMARY KEY,
+                    action_type TEXT NOT NULL,
+                    requested_by TEXT NOT NULL,
+                    resource_id TEXT NOT NULL,
+                    current_level TEXT NOT NULL,
+                    requested_level TEXT NOT NULL,
+                    granted INTEGER NOT NULL,
+                    reason TEXT NOT NULL,
+                    model_gen_assumption TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            """)
+            await conn.commit()
+        finally:
+            await conn.close()
+
     async def initialize(self) -> None:
-        self._ensure_table()
+        await self._ensure_table()
 
     async def close(self) -> None:
-        # Connections are per-call in this adapter (simple & safe for CI)
-        pass
+        if self._conn is not None:
+            await self._conn.close()
+            self._conn = None
 
     def _level_rank(self, level: AutonomyLevel | str) -> int:
         order = {"none": 0, "read": 1, "write": 2, "admin": 3}
@@ -92,7 +121,7 @@ class AutonomyGateImpl(AutonomyGate):
             model_gen_assumption=self._config.get("model_gen_assumption"),
             created_at=datetime.now(timezone.utc).isoformat() + "Z",
         )
-        self._record_escalation(esc)
+        await self._record_escalation(esc)
         return esc
 
     async def escalate(
@@ -127,16 +156,17 @@ class AutonomyGateImpl(AutonomyGate):
             model_gen_assumption=self._config.get("model_gen_assumption"),
             created_at=datetime.now(timezone.utc).isoformat() + "Z",
         )
-        self._record_escalation(esc)
+        await self._record_escalation(esc)
         return esc
 
     async def audit_log(self, limit: int = 100) -> list[AutonomyEscalation]:
-        conn = self._get_conn()
+        conn = await self._get_conn()
         try:
-            rows = conn.execute(
+            cursor = await conn.execute(
                 "SELECT * FROM autonomy_escalations ORDER BY created_at DESC LIMIT ?",
                 (limit,),
-            ).fetchall()
+            )
+            rows = await cursor.fetchall()
             results: list[AutonomyEscalation] = []
             for r in rows:
                 results.append(
@@ -155,12 +185,13 @@ class AutonomyGateImpl(AutonomyGate):
                 )
             return results
         finally:
-            conn.close()
+            await conn.close()
+            self._conn = None
 
-    def _record_escalation(self, esc: AutonomyEscalation) -> None:
-        conn = self._get_conn()
+    async def _record_escalation(self, esc: AutonomyEscalation) -> None:
+        conn = await self._get_conn()
         try:
-            conn.execute(
+            await conn.execute(
                 """
                 INSERT OR REPLACE INTO autonomy_escalations
                 (escalation_id, action_type, requested_by, resource_id, current_level,
@@ -180,6 +211,7 @@ class AutonomyGateImpl(AutonomyGate):
                     esc.created_at,
                 ),
             )
-            conn.commit()
+            await conn.commit()
         finally:
-            conn.close()
+            await conn.close()
+            self._conn = None

@@ -5,11 +5,11 @@ from aip.adapter.artifact_store_versioned import VersionedArtifactStore
 
 
 @pytest.fixture
-def store(tmp_path):
+async def store(tmp_path):
     db_path = str(tmp_path / "test_artifacts.db")
     s = VersionedArtifactStore(db_path)
     yield s
-    s.close()
+    await s.close()
 
 
 @pytest.mark.asyncio
