@@ -1,10 +1,10 @@
-"""Tests for DEFINER gate stub (CHUNK-1.5 per Rev 1.3).
+"""Tests for DEFINER gate (CHUNK-1.5 per Rev 1.3).
 
 Updated for honest gate behavior:
 - CI mode: auto-approve with stub:auto_approve_ci marker
 - Production mode: auto-approve with stub:auto_approve marker + warning
 - Production mode with ci_fixture=True eval: returns 'revise' (blocks fixture-based approval)
-- MANUAL mode: still raises NotImplementedError with clear message
+- MANUAL mode: raises ManualReviewRequired with full context for UI integration
 """
 
 import asyncio
@@ -17,6 +17,7 @@ from aip.orchestration.nodes.definer_gate import (
     definer_gate,
     DefinerDecision,
     DefinerGateMode,
+    ManualReviewRequired,
 )
 from aip.orchestration.nodes.synthesis import SynthesisOutput
 
@@ -52,8 +53,12 @@ def _make_eval_result(passed=True, ci_fixture=False):
     )
 
 
+# ---------------------------------------------------------------
+# AUTO_APPROVE_STUB mode tests (unchanged behavior)
+# ---------------------------------------------------------------
+
 def test_auto_approve_when_both_pass_ci_mode(monkeypatch):
-    """In CI mode, both pass → approve with stub:auto_approve_ci marker."""
+    """In CI mode, both pass -> approve with stub:auto_approve_ci marker."""
     monkeypatch.setenv("CI", "true")
 
     synth = _make_synthesis_output()
@@ -69,7 +74,7 @@ def test_auto_approve_when_both_pass_ci_mode(monkeypatch):
 
 
 def test_auto_approve_when_both_pass_production_mode(monkeypatch):
-    """In production mode, both pass → approve with stub:auto_approve marker."""
+    """In production mode, both pass -> approve with stub:auto_approve marker."""
     monkeypatch.delenv("CI", raising=False)
 
     synth = _make_synthesis_output()
@@ -85,7 +90,7 @@ def test_auto_approve_when_both_pass_production_mode(monkeypatch):
 
 
 def test_ci_fixture_eval_blocked_in_production(monkeypatch):
-    """In production mode with ci_fixture=True eval → revise (blocks fixture-based approval)."""
+    """In production mode with ci_fixture=True eval -> revise (blocks fixture-based approval)."""
     monkeypatch.delenv("CI", raising=False)
 
     synth = _make_synthesis_output()
@@ -100,7 +105,7 @@ def test_ci_fixture_eval_blocked_in_production(monkeypatch):
 
 
 def test_ci_fixture_eval_allowed_in_ci(monkeypatch):
-    """In CI mode with ci_fixture=True eval → approve (fixture data allowed in CI)."""
+    """In CI mode with ci_fixture=True eval -> approve (fixture data allowed in CI)."""
     monkeypatch.setenv("CI", "true")
 
     synth = _make_synthesis_output()
@@ -137,17 +142,120 @@ def test_reject_when_validation_passes_but_eval_fails():
     assert result.approved_by is None
 
 
-def test_manual_mode_raises_not_implemented():
+# ---------------------------------------------------------------
+# MANUAL mode tests
+# ---------------------------------------------------------------
+
+def test_manual_mode_raises_manual_review_required():
+    """MANUAL mode raises ManualReviewRequired (not NotImplementedError)."""
     synth = _make_synthesis_output()
     val = _make_validation_result(passed=True)
     ev = _make_eval_result(passed=True)
 
-    # We only have AUTO_APPROVE_STUB in Phase 1, so we test the guard logic
-    # by temporarily using a different mode value
-    class FakeMode:
-        value = "manual"
+    with pytest.raises(ManualReviewRequired):
+        asyncio.run(definer_gate(synth, val, ev, mode=DefinerGateMode.MANUAL))
 
-    with pytest.raises(NotImplementedError, match="MANUAL"):
-        asyncio.run(definer_gate(synth, val, ev, mode=FakeMode()))  # type: ignore
 
+def test_manual_mode_exception_carries_context():
+    """ManualReviewRequired carries validation/eval context for UI integration."""
+    synth = _make_synthesis_output()
+    val = _make_validation_result(passed=True)
+    ev = _make_eval_result(passed=True, ci_fixture=False)
+
+    with pytest.raises(ManualReviewRequired) as exc_info:
+        asyncio.run(definer_gate(synth, val, ev, mode=DefinerGateMode.MANUAL))
+
+    exc = exc_info.value
+    assert exc.validation_passed is True
+    assert exc.eval_passed is True
+    assert exc.eval_is_fixture is False
+    assert exc.artifact_summary != ""
+    assert "MANUAL" in exc.reason or "human review" in exc.reason.lower()
+    assert isinstance(exc.context, dict)
+    assert exc.context.get("mode") == "MANUAL"
+
+
+def test_manual_mode_with_failed_validation():
+    """MANUAL mode with failed validation includes that in context."""
+    synth = _make_synthesis_output()
+    val = _make_validation_result(passed=False, detail="min_length")
+    ev = _make_eval_result(passed=True)
+
+    with pytest.raises(ManualReviewRequired) as exc_info:
+        asyncio.run(definer_gate(synth, val, ev, mode=DefinerGateMode.MANUAL))
+
+    exc = exc_info.value
+    assert exc.validation_passed is False
+    assert exc.eval_passed is True
+    assert "validation FAILED" in exc.reason or "validation" in exc.reason.lower()
+    assert exc.context.get("validation_detail") == "min_length"
+
+
+def test_manual_mode_with_failed_eval():
+    """MANUAL mode with failed evaluation includes that in context."""
+    synth = _make_synthesis_output()
+    val = _make_validation_result(passed=True)
+    ev = _make_eval_result(passed=False, ci_fixture=True)
+
+    with pytest.raises(ManualReviewRequired) as exc_info:
+        asyncio.run(definer_gate(synth, val, ev, mode=DefinerGateMode.MANUAL))
+
+    exc = exc_info.value
+    assert exc.validation_passed is True
+    assert exc.eval_passed is False
+    assert "evaluation FAILED" in exc.reason or "evaluation" in exc.reason.lower()
+    assert exc.context.get("eval_critique") == "Failed adversarial checks"
+
+
+def test_manual_mode_with_ci_fixture_in_production(monkeypatch):
+    """MANUAL mode with ci_fixture=True in production mentions fixture concern."""
+    monkeypatch.delenv("CI", raising=False)
+
+    synth = _make_synthesis_output()
+    val = _make_validation_result(passed=True)
+    ev = _make_eval_result(passed=True, ci_fixture=True)
+
+    with pytest.raises(ManualReviewRequired) as exc_info:
+        asyncio.run(definer_gate(synth, val, ev, mode=DefinerGateMode.MANUAL))
+
+    exc = exc_info.value
+    assert exc.validation_passed is True
+    assert exc.eval_passed is True
+    assert exc.eval_is_fixture is True
+    assert "fixture" in exc.reason.lower() or "CI fixture" in exc.reason
+
+
+def test_manual_mode_artifact_summary():
+    """ManualReviewRequired.artifact_summary includes model name and content preview."""
+    synth = _make_synthesis_output()
+    val = _make_validation_result(passed=True)
+    ev = _make_eval_result(passed=True)
+
+    with pytest.raises(ManualReviewRequired) as exc_info:
+        asyncio.run(definer_gate(synth, val, ev, mode=DefinerGateMode.MANUAL))
+
+    summary = exc_info.value.artifact_summary
+    assert "stub-model" in summary
+    assert "synthesis" in summary
+
+
+def test_manual_review_required_is_exception_subclass():
+    """ManualReviewRequired is a proper Exception subclass."""
+    assert issubclass(ManualReviewRequired, Exception)
+
+
+def test_manual_review_required_default_fields():
+    """ManualReviewRequired has sensible defaults for all fields."""
+    exc = ManualReviewRequired()
+    assert exc.artifact_summary == ""
+    assert exc.validation_passed is False
+    assert exc.eval_passed is False
+    assert exc.eval_is_fixture is False
+    assert "MANUAL" in exc.reason or "human" in exc.reason.lower()
+    assert exc.context == {}
+
+
+def test_definer_gate_mode_manual_in_enum():
+    """DefinerGateMode.MANUAL is a proper enum member."""
+    assert DefinerGateMode.MANUAL.value == "manual"
     assert DefinerGateMode.AUTO_APPROVE_STUB.value == "auto_approve_stub"
