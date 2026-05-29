@@ -16,6 +16,7 @@ from enum import Enum
 from typing import Any, Optional
 
 import jinja2
+import logging
 
 
 class NodeType(str, Enum):
@@ -307,11 +308,22 @@ def _build_default_eval_fn(model_provider: Any, config: Any) -> Any:
     prompt and returns a dict with confidence, failure_types, detail, and
     ci_fixture fields.
 
-    If model_provider is in ci_mode, the eval_fn returns a CI fixture result.
+    Error handling:
+    - If model_provider is in ci_mode, returns a CI fixture result.
+    - If the model call fails or returns unparseable output, returns a
+      low-confidence result with ci_fixture=False and eval_error=True.
+      This is NOT a CI fixture — it is a genuine evaluation failure that
+      should cause the review to return PENDING or NEEDS_REVISION, not
+      be blocked as suspicious CI data.
     """
+    _eval_logger = logging.getLogger(f"{__name__}._build_default_eval_fn")
+
     async def _default_eval(artifact_content: str, artifact_id: str) -> dict:
         # Check if the model provider is in CI mode (deterministic fixture)
         if hasattr(model_provider, "_ci_mode") and model_provider._ci_mode:
+            _eval_logger.info(
+                "Default eval_fn: CI mode fixture for artifact %s.", artifact_id,
+            )
             return {
                 "confidence": 0.75,
                 "failure_types": [],
@@ -352,27 +364,57 @@ def _build_default_eval_fn(model_provider: Any, config: Any) -> Any:
                 json_str = "\n".join(lines[1:-1] if len(lines) > 2 else lines)
 
             parsed = json.loads(json_str)
+            confidence = float(parsed.get("confidence", 0.0))
+            failure_types = list(parsed.get("failure_types", []))
+            _eval_logger.info(
+                "Default eval_fn: model evaluation completed for artifact %s "
+                "(confidence=%.2f, failure_types=%s).",
+                artifact_id, confidence, failure_types,
+            )
             return {
-                "confidence": float(parsed.get("confidence", 0.0)),
-                "failure_types": list(parsed.get("failure_types", [])),
+                "confidence": confidence,
+                "failure_types": failure_types,
                 "detail": parsed.get("detail"),
                 "ci_fixture": False,
             }
-        except Exception:
-            # If model evaluation fails, return a low-confidence result
-            # rather than silently passing
+        except Exception as exc:
+            # Model evaluation failed or returned unparseable output.
+            # Return a low-confidence result WITHOUT ci_fixture=True — this is
+            # a real failure, not a CI fixture. Setting ci_fixture=True would
+            # cause the review layer to treat it as suspicious CI data and
+            # block it differently. Instead, we return eval_error=True so the
+            # review layer can distinguish "model failed" from "CI fixture".
+            _eval_logger.warning(
+                "Default eval_fn: model evaluation failed for artifact %s (%s). "
+                "Returning low-confidence result.",
+                artifact_id, exc,
+            )
             return {
                 "confidence": 0.0,
-                "failure_types": [],
-                "detail": "Default eval_fn: model evaluation failed or returned unparseable result.",
-                "ci_fixture": True,
+                "failure_types": ["eval_error"],
+                "detail": f"Default eval_fn: model evaluation failed or returned unparseable result — {exc}",
+                "ci_fixture": False,
+                "eval_error": True,
             }
 
     return _default_eval
 
 
 class ReviewNode(WorkflowNode):
-    """Node that runs the Phase 2 review gate (4.1)."""
+    """Node that runs the Phase 2 review gate (4.1).
+
+    Evaluation function resolution order:
+    1. Explicit eval_fn protocol in context
+    2. Auto-built eval_fn from model_provider protocol (if available)
+    3. None — review_artifact will return PENDING in production, APPROVED in CI
+
+    Error handling:
+    - If review_artifact raises, the error is logged and the node returns
+      a PENDING verdict (safe default — never silently approves on error).
+    - Missing required stores are detected before calling review_artifact.
+    """
+
+    _review_logger = logging.getLogger(f"{__name__}.ReviewNode")
 
     def __init__(self, node_id: str, config: dict[str, Any] | None = None):
         super().__init__(node_id, NodeType.DIALOG, config)  # Treated as dialog-like for pausing semantics
@@ -397,6 +439,16 @@ class ReviewNode(WorkflowNode):
             model_provider = context.get_protocol("model_provider")
             if model_provider is not None:
                 eval_fn = _build_default_eval_fn(model_provider, config)
+                self._review_logger.info(
+                    "ReviewNode %s: built default eval_fn from model_provider for artifact %s.",
+                    self.node_id, artifact_id,
+                )
+            else:
+                self._review_logger.info(
+                    "ReviewNode %s: no eval_fn and no model_provider for artifact %s. "
+                    "Review will return PENDING in production, APPROVED in CI.",
+                    self.node_id, artifact_id,
+                )
 
         try:
             verdict = await review_artifact(
@@ -417,6 +469,12 @@ class ReviewNode(WorkflowNode):
                 "paused": is_pause,
             }
 
+            self._review_logger.info(
+                "ReviewNode %s: verdict=%s for artifact %s (confidence=%.2f, paused=%s).",
+                self.node_id, verdict.verdict, artifact_id,
+                verdict.confidence, is_pause,
+            )
+
             return NodeResult(
                 success=True,
                 output=output,
@@ -424,7 +482,29 @@ class ReviewNode(WorkflowNode):
                 exports={"review_verdict": verdict},
             )
         except Exception as e:
-            return NodeResult(success=False, error=str(e))
+            # On any error, return a PENDING-safe result rather than failing.
+            # This prevents the workflow from crashing on transient errors and
+            # ensures the artifact stays in a safe state for re-evaluation.
+            self._review_logger.error(
+                "ReviewNode %s: review_artifact raised for artifact %s: %s. "
+                "Returning PENDING verdict (safe default).",
+                self.node_id, artifact_id, e,
+            )
+            from aip.foundation.schemas import ReviewVerdict
+            safe_verdict = ReviewVerdict(
+                artifact_id=artifact_id,
+                verdict="PENDING",
+                reviewer="review_node_error_handler",
+                confidence=0.0,
+                failure_types=["review_error"],
+                detail=f"Review failed with error: {e}. Artifact held for re-evaluation.",
+            )
+            return NodeResult(
+                success=True,
+                output={"verdict": safe_verdict, "paused": True},
+                metadata={"verdict": "PENDING", "error": str(e)},
+                exports={"review_verdict": safe_verdict},
+            )
 
 
 class ReSynthesizeNode(WorkflowNode):

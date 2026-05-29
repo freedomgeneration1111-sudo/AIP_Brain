@@ -189,10 +189,47 @@ async def _automated_review(
     have never been evaluated.
     """
     if eval_fn is not None:
-        result = await eval_fn(context.artifact_content, context.artifact_id)
+        try:
+            result = await eval_fn(context.artifact_content, context.artifact_id)
+        except Exception as exc:
+            # eval_fn itself raised — treat as evaluation failure, not approval
+            logger.warning(
+                "Automated review: eval_fn raised for artifact %s: %s. "
+                "Returning NEEDS_REVISION (evaluation failed).",
+                context.artifact_id, exc,
+            )
+            return ReviewVerdict(
+                artifact_id=context.artifact_id,
+                verdict="NEEDS_REVISION",
+                reviewer="automated",
+                confidence=0.0,
+                failure_types=["eval_error"],
+                detail=f"Evaluation function raised an error: {exc}. "
+                       f"The artifact cannot be approved without successful evaluation.",
+            )
+
         confidence = result.get("confidence", 0.0)
         failure_types = result.get("failure_types", [])
         detail = result.get("detail")
+        eval_error = result.get("eval_error", False)
+
+        # Check for eval_error flag — the model call failed but returned a result
+        # rather than raising. This is different from ci_fixture: it means the
+        # evaluation genuinely could not complete, not that it used test data.
+        if eval_error:
+            logger.warning(
+                "Automated review: eval_fn returned eval_error for artifact %s. "
+                "Returning NEEDS_REVISION (evaluation incomplete).",
+                context.artifact_id,
+            )
+            return ReviewVerdict(
+                artifact_id=context.artifact_id,
+                verdict="NEEDS_REVISION",
+                reviewer="automated",
+                confidence=0.0,
+                failure_types=failure_types or ["eval_error"],
+                detail=detail or "Evaluation could not complete — model call failed or returned unparseable result.",
+            )
 
         # Check for ci_fixture flag in eval results
         ci_fixture = result.get("ci_fixture", False)
@@ -297,11 +334,47 @@ async def _definer_review(
     eval_ci_fixture = False
 
     if eval_fn is not None:
-        result = await eval_fn(context.artifact_content, context.artifact_id)
+        try:
+            result = await eval_fn(context.artifact_content, context.artifact_id)
+        except Exception as exc:
+            # eval_fn raised — treat as evaluation failure
+            logger.warning(
+                "Definer review: eval_fn raised for artifact %s: %s. "
+                "Returning NEEDS_REVISION (evaluation failed).",
+                context.artifact_id, exc,
+            )
+            return ReviewVerdict(
+                artifact_id=context.artifact_id,
+                verdict="NEEDS_REVISION",
+                reviewer="definer",
+                confidence=0.0,
+                failure_types=["eval_error"],
+                detail=f"Evaluation function raised an error: {exc}. "
+                       f"Cannot proceed with DEFINER review without evaluation data.",
+            )
+
         eval_confidence = result.get("confidence", 0.0)
         eval_failure_types = result.get("failure_types", [])
         eval_detail = result.get("detail")
         eval_ci_fixture = result.get("ci_fixture", False)
+        eval_error_flag = result.get("eval_error", False)
+
+        # If the model call failed but returned a result (not an exception),
+        # treat it as evaluation failure.
+        if eval_error_flag:
+            logger.warning(
+                "Definer review: eval_fn returned eval_error for artifact %s. "
+                "Returning NEEDS_REVISION (evaluation incomplete).",
+                context.artifact_id,
+            )
+            return ReviewVerdict(
+                artifact_id=context.artifact_id,
+                verdict="NEEDS_REVISION",
+                reviewer="definer",
+                confidence=0.0,
+                failure_types=eval_failure_types or ["eval_error"],
+                detail=eval_detail or "Evaluation could not complete — model call failed.",
+            )
 
     if _is_ci_environment():
         # CI mode: deterministic fixture for testing workflows

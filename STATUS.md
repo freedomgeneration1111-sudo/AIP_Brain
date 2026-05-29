@@ -44,7 +44,7 @@
 | `mcp/server.py` | All dispatch returns hardcoded results | High | 70% |
 | `health.py` | Embedding status hardcoded healthy | High | 40% |
 | `perf.py` | Memory usage returns fake proportional breakdown | Medium | 45% |
-| `context.py` | Infinite budget by default (`budget_remaining=None`) | Critical | 30% |
+| `context.py` | ~~Infinite budget~~ Fixed: now defaults to 500k tokens (`DEFAULT_WORKFLOW_BUDGET`) | ~~Critical~~ Medium | 15% |
 
 ## CI
 
@@ -106,7 +106,7 @@ docker compose -f deploy/docker-compose.production.yml up --build -d
 
 ## Remaining High-Priority Work
 
-1. **Fix `WorkflowContext` infinite budget** — `budget_remaining=None` means `consume_budget()` always returns True
+1. ~~**Fix `WorkflowContext` infinite budget**~~ **FIXED (Campaign 1)**: `budget_remaining` now defaults to `DEFAULT_WORKFLOW_BUDGET` (500k tokens). `consume_budget()` enforces limits and logs warnings.
 2. **Implement Adaptive Router** — `update_weights()` is a no-op, exploration weight is hardcoded
 3. **Build review queue UI** for MANUAL mode — `ManualReviewRequired` exception provides all needed context
 4. **Fix vector migration** — cursor-based batching, preserve real embeddings
