@@ -5,19 +5,28 @@ Pure adapter-layer. Implements deferred compiled knowledge persistence
 with provenance and dual indexing into VectorStore + LexicalStore
 only on APPROVED state (same pattern as 9.2 canonical pipeline).
 Phase 3: migrated from blocking sqlite3 to aiosqlite to avoid event loop blocking.
+Phase 10: real embeddings via injected EmbeddingProvider instead of zero vectors.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
 import aiosqlite
 
-from aip.foundation.protocols import KnowledgeStore, VectorStore, LexicalStore
+from aip.foundation.protocols import (
+    EmbeddingProvider,
+    KnowledgeStore,
+    LexicalStore,
+    VectorStore,
+)
 from aip.foundation.schemas import CompilationState
+
+logger = logging.getLogger(__name__)
 
 
 class SqliteKnowledgeStore(KnowledgeStore):
@@ -30,6 +39,11 @@ class SqliteKnowledgeStore(KnowledgeStore):
     Dual-indexes content into VectorStore + LexicalStore **only** when state
     reaches "APPROVED" (mirrors CanonicalPromotionConfig behavior).
 
+    When an ``EmbeddingProvider`` is injected, real embeddings are generated
+    for APPROVED content and for semantic search queries. Without an
+    ``EmbeddingProvider``, the store degrades gracefully: dual-indexing is
+    skipped and search falls back to lexical-only.
+
     Uses aiosqlite for async-compatible database access.
     """
 
@@ -38,10 +52,12 @@ class SqliteKnowledgeStore(KnowledgeStore):
         db_path: str,
         vector_store: VectorStore,
         lexical_store: LexicalStore,
+        embedding_provider: EmbeddingProvider | None = None,
     ) -> None:
         self._db_path = db_path
         self._vector_store = vector_store
         self._lexical_store = lexical_store
+        self._embedding_provider = embedding_provider
         self._conn: aiosqlite.Connection | None = None
         self._ensure_tables_sync()
 
@@ -121,6 +137,105 @@ class SqliteKnowledgeStore(KnowledgeStore):
             await self._conn.close()
             self._conn = None
 
+    async def _generate_embedding(self, text: str) -> list[float] | None:
+        """Generate a real embedding via the injected EmbeddingProvider.
+
+        Returns the embedding vector on success, or ``None`` if no provider
+        is available or embedding generation fails. Logs warnings on failure
+        so that operators can diagnose connectivity or configuration issues.
+        """
+        if self._embedding_provider is None:
+            logger.debug(
+                "No EmbeddingProvider configured — skipping embedding generation "
+                "for text (%d chars). Semantic search will not be available for "
+                "this content.",
+                len(text),
+            )
+            return None
+
+        try:
+            embedding = await self._embedding_provider.embed(text)
+            if not embedding or len(embedding) == 0:
+                logger.warning(
+                    "EmbeddingProvider returned empty vector for text (%d chars). "
+                    "Falling back to lexical-only indexing.",
+                    len(text),
+                )
+                return None
+            return embedding
+        except Exception as exc:
+            logger.warning(
+                "Embedding generation failed for text (%d chars): %s. "
+                "Falling back to lexical-only indexing. Check that the embedding "
+                "provider (e.g. Ollama) is running and accessible.",
+                len(text),
+                exc,
+            )
+            return None
+
+    async def _dual_index(
+        self,
+        knowledge_id: str,
+        content: str,
+        domain: str,
+        metadata: dict,
+    ) -> None:
+        """Index content into VectorStore + LexicalStore (called on APPROVED).
+
+        Generates a real embedding via the EmbeddingProvider when available.
+        If embedding fails or no provider is configured, only lexical indexing
+        is performed — the content is still discoverable via text search.
+        """
+        # Generate real embedding
+        embedding = await self._generate_embedding(content[:2000])
+
+        # Vector store upsert — only when we have a real embedding
+        if embedding is not None:
+            try:
+                await self._vector_store.upsert(
+                    f"compiled:{knowledge_id}",
+                    embedding,
+                    content[:2000],
+                    {"type": "compiled_knowledge", "domain": domain, **metadata},
+                    domain,
+                )
+                logger.info(
+                    "Indexed compiled knowledge '%s' into vector store "
+                    "(embedding dim=%d, domain='%s').",
+                    knowledge_id,
+                    len(embedding),
+                    domain,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Vector store upsert failed for compiled knowledge '%s': %s. "
+                    "Lexical index will still be available.",
+                    knowledge_id,
+                    exc,
+                )
+        else:
+            logger.info(
+                "No embedding available for compiled knowledge '%s' — "
+                "skipping vector index. Lexical index only.",
+                knowledge_id,
+            )
+
+        # Lexical store index — always attempt (best-effort)
+        try:
+            await self._lexical_store.index_document(
+                f"compiled:{knowledge_id}",
+                content,
+                domain,
+                {"type": "compiled_knowledge", "domain": domain},
+            )
+        except Exception as exc:
+            logger.warning(
+                "Lexical store index failed for compiled knowledge '%s': %s. "
+                "This is non-fatal but text search may not find this content.",
+                knowledge_id,
+                exc,
+            )
+
     async def store_compiled(
         self,
         knowledge_id: str,
@@ -131,7 +246,8 @@ class SqliteKnowledgeStore(KnowledgeStore):
     ) -> None:
         """Store compiled knowledge + provenance links.
 
-        If state == "APPROVED", also indexes into VectorStore + LexicalStore.
+        If state == "APPROVED", also indexes into VectorStore + LexicalStore
+        using real embeddings when an EmbeddingProvider is configured.
         """
         conn = await self._get_conn()
         try:
@@ -177,29 +293,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
         # Dual index only on APPROVED (exact per prose)
         if state == "APPROVED":
-            # Best-effort embedding (vector_store may be fake in CI)
-            try:
-                # Placeholder embedding (real embedding happens upstream in 10.1 compiler)
-                dummy_embedding = [0.0] * 384  # typical small dim for laptop-viable
-                await self._vector_store.upsert(
-                    f"compiled:{knowledge_id}",
-                    dummy_embedding,
-                    content[:2000],
-                    {"type": "compiled_knowledge", "domain": domain, **metadata},
-                    domain,
-                )
-            except Exception:
-                pass  # non-fatal in this adapter (embedding provided by caller in 10.1)
-
-            try:
-                await self._lexical_store.index_document(
-                    f"compiled:{knowledge_id}",
-                    content,
-                    domain,
-                    {"type": "compiled_knowledge", "domain": domain},
-                )
-            except Exception:
-                pass
+            await self._dual_index(knowledge_id, content, domain, metadata)
 
     async def get_compiled(self, knowledge_id: str) -> dict | None:
         conn = await self._get_conn()
@@ -259,7 +353,14 @@ class SqliteKnowledgeStore(KnowledgeStore):
             self._conn = None
 
     async def update_state(self, knowledge_id: str, new_state: CompilationState) -> None:
-        """Validate and perform state transition."""
+        """Validate and perform state transition.
+
+        When transitioning to "APPROVED", triggers dual-indexing into
+        VectorStore + LexicalStore with real embeddings (when available).
+        This ensures that knowledge items promoted via the state machine
+        (SPECIFIED -> COMPILED -> REVIEWED -> APPROVED) are properly
+        indexed even if they were not stored with state=APPROVED initially.
+        """
         valid_transitions = {
             "SPECIFIED": {"COMPILED", "FAILED"},
             "COMPILED": {"REVIEWED", "FAILED"},
@@ -273,7 +374,13 @@ class SqliteKnowledgeStore(KnowledgeStore):
         allowed = valid_transitions.get(current["state"], set())
         if new_state not in allowed and new_state != current["state"]:
             # For 0.1 we log but allow (full validation can tighten in 10.5)
-            pass
+            logger.info(
+                "State transition '%s' -> '%s' for knowledge '%s' is not in "
+                "the standard transition table. Allowing for 0.1 compatibility.",
+                current["state"],
+                new_state,
+                knowledge_id,
+            )
 
         conn = await self._get_conn()
         try:
@@ -286,6 +393,17 @@ class SqliteKnowledgeStore(KnowledgeStore):
         finally:
             await conn.close()
             self._conn = None
+
+        # When transitioning TO APPROVED, trigger dual indexing with real embeddings.
+        # This is the primary path: items are stored as COMPILED, then promoted
+        # through REVIEWED -> APPROVED via update_state().
+        if new_state == "APPROVED" and current["state"] != "APPROVED":
+            await self._dual_index(
+                knowledge_id,
+                current["content"],
+                current["domain"],
+                current.get("metadata", {}),
+            )
 
     async def get_provenance(self, knowledge_id: str) -> list[dict]:
         conn = await self._get_conn()
@@ -317,30 +435,57 @@ class SqliteKnowledgeStore(KnowledgeStore):
     async def search_compiled(
         self, query: str, domain: str | None = None, limit: int = 10
     ) -> list[dict]:
-        """Parallel search across Vector + Lexical, simple merge (full 4-factor rerank in 10.1/10.4)."""
+        """Search across Vector + Lexical stores with semantic and text matching.
+
+        When an EmbeddingProvider is available, performs parallel vector
+        similarity search and lexical text search, then merges and deduplicates
+        results. Without an EmbeddingProvider, falls back to lexical-only
+        search.
+        """
         results: list[dict] = []
 
-        # Lexical first (always available)
+        # Lexical search (always available)
         try:
             lexical_hits = await self._lexical_store.search(query, domain=domain, limit=limit)
             for h in lexical_hits:
                 results.append(
                     {
-                        "knowledge_id": h.id.replace("compiled:", "") if hasattr(h, 'id') else "",
-                        "content": h.content if hasattr(h, 'content') else "",
-                        "score": h.score if hasattr(h, 'score') else 0.0,
+                        "knowledge_id": h.id.replace("compiled:", "") if hasattr(h, "id") else "",
+                        "content": h.content if hasattr(h, "content") else "",
+                        "score": h.score if hasattr(h, "score") else 0.0,
                         "source": "lexical",
                     }
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Lexical search failed for query '%s': %s", query[:100], exc)
 
-        # Vector search requires an embedded query — deferred to 10.1 compiler
-        # which provides the embedding; lexical results are sufficient for now.
-        # When embedding_provider is available, this block will be:
-        #   query_vec = await self._embedding_provider.embed(query)
-        #   vec_hits = await self._vector_store.retrieve(query_vec, domain=domain, top_k=limit)
-        #   for h in vec_hits: results.append(...)
+        # Vector search — enabled when embedding_provider is available
+        if self._embedding_provider is not None:
+            query_vec = await self._generate_embedding(query)
+            if query_vec is not None:
+                try:
+                    vec_hits = await self._vector_store.retrieve(
+                        query_vec, domain=domain, top_k=limit
+                    )
+                    for h in vec_hits:
+                        results.append(
+                            {
+                                "knowledge_id": (
+                                    h.id.replace("compiled:", "")
+                                    if hasattr(h, "id")
+                                    else ""
+                                ),
+                                "content": h.content if hasattr(h, "content") else "",
+                                "score": h.score if hasattr(h, "score") else 0.0,
+                                "source": "vector",
+                            }
+                        )
+                except Exception as exc:
+                    logger.debug(
+                        "Vector search failed for query '%s': %s",
+                        query[:100],
+                        exc,
+                    )
 
         # Dedup + limit (simple)
         seen: set[str] = set()
