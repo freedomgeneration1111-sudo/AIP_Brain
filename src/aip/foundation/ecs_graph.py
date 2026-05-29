@@ -9,7 +9,7 @@ from __future__ import annotations
 # Declarative ECS state graph
 VALID_TRANSITIONS: dict[str, set[str]] = {
     "SPECIFIED": {"GENERATED"},
-    "GENERATED": {"REVIEWED", "FAILED"},
+    "GENERATED": {"REVIEWED", "REJECTED", "FAILED"},
     "REVIEWED": {"APPROVED", "REJECTED"},
     "REJECTED": {"GENERATED"},  # re-synthesis loop
     "APPROVED": {"SUPERSEDED"},

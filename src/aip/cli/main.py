@@ -12,9 +12,11 @@ import click
 
 from aip.cli import ask as ask_cmd
 from aip.cli import config as config_cmd
+from aip.cli import export as export_cmd
 from aip.cli import ingest as ingest_cmd
 from aip.cli import init as init_cmd
 from aip.cli import project as project_cmd
+from aip.cli import review as review_cmd
 from aip.cli import session as session_cmd
 from aip.cli import status as status_cmd
 
@@ -35,6 +37,8 @@ def cli() -> None:
       aip session   Manage sessions (start, resume, list)
       aip ingest    Import conversations into the knowledge substrate
       aip ask       Ask a source-grounded question about a project
+      aip review    Review, approve, reject generated artifacts
+      aip export    Export artifacts to markdown
     """
     pass
 
@@ -74,6 +78,8 @@ cli.add_command(project_cmd.project)
 cli.add_command(session_cmd.session)
 cli.add_command(ingest_cmd.ingest)
 cli.add_command(ask_cmd.ask_cmd)
+cli.add_command(review_cmd.review)
+cli.add_command(export_cmd.export)
 cli.add_command(validate)
 
 

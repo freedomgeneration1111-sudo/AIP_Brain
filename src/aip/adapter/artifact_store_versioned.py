@@ -149,3 +149,116 @@ class VersionedArtifactStore:
         finally:
             await conn.close()
             self._conn = None
+
+    async def read_metadata(self, id: str, version: int | None = None) -> dict:
+        """Read artifact metadata by id and optional version.
+
+        version=None: returns latest version metadata.
+        version=N: returns specific version metadata.
+        Raises KeyError if artifact or version not found.
+        """
+        conn = await self._get_conn()
+        try:
+            if version is None:
+                cursor = await conn.execute(
+                    "SELECT metadata_json FROM artifacts WHERE id = ? ORDER BY version DESC LIMIT 1",
+                    (id,),
+                )
+            else:
+                cursor = await conn.execute(
+                    "SELECT metadata_json FROM artifacts WHERE id = ? AND version = ?",
+                    (id, version),
+                )
+            row = await cursor.fetchone()
+            if row is None:
+                raise KeyError(f"Artifact {id!r} version {version} not found")
+            return json.loads(row[0]) if row[0] else {}
+        finally:
+            await conn.close()
+            self._conn = None
+
+    async def read_with_metadata(self, id: str, version: int | None = None) -> tuple[str, dict]:
+        """Read artifact content and metadata together.
+
+        Returns (content, metadata) tuple.
+        Raises KeyError if artifact or version not found.
+        """
+        conn = await self._get_conn()
+        try:
+            if version is None:
+                cursor = await conn.execute(
+                    "SELECT content, metadata_json FROM artifacts WHERE id = ? ORDER BY version DESC LIMIT 1",
+                    (id,),
+                )
+            else:
+                cursor = await conn.execute(
+                    "SELECT content, metadata_json FROM artifacts WHERE id = ? AND version = ?",
+                    (id, version),
+                )
+            row = await cursor.fetchone()
+            if row is None:
+                raise KeyError(f"Artifact {id!r} version {version} not found")
+            return row[0], json.loads(row[1]) if row[1] else {}
+        finally:
+            await conn.close()
+            self._conn = None
+
+    async def list_artifacts_by_metadata(
+        self,
+        key: str,
+        value: str,
+        artifact_type: str | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        """List artifacts where metadata_json contains a key-value pair.
+
+        Queries the latest version of each artifact. Returns list of dicts
+        with id, content, metadata, created_at fields.
+        """
+        conn = await self._get_conn()
+        try:
+            # Use JSON extraction for SQLite >= 3.38 or LIKE for older versions
+            # Fallback: LIKE pattern matching on metadata_json
+            if artifact_type:
+                sql = """
+                    SELECT a.id, a.content, a.metadata_json, a.created_at
+                    FROM artifacts a
+                    INNER JOIN (
+                        SELECT id, MAX(version) as max_ver FROM artifacts GROUP BY id
+                    ) latest ON a.id = latest.id AND a.version = latest.max_ver
+                    WHERE a.metadata_json LIKE ?
+                    AND a.metadata_json LIKE ?
+                    ORDER BY a.created_at DESC
+                    LIMIT ?
+                """
+                pattern_kv = f'%"{key}": "{value}"%'
+                pattern_type = f'%"artifact_type": "{artifact_type}"%'
+                cursor = await conn.execute(sql, (pattern_kv, pattern_type, limit))
+            else:
+                sql = """
+                    SELECT a.id, a.content, a.metadata_json, a.created_at
+                    FROM artifacts a
+                    INNER JOIN (
+                        SELECT id, MAX(version) as max_ver FROM artifacts GROUP BY id
+                    ) latest ON a.id = latest.id AND a.version = latest.max_ver
+                    WHERE a.metadata_json LIKE ?
+                    ORDER BY a.created_at DESC
+                    LIMIT ?
+                """
+                pattern_kv = f'%"{key}": "{value}"%'
+                cursor = await conn.execute(sql, (pattern_kv, limit))
+
+            rows = await cursor.fetchall()
+            results = []
+            for row in rows:
+                metadata = json.loads(row[2]) if row[2] else {}
+                results.append({
+                    "id": row[0],
+                    "content": row[1],
+                    "metadata": metadata,
+                    "created_at": row[3],
+                })
+            return results
+        finally:
+            await conn.close()
+            self._conn = None

@@ -261,3 +261,16 @@ class PersistentEcsStore(EcsStore):
             }
             for row in rows
         ]
+
+    async def list_by_state(self, state: str, limit: int = 500) -> list[str]:
+        """List artifact IDs currently in a given ECS state.
+
+        Returns list of artifact_id strings for artifacts whose current
+        state matches the given state.
+        """
+        await self._load_state_from_db()
+        return [
+            artifact_id
+            for artifact_id, current in self._state_cache.items()
+            if current == state
+        ][:limit]

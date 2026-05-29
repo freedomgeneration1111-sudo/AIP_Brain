@@ -111,9 +111,28 @@ class SqliteProjectStore(ProjectStore):
             self._conn = None
 
     async def create_project(self, project_id: str, name: str, domain: str = "") -> dict:
-        """Create a new project. Returns the created project dict."""
+        """Create a new project. Returns the created project dict.
+
+        If the project already exists, returns the existing project without error.
+        """
         conn = await self._get_conn()
         try:
+            # Check if project already exists
+            cursor = await conn.execute(
+                "SELECT project_id, name, status, domain, created_at, updated_at FROM projects WHERE project_id = ?",
+                (project_id,),
+            )
+            existing = await cursor.fetchone()
+            if existing is not None:
+                return {
+                    "project_id": existing["project_id"],
+                    "name": existing["name"],
+                    "status": existing["status"],
+                    "domain": existing["domain"],
+                    "created_at": existing["created_at"],
+                    "updated_at": existing["updated_at"],
+                }
+
             now = datetime.now(timezone.utc).isoformat() + "Z"
             await conn.execute(
                 "INSERT INTO projects (project_id, name, domain, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
