@@ -1,0 +1,84 @@
+"""Compatibility barrel file — re-exports all protocol types.
+
+This module preserves backward compatibility so that existing imports like::
+
+    from aip.foundation.protocols import VectorStore, EmbeddingProvider, AuthStore
+
+continue to work unchanged.
+
+The actual definitions live in domain-specific sub-modules:
+    storage, model, auth, budget, actors, knowledge, plugin
+"""
+from __future__ import annotations
+
+# -- storage --
+from .storage import (
+    ArtifactStore,
+    CanonicalStore,
+    EcsStore,
+    EntityStore,
+    EventStore,
+    LexicalStore,
+    ProjectStore,
+    TraceStore,
+    VectorStore,
+)
+
+# -- model --
+from .model import (
+    EmbeddingProvider,
+    ModelProvider,
+)
+
+# -- auth --
+from .auth import (
+    AuthStore,
+    AutonomyGate,
+)
+
+# -- budget --
+from .budget import (
+    BudgetStore,
+)
+
+# -- actors --
+from .actors import (
+    VigilStore,
+)
+
+# -- knowledge --
+from .knowledge import (
+    KnowledgeStore,
+)
+
+# -- plugin --
+from .plugin import (
+    PluginProvider,
+)
+
+__all__ = [
+    # storage
+    "VectorStore",
+    "LexicalStore",
+    "CanonicalStore",
+    "ArtifactStore",
+    "TraceStore",
+    "EntityStore",
+    "EventStore",
+    "ProjectStore",
+    "EcsStore",
+    # model
+    "ModelProvider",
+    "EmbeddingProvider",
+    # auth
+    "AutonomyGate",
+    "AuthStore",
+    # budget
+    "BudgetStore",
+    # actors
+    "VigilStore",
+    # knowledge
+    "KnowledgeStore",
+    # plugin
+    "PluginProvider",
+]
