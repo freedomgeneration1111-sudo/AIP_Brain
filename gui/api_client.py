@@ -134,6 +134,25 @@ class AipApiClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def get_session_context(self, session_id: str) -> dict[str, Any]:
+        """Get session context (turn count, context window estimate)."""
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/sessions/{session_id}/context")
+        resp.raise_for_status()
+        return resp.json()
+
+    # ------------------------------------------------------------------
+    # Review Queue
+    # ------------------------------------------------------------------
+
+    async def list_pending_reviews(self) -> list[dict[str, Any]]:
+        """Fetch pending items from the review queue."""
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/reviews")
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("items", [])
+
     # ------------------------------------------------------------------
     # Actor Status
     # ------------------------------------------------------------------

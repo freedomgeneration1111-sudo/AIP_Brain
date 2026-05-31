@@ -2,15 +2,15 @@
 
 WebSocket chat endpoint at /api/v1/chat/{session_id}
 
-Phase 1 Communication Bridge enhancements:
-- Looks up session metadata (role, model_slot) from the sessions store
-- Routes messages through ModelSlotResolver instead of echo
-- Handles streaming-style responses (chunked via WebSocket JSON frames)
-- Maintains gate flow for DEFINER review interactions
-- Graceful degradation when model_provider is not configured
+Phase 3 Gate Hardening enhancements:
+- Removed keyword-based gate demo ("gate" detection)
+- Gate is now triggered when session is "augmented" mode and ReviewQueueStore is available
+- Gate responses integrate with ReviewQueueStore for real approval/rejection
+- Trajectory regulation check after each turn (when SessionManager is available)
+- Graceful degradation when model_provider or review_queue_store is not configured
 
 Message flow: message → ModelSlotResolver.call() → response or gate
-Also: context_reset (from L4), budget exhaustion.
+Also: context_reset (from L4), budget exhaustion, trajectory_warning.
 """
 
 from __future__ import annotations
@@ -40,8 +40,10 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
     # Look up session metadata to determine which model slot to use
     session_meta = get_session_meta(session_id)
     model_slot = "synthesis"  # default
+    session_mode = "normal"  # default
     if session_meta:
         model_slot = session_meta.get("model_slot", "synthesis")
+        session_mode = session_meta.get("mode", "normal")
 
     try:
         while True:
@@ -57,18 +59,6 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                 # Allow per-message slot override
                 override_slot = msg.get("model_slot")
                 effective_slot = override_slot or model_slot
-
-                # Check for gate trigger keywords (demo — real impl comes from workflow)
-                if "gate" in content.lower():
-                    await websocket.send_json(
-                        {
-                            "type": "gate",
-                            "gate_type": "definer_review",
-                            "artifact_id": "art-demo-123",
-                            "preview": "Proposed design decision...",
-                        },
-                    )
-                    continue
 
                 # Route through ModelSlotResolver if available
                 model_provider = _container.model_provider
@@ -108,20 +98,74 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         usage = result.get("usage", {})
 
                         # Increment turn counter
-                        increment_turn_count(session_id)
+                        increment_turn_count(session_id, _container)
 
-                        await websocket.send_json(
-                            {
-                                "type": "response",
-                                "content": response_content,
-                                "model_slot": effective_slot,
-                                "model": model_used,
-                                "artifacts": [],
-                                "tokens_used": usage.get("total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)),
-                                "latency_ms": result.get("latency_ms", 0),
-                                "cost_usd": result.get("cost_usd", 0.0),
-                            }
-                        )
+                        # Build response payload
+                        response_payload = {
+                            "type": "response",
+                            "content": response_content,
+                            "model_slot": effective_slot,
+                            "model": model_used,
+                            "artifacts": [],
+                            "tokens_used": usage.get("total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)),
+                            "latency_ms": result.get("latency_ms", 0),
+                            "cost_usd": result.get("cost_usd", 0.0),
+                        }
+
+                        # Check if review is available for augmented mode sessions
+                        # This is a transitional approach — full workflow integration comes later.
+                        # For now, augmented mode + ReviewQueueStore means the response
+                        # includes a review_available flag so the GUI can show the review panel.
+                        if (
+                            session_mode == "augmented"
+                            and _container.review_queue_store is not None
+                        ):
+                            response_payload["review_available"] = True
+
+                        await websocket.send_json(response_payload)
+
+                        # Trajectory regulation check after each turn
+                        # When SessionManager is available, check if trajectory
+                        # is degrading and send warnings to the client.
+                        if _container.session_manager is not None and _container.event_store is not None:
+                            try:
+                                from aip.foundation.schemas import SessionContext
+
+                                # Build a SessionContext from current session metadata
+                                updated_meta = get_session_meta(session_id)
+                                if updated_meta is not None:
+                                    ctx = SessionContext(
+                                        session_id=session_id,
+                                        project_id=updated_meta.get("project_id", ""),
+                                        turn_count=updated_meta.get("turn_count", 0),
+                                        context_tokens_estimate=updated_meta.get("context_tokens_estimate", 0),
+                                        artifacts_produced=updated_meta.get("artifacts_produced", []),
+                                    )
+                                    signals, should_intervene = await _container.session_manager.check_trajectory(
+                                        ctx, _container.event_store,
+                                    )
+                                    if should_intervene:
+                                        # Send trajectory warning to client
+                                        signal_summaries = [
+                                            {
+                                                "type": s.signal_type,
+                                                "failure_type": s.failure_type,
+                                                "detail": s.detail,
+                                            }
+                                            for s in signals
+                                        ]
+                                        await websocket.send_json(
+                                            {
+                                                "type": "trajectory_warning",
+                                                "signals": signal_summaries,
+                                                "intervention_recommended": True,
+                                                "message": "Trajectory degradation detected. Consider context reset.",
+                                            }
+                                        )
+                            except Exception:
+                                # Non-critical — trajectory check is advisory
+                                pass
+
                     except ValueError as exc:
                         # Slot not found or invalid
                         await websocket.send_json(
@@ -155,14 +199,55 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
 
             elif msg.get("type") == "gate_response":
                 approved = msg.get("approved", False)
-                await websocket.send_json(
-                    {
-                        "type": "response",
-                        "content": f"Gate {'approved' if approved else 'rejected'} (workflow resumed)",
-                        "artifacts": ["art-demo-123"] if approved else [],
-                        "tokens_used": 10,
-                    },
-                )
+                queue_item_id = msg.get("queue_item_id")
+
+                # Integrate with ReviewQueueStore when available
+                if (
+                    _container.review_queue_store is not None
+                    and queue_item_id is not None
+                ):
+                    try:
+                        decision = "approved" if approved else "rejected"
+                        result = await _container.review_queue_store.decide(
+                            item_id=int(queue_item_id),
+                            decision=decision,
+                            decided_by="definer",
+                        )
+                        if not result.get("ok"):
+                            await websocket.send_json(
+                                {
+                                    "type": "error",
+                                    "content": f"Review decision failed: {result.get('error', {}).get('message', 'unknown')}",
+                                }
+                            )
+                            continue
+                        await websocket.send_json(
+                            {
+                                "type": "response",
+                                "content": f"Gate {'approved' if approved else 'rejected'} (workflow resumed)",
+                                "artifacts": [result.get("artifact_id", "")] if approved else [],
+                                "tokens_used": 10,
+                                "queue_item_id": queue_item_id,
+                                "decision": decision,
+                            },
+                        )
+                    except Exception as exc:
+                        await websocket.send_json(
+                            {
+                                "type": "error",
+                                "content": f"Review decision failed: {exc}",
+                            }
+                        )
+                else:
+                    # No ReviewQueueStore or no queue_item_id — legacy response
+                    await websocket.send_json(
+                        {
+                            "type": "response",
+                            "content": f"Gate {'approved' if approved else 'rejected'} (workflow resumed)",
+                            "artifacts": [],
+                            "tokens_used": 10,
+                        },
+                    )
 
             elif msg.get("type") == "ping":
                 # Keepalive / latency check

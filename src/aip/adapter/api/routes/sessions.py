@@ -1,10 +1,10 @@
 """Session routes (start loads ACE Playbook).
 
-Enhanced for Phase 1 Communication Bridge:
-- Session creation now accepts role/slot preferences from the GUI
-- Generates a proper unique session ID (uuid4)
-- Stores session metadata in-memory for WebSocket chat to reference
-- Gracefully degrades when SessionManager is not yet wired
+Enhanced for Phase 3 Session Persistence:
+- Session creation now delegates to SessionStore when wired
+- Falls back to in-memory _sessions dict when SessionStore is unavailable
+- Syncs persistent store to in-memory dict for fast lookups
+- Gracefully degrades when SessionStore or SessionManager is not wired
 """
 
 from __future__ import annotations
@@ -18,10 +18,10 @@ from aip.adapter.api.dependencies import AipContainer, get_container
 
 router = APIRouter()
 
-# In-memory session store for Phase 1.
+# In-memory session store — fallback for when SessionStore is not wired.
 # Maps session_id -> session metadata dict.
-# This will be replaced by SessionManager in a later phase when the
-# orchestration layer's session management is fully wired.
+# When SessionStore is available, this dict is synced for fast lookups
+# (e.g., WebSocket chat handler uses get_session_meta).
 _sessions: dict[str, dict[str, Any]] = {}
 
 
@@ -53,13 +53,13 @@ async def create_session(payload: dict, container: AipContainer = Depends(get_co
     }
 
     # If SessionManager is available, delegate to it for full session lifecycle.
-    # Otherwise, store in-memory for Phase 1 bridge functionality.
+    # Otherwise, store in-memory for bridge functionality.
     if container.session_manager is not None:
         try:
             # Future: delegate to real SessionManager
             pass
         except Exception:
-            pass  # Fall through to in-memory store
+            pass  # Fall through to store
 
     # Load ACE playbook if the container has one wired
     if container.ace_playbook is not None:
@@ -69,6 +69,15 @@ async def create_session(payload: dict, container: AipContainer = Depends(get_co
         except Exception:
             session_meta["ace_playbook_loaded"] = False
 
+    # Delegate to SessionStore if available, otherwise use in-memory
+    if container.session_store is not None:
+        try:
+            await container.session_store.create_session(session_id, session_meta)
+        except Exception:
+            # Fall back to in-memory if store fails
+            pass
+
+    # Always sync to in-memory for fast lookups
     _sessions[session_id] = session_meta
 
     return {
@@ -85,12 +94,33 @@ async def create_session(payload: dict, container: AipContainer = Depends(get_co
 @router.get("/sessions")
 async def list_sessions(container: AipContainer = Depends(get_container)):
     """List all active sessions."""
+    if container.session_store is not None:
+        try:
+            sessions = await container.session_store.list_sessions()
+            # Sync to in-memory
+            for s in sessions:
+                _sessions[s.get("id", s.get("session_id", ""))] = s
+            return {"sessions": sessions}
+        except Exception:
+            pass  # Fall back to in-memory
+
     return {"sessions": list(_sessions.values())}
 
 
 @router.get("/sessions/{session_id}")
 async def get_session(session_id: str, container: AipContainer = Depends(get_container)):
     """Get session details including role, model slot, and turn count."""
+    # Try SessionStore first
+    if container.session_store is not None:
+        try:
+            session = await container.session_store.get_session(session_id)
+            if session is not None:
+                _sessions[session_id] = session  # sync to in-memory
+                return session
+        except Exception:
+            pass  # Fall back to in-memory
+
+    # In-memory fallback
     if session_id in _sessions:
         return _sessions[session_id]
     # Fallback for sessions not in the in-memory store
@@ -100,12 +130,29 @@ async def get_session(session_id: str, container: AipContainer = Depends(get_con
 @router.get("/sessions/{session_id}/context")
 async def get_context(session_id: str, container: AipContainer = Depends(get_container)):
     """Get session context including turn count and context window estimate."""
+    # Try SessionStore first
+    if container.session_store is not None:
+        try:
+            session = await container.session_store.get_session(session_id)
+            if session is not None:
+                _sessions[session_id] = session  # sync to in-memory
+                return {
+                    "session_id": session_id,
+                    "turn_count": session.get("turn_count", 0),
+                    "context_window_estimate": session.get("context_tokens_estimate", 0),
+                    "role": session.get("role"),
+                    "model_slot": session.get("model_slot"),
+                }
+        except Exception:
+            pass  # Fall back to in-memory
+
+    # In-memory fallback
     if session_id in _sessions:
         meta = _sessions[session_id]
         return {
             "session_id": session_id,
             "turn_count": meta.get("turn_count", 0),
-            "context_window_estimate": 0,
+            "context_window_estimate": meta.get("context_tokens_estimate", 0),
             "role": meta.get("role"),
             "model_slot": meta.get("model_slot"),
         }
@@ -122,7 +169,37 @@ def get_session_meta(session_id: str) -> dict[str, Any] | None:
     return _sessions.get(session_id)
 
 
-def increment_turn_count(session_id: str) -> None:
-    """Increment the turn counter for a session after a successful chat exchange."""
+async def get_session_meta_async(session_id: str, container: AipContainer) -> dict[str, Any] | None:
+    """Async version that checks SessionStore first, then falls back to in-memory."""
+    if container.session_store is not None:
+        try:
+            session = await container.session_store.get_session(session_id)
+            if session is not None:
+                _sessions[session_id] = session  # sync to in-memory
+                return session
+        except Exception:
+            pass
+
+    return _sessions.get(session_id)
+
+
+def increment_turn_count(session_id: str, container: AipContainer | None = None) -> None:
+    """Increment the turn counter for a session after a successful chat exchange.
+
+    If a container with SessionStore is provided, also persists the update.
+    """
     if session_id in _sessions:
         _sessions[session_id]["turn_count"] = _sessions[session_id].get("turn_count", 0) + 1
+
+        # Persist to SessionStore if available
+        if container is not None and container.session_store is not None:
+            try:
+                import asyncio
+                asyncio.get_event_loop().create_task(
+                    container.session_store.update_session(
+                        session_id,
+                        {"turn_count": _sessions[session_id]["turn_count"]},
+                    )
+                )
+            except Exception:
+                pass  # Non-critical — in-memory is the source of truth for current session

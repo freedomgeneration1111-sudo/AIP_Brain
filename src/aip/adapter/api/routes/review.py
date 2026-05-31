@@ -29,6 +29,14 @@ async def list_reviews(
     cfg = SurfaceConfig(**container.config.get("surface", {})) if hasattr(container, "config") else SurfaceConfig()
     effective_page_size = min(page_size, cfg.review_page_size)
 
+    # Use ReviewQueueStore when available for real pending items
+    if container.review_queue_store is not None:
+        try:
+            items = await container.review_queue_store.list_pending(limit=effective_page_size)
+            return {"items": items, "page": page, "page_size": effective_page_size, "total": len(items)}
+        except Exception:
+            pass  # Fall through to placeholder
+
     # Placeholder — real impl would call container.artifact_store.list + ecs + evals
     return {
         "items": [],

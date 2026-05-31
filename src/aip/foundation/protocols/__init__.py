@@ -53,6 +53,7 @@ from .storage import (
     EventStore,
     LexicalStore,
     ProjectStore,
+    SessionStore,
     TraceStore,
     VectorStore,
 )
@@ -68,6 +69,7 @@ __all__ = [
     "EventStore",
     "ProjectStore",
     "EcsStore",
+    "SessionStore",
     # model
     "ModelProvider",
     "EmbeddingProvider",

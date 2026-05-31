@@ -76,6 +76,8 @@ class AipContainer:
         self.collaborator_manager: Any = None
         # ReviewQueueStore — None when not initialized
         self.review_queue_store: Any = None
+        # SessionStore — None when not initialized (degrades to in-memory)
+        self.session_store: Any = None
 
 
 def get_container(request: "Request") -> AipContainer:

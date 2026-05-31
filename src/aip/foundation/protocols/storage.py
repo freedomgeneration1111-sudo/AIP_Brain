@@ -330,6 +330,36 @@ class EcsStore(Protocol):
         ...
 
 
+@runtime_checkable
+class SessionStore(Protocol):
+    """Session persistence store for chat session state.
+
+    Stores session metadata (role, model slot, turn count, etc.)
+    so that sessions survive process restarts. When SessionStore
+    is not available, the API falls back to an in-memory dict.
+    """
+
+    async def create_session(self, session_id: str, metadata: dict) -> None:
+        """Create a new session with the given metadata."""
+        ...
+
+    async def get_session(self, session_id: str) -> dict | None:
+        """Get session metadata by ID. Returns None if not found."""
+        ...
+
+    async def list_sessions(self, limit: int = 100) -> list[dict]:
+        """List sessions, most recently updated first."""
+        ...
+
+    async def update_session(self, session_id: str, updates: dict) -> None:
+        """Update session fields. Creates the session if it does not exist."""
+        ...
+
+    async def delete_session(self, session_id: str) -> None:
+        """Delete a session by ID."""
+        ...
+
+
 __all__ = [
     "VectorStore",
     "LexicalStore",
@@ -340,4 +370,5 @@ __all__ = [
     "EventStore",
     "ProjectStore",
     "EcsStore",
+    "SessionStore",
 ]

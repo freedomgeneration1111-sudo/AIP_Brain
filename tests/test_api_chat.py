@@ -25,12 +25,8 @@ def test_chat_router_mounted_and_basic_flow():
         data = ws.receive_json()
         assert data["type"] in ("response", "error")
 
-        # Demonstrate gate flow
-        ws.send_json({"type": "message", "content": "please hit a gate"})
-        gate = ws.receive_json()
-        assert gate.get("type") == "gate"
-        assert "artifact_id" in gate
-
+        # Gate flow is now triggered by augmented mode + ReviewQueueStore,
+        # not by keyword detection. Test gate_response handling directly.
         ws.send_json({"type": "gate_response", "approved": True})
         final = ws.receive_json()
         assert final["type"] == "response"

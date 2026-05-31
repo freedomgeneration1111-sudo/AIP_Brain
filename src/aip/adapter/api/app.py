@@ -412,6 +412,26 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.warning("component_failed", component="ecs_store", degradation="in_memory_fallback", error=str(exc))
 
+    # Session store — chat session persistence (degrades to in-memory)
+    try:
+        _ss_mod = importlib.import_module("aip.adapter.session.sqlite_session_store")
+        _SqliteSessionStore = _ss_mod.SqliteSessionStore
+        container.session_store = _SqliteSessionStore(db_path)
+        await container.session_store.initialize()
+        log.info("component_initialized", component="session_store", required=False)
+    except Exception as exc:
+        log.warning("component_failed", component="session_store", degradation="in_memory_sessions", error=str(exc))
+
+    # SessionManager — orchestration session lifecycle
+    if container.session_store is not None:
+        try:
+            _sm_mod = importlib.import_module("aip.orchestration.session")
+            _SessionManager = _sm_mod.SessionManager
+            container.session_manager = _SessionManager(config=config)
+            log.info("component_initialized", component="session_manager", required=False)
+        except Exception as exc:
+            log.warning("component_failed", component="session_manager", degradation="no_trajectory_regulation", error=str(exc))
+
     app.state.container = container
     app.state.start_time = time.time()
 
@@ -545,6 +565,8 @@ async def lifespan(app: FastAPI):
         model=container.model_provider is not None,
         knowledge=container.knowledge_store is not None,
         beast=container.beast is not None,
+        session_store=container.session_store is not None,
+        session_manager=container.session_manager is not None,
     )
 
     yield
@@ -579,6 +601,7 @@ async def lifespan(app: FastAPI):
         ("model_provider", container.model_provider),
         ("ecs_store", container.ecs_store),
         ("review_queue_store", container.review_queue_store),
+        ("session_store", container.session_store),
     ]:
         if store and hasattr(store, "close"):
             try:
