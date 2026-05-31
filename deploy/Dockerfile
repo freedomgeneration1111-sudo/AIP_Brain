@@ -1,4 +1,4 @@
-# Minimal Dockerfile for AIP 0.1 (Phase 7 9.6)
+# AIP 0.1 Dockerfile — Phase 5 Hardened
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -9,20 +9,35 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Install uv for dependency management
+RUN pip install --no-cache-dir uv
+
+# Copy dependency files first for layer caching
 COPY pyproject.toml uv.lock ./
-# In real build: uv sync --frozen
-# For scaffold we copy the source
+
+# Install dependencies
+RUN uv sync --frozen --no-dev
+
+# Copy source code
 COPY src ./src
 COPY config ./config
 COPY workflows ./workflows
 COPY deploy ./deploy
+COPY gui ./gui
+
+# Create non-root user for security
+RUN groupadd -r aip && useradd -r -g aip -d /app -s /sbin/nologin aip \
+    && mkdir -p /app/db && chown -R aip:aip /app
 
 ENV PYTHONPATH=/app/src
 ENV AIP_PROFILE=laptop
 
+# Switch to non-root user
+USER aip
+
 EXPOSE 8000
 
-# Health check (used by orchestration in 9.6)
+# Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')" || exit 1
 

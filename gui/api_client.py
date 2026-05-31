@@ -606,6 +606,43 @@ class AipApiClient:
         resp.raise_for_status()
         return resp.json()
 
+    # ------------------------------------------------------------------
+    # Budget Status
+    # ------------------------------------------------------------------
+
+    async def get_budget_status(self, scope: str = "session", scope_id: str = "default") -> dict[str, Any]:
+        """Get budget status for a scope via GET /api/v1/admin/budget.
+
+        Scopes: session, project, daily. The scope_id identifies the specific
+        session, project, or day (ISO date string for daily).
+        Returns consumed_tokens, limit, remaining, fraction_used, etc.
+        """
+        client = self._get_http_client()
+        resp = await client.get(
+            f"{self.base_url}/api/v1/admin/budget",
+            params={"scope": scope, "scope_id": scope_id},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    # ------------------------------------------------------------------
+    # Review Queue
+    # ------------------------------------------------------------------
+
+    async def approve_review(self, artifact_id: str) -> dict[str, Any]:
+        """Approve a review item via POST /api/v1/reviews/{id}/approve."""
+        client = self._get_http_client()
+        resp = await client.post(f"{self.base_url}/api/v1/reviews/{artifact_id}/approve")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def reject_review(self, artifact_id: str) -> dict[str, Any]:
+        """Reject a review item via POST /api/v1/reviews/{id}/reject."""
+        client = self._get_http_client()
+        resp = await client.post(f"{self.base_url}/api/v1/reviews/{artifact_id}/reject")
+        resp.raise_for_status()
+        return resp.json()
+
 
 # Module-level singleton for the GUI to use
 _api_client: AipApiClient | None = None

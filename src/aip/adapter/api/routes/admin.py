@@ -10,7 +10,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.adapter.api.dependencies import AipContainer, get_container, require_definer
 from aip.foundation.schemas import coerce_autonomy_level
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,12 @@ async def get_admin_config(container: AipContainer = Depends(get_container)):
 
 
 @router.patch("/admin/config")
-async def patch_admin_config(payload: dict, container: AipContainer = Depends(get_container)):
+async def patch_admin_config(payload: dict, container: AipContainer = Depends(get_container), _auth=Depends(require_definer)):
+    """Apply runtime configuration changes.
+
+    Safe keys (intervals, thresholds) are applied immediately.
+    Unsafe keys (db_path, auth settings) require a restart.
+    """
     if not container.autonomy_gate:
         raise HTTPException(503, "AutonomyGate not wired")
     esc = await container.autonomy_gate.escalate(
@@ -35,8 +40,31 @@ async def patch_admin_config(payload: dict, container: AipContainer = Depends(ge
     )
     if not esc.granted:
         raise HTTPException(403, f"Autonomy gate blocked: {esc.reason}")
-    # In real: apply to config store
-    return {"updated": True, "payload": payload}
+
+    # Define safe keys that can be hot-reloaded
+    safe_keys = {
+        "budget", "beast", "vigil", "sexton", "performance",
+        "rate_limit", "surface",
+    }
+    unsafe_keys = set(payload.keys()) - safe_keys
+
+    applied = {}
+    not_applied = {}
+
+    for key, value in payload.items():
+        if key in safe_keys:
+            # Apply to the in-memory config
+            container.config[key] = value
+            applied[key] = value
+        else:
+            not_applied[key] = "requires restart"
+
+    return {
+        "updated": True,
+        "applied": applied,
+        "not_applied": not_applied,
+        "note": "Safe keys (budget, beast, vigil, sexton, performance, rate_limit, surface) are applied immediately. Other keys require a process restart." if not_applied else None,
+    }
 
 
 @router.get("/admin/sexton/classifications")
@@ -109,15 +137,23 @@ async def get_router_weights(container: AipContainer = Depends(get_container)):
 
 
 @router.get("/admin/budget")
-async def get_budget_status(container: AipContainer = Depends(get_container)):
-    # From BudgetManager (7.0b)
+async def get_budget_status(
+    scope: str = "session",
+    scope_id: str = "default",
+    container: AipContainer = Depends(get_container),
+):
+    """Get budget status for a given scope and scope_id.
+
+    Scopes: session, project, daily. The scope_id identifies the specific
+    session, project, or day (ISO date string for daily).
+    """
     if container.budget_manager:
         try:
-            status = await container.budget_manager.get_status()
+            status = await container.budget_manager.get_status(scope=scope, scope_id=scope_id)
             return status
         except Exception:
             logger.warning("Budget status retrieval failed", exc_info=True)
-    return {"status": "ok"}
+    return {"status": "unconfigured", "budget_manager": False}
 
 
 @router.get("/admin/autonomy/log")

@@ -260,12 +260,17 @@ def increment_turn_count(session_id: str, container: AipContainer | None = None)
         if container is not None and container.session_store is not None:
             try:
                 import asyncio
-                asyncio.get_event_loop().create_task(
-                    container.session_store.update_session(
-                        session_id,
-                        {"turn_count": _sessions[session_id]["turn_count"]},
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(
+                        container.session_store.update_session(
+                            session_id,
+                            {"turn_count": _sessions[session_id]["turn_count"]},
+                        )
                     )
-                )
+                except RuntimeError:
+                    # No running loop — can't persist asynchronously; that's OK
+                    pass
             except Exception:
                 pass  # Non-critical — in-memory is the source of truth for current session
 
@@ -295,8 +300,13 @@ def update_ingestion_status(
             updates: dict[str, Any] = {"ingestion_status": status}
             if chunks_indexed is not None:
                 updates["chunks_indexed"] = chunks_indexed
-            asyncio.get_event_loop().create_task(
-                container.session_store.update_session(session_id, updates)
-            )
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    container.session_store.update_session(session_id, updates)
+                )
+            except RuntimeError:
+                # No running loop — can't persist asynchronously; that's OK
+                pass
         except Exception:
             pass  # Non-critical

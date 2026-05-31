@@ -1,0 +1,47 @@
+# Version control
+.git
+.gitignore
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+dist
+build
+.eggs
+
+# Test artifacts
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+
+# Documentation (not needed in container)
+docs/
+
+# Database files (should be mounted as volumes)
+db/
+*.db
+
+# Logs
+logs/
+*.log
+
+# Environment files
+.env
+.venv
+venv/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Archives
+*.tar.gz
+*.zip

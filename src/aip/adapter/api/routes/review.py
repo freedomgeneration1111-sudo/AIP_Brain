@@ -6,12 +6,15 @@ GET /reviews (paginated ReviewQueueEntry), POST /reviews/{id}/approve
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.adapter.api.dependencies import AipContainer, get_container, require_definer
 from aip.foundation.schemas import SurfaceConfig, coerce_autonomy_level
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/reviews")
@@ -50,6 +53,7 @@ async def list_reviews(
 async def approve_artifact(
     artifact_id: str,
     container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
 ):
     """Approve for canonical promotion — admin gate, ECS transition, Canonical write."""
     if not container.autonomy_gate:
@@ -64,19 +68,49 @@ async def approve_artifact(
     if not esc.granted:
         raise HTTPException(403, f"Autonomy gate blocked: {esc.reason}")
 
-    # Real flow (using delivered stores):
-    # 1. container.ecs_store.transition(artifact_id, "REVIEWED", "APPROVED")
-    # 2. content = await container.artifact_store.read(artifact_id)
-    # 3. await container.canonical_store.write_canonical(artifact_id, content, approved_by="definer")
-    # 4. write Event
+    # Real flow: ECS transition + canonical write
+    canonical_written = False
+    if container.ecs_store is not None:
+        try:
+            await container.ecs_store.transition(
+                artifact_id, "REVIEWED", "APPROVED", actor="definer", reason="API approve"
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"ECS transition failed: {exc}")
 
-    return {"artifact_id": artifact_id, "new_state": "APPROVED", "canonical_written": True}
+    if container.canonical_store is not None and container.artifact_store is not None:
+        try:
+            content = await container.artifact_store.read(artifact_id)
+            if content:
+                await container.canonical_store.write_canonical(
+                    artifact_id, content, approved_by="definer"
+                )
+                canonical_written = True
+        except Exception as exc:
+            # ECS state already transitioned; canonical write failure is logged but non-fatal
+            logger.warning("Canonical write failed after ECS transition: %s", exc)
+
+    # Record the event
+    if container.event_store is not None:
+        try:
+            await container.event_store.write_event(
+                event_type="review_approved",
+                actor="definer",
+                artifact_id=artifact_id,
+                from_state="REVIEWED",
+                to_state="APPROVED",
+            )
+        except Exception:
+            pass  # Event recording is advisory
+
+    return {"artifact_id": artifact_id, "new_state": "APPROVED", "canonical_written": canonical_written}
 
 
 @router.post("/reviews/{artifact_id}/reject")
 async def reject_artifact(
     artifact_id: str,
     container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
 ):
     """Reject — write gate, ECS to FAILED (no canonical)."""
     if not container.autonomy_gate:
@@ -91,5 +125,26 @@ async def reject_artifact(
     if not esc.granted:
         raise HTTPException(403, f"Autonomy gate blocked: {esc.reason}")
 
-    # container.ecs_store.transition(artifact_id, "REVIEWED", "FAILED")
+    # ECS transition to FAILED
+    if container.ecs_store is not None:
+        try:
+            await container.ecs_store.transition(
+                artifact_id, "REVIEWED", "FAILED", actor="definer", reason="API reject"
+            )
+        except Exception as exc:
+            raise HTTPException(500, f"ECS transition failed: {exc}")
+
+    # Record the event
+    if container.event_store is not None:
+        try:
+            await container.event_store.write_event(
+                event_type="review_rejected",
+                actor="definer",
+                artifact_id=artifact_id,
+                from_state="REVIEWED",
+                to_state="FAILED",
+            )
+        except Exception:
+            pass  # Event recording is advisory
+
     return {"artifact_id": artifact_id, "new_state": "FAILED"}

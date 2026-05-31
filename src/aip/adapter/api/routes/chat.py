@@ -175,6 +175,27 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
 
                         messages.append({"role": "user", "content": content})
 
+                        # Budget check before model call
+                        if _container.budget_manager is not None:
+                            try:
+                                budget_ok = await _container.budget_manager.check_before_call(
+                                    scope="session",
+                                    scope_id=session_id,
+                                    estimated_tokens=2000,  # rough estimate per turn
+                                )
+                                if not budget_ok:
+                                    await websocket.send_json({
+                                        "type": "error",
+                                        "content": "Budget limit reached. Session token budget has been exceeded. Consider starting a new session.",
+                                        "error_type": "budget_exhausted",
+                                        "model_slot": effective_slot,
+                                    })
+                                    continue
+                            except Exception as exc:
+                                # Budget check failure is non-critical — log and proceed
+                                import logging
+                                logging.getLogger(__name__).warning("Budget check failed, proceeding: %s", exc)
+
                         result = await model_provider.call(effective_slot, messages)
 
                         # Check for error from model provider
@@ -197,6 +218,21 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
 
                         # Increment turn counter
                         increment_turn_count(session_id, _container)
+
+                        # Record budget consumption
+                        if _container.budget_manager is not None:
+                            try:
+                                tokens_used = usage.get("total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0))
+                                await _container.budget_manager.record_consumption(
+                                    scope="session",
+                                    scope_id=session_id,
+                                    tokens_used=tokens_used or 0,
+                                    cost_usd=result.get("cost_usd", 0.0),
+                                    model_slot=effective_slot,
+                                )
+                            except Exception as exc:
+                                import logging
+                                logging.getLogger(__name__).debug("Budget record failed: %s", exc)
 
                         # Build response payload
                         response_payload = {

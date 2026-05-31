@@ -1,4 +1,4 @@
-"""AIP_Brain NiceGUI Frontend — Phase 4 Knowledge Exploration.
+"""AIP_Brain NiceGUI Frontend — Phase 5 Hardening & Polish.
 
 This module implements the NiceGUI frontend that communicates EXCLUSIVELY
 through the AIP FastAPI backend's REST and WebSocket endpoints. It does NOT:
@@ -14,13 +14,15 @@ All chat interactions flow through:
   4. PATCH /api/v1/sessions/{id} → toggle auto_save, update session flags
   5. POST /api/v1/ingest/conversation → manual ingestion trigger
 
-Phase 4 enhancements:
-  - Vector search panel: search across indexed content
-  - ECS graph panel: visualize artifact lifecycle states
-  - Wiki browser: browse and search compiled knowledge
-  - Sources browser: overview of all indexed content
-  - Mode toggle now functional: augmented mode routes through retrieval
-  - Source citations displayed in chat responses
+Phase 5 enhancements:
+  - Budget monitoring in footer and sidebar
+  - Gate response error handling
+  - Review Queue NiceGUI page
+  - Connection status indicator
+
+Phase 4 preserved:
+  - Vector search panel, ECS graph, Wiki browser, Sources browser
+  - Augmented mode with source citations
 
 This follows the API-First approach: the GUI is an Adapter-layer surface
 like CLI and MCP, communicating via HTTP/WebSocket rather than in-process.
@@ -250,16 +252,24 @@ async def handle_gate_response(approved: bool) -> None:
     if state.session_id is None:
         return
 
-    add_system_message(f"Gate {'approved' ✓ if approved else 'rejected ✗'}")
+    decision_text = "approved" if approved else "rejected"
+    add_system_message(f"Gate {decision_text}")
 
-    result = await state.api_client.send_gate_response(
-        session_id=state.session_id,
-        approved=approved,
-    )
+    try:
+        result = await state.api_client.send_gate_response(
+            session_id=state.session_id,
+            approved=approved,
+        )
 
-    if result.get("type") == "response":
-        content = result.get("content", "")
-        add_message("assistant", content)
+        if result.get("type") == "error":
+            add_system_message(f"Gate response error: {result.get('content', 'Unknown error')}")
+            ui.notify(f"Gate response failed: {result.get('content', 'Unknown error')}", color="negative")
+        elif result.get("type") == "response":
+            content = result.get("content", "")
+            add_message("assistant", content)
+    except Exception as exc:
+        add_system_message(f"Gate response failed: {exc}")
+        ui.notify(f"Gate response failed: {exc}", color="negative")
 
     state.pending_gate = None
 
@@ -370,6 +380,27 @@ async def refresh_ingestion_status() -> None:
         pass
 
 
+async def refresh_budget_status(label_ref, state: GuiState) -> None:
+    """Fetch budget status and update the footer label."""
+    try:
+        budget = await state.api_client.get_budget_status(scope="session", scope_id="default")
+        consumed = budget.get("consumed_tokens", 0)
+        limit = budget.get("limit", 0)
+        fraction = budget.get("fraction_used", 0)
+        if limit > 0:
+            pct = f"{fraction:.0%}"
+            remaining = limit - consumed
+            label_ref.text = f"Budget: {consumed}/{limit} ({pct}) — {remaining} remaining"
+            if fraction >= 0.8:
+                label_ref.classes("text-caption text-negative", remove="text-black")
+            else:
+                label_ref.classes("text-caption text-black", remove="text-negative")
+        elif budget.get("budget_manager") is False:
+            label_ref.text = "Budget: not configured"
+    except Exception:
+        label_ref.text = ""
+
+
 # ---------------------------------------------------------------------------
 # Page Definitions
 # ---------------------------------------------------------------------------
@@ -413,6 +444,7 @@ async def main_page():
             ui.button("Graph", icon="account_tree", on_click=lambda: ui.navigate.to("/graph")).props("flat text-color=white")
             ui.button("Wiki", icon="menu_book", on_click=lambda: ui.navigate.to("/wiki")).props("flat text-color=white")
             ui.button("Sources", icon="source", on_click=lambda: ui.navigate.to("/sources")).props("flat text-color=white")
+            ui.button("Review", icon="rate_review", on_click=lambda: ui.navigate.to("/review")).props("flat text-color=white")
 
     # ---- RIGHT DRAWER — Role Assignments ----
     with ui.right_drawer(fixed=True).classes("q-pa-md bg-grey-1"):
@@ -535,10 +567,15 @@ async def main_page():
         ui.space()
         ingestion_label_ref = ui.label("").classes("text-caption text-black")
         ui.space()
+        budget_label_ref = ui.label("").classes("text-caption text-black")
+        ui.space()
         ui.label(backend_status).classes("text-caption text-black")
         ui.space()
         ci_status = "CI Mode" if any(s.get("model", "").startswith("<") for s in slots) else "Live"
         ui.label(f"Mode: {ci_status}").classes("text-caption text-black")
+
+    # Load initial budget status
+    asyncio.create_task(refresh_budget_status(budget_label_ref, state))
 
 
 @ui.page("/models")
@@ -973,6 +1010,104 @@ async def sources_browser_page():
 
     # Load initial sources
     await load_sources()
+
+    ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: Review Queue Page
+# ---------------------------------------------------------------------------
+
+
+@ui.page("/review")
+async def review_queue_page():
+    """Review Queue page — approve or reject artifacts pending review."""
+    ui.page_title("Review Queue — AIP_Brain")
+    state = get_state()
+
+    ui.label("Review Queue").classes("text-h4 q-my-md")
+    ui.label("Artifacts pending DEFINER review. Approve to promote to canonical, reject to mark as failed.").classes(
+        "text-subtitle2 q-mb-md"
+    )
+
+    review_container = ui.column().classes("w-full")
+
+    async def load_reviews():
+        review_container.clear()
+        with review_container:
+            ui.label("Loading pending reviews...").classes("text-grey")
+        try:
+            items = await state.api_client.list_pending_reviews()
+            review_container.clear()
+            with review_container:
+                if not items:
+                    ui.label("No pending reviews.").classes("text-positive q-pa-md")
+                else:
+                    ui.label(f"{len(items)} item(s) pending review").classes("text-weight-medium q-mb-sm")
+                    for item in items:
+                        with ui.card().classes("w-full q-mb-sm"):
+                            with ui.card_section():
+                                artifact_id = item.get("artifact_id", item.get("id", "?"))
+                                domain = item.get("domain", "")
+                                state_val = item.get("state", item.get("ecs_state", "REVIEWED"))
+                                summary = item.get("summary", item.get("content_preview", ""))
+
+                                ui.label(f"Artifact: {artifact_id}").classes("text-weight-medium")
+                                with ui.row().classes("gap-2 q-mb-sm"):
+                                    ui.badge(state_val, color="warning")
+                                    if domain:
+                                        ui.badge(domain, color="blue")
+
+                                if summary:
+                                    ui.label(summary[:500] + ("..." if len(summary) > 500 else "")).classes(
+                                        "text-caption q-mb-sm"
+                                    )
+
+                                with ui.row().classes("gap-2"):
+                                    ui.button(
+                                        "Approve",
+                                        color="positive",
+                                        size="sm",
+                                        on_click=lambda aid=artifact_id: asyncio.create_task(
+                                            handle_review_decision(aid, True)
+                                        ),
+                                    )
+                                    ui.button(
+                                        "Reject",
+                                        color="negative",
+                                        size="sm",
+                                        on_click=lambda aid=artifact_id: asyncio.create_task(
+                                            handle_review_decision(aid, False)
+                                        ),
+                                    )
+        except Exception as exc:
+            review_container.clear()
+            with review_container:
+                ui.label(f"Failed to load reviews: {exc}").classes("text-negative")
+
+    async def handle_review_decision(artifact_id: str, approved: bool):
+        try:
+            if approved:
+                result = await state.api_client.approve_review(artifact_id)
+            else:
+                result = await state.api_client.reject_review(artifact_id)
+
+            new_state = result.get("new_state", "unknown")
+            canonical_written = result.get("canonical_written", False)
+            decision_text = "Approved" if approved else "Rejected"
+
+            ui.notify(
+                f"{decision_text}: {artifact_id} → {new_state}" +
+                (f" (canonical written)" if canonical_written else ""),
+                color="positive" if approved else "warning",
+            )
+            # Reload the review queue
+            await load_reviews()
+        except Exception as exc:
+            ui.notify(f"Review decision failed: {exc}", color="negative")
+
+    # Load initial items
+    await load_reviews()
 
     ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
 

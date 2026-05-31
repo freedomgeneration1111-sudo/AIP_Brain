@@ -33,8 +33,9 @@ import importlib
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
@@ -279,6 +280,36 @@ async def lifespan(app: FastAPI):
     else:
         log.info("component_skipped", component="knowledge_store", reason="missing_vector_or_lexical_store")
 
+    # --- Wire BudgetManager ---
+    if container.budget_store is not None:
+        try:
+            _bm_mod = importlib.import_module("aip.orchestration.budget")
+            _BudgetManager = _bm_mod.BudgetManager
+            _BudgetConfig = importlib.import_module("aip.foundation.schemas.budget").BudgetConfig
+            budget_cfg = _BudgetConfig(
+                **{k: v for k, v in config.get("budget", {}).items() if k in _BudgetConfig.__dataclass_fields__},
+            )
+            container.budget_manager = _BudgetManager(
+                config=budget_cfg,
+                budget_store=container.budget_store,
+                event_store=container.event_store,
+            )
+            log.info("component_initialized", component="budget_manager", required=False, hard_stop=budget_cfg.budget_hard_stop)
+        except Exception as exc:
+            log.warning("component_failed", component="budget_manager", degradation="no_budget_enforcement", error=str(exc))
+
+    # --- Wire TraceStoreAdapter ---
+    # Adapts QueryableEventStore to TraceStore protocol so that orchestration
+    # modules (Sexton, L4, perf) can use write_event(session_id, node_type, ...)
+    # without the signature mismatch that would cause TypeError at runtime.
+    if container.event_store is not None:
+        try:
+            from aip.adapter.trace_store_adapter import TraceStoreAdapter
+            container.trace_store = TraceStoreAdapter(container.event_store)
+            log.info("component_initialized", component="trace_store", adapter="TraceStoreAdapter")
+        except Exception as exc:
+            log.warning("component_failed", component="trace_store", degradation="trace_events_unavailable", error=str(exc))
+
     # --- Wire orchestration components (lazy import to preserve layer discipline) ---
     # Beast actor — requires vector_store + embedding_provider at minimum
     if container.vector_store is not None and container.embedding_provider is not None:
@@ -326,7 +357,7 @@ async def lifespan(app: FastAPI):
                 canonical_store=container.canonical_store,
                 entity_store=container.entity_store,
                 model_provider=container.model_provider,
-                trace_store=trace_store,
+                trace_store=container.trace_store or trace_store,
             )
             log.info("component_initialized", component="vigil", required=False)
         except Exception as exc:
@@ -434,6 +465,7 @@ async def lifespan(app: FastAPI):
 
     app.state.container = container
     app.state.start_time = time.time()
+    container._app_start_time = time.time()
 
     # --- Beast background scheduler ---
     beast_task: asyncio.Task | None = None
@@ -628,6 +660,26 @@ def create_app(config: dict | None = None) -> "FastAPI":
     surface_cfg = SurfaceConfig(**{k: v for k, v in cfg.items() if k in SurfaceConfig.__dataclass_fields__})
 
     app = FastAPI(title="AIP 0.1 Surfaces", version="0.1", lifespan=lifespan)
+
+    # Global exception handler — returns structured JSON for unhandled exceptions
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        log.error(
+            "unhandled_exception",
+            method=request.method,
+            path=request.url.path,
+            error=str(exc),
+            exc_info=True,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Internal server error",
+                "error_type": type(exc).__name__,
+                "path": request.url.path,
+            },
+        )
+
     app.state.raw_config = cfg
     app.state.container = None  # populated in lifespan
     app.state.start_time = time.time()

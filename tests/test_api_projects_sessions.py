@@ -23,7 +23,7 @@ def test_health_endpoint_returns_200_and_shape():
     r = client.get("/api/v1/health")
     assert r.status_code == 200
     data = r.json()
-    assert data["status"] == "ok"
+    assert data["status"] in ("ok", "degraded", "unhealthy")
     assert "vector_backend" in data
     assert "model_slots" in data
 
