@@ -79,6 +79,6 @@ def plugin_health(ctx):
         return
     import asyncio
 
-    health = asyncio.get_event_loop().run_until_complete(pm.health_check_all())
+    health = asyncio.run(pm.health_check_all())
     for k, v in health.items():
         click.echo(f"{k}: {v}")

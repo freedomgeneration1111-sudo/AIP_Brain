@@ -172,6 +172,7 @@ async def ask_retrieve_only(payload: dict, container: AipContainer = Depends(get
                     project_domain = p.get("domain") or domain
                     break
         except Exception:
+            logger.warning("project domain lookup failed for ask_retrieve", exc_info=True)
             pass
 
     try:

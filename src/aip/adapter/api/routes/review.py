@@ -38,6 +38,7 @@ async def list_reviews(
             items = await container.review_queue_store.list_pending(limit=effective_page_size)
             return {"items": items, "page": page, "page_size": effective_page_size, "total": len(items)}
         except Exception:
+            logger.warning("list_pending failed", exc_info=True)
             pass  # Fall through to placeholder
 
     # Placeholder — real impl would call container.artifact_store.list + ecs + evals
@@ -101,6 +102,7 @@ async def approve_artifact(
                 to_state="APPROVED",
             )
         except Exception:
+            logger.debug("event recording failed", exc_info=True)
             pass  # Event recording is advisory
 
     return {"artifact_id": artifact_id, "new_state": "APPROVED", "canonical_written": canonical_written}
@@ -145,6 +147,7 @@ async def reject_artifact(
                 to_state="FAILED",
             )
         except Exception:
+            logger.debug("event recording failed", exc_info=True)
             pass  # Event recording is advisory
 
     return {"artifact_id": artifact_id, "new_state": "FAILED"}

@@ -180,11 +180,11 @@ class _SqliteTraceStore(TraceStore):
 
 
 @pytest.fixture
-def trace_store():
+async def trace_store():
     with tempfile.TemporaryDirectory() as tmp:
         store = _SqliteTraceStore(f"{tmp}/trace.db")
         yield store
-        store.close()
+        await store.close()
 
 
 async def _seed_all_failure_types(trace_store: _SqliteTraceStore) -> None:

@@ -27,11 +27,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from aip.adapter.api.dependencies import get_container
 from aip.adapter.api.routes.sessions import get_session_meta, increment_turn_count
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -104,6 +107,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                                 domain = p.get("domain") or domain
                                                 break
                                     except Exception:
+                                        logger.warning("project lookup failed", exc_info=True)
                                         pass
 
                                 # Retrieve relevant sources

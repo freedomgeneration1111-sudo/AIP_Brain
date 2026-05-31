@@ -361,7 +361,7 @@ def init(force: bool) -> None:
     try:
         from aip.adapter.model_slot_resolver import ModelSlotResolver
 
-        resolver = ModelSlotResolver(config_path=str(config_path))
+        resolver = ModelSlotResolver(config={})
         slots = (
             list(resolver._slots.keys())
             if hasattr(resolver, "_slots")

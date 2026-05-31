@@ -10,12 +10,15 @@ Enhanced for Phase 3 Auto-Save Ingestion:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from aip.adapter.api.dependencies import AipContainer, get_container
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -63,6 +66,7 @@ async def create_session(payload: dict, container: AipContainer = Depends(get_co
             # Future: delegate to real SessionManager
             pass
         except Exception:
+            logger.warning("SessionManager delegation failed", exc_info=True)
             pass  # Fall through to store
 
     # Load ACE playbook if the container has one wired
@@ -79,6 +83,7 @@ async def create_session(payload: dict, container: AipContainer = Depends(get_co
             await container.session_store.create_session(session_id, session_meta)
         except Exception:
             # Fall back to in-memory if store fails
+            logger.warning("SessionStore.create_session failed, falling back to in-memory", exc_info=True)
             pass
 
     # Always sync to in-memory for fast lookups
@@ -108,6 +113,7 @@ async def list_sessions(container: AipContainer = Depends(get_container)):
                 _sessions[s.get("id", s.get("session_id", ""))] = s
             return {"sessions": sessions}
         except Exception:
+            logger.warning("SessionStore.list_sessions failed, falling back to in-memory", exc_info=True)
             pass  # Fall back to in-memory
 
     return {"sessions": list(_sessions.values())}
@@ -124,6 +130,11 @@ async def get_session(session_id: str, container: AipContainer = Depends(get_con
                 _sessions[session_id] = session  # sync to in-memory
                 return session
         except Exception:
+            logger.warning(
+                "SessionStore.get_session failed for %s, "
+                "falling back to in-memory",
+                session_id, exc_info=True,
+            )
             pass  # Fall back to in-memory
 
     # In-memory fallback
@@ -150,6 +161,11 @@ async def get_context(session_id: str, container: AipContainer = Depends(get_con
                     "model_slot": session.get("model_slot"),
                 }
         except Exception:
+            logger.warning(
+                "SessionStore.get_session failed for %s context, "
+                "falling back to in-memory",
+                session_id, exc_info=True,
+            )
             pass  # Fall back to in-memory
 
     # In-memory fallback
@@ -202,6 +218,11 @@ async def update_session(session_id: str, payload: dict, container: AipContainer
         try:
             await container.session_store.update_session(session_id, payload)
         except Exception:
+            logger.warning(
+                "SessionStore.update_session failed for %s; "
+                "in-memory is still updated",
+                session_id, exc_info=True,
+            )
             pass  # In-memory is still updated; non-critical persistence failure
 
     return _sessions[session_id]
@@ -219,6 +240,11 @@ async def delete_session(session_id: str, container: AipContainer = Depends(get_
         try:
             await container.session_store.delete_session(session_id)
         except Exception:
+            logger.warning(
+                "SessionStore.delete_session failed for %s; "
+                "already removed from in-memory",
+                session_id, exc_info=True,
+            )
             pass  # Already removed from in-memory
 
     return {"deleted": True, "session_id": session_id}
@@ -243,6 +269,11 @@ async def get_session_meta_async(session_id: str, container: AipContainer) -> di
                 _sessions[session_id] = session  # sync to in-memory
                 return session
         except Exception:
+            logger.warning(
+                "SessionStore.get_session failed in "
+                "get_session_meta_async for %s",
+                session_id, exc_info=True,
+            )
             pass
 
     return _sessions.get(session_id)
@@ -272,6 +303,7 @@ def increment_turn_count(session_id: str, container: AipContainer | None = None)
                     # No running loop — can't persist asynchronously; that's OK
                     pass
             except Exception:
+                logger.debug("increment_turn_count persist failed for %s", session_id, exc_info=True)
                 pass  # Non-critical — in-memory is the source of truth for current session
 
 
@@ -309,4 +341,5 @@ def update_ingestion_status(
                 # No running loop — can't persist asynchronously; that's OK
                 pass
         except Exception:
+            logger.debug("update_ingestion_status persist failed for %s", session_id, exc_info=True)
             pass  # Non-critical

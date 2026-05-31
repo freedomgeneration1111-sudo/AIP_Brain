@@ -2,12 +2,14 @@
 Verifies that sqlite_vss extension loading handles missing vss0.so gracefully in CI environments.
 """
 
+import asyncio
 import tempfile
 
 import pytest
 
 
-def test_sqlite_vss_graceful_skip():
+@pytest.mark.asyncio
+async def test_sqlite_vss_graceful_skip():
     """
     sqlite_vss extension loading must handle missing vss0.so gracefully.
     When the extension is unavailable, the store should set _vss_available=False
@@ -22,6 +24,6 @@ def test_sqlite_vss_graceful_skip():
             store = SqliteVssVectorStore(db_path=db_path, dimensions=4)
             # Store should be created successfully even without vss0 extension
             assert store._vss_available is False or store._vss_available is True
-            store.close()
+            await store.close()
         except Exception as e:
             pytest.fail(f"SqliteVssVectorStore initialization failed: {e}")

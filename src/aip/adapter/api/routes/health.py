@@ -7,6 +7,7 @@ Phase 5 hardening:
 - Checks database write connectivity for critical stores
 """
 
+import logging
 import time
 
 from fastapi import APIRouter, Depends
@@ -14,6 +15,7 @@ from fastapi import APIRouter, Depends
 from aip.adapter.api.dependencies import AipContainer, get_container
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/health")
@@ -33,6 +35,7 @@ async def health(container: AipContainer = Depends(get_container)):
             model_slots = container.model_provider.list_slots()
             ci_mode = getattr(container.model_provider, "_ci_mode", True)
         except Exception:
+            logger.warning("Health check: model provider list_slots failed", exc_info=True)
             model_slots = []
 
     # Actor status (lightweight — just initialized yes/no)
@@ -77,13 +80,16 @@ async def health(container: AipContainer = Depends(get_container)):
     else:
         status = "ok"
 
-    # Budget status summary
+    # Budget status summary — actually verify the budget manager is responsive
     budget_status = "unconfigured"
     if container.budget_manager is not None:
         try:
-            # Quick budget check — just see if it's functional
-            budget_status = "active"
+            status_result = await container.budget_manager.get_status(
+                scope="session", scope_id="health_check",
+            )
+            budget_status = "active" if status_result else "error"
         except Exception:
+            logger.warning("Health check: budget manager get_status failed", exc_info=True)
             budget_status = "error"
 
     # DB write check — try a lightweight write to event_store
@@ -99,6 +105,7 @@ async def health(container: AipContainer = Depends(get_container)):
             )
             db_writable = True
         except Exception:
+            logger.warning("Health check: DB write verification failed", exc_info=True)
             db_writable = False
 
     return {

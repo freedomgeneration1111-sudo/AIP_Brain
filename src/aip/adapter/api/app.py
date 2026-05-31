@@ -378,7 +378,7 @@ async def lifespan(app: FastAPI):
             container.sexton = _Sexton(
                 config=sexton_config,
                 model_resolver=container.model_provider,
-                trace_store=container.event_store,
+                trace_store=getattr(container, "trace_store", None) or container.event_store,
                 event_store=container.event_store,
             )
             log.info("component_initialized", component="sexton", required=False)
@@ -398,7 +398,7 @@ async def lifespan(app: FastAPI):
         if perf_cfg.profiling_enabled and container.event_store is not None:
             container.performance_profiler = _PerformanceProfiler(
                 config=perf_cfg,
-                trace_store=container.event_store,
+                trace_store=getattr(container, "trace_store", None) or container.event_store,
             )
             log.info("component_initialized", component="performance_profiler", profiling_enabled=True)
         else:

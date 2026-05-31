@@ -153,17 +153,14 @@ def _make_ollama_embed_fn(emb_cfg: dict) -> Callable[[str], list[float]]:
     def _ollama_embed_sync(text: str, dim: int = dimensions) -> list[float]:
         """Synchronous wrapper — runs async embed in a new event loop."""
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We're inside an existing event loop (e.g. Jupyter, FastAPI).
-                # Can't call asyncio.run() — create a task instead.
-                import concurrent.futures
+            asyncio.get_running_loop()
+            # We're inside an existing event loop (e.g. Jupyter, FastAPI).
+            # Can't call asyncio.run() — create a task instead.
+            import concurrent.futures
 
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    future = pool.submit(asyncio.run, client.embed(text))
-                    return future.result(timeout=30.0)
-            else:
-                return loop.run_until_complete(client.embed(text))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(asyncio.run, client.embed(text))
+                return future.result(timeout=30.0)
         except RuntimeError:
             # No event loop — create one
             return asyncio.run(client.embed(text))

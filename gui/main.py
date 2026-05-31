@@ -270,6 +270,8 @@ async def handle_gate_response(approved: bool) -> None:
     except Exception as exc:
         add_system_message(f"Gate response failed: {exc}")
         ui.notify(f"Gate response failed: {exc}", color="negative")
+        # Keep pending_gate so the user can retry — don't clear on failure
+        return
 
     state.pending_gate = None
 
@@ -381,24 +383,27 @@ async def refresh_ingestion_status() -> None:
 
 
 async def refresh_budget_status(label_ref, state: GuiState) -> None:
-    """Fetch budget status and update the footer label."""
-    try:
-        budget = await state.api_client.get_budget_status(scope="session", scope_id="default")
-        consumed = budget.get("consumed_tokens", 0)
-        limit = budget.get("limit", 0)
-        fraction = budget.get("fraction_used", 0)
-        if limit > 0:
-            pct = f"{fraction:.0%}"
-            remaining = limit - consumed
-            label_ref.text = f"Budget: {consumed}/{limit} ({pct}) — {remaining} remaining"
-            if fraction >= 0.8:
-                label_ref.classes("text-caption text-negative", remove="text-black")
-            else:
-                label_ref.classes("text-caption text-black", remove="text-negative")
-        elif budget.get("budget_manager") is False:
-            label_ref.text = "Budget: not configured"
-    except Exception:
-        label_ref.text = ""
+    """Fetch budget status and update the footer label. Periodically refreshes."""
+    while True:
+        try:
+            budget = await state.api_client.get_budget_status(scope="session", scope_id="default")
+            consumed = budget.get("consumed_tokens", 0)
+            limit = budget.get("limit", 0)
+            fraction = budget.get("fraction_used", 0)
+            if limit > 0:
+                pct = f"{fraction:.0%}"
+                remaining = limit - consumed
+                label_ref.text = f"Budget: {consumed}/{limit} ({pct}) — {remaining} remaining"
+                if fraction >= 0.8:
+                    label_ref.classes("text-caption text-negative", remove="text-black")
+                else:
+                    label_ref.classes("text-caption text-black", remove="text-negative")
+            elif budget.get("budget_manager") is False:
+                label_ref.text = "Budget: not configured"
+        except Exception:
+            label_ref.text = ""
+        # Refresh every 30 seconds
+        await asyncio.sleep(30)
 
 
 # ---------------------------------------------------------------------------

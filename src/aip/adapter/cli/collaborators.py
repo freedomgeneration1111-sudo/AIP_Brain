@@ -28,7 +28,7 @@ def collaborator_list(ctx):
         return
     import asyncio
 
-    users = asyncio.get_event_loop().run_until_complete(cm.list_collaborators())
+    users = asyncio.run(cm.list_collaborators())
     for u in users:
         click.echo(f"{u.get('identity')} ({u.get('role')})")
 
@@ -47,7 +47,7 @@ def collaborator_add(ctx, identity, role, password):
         return
     import asyncio
 
-    result = asyncio.get_event_loop().run_until_complete(cm.create_collaborator(identity, role, password))
+    result = asyncio.run(cm.create_collaborator(identity, role, password))
     click.echo(result)
 
 
@@ -64,7 +64,7 @@ def collaborator_update(ctx, identity, role):
         return
     import asyncio
 
-    result = asyncio.get_event_loop().run_until_complete(cm.update_role(identity, role, "definer"))
+    result = asyncio.run(cm.update_role(identity, role, "definer"))
     click.echo(result)
 
 
@@ -80,5 +80,5 @@ def collaborator_remove(ctx, identity):
         return
     import asyncio
 
-    result = asyncio.get_event_loop().run_until_complete(cm.revoke_collaborator(identity, "definer"))
+    result = asyncio.run(cm.revoke_collaborator(identity, "definer"))
     click.echo(result)

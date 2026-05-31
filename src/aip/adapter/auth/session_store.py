@@ -6,6 +6,7 @@ Laptop profile (auth_enabled=False): all requests treated as DEFINER.
 
 from __future__ import annotations
 
+import logging
 import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -15,6 +16,8 @@ import bcrypt
 
 from aip.foundation.protocols import AuthStore
 from aip.foundation.schemas import AuthConfig
+
+logger = logging.getLogger(__name__)
 
 
 class SqliteSessionStore(AuthStore):
@@ -189,10 +192,13 @@ class SqliteSessionStore(AuthStore):
             row = await cursor.fetchone()
             if row:
                 return {"identity": row["identity"], "role": row["role"], "created_at": row["created_at"]}
-            # Fallback: if no users table entry, return implicit definer
-            return {"identity": "definer", "role": "definer"}
+            # No definer configured in DB — return None so callers fall back
+            # to the laptop-profile implicit definer (auth_enabled=False) path.
+            return None
         except Exception:
-            return {"identity": "definer", "role": "definer"}
+            # NEVER escalate to definer on error — return None (unauthenticated).
+            # Laptop profile (auth_enabled=False) handles the no-auth case.
+            return None
 
     async def list_users(self) -> list[dict]:
         """List all user identities."""
@@ -204,6 +210,7 @@ class SqliteSessionStore(AuthStore):
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
         except Exception:
+            logger.warning("Failed to list users", exc_info=True)
             return []
 
     async def create_user(self, identity: str, role: str, password_hash: str | None = None) -> bool:
