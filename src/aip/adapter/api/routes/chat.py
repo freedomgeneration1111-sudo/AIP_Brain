@@ -2,19 +2,22 @@
 
 WebSocket chat endpoint at /api/v1/chat/{session_id}
 
-Phase 3 Gate Hardening enhancements:
-- Removed keyword-based gate demo ("gate" detection)
-- Gate is now triggered when session is "augmented" mode and ReviewQueueStore is available
-- Gate responses integrate with ReviewQueueStore for real approval/rejection
+Phase 3 Auto-Save Ingestion enhancements:
+- Auto-save hook triggers ingestion after each completed chat turn (when auto_save is enabled)
+- Ingestion is non-blocking: response is sent immediately, ingestion runs as a background task
+- Session auto_save flag controls whether ingestion fires (default: True)
+- Ingestion status (idle/ingesting/error) tracked in session metadata
+- Gate flow: triggered when session is "augmented" mode and ReviewQueueStore is available
 - Trajectory regulation check after each turn (when SessionManager is available)
-- Graceful degradation when model_provider or review_queue_store is not configured
+- Graceful degradation when model_provider, review_queue_store, or ingestion stores are unavailable
 
-Message flow: message → ModelSlotResolver.call() → response or gate
+Message flow: message → ModelSlotResolver.call() → response → [auto-save ingestion]
 Also: context_reset (from L4), budget exhaustion, trajectory_warning.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -41,9 +44,11 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
     session_meta = get_session_meta(session_id)
     model_slot = "synthesis"  # default
     session_mode = "normal"  # default
+    auto_save_enabled = True  # default — sessions created with auto_save=True
     if session_meta:
         model_slot = session_meta.get("model_slot", "synthesis")
         session_mode = session_meta.get("mode", "normal")
+        auto_save_enabled = session_meta.get("auto_save", True)
 
     try:
         while True:
@@ -110,6 +115,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                             "tokens_used": usage.get("total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)),
                             "latency_ms": result.get("latency_ms", 0),
                             "cost_usd": result.get("cost_usd", 0.0),
+                            "auto_save": auto_save_enabled and _container.artifact_store is not None and _container.lexical_store is not None,
                         }
 
                         # Check if review is available for augmented mode sessions
@@ -164,6 +170,28 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                         )
                             except Exception:
                                 # Non-critical — trajectory check is advisory
+                                pass
+
+                        # Auto-save ingestion: after a successful chat turn,
+                        # trigger background ingestion if auto_save is enabled
+                        # and the required stores (artifact_store, lexical_store) are available.
+                        if auto_save_enabled and _container.artifact_store is not None and _container.lexical_store is not None:
+                            try:
+                                from aip.adapter.api.routes.ingest import auto_save_chat_turn
+
+                                domain = (session_meta or {}).get("domain", "chat")
+                                asyncio.create_task(
+                                    auto_save_chat_turn(
+                                        session_id=session_id,
+                                        user_message=content,
+                                        assistant_response=response_content,
+                                        container=_container,
+                                        domain=domain,
+                                    ),
+                                    name=f"auto-save-{session_id}",
+                                )
+                            except Exception:
+                                # Non-critical — auto-save is advisory
                                 pass
 
                     except ValueError as exc:

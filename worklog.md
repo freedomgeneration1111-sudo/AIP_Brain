@@ -26,3 +26,38 @@ Stage Summary:
 - NEEDS_REVISION: verdict only, artifact stays in current state, instruction stored as event
 - Export refuses rejected by default, warns for unreviewed, --force to override
 - 36 new tests, all passing
+
+---
+Task ID: Phase 3
+Agent: main
+Task: Phase 3 — Session Persistence + Gate Hardening
+
+Work Log:
+- Audited entire codebase: sessions.py in-memory dict, SessionManager unwired, chat.py keyword-based gate demo, ReviewQueueStore already wired but not connected to chat flow
+- Added SessionStore Protocol to foundation/protocols/storage.py (create, get, list, update, delete)
+- Added SessionStore re-export to foundation/protocols/__init__.py
+- Created src/aip/adapter/session/ package with __init__.py
+- Created SqliteSessionStore implementation following existing store patterns (aiosqlite, WAL, sync fallback init)
+- Added session_store attribute to AipContainer in dependencies.py
+- Wired SessionStore + SessionManager in app.py lifespan (optional components, graceful degradation)
+- Added session_store to shutdown close loop in app.py
+- Updated sessions.py routes to delegate to SessionStore when available, fall back to in-memory _sessions dict
+- Added get_session_meta_async() helper for async store lookups
+- Updated increment_turn_count() to accept container param and persist to SessionStore
+- Removed keyword-based gate demo from chat.py ("gate" in content.lower())
+- Added real gate flow: augmented mode + ReviewQueueStore triggers review_available flag
+- gate_response now integrates with ReviewQueueStore.decide() for real approval/rejection with queue_item_id
+- Added trajectory regulation check after each chat turn via SessionManager.check_trajectory()
+- Sends trajectory_warning WebSocket messages when degradation detected
+- Updated review.py list_reviews to use ReviewQueueStore.list_pending() when available
+- Added get_session_context() and list_pending_reviews() methods to GUI api_client.py
+- Updated test_api_chat.py for new gate flow
+- All 932 tests pass, 15 skipped, 0 failures
+- Committed as baa3fca, pushed to origin/main
+
+Stage Summary:
+- Sessions now persist to SQLite via SessionStore (survive restarts)
+- Gate flow uses real ReviewQueueStore instead of keyword demo
+- Trajectory regulation integrated into chat loop
+- Review queue visible through API endpoints
+- All changes degrade gracefully when components unavailable

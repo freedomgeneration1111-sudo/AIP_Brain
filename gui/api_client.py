@@ -141,6 +141,24 @@ class AipApiClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def update_session(self, session_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+        """Update session metadata via PATCH /api/v1/sessions/{session_id}.
+
+        Used to toggle auto_save, change mode, update role, etc.
+        Returns the updated session metadata.
+        """
+        client = self._get_http_client()
+        resp = await client.patch(f"{self.base_url}/api/v1/sessions/{session_id}", json=updates)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def delete_session(self, session_id: str) -> dict[str, Any]:
+        """Delete a session via DELETE /api/v1/sessions/{session_id}."""
+        client = self._get_http_client()
+        resp = await client.delete(f"{self.base_url}/api/v1/sessions/{session_id}")
+        resp.raise_for_status()
+        return resp.json()
+
     # ------------------------------------------------------------------
     # Review Queue
     # ------------------------------------------------------------------
@@ -152,6 +170,72 @@ class AipApiClient:
         resp.raise_for_status()
         data = resp.json()
         return data.get("items", [])
+
+    # ------------------------------------------------------------------
+    # Ingestion
+    # ------------------------------------------------------------------
+
+    async def ingest_conversation(
+        self,
+        conversation_id: str,
+        turns: list[dict[str, str]],
+        *,
+        title: str | None = None,
+        domain: str = "chat",
+        source_format: str = "plaintext",
+    ) -> dict[str, Any]:
+        """Ingest a conversation via POST /api/v1/ingest/conversation.
+
+        Args:
+            conversation_id: Unique ID for this conversation.
+            turns: List of dicts with 'role', 'content', optional 'timestamp'.
+            title: Optional conversation title.
+            domain: Domain for indexing (default: "chat").
+            source_format: Source format hint (default: "plaintext").
+
+        Returns an IngestionResult summary dict.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {
+            "conversation_id": conversation_id,
+            "turns": turns,
+            "domain": domain,
+            "source_format": source_format,
+        }
+        if title:
+            payload["title"] = title
+
+        resp = await client.post(f"{self.base_url}/api/v1/ingest/conversation", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def ingest_file(
+        self,
+        path: str,
+        *,
+        domain: str = "imported",
+        source_format: str | None = None,
+    ) -> dict[str, Any]:
+        """Ingest a conversation file via POST /api/v1/ingest/file.
+
+        Args:
+            path: File path to ingest.
+            domain: Domain for indexing (default: "imported").
+            source_format: Optional format override.
+
+        Returns a dict with list of IngestionResult summaries.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {
+            "path": path,
+            "domain": domain,
+        }
+        if source_format:
+            payload["source_format"] = source_format
+
+        resp = await client.post(f"{self.base_url}/api/v1/ingest/file", json=payload)
+        resp.raise_for_status()
+        return resp.json()
 
     # ------------------------------------------------------------------
     # Actor Status

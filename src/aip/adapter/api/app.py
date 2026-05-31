@@ -41,7 +41,7 @@ from starlette.responses import Response
 
 from aip.adapter.api import collaborators, performance, plugins
 from aip.adapter.api.dependencies import AipContainer
-from aip.adapter.api.routes import admin, actors, artifacts, chat, health, memory, models, projects, review, sessions
+from aip.adapter.api.routes import admin, actors, artifacts, chat, health, ingest, memory, models, projects, review, sessions
 from aip.config import validate_config
 from aip.foundation.schemas import BeastCadenceConfig, SurfaceConfig
 from aip.logging import configure_logging, get_logger, new_correlation_id, set_correlation_id
@@ -684,6 +684,7 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
     app.include_router(models.router, prefix="/api/v1", tags=["models"])
     app.include_router(actors.router, prefix="/api/v1", tags=["actors"])
+    app.include_router(ingest.router, prefix="/api/v1", tags=["ingest"])
 
     # Additional routers
     app.include_router(collaborators.router, prefix="/api/v1", tags=["collaborators"])

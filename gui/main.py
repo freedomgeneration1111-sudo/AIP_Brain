@@ -1,4 +1,4 @@
-"""AIP_Brain NiceGUI Frontend — Phase 1 Communication Bridge.
+"""AIP_Brain NiceGUI Frontend — Phase 3 Auto-Save Ingestion.
 
 This module implements the NiceGUI frontend that communicates EXCLUSIVELY
 through the AIP FastAPI backend's REST and WebSocket endpoints. It does NOT:
@@ -11,6 +11,13 @@ All chat interactions flow through:
   1. POST /api/v1/sessions → get session_id
   2. WebSocket /api/v1/chat/{session_id} → send messages, receive responses
   3. GET /api/v1/models/slots → populate model/role dropdowns
+  4. PATCH /api/v1/sessions/{id} → toggle auto_save, update session flags
+  5. POST /api/v1/ingest/conversation → manual ingestion trigger
+
+Phase 3 enhancements:
+  - Auto-save checkbox now wired to backend via PATCH /sessions/{id}
+  - Ingestion status indicator shows indexing progress
+  - Chat responses include auto_save status
 
 This follows the API-First approach: the GUI is an Adapter-layer surface
 like CLI and MCP, communicating via HTTP/WebSocket rather than in-process.
@@ -43,6 +50,8 @@ class GuiState:
         self.backend_reachable: bool = False
         self.pending_gate: dict[str, Any] | None = None
         self.auto_save: bool = True
+        self.ingestion_status: str = "idle"  # "idle" | "ingesting" | "error"
+        self.chunks_indexed: int = 0
 
     async def ensure_session(self) -> str:
         """Create a session if one doesn't exist, or return the existing one."""
@@ -53,6 +62,7 @@ class GuiState:
             role=self.current_role,
             model_slot=self.current_model_slot,
             mode=self.current_mode,
+            auto_save=self.auto_save,
         )
         self.session_id = result["id"]
         return self.session_id
@@ -61,6 +71,8 @@ class GuiState:
         """Reset session state (e.g., when changing roles)."""
         self.session_id = None
         self.pending_gate = None
+        self.ingestion_status = "idle"
+        self.chunks_indexed = 0
 
 
 # Per-page state — initialized in the page function
@@ -165,9 +177,14 @@ async def send_prompt() -> None:
         model = resp.get("model", resp.get("model_slot", ""))
         latency = resp.get("latency_ms")
         tokens = resp.get("tokens_used", 0)
+        auto_saved = resp.get("auto_save", False)
         add_message("assistant", content, model=model, latency_ms=latency)
         if tokens > 0:
             add_system_message(f"Tokens: {tokens}")
+        if auto_saved:
+            add_system_message("Auto-save: indexing...")
+            # Schedule a status refresh after a short delay
+            asyncio.create_task(refresh_ingestion_status())
 
     def on_error(err: dict[str, Any]) -> None:
         thinking_label.delete()
@@ -279,6 +296,63 @@ async def trigger_actor(actor_name: str) -> None:
         ui.notify(f"Failed to trigger {actor_name}: {exc}", color="negative")
 
 
+async def on_auto_save_toggled(enabled: bool) -> None:
+    """Handle auto_save checkbox toggle — persist to backend session.
+
+    When auto_save is toggled, we:
+    1. Update local state immediately
+    2. If a session exists, PATCH the backend to persist the flag
+    3. If no session yet, the flag will be sent on session creation
+    """
+    state = get_state()
+    state.auto_save = enabled
+
+    if state.session_id is not None:
+        try:
+            await state.api_client.update_session(
+                state.session_id, {"auto_save": enabled}
+            )
+            status = "enabled" if enabled else "disabled"
+            ui.notify(f"Auto-save {status}", color="positive" if enabled else "warning")
+        except Exception as exc:
+            ui.notify(f"Failed to update auto-save: {exc}", color="negative")
+    else:
+        status = "enabled" if enabled else "disabled"
+        ui.notify(f"Auto-save will be {status} for next session", color="info")
+
+
+async def refresh_ingestion_status() -> None:
+    """Refresh ingestion status from the backend and update the footer label.
+
+    Called after each chat response to show auto-save progress.
+    Waits a short delay for the background ingestion to make progress.
+    """
+    state = get_state()
+    if state.session_id is None:
+        return
+
+    # Wait a moment for the ingestion to start
+    await asyncio.sleep(1.0)
+
+    try:
+        session = await state.api_client.get_session(state.session_id)
+        ingestion_status = session.get("ingestion_status", "idle")
+        chunks_indexed = session.get("chunks_indexed", 0)
+        state.ingestion_status = ingestion_status
+        state.chunks_indexed = chunks_indexed
+
+        # Update the footer label
+        if ingestion_status == "ingesting":
+            ingestion_label_ref.text = f"Indexing... ({chunks_indexed} chunks)"
+        elif ingestion_status == "error":
+            ingestion_label_ref.text = "Auto-save: error (check logs)"
+        else:
+            ingestion_label_ref.text = f"Indexed: {chunks_indexed} chunks" if chunks_indexed > 0 else ""
+    except Exception:
+        # Non-critical — just don't update the label
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Page Definitions
 # ---------------------------------------------------------------------------
@@ -287,7 +361,7 @@ async def trigger_actor(actor_name: str) -> None:
 @ui.page("/")
 async def main_page():
     """Main chat page — AIP_Brain frontend."""
-    global chat_container, input_field, mode_label, model_select_label
+    global chat_container, input_field, mode_label, model_select_label, ingestion_label_ref
 
     ui.page_title("AIP_Brain")
     state = get_state()
@@ -313,7 +387,7 @@ async def main_page():
             value=state.current_model_slot,
             on_change=lambda e: on_slot_changed(e.value),
         ).classes("min-w-[180px] text-black")
-        ui.checkbox("Auto-save", value=True, on_change=lambda e: setattr(state, "auto_save", e.value)).classes("q-ml-sm text-white")
+        ui.checkbox("Auto-save", value=True, on_change=lambda e: asyncio.create_task(on_auto_save_toggled(e.value))).classes("q-ml-sm text-white")
         ui.space()
         ui.button("Models & Roles", on_click=lambda: ui.navigate.to("/models"), color="secondary").props("flat")
         ui.space()
@@ -441,6 +515,8 @@ async def main_page():
     # ---- FOOTER ----
     with ui.footer().classes("bg-grey-2 q-pa-xs items-center"):
         ui.label("AIP_Brain • API-First").classes("text-caption text-black")
+        ui.space()
+        ingestion_label_ref = ui.label("").classes("text-caption text-black")
         ui.space()
         ui.label(backend_status).classes("text-caption text-black")
         ui.space()
