@@ -72,3 +72,23 @@ temp/
 WORKLOG.md
 CLEANUP_BASELINE.md
 PHASE*_HANDOFF_PROMPT.md
+
+# Data folders - ignore contents but keep structure
+archive/*
+!archive/.gitkeep
+import/*
+!import/.gitkeep
+failed/*
+!failed/.gitkeep
+logs/*
+!logs/.gitkeep
+
+# Data folders - ignore contents but keep structure
+archive/*
+!archive/.gitkeep
+import/*
+!import/.gitkeep
+failed/*
+!failed/.gitkeep
+logs/*
+!logs/.gitkeep

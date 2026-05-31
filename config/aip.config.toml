@@ -209,3 +209,9 @@ memory_limit_mb = 4096
 
 [database]
 db_path = "db/state.db"
+
+
+[vector_backend]
+provider = "pgvector"
+host = "127.0.0.1"
+port = 5432

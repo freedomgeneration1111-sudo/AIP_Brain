@@ -15,6 +15,11 @@ dependencies = [
     "bcrypt>=4.0",
     "uvicorn>=0.20",
     "structlog>=24.0",
+    "ollama>=0.6.2",
+    "gradio>=6.15.2",
+    "requests>=2.34.2",
+    "nicegui>=3.12.1",
+    "python-dotenv>=1.2.2",
 ]
 
 [project.scripts]
@@ -58,7 +63,11 @@ indent-style = "space"
 
 [tool.uv]
 dev-dependencies = [
+    "fastapi>=0.136.3",
+    "nicegui>=3.12.1",
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
+    "python-multipart>=0.0.29",
     "ruff>=0.4",
+    "uvicorn>=0.48.0",
 ]
