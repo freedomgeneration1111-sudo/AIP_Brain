@@ -41,7 +41,7 @@ from starlette.responses import Response
 
 from aip.adapter.api import collaborators, performance, plugins
 from aip.adapter.api.dependencies import AipContainer
-from aip.adapter.api.routes import admin, artifacts, chat, health, memory, models, projects, review, sessions
+from aip.adapter.api.routes import admin, actors, artifacts, chat, health, memory, models, projects, review, sessions
 from aip.config import validate_config
 from aip.foundation.schemas import BeastCadenceConfig, SurfaceConfig
 from aip.logging import configure_logging, get_logger, new_correlation_id, set_correlation_id
@@ -303,6 +303,59 @@ async def lifespan(app: FastAPI):
     else:
         log.info("component_skipped", component="beast", reason="missing_vector_or_embedding")
 
+    # Vigil actor — requires vigil_store, canonical_store, entity_store, model_provider, trace_store
+    if (
+        container.vigil_store is not None
+        and container.canonical_store is not None
+        and container.entity_store is not None
+        and container.model_provider is not None
+    ):
+        try:
+            _vigil_mod = importlib.import_module("aip.orchestration.actors.vigil")
+            _Vigil = _vigil_mod.Vigil
+            _VigilConfig = importlib.import_module("aip.foundation.schemas.review").VigilConfig
+            vigil_config = _VigilConfig(
+                **{k: v for k, v in config.get("vigil", {}).items() if k in _VigilConfig.__dataclass_fields__},
+            )
+            # trace_store: use event_store if it supports write_event (TraceStore protocol)
+            # The event_store and trace_store share the same interface in the current impl
+            trace_store = container.event_store
+            container.vigil = _Vigil(
+                config=vigil_config,
+                vigil_store=container.vigil_store,
+                canonical_store=container.canonical_store,
+                entity_store=container.entity_store,
+                model_provider=container.model_provider,
+                trace_store=trace_store,
+            )
+            log.info("component_initialized", component="vigil", required=False)
+        except Exception as exc:
+            log.warning("component_failed", component="vigil", degradation="no_canonical_monitoring", error=str(exc))
+    else:
+        log.info("component_skipped", component="vigil", reason="missing_required_stores_or_model_provider")
+
+    # Sexton actor — requires config, model_resolver, trace_store, event_store
+    # Sexton is lightweight: only needs TraceStore + EventStore + optional ModelProvider
+    if container.event_store is not None:
+        try:
+            _sexton_mod = importlib.import_module("aip.orchestration.sexton.sexton")
+            _Sexton = _sexton_mod.Sexton
+            _SextonConfig = importlib.import_module("aip.foundation.schemas.evaluation").SextonConfig
+            sexton_config = _SextonConfig(
+                **{k: v for k, v in config.get("sexton", {}).items() if k in _SextonConfig.__dataclass_fields__},
+            )
+            container.sexton = _Sexton(
+                config=sexton_config,
+                model_resolver=container.model_provider,
+                trace_store=container.event_store,
+                event_store=container.event_store,
+            )
+            log.info("component_initialized", component="sexton", required=False)
+        except Exception as exc:
+            log.warning("component_failed", component="sexton", degradation="no_failure_classification", error=str(exc))
+    else:
+        log.info("component_skipped", component="sexton", reason="missing_event_store")
+
     # PerformanceProfiler — optional, only wired when profiling_enabled=True
     try:
         _perf_mod = importlib.import_module("aip.orchestration.perf")
@@ -406,6 +459,78 @@ async def lifespan(app: FastAPI):
         beast_task = asyncio.create_task(_beast_scheduler(), name="beast-scheduler")
         log.info("beast_scheduler_created")
 
+    # --- Vigil background scheduler ---
+    vigil_task: asyncio.Task | None = None
+    if container.vigil is not None:
+
+        async def _vigil_scheduler():
+            """Background loop that runs vigil.run() periodically.
+
+            Vigil monitors canonical health and detects stale items.
+            Runs on a configurable interval (default: 3600s = 1 hour).
+            """
+            interval = container.vigil.config.canonical_health_check_interval_seconds
+            if interval < 60:
+                interval = 3600
+                log.warning("vigil_cadence_clamped", clamped_to=3600)
+            log.info("vigil_scheduler_starting", interval_s=interval)
+            cycle_num = 0
+            while True:
+                cycle_num += 1
+                cycle_id = f"vigil-{new_correlation_id()}"
+                set_correlation_id(cycle_id)
+                try:
+                    log.info("vigil_cycle_start", cycle=cycle_num)
+                    await container.vigil.run()
+                    log.info("vigil_cycle_complete", cycle=cycle_num)
+                except asyncio.CancelledError:
+                    log.info("vigil_scheduler_cancelled", cycle=cycle_num)
+                    raise
+                except Exception as exc:
+                    log.error("vigil_cycle_failed", cycle=cycle_num, error=str(exc), exc_info=True)
+                finally:
+                    set_correlation_id(None)
+                await asyncio.sleep(interval)
+
+        vigil_task = asyncio.create_task(_vigil_scheduler(), name="vigil-scheduler")
+        log.info("vigil_scheduler_created")
+
+    # --- Sexton background scheduler ---
+    sexton_task: asyncio.Task | None = None
+    if container.sexton is not None:
+
+        async def _sexton_scheduler():
+            """Background loop that runs sexton.run_classification_cycle() periodically.
+
+            Sexton classifies unclassified failures from the trace store.
+            Runs on a configurable interval (default: 300s = 5 minutes).
+            """
+            interval = container.sexton._config.classification_interval_seconds
+            if interval < 30:
+                interval = 300
+                log.warning("sexton_cadence_clamped", clamped_to=300)
+            log.info("sexton_scheduler_starting", interval_s=interval)
+            cycle_num = 0
+            while True:
+                cycle_num += 1
+                cycle_id = f"sexton-{new_correlation_id()}"
+                set_correlation_id(cycle_id)
+                try:
+                    log.info("sexton_cycle_start", cycle=cycle_num)
+                    await container.sexton.run_classification_cycle()
+                    log.info("sexton_cycle_complete", cycle=cycle_num)
+                except asyncio.CancelledError:
+                    log.info("sexton_scheduler_cancelled", cycle=cycle_num)
+                    raise
+                except Exception as exc:
+                    log.error("sexton_cycle_failed", cycle=cycle_num, error=str(exc), exc_info=True)
+                finally:
+                    set_correlation_id(None)
+                await asyncio.sleep(interval)
+
+        sexton_task = asyncio.create_task(_sexton_scheduler(), name="sexton-scheduler")
+        log.info("sexton_scheduler_created")
+
     log.info(
         "startup_complete",
         required_initialized=5,
@@ -414,7 +539,9 @@ async def lifespan(app: FastAPI):
         embedding=container.embedding_provider is not None,
         project=container.project_store is not None,
         budget=container.budget_store is not None,
-        vigil=container.vigil_store is not None,
+        vigil_store=container.vigil_store is not None,
+        vigil_actor=container.vigil is not None,
+        sexton_actor=container.sexton is not None,
         model=container.model_provider is not None,
         knowledge=container.knowledge_store is not None,
         beast=container.beast is not None,
@@ -423,13 +550,18 @@ async def lifespan(app: FastAPI):
     yield
 
     # --- Shutdown ---
-    if beast_task is not None:
-        log.info("beast_scheduler_cancelling")
-        beast_task.cancel()
-        try:
-            await beast_task
-        except asyncio.CancelledError:
-            pass
+    for task_name, task in [
+        ("beast", beast_task),
+        ("vigil", vigil_task),
+        ("sexton", sexton_task),
+    ]:
+        if task is not None:
+            log.info(f"{task_name}_scheduler_cancelling")
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     # shutdown: close any open connections (the individual stores implement close())
     for store_name, store in [
@@ -528,6 +660,7 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(memory.router, prefix="/api/v1", tags=["memory"])
     app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
     app.include_router(models.router, prefix="/api/v1", tags=["models"])
+    app.include_router(actors.router, prefix="/api/v1", tags=["actors"])
 
     # Additional routers
     app.include_router(collaborators.router, prefix="/api/v1", tags=["collaborators"])

@@ -135,6 +135,27 @@ class AipApiClient:
         return resp.json()
 
     # ------------------------------------------------------------------
+    # Actor Status
+    # ------------------------------------------------------------------
+
+    async def get_actors_status(self) -> dict[str, Any]:
+        """Fetch status of all actors from the backend.
+
+        Returns dict with 'actors' key containing Beast, Vigil, Sexton status.
+        """
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/actors/status")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def trigger_actor_cycle(self, actor_name: str) -> dict[str, Any]:
+        """Manually trigger an actor cycle (admin/debug)."""
+        client = self._get_http_client()
+        resp = await client.post(f"{self.base_url}/api/v1/actors/{actor_name}/trigger")
+        resp.raise_for_status()
+        return resp.json()
+
+    # ------------------------------------------------------------------
     # WebSocket Chat
     # ------------------------------------------------------------------
 

@@ -68,6 +68,7 @@ class AipContainer:
         self.adaptive_router: Any = None
         self.sexton: Any = None
         self.beast: Any = None
+        self.vigil: Any = None
         self.ace_playbook: Any = None
         # PerformanceProfiler — None when not configured (API returns BACKEND_UNAVAILABLE)
         self.performance_profiler: Any = None

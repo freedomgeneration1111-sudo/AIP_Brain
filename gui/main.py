@@ -264,6 +264,21 @@ def on_slot_changed(slot_name: str) -> None:
     model_select_label.text = f"Slot: {slot_name}"
 
 
+async def trigger_actor(actor_name: str) -> None:
+    """Manually trigger an actor cycle and show the result."""
+    state = get_state()
+    try:
+        result = await state.api_client.trigger_actor_cycle(actor_name)
+        triggered = result.get("triggered", False)
+        if triggered:
+            ui.notify(f"{actor_name.capitalize()} cycle triggered successfully", color="positive")
+        else:
+            error = result.get("error", "Unknown error")
+            ui.notify(f"{actor_name.capitalize()} cycle failed: {error}", color="negative")
+    except Exception as exc:
+        ui.notify(f"Failed to trigger {actor_name}: {exc}", color="negative")
+
+
 # ---------------------------------------------------------------------------
 # Page Definitions
 # ---------------------------------------------------------------------------
@@ -344,7 +359,7 @@ async def main_page():
         ui.button(
             "Save Roles",
             color="primary",
-            on_click=lambda: ui.notify("Role configuration saved (in-memory). Backend integration in Phase 2."),
+            on_click=lambda: ui.notify("Role configuration saved (in-memory)."),
         )
 
         # Show current slot details
@@ -357,6 +372,51 @@ async def main_page():
                     ui.label(f"Provider: {s.get('provider', 'N/A')}").classes("text-caption")
                     if s.get("base_url"):
                         ui.label(f"Base URL: {s['base_url']}").classes("text-caption")
+
+        # Actor status section
+        ui.separator().classes("q-my-md")
+        ui.label("Actor Status").classes("text-weight-medium")
+        if state.backend_reachable:
+            try:
+                actors_data = await state.api_client.get_actors_status()
+                actors = actors_data.get("actors", {})
+
+                for actor_name in ["beast", "vigil", "sexton"]:
+                    actor = actors.get(actor_name, {})
+                    initialized = actor.get("initialized", False)
+                    status_icon = "🟢" if initialized else "🔴"
+                    status_text = "Active" if initialized else "Not initialized"
+
+                    with ui.row().classes("w-full items-center gap-1"):
+                        ui.label(f"{status_icon} {actor_name.capitalize()}").classes("text-caption text-weight-medium")
+                        ui.label(f"— {status_text}").classes("text-caption")
+
+                    # Show health details if available
+                    if initialized:
+                        health = actor.get("health")
+                        if health and isinstance(health, dict):
+                            overall = health.get("overall", "unknown")
+                            ui.label(f"  Health: {overall}").classes("text-caption text-grey-7")
+                        if actor_name == "sexton":
+                            unclassified = actor.get("unclassified_count", 0)
+                            ui.label(f"  Unclassified: {unclassified}").classes("text-caption text-grey-7")
+                        if actor_name == "vigil" and health:
+                            status = health.get("status", "unknown")
+                            ui.label(f"  Canonicals: {status}").classes("text-caption text-grey-7")
+
+                # Trigger buttons for manual actor cycles
+                ui.separator().classes("q-my-sm")
+                with ui.row().classes("w-full gap-1"):
+                    ui.button("Run Beast", size="sm", color="brown",
+                              on_click=lambda: asyncio.create_task(trigger_actor("beast")))
+                    ui.button("Run Vigil", size="sm", color="indigo",
+                              on_click=lambda: asyncio.create_task(trigger_actor("vigil")))
+                    ui.button("Run Sexton", size="sm", color="teal",
+                              on_click=lambda: asyncio.create_task(trigger_actor("sexton")))
+            except Exception:
+                ui.label("Could not load actor status").classes("text-caption text-warning")
+        else:
+            ui.label("Backend unreachable — no actor info").classes("text-caption text-warning")
 
     # ---- CHAT AREA ----
     chat_container = ui.column().classes("w-full max-w-3xl mx-auto q-pa-md").style("min-height: 400px;")
