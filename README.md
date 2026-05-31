@@ -219,6 +219,13 @@ CI runs on every push and pull request to `main`. The workflow (`.github/workflo
 dependencies with `uv`, runs both `ruff format --check .` and `ruff check .` as **blocking gates**, and executes
 the full test suite with `CI=true`.
 
+## Governance
+
+This component conforms to the [AIP Governance Contract](AIP_GOVERNANCE.md)
+(invariants AIP-G-01 through AIP-G-11). Conformance is checked by
+`tests/test_governance_conformance.py`. See the contract's conformance
+matrix for this component's current status, including any open findings.
+
 ## Documentation
 
 - [`DOGFOOD_READY.md`](DOGFOOD_READY.md) — First-run dogfood guide (start here!)
