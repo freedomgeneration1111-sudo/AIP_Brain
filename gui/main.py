@@ -1,4 +1,4 @@
-"""AIP_Brain NiceGUI Frontend — Phase 3 Auto-Save Ingestion.
+"""AIP_Brain NiceGUI Frontend — Phase 4 Knowledge Exploration.
 
 This module implements the NiceGUI frontend that communicates EXCLUSIVELY
 through the AIP FastAPI backend's REST and WebSocket endpoints. It does NOT:
@@ -14,10 +14,13 @@ All chat interactions flow through:
   4. PATCH /api/v1/sessions/{id} → toggle auto_save, update session flags
   5. POST /api/v1/ingest/conversation → manual ingestion trigger
 
-Phase 3 enhancements:
-  - Auto-save checkbox now wired to backend via PATCH /sessions/{id}
-  - Ingestion status indicator shows indexing progress
-  - Chat responses include auto_save status
+Phase 4 enhancements:
+  - Vector search panel: search across indexed content
+  - ECS graph panel: visualize artifact lifecycle states
+  - Wiki browser: browse and search compiled knowledge
+  - Sources browser: overview of all indexed content
+  - Mode toggle now functional: augmented mode routes through retrieval
+  - Source citations displayed in chat responses
 
 This follows the API-First approach: the GUI is an Adapter-layer surface
 like CLI and MCP, communicating via HTTP/WebSocket rather than in-process.
@@ -178,9 +181,23 @@ async def send_prompt() -> None:
         latency = resp.get("latency_ms")
         tokens = resp.get("tokens_used", 0)
         auto_saved = resp.get("auto_save", False)
+        sources = resp.get("sources", [])
+        mode = resp.get("mode", "normal")
         add_message("assistant", content, model=model, latency_ms=latency)
         if tokens > 0:
             add_system_message(f"Tokens: {tokens}")
+        if sources:
+            # Display source citations for augmented mode
+            source_summary = f"Sources ({len(sources)}): "
+            source_parts = []
+            for s in sources[:5]:
+                title = s.get("title", s.get("source_id", "?"))
+                score = s.get("score", 0)
+                source_parts.append(f"{title} ({score:.2f})")
+            source_summary += ", ".join(source_parts)
+            if len(sources) > 5:
+                source_summary += f" +{len(sources) - 5} more"
+            add_system_message(source_summary)
         if auto_saved:
             add_system_message("Auto-save: indexing...")
             # Schedule a status refresh after a short delay
@@ -392,10 +409,10 @@ async def main_page():
         ui.button("Models & Roles", on_click=lambda: ui.navigate.to("/models"), color="secondary").props("flat")
         ui.space()
         with ui.row().classes("items-center gap-1"):
-            ui.button("Vector", icon="storage", on_click=lambda: ui.notify("Vector — Phase 2+")).props("flat text-color=white")
-            ui.button("Graph", icon="account_tree", on_click=lambda: ui.notify("Graph — Phase 2+")).props("flat text-color=white")
-            ui.button("Wiki", icon="menu_book", on_click=lambda: ui.notify("Wiki — Phase 2+")).props("flat text-color=white")
-            ui.button("Sources", icon="source", on_click=lambda: ui.notify("Sources — Phase 2+")).props("flat text-color=white")
+            ui.button("Vector", icon="storage", on_click=lambda: ui.navigate.to("/vector")).props("flat text-color=white")
+            ui.button("Graph", icon="account_tree", on_click=lambda: ui.navigate.to("/graph")).props("flat text-color=white")
+            ui.button("Wiki", icon="menu_book", on_click=lambda: ui.navigate.to("/wiki")).props("flat text-color=white")
+            ui.button("Sources", icon="source", on_click=lambda: ui.navigate.to("/sources")).props("flat text-color=white")
 
     # ---- RIGHT DRAWER — Role Assignments ----
     with ui.right_drawer(fixed=True).classes("q-pa-md bg-grey-1"):
@@ -570,6 +587,392 @@ async def model_catalog_page():
             ui.label(f"Note: {len(ci_slots)} slot(s) are in CI/fixture mode. Set model names in aip.config.toml or environment variables for live models.").classes(
                 "text-warning q-mt-md"
             )
+
+    ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Knowledge Exploration Pages
+# ---------------------------------------------------------------------------
+
+
+@ui.page("/vector")
+async def vector_search_page():
+    """Vector search panel — search across all indexed content."""
+    ui.page_title("Vector Search — AIP_Brain")
+    state = get_state()
+
+    ui.label("Vector Search").classes("text-h4 q-my-md")
+    ui.label("Search across all indexed content using lexical (FTS5) and vector (semantic) search.").classes(
+        "text-subtitle2 q-mb-md"
+    )
+
+    # Search input
+    with ui.row().classes("w-full items-center gap-2 q-mb-md"):
+        search_input = ui.input(placeholder="Search for content...").props("outlined dense").classes("flex-grow")
+        search_input.on("keydown.enter", lambda: asyncio.create_task(do_search()))
+        ui.button("Search", on_click=lambda: asyncio.create_task(do_search()), icon="search", color="primary")
+
+    # Results area
+    results_container = ui.column().classes("w-full")
+
+    async def do_search():
+        query = search_input.value.strip()
+        if not query:
+            ui.notify("Please enter a search query", color="warning")
+            return
+
+        results_container.clear()
+        with results_container:
+            ui.label("Searching...").classes("text-grey")
+
+        try:
+            # Use the retrieve endpoint (no model call, just source retrieval)
+            result = await state.api_client.ask_retrieve(question=query, max_sources=20)
+            sources = result.get("sources", [])
+
+            results_container.clear()
+            with results_container:
+                if not sources:
+                    ui.label("No results found.").classes("text-warning q-pa-md")
+                else:
+                    ui.label(f"Found {len(sources)} result(s)").classes("text-caption q-mb-sm")
+                    for i, s in enumerate(sources, 1):
+                        with ui.card().classes("w-full q-mb-sm"):
+                            with ui.card_section():
+                                title = s.get("title", s.get("source_id", "Unknown"))
+                                score = s.get("score", 0)
+                                source_type = s.get("source_type", "unknown")
+                                domain = s.get("domain", "")
+                                snippet = s.get("content_snippet", "")
+                                ui.label(f"#{i} — {title}").classes("text-weight-medium")
+                                with ui.row().classes("gap-2"):
+                                    ui.badge(source_type, color="blue").classes("text-xs")
+                                    ui.badge(f"Score: {score:.3f}", color="green").classes("text-xs")
+                                    if domain:
+                                        ui.badge(domain, color="orange").classes("text-xs")
+                                ui.label(snippet[:300] + ("..." if len(snippet) > 300 else "")).classes(
+                                    "text-caption q-mt-sm"
+                                )
+        except Exception as exc:
+            results_container.clear()
+            with results_container:
+                ui.label(f"Search failed: {exc}").classes("text-negative")
+
+    ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
+
+
+@ui.page("/graph")
+async def ecs_graph_page():
+    """ECS Graph panel — visualize artifact lifecycle states."""
+    ui.page_title("ECS Graph — AIP_Brain")
+    state = get_state()
+
+    ui.label("Artifact Lifecycle Graph").classes("text-h4 q-my-md")
+    ui.label("Visualize the ECS state machine and artifact distribution across states.").classes(
+        "text-subtitle2 q-mb-md"
+    )
+
+    graph_container = ui.column().classes("w-full")
+
+    try:
+        graph_data = await state.api_client.get_ecs_graph()
+        transitions = graph_data.get("transitions", {})
+        all_states = graph_data.get("all_states", [])
+        distribution = graph_data.get("distribution", {})
+
+        with graph_container:
+            # State machine visualization
+            ui.label("State Transitions").classes("text-h6 q-mb-sm")
+            with ui.card().classes("w-full q-mb-md"):
+                with ui.card_section():
+                    for from_state, to_states in transitions.items():
+                        count = distribution.get(from_state, 0)
+                        with ui.row().classes("items-center gap-2 q-mb-xs"):
+                            ui.badge(f"{from_state} ({count})", color="blue")
+                            ui.label("→").classes("text-weight-bold")
+                            if to_states:
+                                for to_state in to_states:
+                                    ui.badge(to_state, color="green" if to_state == "APPROVED" else "grey")
+                            else:
+                                ui.label("(terminal)").classes("text-italic text-grey")
+
+            # Artifact browser by state
+            ui.label("Artifacts by State").classes("text-h6 q-mb-sm")
+            with ui.row().classes("w-full gap-2 q-mb-md"):
+                for s in all_states:
+                    count = distribution.get(s, 0)
+                    color = "positive" if s == "APPROVED" else "warning" if s == "GENERATED" else "grey"
+                    ui.button(f"{s} ({count})", color=color, size="sm",
+                              on_click=lambda state_name=s: asyncio.create_task(show_artifacts(state_name)))
+
+            # Artifact list area
+            artifact_list_container = ui.column().classes("w-full")
+
+            async def show_artifacts(state_name: str):
+                artifact_list_container.clear()
+                with artifact_list_container:
+                    ui.label(f"Loading artifacts in {state_name}...").classes("text-grey")
+                try:
+                    result = await state.api_client.list_ecs_artifacts(state=state_name)
+                    artifact_ids = result.get("artifact_ids", [])
+                    count = result.get("count", 0)
+                    artifact_list_container.clear()
+                    with artifact_list_container:
+                        ui.label(f"{count} artifact(s) in {state_name}").classes("text-weight-medium q-mb-sm")
+                        for aid in artifact_ids[:50]:
+                            with ui.row().classes("items-center gap-2 q-mb-xs"):
+                                ui.label(aid).classes("text-caption font-mono")
+                                ui.button("Details", size="xs", color="blue",
+                                          on_click=lambda artifact_id=aid: asyncio.create_task(
+                                              show_artifact_details(artifact_id)))
+                except Exception as exc:
+                    artifact_list_container.clear()
+                    with artifact_list_container:
+                        ui.label(f"Failed to load: {exc}").classes("text-negative")
+
+            async def show_artifact_details(artifact_id: str):
+                try:
+                    detail = await state.api_client.get_ecs_artifact(artifact_id)
+                    current = detail.get("current_state", "Unknown")
+                    history = detail.get("history", [])
+                    ui.notify(f"{artifact_id}: {current} ({len(history)} transitions)")
+                except Exception as exc:
+                    ui.notify(f"Failed: {exc}", color="negative")
+
+    except Exception as exc:
+        with graph_container:
+            ui.label(f"Failed to load ECS graph: {exc}").classes("text-negative q-pa-md")
+            ui.label("Ensure the AIP backend is running and ECS store is configured.").classes("text-caption")
+
+    ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
+
+
+@ui.page("/wiki")
+async def wiki_browser_page():
+    """Wiki browser — browse and search compiled knowledge."""
+    ui.page_title("Wiki — AIP_Brain")
+    state = get_state()
+
+    ui.label("Knowledge Wiki").classes("text-h4 q-my-md")
+    ui.label("Browse and search compiled knowledge items with provenance tracking.").classes(
+        "text-subtitle2 q-mb-md"
+    )
+
+    # Search bar
+    with ui.row().classes("w-full items-center gap-2 q-mb-md"):
+        wiki_search = ui.input(placeholder="Search knowledge...").props("outlined dense").classes("flex-grow")
+        wiki_search.on("keydown.enter", lambda: asyncio.create_task(do_wiki_search()))
+        ui.button("Search", on_click=lambda: asyncio.create_task(do_wiki_search()), icon="search", color="primary")
+
+    # Filters
+    with ui.row().classes("gap-2 q-mb-md"):
+        domain_filter = ui.input(placeholder="Domain filter").props("outlined dense")
+        state_filter = ui.select(
+            ["", "SPECIFIED", "COMPILED", "REVIEWED", "APPROVED", "FAILED"],
+            value="",
+            with_input=True,
+        ).props("outlined dense")
+
+    # Content area
+    wiki_container = ui.column().classes("w-full")
+
+    async def do_wiki_search():
+        query = wiki_search.value.strip()
+        domain = domain_filter.value.strip() or None
+        if query:
+            # Search mode
+            wiki_container.clear()
+            with wiki_container:
+                ui.label("Searching...").classes("text-grey")
+            try:
+                result = await state.api_client.search_knowledge(q=query, domain=domain, limit=20)
+                results = result.get("results", [])
+                wiki_container.clear()
+                with wiki_container:
+                    ui.label(f"Search: {len(results)} result(s)").classes("text-caption q-mb-sm")
+                    for i, item in enumerate(results, 1):
+                        with ui.card().classes("w-full q-mb-sm"):
+                            with ui.card_section():
+                                kid = item.get("knowledge_id", "?")
+                                score = item.get("score", 0)
+                                source_type = item.get("source", "unknown")
+                                content = item.get("content", "")
+                                ui.label(f"#{i} — {kid}").classes("text-weight-medium")
+                                with ui.row().classes("gap-2"):
+                                    ui.badge(source_type, color="blue")
+                                    ui.badge(f"Score: {score:.3f}", color="green")
+                                ui.label(content[:300] + ("..." if len(content) > 300 else "")).classes(
+                                    "text-caption q-mt-sm"
+                                )
+            except Exception as exc:
+                wiki_container.clear()
+                with wiki_container:
+                    ui.label(f"Search failed: {exc}").classes("text-negative")
+        else:
+            # Browse mode
+            await load_wiki_items()
+
+    async def load_wiki_items():
+        domain = domain_filter.value.strip() or None
+        st = state_filter.value or None
+        wiki_container.clear()
+        with wiki_container:
+            ui.label("Loading...").classes("text-grey")
+        try:
+            result = await state.api_client.list_knowledge(domain=domain, state=st)
+            items = result.get("items", [])
+            wiki_container.clear()
+            with wiki_container:
+                ui.label(f"{len(items)} knowledge item(s)").classes("text-caption q-mb-sm")
+                for item in items[:50]:
+                    with ui.card().classes("w-full q-mb-sm"):
+                        with ui.card_section():
+                            kid = item.get("knowledge_id", "?")
+                            kstate = item.get("state", "UNKNOWN")
+                            kdomain = item.get("domain", "")
+                            content = item.get("content", "")
+                            ui.label(kid).classes("text-weight-medium")
+                            with ui.row().classes("gap-2"):
+                                state_colors = {
+                                    "APPROVED": "positive",
+                                    "REVIEWED": "warning",
+                                    "COMPILED": "info",
+                                    "SPECIFIED": "grey",
+                                    "FAILED": "negative",
+                                }
+                                ui.badge(kstate, color=state_colors.get(kstate, "grey"))
+                                if kdomain:
+                                    ui.badge(kdomain, color="orange")
+                            ui.label(content[:200] + ("..." if len(content) > 200 else "")).classes(
+                                "text-caption q-mt-sm"
+                            )
+                            # Provenance link
+                            source_ids = item.get("source_canonical_ids", [])
+                            if source_ids:
+                                ui.label(f"Provenance: {len(source_ids)} source(s)").classes("text-caption text-grey")
+        except Exception as exc:
+            wiki_container.clear()
+            with wiki_container:
+                ui.label(f"Failed to load: {exc}").classes("text-negative")
+
+    # Load initial items
+    await load_wiki_items()
+
+    ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
+
+
+@ui.page("/sources")
+async def sources_browser_page():
+    """Sources browser — overview of all indexed content."""
+    ui.page_title("Sources — AIP_Brain")
+    state = get_state()
+
+    ui.label("Sources Browser").classes("text-h4 q-my-md")
+    ui.label("Overview of all indexed content: conversations, artifacts, and compiled knowledge.").classes(
+        "text-subtitle2 q-mb-md"
+    )
+
+    sources_container = ui.column().classes("w-full")
+
+    # Load stats first
+    try:
+        stats = await state.api_client.get_sources_stats()
+
+        with sources_container:
+            # Stats cards
+            ui.label("Index Statistics").classes("text-h6 q-mb-sm")
+            with ui.row().classes("w-full gap-4 q-mb-md"):
+                # Vector store stats
+                vs = stats.get("vector_store", {})
+                with ui.card().classes("min-w-[200px]"):
+                    with ui.card_section():
+                        ui.label("Vector Store").classes("text-weight-medium")
+                        if vs.get("available"):
+                            ui.label(f"{vs.get('total_vectors', 0)} vectors").classes("text-h5 text-positive")
+                        else:
+                            ui.label("Not available").classes("text-caption text-warning")
+
+                # Entity store stats
+                es = stats.get("entity_store", {})
+                with ui.card().classes("min-w-[200px]"):
+                    with ui.card_section():
+                        ui.label("Entity Store").classes("text-weight-medium")
+                        if es.get("available"):
+                            ui.label(f"{es.get('total_entities', 0)} entities").classes("text-h5 text-positive")
+                        else:
+                            ui.label("Not available").classes("text-caption text-warning")
+
+                # Knowledge store stats
+                ks = stats.get("knowledge_store", {})
+                with ui.card().classes("min-w-[200px]"):
+                    with ui.card_section():
+                        ui.label("Knowledge Store").classes("text-weight-medium")
+                        if ks.get("available"):
+                            ui.label(f"{ks.get('total_items', 0)} items").classes("text-h5 text-positive")
+                        else:
+                            ui.label("Not available").classes("text-caption text-warning")
+
+                # Lexical store stats
+                ls = stats.get("lexical_store", {})
+                with ui.card().classes("min-w-[200px]"):
+                    with ui.card_section():
+                        ui.label("Lexical Store (FTS5)").classes("text-weight-medium")
+                        if ls.get("available"):
+                            ui.label("Available").classes("text-h5 text-positive")
+                        else:
+                            ui.label("Not available").classes("text-caption text-warning")
+
+    except Exception as exc:
+        with sources_container:
+            ui.label(f"Failed to load stats: {exc}").classes("text-negative q-pa-md")
+
+    # Source list with filters
+    with ui.row().classes("w-full items-center gap-2 q-mb-md"):
+        domain_input = ui.input(placeholder="Domain filter").props("outlined dense")
+        type_input = ui.select(
+            ["", "conversation_chunk", "artifact", "compiled_knowledge"],
+            value="",
+            with_input=True,
+        ).props("outlined dense")
+        ui.button("Refresh", on_click=lambda: asyncio.create_task(load_sources()), icon="refresh", color="primary")
+
+    source_list_container = ui.column().classes("w-full")
+
+    async def load_sources():
+        domain = domain_input.value.strip() or None
+        source_type = type_input.value or None
+        source_list_container.clear()
+        with source_list_container:
+            ui.label("Loading sources...").classes("text-grey")
+        try:
+            result = await state.api_client.list_sources(domain=domain, source_type=source_type)
+            sources = result.get("sources", [])
+            source_list_container.clear()
+            with source_list_container:
+                ui.label(f"{len(sources)} source(s)").classes("text-caption q-mb-sm")
+                for s in sources[:50]:
+                    with ui.card().classes("w-full q-mb-sm"):
+                        with ui.card_section():
+                            sid = s.get("source_id", "?")
+                            stype = s.get("source_type", "unknown")
+                            sdomain = s.get("domain", "")
+                            stitle = s.get("title", "")
+                            ui.label(f"{stitle or sid}").classes("text-weight-medium")
+                            with ui.row().classes("gap-2"):
+                                ui.badge(stype, color="blue")
+                                if sdomain:
+                                    ui.badge(sdomain, color="orange")
+                                meta = s.get("metadata", {})
+                                if meta.get("state"):
+                                    ui.badge(meta["state"], color="green")
+        except Exception as exc:
+            source_list_container.clear()
+            with source_list_container:
+                ui.label(f"Failed to load: {exc}").classes("text-negative")
+
+    # Load initial sources
+    await load_sources()
 
     ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
 

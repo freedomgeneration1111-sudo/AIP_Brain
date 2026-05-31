@@ -2,8 +2,15 @@
 
 WebSocket chat endpoint at /api/v1/chat/{session_id}
 
-Phase 3 Auto-Save Ingestion enhancements:
-- Auto-save hook triggers ingestion after each completed chat turn (when auto_save is enabled)
+Phase 4 Knowledge Exploration enhancements:
+- Augmented mode now routes through retrieval + context injection
+  before model dispatch, producing source-grounded answers
+- Sources are included in the response payload so the GUI can
+  display citations and provenance
+- Normal mode remains unchanged: direct model dispatch
+
+Phase 3 Auto-Save Ingestion enhancements (preserved):
+- Auto-save hook triggers ingestion after each completed chat turn
 - Ingestion is non-blocking: response is sent immediately, ingestion runs as a background task
 - Session auto_save flag controls whether ingestion fires (default: True)
 - Ingestion status (idle/ingesting/error) tracked in session metadata
@@ -11,7 +18,8 @@ Phase 3 Auto-Save Ingestion enhancements:
 - Trajectory regulation check after each turn (when SessionManager is available)
 - Graceful degradation when model_provider, review_queue_store, or ingestion stores are unavailable
 
-Message flow: message → ModelSlotResolver.call() → response → [auto-save ingestion]
+Message flow (normal): message → ModelSlotResolver.call() → response → [auto-save ingestion]
+Message flow (augmented): message → retrieve sources → assemble context → ModelSlotResolver.call() → response + sources → [auto-save ingestion]
 Also: context_reset (from L4), budget exhaustion, trajectory_warning.
 """
 
@@ -72,14 +80,99 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         # Build messages list for the model call
                         # Include system context from session if available
                         messages = []
-                        if session_meta and session_meta.get("role"):
-                            role_hint = session_meta.get("role", "")
-                            messages.append(
-                                {
+                        response_sources = []  # Sources for augmented mode
+
+                        if session_mode == "augmented" and _container.lexical_store is not None:
+                            # === AUGMENTED MODE: Retrieve sources + inject context ===
+                            try:
+                                from aip.orchestration.ask_pipeline import (
+                                    _search_sources,
+                                    _assemble_context,
+                                    _sanitize_fts_query,
+                                )
+
+                                # Resolve domain from session or project
+                                domain = (session_meta or {}).get("domain")
+
+                                # If project_id is set, try to resolve domain from project store
+                                project_id = (session_meta or {}).get("project_id")
+                                if project_id and _container.project_store is not None:
+                                    try:
+                                        projects = await _container.project_store.list_projects()
+                                        for p in projects:
+                                            if p.get("project_id") == project_id or p.get("name") == project_id:
+                                                domain = p.get("domain") or domain
+                                                break
+                                    except Exception:
+                                        pass
+
+                                # Retrieve relevant sources
+                                source_refs = await _search_sources(
+                                    query=content,
+                                    project_domain=domain,
+                                    source_filter="all",
+                                    lexical_store=_container.lexical_store,
+                                    vector_store=_container.vector_store,
+                                    embedding_provider=_container.embedding_provider,
+                                    max_sources=10,
+                                )
+
+                                if source_refs:
+                                    # Assemble context and build source-grounded system prompt
+                                    context = _assemble_context(source_refs, max_sources=10)
+                                    messages.append({
+                                        "role": "system",
+                                        "content": (
+                                            f"You are AIP, a source-grounded knowledge assistant. "
+                                            f"Answer the user's question based on the provided sources. "
+                                            f"Cite sources using [source: <source_id>] notation. "
+                                            f"If the sources do not contain enough information, say so explicitly.\n\n"
+                                            f"Sources:\n{context}"
+                                        ),
+                                    })
+                                    # Store sources for the response payload
+                                    response_sources = [
+                                        {
+                                            "source_id": s.source_id,
+                                            "source_type": s.source_type,
+                                            "title": s.title,
+                                            "score": s.score,
+                                            "content_snippet": s.content_snippet,
+                                            "domain": s.domain,
+                                        }
+                                        for s in source_refs
+                                    ]
+                                else:
+                                    # No sources found — still add a note in system prompt
+                                    messages.append({
+                                        "role": "system",
+                                        "content": (
+                                            "You are AIP, a knowledge assistant. "
+                                            "No relevant sources were found in the knowledge base for this query. "
+                                            "Answer based on your general knowledge but note that no source material was available."
+                                        ),
+                                    })
+                            except Exception as exc:
+                                # Retrieval failed — fall back to normal mode behavior
+                                import logging
+                                logging.getLogger(__name__).warning(
+                                    "Augmented retrieval failed, falling back to normal: %s", exc
+                                )
+                                if session_meta and session_meta.get("role"):
+                                    role_hint = session_meta.get("role", "")
+                                    messages.append({
+                                        "role": "system",
+                                        "content": f"You are acting in the {role_hint} role. Respond accordingly.",
+                                    })
+                        else:
+                            # === NORMAL MODE: Direct model dispatch ===
+                            if session_meta and session_meta.get("role"):
+                                role_hint = session_meta.get("role", "")
+                                messages.append({
                                     "role": "system",
                                     "content": f"You are acting in the {role_hint} role. Respond accordingly.",
-                                }
-                            )
+                                })
+
                         messages.append({"role": "user", "content": content})
 
                         result = await model_provider.call(effective_slot, messages)
@@ -116,6 +209,8 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                             "latency_ms": result.get("latency_ms", 0),
                             "cost_usd": result.get("cost_usd", 0.0),
                             "auto_save": auto_save_enabled and _container.artifact_store is not None and _container.lexical_store is not None,
+                            "sources": response_sources,  # Empty in normal mode, populated in augmented mode
+                            "mode": session_mode,  # Echo the mode so GUI knows how the response was generated
                         }
 
                         # Check if review is available for augmented mode sessions

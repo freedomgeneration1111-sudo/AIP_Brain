@@ -439,6 +439,173 @@ class AipApiClient:
         except Exception as exc:
             return {"type": "error", "content": f"Gate response failed: {exc}"}
 
+    # ------------------------------------------------------------------
+    # Ask Pipeline (Knowledge Augmented Queries)
+    # ------------------------------------------------------------------
+
+    async def ask(
+        self,
+        question: str,
+        project_name: str,
+        *,
+        source: str = "all",
+        max_sources: int = 10,
+        save_artifact: bool = False,
+        model_slot: str = "synthesis",
+    ) -> dict[str, Any]:
+        """Submit a source-grounded ask query via POST /api/v1/ask.
+
+        Returns AskResult dict with status, answer, sources, and metadata.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {
+            "question": question,
+            "project_name": project_name,
+            "source": source,
+            "max_sources": max_sources,
+            "save_artifact": save_artifact,
+            "model_slot": model_slot,
+        }
+        resp = await client.post(f"{self.base_url}/api/v1/ask", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def ask_retrieve(
+        self,
+        question: str,
+        *,
+        domain: str | None = None,
+        project_name: str | None = None,
+        source: str = "all",
+        max_sources: int = 20,
+    ) -> dict[str, Any]:
+        """Retrieve sources for a query without generating an answer.
+
+        Uses POST /api/v1/ask/retrieve. Returns matching sources from
+        LexicalStore + VectorStore without dispatching to a model.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {
+            "question": question,
+            "source": source,
+            "max_sources": max_sources,
+        }
+        if domain:
+            payload["domain"] = domain
+        if project_name:
+            payload["project_name"] = project_name
+        resp = await client.post(f"{self.base_url}/api/v1/ask/retrieve", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    # ------------------------------------------------------------------
+    # Memory Search (Vector + Lexical)
+    # ------------------------------------------------------------------
+
+    async def search_memory(self, q: str) -> dict[str, Any]:
+        """Hybrid search via GET /api/v1/memory/search.
+
+        Returns lexical + vector results for the query.
+        """
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/memory/search", params={"q": q})
+        resp.raise_for_status()
+        return resp.json()
+
+    # ------------------------------------------------------------------
+    # Knowledge Browser
+    # ------------------------------------------------------------------
+
+    async def list_knowledge(
+        self,
+        *,
+        domain: str | None = None,
+        state: str | None = None,
+    ) -> dict[str, Any]:
+        """List compiled knowledge items via GET /api/v1/knowledge."""
+        client = self._get_http_client()
+        params: dict[str, str] = {}
+        if domain:
+            params["domain"] = domain
+        if state:
+            params["state"] = state
+        resp = await client.get(f"{self.base_url}/api/v1/knowledge", params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_knowledge(self, knowledge_id: str) -> dict[str, Any]:
+        """Get a specific knowledge item via GET /api/v1/knowledge/{id}."""
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/knowledge/{knowledge_id}")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def search_knowledge(self, q: str, *, domain: str | None = None, limit: int = 10) -> dict[str, Any]:
+        """Search compiled knowledge via GET /api/v1/knowledge/search."""
+        client = self._get_http_client()
+        params: dict[str, Any] = {"q": q, "limit": limit}
+        if domain:
+            params["domain"] = domain
+        resp = await client.get(f"{self.base_url}/api/v1/knowledge/search", params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+    # ------------------------------------------------------------------
+    # ECS Graph
+    # ------------------------------------------------------------------
+
+    async def get_ecs_graph(self) -> dict[str, Any]:
+        """Get ECS state graph + artifact distribution via GET /api/v1/ecs/graph."""
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/ecs/graph")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_ecs_artifact(self, artifact_id: str) -> dict[str, Any]:
+        """Get ECS state + history for an artifact via GET /api/v1/ecs/artifacts/{id}."""
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/ecs/artifacts/{artifact_id}")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def list_ecs_artifacts(self, *, state: str | None = None) -> dict[str, Any]:
+        """List ECS artifacts via GET /api/v1/ecs/artifacts."""
+        client = self._get_http_client()
+        params: dict[str, str] = {}
+        if state:
+            params["state"] = state
+        resp = await client.get(f"{self.base_url}/api/v1/ecs/artifacts", params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+    # ------------------------------------------------------------------
+    # Sources Browser
+    # ------------------------------------------------------------------
+
+    async def list_sources(
+        self,
+        *,
+        domain: str | None = None,
+        source_type: str | None = None,
+    ) -> dict[str, Any]:
+        """List indexed sources via GET /api/v1/sources."""
+        client = self._get_http_client()
+        params: dict[str, str] = {}
+        if domain:
+            params["domain"] = domain
+        if source_type:
+            params["source_type"] = source_type
+        resp = await client.get(f"{self.base_url}/api/v1/sources", params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_sources_stats(self) -> dict[str, Any]:
+        """Get aggregate source statistics via GET /api/v1/sources/stats."""
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/sources/stats")
+        resp.raise_for_status()
+        return resp.json()
+
 
 # Module-level singleton for the GUI to use
 _api_client: AipApiClient | None = None
