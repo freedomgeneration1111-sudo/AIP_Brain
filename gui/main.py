@@ -1,4 +1,4 @@
-"""AIP_Brain NiceGUI Frontend — UI Stabilization Pass.
+"""AIP_Brain NiceGUI Frontend — UI Fix Pass.
 
 This module implements the NiceGUI frontend that communicates EXCLUSIVELY
 through the AIP FastAPI backend's REST and WebSocket endpoints. It does NOT:
@@ -14,12 +14,14 @@ All chat interactions flow through:
   4. PATCH /api/v1/sessions/{id} → toggle auto_save, update session flags
   5. POST /api/v1/ingest/conversation → manual ingestion trigger
 
-UI Stabilization Pass changes:
-  - Chat Model dropdown in header with amber accent border (distinct from sidebar)
-  - Compact right sidebar with color-coded actor role rows
-  - Visual clarity: header = chat model, sidebar = role model assignments
-  - Model Catalog page with nav header and Chat vs Role explanation cards
-  - Tighter spacing, reduced whitespace throughout
+UI Fix Pass changes:
+  - Fix TypeError: ui.button() does not accept size= kwarg → use .props("size=xs")
+  - Chat Model dropdown in header with prominent amber border
+  - Filter Chat Model dropdown to only show enabled slots
+  - Model Catalog page with enable/disable toggle per slot
+  - Compact right sidebar (220px, reduced padding, xs icons/fonts)
+  - "USING INGESTED DATA" badge when in augmented mode
+  - Visual clarity: amber border = chat model, sidebar = role models
 
 Preserved from earlier phases:
   - Budget monitoring in footer and sidebar
@@ -86,6 +88,20 @@ class GuiState:
 
 # Per-page state — initialized in the page function
 _state: GuiState | None = None
+
+# Track which model slots are enabled for the Chat Model dropdown.
+# Keys = slot_name, Values = bool.  Defaults to True (all enabled).
+_enabled_slots: dict[str, bool] = {}
+
+
+def is_slot_enabled(slot_name: str) -> bool:
+    """Check if a model slot is enabled. Defaults to True."""
+    return _enabled_slots.get(slot_name, True)
+
+
+def set_slot_enabled(slot_name: str, enabled: bool) -> None:
+    """Enable or disable a model slot."""
+    _enabled_slots[slot_name] = enabled
 
 
 def get_state() -> GuiState:
@@ -437,11 +453,23 @@ async def main_page():
         model_name = s.get("model", f"<{s['slot_name']}>")
         slot_label_map[f"{s['slot_name']} — {model_name}"] = s["slot_name"]
     slot_label_options = list(slot_label_map.keys()) if slot_label_map else slot_names
-    # Find the current label for the active slot
+
+    # Filter to only enabled slots for the Chat Model dropdown
+    enabled_slot_labels = [k for k in slot_label_options if is_slot_enabled(slot_label_map.get(k, k))]
+    if not enabled_slot_labels:
+        enabled_slot_labels = slot_label_options  # fallback: show all if none enabled
+
+    # Find the current label for the active slot (prefer enabled)
     current_slot_label = next(
-        (k for k, v in slot_label_map.items() if v == state.current_model_slot),
-        state.current_model_slot,
+        (k for k, v in slot_label_map.items() if v == state.current_model_slot and is_slot_enabled(v)),
+        None,
     )
+    if current_slot_label is None and enabled_slot_labels:
+        # Current slot is disabled — pick the first enabled one
+        current_slot_label = enabled_slot_labels[0]
+        state.current_model_slot = slot_label_map.get(current_slot_label, current_slot_label)
+    elif current_slot_label is None:
+        current_slot_label = state.current_model_slot
 
     # ---- HEADER ----
     with ui.header(elevated=True).classes("bg-primary text-white items-center q-pa-xs"):
@@ -451,20 +479,23 @@ async def main_page():
         )
         ui.button("Augmented", on_click=lambda: set_mode("augmented")).props(
             "flat text-color=yellow-3 dense outline"
-        )
+        ).classes("q-mr-xs")
         mode_label = ui.label("Chat").classes("q-ml-xs text-caption text-white")
+        # Augmented mode indicator — shows when knowledge-augmented is active
+        augmented_badge = ui.badge("USING INGESTED DATA", color="amber").classes(
+            "text-[9px] q-ml-xs"
+        ).bind_visibility_from(state, "current_mode", backward=lambda m: m == "augmented")
         ui.space()
         # --- Chat Model selector: visually distinct from sidebar role selectors ---
-        # Wrapped in a bordered container with amber accent to signal
-        # "this is YOUR chat model" vs sidebar "role model assignments"
+        # Amber-bordered container signals "this is YOUR chat model"
         with ui.row().classes(
             "items-center q-pa-xs rounded-borders"
-        ).style("background: rgba(255,255,255,0.12); border: 1px solid rgba(255,193,7,0.6);"):
+        ).style("background: rgba(255,255,255,0.15); border: 2px solid #FFC107; border-radius: 6px;"):
             ui.icon("chat", size="xs").classes("text-amber q-mr-xs")
             ui.label("Chat Model").classes("text-caption text-amber text-weight-bold q-mr-xs")
             model_select_label = ui.label("").classes("hidden")  # kept for compat
             slot_select = ui.select(
-                slot_label_options,
+                enabled_slot_labels,
                 value=current_slot_label,
                 on_change=lambda e: on_slot_changed(slot_label_map.get(e.value, e.value)),
             ).classes("min-w-[180px] text-black").props("dense")
@@ -494,16 +525,12 @@ async def main_page():
             )
 
     # ---- RIGHT DRAWER — Actor Roles & Status (compact) ----
-    with ui.right_drawer(fixed=True).classes("q-pa-xs bg-grey-2").style("width: 260px;"):
-        # Compact heading with role explanation
+    with ui.right_drawer(fixed=True).classes("q-pa-xs bg-grey-2").style("width: 220px;"):
+        # Compact heading
         with ui.row().classes("w-full items-center no-wrap"):
             ui.label("Actor Roles").classes("text-subtitle2 text-weight-bold")
             ui.space()
-            ui.badge("Role Models", color="blue-8").classes("text-[10px]")
-        ui.label(
-            "These assign model slots to background actors. "
-            "Not the same as the Chat Model in the header."
-        ).classes("text-[10px] text-grey-7 q-mb-xs")
+            ui.badge("Role Models", color="blue-8").classes("text-[9px]")
 
         if state.backend_reachable:
             try:
@@ -523,16 +550,16 @@ async def main_page():
 
         # --- Beast: status + role model selector in one grouped row ---
         with ui.row().classes(
-            "w-full items-center no-wrap q-pa-xs rounded-borders"
+            "w-full items-center no-wrap q-px-xs q-py-none rounded-borders"
         ).style("background: rgba(121,85,72,0.08); border-left: 3px solid brown;"):
             beast_actor = actors.get("beast", {})
             beast_init = beast_actor.get("initialized", False)
             ui.icon(
                 "check_circle" if beast_init else "cancel",
                 color="positive" if beast_init else "negative",
-                size="sm",
+                size="xs",
             )
-            ui.label("Beast").classes("text-caption text-weight-bold q-mr-xs")
+            ui.label("Beast").classes("text-[11px] text-weight-bold q-mr-xs")
             beast_default_opt = next(
                 (o for o, sn in sidebar_slot_value_map.items() if sn == "synthesis"),
                 "synthesis",
@@ -540,20 +567,20 @@ async def main_page():
             beast_select = ui.select(
                 sidebar_slot_options, value=beast_default_opt,
                 on_change=lambda e: None,
-            ).props("dense").classes("flex-grow text-caption")
+            ).props("dense").classes("flex-grow text-[11px]")
 
         # --- Vigil ---
         with ui.row().classes(
-            "w-full items-center no-wrap q-pa-xs q-mt-xs rounded-borders"
+            "w-full items-center no-wrap q-px-xs q-py-none q-mt-xs rounded-borders"
         ).style("background: rgba(63,81,181,0.08); border-left: 3px solid indigo;"):
             vigil_actor = actors.get("vigil", {})
             vigil_init = vigil_actor.get("initialized", False)
             ui.icon(
                 "check_circle" if vigil_init else "cancel",
                 color="positive" if vigil_init else "negative",
-                size="sm",
+                size="xs",
             )
-            ui.label("Vigil").classes("text-caption text-weight-bold q-mr-xs")
+            ui.label("Vigil").classes("text-[11px] text-weight-bold q-mr-xs")
             vigil_default_opt = next(
                 (o for o, sn in sidebar_slot_value_map.items() if sn == "evaluation"),
                 "evaluation",
@@ -561,20 +588,20 @@ async def main_page():
             vigil_select = ui.select(
                 sidebar_slot_options, value=vigil_default_opt,
                 on_change=lambda e: None,
-            ).props("dense").classes("flex-grow text-caption")
+            ).props("dense").classes("flex-grow text-[11px]")
 
         # --- Embedding ---
         with ui.row().classes(
-            "w-full items-center no-wrap q-pa-xs q-mt-xs rounded-borders"
+            "w-full items-center no-wrap q-px-xs q-py-none q-mt-xs rounded-borders"
         ).style("background: rgba(0,150,136,0.08); border-left: 3px solid teal;"):
             embed_actor = actors.get("embedding", {})
             embed_init = embed_actor.get("initialized", False) if embed_actor else False
             ui.icon(
                 "check_circle" if embed_init else "cancel",
                 color="positive" if embed_init else "negative",
-                size="sm",
+                size="xs",
             )
-            ui.label("Embed").classes("text-caption text-weight-bold q-mr-xs")
+            ui.label("Embed").classes("text-[11px] text-weight-bold q-mr-xs")
             embed_default_opt = next(
                 (o for o, sn in sidebar_slot_value_map.items() if sn == "embedding"),
                 "embedding",
@@ -582,33 +609,33 @@ async def main_page():
             embed_select = ui.select(
                 sidebar_slot_options, value=embed_default_opt,
                 on_change=lambda e: None,
-            ).props("dense").classes("flex-grow text-caption")
+            ).props("dense").classes("flex-grow text-[11px]")
 
         # --- Sexton: status only (no model selector) ---
         with ui.row().classes(
-            "w-full items-center no-wrap q-pa-xs q-mt-xs rounded-borders"
+            "w-full items-center no-wrap q-px-xs q-py-none q-mt-xs rounded-borders"
         ).style("background: rgba(0,0,0,0.04); border-left: 3px solid grey;"):
             sexton_actor = actors.get("sexton", {})
             sexton_init = sexton_actor.get("initialized", False)
             ui.icon(
                 "check_circle" if sexton_init else "cancel",
                 color="positive" if sexton_init else "negative",
-                size="sm",
+                size="xs",
             )
-            ui.label("Sexton").classes("text-caption text-weight-bold q-mr-xs")
+            ui.label("Sexton").classes("text-[11px] text-weight-bold q-mr-xs")
             ui.label(
                 "Active" if sexton_init else "Off"
-            ).classes("text-caption text-grey-7")
+            ).classes("text-[11px] text-grey-7")
 
         # Separator + trigger buttons (compact)
         ui.separator().classes("q-my-xs")
         with ui.row().classes("w-full gap-1"):
-            ui.button("Run B", size="xs", color="brown",
-                      on_click=lambda: asyncio.create_task(trigger_actor("beast")))
-            ui.button("Run V", size="xs", color="indigo",
-                      on_click=lambda: asyncio.create_task(trigger_actor("vigil")))
-            ui.button("Run S", size="xs", color="teal",
-                      on_click=lambda: asyncio.create_task(trigger_actor("sexton")))
+            ui.button("Run B", color="brown",
+                      on_click=lambda: asyncio.create_task(trigger_actor("beast"))).props("size=xs dense")
+            ui.button("Run V", color="indigo",
+                      on_click=lambda: asyncio.create_task(trigger_actor("vigil"))).props("size=xs dense")
+            ui.button("Run S", color="teal",
+                      on_click=lambda: asyncio.create_task(trigger_actor("sexton"))).props("size=xs dense")
 
         # Slot details — collapsible, compact
         ui.separator().classes("q-my-xs")
@@ -652,7 +679,14 @@ async def main_page():
             ui.label("Start the backend with: uvicorn aip.adapter.api.app:create_app --factory --port 8000").classes("text-caption q-px-md")
     else:
         with chat_container:
-            ui.label(f"Connected to AIP Backend. {len(slots)} model slot(s) available.").classes("text-positive text-caption q-pa-sm")
+            enabled_count = sum(1 for s in slots if is_slot_enabled(s.get("slot_name", "")))
+            if enabled_count == 0 and len(slots) > 0:
+                ui.label(
+                    f"Connected to AIP Backend ({len(slots)} slots loaded) but all are disabled. "
+                    f"Go to Models page to enable slots."
+                ).classes("text-warning text-caption q-pa-sm")
+            else:
+                ui.label(f"Connected to AIP Backend. {enabled_count} model slot(s) available.").classes("text-positive text-caption q-pa-sm")
 
     # ---- INPUT AREA ----
     with ui.row().classes("w-full max-w-3xl mx-auto items-center q-pa-sm gap-2"):
@@ -676,7 +710,7 @@ async def main_page():
 
 @ui.page("/models")
 async def model_catalog_page():
-    """Model catalog page — shows available slots and role assignments."""
+    """Model catalog page — shows available slots and role assignments with enable/disable."""
     ui.page_title("Model Catalog — AIP_Brain")
     state = get_state()
 
@@ -693,9 +727,8 @@ async def model_catalog_page():
 
     with ui.column().classes("w-full max-w-4xl mx-auto q-pa-md"):
         ui.label(
-            "Model slots from the backend. Use the Chat Model dropdown in the "
-            "header to pick which model you chat with. Use the sidebar role "
-            "selectors to assign slots to background actors."
+            "Enable or disable model slots. Enabled slots appear in the Chat Model "
+            "dropdown on the main page. Disabled slots are hidden from the selector."
         ).classes("text-subtitle2 q-mb-md text-grey-8")
 
         # Load slots from backend
@@ -718,16 +751,17 @@ async def model_catalog_page():
             with ui.row().classes("w-full gap-4 q-mb-md"):
                 # Left column: Chat Model explanation
                 with ui.card().classes("flex-1").style(
-                    "border-left: 4px solid rgba(255,193,7,0.8);"
+                    "border-left: 4px solid #FFC107;"
                 ):
                     with ui.card_section():
+                        ui.icon("chat", size="sm").classes("text-amber")
                         ui.label("Chat Model (Header)").classes(
                             "text-subtitle2 text-weight-bold text-amber"
                         )
                         ui.label(
-                            "The model selected in the amber-bordered Chat Model "
-                            "dropdown in the page header. This is the model that "
-                            "responds to your messages in the chat area."
+                            "The amber-bordered dropdown in the page header. "
+                            "This is the model that responds to your messages. "
+                            "Only enabled slots appear here."
                         ).classes("text-caption q-mt-xs")
 
                 # Right column: Role Models explanation
@@ -735,17 +769,18 @@ async def model_catalog_page():
                     "border-left: 4px solid rgba(63,81,181,0.8);"
                 ):
                     with ui.card_section():
+                        ui.icon("settings", size="sm").classes("text-indigo")
                         ui.label("Role Models (Sidebar)").classes(
                             "text-subtitle2 text-weight-bold text-indigo"
                         )
                         ui.label(
-                            "The model slots assigned to background actors (Beast, "
+                            "Assigned to background actors (Beast, "
                             "Vigil, Embedding) via the right sidebar. These "
                             "determine which model each actor uses internally."
                         ).classes("text-caption q-mt-xs")
 
-            # ---- Slot cards (one per slot, shows model + role info) ----
-            ui.label("Available Model Slots").classes("text-h6 q-mb-sm")
+            # ---- Slot cards with enable/disable toggles ----
+            ui.label("Model Slots").classes("text-h6 q-mb-sm")
             role_map = {
                 "synthesis": "Beast (Chat/LLM)",
                 "evaluation": "Vigil (Evaluation)",
@@ -759,10 +794,19 @@ async def model_catalog_page():
                     provider = s.get("provider", "?")
                     is_ci = model_name.startswith("<")
                     default_role = role_map.get(s["slot_name"], "")
+                    slot_enabled = is_slot_enabled(s["slot_name"])
 
-                    with ui.card().classes("min-w-[220px] flex-1"):
+                    with ui.card().classes("min-w-[220px] flex-1").style(
+                        f"border-left: 4px solid {'#4CAF50' if slot_enabled else '#9E9E9E'};"
+                    ):
                         with ui.card_section():
-                            ui.label(s["slot_name"]).classes("text-weight-bold")
+                            with ui.row().classes("w-full items-center"):
+                                ui.label(s["slot_name"]).classes("text-weight-bold")
+                                ui.space()
+                                ui.switch(
+                                    value=slot_enabled,
+                                    on_change=lambda e, sn=s["slot_name"]: set_slot_enabled(sn, e.value),
+                                ).props("dense").classes("q-ma-none")
                             ui.label(model_name).classes(
                                 "text-caption text-warning"
                                 if is_ci
@@ -773,12 +817,17 @@ async def model_catalog_page():
                                 ui.label(
                                     f"URL: {s['base_url'][:40]}..."
                                 ).classes("text-caption text-grey-7")
-                            if default_role:
+                            with ui.row().classes("gap-1 q-mt-xs"):
+                                if default_role:
+                                    ui.badge(
+                                        default_role, color="blue"
+                                    ).classes("text-[10px]")
+                                if s.get("has_fallback"):
+                                    ui.badge("fallback", color="grey").classes("text-[10px]")
                                 ui.badge(
-                                    default_role, color="blue"
-                                ).classes("q-mt-xs")
-                            if s.get("has_fallback"):
-                                ui.badge("fallback", color="grey").classes("q-mt-xs")
+                                    "ENABLED" if slot_enabled else "DISABLED",
+                                    color="positive" if slot_enabled else "grey",
+                                ).classes("text-[10px]")
 
             # ---- Current Role Assignments table ----
             ui.separator().classes("q-my-md")
@@ -945,8 +994,8 @@ async def ecs_graph_page():
                 for s in all_states:
                     count = distribution.get(s, 0)
                     color = "positive" if s == "APPROVED" else "warning" if s == "GENERATED" else "grey"
-                    ui.button(f"{s} ({count})", color=color, size="sm",
-                              on_click=lambda state_name=s: asyncio.create_task(show_artifacts(state_name)))
+                    ui.button(f"{s} ({count})", color=color,
+                              on_click=lambda state_name=s: asyncio.create_task(show_artifacts(state_name))).props("size=sm dense")
 
             # Artifact list area
             artifact_list_container = ui.column().classes("w-full")
@@ -965,9 +1014,9 @@ async def ecs_graph_page():
                         for aid in artifact_ids[:50]:
                             with ui.row().classes("items-center gap-2 q-mb-xs"):
                                 ui.label(aid).classes("text-caption font-mono")
-                                ui.button("Details", size="xs", color="blue",
+                                ui.button("Details", color="blue",
                                           on_click=lambda artifact_id=aid: asyncio.create_task(
-                                              show_artifact_details(artifact_id)))
+                                              show_artifact_details(artifact_id))).props("size=xs dense")
                 except Exception as exc:
                     artifact_list_container.clear()
                     with artifact_list_container:
@@ -1272,19 +1321,17 @@ async def review_queue_page():
                                     ui.button(
                                         "Approve",
                                         color="positive",
-                                        size="sm",
                                         on_click=lambda aid=artifact_id: asyncio.create_task(
                                             handle_review_decision(aid, True)
                                         ),
-                                    )
+                                    ).props("size=sm dense")
                                     ui.button(
                                         "Reject",
                                         color="negative",
-                                        size="sm",
                                         on_click=lambda aid=artifact_id: asyncio.create_task(
                                             handle_review_decision(aid, False)
                                         ),
-                                    )
+                                    ).props("size=sm dense")
         except Exception as exc:
             review_container.clear()
             with review_container:
