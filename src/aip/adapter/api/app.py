@@ -30,8 +30,10 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,6 +50,83 @@ from aip.foundation.schemas import BeastCadenceConfig, SurfaceConfig
 from aip.logging import configure_logging, get_logger, new_correlation_id, set_correlation_id
 
 log = get_logger(__name__)
+
+
+# ------------------------------------------------------------------
+# TOML Config Loader
+# ------------------------------------------------------------------
+
+def _load_dotenv() -> None:
+    """Load .env file from the project root if python-dotenv is available.
+
+    This ensures AIP_OPENAI_API_KEY and other env vars are available
+    to ModelSlotResolver without manually exporting them. Safe to call
+    multiple times — dotenv won't overwrite existing env vars.
+    """
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    # Search for .env in CWD and project root
+    candidates = [
+        Path.cwd() / ".env",
+        Path(__file__).resolve().parent.parent.parent.parent / ".env",
+    ]
+    for env_path in candidates:
+        if env_path.is_file():
+            load_dotenv(env_path, override=False)
+            log.info("dotenv_loaded", path=str(env_path))
+            return
+
+
+def _load_toml_config() -> dict:
+    """Load the AIP config from the default TOML file.
+
+    Looks for config/aip.config.toml relative to the project root.
+    The search order is:
+      1. AIP_CONFIG_PATH environment variable (explicit override)
+      2. config/aip.config.toml relative to CWD
+      3. config/aip.config.toml relative to this file's parent (src/aip/adapter/api/ → ../../../../config/)
+    Returns an empty dict if no config file is found (not an error —
+    the app can run with defaults, just no model slots).
+
+    Also loads .env file if python-dotenv is available, so that
+    AIP_OPENAI_API_KEY and other env vars are available to the
+    ModelSlotResolver without manually exporting them.
+    """
+    # Load .env BEFORE reading any env vars (so AIP_OPENAI_API_KEY is available)
+    _load_dotenv()
+    config_path = os.environ.get("AIP_CONFIG_PATH", "")
+    candidates = []
+    if config_path:
+        candidates.append(Path(config_path))
+    else:
+        candidates.append(Path.cwd() / "config" / "aip.config.toml")
+        # Relative to this source file: src/aip/adapter/api/ → project root
+        project_root = Path(__file__).resolve().parent.parent.parent.parent
+        candidates.append(project_root / "config" / "aip.config.toml")
+
+    for path in candidates:
+        if path.is_file():
+            try:
+                import tomllib
+            except ImportError:
+                try:
+                    import tomli as tomllib  # type: ignore[no-redef]
+                except ImportError:
+                    log.warning("toml_config_unavailable", reason="neither tomllib nor tomli is installed")
+                    return {}
+            try:
+                with open(path, "rb") as f:
+                    cfg = tomllib.load(f)
+                log.info("config_loaded", path=str(path), sections=list(cfg.keys()))
+                return cfg
+            except Exception as exc:
+                log.warning("config_load_failed", path=str(path), error=str(exc))
+                return {}
+
+    log.info("config_not_found", searched=[str(p) for p in candidates])
+    return {}
 
 
 class StartupError(Exception):
@@ -645,6 +724,12 @@ async def lifespan(app: FastAPI):
 
 
 def create_app(config: dict | None = None) -> "FastAPI":
+    # If no config dict was passed, load from the TOML file.
+    # This is the normal path when uvicorn calls create_app() via --factory
+    # with no arguments. Without this, the entire config/aip.config.toml
+    # is ignored and all model slots are empty (ci_mode=True).
+    if config is None:
+        config = _load_toml_config()
     cfg = config or {}
 
     # Config validation runs BEFORE the app is created.

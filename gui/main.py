@@ -239,22 +239,53 @@ async def load_model_slots() -> list[dict[str, Any]]:
 
 
 async def send_prompt() -> None:
-    """Handle the send button click — sends message via WebSocket or direct OpenRouter."""
+    """Handle the send button click — sends message via WebSocket or direct OpenRouter.
+
+    CRITICAL: This function is called via asyncio.create_task(), which means
+    any unhandled exception is silently swallowed. We wrap the entire function
+    in a top-level try/except to ensure errors are ALWAYS visible to the user.
+    """
+    try:
+        await _send_prompt_inner()
+    except Exception as exc:
+        # Top-level catch — asyncio.create_task silently swallows exceptions,
+        # so we MUST catch everything here and show it to the user.
+        import traceback
+        traceback.print_exc()
+        try:
+            ui.notify(f"Send failed: {exc}", color="negative", timeout=8000)
+        except Exception:
+            pass  # If even the notification fails, nothing more we can do
+
+
+async def _send_prompt_inner() -> None:
+    """Inner implementation of send_prompt with full error propagation."""
     state = get_state()
     prompt = input_field.value.strip()
     if not prompt:
         return
 
-    # Determine which model to use for chat
-    chat_model = get_role_model("synthesis") or state.current_model_slot
+    # ---- Resolve chat model to a REAL model ID ----
+    # Priority: role assignment → first selected model → first dropdown option
+    # NEVER fall back to a slot name like "synthesis" — that's not a valid model ID.
+    chat_model = get_role_model("synthesis")
     if not chat_model or chat_model.startswith("("):
-        # No real model selected — use first available
-        models = get_selected_models()
-        if models:
-            chat_model = models[0]
+        # No model assigned to synthesis role — use first selected model
+        selected = get_selected_models()
+        if selected:
+            chat_model = selected[0]
         else:
-            ui.notify("No model selected. Go to Models page to select one.", color="warning")
-            return
+            # Try the first option from the model dropdown
+            try:
+                all_options = build_model_options(state.available_slots)
+                if all_options and not all_options[0].startswith("("):
+                    chat_model = all_options[0]
+            except Exception:
+                pass
+
+    if not chat_model or chat_model.startswith("("):
+        ui.notify("No model selected. Go to Models page to select one.", color="warning")
+        return
 
     add_message("user", prompt)
     input_field.value = ""
@@ -334,6 +365,7 @@ async def send_prompt() -> None:
         except Exception as exc:
             thinking_label.delete()
             # Backend failed — fall through to direct OpenRouter
+            state.backend_reachable = False
             add_system_message(f"Backend chat failed, trying direct OpenRouter: {exc}")
 
     # ---- Route 2: Backend unreachable → direct OpenRouter API call ----
@@ -361,6 +393,7 @@ async def send_prompt() -> None:
             add_system_message("(direct OpenRouter — backend not connected)")
     except Exception as exc:
         thinking_label.delete()
+        add_system_message(f"Direct OpenRouter call failed: {exc}")
         ui.notify(f"Chat failed: {exc}", color="negative")
 
 
@@ -534,7 +567,7 @@ def build_model_options(slots: list[dict[str, Any]]) -> list[str]:
         if s.get("model") and not s.get("model", "").startswith("<")
     ]
     # Also include the hardcoded default from config as fallback
-    config_defaults = ["deepseek/deepseek-chat-v3-0324:free"]
+    config_defaults = ["google/gemma-3-4b-it"]
     all_options = list(dict.fromkeys(selected + backend_models + config_defaults))
     # Remove empty strings
     all_options = [m for m in all_options if m]
@@ -911,7 +944,9 @@ async def model_catalog_page():
                     pricing = m.get("pricing", {})
                     prompt_cost = float(pricing.get("prompt", "1") or "1")
                     is_free = prompt_cost == 0
-                    return (0 if is_free else 1, prompt_cost)
+                    is_variable = prompt_cost < 0
+                    # Sort: free (0), paid by cost (1), variable/unknown (2)
+                    return (0 if is_free else 2 if is_variable else 1, abs(prompt_cost))
 
                 models.sort(key=sort_key)
 
@@ -941,7 +976,13 @@ async def model_catalog_page():
                     updated = m.get("updated", "") or ""
 
                     # Format cost display per million tokens
-                    if prompt_per_tok == 0:
+                    # OpenRouter returns per-token pricing as strings like "0.0000003"
+                    # We multiply by 1,000,000 to display per-million-token cost.
+                    # Some models have prompt: "-1" (variable/unknown pricing) — show "Varies"
+                    if prompt_per_tok < 0 or comp_per_tok < 0:
+                        cost_str = "Varies"
+                        comp_str = "Varies"
+                    elif prompt_per_tok == 0:
                         cost_str = "FREE"
                         comp_str = "FREE"
                     elif prompt_cost < 0.01:
@@ -983,10 +1024,17 @@ async def model_catalog_page():
                 # Set selected rows AFTER construction (not as constructor kwarg)
                 table.selected = [r for r in rows if r["model_id"] in selected_models_set]
 
-                # Style free models in green
+                # Style free/Varies models in the cost columns
                 table.add_slot('body-cell-prompt_cost', '''
                     <q-td :props="props">
-                        <span :class="props.value === 'FREE' ? 'text-positive text-weight-bold' : ''">
+                        <span :class="props.value === 'FREE' ? 'text-positive text-weight-bold' : props.value === 'Varies' ? 'text-grey-7' : ''">
+                            {{ props.value }}
+                        </span>
+                    </q-td>
+                ''')
+                table.add_slot('body-cell-completion_cost', '''
+                    <q-td :props="props">
+                        <span :class="props.value === 'FREE' ? 'text-positive text-weight-bold' : props.value === 'Varies' ? 'text-grey-7' : ''">
                             {{ props.value }}
                         </span>
                     </q-td>
