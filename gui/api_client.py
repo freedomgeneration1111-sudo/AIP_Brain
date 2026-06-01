@@ -639,6 +639,73 @@ class AipApiClient:
     # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
+    # Direct OpenRouter Chat (fallback when backend is unreachable)
+    # ------------------------------------------------------------------
+
+    async def chat_direct_openrouter(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        api_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Send a chat completion directly to OpenRouter API.
+
+        This is used as a fallback when the AIP backend is not running.
+        The GUI still prefers the backend (which handles sessions, auto-save,
+        actors, etc.) but can fall back to direct OpenRouter calls for basic chat.
+
+        Returns a dict with: content, model, tokens_used, latency_ms.
+        """
+        key = api_key or self.get_openrouter_api_key()
+        if not key:
+            return {"error": True, "content": "No OpenRouter API key set. Go to Models page to enter one."}
+
+        client = self._get_http_client()
+        headers = {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "http://localhost:8080",
+            "X-Title": "AIP_Brain",
+        }
+        payload = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": 4096,
+        }
+
+        import time
+        start = time.monotonic()
+        try:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=60.0,
+            )
+            latency_ms = int((time.monotonic() - start) * 1000)
+
+            if resp.status_code != 200:
+                error_detail = resp.text[:500]
+                return {"error": True, "content": f"OpenRouter API error ({resp.status_code}): {error_detail}"}
+
+            data = resp.json()
+            choice = data.get("choices", [{}])[0]
+            content = choice.get("message", {}).get("content", "")
+            usage = data.get("usage", {})
+            model_used = data.get("model", model)
+            tokens_used = usage.get("total_tokens", 0)
+
+            return {
+                "error": False,
+                "content": content,
+                "model": model_used,
+                "tokens_used": tokens_used,
+                "latency_ms": latency_ms,
+            }
+        except Exception as exc:
+            return {"error": True, "content": f"OpenRouter request failed: {exc}"}
+
+    # ------------------------------------------------------------------
     # OpenRouter Model Catalog
     # ------------------------------------------------------------------
 

@@ -239,90 +239,129 @@ async def load_model_slots() -> list[dict[str, Any]]:
 
 
 async def send_prompt() -> None:
-    """Handle the send button click — sends message via WebSocket."""
+    """Handle the send button click — sends message via WebSocket or direct OpenRouter."""
     state = get_state()
     prompt = input_field.value.strip()
     if not prompt:
         return
 
-    if not state.backend_reachable:
-        ui.notify("Backend is not reachable. Please check that the AIP FastAPI server is running.", color="negative")
-        return
-
-    try:
-        session_id = await state.ensure_session()
-    except Exception as exc:
-        ui.notify(f"Failed to create session: {exc}", color="negative")
-        return
+    # Determine which model to use for chat
+    chat_model = get_role_model("synthesis") or state.current_model_slot
+    if not chat_model or chat_model.startswith("("):
+        # No real model selected — use first available
+        models = get_selected_models()
+        if models:
+            chat_model = models[0]
+        else:
+            ui.notify("No model selected. Go to Models page to select one.", color="warning")
+            return
 
     add_message("user", prompt)
     input_field.value = ""
 
     thinking_label = ui.label("Thinking...").classes("text-grey")
 
-    def on_response(resp: dict[str, Any]) -> None:
-        thinking_label.delete()
-        content = resp.get("content", "")
-        model = resp.get("model", resp.get("model_slot", ""))
-        latency = resp.get("latency_ms")
-        tokens = resp.get("tokens_used", 0)
-        auto_saved = resp.get("auto_save", False)
-        sources = resp.get("sources", [])
-        add_message("assistant", content, model=model, latency_ms=latency)
-        if tokens > 0:
-            add_system_message(f"Tokens: {tokens}")
-        if sources:
-            source_summary = f"Sources ({len(sources)}): "
-            source_parts = []
-            for s in sources[:5]:
-                title = s.get("title", s.get("source_id", "?"))
-                score = s.get("score", 0)
-                source_parts.append(f"{title} ({score:.2f})")
-            source_summary += ", ".join(source_parts)
-            if len(sources) > 5:
-                source_summary += f" +{len(sources) - 5} more"
-            add_system_message(source_summary)
-        if auto_saved:
-            add_system_message("Auto-save: indexing...")
-            asyncio.create_task(refresh_ingestion_status())
+    # ---- Route 1: Backend reachable → use WebSocket chat ----
+    if state.backend_reachable:
+        try:
+            session_id = await state.ensure_session()
+        except Exception as exc:
+            # Backend failed mid-flight — fall through to direct route
+            state.backend_reachable = False
 
-    def on_error(err: dict[str, Any]) -> None:
-        thinking_label.delete()
-        content = err.get("content", "Unknown error")
-        add_system_message(f"Error: {content}")
-        ui.notify(content, color="negative")
+    if state.backend_reachable:
+        def on_response(resp: dict[str, Any]) -> None:
+            thinking_label.delete()
+            content = resp.get("content", "")
+            model = resp.get("model", resp.get("model_slot", ""))
+            latency = resp.get("latency_ms")
+            tokens = resp.get("tokens_used", 0)
+            auto_saved = resp.get("auto_save", False)
+            sources = resp.get("sources", [])
+            add_message("assistant", content, model=model, latency_ms=latency)
+            if tokens > 0:
+                add_system_message(f"Tokens: {tokens}")
+            if sources:
+                source_summary = f"Sources ({len(sources)}): "
+                source_parts = []
+                for s in sources[:5]:
+                    title = s.get("title", s.get("source_id", "?"))
+                    score = s.get("score", 0)
+                    source_parts.append(f"{title} ({score:.2f})")
+                source_summary += ", ".join(source_parts)
+                if len(sources) > 5:
+                    source_summary += f" +{len(sources) - 5} more"
+                add_system_message(source_summary)
+            if auto_saved:
+                add_system_message("Auto-save: indexing...")
+                asyncio.create_task(refresh_ingestion_status())
 
-    def on_gate(gate: dict[str, Any]) -> None:
-        thinking_label.delete()
-        state.pending_gate = gate
-        gate_type = gate.get("gate_type", "unknown")
-        preview = gate.get("preview", "")
-        add_system_message(f"DEFINER Gate ({gate_type}): {preview}")
-        with chat_container:
-            with ui.row().classes("w-full justify-center gap-2"):
-                ui.button(
-                    "Approve",
-                    color="positive",
-                    on_click=lambda: asyncio.create_task(handle_gate_response(True)),
-                )
-                ui.button(
-                    "Reject",
-                    color="negative",
-                    on_click=lambda: asyncio.create_task(handle_gate_response(False)),
-                )
+        def on_error(err: dict[str, Any]) -> None:
+            thinking_label.delete()
+            content = err.get("content", "Unknown error")
+            add_system_message(f"Error: {content}")
+            ui.notify(content, color="negative")
 
+        def on_gate(gate: dict[str, Any]) -> None:
+            thinking_label.delete()
+            state.pending_gate = gate
+            gate_type = gate.get("gate_type", "unknown")
+            preview = gate.get("preview", "")
+            add_system_message(f"DEFINER Gate ({gate_type}): {preview}")
+            with chat_container:
+                with ui.row().classes("w-full justify-center gap-2"):
+                    ui.button(
+                        "Approve",
+                        color="positive",
+                        on_click=lambda: asyncio.create_task(handle_gate_response(True)),
+                    )
+                    ui.button(
+                        "Reject",
+                        color="negative",
+                        on_click=lambda: asyncio.create_task(handle_gate_response(False)),
+                    )
+
+        try:
+            await state.api_client.chat_via_websocket(
+                session_id=session_id,
+                message=prompt,
+                on_response=on_response,
+                on_error=on_error,
+                on_gate=on_gate,
+                model_slot=state.current_model_slot,
+            )
+            return
+        except Exception as exc:
+            thinking_label.delete()
+            # Backend failed — fall through to direct OpenRouter
+            add_system_message(f"Backend chat failed, trying direct OpenRouter: {exc}")
+
+    # ---- Route 2: Backend unreachable → direct OpenRouter API call ----
     try:
-        await state.api_client.chat_via_websocket(
-            session_id=session_id,
-            message=prompt,
-            on_response=on_response,
-            on_error=on_error,
-            on_gate=on_gate,
-            model_slot=state.current_model_slot,
+        result = await state.api_client.chat_direct_openrouter(
+            model=chat_model,
+            messages=[{"role": "user", "content": prompt}],
+            api_key=state.api_client.get_openrouter_api_key(),
         )
+        thinking_label.delete()
+
+        if result.get("error"):
+            add_system_message(f"Error: {result.get('content', 'Unknown error')}")
+            ui.notify(result.get("content", "Chat failed"), color="negative")
+        else:
+            add_message(
+                "assistant",
+                result.get("content", ""),
+                model=result.get("model", chat_model),
+                latency_ms=result.get("latency_ms"),
+            )
+            tokens = result.get("tokens_used", 0)
+            if tokens > 0:
+                add_system_message(f"Tokens: {tokens}")
+            add_system_message("(direct OpenRouter — backend not connected)")
     except Exception as exc:
         thinking_label.delete()
-        ui.notify(f"Communication error: {exc}", color="negative")
+        ui.notify(f"Chat failed: {exc}", color="negative")
 
 
 async def handle_gate_response(approved: bool) -> None:
@@ -614,15 +653,15 @@ async def main_page():
         else:
             actors = {}
 
-        # Each actor gets its own model dropdown from the universal model list
+        # AI actor roles get model dropdowns; Sexton is admin-only (no model)
         actor_defs = [
-            ("synthesis", "Beast", "brown", "rgba(121,85,72,0.08)", "beast"),
-            ("evaluation", "Vigil", "indigo", "rgba(63,81,181,0.08)", "vigil"),
-            ("embedding", "Embed", "teal", "rgba(0,150,136,0.08)", "embedding"),
-            ("sexton", "Sexton", "grey", "rgba(0,0,0,0.04)", "sexton"),
+            ("synthesis", "Beast", "brown", "rgba(121,85,72,0.08)", "beast", True),
+            ("evaluation", "Vigil", "indigo", "rgba(63,81,181,0.08)", "vigil", True),
+            ("embedding", "Embed", "teal", "rgba(0,150,136,0.08)", "embedding", True),
+            ("sexton", "Sexton", "grey", "rgba(0,0,0,0.04)", "sexton", False),
         ]
 
-        for slot_name, label, border_color, bg_color, actor_key in actor_defs:
+        for slot_name, label, border_color, bg_color, actor_key, needs_model in actor_defs:
             with ui.row().classes(
                 "w-full items-center no-wrap q-px-xs q-py-none q-mt-xs rounded-borders"
             ).style(f"background: {bg_color}; border-left: 3px solid {border_color};"):
@@ -634,17 +673,21 @@ async def main_page():
                     size="xs",
                 )
                 ui.label(label).classes("text-[11px] text-weight-bold q-mr-xs")
-                # Model dropdown for this role
-                current_role_model = get_role_model(slot_name)
-                role_default = slot_models.get(slot_name, "")
-                role_value = current_role_model or role_default or (all_model_options[0] if all_model_options else "")
-                if role_value not in all_model_options:
-                    role_value = all_model_options[0] if all_model_options else ""
-                ui.select(
-                    all_model_options,
-                    value=role_value,
-                    on_change=lambda e, sn=slot_name: on_role_model_changed(sn, e.value),
-                ).props("dense").classes("flex-grow text-[11px]")
+                if needs_model:
+                    # Model dropdown for AI roles only
+                    current_role_model = get_role_model(slot_name)
+                    role_default = slot_models.get(slot_name, "")
+                    role_value = current_role_model or role_default or (all_model_options[0] if all_model_options else "")
+                    if role_value not in all_model_options:
+                        role_value = all_model_options[0] if all_model_options else ""
+                    ui.select(
+                        all_model_options,
+                        value=role_value,
+                        on_change=lambda e, sn=slot_name: on_role_model_changed(sn, e.value),
+                    ).props("dense").classes("flex-grow text-[11px]")
+                else:
+                    # Non-AI role (e.g. Sexton) — show status label instead of dropdown
+                    ui.label("(admin)").classes("text-[10px] text-grey-6")
 
         # Trigger buttons (compact)
         ui.separator().classes("q-my-xs")
@@ -672,10 +715,10 @@ async def main_page():
 
     if not state.backend_reachable:
         with chat_container:
-            ui.label("AIP Backend is not reachable. Please ensure the FastAPI server is running at " + state.api_client.base_url).classes(
-                "text-negative text-weight-medium q-pa-md"
+            ui.label("AIP Backend not reachable — chat will use direct OpenRouter API (no auto-save, no actors).").classes(
+                "text-warning text-weight-medium q-pa-md"
             )
-            ui.label("Start the backend with: uvicorn aip.adapter.api.app:create_app --factory --port 8000").classes("text-caption q-px-md")
+            ui.label("For full features (auto-save, actors, augmented mode), start the backend: uvicorn aip.adapter.api.app:create_app --factory --port 8000").classes("text-caption q-px-md")
     else:
         with chat_container:
             api_key_status = "API key: Set" if state.api_client.has_openrouter_api_key() else "API key: MISSING"
@@ -878,7 +921,7 @@ async def model_catalog_page():
                 columns = [
                     {"name": "model_id", "label": "Model ID", "field": "model_id", "align": "left", "sortable": True},
                     {"name": "prompt_cost", "label": "Prompt $/1M tok", "field": "prompt_cost", "align": "right", "sortable": True},
-                    {"name": "completion_cost", "label": "Completion $/1M tok", "field": "completion_cost", "align": "right", "sortable": True},
+                    {"name": "completion_cost", "label": "Comp $/1M tok", "field": "completion_cost", "align": "right", "sortable": True},
                     {"name": "context", "label": "Context", "field": "context", "align": "right", "sortable": True},
                     {"name": "updated", "label": "Updated", "field": "updated", "align": "left", "sortable": True},
                 ]
@@ -887,19 +930,29 @@ async def model_catalog_page():
                 rows = []
                 for m in models:
                     pricing = m.get("pricing", {})
-                    prompt_cost = float(pricing.get("prompt", "0") or "0")
-                    comp_cost = float(pricing.get("completion", "0") or "0")
+                    # OpenRouter returns per-token pricing (e.g., "0.0000003")
+                    # Multiply by 1,000,000 to get per-million-token cost
+                    prompt_per_tok = float(pricing.get("prompt", "0") or "0")
+                    comp_per_tok = float(pricing.get("completion", "0") or "0")
+                    prompt_cost = prompt_per_tok * 1_000_000
+                    comp_cost = comp_per_tok * 1_000_000
                     context = m.get("context_length", 0) or 0
                     mid = m.get("id", "")
                     updated = m.get("updated", "") or ""
 
-                    # Format cost display
-                    if prompt_cost == 0:
+                    # Format cost display per million tokens
+                    if prompt_per_tok == 0:
                         cost_str = "FREE"
                         comp_str = "FREE"
-                    else:
+                    elif prompt_cost < 0.01:
                         cost_str = f"${prompt_cost:.4f}"
                         comp_str = f"${comp_cost:.4f}"
+                    elif prompt_cost < 1:
+                        cost_str = f"${prompt_cost:.3f}"
+                        comp_str = f"${comp_cost:.3f}"
+                    else:
+                        cost_str = f"${prompt_cost:.2f}"
+                        comp_str = f"${comp_cost:.2f}"
 
                     rows.append({
                         "model_id": mid,
