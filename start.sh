@@ -33,16 +33,22 @@ fi
 
 start_backend() {
     echo "Starting AIP Backend on port 8000..."
-    python -m uvicorn aip.adapter.api.app:create_app --factory --host 127.0.0.1 --port 8000 &
+    PYTHONPATH=src python -m uvicorn aip.adapter.api.app:create_app --factory --host 0.0.0.0 --port 8000 &
     BACKEND_PID=$!
     echo "Backend PID: $BACKEND_PID"
     # Give backend time to start
-    sleep 2
+    sleep 3
+    # Verify it's running
+    if curl -sf http://127.0.0.1:8000/api/v1/models/slots > /dev/null 2>&1; then
+        echo "Backend is running and responding."
+    else
+        echo "WARNING: Backend may not be fully started yet."
+    fi
 }
 
 start_frontend() {
     echo "Starting AIP Frontend (NiceGUI) on port 8080..."
-    python -m gui.main &
+    PYTHONPATH=src python -m gui.main &
     FRONTEND_PID=$!
     echo "Frontend PID: $FRONTEND_PID"
 }
@@ -71,8 +77,8 @@ case "${1:-all}" in
         start_frontend
         echo ""
         echo "✅ AIP_Brain is running!"
-        echo "   Backend:  http://127.0.0.1:8000"
-        echo "   Frontend: http://127.0.0.1:8080"
+        echo "   Backend:  http://0.0.0.0:8000"
+        echo "   Frontend: http://0.0.0.0:8080"
         echo ""
         echo "Press Ctrl+C to stop."
         # Wait for either process
