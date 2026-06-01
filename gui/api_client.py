@@ -629,6 +629,91 @@ class AipApiClient:
     # Review Queue
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # OpenRouter Model Catalog
+    # ------------------------------------------------------------------
+
+    async def list_openrouter_models(self, api_key: str | None = None) -> list[dict[str, Any]]:
+        """Fetch available text models from OpenRouter API.
+
+        Calls GET https://openrouter.ai/api/v1/models with optional auth.
+        Returns a list of model dicts with id, name, pricing, context_length, etc.
+        Filters to chat/completion models only (excludes embedding/image).
+        """
+        client = self._get_http_client()
+        headers: dict[str, str] = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        resp = await client.get(
+            "https://openrouter.ai/api/v1/models",
+            headers=headers,
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        models = data.get("data", [])
+        # Filter to text/chat models only
+        text_models = []
+        for m in models:
+            mid = m.get("id", "")
+            # Skip non-text models (image gen, TTS, etc.)
+            if any(skip in mid.lower() for skip in ["image", "dall", "tts", "whisper", "stable-diffusion", "midjourney"]):
+                continue
+            # Only include models with text output modality
+            arch = m.get("architecture", {})
+            modality = arch.get("modality", "")
+            if modality == "text->image" or modality == "image->image":
+                continue
+            text_models.append(m)
+        return text_models
+
+    # ------------------------------------------------------------------
+    # OpenRouter API Key Management
+    # ------------------------------------------------------------------
+
+    _openrouter_api_key: str | None = None
+
+    def get_openrouter_api_key(self) -> str | None:
+        """Get the stored OpenRouter API key.
+
+        Priority: 1) in-memory key, 2) AIP_OPENAI_API_KEY env var.
+        """
+        if self._openrouter_api_key:
+            return self._openrouter_api_key
+        return os.environ.get("AIP_OPENAI_API_KEY")
+
+    def set_openrouter_api_key(self, key: str) -> None:
+        """Store the OpenRouter API key in memory and set the env var.
+
+        Setting the env var ensures the backend's ModelSlotResolver
+        picks it up as AIP_OPENAI_API_KEY on next request.
+        """
+        self._openrouter_api_key = key
+        os.environ["AIP_OPENAI_API_KEY"] = key
+
+    def has_openrouter_api_key(self) -> bool:
+        """Check if an OpenRouter API key is available."""
+        key = self.get_openrouter_api_key()
+        return key is not None and len(key.strip()) > 0
+
+    async def update_slot_model(self, slot_name: str, model: str, api_key: str | None = None) -> dict[str, Any]:
+        """Update the model for a slot at runtime via PATCH /api/v1/models/slots/{slot_name}/model.
+
+        This sets the AIP_<SLOT>_MODEL env var in the backend process,
+        which has the highest priority in ModelSlotResolver._resolve_slot_config().
+        The change persists until the server restarts.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {"model": model}
+        if api_key:
+            payload["api_key"] = api_key
+        resp = await client.patch(
+            f"{self.base_url}/api/v1/models/slots/{slot_name}/model",
+            json=payload,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     async def approve_review(self, artifact_id: str) -> dict[str, Any]:
         """Approve a review item via POST /api/v1/reviews/{id}/approve."""
         client = self._get_http_client()

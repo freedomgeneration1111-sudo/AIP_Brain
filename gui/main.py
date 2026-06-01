@@ -1,10 +1,10 @@
-"""AIP_Brain NiceGUI Frontend — UI Fix Pass.
+"""AIP_Brain NiceGUI Frontend — OpenRouter Integration Pass.
 
 This module implements the NiceGUI frontend that communicates EXCLUSIVELY
 through the AIP FastAPI backend's REST and WebSocket endpoints. It does NOT:
   - Import from aip.orchestration
   - Directly access AipContainer
-  - Make direct HTTP calls to Ollama or OpenRouter
+  - Make direct HTTP calls to Ollama or OpenRouter (except OpenRouter catalog API)
   - Read enabled_models.json directly
 
 All chat interactions flow through:
@@ -14,21 +14,15 @@ All chat interactions flow through:
   4. PATCH /api/v1/sessions/{id} → toggle auto_save, update session flags
   5. POST /api/v1/ingest/conversation → manual ingestion trigger
 
-UI Fix Pass changes:
-  - Fix TypeError: ui.button() does not accept size= kwarg → use .props("size=xs")
-  - Chat Model dropdown in header with prominent amber border
-  - Filter Chat Model dropdown to only show enabled slots
-  - Model Catalog page with enable/disable toggle per slot
-  - Compact right sidebar (220px, reduced padding, xs icons/fonts)
-  - "USING INGESTED DATA" badge when in augmented mode
+OpenRouter Integration Pass:
+  - API key prompt on first load if AIP_OPENAI_API_KEY is not set
+  - Model Catalog page fetches ALL models from OpenRouter API
+  - Table with model name, cost, context length, date, and checkbox
+  - Selected models populate a universal model dropdown
+  - Chat + Actor roles all use the same model dropdown
+  - All slots configured for OpenRouter (openai_compatible provider)
   - Visual clarity: amber border = chat model, sidebar = role models
-
-Preserved from earlier phases:
-  - Budget monitoring in footer and sidebar
-  - Gate response error handling
-  - Review Queue NiceGUI page
-  - Vector search, ECS graph, Wiki browser, Sources browser
-  - Augmented mode with source citations
+  - "USING INGESTED DATA" badge when in augmented mode
 
 This follows the API-First approach: the GUI is an Adapter-layer surface
 like CLI and MCP, communicating via HTTP/WebSocket rather than in-process.
@@ -44,7 +38,7 @@ from nicegui import ui
 from gui.api_client import get_api_client, AipApiClient
 
 # ---------------------------------------------------------------------------
-# State management — kept simple for Phase 1
+# State management
 # ---------------------------------------------------------------------------
 
 
@@ -86,12 +80,24 @@ class GuiState:
         self.chunks_indexed = 0
 
 
-# Per-page state — initialized in the page function
+# Per-page state
 _state: GuiState | None = None
 
-# Track which model slots are enabled for the Chat Model dropdown.
-# Keys = slot_name, Values = bool.  Defaults to True (all enabled).
+# Track which OpenRouter models the user has selected from the catalog.
+# These populate the universal model dropdown.
+_selected_models: list[str] = []
+
+# Track enabled slots (for Chat Model dropdown filtering)
 _enabled_slots: dict[str, bool] = {}
+
+# Role → model assignment: maps role names to selected OpenRouter model IDs.
+# e.g. {"beast": "deepseek/deepseek-chat-v3-0324:free", "vigil": "openai/gpt-4o", ...}
+_role_model_assignments: dict[str, str] = {
+    "synthesis": "",
+    "evaluation": "",
+    "sexton": "",
+    "embedding": "",
+}
 
 
 def is_slot_enabled(slot_name: str) -> bool:
@@ -102,6 +108,27 @@ def is_slot_enabled(slot_name: str) -> bool:
 def set_slot_enabled(slot_name: str, enabled: bool) -> None:
     """Enable or disable a model slot."""
     _enabled_slots[slot_name] = enabled
+
+
+def get_selected_models() -> list[str]:
+    """Get the list of models selected from the OpenRouter catalog."""
+    return _selected_models
+
+
+def set_selected_models(models: list[str]) -> None:
+    """Set the list of selected models."""
+    global _selected_models
+    _selected_models = models
+
+
+def get_role_model(slot_name: str) -> str:
+    """Get the OpenRouter model ID assigned to a role/slot."""
+    return _role_model_assignments.get(slot_name, "")
+
+
+def set_role_model(slot_name: str, model_id: str) -> None:
+    """Assign an OpenRouter model ID to a role/slot."""
+    _role_model_assignments[slot_name] = model_id
 
 
 def get_state() -> GuiState:
@@ -176,26 +203,21 @@ async def send_prompt() -> None:
     if not prompt:
         return
 
-    # Check if backend is reachable
     if not state.backend_reachable:
         ui.notify("Backend is not reachable. Please check that the AIP FastAPI server is running.", color="negative")
         return
 
-    # Ensure we have a session
     try:
         session_id = await state.ensure_session()
     except Exception as exc:
         ui.notify(f"Failed to create session: {exc}", color="negative")
         return
 
-    # Display user message
     add_message("user", prompt)
     input_field.value = ""
 
-    # Show thinking indicator
     thinking_label = ui.label("Thinking...").classes("text-grey")
 
-    # Define response callbacks
     def on_response(resp: dict[str, Any]) -> None:
         thinking_label.delete()
         content = resp.get("content", "")
@@ -204,12 +226,10 @@ async def send_prompt() -> None:
         tokens = resp.get("tokens_used", 0)
         auto_saved = resp.get("auto_save", False)
         sources = resp.get("sources", [])
-        mode = resp.get("mode", "normal")
         add_message("assistant", content, model=model, latency_ms=latency)
         if tokens > 0:
             add_system_message(f"Tokens: {tokens}")
         if sources:
-            # Display source citations for augmented mode
             source_summary = f"Sources ({len(sources)}): "
             source_parts = []
             for s in sources[:5]:
@@ -222,7 +242,6 @@ async def send_prompt() -> None:
             add_system_message(source_summary)
         if auto_saved:
             add_system_message("Auto-save: indexing...")
-            # Schedule a status refresh after a short delay
             asyncio.create_task(refresh_ingestion_status())
 
     def on_error(err: dict[str, Any]) -> None:
@@ -237,7 +256,6 @@ async def send_prompt() -> None:
         gate_type = gate.get("gate_type", "unknown")
         preview = gate.get("preview", "")
         add_system_message(f"DEFINER Gate ({gate_type}): {preview}")
-        # Show approval buttons
         with chat_container:
             with ui.row().classes("w-full justify-center gap-2"):
                 ui.button(
@@ -251,7 +269,6 @@ async def send_prompt() -> None:
                     on_click=lambda: asyncio.create_task(handle_gate_response(False)),
                 )
 
-    # Send via WebSocket
     try:
         await state.api_client.chat_via_websocket(
             session_id=session_id,
@@ -280,7 +297,6 @@ async def handle_gate_response(approved: bool) -> None:
             session_id=state.session_id,
             approved=approved,
         )
-
         if result.get("type") == "error":
             add_system_message(f"Gate response error: {result.get('content', 'Unknown error')}")
             ui.notify(f"Gate response failed: {result.get('content', 'Unknown error')}", color="negative")
@@ -290,7 +306,6 @@ async def handle_gate_response(approved: bool) -> None:
     except Exception as exc:
         add_system_message(f"Gate response failed: {exc}")
         ui.notify(f"Gate response failed: {exc}", color="negative")
-        # Keep pending_gate so the user can retry — don't clear on failure
         return
 
     state.pending_gate = None
@@ -300,26 +315,8 @@ def set_mode(mode: str) -> None:
     """Set the chat mode (normal or knowledge-augmented)."""
     state = get_state()
     state.current_mode = mode
-    # Reset session when changing modes
     state.reset_session()
     mode_label.text = "Chat" if mode == "normal" else "Augmented"
-
-
-def on_role_changed(role: str) -> None:
-    """Handle role selection change in the sidebar."""
-    state = get_state()
-    state.current_role = role
-    # Map role to default model slot
-    role_to_slot = {
-        "beast": "synthesis",
-        "vigil": "evaluation",
-        "embedding": "embedding",
-    }
-    state.current_model_slot = role_to_slot.get(role, "synthesis")
-    # Reset session since role/slot changed
-    state.reset_session()
-    # Update the model slot display in the header
-    model_select_label.text = f"Slot: {state.current_model_slot}"
 
 
 def on_slot_changed(slot_name: str) -> None:
@@ -327,7 +324,6 @@ def on_slot_changed(slot_name: str) -> None:
     state = get_state()
     state.current_model_slot = slot_name
     state.reset_session()
-    model_select_label.text = f"Slot: {slot_name}"
 
 
 async def trigger_actor(actor_name: str) -> None:
@@ -346,21 +342,12 @@ async def trigger_actor(actor_name: str) -> None:
 
 
 async def on_auto_save_toggled(enabled: bool) -> None:
-    """Handle auto_save checkbox toggle — persist to backend session.
-
-    When auto_save is toggled, we:
-    1. Update local state immediately
-    2. If a session exists, PATCH the backend to persist the flag
-    3. If no session yet, the flag will be sent on session creation
-    """
+    """Handle auto_save checkbox toggle."""
     state = get_state()
     state.auto_save = enabled
-
     if state.session_id is not None:
         try:
-            await state.api_client.update_session(
-                state.session_id, {"auto_save": enabled}
-            )
+            await state.api_client.update_session(state.session_id, {"auto_save": enabled})
             status = "enabled" if enabled else "disabled"
             ui.notify(f"Auto-save {status}", color="positive" if enabled else "warning")
         except Exception as exc:
@@ -371,26 +358,17 @@ async def on_auto_save_toggled(enabled: bool) -> None:
 
 
 async def refresh_ingestion_status() -> None:
-    """Refresh ingestion status from the backend and update the footer label.
-
-    Called after each chat response to show auto-save progress.
-    Waits a short delay for the background ingestion to make progress.
-    """
+    """Refresh ingestion status from the backend."""
     state = get_state()
     if state.session_id is None:
         return
-
-    # Wait a moment for the ingestion to start
     await asyncio.sleep(1.0)
-
     try:
         session = await state.api_client.get_session(state.session_id)
         ingestion_status = session.get("ingestion_status", "idle")
         chunks_indexed = session.get("chunks_indexed", 0)
         state.ingestion_status = ingestion_status
         state.chunks_indexed = chunks_indexed
-
-        # Update the footer label
         if ingestion_status == "ingesting":
             ingestion_label_ref.text = f"Indexing... ({chunks_indexed} chunks)"
         elif ingestion_status == "error":
@@ -398,12 +376,11 @@ async def refresh_ingestion_status() -> None:
         else:
             ingestion_label_ref.text = f"Indexed: {chunks_indexed} chunks" if chunks_indexed > 0 else ""
     except Exception:
-        # Non-critical — just don't update the label
         pass
 
 
 async def refresh_budget_status(label_ref, state: GuiState) -> None:
-    """Fetch budget status and update the footer label. Periodically refreshes."""
+    """Fetch budget status and update the footer label."""
     while True:
         try:
             budget = await state.api_client.get_budget_status(scope="session", scope_id="default")
@@ -412,7 +389,6 @@ async def refresh_budget_status(label_ref, state: GuiState) -> None:
             fraction = budget.get("fraction_used", 0)
             if limit > 0:
                 pct = f"{fraction:.0%}"
-                remaining = limit - consumed
                 label_ref.text = f"Budget: {consumed}/{limit} ({pct})"
                 if fraction >= 0.8:
                     label_ref.classes("text-[10px] text-negative", remove="text-grey-6 text-black")
@@ -422,8 +398,38 @@ async def refresh_budget_status(label_ref, state: GuiState) -> None:
                 label_ref.text = "Budget: n/a"
         except Exception:
             label_ref.text = ""
-        # Refresh every 30 seconds
         await asyncio.sleep(30)
+
+
+# ---------------------------------------------------------------------------
+# API Key Prompt Dialog
+# ---------------------------------------------------------------------------
+
+
+async def show_api_key_prompt() -> str | None:
+    """Show a dialog asking for the OpenRouter API key.
+
+    Returns the key if provided, None if skipped.
+    """
+    result_key: str | None = None
+
+    with ui.dialog() as dialog, ui.card().classes("p-6 min-w-[400px]"):
+        ui.label("OpenRouter API Key Required").classes("text-h6 text-weight-bold")
+        ui.label(
+            "AIP_Brain uses OpenRouter for all model slots. "
+            "Enter your OpenRouter API key to get started. "
+            "You can get one at openrouter.ai/keys"
+        ).classes("text-caption q-mt-sm")
+        key_input = ui.input(
+            placeholder="sk-or-v1-...",
+            password=True,
+        ).props("outlined dense").classes("w-full q-mt-md")
+        with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
+            ui.button("Skip", color="grey", on_click=lambda: dialog.submit(None))
+            ui.button("Save Key", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
+
+    result = await dialog
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -434,103 +440,87 @@ async def refresh_budget_status(label_ref, state: GuiState) -> None:
 @ui.page("/")
 async def main_page():
     """Main chat page — AIP_Brain frontend."""
-    global chat_container, input_field, mode_label, model_select_label, ingestion_label_ref
+    global chat_container, input_field, mode_label, ingestion_label_ref
 
     ui.page_title("AIP_Brain")
     state = get_state()
+
+    # Check for API key — prompt if missing
+    if not state.api_client.has_openrouter_api_key():
+        key = await show_api_key_prompt()
+        if key:
+            state.api_client.set_openrouter_api_key(key)
+            ui.notify("API key saved. It will be used for all OpenRouter calls.", color="positive")
 
     # Load backend data on page load
     backend_status = await check_backend_health()
     slots = await load_model_slots()
 
-    # Build slot names for dropdowns
+    # Build slot names for sidebar
     slot_names = [s["slot_name"] for s in slots] if slots else ["synthesis", "evaluation", "sexton", "embedding"]
     slot_models = {s["slot_name"]: s.get("model", f"<{s['slot_name']}>") for s in slots}
 
-    # Build label→slot mapping for readable dropdowns: "synthesis (gpt-4o)" etc.
-    slot_label_map = {}
-    for s in slots:
-        model_name = s.get("model", f"<{s['slot_name']}>")
-        slot_label_map[f"{s['slot_name']} — {model_name}"] = s["slot_name"]
-    slot_label_options = list(slot_label_map.keys()) if slot_label_map else slot_names
+    # Build the universal model dropdown from selected OpenRouter models
+    selected_models = get_selected_models()
+    # Also include the currently-configured models from backend slots as fallback
+    backend_models = [s.get("model", "") for s in slots if s.get("model") and not s["model"].startswith("<")]
+    all_model_options = list(dict.fromkeys(selected_models + backend_models))  # dedupe preserving order
 
-    # Filter to only enabled slots for the Chat Model dropdown
-    enabled_slot_labels = [k for k in slot_label_options if is_slot_enabled(slot_label_map.get(k, k))]
-    if not enabled_slot_labels:
-        enabled_slot_labels = slot_label_options  # fallback: show all if none enabled
+    # If no models available yet, use slot names as labels
+    if not all_model_options:
+        all_model_options = ["(no models selected — go to Models page)"]
 
-    # Find the current label for the active slot (prefer enabled)
-    current_slot_label = next(
-        (k for k, v in slot_label_map.items() if v == state.current_model_slot and is_slot_enabled(v)),
-        None,
-    )
-    if current_slot_label is None and enabled_slot_labels:
-        # Current slot is disabled — pick the first enabled one
-        current_slot_label = enabled_slot_labels[0]
-        state.current_model_slot = slot_label_map.get(current_slot_label, current_slot_label)
-    elif current_slot_label is None:
-        current_slot_label = state.current_model_slot
+    # Determine current chat model
+    current_chat_model = get_role_model("synthesis") or state.current_model_slot
+    if current_chat_model not in all_model_options and current_chat_model in slot_names:
+        # Current model is a slot name, not a model ID — use first available
+        current_chat_model = all_model_options[0] if all_model_options else ""
 
     # ---- HEADER ----
     with ui.header(elevated=True).classes("bg-primary text-white items-center q-pa-xs"):
         ui.label("AIP_Brain").classes("text-h6 q-ml-sm")
-        ui.button("Chat", on_click=lambda: set_mode("normal")).props(
-            "flat text-color=white dense"
-        )
+        ui.button("Chat", on_click=lambda: set_mode("normal")).props("flat text-color=white dense")
         ui.button("Augmented", on_click=lambda: set_mode("augmented")).props(
             "flat text-color=yellow-3 dense outline"
         ).classes("q-mr-xs")
         mode_label = ui.label("Chat").classes("q-ml-xs text-caption text-white")
-        # Augmented mode indicator — shows when knowledge-augmented is active
-        augmented_badge = ui.badge("USING INGESTED DATA", color="amber").classes(
+        # Augmented mode indicator
+        ui.badge("USING INGESTED DATA", color="amber").classes(
             "text-[9px] q-ml-xs"
         ).bind_visibility_from(state, "current_mode", backward=lambda m: m == "augmented")
         ui.space()
-        # --- Chat Model selector: visually distinct from sidebar role selectors ---
-        # Amber-bordered container signals "this is YOUR chat model"
+
+        # --- Chat Model selector (amber bordered) ---
         with ui.row().classes(
             "items-center q-pa-xs rounded-borders"
         ).style("background: rgba(255,255,255,0.15); border: 2px solid #FFC107; border-radius: 6px;"):
             ui.icon("chat", size="xs").classes("text-amber q-mr-xs")
             ui.label("Chat Model").classes("text-caption text-amber text-weight-bold q-mr-xs")
-            model_select_label = ui.label("").classes("hidden")  # kept for compat
-            slot_select = ui.select(
-                enabled_slot_labels,
-                value=current_slot_label,
-                on_change=lambda e: on_slot_changed(slot_label_map.get(e.value, e.value)),
+            chat_model_select = ui.select(
+                all_model_options,
+                value=current_chat_model,
+                on_change=lambda e: on_chat_model_changed(e.value),
             ).classes("min-w-[180px] text-black").props("dense")
+
         ui.checkbox(
             "Auto-save", value=True,
             on_change=lambda e: asyncio.create_task(on_auto_save_toggled(e.value)),
         ).classes("q-ml-xs text-caption text-white")
         ui.space()
-        ui.button("Models", on_click=lambda: ui.navigate.to("/models")).props(
-            "flat text-color=white dense"
-        )
+        ui.button("Models", on_click=lambda: ui.navigate.to("/models")).props("flat text-color=white dense")
         with ui.row().classes("items-center gap-0"):
-            ui.button(icon="storage", on_click=lambda: ui.navigate.to("/vector")).props(
-                "flat text-color=white dense round"
-            )
-            ui.button(icon="account_tree", on_click=lambda: ui.navigate.to("/graph")).props(
-                "flat text-color=white dense round"
-            )
-            ui.button(icon="menu_book", on_click=lambda: ui.navigate.to("/wiki")).props(
-                "flat text-color=white dense round"
-            )
-            ui.button(icon="source", on_click=lambda: ui.navigate.to("/sources")).props(
-                "flat text-color=white dense round"
-            )
-            ui.button(icon="rate_review", on_click=lambda: ui.navigate.to("/review")).props(
-                "flat text-color=white dense round"
-            )
+            ui.button(icon="storage", on_click=lambda: ui.navigate.to("/vector")).props("flat text-color=white dense round")
+            ui.button(icon="account_tree", on_click=lambda: ui.navigate.to("/graph")).props("flat text-color=white dense round")
+            ui.button(icon="menu_book", on_click=lambda: ui.navigate.to("/wiki")).props("flat text-color=white dense round")
+            ui.button(icon="source", on_click=lambda: ui.navigate.to("/sources")).props("flat text-color=white dense round")
+            ui.button(icon="rate_review", on_click=lambda: ui.navigate.to("/review")).props("flat text-color=white dense round")
 
-    # ---- RIGHT DRAWER — Actor Roles & Status (compact) ----
-    with ui.right_drawer(fixed=True).classes("q-pa-xs bg-grey-2").style("width: 220px;"):
-        # Compact heading
+    # ---- RIGHT DRAWER — Actor Roles (compact) ----
+    with ui.right_drawer(fixed=True).classes("q-pa-xs bg-grey-2").style("width: 240px;"):
         with ui.row().classes("w-full items-center no-wrap"):
             ui.label("Actor Roles").classes("text-subtitle2 text-weight-bold")
             ui.space()
-            ui.badge("Role Models", color="blue-8").classes("text-[9px]")
+            ui.badge("OpenRouter", color="deep-orange").classes("text-[9px]")
 
         if state.backend_reachable:
             try:
@@ -541,93 +531,39 @@ async def main_page():
         else:
             actors = {}
 
-        # Helper: build readable slot options for sidebar dropdowns
-        sidebar_slot_options = []
-        for sn in slot_names:
-            model = slot_models.get(sn, f"<{sn}>")
-            sidebar_slot_options.append(f"{sn} ({model})" if model and not model.startswith("<") else sn)
-        sidebar_slot_value_map = {opt: sn for opt, sn in zip(sidebar_slot_options, slot_names)}
+        # Each actor gets its own model dropdown from the universal model list
+        actor_defs = [
+            ("synthesis", "Beast", "brown", "rgba(121,85,72,0.08)", "beast"),
+            ("evaluation", "Vigil", "indigo", "rgba(63,81,181,0.08)", "vigil"),
+            ("embedding", "Embed", "teal", "rgba(0,150,136,0.08)", "embedding"),
+            ("sexton", "Sexton", "grey", "rgba(0,0,0,0.04)", "sexton"),
+        ]
 
-        # --- Beast: status + role model selector in one grouped row ---
-        with ui.row().classes(
-            "w-full items-center no-wrap q-px-xs q-py-none rounded-borders"
-        ).style("background: rgba(121,85,72,0.08); border-left: 3px solid brown;"):
-            beast_actor = actors.get("beast", {})
-            beast_init = beast_actor.get("initialized", False)
-            ui.icon(
-                "check_circle" if beast_init else "cancel",
-                color="positive" if beast_init else "negative",
-                size="xs",
-            )
-            ui.label("Beast").classes("text-[11px] text-weight-bold q-mr-xs")
-            beast_default_opt = next(
-                (o for o, sn in sidebar_slot_value_map.items() if sn == "synthesis"),
-                "synthesis",
-            )
-            beast_select = ui.select(
-                sidebar_slot_options, value=beast_default_opt,
-                on_change=lambda e: None,
-            ).props("dense").classes("flex-grow text-[11px]")
+        for slot_name, label, border_color, bg_color, actor_key in actor_defs:
+            with ui.row().classes(
+                "w-full items-center no-wrap q-px-xs q-py-none q-mt-xs rounded-borders"
+            ).style(f"background: {bg_color}; border-left: 3px solid {border_color};"):
+                actor = actors.get(actor_key, {})
+                actor_init = actor.get("initialized", False)
+                ui.icon(
+                    "check_circle" if actor_init else "cancel",
+                    color="positive" if actor_init else "negative",
+                    size="xs",
+                )
+                ui.label(label).classes("text-[11px] text-weight-bold q-mr-xs")
+                # Model dropdown for this role
+                current_role_model = get_role_model(slot_name)
+                role_default = slot_models.get(slot_name, "")
+                role_value = current_role_model or role_default or (all_model_options[0] if all_model_options else "")
+                if role_value not in all_model_options:
+                    role_value = all_model_options[0] if all_model_options else ""
+                ui.select(
+                    all_model_options,
+                    value=role_value,
+                    on_change=lambda e, sn=slot_name: on_role_model_changed(sn, e.value),
+                ).props("dense").classes("flex-grow text-[11px]")
 
-        # --- Vigil ---
-        with ui.row().classes(
-            "w-full items-center no-wrap q-px-xs q-py-none q-mt-xs rounded-borders"
-        ).style("background: rgba(63,81,181,0.08); border-left: 3px solid indigo;"):
-            vigil_actor = actors.get("vigil", {})
-            vigil_init = vigil_actor.get("initialized", False)
-            ui.icon(
-                "check_circle" if vigil_init else "cancel",
-                color="positive" if vigil_init else "negative",
-                size="xs",
-            )
-            ui.label("Vigil").classes("text-[11px] text-weight-bold q-mr-xs")
-            vigil_default_opt = next(
-                (o for o, sn in sidebar_slot_value_map.items() if sn == "evaluation"),
-                "evaluation",
-            )
-            vigil_select = ui.select(
-                sidebar_slot_options, value=vigil_default_opt,
-                on_change=lambda e: None,
-            ).props("dense").classes("flex-grow text-[11px]")
-
-        # --- Embedding ---
-        with ui.row().classes(
-            "w-full items-center no-wrap q-px-xs q-py-none q-mt-xs rounded-borders"
-        ).style("background: rgba(0,150,136,0.08); border-left: 3px solid teal;"):
-            embed_actor = actors.get("embedding", {})
-            embed_init = embed_actor.get("initialized", False) if embed_actor else False
-            ui.icon(
-                "check_circle" if embed_init else "cancel",
-                color="positive" if embed_init else "negative",
-                size="xs",
-            )
-            ui.label("Embed").classes("text-[11px] text-weight-bold q-mr-xs")
-            embed_default_opt = next(
-                (o for o, sn in sidebar_slot_value_map.items() if sn == "embedding"),
-                "embedding",
-            )
-            embed_select = ui.select(
-                sidebar_slot_options, value=embed_default_opt,
-                on_change=lambda e: None,
-            ).props("dense").classes("flex-grow text-[11px]")
-
-        # --- Sexton: status only (no model selector) ---
-        with ui.row().classes(
-            "w-full items-center no-wrap q-px-xs q-py-none q-mt-xs rounded-borders"
-        ).style("background: rgba(0,0,0,0.04); border-left: 3px solid grey;"):
-            sexton_actor = actors.get("sexton", {})
-            sexton_init = sexton_actor.get("initialized", False)
-            ui.icon(
-                "check_circle" if sexton_init else "cancel",
-                color="positive" if sexton_init else "negative",
-                size="xs",
-            )
-            ui.label("Sexton").classes("text-[11px] text-weight-bold q-mr-xs")
-            ui.label(
-                "Active" if sexton_init else "Off"
-            ).classes("text-[11px] text-grey-7")
-
-        # Separator + trigger buttons (compact)
+        # Trigger buttons (compact)
         ui.separator().classes("q-my-xs")
         with ui.row().classes("w-full gap-1"):
             ui.button("Run B", color="brown",
@@ -637,56 +573,30 @@ async def main_page():
             ui.button("Run S", color="teal",
                       on_click=lambda: asyncio.create_task(trigger_actor("sexton"))).props("size=xs dense")
 
-        # Slot details — collapsible, compact
+        # Slot details — collapsible
         ui.separator().classes("q-my-xs")
         with ui.expansion("Slot Details", group="slots").classes("w-full text-[11px]"):
             if slots:
                 for s in slots:
                     model_name = s.get("model", "N/A")
                     provider = s.get("provider", "?")
-                    ui.label(f"{s['slot_name']}: {model_name} ({provider})").classes(
-                        "text-[11px] q-mb-none"
-                    )
+                    ui.label(f"{s['slot_name']}: {model_name} ({provider})").classes("text-[11px] q-mb-none")
             else:
                 ui.label("No slots loaded").classes("text-[11px]")
-
-        # Health details — collapsible, compact
-        if state.backend_reachable and actors:
-            with ui.expansion("Health Details", group="health").classes("w-full text-[11px]"):
-                for actor_name in ["beast", "vigil", "sexton"]:
-                    actor = actors.get(actor_name, {})
-                    health = actor.get("health")
-                    parts = [actor_name.capitalize()]
-                    if health and isinstance(health, dict):
-                        parts.append(f"health={health.get('overall', '?')}")
-                    if actor_name == "sexton":
-                        parts.append(f"unclassified={actor.get('unclassified_count', '?')}")
-                    if actor_name == "vigil" and health:
-                        parts.append(f"canonicals={health.get('status', '?')}")
-                    ui.label(" | ".join(parts)).classes("text-[11px] q-mb-none")
-        else:
-            ui.label("Backend unreachable").classes("text-[11px] text-warning")
 
     # ---- CHAT AREA ----
     chat_container = ui.column().classes("w-full max-w-3xl mx-auto q-px-md q-py-sm").style("min-height: 400px;")
 
-    # Show backend status message
     if not state.backend_reachable:
         with chat_container:
-            ui.label("⚠ AIP Backend is not reachable. Please ensure the FastAPI server is running at " + state.api_client.base_url).classes(
+            ui.label("AIP Backend is not reachable. Please ensure the FastAPI server is running at " + state.api_client.base_url).classes(
                 "text-negative text-weight-medium q-pa-md"
             )
             ui.label("Start the backend with: uvicorn aip.adapter.api.app:create_app --factory --port 8000").classes("text-caption q-px-md")
     else:
         with chat_container:
-            enabled_count = sum(1 for s in slots if is_slot_enabled(s.get("slot_name", "")))
-            if enabled_count == 0 and len(slots) > 0:
-                ui.label(
-                    f"Connected to AIP Backend ({len(slots)} slots loaded) but all are disabled. "
-                    f"Go to Models page to enable slots."
-                ).classes("text-warning text-caption q-pa-sm")
-            else:
-                ui.label(f"Connected to AIP Backend. {enabled_count} model slot(s) available.").classes("text-positive text-caption q-pa-sm")
+            api_key_status = "API key set" if state.api_client.has_openrouter_api_key() else "No API key"
+            ui.label(f"Connected to AIP Backend. {len(slots)} slot(s). {api_key_status}.").classes("text-positive text-caption q-pa-sm")
 
     # ---- INPUT AREA ----
     with ui.row().classes("w-full max-w-3xl mx-auto items-center q-pa-sm gap-2"):
@@ -694,7 +604,7 @@ async def main_page():
         input_field.on("keydown.enter", lambda: asyncio.create_task(send_prompt()))
         ui.button("Send", on_click=lambda: asyncio.create_task(send_prompt()), color="primary").props("icon=send")
 
-    # ---- FOOTER (compact) ----
+    # ---- FOOTER ----
     with ui.footer().classes("bg-grey-2 q-pa-xs items-center"):
         ui.label("aip_brain").classes("text-[10px] text-grey-6")
         ingestion_label_ref = ui.label("").classes("text-[10px] text-grey-6")
@@ -704,182 +614,269 @@ async def main_page():
         ci_status = "CI" if any(s.get("model", "").startswith("<") for s in slots) else "Live"
         ui.label(f"{ci_status}").classes("text-[10px] text-grey-6")
 
-    # Load initial budget status
     asyncio.create_task(refresh_budget_status(budget_label_ref, state))
+
+
+def on_chat_model_changed(model_id: str) -> None:
+    """Handle chat model selection change from the header dropdown.
+
+    Updates the GUI state AND pushes the model change to the backend
+    so that the next chat message uses the selected model.
+    """
+    state = get_state()
+    # The chat always uses the "synthesis" slot
+    set_role_model("synthesis", model_id)
+    state.reset_session()
+    # Push to backend — set AIP_SYNTHESIS_MODEL env var via API
+    api_key = state.api_client.get_openrouter_api_key()
+    asyncio.create_task(
+        state.api_client.update_slot_model("synthesis", model_id, api_key=api_key)
+    )
+
+
+def on_role_model_changed(slot_name: str, model_id: str) -> None:
+    """Handle model change for an actor role in the sidebar.
+
+    Updates the GUI state AND pushes the model change to the backend
+    so that the next actor call uses the selected model.
+    """
+    set_role_model(slot_name, model_id)
+    state = get_state()
+    api_key = state.api_client.get_openrouter_api_key()
+    asyncio.create_task(
+        state.api_client.update_slot_model(slot_name, model_id, api_key=api_key)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Model Catalog Page — OpenRouter Model Browser
+# ---------------------------------------------------------------------------
 
 
 @ui.page("/models")
 async def model_catalog_page():
-    """Model catalog page — shows available slots and role assignments with enable/disable."""
+    """Model catalog — browse all OpenRouter models, select which to use."""
     ui.page_title("Model Catalog — AIP_Brain")
     state = get_state()
 
-    # Mini nav header
+    # ---- HEADER ----
     with ui.header().classes("bg-primary text-white items-center q-pa-xs"):
-        ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/")).props(
-            "flat text-color=white dense round"
-        )
+        ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/")).props("flat text-color=white dense round")
         ui.label("Model Catalog").classes("text-h6")
         ui.space()
-        ui.button(icon="chat", on_click=lambda: ui.navigate.to("/")).props(
+        # API key status indicator
+        key_status = "Key: Set" if state.api_client.has_openrouter_api_key() else "Key: Missing"
+        key_color = "positive" if state.api_client.has_openrouter_api_key() else "negative"
+        ui.badge(key_status, color=key_color).classes("text-[10px] q-mr-sm")
+        ui.button(icon="vpn_key", on_click=lambda: asyncio.create_task(show_key_dialog(refresh_models))).props(
             "flat text-color=white dense round"
         )
+        ui.button(icon="chat", on_click=lambda: ui.navigate.to("/")).props("flat text-color=white dense round")
 
-    with ui.column().classes("w-full max-w-4xl mx-auto q-pa-md"):
-        ui.label(
-            "Enable or disable model slots. Enabled slots appear in the Chat Model "
-            "dropdown on the main page. Disabled slots are hidden from the selector."
-        ).classes("text-subtitle2 q-mb-md text-grey-8")
-
-        # Load slots from backend
-        slots = await load_model_slots()
-
-        if not state.backend_reachable:
-            ui.label("Backend not reachable — cannot load model slots").classes(
-                "text-negative"
-            )
+    # ---- API KEY PROMPT (if missing) ----
+    if not state.api_client.has_openrouter_api_key():
+        with ui.card().classes("w-full max-w-4xl mx-auto q-mt-md q-pa-md").style("border: 2px solid #F44336;"):
+            ui.icon("warning", size="lg", color="negative")
+            ui.label("OpenRouter API Key Required").classes("text-h6 text-negative")
             ui.label(
-                f"Ensure the AIP FastAPI server is running at "
-                f"{state.api_client.base_url}"
-            ).classes("text-caption")
-        elif not slots:
-            ui.label("No model slots configured in the backend.").classes(
-                "text-warning"
-            )
-        else:
-            # ---- Two-column layout: Chat Model vs Role Models ----
-            with ui.row().classes("w-full gap-4 q-mb-md"):
-                # Left column: Chat Model explanation
-                with ui.card().classes("flex-1").style(
-                    "border-left: 4px solid #FFC107;"
-                ):
-                    with ui.card_section():
-                        ui.icon("chat", size="sm").classes("text-amber")
-                        ui.label("Chat Model (Header)").classes(
-                            "text-subtitle2 text-weight-bold text-amber"
-                        )
-                        ui.label(
-                            "The amber-bordered dropdown in the page header. "
-                            "This is the model that responds to your messages. "
-                            "Only enabled slots appear here."
-                        ).classes("text-caption q-mt-xs")
+                "You need an OpenRouter API key to browse and select models. "
+                "Get one at openrouter.ai/keys"
+            ).classes("text-caption q-mt-xs")
+            with ui.row().classes("q-mt-md items-center gap-2"):
+                key_input = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("flex-grow")
+                ui.button("Save Key", color="positive", on_click=lambda: on_save_key(key_input.value))
 
-                # Right column: Role Models explanation
-                with ui.card().classes("flex-1").style(
-                    "border-left: 4px solid rgba(63,81,181,0.8);"
-                ):
-                    with ui.card_section():
-                        ui.icon("settings", size="sm").classes("text-indigo")
-                        ui.label("Role Models (Sidebar)").classes(
-                            "text-subtitle2 text-weight-bold text-indigo"
-                        )
-                        ui.label(
-                            "Assigned to background actors (Beast, "
-                            "Vigil, Embedding) via the right sidebar. These "
-                            "determine which model each actor uses internally."
-                        ).classes("text-caption q-mt-xs")
+    # ---- MAIN CONTENT ----
+    content_area = ui.column().classes("w-full max-w-6xl mx-auto q-pa-md")
 
-            # ---- Slot cards with enable/disable toggles ----
-            ui.label("Model Slots").classes("text-h6 q-mb-sm")
-            role_map = {
-                "synthesis": "Beast (Chat/LLM)",
-                "evaluation": "Vigil (Evaluation)",
-                "embedding": "Embedding",
-                "sexton": "Sexton (maintenance)",
-            }
+    # Selected models summary
+    selected_summary = ui.label(f"Selected: {len(get_selected_models())} models").classes("text-subtitle2 q-mb-sm")
 
-            with ui.row().classes("w-full gap-4 q-mb-md flex-wrap"):
+    # Model table container
+    table_container = ui.column().classes("w-full")
+
+    # Load button
+    with ui.row().classes("w-full items-center gap-2 q-mb-md"):
+        ui.button("Load OpenRouter Models", icon="cloud_download", color="primary",
+                  on_click=lambda: asyncio.create_task(load_openrouter_models()))
+        ui.button("Clear Selection", color="grey",
+                  on_click=lambda: clear_selection())
+        ui.button("Apply to Chat", color="positive",
+                  on_click=lambda: ui.navigate.to("/"))
+
+    # Refresh function
+    async def refresh_models():
+        """Reload the model table."""
+        await load_openrouter_models()
+
+    async def load_openrouter_models():
+        """Fetch models from OpenRouter and display them in a table."""
+        table_container.clear()
+        with table_container:
+            ui.label("Fetching models from OpenRouter...").classes("text-grey")
+
+        try:
+            api_key = state.api_client.get_openrouter_api_key()
+            models = await state.api_client.list_openrouter_models(api_key=api_key)
+
+            table_container.clear()
+            with table_container:
+                if not models:
+                    ui.label("No models found. Check your API key.").classes("text-warning")
+                    return
+
+                # Sort models: free first, then by prompt cost ascending
+                def sort_key(m):
+                    pricing = m.get("pricing", {})
+                    prompt_cost = float(pricing.get("prompt", "1") or "1")
+                    is_free = prompt_cost == 0
+                    return (0 if is_free else 1, prompt_cost)
+
+                models.sort(key=sort_key)
+
+                ui.label(f"{len(models)} text models available from OpenRouter").classes("text-caption q-mb-sm")
+
+                # Build table data
+                columns = [
+                    {"name": "select", "label": "", "field": "select", "align": "center", "sortable": False},
+                    {"name": "model_id", "label": "Model ID", "field": "model_id", "align": "left", "sortable": True},
+                    {"name": "prompt_cost", "label": "Prompt $/1M tok", "field": "prompt_cost", "align": "right", "sortable": True},
+                    {"name": "completion_cost", "label": "Completion $/1M tok", "field": "completion_cost", "align": "right", "sortable": True},
+                    {"name": "context", "label": "Context", "field": "context", "align": "right", "sortable": True},
+                    {"name": "updated", "label": "Updated", "field": "updated", "align": "left", "sortable": True},
+                ]
+
+                selected = get_selected_models()
+                rows = []
+                for m in models:
+                    pricing = m.get("pricing", {})
+                    prompt_cost = float(pricing.get("prompt", "0") or "0")
+                    comp_cost = float(pricing.get("completion", "0") or "0")
+                    context = m.get("context_length", 0) or 0
+                    mid = m.get("id", "")
+                    updated = m.get("updated", "") or ""
+
+                    # Format cost display
+                    if prompt_cost == 0:
+                        cost_str = "FREE"
+                        comp_str = "FREE"
+                    else:
+                        cost_str = f"${prompt_cost:.4f}"
+                        comp_str = f"${comp_cost:.4f}"
+
+                    rows.append({
+                        "select": mid in selected,
+                        "model_id": mid,
+                        "prompt_cost": cost_str,
+                        "completion_cost": comp_str,
+                        "context": f"{context:,}" if context else "?",
+                        "updated": updated[:10] if updated else "?",
+                    })
+
+                # Use ui.table with selection
+                selected_models_set = set(selected)
+
+                table = ui.table(
+                    columns=columns,
+                    rows=rows,
+                    row_key="model_id",
+                    selection="multiple",
+                    selected=[r for r in rows if r["model_id"] in selected_models_set],
+                ).classes("w-full").props('flat bordered dense virtual-scroll')
+
+                # Style free models
+                table.add_slot('body-cell-prompt_cost', '''
+                    <q-td :props="props">
+                        <span :class="props.value === 'FREE' ? 'text-positive text-weight-bold' : ''">
+                            {{ props.value }}
+                        </span>
+                    </q-td>
+                ''')
+
+                def on_selection_change(e):
+                    selected_ids = [r["model_id"] for r in e.args["selected"]]
+                    set_selected_models(selected_ids)
+                    selected_summary.text = f"Selected: {len(selected_ids)} models"
+
+                table.on('selection', on_selection_change)
+
+        except Exception as exc:
+            table_container.clear()
+            with table_container:
+                ui.label(f"Failed to load models: {exc}").classes("text-negative q-pa-md")
+                ui.label("Make sure your API key is valid and you have internet access.").classes("text-caption")
+
+    def clear_selection():
+        """Clear all selected models."""
+        set_selected_models([])
+        selected_summary.text = "Selected: 0 models"
+        ui.notify("Selection cleared", color="info")
+        # Reload the table to reflect the cleared selection
+        asyncio.create_task(load_openrouter_models())
+
+    def on_save_key(key_value: str):
+        """Save the API key from the input field."""
+        if key_value and key_value.strip():
+            state.api_client.set_openrouter_api_key(key_value.strip())
+            ui.notify("API key saved!", color="positive")
+            # Reload the page to refresh the key status
+            asyncio.create_task(load_openrouter_models())
+
+    async def show_key_dialog(callback=None):
+        """Show a dialog to enter/update the API key."""
+        with ui.dialog() as dialog, ui.card().classes("p-6 min-w-[400px]"):
+            ui.label("OpenRouter API Key").classes("text-h6")
+            current = state.api_client.get_openrouter_api_key() or ""
+            masked = current[:8] + "..." + current[-4:] if len(current) > 12 else "(not set)"
+            ui.label(f"Current: {masked}").classes("text-caption q-mt-xs")
+            key_input = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("w-full q-mt-md")
+            with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
+                ui.button("Cancel", color="grey", on_click=lambda: dialog.submit(None))
+                ui.button("Save", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
+
+        result = await dialog
+        if result:
+            state.api_client.set_openrouter_api_key(result)
+            ui.notify("API key updated!", color="positive")
+            if callback:
+                await callback()
+
+    # Load backend slots info
+    slots = await load_model_slots()
+
+    # Show currently configured slots
+    with content_area:
+        # Selected models counter
+        selected_summary
+
+        # Currently configured slots
+        if slots:
+            ui.label("Currently Configured Slots (backend)").classes("text-subtitle2 q-mb-sm")
+            with ui.row().classes("w-full gap-2 q-mb-md flex-wrap"):
                 for s in slots:
                     model_name = s.get("model", "?")
                     provider = s.get("provider", "?")
                     is_ci = model_name.startswith("<")
-                    default_role = role_map.get(s["slot_name"], "")
-                    slot_enabled = is_slot_enabled(s["slot_name"])
+                    slot_name = s.get("slot_name", "?")
+                    role_model = get_role_model(slot_name)
+                    display_model = role_model or model_name
 
-                    with ui.card().classes("min-w-[220px] flex-1").style(
-                        f"border-left: 4px solid {'#4CAF50' if slot_enabled else '#9E9E9E'};"
+                    with ui.card().classes("min-w-[160px] flex-1").style(
+                        "border-left: 3px solid #FF5722;"
                     ):
                         with ui.card_section():
-                            with ui.row().classes("w-full items-center"):
-                                ui.label(s["slot_name"]).classes("text-weight-bold")
-                                ui.space()
-                                ui.switch(
-                                    value=slot_enabled,
-                                    on_change=lambda e, sn=s["slot_name"]: set_slot_enabled(sn, e.value),
-                                ).props("dense").classes("q-ma-none")
-                            ui.label(model_name).classes(
-                                "text-caption text-warning"
-                                if is_ci
-                                else "text-caption text-positive"
+                            ui.label(slot_name).classes("text-weight-bold text-[12px]")
+                            ui.label(display_model).classes(
+                                "text-[11px] text-positive" if not is_ci else "text-[11px] text-warning"
                             )
-                            ui.label(f"Provider: {provider}").classes("text-caption")
-                            if s.get("base_url"):
-                                ui.label(
-                                    f"URL: {s['base_url'][:40]}..."
-                                ).classes("text-caption text-grey-7")
-                            with ui.row().classes("gap-1 q-mt-xs"):
-                                if default_role:
-                                    ui.badge(
-                                        default_role, color="blue"
-                                    ).classes("text-[10px]")
-                                if s.get("has_fallback"):
-                                    ui.badge("fallback", color="grey").classes("text-[10px]")
-                                ui.badge(
-                                    "ENABLED" if slot_enabled else "DISABLED",
-                                    color="positive" if slot_enabled else "grey",
-                                ).classes("text-[10px]")
+                            ui.label(f"via {provider}").classes("text-[10px] text-grey-7")
+        else:
+            ui.label("No slots configured in backend (check config/aip.config.toml)").classes("text-warning q-mb-md")
 
-            # ---- Current Role Assignments table ----
-            ui.separator().classes("q-my-md")
-            ui.label("Role → Slot Assignment").classes("text-h6 q-mb-sm")
-            ui.label(
-                "Chat Model (header) = model for your current conversation. "
-                "Role assignments (sidebar) = which slot each background actor uses."
-            ).classes("text-caption text-grey-7 q-mb-sm")
+        # Table load area
+        table_container
 
-            columns = [
-                {"name": "role", "label": "Actor Role", "field": "role",
-                 "align": "left"},
-                {"name": "default_slot", "label": "Default Slot",
-                 "field": "default_slot", "align": "left"},
-                {"name": "purpose", "label": "Purpose", "field": "purpose",
-                 "align": "left"},
-            ]
-            rows = [
-                {
-                    "role": "Beast",
-                    "default_slot": "synthesis",
-                    "purpose": "Chat/LLM responses",
-                },
-                {
-                    "role": "Vigil",
-                    "default_slot": "evaluation",
-                    "purpose": "Canonical monitoring & re-eval",
-                },
-                {
-                    "role": "Embedding",
-                    "default_slot": "embedding",
-                    "purpose": "Vector embedding generation",
-                },
-                {
-                    "role": "Sexton",
-                    "default_slot": "(none)",
-                    "purpose": "Maintenance & failure classification",
-                },
-            ]
-            ui.table(columns=columns, rows=rows, row_key="role").classes("w-full")
-
-            # CI mode warning
-            ci_slots = [s for s in slots if s.get("model", "").startswith("<")]
-            if ci_slots:
-                ui.label(
-                    f"Note: {len(ci_slots)} slot(s) in CI/fixture mode. "
-                    f"Set model names in aip.config.toml or env vars for live models."
-                ).classes("text-warning q-mt-md")
-
-        ui.button(
-            "Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey"
-        ).classes("q-mt-md")
+    ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
 
 
 # ---------------------------------------------------------------------------
@@ -898,13 +895,11 @@ async def vector_search_page():
         "text-subtitle2 q-mb-md"
     )
 
-    # Search input
     with ui.row().classes("w-full items-center gap-2 q-mb-md"):
         search_input = ui.input(placeholder="Search for content...").props("outlined dense").classes("flex-grow")
         search_input.on("keydown.enter", lambda: asyncio.create_task(do_search()))
         ui.button("Search", on_click=lambda: asyncio.create_task(do_search()), icon="search", color="primary")
 
-    # Results area
     results_container = ui.column().classes("w-full")
 
     async def do_search():
@@ -918,10 +913,8 @@ async def vector_search_page():
             ui.label("Searching...").classes("text-grey")
 
         try:
-            # Use the retrieve endpoint (no model call, just source retrieval)
             result = await state.api_client.ask_retrieve(question=query, max_sources=20)
             sources = result.get("sources", [])
-
             results_container.clear()
             with results_container:
                 if not sources:
@@ -942,9 +935,7 @@ async def vector_search_page():
                                     ui.badge(f"Score: {score:.3f}", color="green").classes("text-xs")
                                     if domain:
                                         ui.badge(domain, color="orange").classes("text-xs")
-                                ui.label(snippet[:300] + ("..." if len(snippet) > 300 else "")).classes(
-                                    "text-caption q-mt-sm"
-                                )
+                                ui.label(snippet[:300] + ("..." if len(snippet) > 300 else "")).classes("text-caption q-mt-sm")
         except Exception as exc:
             results_container.clear()
             with results_container:
@@ -960,9 +951,7 @@ async def ecs_graph_page():
     state = get_state()
 
     ui.label("Artifact Lifecycle Graph").classes("text-h4 q-my-md")
-    ui.label("Visualize the ECS state machine and artifact distribution across states.").classes(
-        "text-subtitle2 q-mb-md"
-    )
+    ui.label("Visualize the ECS state machine and artifact distribution across states.").classes("text-subtitle2 q-mb-md")
 
     graph_container = ui.column().classes("w-full")
 
@@ -973,7 +962,6 @@ async def ecs_graph_page():
         distribution = graph_data.get("distribution", {})
 
         with graph_container:
-            # State machine visualization
             ui.label("State Transitions").classes("text-h6 q-mb-sm")
             with ui.card().classes("w-full q-mb-md"):
                 with ui.card_section():
@@ -988,7 +976,6 @@ async def ecs_graph_page():
                             else:
                                 ui.label("(terminal)").classes("text-italic text-grey")
 
-            # Artifact browser by state
             ui.label("Artifacts by State").classes("text-h6 q-mb-sm")
             with ui.row().classes("w-full gap-2 q-mb-md"):
                 for s in all_states:
@@ -997,7 +984,6 @@ async def ecs_graph_page():
                     ui.button(f"{s} ({count})", color=color,
                               on_click=lambda state_name=s: asyncio.create_task(show_artifacts(state_name))).props("size=sm dense")
 
-            # Artifact list area
             artifact_list_container = ui.column().classes("w-full")
 
             async def show_artifacts(state_name: str):
@@ -1046,17 +1032,13 @@ async def wiki_browser_page():
     state = get_state()
 
     ui.label("Knowledge Wiki").classes("text-h4 q-my-md")
-    ui.label("Browse and search compiled knowledge items with provenance tracking.").classes(
-        "text-subtitle2 q-mb-md"
-    )
+    ui.label("Browse and search compiled knowledge items with provenance tracking.").classes("text-subtitle2 q-mb-md")
 
-    # Search bar
     with ui.row().classes("w-full items-center gap-2 q-mb-md"):
         wiki_search = ui.input(placeholder="Search knowledge...").props("outlined dense").classes("flex-grow")
         wiki_search.on("keydown.enter", lambda: asyncio.create_task(do_wiki_search()))
         ui.button("Search", on_click=lambda: asyncio.create_task(do_wiki_search()), icon="search", color="primary")
 
-    # Filters
     with ui.row().classes("gap-2 q-mb-md"):
         domain_filter = ui.input(placeholder="Domain filter").props("outlined dense")
         state_filter = ui.select(
@@ -1065,14 +1047,12 @@ async def wiki_browser_page():
             with_input=True,
         ).props("outlined dense")
 
-    # Content area
     wiki_container = ui.column().classes("w-full")
 
     async def do_wiki_search():
         query = wiki_search.value.strip()
         domain = domain_filter.value.strip() or None
         if query:
-            # Search mode
             wiki_container.clear()
             with wiki_container:
                 ui.label("Searching...").classes("text-grey")
@@ -1093,15 +1073,12 @@ async def wiki_browser_page():
                                 with ui.row().classes("gap-2"):
                                     ui.badge(source_type, color="blue")
                                     ui.badge(f"Score: {score:.3f}", color="green")
-                                ui.label(content[:300] + ("..." if len(content) > 300 else "")).classes(
-                                    "text-caption q-mt-sm"
-                                )
+                                ui.label(content[:300] + ("..." if len(content) > 300 else "")).classes("text-caption q-mt-sm")
             except Exception as exc:
                 wiki_container.clear()
                 with wiki_container:
                     ui.label(f"Search failed: {exc}").classes("text-negative")
         else:
-            # Browse mode
             await load_wiki_items()
 
     async def load_wiki_items():
@@ -1126,19 +1103,13 @@ async def wiki_browser_page():
                             ui.label(kid).classes("text-weight-medium")
                             with ui.row().classes("gap-2"):
                                 state_colors = {
-                                    "APPROVED": "positive",
-                                    "REVIEWED": "warning",
-                                    "COMPILED": "info",
-                                    "SPECIFIED": "grey",
-                                    "FAILED": "negative",
+                                    "APPROVED": "positive", "REVIEWED": "warning",
+                                    "COMPILED": "info", "SPECIFIED": "grey", "FAILED": "negative",
                                 }
                                 ui.badge(kstate, color=state_colors.get(kstate, "grey"))
                                 if kdomain:
                                     ui.badge(kdomain, color="orange")
-                            ui.label(content[:200] + ("..." if len(content) > 200 else "")).classes(
-                                "text-caption q-mt-sm"
-                            )
-                            # Provenance link
+                            ui.label(content[:200] + ("..." if len(content) > 200 else "")).classes("text-caption q-mt-sm")
                             source_ids = item.get("source_canonical_ids", [])
                             if source_ids:
                                 ui.label(f"Provenance: {len(source_ids)} source(s)").classes("text-caption text-grey")
@@ -1147,9 +1118,7 @@ async def wiki_browser_page():
             with wiki_container:
                 ui.label(f"Failed to load: {exc}").classes("text-negative")
 
-    # Load initial items
     await load_wiki_items()
-
     ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
 
 
@@ -1160,21 +1129,15 @@ async def sources_browser_page():
     state = get_state()
 
     ui.label("Sources Browser").classes("text-h4 q-my-md")
-    ui.label("Overview of all indexed content: conversations, artifacts, and compiled knowledge.").classes(
-        "text-subtitle2 q-mb-md"
-    )
+    ui.label("Overview of all indexed content: conversations, artifacts, and compiled knowledge.").classes("text-subtitle2 q-mb-md")
 
     sources_container = ui.column().classes("w-full")
 
-    # Load stats first
     try:
         stats = await state.api_client.get_sources_stats()
-
         with sources_container:
-            # Stats cards
             ui.label("Index Statistics").classes("text-h6 q-mb-sm")
             with ui.row().classes("w-full gap-4 q-mb-md"):
-                # Vector store stats
                 vs = stats.get("vector_store", {})
                 with ui.card().classes("min-w-[200px]"):
                     with ui.card_section():
@@ -1184,7 +1147,6 @@ async def sources_browser_page():
                         else:
                             ui.label("Not available").classes("text-caption text-warning")
 
-                # Entity store stats
                 es = stats.get("entity_store", {})
                 with ui.card().classes("min-w-[200px]"):
                     with ui.card_section():
@@ -1194,7 +1156,6 @@ async def sources_browser_page():
                         else:
                             ui.label("Not available").classes("text-caption text-warning")
 
-                # Knowledge store stats
                 ks = stats.get("knowledge_store", {})
                 with ui.card().classes("min-w-[200px]"):
                     with ui.card_section():
@@ -1204,7 +1165,6 @@ async def sources_browser_page():
                         else:
                             ui.label("Not available").classes("text-caption text-warning")
 
-                # Lexical store stats
                 ls = stats.get("lexical_store", {})
                 with ui.card().classes("min-w-[200px]"):
                     with ui.card_section():
@@ -1218,7 +1178,6 @@ async def sources_browser_page():
         with sources_container:
             ui.label(f"Failed to load stats: {exc}").classes("text-negative q-pa-md")
 
-    # Source list with filters
     with ui.row().classes("w-full items-center gap-2 q-mb-md"):
         domain_input = ui.input(placeholder="Domain filter").props("outlined dense")
         type_input = ui.select(
@@ -1262,9 +1221,7 @@ async def sources_browser_page():
             with source_list_container:
                 ui.label(f"Failed to load: {exc}").classes("text-negative")
 
-    # Load initial sources
     await load_sources()
-
     ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
 
 
@@ -1280,9 +1237,7 @@ async def review_queue_page():
     state = get_state()
 
     ui.label("Review Queue").classes("text-h4 q-my-md")
-    ui.label("Artifacts pending DEFINER review. Approve to promote to canonical, reject to mark as failed.").classes(
-        "text-subtitle2 q-mb-md"
-    )
+    ui.label("Artifacts pending DEFINER review. Approve to promote to canonical, reject to mark as failed.").classes("text-subtitle2 q-mb-md")
 
     review_container = ui.column().classes("w-full")
 
@@ -1313,9 +1268,7 @@ async def review_queue_page():
                                         ui.badge(domain, color="blue")
 
                                 if summary:
-                                    ui.label(summary[:500] + ("..." if len(summary) > 500 else "")).classes(
-                                        "text-caption q-mb-sm"
-                                    )
+                                    ui.label(summary[:500] + ("..." if len(summary) > 500 else "")).classes("text-caption q-mb-sm")
 
                                 with ui.row().classes("gap-2"):
                                     ui.button(
@@ -1353,14 +1306,11 @@ async def review_queue_page():
                 (f" (canonical written)" if canonical_written else ""),
                 color="positive" if approved else "warning",
             )
-            # Reload the review queue
             await load_reviews()
         except Exception as exc:
             ui.notify(f"Review decision failed: {exc}", color="negative")
 
-    # Load initial items
     await load_reviews()
-
     ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
 
 

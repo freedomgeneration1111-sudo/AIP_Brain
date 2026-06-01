@@ -215,3 +215,40 @@ db_path = "db/state.db"
 provider = "pgvector"
 host = "127.0.0.1"
 port = 5432
+
+# ============================================================
+# Model Slots — OpenRouter Configuration
+# ============================================================
+# All slots use OpenRouter (openai_compatible provider).
+# The base_url is "https://openrouter.ai/api" — the resolver
+# appends /v1/chat/completions automatically.
+# Set api_key here OR use env var AIP_OPENAI_API_KEY.
+# You can also override per-slot with AIP_<SLOT>_API_KEY.
+# ============================================================
+
+[models]
+ci_mode = false
+
+[models.synthesis]
+provider = "openai_compatible"
+model = "deepseek/deepseek-chat-v3-0324:free"
+base_url = "https://openrouter.ai/api"
+# api_key = ""   # Set your key here, or use AIP_SYNTHESIS_API_KEY / AIP_OPENAI_API_KEY env var
+
+[models.evaluation]
+provider = "openai_compatible"
+model = "deepseek/deepseek-chat-v3-0324:free"
+base_url = "https://openrouter.ai/api"
+# api_key = ""   # Set your key here, or use AIP_EVALUATION_API_KEY / AIP_OPENAI_API_KEY env var
+
+[models.sexton]
+provider = "openai_compatible"
+model = "deepseek/deepseek-chat-v3-0324:free"
+base_url = "https://openrouter.ai/api"
+# api_key = ""   # Set your key here, or use AIP_SEXTON_API_KEY / AIP_OPENAI_API_KEY env var
+
+[models.embedding]
+provider = "openai_compatible"
+model = "text-embedding-3-small"
+base_url = "https://openrouter.ai/api"
+# api_key = ""   # Set your key here, or use AIP_EMBEDDING_API_KEY / AIP_OPENAI_API_KEY env var
