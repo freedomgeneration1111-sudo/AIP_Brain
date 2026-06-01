@@ -75,6 +75,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                 # Allow per-message slot override
                 override_slot = msg.get("model_slot")
                 effective_slot = override_slot or model_slot
+                logger.info("chat_message_received", slot=effective_slot, content_len=len(content), session=session_id, mode=session_mode)
 
                 # Route through ModelSlotResolver if available
                 model_provider = _container.model_provider
@@ -204,6 +205,8 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
 
                         # Check for error from model provider
                         if result.get("error"):
+                            error_msg = result.get("error_message", "Model call failed — provider returned an error.")
+                            logger.error("chat_model_provider_error", slot=effective_slot, error=error_msg, model=result.get("model", "?"), session=session_id)
                             await websocket.send_json(
                                 {
                                     "type": "error",
@@ -219,6 +222,8 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         response_content = result.get("content", "")
                         model_used = result.get("model", effective_slot)
                         usage = result.get("usage", {})
+                        latency = result.get("latency_ms", 0)
+                        logger.info("chat_response_sent", slot=effective_slot, model=model_used, latency_ms=latency, content_len=len(response_content), session=session_id)
 
                         # Increment turn counter
                         increment_turn_count(session_id, _container)
@@ -331,6 +336,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
 
                     except ValueError as exc:
                         # Slot not found or invalid
+                        logger.error("chat_model_slot_error", slot=effective_slot, error=str(exc), session=session_id)
                         await websocket.send_json(
                             {
                                 "type": "error",
@@ -340,6 +346,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         )
                     except Exception as exc:
                         # Model call failed — send error rather than crashing
+                        logger.error("chat_model_call_failed", slot=effective_slot, error=str(exc), session=session_id, exc_info=True)
                         await websocket.send_json(
                             {
                                 "type": "error",

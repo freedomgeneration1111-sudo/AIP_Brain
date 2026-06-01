@@ -303,7 +303,7 @@ class AipApiClient:
         try:
             import websockets
 
-            async with websockets.connect(ws_url) as ws:
+            async with websockets.connect(ws_url, open_timeout=10, close_timeout=5) as ws:
                 # Send the user message
                 msg_payload: dict[str, Any] = {
                     "type": "message",
@@ -314,10 +314,15 @@ class AipApiClient:
 
                 await ws.send(json.dumps(msg_payload))
 
-                # Wait for response(s)
+                # Wait for response(s) with a timeout for the model call
                 # The backend may send multiple messages (gate then response)
                 while True:
-                    raw = await ws.recv()
+                    try:
+                        raw = await asyncio.wait_for(ws.recv(), timeout=120.0)
+                    except asyncio.TimeoutError:
+                        if on_error:
+                            on_error({"type": "error", "content": "Model call timed out (120s). The model may be unavailable."})
+                        break
                     try:
                         resp = json.loads(raw)
                     except json.JSONDecodeError:
