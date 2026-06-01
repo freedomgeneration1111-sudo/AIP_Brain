@@ -485,7 +485,8 @@ def build_model_options(slots: list[dict[str, Any]]) -> list[str]:
     Priority:
     1. Models selected from OpenRouter catalog (persisted in selected_models.json)
     2. Models currently configured in backend slots
-    3. Fallback message
+    3. Config file default models as last resort
+    4. Fallback message
     """
     selected = get_selected_models()
     backend_models = [
@@ -493,7 +494,11 @@ def build_model_options(slots: list[dict[str, Any]]) -> list[str]:
         for s in slots
         if s.get("model") and not s.get("model", "").startswith("<")
     ]
-    all_options = list(dict.fromkeys(selected + backend_models))
+    # Also include the hardcoded default from config as fallback
+    config_defaults = ["deepseek/deepseek-chat-v3-0324:free"]
+    all_options = list(dict.fromkeys(selected + backend_models + config_defaults))
+    # Remove empty strings
+    all_options = [m for m in all_options if m]
     if not all_options:
         all_options = ["(no models — go to Models page to select)"]
     return all_options
@@ -871,7 +876,6 @@ async def model_catalog_page():
 
                 # Build table data
                 columns = [
-                    {"name": "select", "label": "", "field": "select", "align": "center", "sortable": False},
                     {"name": "model_id", "label": "Model ID", "field": "model_id", "align": "left", "sortable": True},
                     {"name": "prompt_cost", "label": "Prompt $/1M tok", "field": "prompt_cost", "align": "right", "sortable": True},
                     {"name": "completion_cost", "label": "Completion $/1M tok", "field": "completion_cost", "align": "right", "sortable": True},
@@ -898,7 +902,6 @@ async def model_catalog_page():
                         comp_str = f"${comp_cost:.4f}"
 
                     rows.append({
-                        "select": mid in selected,
                         "model_id": mid,
                         "prompt_cost": cost_str,
                         "completion_cost": comp_str,
@@ -906,16 +909,26 @@ async def model_catalog_page():
                         "updated": updated[:10] if updated else "?",
                     })
 
-                # Use ui.table with selection
+                # ui.table does NOT accept 'selected' as a constructor kwarg.
+                # Use on_select callback instead, and set .selected after construction.
                 selected_models_set = set(selected)
+
+                def handle_select(e: ui.events.TableSelectionEventArguments) -> None:
+                    """Handle row selection change."""
+                    selected_ids = [r["model_id"] for r in e.selection]
+                    set_selected_models(selected_ids)
+                    selected_summary.text = f"Selected: {len(selected_ids)} models"
 
                 table = ui.table(
                     columns=columns,
                     rows=rows,
                     row_key="model_id",
                     selection="multiple",
-                    selected=[r for r in rows if r["model_id"] in selected_models_set],
+                    on_select=handle_select,
                 ).classes("w-full").props('flat bordered dense virtual-scroll')
+
+                # Set selected rows AFTER construction (not as constructor kwarg)
+                table.selected = [r for r in rows if r["model_id"] in selected_models_set]
 
                 # Style free models in green
                 table.add_slot('body-cell-prompt_cost', '''
@@ -925,22 +938,6 @@ async def model_catalog_page():
                         </span>
                     </q-td>
                 ''')
-
-                # Style model IDs that are selected
-                table.add_slot('body-cell-model_id', '''
-                    <q-td :props="props">
-                        <span :class="props.row.select ? 'text-weight-bold text-primary' : ''">
-                            {{ props.value }}
-                        </span>
-                    </q-td>
-                ''')
-
-                def on_selection_change(e):
-                    selected_ids = [r["model_id"] for r in e.args["selected"]]
-                    set_selected_models(selected_ids)
-                    selected_summary.text = f"Selected: {len(selected_ids)} models"
-
-                table.on('selection', on_selection_change)
 
         except Exception as exc:
             table_container.clear()
@@ -994,7 +991,7 @@ async def model_catalog_page():
                             )
                             ui.label(f"via {provider}").classes("text-[10px] text-grey-7")
         else:
-            ui.label("No slots configured in backend (check config/aip.config.toml)").classes("text-warning q-mb-md")
+            ui.label("Backend not reachable or no slots loaded — this is OK if the backend isn't running yet. Models from OpenRouter catalog will still work below.").classes("text-info q-mb-md text-caption")
 
         # Table load area
         table_container
