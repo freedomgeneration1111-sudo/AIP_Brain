@@ -92,3 +92,4 @@ failed/*
 !failed/.gitkeep
 logs/*
 !logs/.gitkeep
+config/selected_models.json

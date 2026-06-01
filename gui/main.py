@@ -15,12 +15,14 @@ All chat interactions flow through:
   5. POST /api/v1/ingest/conversation → manual ingestion trigger
 
 OpenRouter Integration Pass:
-  - API key prompt on first load if AIP_OPENAI_API_KEY is not set
+  - .env file loaded on startup → AIP_OPENAI_API_KEY available immediately
+  - API key prompt on first load if key is NOT in .env or environment
   - Model Catalog page fetches ALL models from OpenRouter API
   - Table with model name, cost, context length, date, and checkbox
   - Selected models populate a universal model dropdown
   - Chat + Actor roles all use the same model dropdown
   - All slots configured for OpenRouter (openai_compatible provider)
+  - Selected models persisted to config/selected_models.json
   - Visual clarity: amber border = chat model, sidebar = role models
   - "USING INGESTED DATA" badge when in augmented mode
 
@@ -31,11 +33,52 @@ like CLI and MCP, communicating via HTTP/WebSocket rather than in-process.
 from __future__ import annotations
 
 import asyncio
+import json
+import os
+from pathlib import Path
 from typing import Any
 
 from nicegui import ui
 
 from gui.api_client import get_api_client, AipApiClient
+
+# ---------------------------------------------------------------------------
+# Load .env file IMMEDIATELY — must happen before any env var reads
+# ---------------------------------------------------------------------------
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
+# ---------------------------------------------------------------------------
+# Persistence: selected models saved to JSON
+# ---------------------------------------------------------------------------
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_SELECTED_MODELS_FILE = _PROJECT_ROOT / "config" / "selected_models.json"
+
+
+def _load_selected_models_from_disk() -> list[str]:
+    """Load previously selected models from JSON file."""
+    try:
+        if _SELECTED_MODELS_FILE.exists():
+            data = json.loads(_SELECTED_MODELS_FILE.read_text())
+            if isinstance(data, list):
+                return data
+    except Exception:
+        pass
+    return []
+
+
+def _save_selected_models_to_disk(models: list[str]) -> None:
+    """Persist selected models to JSON file."""
+    try:
+        _SELECTED_MODELS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _SELECTED_MODELS_FILE.write_text(json.dumps(models, indent=2))
+    except Exception:
+        pass
+
 
 # ---------------------------------------------------------------------------
 # State management
@@ -67,7 +110,6 @@ class GuiState:
             role=self.current_role,
             model_slot=self.current_model_slot,
             mode=self.current_mode,
-            auto_save=self.auto_save,
         )
         self.session_id = result["id"]
         return self.session_id
@@ -84,14 +126,13 @@ class GuiState:
 _state: GuiState | None = None
 
 # Track which OpenRouter models the user has selected from the catalog.
-# These populate the universal model dropdown.
-_selected_models: list[str] = []
+# These populate the universal model dropdown. Loaded from disk on startup.
+_selected_models: list[str] = _load_selected_models_from_disk()
 
 # Track enabled slots (for Chat Model dropdown filtering)
 _enabled_slots: dict[str, bool] = {}
 
 # Role → model assignment: maps role names to selected OpenRouter model IDs.
-# e.g. {"beast": "deepseek/deepseek-chat-v3-0324:free", "vigil": "openai/gpt-4o", ...}
 _role_model_assignments: dict[str, str] = {
     "synthesis": "",
     "evaluation": "",
@@ -116,9 +157,10 @@ def get_selected_models() -> list[str]:
 
 
 def set_selected_models(models: list[str]) -> None:
-    """Set the list of selected models."""
+    """Set the list of selected models and persist to disk."""
     global _selected_models
     _selected_models = models
+    _save_selected_models_to_disk(models)
 
 
 def get_role_model(slot_name: str) -> str:
@@ -402,34 +444,59 @@ async def refresh_budget_status(label_ref, state: GuiState) -> None:
 
 
 # ---------------------------------------------------------------------------
-# API Key Prompt Dialog
+# API Key Prompt — BLOCKING dialog that MUST be resolved before proceeding
 # ---------------------------------------------------------------------------
 
 
 async def show_api_key_prompt() -> str | None:
-    """Show a dialog asking for the OpenRouter API key.
+    """Show a BLOCKING dialog asking for the OpenRouter API key.
 
-    Returns the key if provided, None if skipped.
+    This dialog cannot be dismissed without entering a key or explicitly
+    skipping. Returns the key if provided, None if skipped.
     """
-    result_key: str | None = None
-
-    with ui.dialog() as dialog, ui.card().classes("p-6 min-w-[400px]"):
-        ui.label("OpenRouter API Key Required").classes("text-h6 text-weight-bold")
+    with ui.dialog().props("persistent") as dialog, ui.card().classes("p-6 min-w-[480px]"):
+        ui.icon("vpn_key", size="lg", color="amber").classes("q-mb-sm")
+        ui.label("OpenRouter API Key Required").classes("text-h5 text-weight-bold")
         ui.label(
-            "AIP_Brain uses OpenRouter for all model slots. "
+            "AIP_Brain uses OpenRouter for ALL model slots (chat, beast, vigil, embed). "
             "Enter your OpenRouter API key to get started. "
             "You can get one at openrouter.ai/keys"
-        ).classes("text-caption q-mt-sm")
+        ).classes("text-body2 q-mt-sm")
         key_input = ui.input(
             placeholder="sk-or-v1-...",
             password=True,
         ).props("outlined dense").classes("w-full q-mt-md")
         with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
-            ui.button("Skip", color="grey", on_click=lambda: dialog.submit(None))
+            ui.button("Skip (limited functionality)", color="grey", on_click=lambda: dialog.submit(None))
             ui.button("Save Key", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
 
     result = await dialog
     return result
+
+
+# ---------------------------------------------------------------------------
+# Model Dropdown Builder — builds universal dropdown from selected models
+# ---------------------------------------------------------------------------
+
+
+def build_model_options(slots: list[dict[str, Any]]) -> list[str]:
+    """Build the universal model dropdown options list.
+
+    Priority:
+    1. Models selected from OpenRouter catalog (persisted in selected_models.json)
+    2. Models currently configured in backend slots
+    3. Fallback message
+    """
+    selected = get_selected_models()
+    backend_models = [
+        s.get("model", "")
+        for s in slots
+        if s.get("model") and not s.get("model", "").startswith("<")
+    ]
+    all_options = list(dict.fromkeys(selected + backend_models))
+    if not all_options:
+        all_options = ["(no models — go to Models page to select)"]
+    return all_options
 
 
 # ---------------------------------------------------------------------------
@@ -445,36 +512,38 @@ async def main_page():
     ui.page_title("AIP_Brain")
     state = get_state()
 
-    # Check for API key — prompt if missing
+    # ---- STEP 1: API Key Check — BLOCKING ----
+    # This MUST happen before anything else. If the key is missing,
+    # show a blocking dialog. The user cannot proceed without entering
+    # a key or explicitly skipping.
     if not state.api_client.has_openrouter_api_key():
         key = await show_api_key_prompt()
         if key:
             state.api_client.set_openrouter_api_key(key)
-            ui.notify("API key saved. It will be used for all OpenRouter calls.", color="positive")
+            ui.notify("API key saved! All OpenRouter calls will use it.", color="positive", position="top")
+        else:
+            ui.notify("No API key set. Model catalog and chat will not work. You can set it later via Models page.", color="warning", position="top")
 
-    # Load backend data on page load
+    # ---- STEP 2: Load backend data ----
     backend_status = await check_backend_health()
     slots = await load_model_slots()
 
-    # Build slot names for sidebar
-    slot_names = [s["slot_name"] for s in slots] if slots else ["synthesis", "evaluation", "sexton", "embedding"]
-    slot_models = {s["slot_name"]: s.get("model", f"<{s['slot_name']}>") for s in slots}
+    # ---- STEP 3: Build universal model dropdown ----
+    all_model_options = build_model_options(slots)
 
-    # Build the universal model dropdown from selected OpenRouter models
-    selected_models = get_selected_models()
-    # Also include the currently-configured models from backend slots as fallback
-    backend_models = [s.get("model", "") for s in slots if s.get("model") and not s["model"].startswith("<")]
-    all_model_options = list(dict.fromkeys(selected_models + backend_models))  # dedupe preserving order
-
-    # If no models available yet, use slot names as labels
-    if not all_model_options:
-        all_model_options = ["(no models selected — go to Models page)"]
-
-    # Determine current chat model
-    current_chat_model = get_role_model("synthesis") or state.current_model_slot
-    if current_chat_model not in all_model_options and current_chat_model in slot_names:
-        # Current model is a slot name, not a model ID — use first available
+    # Determine current chat model — prefer assigned model, then first available
+    current_chat_model = get_role_model("synthesis")
+    if not current_chat_model or current_chat_model not in all_model_options:
+        # Try to use the backend's configured synthesis model
+        for s in slots:
+            if s.get("slot_name") == "synthesis" and s.get("model", "") and not s["model"].startswith("<"):
+                current_chat_model = s["model"]
+                break
+    if not current_chat_model or current_chat_model not in all_model_options:
         current_chat_model = all_model_options[0] if all_model_options else ""
+
+    # Build slot model map for sidebar defaults
+    slot_models = {s["slot_name"]: s.get("model", "") for s in slots}
 
     # ---- HEADER ----
     with ui.header(elevated=True).classes("bg-primary text-white items-center q-pa-xs"):
@@ -507,6 +576,15 @@ async def main_page():
             on_change=lambda e: asyncio.create_task(on_auto_save_toggled(e.value)),
         ).classes("q-ml-xs text-caption text-white")
         ui.space()
+
+        # API key indicator
+        key_set = state.api_client.has_openrouter_api_key()
+        ui.button(
+            icon="vpn_key",
+            color="positive" if key_set else "negative",
+            on_click=lambda: asyncio.create_task(show_key_dialog_and_update()),
+        ).props("flat dense round").tooltip("OpenRouter API Key" if key_set else "API Key Missing — Click to set")
+
         ui.button("Models", on_click=lambda: ui.navigate.to("/models")).props("flat text-color=white dense")
         with ui.row().classes("items-center gap-0"):
             ui.button(icon="storage", on_click=lambda: ui.navigate.to("/vector")).props("flat text-color=white dense round")
@@ -582,7 +660,7 @@ async def main_page():
                     provider = s.get("provider", "?")
                     ui.label(f"{s['slot_name']}: {model_name} ({provider})").classes("text-[11px] q-mb-none")
             else:
-                ui.label("No slots loaded").classes("text-[11px]")
+                ui.label("No slots loaded — backend may not be running").classes("text-[11px]")
 
     # ---- CHAT AREA ----
     chat_container = ui.column().classes("w-full max-w-3xl mx-auto q-px-md q-py-sm").style("min-height: 400px;")
@@ -595,8 +673,12 @@ async def main_page():
             ui.label("Start the backend with: uvicorn aip.adapter.api.app:create_app --factory --port 8000").classes("text-caption q-px-md")
     else:
         with chat_container:
-            api_key_status = "API key set" if state.api_client.has_openrouter_api_key() else "No API key"
-            ui.label(f"Connected to AIP Backend. {len(slots)} slot(s). {api_key_status}.").classes("text-positive text-caption q-pa-sm")
+            api_key_status = "API key: Set" if state.api_client.has_openrouter_api_key() else "API key: MISSING"
+            selected_count = len(get_selected_models())
+            ui.label(
+                f"Connected to AIP Backend. {len(slots)} slot(s). {api_key_status}. "
+                f"{selected_count} model(s) selected from catalog."
+            ).classes("text-positive text-caption q-pa-sm" if state.api_client.has_openrouter_api_key() else "text-warning text-caption q-pa-sm")
 
     # ---- INPUT AREA ----
     with ui.row().classes("w-full max-w-3xl mx-auto items-center q-pa-sm gap-2"):
@@ -617,6 +699,25 @@ async def main_page():
     asyncio.create_task(refresh_budget_status(budget_label_ref, state))
 
 
+async def show_key_dialog_and_update():
+    """Show the API key dialog from the header key icon."""
+    state = get_state()
+    with ui.dialog() as dialog, ui.card().classes("p-6 min-w-[480px]"):
+        ui.label("OpenRouter API Key").classes("text-h6")
+        current = state.api_client.get_openrouter_api_key() or ""
+        masked = current[:8] + "..." + current[-4:] if len(current) > 12 else "(not set)"
+        ui.label(f"Current: {masked}").classes("text-caption q-mt-xs")
+        key_input = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("w-full q-mt-md")
+        with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
+            ui.button("Cancel", color="grey", on_click=lambda: dialog.submit(None))
+            ui.button("Save", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
+
+    result = await dialog
+    if result:
+        state.api_client.set_openrouter_api_key(result)
+        ui.notify("API key updated! It will be used for all OpenRouter calls.", color="positive", position="top")
+
+
 def on_chat_model_changed(model_id: str) -> None:
     """Handle chat model selection change from the header dropdown.
 
@@ -632,6 +733,7 @@ def on_chat_model_changed(model_id: str) -> None:
     asyncio.create_task(
         state.api_client.update_slot_model("synthesis", model_id, api_key=api_key)
     )
+    ui.notify(f"Chat model → {model_id}", color="info")
 
 
 def on_role_model_changed(slot_name: str, model_id: str) -> None:
@@ -646,6 +748,7 @@ def on_role_model_changed(slot_name: str, model_id: str) -> None:
     asyncio.create_task(
         state.api_client.update_slot_model(slot_name, model_id, api_key=api_key)
     )
+    ui.notify(f"{slot_name.capitalize()} → {model_id}", color="info")
 
 
 # ---------------------------------------------------------------------------
@@ -659,6 +762,15 @@ async def model_catalog_page():
     ui.page_title("Model Catalog — AIP_Brain")
     state = get_state()
 
+    # ---- STEP 1: API Key Check — BLOCKING ----
+    if not state.api_client.has_openrouter_api_key():
+        key = await show_api_key_prompt()
+        if key:
+            state.api_client.set_openrouter_api_key(key)
+            ui.notify("API key saved! Loading models...", color="positive", position="top")
+        else:
+            ui.notify("No API key — model catalog requires an OpenRouter key.", color="warning", position="top")
+
     # ---- HEADER ----
     with ui.header().classes("bg-primary text-white items-center q-pa-xs"):
         ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/")).props("flat text-color=white dense round")
@@ -668,23 +780,21 @@ async def model_catalog_page():
         key_status = "Key: Set" if state.api_client.has_openrouter_api_key() else "Key: Missing"
         key_color = "positive" if state.api_client.has_openrouter_api_key() else "negative"
         ui.badge(key_status, color=key_color).classes("text-[10px] q-mr-sm")
-        ui.button(icon="vpn_key", on_click=lambda: asyncio.create_task(show_key_dialog(refresh_models))).props(
+        ui.button(icon="vpn_key", on_click=lambda: asyncio.create_task(show_key_dialog_and_reload())).props(
             "flat text-color=white dense round"
         )
         ui.button(icon="chat", on_click=lambda: ui.navigate.to("/")).props("flat text-color=white dense round")
 
-    # ---- API KEY PROMPT (if missing) ----
+    # ---- API KEY WARNING (if still missing after prompt) ----
     if not state.api_client.has_openrouter_api_key():
         with ui.card().classes("w-full max-w-4xl mx-auto q-mt-md q-pa-md").style("border: 2px solid #F44336;"):
             ui.icon("warning", size="lg", color="negative")
             ui.label("OpenRouter API Key Required").classes("text-h6 text-negative")
             ui.label(
                 "You need an OpenRouter API key to browse and select models. "
-                "Get one at openrouter.ai/keys"
+                "Get one at openrouter.ai/keys. Click the key icon above to enter it."
             ).classes("text-caption q-mt-xs")
-            with ui.row().classes("q-mt-md items-center gap-2"):
-                key_input = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("flex-grow")
-                ui.button("Save Key", color="positive", on_click=lambda: on_save_key(key_input.value))
+        return  # Don't show the rest of the page without a key
 
     # ---- MAIN CONTENT ----
     content_area = ui.column().classes("w-full max-w-6xl mx-auto q-pa-md")
@@ -703,17 +813,35 @@ async def model_catalog_page():
                   on_click=lambda: clear_selection())
         ui.button("Apply to Chat", color="positive",
                   on_click=lambda: ui.navigate.to("/"))
+        # Search filter
+        filter_input = ui.input(placeholder="Filter models...", on_change=lambda e: asyncio.create_task(load_openrouter_models(filter_text=e.value))).props(
+            "outlined dense clearable"
+        ).classes("q-ml-md flex-grow")
 
-    # Refresh function
-    async def refresh_models():
-        """Reload the model table."""
-        await load_openrouter_models()
+    async def show_key_dialog_and_reload():
+        """Show key dialog and reload models after saving."""
+        with ui.dialog() as dialog, ui.card().classes("p-6 min-w-[480px]"):
+            ui.label("OpenRouter API Key").classes("text-h6")
+            current = state.api_client.get_openrouter_api_key() or ""
+            masked = current[:8] + "..." + current[-4:] if len(current) > 12 else "(not set)"
+            ui.label(f"Current: {masked}").classes("text-caption q-mt-xs")
+            key_input = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("w-full q-mt-md")
+            with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
+                ui.button("Cancel", color="grey", on_click=lambda: dialog.submit(None))
+                ui.button("Save", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
 
-    async def load_openrouter_models():
+        result = await dialog
+        if result:
+            state.api_client.set_openrouter_api_key(result)
+            ui.notify("API key updated!", color="positive", position="top")
+            await load_openrouter_models()
+
+    async def load_openrouter_models(filter_text: str = ""):
         """Fetch models from OpenRouter and display them in a table."""
         table_container.clear()
         with table_container:
             ui.label("Fetching models from OpenRouter...").classes("text-grey")
+            ui.spinner("dots", size="lg", color="primary")
 
         try:
             api_key = state.api_client.get_openrouter_api_key()
@@ -724,6 +852,11 @@ async def model_catalog_page():
                 if not models:
                     ui.label("No models found. Check your API key.").classes("text-warning")
                     return
+
+                # Apply text filter
+                if filter_text:
+                    filter_lower = filter_text.lower()
+                    models = [m for m in models if filter_lower in m.get("id", "").lower()]
 
                 # Sort models: free first, then by prompt cost ascending
                 def sort_key(m):
@@ -784,10 +917,19 @@ async def model_catalog_page():
                     selected=[r for r in rows if r["model_id"] in selected_models_set],
                 ).classes("w-full").props('flat bordered dense virtual-scroll')
 
-                # Style free models
+                # Style free models in green
                 table.add_slot('body-cell-prompt_cost', '''
                     <q-td :props="props">
                         <span :class="props.value === 'FREE' ? 'text-positive text-weight-bold' : ''">
+                            {{ props.value }}
+                        </span>
+                    </q-td>
+                ''')
+
+                # Style model IDs that are selected
+                table.add_slot('body-cell-model_id', '''
+                    <q-td :props="props">
+                        <span :class="props.row.select ? 'text-weight-bold text-primary' : ''">
                             {{ props.value }}
                         </span>
                     </q-td>
@@ -821,25 +963,6 @@ async def model_catalog_page():
             ui.notify("API key saved!", color="positive")
             # Reload the page to refresh the key status
             asyncio.create_task(load_openrouter_models())
-
-    async def show_key_dialog(callback=None):
-        """Show a dialog to enter/update the API key."""
-        with ui.dialog() as dialog, ui.card().classes("p-6 min-w-[400px]"):
-            ui.label("OpenRouter API Key").classes("text-h6")
-            current = state.api_client.get_openrouter_api_key() or ""
-            masked = current[:8] + "..." + current[-4:] if len(current) > 12 else "(not set)"
-            ui.label(f"Current: {masked}").classes("text-caption q-mt-xs")
-            key_input = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("w-full q-mt-md")
-            with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
-                ui.button("Cancel", color="grey", on_click=lambda: dialog.submit(None))
-                ui.button("Save", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
-
-        result = await dialog
-        if result:
-            state.api_client.set_openrouter_api_key(result)
-            ui.notify("API key updated!", color="positive")
-            if callback:
-                await callback()
 
     # Load backend slots info
     slots = await load_model_slots()
@@ -875,6 +998,10 @@ async def model_catalog_page():
 
         # Table load area
         table_container
+
+    # Auto-load models if API key is available
+    if state.api_client.has_openrouter_api_key():
+        await load_openrouter_models()
 
     ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
 
@@ -920,305 +1047,226 @@ async def vector_search_page():
                 if not sources:
                     ui.label("No results found.").classes("text-warning q-pa-md")
                 else:
-                    ui.label(f"Found {len(sources)} result(s)").classes("text-caption q-mb-sm")
-                    for i, s in enumerate(sources, 1):
+                    ui.label(f"{len(sources)} result(s)").classes("text-weight-medium q-mb-sm")
+                    for src in sources:
                         with ui.card().classes("w-full q-mb-sm"):
                             with ui.card_section():
-                                title = s.get("title", s.get("source_id", "Unknown"))
-                                score = s.get("score", 0)
-                                source_type = s.get("source_type", "unknown")
-                                domain = s.get("domain", "")
-                                snippet = s.get("content_snippet", "")
-                                ui.label(f"#{i} — {title}").classes("text-weight-medium")
-                                with ui.row().classes("gap-2"):
-                                    ui.badge(source_type, color="blue").classes("text-xs")
-                                    ui.badge(f"Score: {score:.3f}", color="green").classes("text-xs")
+                                title = src.get("title", src.get("source_id", "Untitled"))
+                                score = src.get("score", 0)
+                                domain = src.get("domain", "")
+                                content_preview = src.get("content_preview", src.get("chunk_text", ""))
+
+                                with ui.row().classes("items-center gap-2"):
+                                    ui.label(title).classes("text-weight-medium")
+                                    ui.badge(f"Score: {score:.2f}", color="blue")
                                     if domain:
-                                        ui.badge(domain, color="orange").classes("text-xs")
-                                ui.label(snippet[:300] + ("..." if len(snippet) > 300 else "")).classes("text-caption q-mt-sm")
+                                        ui.badge(domain, color="teal")
+
+                                if content_preview:
+                                    ui.label(content_preview[:500] + ("..." if len(content_preview) > 500 else "")).classes("text-caption q-mt-xs")
         except Exception as exc:
             results_container.clear()
             with results_container:
                 ui.label(f"Search failed: {exc}").classes("text-negative")
 
-    ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
-
 
 @ui.page("/graph")
 async def ecs_graph_page():
-    """ECS Graph panel — visualize artifact lifecycle states."""
+    """ECS State Graph page — visualize artifact states and transitions."""
     ui.page_title("ECS Graph — AIP_Brain")
     state = get_state()
 
-    ui.label("Artifact Lifecycle Graph").classes("text-h4 q-my-md")
-    ui.label("Visualize the ECS state machine and artifact distribution across states.").classes("text-subtitle2 q-mb-md")
+    ui.label("ECS State Graph").classes("text-h4 q-my-md")
 
     graph_container = ui.column().classes("w-full")
 
-    try:
-        graph_data = await state.api_client.get_ecs_graph()
-        transitions = graph_data.get("transitions", {})
-        all_states = graph_data.get("all_states", [])
-        distribution = graph_data.get("distribution", {})
-
+    async def load_graph():
+        graph_container.clear()
         with graph_container:
-            ui.label("State Transitions").classes("text-h6 q-mb-sm")
-            with ui.card().classes("w-full q-mb-md"):
-                with ui.card_section():
-                    for from_state, to_states in transitions.items():
-                        count = distribution.get(from_state, 0)
-                        with ui.row().classes("items-center gap-2 q-mb-xs"):
-                            ui.badge(f"{from_state} ({count})", color="blue")
-                            ui.label("→").classes("text-weight-bold")
-                            if to_states:
-                                for to_state in to_states:
-                                    ui.badge(to_state, color="green" if to_state == "APPROVED" else "grey")
-                            else:
-                                ui.label("(terminal)").classes("text-italic text-grey")
+            ui.label("Loading ECS graph...").classes("text-grey")
 
-            ui.label("Artifacts by State").classes("text-h6 q-mb-sm")
-            with ui.row().classes("w-full gap-2 q-mb-md"):
-                for s in all_states:
-                    count = distribution.get(s, 0)
-                    color = "positive" if s == "APPROVED" else "warning" if s == "GENERATED" else "grey"
-                    ui.button(f"{s} ({count})", color=color,
-                              on_click=lambda state_name=s: asyncio.create_task(show_artifacts(state_name))).props("size=sm dense")
+        try:
+            graph_data = await state.api_client.get_ecs_graph()
+            graph_container.clear()
+            with graph_container:
+                states = graph_data.get("states", {})
+                transitions = graph_data.get("transitions", [])
+                artifact_counts = graph_data.get("artifact_counts", {})
 
-            artifact_list_container = ui.column().classes("w-full")
+                if not states:
+                    ui.label("No ECS data available.").classes("text-warning q-pa-md")
+                    return
 
-            async def show_artifacts(state_name: str):
-                artifact_list_container.clear()
-                with artifact_list_container:
-                    ui.label(f"Loading artifacts in {state_name}...").classes("text-grey")
-                try:
-                    result = await state.api_client.list_ecs_artifacts(state=state_name)
-                    artifact_ids = result.get("artifact_ids", [])
-                    count = result.get("count", 0)
-                    artifact_list_container.clear()
-                    with artifact_list_container:
-                        ui.label(f"{count} artifact(s) in {state_name}").classes("text-weight-medium q-mb-sm")
-                        for aid in artifact_ids[:50]:
-                            with ui.row().classes("items-center gap-2 q-mb-xs"):
-                                ui.label(aid).classes("text-caption font-mono")
-                                ui.button("Details", color="blue",
-                                          on_click=lambda artifact_id=aid: asyncio.create_task(
-                                              show_artifact_details(artifact_id))).props("size=xs dense")
-                except Exception as exc:
-                    artifact_list_container.clear()
-                    with artifact_list_container:
-                        ui.label(f"Failed to load: {exc}").classes("text-negative")
+                ui.label(f"States: {len(states)}, Transitions: {len(transitions)}").classes("text-weight-medium q-mb-md")
 
-            async def show_artifact_details(artifact_id: str):
-                try:
-                    detail = await state.api_client.get_ecs_artifact(artifact_id)
-                    current = detail.get("current_state", "Unknown")
-                    history = detail.get("history", [])
-                    ui.notify(f"{artifact_id}: {current} ({len(history)} transitions)")
-                except Exception as exc:
-                    ui.notify(f"Failed: {exc}", color="negative")
+                with ui.row().classes("w-full gap-4 flex-wrap"):
+                    for state_name, count in artifact_counts.items():
+                        with ui.card().classes("min-w-[100px]"):
+                            with ui.card_section():
+                                ui.label(state_name).classes("text-weight-bold")
+                                ui.label(str(count)).classes("text-h6 text-primary")
 
-    except Exception as exc:
-        with graph_container:
-            ui.label(f"Failed to load ECS graph: {exc}").classes("text-negative q-pa-md")
-            ui.label("Ensure the AIP backend is running and ECS store is configured.").classes("text-caption")
+                if transitions:
+                    ui.label("Recent Transitions").classes("text-subtitle2 q-mt-md q-mb-sm")
+                    for t in transitions[:20]:
+                        from_state = t.get("from_state", "?")
+                        to_state = t.get("to_state", "?")
+                        artifact = t.get("artifact_id", "?")
+                        timestamp = t.get("timestamp", "")
+                        ui.label(f"{artifact}: {from_state} → {to_state} ({timestamp})").classes("text-caption")
 
+        except Exception as exc:
+            graph_container.clear()
+            with graph_container:
+                ui.label(f"Failed to load: {exc}").classes("text-negative")
+
+    await load_graph()
+    ui.button("Refresh", on_click=lambda: asyncio.create_task(load_graph()), icon="refresh", color="primary").classes("q-mt-md")
     ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
 
 
 @ui.page("/wiki")
-async def wiki_browser_page():
-    """Wiki browser — browse and search compiled knowledge."""
-    ui.page_title("Wiki — AIP_Brain")
+async def wiki_page():
+    """Wiki / Knowledge Browser page."""
+    ui.page_title("Knowledge Browser — AIP_Brain")
     state = get_state()
 
-    ui.label("Knowledge Wiki").classes("text-h4 q-my-md")
-    ui.label("Browse and search compiled knowledge items with provenance tracking.").classes("text-subtitle2 q-mb-md")
+    ui.label("Knowledge Browser").classes("text-h4 q-my-md")
+    ui.label("Browse compiled knowledge items. Search or filter by domain.").classes("text-subtitle2 q-mb-md")
 
     with ui.row().classes("w-full items-center gap-2 q-mb-md"):
-        wiki_search = ui.input(placeholder="Search knowledge...").props("outlined dense").classes("flex-grow")
-        wiki_search.on("keydown.enter", lambda: asyncio.create_task(do_wiki_search()))
-        ui.button("Search", on_click=lambda: asyncio.create_task(do_wiki_search()), icon="search", color="primary")
+        search_input = ui.input(placeholder="Search knowledge...").props("outlined dense").classes("flex-grow")
+        search_input.on("keydown.enter", lambda: asyncio.create_task(search_knowledge()))
+        ui.button("Search", on_click=lambda: asyncio.create_task(search_knowledge()), icon="search", color="primary")
 
-    with ui.row().classes("gap-2 q-mb-md"):
-        domain_filter = ui.input(placeholder="Domain filter").props("outlined dense")
-        state_filter = ui.select(
-            ["", "SPECIFIED", "COMPILED", "REVIEWED", "APPROVED", "FAILED"],
-            value="",
-            with_input=True,
-        ).props("outlined dense")
+    knowledge_container = ui.column().classes("w-full")
 
-    wiki_container = ui.column().classes("w-full")
+    async def search_knowledge():
+        query = search_input.value.strip()
+        if not query:
+            await load_all_knowledge()
+            return
 
-    async def do_wiki_search():
-        query = wiki_search.value.strip()
-        domain = domain_filter.value.strip() or None
-        if query:
-            wiki_container.clear()
-            with wiki_container:
-                ui.label("Searching...").classes("text-grey")
-            try:
-                result = await state.api_client.search_knowledge(q=query, domain=domain, limit=20)
-                results = result.get("results", [])
-                wiki_container.clear()
-                with wiki_container:
-                    ui.label(f"Search: {len(results)} result(s)").classes("text-caption q-mb-sm")
-                    for i, item in enumerate(results, 1):
+        knowledge_container.clear()
+        with knowledge_container:
+            ui.label("Searching...").classes("text-grey")
+
+        try:
+            result = await state.api_client.search_knowledge(q=query, limit=20)
+            items = result.get("items", result.get("results", []))
+            knowledge_container.clear()
+            with knowledge_container:
+                if not items:
+                    ui.label("No knowledge items found.").classes("text-warning q-pa-md")
+                else:
+                    ui.label(f"{len(items)} result(s)").classes("text-weight-medium q-mb-sm")
+                    for item in items:
                         with ui.card().classes("w-full q-mb-sm"):
                             with ui.card_section():
-                                kid = item.get("knowledge_id", "?")
-                                score = item.get("score", 0)
-                                source_type = item.get("source", "unknown")
-                                content = item.get("content", "")
-                                ui.label(f"#{i} — {kid}").classes("text-weight-medium")
-                                with ui.row().classes("gap-2"):
-                                    ui.badge(source_type, color="blue")
-                                    ui.badge(f"Score: {score:.3f}", color="green")
-                                ui.label(content[:300] + ("..." if len(content) > 300 else "")).classes("text-caption q-mt-sm")
-            except Exception as exc:
-                wiki_container.clear()
-                with wiki_container:
-                    ui.label(f"Search failed: {exc}").classes("text-negative")
-        else:
-            await load_wiki_items()
+                                kid = item.get("id", "?")
+                                title = item.get("title", kid)
+                                domain = item.get("domain", "")
+                                confidence = item.get("confidence", 0)
+                                content = item.get("content", item.get("summary", ""))
 
-    async def load_wiki_items():
-        domain = domain_filter.value.strip() or None
-        st = state_filter.value or None
-        wiki_container.clear()
-        with wiki_container:
-            ui.label("Loading...").classes("text-grey")
-        try:
-            result = await state.api_client.list_knowledge(domain=domain, state=st)
-            items = result.get("items", [])
-            wiki_container.clear()
-            with wiki_container:
-                ui.label(f"{len(items)} knowledge item(s)").classes("text-caption q-mb-sm")
-                for item in items[:50]:
-                    with ui.card().classes("w-full q-mb-sm"):
-                        with ui.card_section():
-                            kid = item.get("knowledge_id", "?")
-                            kstate = item.get("state", "UNKNOWN")
-                            kdomain = item.get("domain", "")
-                            content = item.get("content", "")
-                            ui.label(kid).classes("text-weight-medium")
-                            with ui.row().classes("gap-2"):
-                                state_colors = {
-                                    "APPROVED": "positive", "REVIEWED": "warning",
-                                    "COMPILED": "info", "SPECIFIED": "grey", "FAILED": "negative",
-                                }
-                                ui.badge(kstate, color=state_colors.get(kstate, "grey"))
-                                if kdomain:
-                                    ui.badge(kdomain, color="orange")
-                            ui.label(content[:200] + ("..." if len(content) > 200 else "")).classes("text-caption q-mt-sm")
-                            source_ids = item.get("source_canonical_ids", [])
-                            if source_ids:
-                                ui.label(f"Provenance: {len(source_ids)} source(s)").classes("text-caption text-grey")
+                                with ui.row().classes("items-center gap-2"):
+                                    ui.label(title).classes("text-weight-medium")
+                                    if domain:
+                                        ui.badge(domain, color="blue")
+                                    ui.badge(f"Conf: {confidence:.2f}", color="green")
+
+                                if content:
+                                    ui.label(content[:500] + ("..." if len(content) > 500 else "")).classes("text-caption q-mt-xs")
         except Exception as exc:
-            wiki_container.clear()
-            with wiki_container:
+            knowledge_container.clear()
+            with knowledge_container:
+                ui.label(f"Search failed: {exc}").classes("text-negative")
+
+    async def load_all_knowledge():
+        knowledge_container.clear()
+        with knowledge_container:
+            ui.label("Loading knowledge items...").classes("text-grey")
+
+        try:
+            result = await state.api_client.list_knowledge()
+            items = result.get("items", [])
+            knowledge_container.clear()
+            with knowledge_container:
+                if not items:
+                    ui.label("No knowledge items yet.").classes("text-info q-pa-md")
+                else:
+                    ui.label(f"{len(items)} knowledge item(s)").classes("text-weight-medium q-mb-sm")
+                    for item in items:
+                        with ui.card().classes("w-full q-mb-sm"):
+                            with ui.card_section():
+                                kid = item.get("id", "?")
+                                title = item.get("title", kid)
+                                domain = item.get("domain", "")
+                                state_val = item.get("state", "")
+                                confidence = item.get("confidence", 0)
+
+                                with ui.row().classes("items-center gap-2"):
+                                    ui.label(title).classes("text-weight-medium")
+                                    if domain:
+                                        ui.badge(domain, color="blue")
+                                    if state_val:
+                                        ui.badge(state_val, color="orange")
+                                    ui.badge(f"Conf: {confidence:.2f}", color="green")
+        except Exception as exc:
+            knowledge_container.clear()
+            with knowledge_container:
                 ui.label(f"Failed to load: {exc}").classes("text-negative")
 
-    await load_wiki_items()
+    await load_all_knowledge()
     ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
 
 
 @ui.page("/sources")
-async def sources_browser_page():
-    """Sources browser — overview of all indexed content."""
+async def sources_page():
+    """Sources page — list and browse indexed sources."""
     ui.page_title("Sources — AIP_Brain")
     state = get_state()
 
-    ui.label("Sources Browser").classes("text-h4 q-my-md")
-    ui.label("Overview of all indexed content: conversations, artifacts, and compiled knowledge.").classes("text-subtitle2 q-mb-md")
+    ui.label("Indexed Sources").classes("text-h4 q-my-md")
 
     sources_container = ui.column().classes("w-full")
 
-    try:
-        stats = await state.api_client.get_sources_stats()
-        with sources_container:
-            ui.label("Index Statistics").classes("text-h6 q-mb-sm")
-            with ui.row().classes("w-full gap-4 q-mb-md"):
-                vs = stats.get("vector_store", {})
-                with ui.card().classes("min-w-[200px]"):
-                    with ui.card_section():
-                        ui.label("Vector Store").classes("text-weight-medium")
-                        if vs.get("available"):
-                            ui.label(f"{vs.get('total_vectors', 0)} vectors").classes("text-h5 text-positive")
-                        else:
-                            ui.label("Not available").classes("text-caption text-warning")
-
-                es = stats.get("entity_store", {})
-                with ui.card().classes("min-w-[200px]"):
-                    with ui.card_section():
-                        ui.label("Entity Store").classes("text-weight-medium")
-                        if es.get("available"):
-                            ui.label(f"{es.get('total_entities', 0)} entities").classes("text-h5 text-positive")
-                        else:
-                            ui.label("Not available").classes("text-caption text-warning")
-
-                ks = stats.get("knowledge_store", {})
-                with ui.card().classes("min-w-[200px]"):
-                    with ui.card_section():
-                        ui.label("Knowledge Store").classes("text-weight-medium")
-                        if ks.get("available"):
-                            ui.label(f"{ks.get('total_items', 0)} items").classes("text-h5 text-positive")
-                        else:
-                            ui.label("Not available").classes("text-caption text-warning")
-
-                ls = stats.get("lexical_store", {})
-                with ui.card().classes("min-w-[200px]"):
-                    with ui.card_section():
-                        ui.label("Lexical Store (FTS5)").classes("text-weight-medium")
-                        if ls.get("available"):
-                            ui.label("Available").classes("text-h5 text-positive")
-                        else:
-                            ui.label("Not available").classes("text-caption text-warning")
-
-    except Exception as exc:
-        with sources_container:
-            ui.label(f"Failed to load stats: {exc}").classes("text-negative q-pa-md")
-
-    with ui.row().classes("w-full items-center gap-2 q-mb-md"):
-        domain_input = ui.input(placeholder="Domain filter").props("outlined dense")
-        type_input = ui.select(
-            ["", "conversation_chunk", "artifact", "compiled_knowledge"],
-            value="",
-            with_input=True,
-        ).props("outlined dense")
-        ui.button("Refresh", on_click=lambda: asyncio.create_task(load_sources()), icon="refresh", color="primary")
-
-    source_list_container = ui.column().classes("w-full")
-
     async def load_sources():
-        domain = domain_input.value.strip() or None
-        source_type = type_input.value or None
-        source_list_container.clear()
-        with source_list_container:
+        sources_container.clear()
+        with sources_container:
             ui.label("Loading sources...").classes("text-grey")
+
         try:
-            result = await state.api_client.list_sources(domain=domain, source_type=source_type)
-            sources = result.get("sources", [])
-            source_list_container.clear()
-            with source_list_container:
-                ui.label(f"{len(sources)} source(s)").classes("text-caption q-mb-sm")
-                for s in sources[:50]:
-                    with ui.card().classes("w-full q-mb-sm"):
-                        with ui.card_section():
-                            sid = s.get("source_id", "?")
-                            stype = s.get("source_type", "unknown")
-                            sdomain = s.get("domain", "")
-                            stitle = s.get("title", "")
-                            ui.label(f"{stitle or sid}").classes("text-weight-medium")
-                            with ui.row().classes("gap-2"):
-                                ui.badge(stype, color="blue")
-                                if sdomain:
-                                    ui.badge(sdomain, color="orange")
-                                meta = s.get("metadata", {})
-                                if meta.get("state"):
-                                    ui.badge(meta["state"], color="green")
+            result = await state.api_client.list_sources()
+            items = result.get("sources", result.get("items", []))
+            stats = await state.api_client.get_sources_stats()
+
+            sources_container.clear()
+            with sources_container:
+                # Stats summary
+                total_sources = stats.get("total_sources", len(items))
+                total_chunks = stats.get("total_chunks", 0)
+                ui.label(f"Total: {total_sources} sources, {total_chunks} chunks").classes("text-weight-medium q-mb-md")
+
+                if not items:
+                    ui.label("No sources indexed yet.").classes("text-info q-pa-md")
+                else:
+                    for src in items:
+                        with ui.card().classes("w-full q-mb-sm"):
+                            with ui.card_section():
+                                sid = src.get("id", src.get("source_id", "?"))
+                                title = src.get("title", sid)
+                                domain = src.get("domain", "")
+                                chunk_count = src.get("chunk_count", 0)
+
+                                with ui.row().classes("items-center gap-2"):
+                                    ui.label(title).classes("text-weight-medium")
+                                    if domain:
+                                        ui.badge(domain, color="blue")
+                                    ui.badge(f"{chunk_count} chunks", color="teal")
         except Exception as exc:
-            source_list_container.clear()
-            with source_list_container:
+            sources_container.clear()
+            with sources_container:
                 ui.label(f"Failed to load: {exc}").classes("text-negative")
 
     await load_sources()

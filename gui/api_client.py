@@ -21,6 +21,14 @@ import httpx
 # Default backend URL — configurable via environment variable
 import os
 
+# Load .env file on import so AIP_OPENAI_API_KEY is available immediately.
+# This MUST happen before reading any env vars.
+try:
+    from dotenv import load_dotenv
+    _env_loaded = load_dotenv()
+except ImportError:
+    _env_loaded = False
+
 AIP_BACKEND_URL = os.getenv("AIP_BACKEND_URL", "http://127.0.0.1:8000")
 
 
@@ -36,6 +44,7 @@ class AipApiClient:
         self.base_url = (base_url or AIP_BACKEND_URL).rstrip("/")
         self._http_client: httpx.AsyncClient | None = None
         self._ws_session_id: str | None = None
+        self._openrouter_api_key: str | None = None
 
     # ------------------------------------------------------------------
     # HTTP Client Management
@@ -408,7 +417,7 @@ class AipApiClient:
         self,
         session_id: str,
         approved: bool,
-    ) -> None:
+    ) -> dict[str, Any]:
         """Send a gate approval/rejection response via WebSocket.
 
         Called when the user responds to a DEFINER gate prompt.
@@ -670,8 +679,6 @@ class AipApiClient:
     # ------------------------------------------------------------------
     # OpenRouter API Key Management
     # ------------------------------------------------------------------
-
-    _openrouter_api_key: str | None = None
 
     def get_openrouter_api_key(self) -> str | None:
         """Get the stored OpenRouter API key.

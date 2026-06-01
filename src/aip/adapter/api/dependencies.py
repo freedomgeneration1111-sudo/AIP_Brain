@@ -59,9 +59,9 @@ class AipContainer:
         self.model_provider: ModelProvider | None = None
         self.embedding_provider: EmbeddingProvider | None = None
         self.knowledge_store: KnowledgeStore | None = None
-        # VigilStore and artifact store not in protocols yet — typed as Any
+        # VigilStore not in protocols yet — typed as Any
         self.vigil_store: Any = None
-        self.artifact_store: Any = None
+        # artifact_store already declared above as ArtifactStore | None
         # Orchestration components — typed as Any to avoid adapter→orchestration import
         self.session_manager: Any = None
         self.budget_manager: Any = None
