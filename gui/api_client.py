@@ -14,9 +14,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import Any
 
 import httpx
+
+# Module-level logger for the API client
+log = logging.getLogger("gui.api_client")
 
 # Default backend URL — configurable via environment variable
 import os
@@ -299,6 +303,7 @@ class AipApiClient:
         # Build WebSocket URL
         ws_base = self.base_url.replace("http://", "ws://").replace("https://", "wss://")
         ws_url = f"{ws_base}/api/v1/chat/{session_id}"
+        log.info("chat_ws: connecting to %s (slot=%s)", ws_url, model_slot)
 
         try:
             import websockets
@@ -313,6 +318,7 @@ class AipApiClient:
                     msg_payload["model_slot"] = model_slot
 
                 await ws.send(json.dumps(msg_payload))
+                log.info("chat_ws: sent message (len=%d)", len(message))
 
                 # Wait for response(s) with a timeout for the model call
                 # The backend may send multiple messages (gate then response)
@@ -320,17 +326,20 @@ class AipApiClient:
                     try:
                         raw = await asyncio.wait_for(ws.recv(), timeout=120.0)
                     except asyncio.TimeoutError:
+                        log.error("chat_ws: timed out waiting for response (120s)")
                         if on_error:
                             on_error({"type": "error", "content": "Model call timed out (120s). The model may be unavailable."})
                         break
                     try:
                         resp = json.loads(raw)
                     except json.JSONDecodeError:
+                        log.error("chat_ws: invalid JSON from backend")
                         if on_error:
                             on_error({"type": "error", "content": "Invalid JSON from backend"})
                         break
 
                     resp_type = resp.get("type", "")
+                    log.info("chat_ws: received type=%s", resp_type)
 
                     if resp_type == "response":
                         if on_response:
@@ -353,16 +362,19 @@ class AipApiClient:
                         continue
 
                     else:
+                        log.warning("chat_ws: unknown response type=%s", resp_type)
                         if on_error:
                             on_error(resp)
                         break
 
         except ImportError:
             # websockets not installed — fall back to httpx WebSocket
+            log.info("chat_ws: websockets not available, using httpx fallback")
             await self._chat_via_httpx_ws(
                 ws_url, message, on_response, on_error, on_gate, model_slot
             )
         except Exception as exc:
+            log.error("chat_ws: connection failed: %s", exc)
             if on_error:
                 on_error({"type": "error", "content": f"WebSocket connection failed: {exc}"})
 
@@ -665,6 +677,7 @@ class AipApiClient:
         if not key:
             return {"error": True, "content": "No OpenRouter API key set. Go to Models page to enter one."}
 
+        log.info("direct_openrouter: calling model=%s", model)
         client = self._get_http_client()
         headers = {
             "Authorization": f"Bearer {key}",
@@ -691,6 +704,7 @@ class AipApiClient:
 
             if resp.status_code != 200:
                 error_detail = resp.text[:500]
+                log.error("direct_openrouter: API error status=%d detail=%s", resp.status_code, error_detail[:200])
                 return {"error": True, "content": f"OpenRouter API error ({resp.status_code}): {error_detail}"}
 
             data = resp.json()
@@ -700,6 +714,9 @@ class AipApiClient:
             model_used = data.get("model", model)
             tokens_used = usage.get("total_tokens", 0)
 
+            log.info("direct_openrouter: success model=%s tokens=%d latency=%dms",
+                     model_used, tokens_used, latency_ms)
+
             return {
                 "error": False,
                 "content": content,
@@ -708,6 +725,7 @@ class AipApiClient:
                 "latency_ms": latency_ms,
             }
         except Exception as exc:
+            log.error("direct_openrouter: request failed: %s", exc)
             return {"error": True, "content": f"OpenRouter request failed: {exc}"}
 
     # ------------------------------------------------------------------

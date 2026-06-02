@@ -34,13 +34,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
-from nicegui import ui
+from nicegui import context, ui
 
 from gui.api_client import get_api_client, AipApiClient
+
+# Module-level logger for the GUI chat flow
+log = logging.getLogger("gui.chat")
 
 # ---------------------------------------------------------------------------
 # Load .env file IMMEDIATELY — must happen before any env var reads
@@ -100,6 +104,9 @@ class GuiState:
         self.auto_save: bool = True
         self.ingestion_status: str = "idle"  # "idle" | "ingesting" | "error"
         self.chunks_indexed: int = 0
+        # NiceGUI client reference — needed to update UI from background tasks.
+        # Set once in main_page() via context.client.
+        self.client = None
 
     async def ensure_session(self) -> str:
         """Create a session if one doesn't exist, or return the existing one."""
@@ -244,9 +251,24 @@ async def send_prompt() -> None:
     CRITICAL: This function is called via asyncio.create_task(), which means
     any unhandled exception is silently swallowed. We wrap the entire function
     in a top-level try/except to ensure errors are ALWAYS visible to the user.
+
+    CRITICAL 2: asyncio.create_task() runs outside NiceGUI's UI slot context.
+    We MUST enter the client context (via state.client) before creating or
+    modifying any UI elements. Without this, ui.label / add_message / etc.
+    crash with "The current slot cannot be determined".
     """
+    state = get_state()
     try:
-        await _send_prompt_inner()
+        # Enter the NiceGUI client context so UI operations work.
+        # This is required because asyncio.create_task() runs outside
+        # the normal request-handling slot stack.
+        if state.client is not None:
+            with state.client:
+                await _send_prompt_inner()
+        else:
+            # Fallback: no client captured (shouldn't happen in normal flow).
+            # Try anyway — some UI operations might still work.
+            await _send_prompt_inner()
     except Exception as exc:
         # Top-level catch — asyncio.create_task silently swallows exceptions,
         # so we MUST catch everything here and show it to the user.
@@ -287,21 +309,31 @@ async def _send_prompt_inner() -> None:
         ui.notify("No model selected. Go to Models page to select one.", color="warning")
         return
 
+    log.info("send_prompt: model=%s backend_reachable=%s prompt_len=%d",
+             chat_model, state.backend_reachable, len(prompt))
+
     add_message("user", prompt)
     input_field.value = ""
 
-    thinking_label = ui.label("Thinking...").classes("text-grey")
+    # Create "Thinking…" label inside chat_container so it appears in the
+    # correct place and inherits the container's context.
+    with chat_container:
+        thinking_label = ui.label("Thinking...").classes("text-grey")
 
     # ---- Route 1: Backend reachable → use WebSocket chat ----
     if state.backend_reachable:
         try:
             session_id = await state.ensure_session()
+            log.info("send_prompt: session_id=%s", session_id)
         except Exception as exc:
             # Backend failed mid-flight — fall through to direct route
+            log.warning("send_prompt: ensure_session failed: %s", exc)
             state.backend_reachable = False
 
     if state.backend_reachable:
         def on_response(resp: dict[str, Any]) -> None:
+            log.info("on_response: model=%s content_len=%d",
+                     resp.get("model", "?"), len(resp.get("content", "")))
             thinking_label.delete()
             content = resp.get("content", "")
             model = resp.get("model", resp.get("model_slot", ""))
@@ -328,12 +360,14 @@ async def _send_prompt_inner() -> None:
                 asyncio.create_task(refresh_ingestion_status())
 
         def on_error(err: dict[str, Any]) -> None:
+            log.error("on_error: %s", err.get("content", "Unknown"))
             thinking_label.delete()
             content = err.get("content", "Unknown error")
             add_system_message(f"Error: {content}")
             ui.notify(content, color="negative")
 
         def on_gate(gate: dict[str, Any]) -> None:
+            log.info("on_gate: gate_type=%s", gate.get("gate_type", "?"))
             thinking_label.delete()
             state.pending_gate = gate
             gate_type = gate.get("gate_type", "unknown")
@@ -353,6 +387,8 @@ async def _send_prompt_inner() -> None:
                     )
 
         try:
+            log.info("send_prompt: calling chat_via_websocket session=%s slot=%s",
+                     session_id, state.current_model_slot)
             await state.api_client.chat_via_websocket(
                 session_id=session_id,
                 message=prompt,
@@ -363,12 +399,14 @@ async def _send_prompt_inner() -> None:
             )
             return
         except Exception as exc:
+            log.error("send_prompt: websocket failed: %s", exc)
             thinking_label.delete()
             # Backend failed — fall through to direct OpenRouter
             state.backend_reachable = False
             add_system_message(f"Backend chat failed, trying direct OpenRouter: {exc}")
 
     # ---- Route 2: Backend unreachable → direct OpenRouter API call ----
+    log.info("send_prompt: using direct OpenRouter with model=%s", chat_model)
     try:
         result = await state.api_client.chat_direct_openrouter(
             model=chat_model,
@@ -392,34 +430,58 @@ async def _send_prompt_inner() -> None:
                 add_system_message(f"Tokens: {tokens}")
             add_system_message("(direct OpenRouter — backend not connected)")
     except Exception as exc:
+        log.error("send_prompt: direct OpenRouter failed: %s", exc)
         thinking_label.delete()
         add_system_message(f"Direct OpenRouter call failed: {exc}")
         ui.notify(f"Chat failed: {exc}", color="negative")
 
 
 async def handle_gate_response(approved: bool) -> None:
-    """Handle a DEFINER gate approval/rejection."""
+    """Handle a DEFINER gate approval/rejection.
+
+    Called via asyncio.create_task(), so needs client context for UI ops.
+    """
     state = get_state()
     if state.session_id is None:
         return
 
-    decision_text = "approved" if approved else "rejected"
-    add_system_message(f"Gate {decision_text}")
+    # Enter client context for UI operations (same pattern as send_prompt)
+    ctx = state.client
+
+    def _do_ui():
+        decision_text = "approved" if approved else "rejected"
+        add_system_message(f"Gate {decision_text}")
 
     try:
         result = await state.api_client.send_gate_response(
             session_id=state.session_id,
             approved=approved,
         )
-        if result.get("type") == "error":
-            add_system_message(f"Gate response error: {result.get('content', 'Unknown error')}")
-            ui.notify(f"Gate response failed: {result.get('content', 'Unknown error')}", color="negative")
-        elif result.get("type") == "response":
-            content = result.get("content", "")
-            add_message("assistant", content)
+        if ctx is not None:
+            with ctx:
+                _do_ui()
+                if result.get("type") == "error":
+                    add_system_message(f"Gate response error: {result.get('content', 'Unknown error')}")
+                    ui.notify(f"Gate response failed: {result.get('content', 'Unknown error')}", color="negative")
+                elif result.get("type") == "response":
+                    content = result.get("content", "")
+                    add_message("assistant", content)
+        else:
+            _do_ui()
+            if result.get("type") == "error":
+                add_system_message(f"Gate response error: {result.get('content', 'Unknown error')}")
+                ui.notify(f"Gate response failed: {result.get('content', 'Unknown error')}", color="negative")
+            elif result.get("type") == "response":
+                content = result.get("content", "")
+                add_message("assistant", content)
     except Exception as exc:
-        add_system_message(f"Gate response failed: {exc}")
-        ui.notify(f"Gate response failed: {exc}", color="negative")
+        if ctx is not None:
+            with ctx:
+                add_system_message(f"Gate response failed: {exc}")
+                ui.notify(f"Gate response failed: {exc}", color="negative")
+        else:
+            add_system_message(f"Gate response failed: {exc}")
+            ui.notify(f"Gate response failed: {exc}", color="negative")
         return
 
     state.pending_gate = None
@@ -441,18 +503,34 @@ def on_slot_changed(slot_name: str) -> None:
 
 
 async def trigger_actor(actor_name: str) -> None:
-    """Manually trigger an actor cycle and show the result."""
+    """Manually trigger an actor cycle and show the result.
+
+    Called via asyncio.create_task(), so needs client context for UI ops.
+    """
     state = get_state()
     try:
         result = await state.api_client.trigger_actor_cycle(actor_name)
         triggered = result.get("triggered", False)
-        if triggered:
-            ui.notify(f"{actor_name.capitalize()} cycle triggered successfully", color="positive")
+        def _notify():
+            if triggered:
+                ui.notify(f"{actor_name.capitalize()} cycle triggered successfully", color="positive")
+            else:
+                error = result.get("error", "Unknown error")
+                ui.notify(f"{actor_name.capitalize()} cycle failed: {error}", color="negative")
+        if state.client is not None:
+            with state.client:
+                _notify()
         else:
-            error = result.get("error", "Unknown error")
-            ui.notify(f"{actor_name.capitalize()} cycle failed: {error}", color="negative")
+            _notify()
     except Exception as exc:
-        ui.notify(f"Failed to trigger {actor_name}: {exc}", color="negative")
+        try:
+            if state.client is not None:
+                with state.client:
+                    ui.notify(f"Failed to trigger {actor_name}: {exc}", color="negative")
+            else:
+                ui.notify(f"Failed to trigger {actor_name}: {exc}", color="negative")
+        except Exception:
+            pass
 
 
 async def on_auto_save_toggled(enabled: bool) -> None:
@@ -472,7 +550,10 @@ async def on_auto_save_toggled(enabled: bool) -> None:
 
 
 async def refresh_ingestion_status() -> None:
-    """Refresh ingestion status from the backend."""
+    """Refresh ingestion status from the backend.
+
+    Called via asyncio.create_task(), so needs client context for UI updates.
+    """
     state = get_state()
     if state.session_id is None:
         return
@@ -483,35 +564,63 @@ async def refresh_ingestion_status() -> None:
         chunks_indexed = session.get("chunks_indexed", 0)
         state.ingestion_status = ingestion_status
         state.chunks_indexed = chunks_indexed
-        if ingestion_status == "ingesting":
-            ingestion_label_ref.text = f"Indexing... ({chunks_indexed} chunks)"
-        elif ingestion_status == "error":
-            ingestion_label_ref.text = "Auto-save: error (check logs)"
+        # Update label in client context
+        if state.client is not None:
+            with state.client:
+                if ingestion_status == "ingesting":
+                    ingestion_label_ref.text = f"Indexing... ({chunks_indexed} chunks)"
+                elif ingestion_status == "error":
+                    ingestion_label_ref.text = "Auto-save: error (check logs)"
+                else:
+                    ingestion_label_ref.text = f"Indexed: {chunks_indexed} chunks" if chunks_indexed > 0 else ""
         else:
-            ingestion_label_ref.text = f"Indexed: {chunks_indexed} chunks" if chunks_indexed > 0 else ""
+            if ingestion_status == "ingesting":
+                ingestion_label_ref.text = f"Indexing... ({chunks_indexed} chunks)"
+            elif ingestion_status == "error":
+                ingestion_label_ref.text = "Auto-save: error (check logs)"
+            else:
+                ingestion_label_ref.text = f"Indexed: {chunks_indexed} chunks" if chunks_indexed > 0 else ""
     except Exception:
         pass
 
 
 async def refresh_budget_status(label_ref, state: GuiState) -> None:
-    """Fetch budget status and update the footer label."""
+    """Fetch budget status and update the footer label.
+
+    Runs as a long-lived background task (polling every 30s).
+    Needs client context for UI updates.
+    """
     while True:
         try:
             budget = await state.api_client.get_budget_status(scope="session", scope_id="default")
             consumed = budget.get("consumed_tokens", 0)
             limit = budget.get("limit", 0)
             fraction = budget.get("fraction_used", 0)
-            if limit > 0:
-                pct = f"{fraction:.0%}"
-                label_ref.text = f"Budget: {consumed}/{limit} ({pct})"
-                if fraction >= 0.8:
-                    label_ref.classes("text-[10px] text-negative", remove="text-grey-6 text-black")
-                else:
-                    label_ref.classes("text-[10px] text-grey-6", remove="text-negative text-black")
-            elif budget.get("budget_manager") is False:
-                label_ref.text = "Budget: n/a"
+            # Update label in client context
+            def _update_ui():
+                if limit > 0:
+                    pct = f"{fraction:.0%}"
+                    label_ref.text = f"Budget: {consumed}/{limit} ({pct})"
+                    if fraction >= 0.8:
+                        label_ref.classes("text-[10px] text-negative", remove="text-grey-6 text-black")
+                    else:
+                        label_ref.classes("text-[10px] text-grey-6", remove="text-negative text-black")
+                elif budget.get("budget_manager") is False:
+                    label_ref.text = "Budget: n/a"
+            if state.client is not None:
+                with state.client:
+                    _update_ui()
+            else:
+                _update_ui()
         except Exception:
-            label_ref.text = ""
+            try:
+                if state.client is not None:
+                    with state.client:
+                        label_ref.text = ""
+                else:
+                    label_ref.text = ""
+            except Exception:
+                pass
         await asyncio.sleep(30)
 
 
@@ -588,6 +697,13 @@ async def main_page():
 
     ui.page_title("AIP_Brain")
     state = get_state()
+
+    # Capture the NiceGUI client context for this page.
+    # This is ESSENTIAL: background tasks (asyncio.create_task) run outside
+    # NiceGUI's slot stack.  By storing the client reference, we can re-enter
+    # the context with `with state.client:` whenever we need to update UI
+    # from a background coroutine (send_prompt, handle_gate_response, etc.).
+    state.client = context.client
 
     # ---- STEP 1: API Key Check — BLOCKING ----
     # This MUST happen before anything else. If the key is missing,
@@ -781,22 +897,44 @@ async def main_page():
 
 
 async def show_key_dialog_and_update():
-    """Show the API key dialog from the header key icon."""
-    state = get_state()
-    with ui.dialog() as dialog, ui.card().classes("p-6 min-w-[480px]"):
-        ui.label("OpenRouter API Key").classes("text-h6")
-        current = state.api_client.get_openrouter_api_key() or ""
-        masked = current[:8] + "..." + current[-4:] if len(current) > 12 else "(not set)"
-        ui.label(f"Current: {masked}").classes("text-caption q-mt-xs")
-        key_input = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("w-full q-mt-md")
-        with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
-            ui.button("Cancel", color="grey", on_click=lambda: dialog.submit(None))
-            ui.button("Save", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
+    """Show the API key dialog from the header key icon.
 
-    result = await dialog
-    if result:
-        state.api_client.set_openrouter_api_key(result)
-        ui.notify("API key updated! It will be used for all OpenRouter calls.", color="positive", position="top")
+    Called via asyncio.create_task(), so needs client context for UI ops.
+    """
+    state = get_state()
+    # Must enter client context to create UI elements
+    if state.client is not None:
+        with state.client:
+            with ui.dialog() as dialog, ui.card().classes("p-6 min-w-[480px]"):
+                ui.label("OpenRouter API Key").classes("text-h6")
+                current = state.api_client.get_openrouter_api_key() or ""
+                masked = current[:8] + "..." + current[-4:] if len(current) > 12 else "(not set)"
+                ui.label(f"Current: {masked}").classes("text-caption q-mt-xs")
+                key_input = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("w-full q-mt-md")
+                with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
+                    ui.button("Cancel", color="grey", on_click=lambda: dialog.submit(None))
+                    ui.button("Save", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
+
+            result = await dialog
+            if result:
+                state.api_client.set_openrouter_api_key(result)
+                ui.notify("API key updated! It will be used for all OpenRouter calls.", color="positive", position="top")
+    else:
+        # Fallback without client context
+        with ui.dialog() as dialog, ui.card().classes("p-6 min-w-[480px]"):
+            ui.label("OpenRouter API Key").classes("text-h6")
+            current = state.api_client.get_openrouter_api_key() or ""
+            masked = current[:8] + "..." + current[-4:] if len(current) > 12 else "(not set)"
+            ui.label(f"Current: {masked}").classes("text-caption q-mt-xs")
+            key_input = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("w-full q-mt-md")
+            with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
+                ui.button("Cancel", color="grey", on_click=lambda: dialog.submit(None))
+                ui.button("Save", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
+
+        result = await dialog
+        if result:
+            state.api_client.set_openrouter_api_key(result)
+            ui.notify("API key updated! It will be used for all OpenRouter calls.", color="positive", position="top")
 
 
 def on_chat_model_changed(model_id: str) -> None:

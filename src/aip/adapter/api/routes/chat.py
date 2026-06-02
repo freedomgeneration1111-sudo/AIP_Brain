@@ -48,6 +48,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
     allowing the backend's ModelSlotResolver to dispatch to the appropriate provider.
     """
     await websocket.accept()
+    logger.info("chat_ws_connected: session=%s", session_id)
 
     _container = get_container(websocket)  # type: ignore  # in real lifespan context
 
@@ -60,6 +61,9 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
         model_slot = session_meta.get("model_slot", "synthesis")
         session_mode = session_meta.get("mode", "normal")
         auto_save_enabled = session_meta.get("auto_save", True)
+    logger.info("chat_ws_session: session=%s slot=%s mode=%s model_provider=%s",
+                session_id, model_slot, session_mode,
+                "yes" if _container.model_provider is not None else "NONE")
 
     try:
         while True:
