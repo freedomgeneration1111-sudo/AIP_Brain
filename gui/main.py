@@ -980,6 +980,8 @@ async def model_catalog_page():
     """Model catalog — browse all OpenRouter models, select which to use."""
     ui.page_title("Model Catalog — AIP_Brain")
     state = get_state()
+    # Capture client context for background tasks (same pattern as main_page)
+    state.client = context.client
 
     # ---- STEP 1: API Key Check — BLOCKING ----
     if not state.api_client.has_openrouter_api_key():
@@ -1027,33 +1029,71 @@ async def model_catalog_page():
     # Load button
     with ui.row().classes("w-full items-center gap-2 q-mb-md"):
         ui.button("Load OpenRouter Models", icon="cloud_download", color="primary",
-                  on_click=lambda: asyncio.create_task(load_openrouter_models()))
+                  on_click=lambda: asyncio.create_task(_safe_load_models()))
         ui.button("Clear Selection", color="grey",
                   on_click=lambda: clear_selection())
         ui.button("Apply to Chat", color="positive",
                   on_click=lambda: ui.navigate.to("/"))
         # Search filter
-        filter_input = ui.input(placeholder="Filter models...", on_change=lambda e: asyncio.create_task(load_openrouter_models(filter_text=e.value))).props(
+        filter_input = ui.input(placeholder="Filter models...", on_change=lambda e: asyncio.create_task(_safe_load_models(filter_text=e.value))).props(
             "outlined dense clearable"
         ).classes("q-ml-md flex-grow")
 
-    async def show_key_dialog_and_reload():
-        """Show key dialog and reload models after saving."""
-        with ui.dialog() as dialog, ui.card().classes("p-6 min-w-[480px]"):
-            ui.label("OpenRouter API Key").classes("text-h6")
-            current = state.api_client.get_openrouter_api_key() or ""
-            masked = current[:8] + "..." + current[-4:] if len(current) > 12 else "(not set)"
-            ui.label(f"Current: {masked}").classes("text-caption q-mt-xs")
-            key_input = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("w-full q-mt-md")
-            with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
-                ui.button("Cancel", color="grey", on_click=lambda: dialog.submit(None))
-                ui.button("Save", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
+    async def _safe_load_models(filter_text: str = ""):
+        """Load models with client context for UI operations (called via asyncio.create_task)."""
+        if state.client is not None:
+            with state.client:
+                await load_openrouter_models(filter_text=filter_text)
+        else:
+            await load_openrouter_models(filter_text=filter_text)
 
-        result = await dialog
-        if result:
-            state.api_client.set_openrouter_api_key(result)
-            ui.notify("API key updated!", color="positive", position="top")
-            await load_openrouter_models()
+    async def _safe_load_embed_models():
+        """Load embedding models with client context (called via asyncio.create_task)."""
+        if state.client is not None:
+            with state.client:
+                await load_embed_models()
+        else:
+            await load_embed_models()
+
+    async def show_key_dialog_and_reload():
+        """Show key dialog and reload models after saving.
+
+        Called via asyncio.create_task(), so needs client context for UI ops.
+        """
+        ctx = state.client
+        if ctx is not None:
+            with ctx:
+                with ui.dialog() as dialog, ui.card().classes("p-6 min-w-[480px]"):
+                    ui.label("OpenRouter API Key").classes("text-h6")
+                    current = state.api_client.get_openrouter_api_key() or ""
+                    masked = current[:8] + "..." + current[-4:] if len(current) > 12 else "(not set)"
+                    ui.label(f"Current: {masked}").classes("text-caption q-mt-xs")
+                    key_input = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("w-full q-mt-md")
+                    with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
+                        ui.button("Cancel", color="grey", on_click=lambda: dialog.submit(None))
+                        ui.button("Save", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
+
+                result = await dialog
+                if result:
+                    state.api_client.set_openrouter_api_key(result)
+                    ui.notify("API key updated!", color="positive", position="top")
+                    await _safe_load_models()
+        else:
+            with ui.dialog() as dialog, ui.card().classes("p-6 min-w-[480px]"):
+                ui.label("OpenRouter API Key").classes("text-h6")
+                current = state.api_client.get_openrouter_api_key() or ""
+                masked = current[:8] + "..." + current[-4:] if len(current) > 12 else "(not set)"
+                ui.label(f"Current: {masked}").classes("text-caption q-mt-xs")
+                key_input = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("w-full q-mt-md")
+                with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
+                    ui.button("Cancel", color="grey", on_click=lambda: dialog.submit(None))
+                    ui.button("Save", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
+
+            result = await dialog
+            if result:
+                state.api_client.set_openrouter_api_key(result)
+                ui.notify("API key updated!", color="positive", position="top")
+                await load_openrouter_models()
 
     async def load_openrouter_models(filter_text: str = ""):
         """Fetch models from OpenRouter and display them in a table."""
@@ -1190,7 +1230,7 @@ async def model_catalog_page():
         selected_summary.text = "Selected: 0 models"
         ui.notify("Selection cleared", color="info")
         # Reload the table to reflect the cleared selection
-        asyncio.create_task(load_openrouter_models())
+        asyncio.create_task(_safe_load_models())
 
     def on_save_key(key_value: str):
         """Save the API key from the input field."""
@@ -1198,7 +1238,7 @@ async def model_catalog_page():
             state.api_client.set_openrouter_api_key(key_value.strip())
             ui.notify("API key saved!", color="positive")
             # Reload the page to refresh the key status
-            asyncio.create_task(load_openrouter_models())
+            asyncio.create_task(_safe_load_models())
 
     # Load backend slots info
     slots = await load_model_slots()
@@ -1235,9 +1275,147 @@ async def model_catalog_page():
         # Table load area
         table_container
 
+        # ---- EMBEDDING MODELS SECTION ----
+        ui.separator().classes("q-my-lg")
+        with ui.row().classes("w-full items-center gap-2"):
+            ui.icon("account_tree", size="sm", color="amber")
+            ui.label("Embedding Models").classes("text-h6")
+            ui.label("(used for indexing & retrieval)").classes("text-caption text-grey-7 q-ml-xs")
+
+        # Show current embedding model
+        current_embed_model = get_role_model("embedding") or ""
+        embed_model_label = ui.label(
+            f"Active: {current_embed_model}" if current_embed_model else "Active: (none — using config default)"
+        ).classes("text-caption q-mb-sm")
+
+        # Embedding table container
+        embed_table_container = ui.column().classes("w-full")
+
+        # Track pending embedding selection (set by table on_select, applied by button)
+        _pending_embed_model: list[str] = []  # mutable container for closure
+
+        # Embedding model load + apply buttons
+        with ui.row().classes("w-full items-center gap-2 q-mb-md"):
+            ui.button("Load Embedding Models", icon="cloud_download", color="amber-8",
+                      on_click=lambda: asyncio.create_task(_safe_load_embed_models()))
+            ui.button("Apply Selected as Embedding Model", icon="check_circle", color="positive",
+                      on_click=lambda: apply_embedding_model())
+
+        async def load_embed_models():
+            """Fetch embedding models from OpenRouter and display them."""
+            embed_table_container.clear()
+            with embed_table_container:
+                ui.label("Fetching embedding models from OpenRouter...").classes("text-grey")
+                ui.spinner("dots", size="lg", color="amber")
+
+            try:
+                api_key = state.api_client.get_openrouter_api_key()
+                models = await state.api_client.list_openrouter_embedding_models(api_key=api_key)
+
+                embed_table_container.clear()
+                with embed_table_container:
+                    if not models:
+                        ui.label("No embedding models found.").classes("text-warning")
+                        return
+
+                    # Sort: free first, then by cost
+                    def _sort_key(m):
+                        pricing = m.get("pricing", {})
+                        prompt_cost = float(pricing.get("prompt", "1") or "1")
+                        is_free = prompt_cost == 0
+                        return (0 if is_free else 1, abs(prompt_cost))
+                    models.sort(key=_sort_key)
+
+                    ui.label(f"{len(models)} embedding models available from OpenRouter").classes("text-caption q-mb-sm")
+
+                    columns = [
+                        {"name": "model_id", "label": "Model ID", "field": "model_id", "align": "left", "sortable": True},
+                        {"name": "prompt_cost", "label": "Cost $/1M tok", "field": "prompt_cost", "align": "right", "sortable": True},
+                        {"name": "context", "label": "Context", "field": "context", "align": "right", "sortable": True},
+                    ]
+
+                    rows = []
+                    for m in models:
+                        pricing = m.get("pricing", {})
+                        prompt_per_tok = float(pricing.get("prompt", "0") or "0")
+                        prompt_cost = prompt_per_tok * 1_000_000
+                        context = m.get("context_length", 0) or 0
+                        mid = m.get("id", "")
+                        if prompt_per_tok < 0:
+                            cost_str = "Varies"
+                        elif prompt_per_tok == 0:
+                            cost_str = "FREE"
+                        elif prompt_cost < 0.01:
+                            cost_str = f"${prompt_cost:.4f}"
+                        elif prompt_cost < 1:
+                            cost_str = f"${prompt_cost:.3f}"
+                        else:
+                            cost_str = f"${prompt_cost:.2f}"
+                        rows.append({
+                            "model_id": mid,
+                            "prompt_cost": cost_str,
+                            "context": f"{context:,}" if context else "?",
+                        })
+
+                    # Pre-select the current embedding model
+                    current = get_role_model("embedding")
+
+                    def handle_embed_select(e):
+                        """Handle single-row selection for embedding model."""
+                        if e.selection:
+                            selected_id = e.selection[0]["model_id"]
+                            _pending_embed_model.clear()
+                            _pending_embed_model.append(selected_id)
+                            embed_model_label.text = f"Selected: {selected_id}  (click Apply to activate)"
+
+                    table = ui.table(
+                        columns=columns,
+                        rows=rows,
+                        row_key="model_id",
+                        selection="single",
+                        on_select=handle_embed_select,
+                    ).classes("w-full").props('flat bordered dense virtual-scroll')
+
+                    if current:
+                        matching = [r for r in rows if r["model_id"] == current]
+                        if matching:
+                            table.selected = matching
+
+                    table.add_slot('body-cell-prompt_cost', '''
+                        <q-td :props="props">
+                            <span :class="props.value === 'FREE' ? 'text-positive text-weight-bold' : props.value === 'Varies' ? 'text-grey-7' : ''">
+                                {{ props.value }}
+                            </span>
+                        </q-td>
+                    ''')
+
+            except Exception as exc:
+                embed_table_container.clear()
+                with embed_table_container:
+                    ui.label(f"Failed to load embedding models: {exc}").classes("text-negative q-pa-md")
+
+        def apply_embedding_model():
+            """Apply the selected embedding model to the embedding slot."""
+            if not _pending_embed_model:
+                ui.notify("Select an embedding model from the table first", color="warning")
+                return
+            model_id = _pending_embed_model[0]
+            set_role_model("embedding", model_id)
+            api_key = state.api_client.get_openrouter_api_key()
+            # Push to backend via PATCH /api/v1/models/slots/embedding/model
+            asyncio.create_task(
+                state.api_client.update_slot_model("embedding", model_id, api_key=api_key)
+            )
+            embed_model_label.text = f"Active: {model_id}"
+            _pending_embed_model.clear()
+            ui.notify(f"Embedding model → {model_id}", color="positive")
+
+        embed_table_container
+
     # Auto-load models if API key is available
     if state.api_client.has_openrouter_api_key():
         await load_openrouter_models()
+        await load_embed_models()
 
     ui.button("Back to Chat", on_click=lambda: ui.navigate.to("/"), color="grey").classes("q-mt-md")
 

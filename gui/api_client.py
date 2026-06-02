@@ -766,6 +766,26 @@ class AipApiClient:
             text_models.append(m)
         return text_models
 
+    async def list_openrouter_embedding_models(self, api_key: str | None = None) -> list[dict[str, Any]]:
+        """Fetch embedding models from OpenRouter API.
+
+        Calls GET https://openrouter.ai/api/v1/models?output_modalities=embeddings
+        Returns a list of model dicts with id, name, pricing, context_length, etc.
+        """
+        client = self._get_http_client()
+        headers: dict[str, str] = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        resp = await client.get(
+            "https://openrouter.ai/api/v1/models",
+            params={"output_modalities": "embeddings"},
+            headers=headers,
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("data", [])
+
     # ------------------------------------------------------------------
     # OpenRouter API Key Management
     # ------------------------------------------------------------------
