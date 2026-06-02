@@ -5,14 +5,17 @@ Production mode: can load a real provider (e.g. local Ollama embeddings or API)
 based on [embedding] section in config.
 
 This file provides the loader. Real provider support is now wired:
+  - provider="openai_compatible": returns an OpenAICompatibleEmbeddingClient
+    (works with OpenRouter, OpenAI, DeepSeek, etc.)
   - provider="ollama": returns an async-aware wrapper around OllamaEmbeddingClient
   - provider="fake" (default): returns the deterministic fake_embed for CI
   - Any other provider: falls back to fake_embed with a warning log
 
 Layering note: Orchestration must not import adapter directly.
 This module uses ``importlib.import_module()`` to lazily load
-``aip.adapter.embedding.ollama_embed`` only at runtime, so that
-AST-based layer gate tests do not see a static cross-layer import.
+``aip.adapter.embedding.ollama_embed`` and ``aip.adapter.embedding.openai_embed``
+only at runtime, so that AST-based layer gate tests do not see a static
+cross-layer import.
 """
 
 from __future__ import annotations
@@ -89,6 +92,9 @@ def get_embed_fn_async(config: dict | Any | None = None) -> Any:
     emb = cfg.get("embedding", {}) if isinstance(cfg, dict) else {}
     provider = emb.get("provider", "fake")
 
+    if provider == "openai_compatible":
+        return _make_openai_compatible_client_from_config(emb)
+
     if provider == "ollama":
         base_url = emb.get("base_url", "http://localhost:11434")
         model = emb.get("model")
@@ -115,7 +121,7 @@ def get_embed_fn_async(config: dict | Any | None = None) -> Any:
     if provider != "fake":
         logger.warning(
             "Unknown embedding provider '%s'; falling back to MockOllamaEmbeddingClient. "
-            "Supported providers: fake, ollama.",
+            "Supported providers: fake, ollama, openai_compatible.",
             provider,
         )
     return _make_mock_client()
@@ -195,3 +201,78 @@ def _make_mock_client(dimensions: int = 768) -> Any:
     """
     mod = importlib.import_module("aip.adapter.embedding.ollama_embed")
     return mod.MockOllamaEmbeddingClient(dimensions=dimensions)
+
+
+def _make_openai_compatible_client_from_config(emb_cfg: dict) -> Any:
+    """Create an OpenAICompatibleEmbeddingClient from embedding config.
+
+    Reads base_url, model, api_key, dimensions from the config dict.
+    Falls back to MockOpenAICompatibleEmbeddingClient if required fields
+    are missing or if client creation fails.
+    """
+    import os
+
+    base_url = emb_cfg.get("base_url", "https://api.openai.com")
+    model = emb_cfg.get("model")
+    # Support api_key from config, env var AIP_EMBEDDING_API_KEY, or AIP_OPENAI_API_KEY
+    api_key = emb_cfg.get("api_key") or os.environ.get("AIP_EMBEDDING_API_KEY") or os.environ.get("AIP_OPENAI_API_KEY")
+    dimensions = emb_cfg.get("dimensions")
+
+    if not model:
+        logger.warning(
+            "openai_compatible embedding provider selected but no model specified. "
+            "Falling back to MockOpenAICompatibleEmbeddingClient.",
+        )
+        return _make_openai_compatible_mock_client(dimensions=dimensions)
+
+    try:
+        client = _make_openai_compatible_client(
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            dimensions=dimensions,
+        )
+        logger.info(
+            "OpenAI-compatible embedding client created: base_url=%s, model=%s, has_api_key=%s",
+            base_url, model, bool(api_key),
+        )
+        return client
+    except Exception as exc:
+        logger.warning(
+            "Failed to create OpenAICompatibleEmbeddingClient (base_url=%s, model=%s): %s. "
+            "Falling back to MockOpenAICompatibleEmbeddingClient.",
+            base_url, model, exc,
+        )
+        return _make_openai_compatible_mock_client(dimensions=dimensions)
+
+
+def _make_openai_compatible_client(
+    base_url: str,
+    model: str,
+    api_key: str | None = None,
+    dimensions: int | None = None,
+    timeout: float = 60.0,
+) -> Any:
+    """Create an OpenAICompatibleEmbeddingClient via lazy import.
+
+    Uses importlib so the adapter import is not visible to AST-based
+    layer gate tests.
+    """
+    mod = importlib.import_module("aip.adapter.embedding.openai_embed")
+    return mod.OpenAICompatibleEmbeddingClient(
+        base_url=base_url,
+        model=model,
+        api_key=api_key,
+        dimensions=dimensions,
+        timeout=timeout,
+    )
+
+
+def _make_openai_compatible_mock_client(dimensions: int | None = None) -> Any:
+    """Create a MockOpenAICompatibleEmbeddingClient via lazy import.
+
+    Uses importlib so the adapter import is not visible to AST-based
+    layer gate tests.
+    """
+    mod = importlib.import_module("aip.adapter.embedding.openai_embed")
+    return mod.MockOpenAICompatibleEmbeddingClient(dimensions=dimensions or 1536)

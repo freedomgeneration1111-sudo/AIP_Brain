@@ -8,6 +8,10 @@ Added: PATCH /models/slots/{slot_name}/model — runtime model override.
 This allows the GUI to change which model a slot uses without restarting
 the server. The override is stored in-process (env var) so it persists
 until the next server restart.
+
+When the "embedding" slot is patched, the container's embedding_provider
+is also recreated so that the new embedding model takes effect immediately
+for all downstream consumers (vector store, Beast, knowledge store, etc.).
 """
 
 from __future__ import annotations
@@ -19,6 +23,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.logging import get_logger
+
+log = get_logger(__name__)
 
 router = APIRouter()
 
@@ -118,6 +125,10 @@ async def update_slot_model(
     priority in ModelSlotResolver._resolve_slot_config(). Also optionally
     updates the API key via AIP_<SLOT>_API_KEY.
 
+    When the "embedding" slot is updated, the container's embedding_provider
+    is also recreated so the new model takes effect immediately for vector
+    store, Beast, knowledge store, and ingestion — without a restart.
+
     This change persists in-process until the server restarts.
     """
     model_provider = container.model_provider
@@ -145,10 +156,80 @@ async def update_slot_model(
 
     # Verify by resolving
     resolved = model_provider._resolve_slot_config(slot_name)
+
+    # If this is the embedding slot, recreate the embedding provider at runtime
+    embedding_updated = False
+    if slot_name == "embedding":
+        embedding_updated = _recreate_embedding_provider(container)
+
     return {
         "ok": True,
         "slot_name": slot_name,
         "model": resolved.get("model"),
         "provider": resolved.get("provider"),
         "base_url": resolved.get("base_url"),
+        "embedding_provider_updated": embedding_updated,
     }
+
+
+def _recreate_embedding_provider(container: AipContainer) -> bool:
+    """Recreate the container's embedding_provider from the current slot config.
+
+    Called when the embedding slot model is changed at runtime. This ensures
+    the new embedding model takes effect immediately without a restart.
+
+    Returns True if the embedding provider was successfully recreated.
+    """
+    from aip.adapter.api.app import _create_embedding_provider
+
+    try:
+        # Close the old provider if it has a close() method
+        old_provider = container.embedding_provider
+        if old_provider is not None and hasattr(old_provider, "close"):
+            try:
+                # Close is async, but we're in a sync context.
+                # The old provider will be GC'd; its httpx client will close eventually.
+                # For production safety, we should handle this properly.
+                import asyncio
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(old_provider.close())
+                except RuntimeError:
+                    pass
+            except Exception:
+                pass
+
+        # Create a new provider from the current config
+        new_provider = _create_embedding_provider(container.config)
+        container.embedding_provider = new_provider
+
+        # Also update the vector store's embedding_provider reference
+        if container.vector_store is not None and hasattr(container.vector_store, "_embedding_provider"):
+            container.vector_store._embedding_provider = new_provider
+
+        # Also update Beast's embedding provider reference
+        if container.beast is not None and hasattr(container.beast, "_embed"):
+            container.beast._embed = new_provider
+
+        # Also update knowledge store's embedding provider
+        if container.knowledge_store is not None and hasattr(container.knowledge_store, "_embedding_provider"):
+            container.knowledge_store._embedding_provider = new_provider
+
+        model_name = ""
+        if hasattr(new_provider, "model"):
+            model_name = new_provider.model
+        elif hasattr(new_provider, "__class__"):
+            model_name = new_provider.__class__.__name__
+
+        log.info(
+            "embedding_provider_recreated",
+            new_provider=model_name,
+            vector_store_updated=container.vector_store is not None,
+            beast_updated=container.beast is not None,
+            knowledge_store_updated=container.knowledge_store is not None,
+        )
+        return True
+
+    except Exception as exc:
+        log.error("embedding_provider_recreation_failed", error=str(exc), exc_info=True)
+        return False

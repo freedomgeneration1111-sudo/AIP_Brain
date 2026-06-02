@@ -2,6 +2,9 @@
 
 Writes (config) go through AutonomyGate (admin).
 Reads from actors (Sexton, Beast, Router, Budget, etc.).
+
+Embedding backfill: POST /admin/embeddings/backfill generates vectors for
+lexical documents that don't yet have vector embeddings.
 """
 
 from __future__ import annotations
@@ -9,11 +12,16 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from aip.adapter.api.dependencies import AipContainer, get_container, require_definer
 from aip.foundation.schemas import coerce_autonomy_level
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
+
+# Backward-compatible alias for existing route code that uses logger
+logger = log
 
 router = APIRouter()
 
@@ -160,3 +168,182 @@ async def get_budget_status(
 async def get_autonomy_log(container: AipContainer = Depends(get_container)):
     # From AutonomyGate audit
     return {"escalations": []}
+
+
+# ------------------------------------------------------------------
+# Embedding Backfill
+# ------------------------------------------------------------------
+
+
+class BackfillRequest(BaseModel):
+    """Request body for POST /admin/embeddings/backfill."""
+    domain: str | None = None
+    limit: int = 500
+    batch_size: int = 20
+    dry_run: bool = False
+
+
+@router.post("/admin/embeddings/backfill")
+async def backfill_embeddings(
+    body: BackfillRequest,
+    container: AipContainer = Depends(get_container),
+):
+    """Generate vector embeddings for lexical documents that don't have them yet.
+
+    This endpoint is used to backfill vector embeddings for data that was
+    ingested before an embedding provider was configured (e.g. CLI ingestion
+    with embedding_provider=None). It reads documents from the lexical store,
+    checks which ones don't have vector embeddings, and generates embeddings
+    using the currently active embedding provider.
+
+    Parameters:
+      - domain: Only backfill documents in this domain (default: all domains)
+      - limit: Maximum number of documents to process (default: 500)
+      - batch_size: Number of documents to embed before committing (default: 20)
+      - dry_run: If True, only report what would be done without making changes
+
+    Returns a summary with counts of documents scanned, embedded, and failed.
+    """
+    # Validate prerequisites
+    if container.embedding_provider is None:
+        raise HTTPException(503, "No embedding provider configured. Select an embedding model first.")
+    if container.lexical_store is None:
+        raise HTTPException(503, "Lexical store not wired.")
+    if container.vector_store is None:
+        raise HTTPException(503, "Vector store not wired.")
+
+    # Check that the embedding provider is real (not mock/fake)
+    provider_class = container.embedding_provider.__class__.__name__
+    is_mock = "Mock" in provider_class or "Fake" in provider_class
+    if is_mock:
+        return {
+            "ok": False,
+            "error": (
+                f"Current embedding provider is '{provider_class}' (mock/fake). "
+                "Select a real embedding model via the /models page before running backfill."
+            ),
+            "scanned": 0,
+            "embedded": 0,
+            "failed": 0,
+            "skipped": 0,
+        }
+
+    # Scan lexical store for documents
+    import json
+    import sqlite3
+
+    lexical_store = container.lexical_store
+    vector_store = container.vector_store
+    embedding_provider = container.embedding_provider
+
+    # Query the lexical store's database directly for documents
+    # This is a pragmatic approach — the LexicalStore protocol doesn't have
+    # a "list all" method, so we access the underlying FTS5 database.
+    db_path = getattr(lexical_store, "_db_path", None)
+    if not db_path:
+        raise HTTPException(503, "Cannot access lexical store database path.")
+
+    try:
+        scanned = 0
+        embedded = 0
+        failed = 0
+        skipped = 0
+
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+
+        try:
+            # Get all document IDs and content from the lexical store
+            if body.domain:
+                cursor = conn.execute(
+                    "SELECT doc_id, content, domain, metadata FROM fts_documents "
+                    "WHERE domain = ? ORDER BY rowid ASC LIMIT ?",
+                    (body.domain, body.limit),
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT doc_id, content, domain, metadata FROM fts_documents "
+                    "ORDER BY rowid ASC LIMIT ?",
+                    (body.limit,),
+                )
+            rows = cursor.fetchall()
+
+            for row in rows:
+                doc_id = row["doc_id"]
+                content = row["content"]
+                domain = row["domain"]
+                metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+
+                scanned += 1
+
+                # Check if this document already has a vector embedding
+                try:
+                    existing = await vector_store.get_by_id(doc_id)
+                    if existing is not None:
+                        skipped += 1
+                        continue
+                except Exception:
+                    pass  # If get_by_id fails, proceed with embedding
+
+                if body.dry_run:
+                    embedded += 1
+                    continue
+
+                # Generate embedding
+                try:
+                    # Truncate content to avoid API limits (most models cap at ~8K tokens)
+                    text_to_embed = content[:2000] if len(content) > 2000 else content
+                    embedding = await embedding_provider.embed(text_to_embed)
+
+                    if embedding and len(embedding) > 0:
+                        await vector_store.upsert(
+                            id=doc_id,
+                            embedding=embedding,
+                            content=text_to_embed,
+                            metadata=metadata,
+                            domain=domain,
+                        )
+                        embedded += 1
+                        if embedded % body.batch_size == 0:
+                            log.info(
+                                "backfill_progress",
+                                embedded=embedded,
+                                scanned=scanned,
+                                domain=domain or "all",
+                            )
+                    else:
+                        failed += 1
+                        log.warning("backfill_empty_embedding", doc_id=doc_id)
+                except Exception as exc:
+                    failed += 1
+                    log.warning("backfill_embed_failed", doc_id=doc_id, error=str(exc))
+
+        finally:
+            conn.close()
+
+        result = {
+            "ok": True,
+            "provider": provider_class,
+            "model": getattr(embedding_provider, "model", "unknown"),
+            "scanned": scanned,
+            "embedded": embedded,
+            "failed": failed,
+            "skipped": skipped,
+            "dry_run": body.dry_run,
+        }
+
+        if not body.dry_run:
+            log.info(
+                "backfill_complete",
+                scanned=scanned,
+                embedded=embedded,
+                failed=failed,
+                skipped=skipped,
+                domain=body.domain or "all",
+            )
+
+        return result
+
+    except Exception as exc:
+        log.error("backfill_failed", error=str(exc), exc_info=True)
+        raise HTTPException(500, f"Backfill failed: {exc}")

@@ -6,6 +6,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [Unreleased] — 2026-06-02
+
+### Phase 9 — Real OpenRouter Embedding + Backfill
+
+#### Added
+- **OpenAI-compatible embedding client** (`aip.adapter.embedding.openai_embed.py`):
+  New `OpenAICompatibleEmbeddingClient` that calls `/v1/embeddings` endpoints
+  (OpenRouter, OpenAI, DeepSeek, etc.). Includes `MockOpenAICompatibleEmbeddingClient`
+  for CI/testing.
+- **`openai_compatible` provider in `embed_providers.py`**: The orchestration-layer
+  embedding provider loader now supports `provider = "openai_compatible"` alongside
+  the existing `ollama` and `fake` options. Resolves model, base_url, and api_key
+  from config with env var fallbacks (AIP_EMBEDDING_API_KEY, AIP_OPENAI_API_KEY).
+- **Runtime embedding provider updates**: `PATCH /models/slots/embedding/model` now
+  recreates `container.embedding_provider` at runtime when the embedding slot is
+  changed. Also updates references in vector_store, Beast, and knowledge_store so
+  the new model takes effect immediately without a server restart.
+- **Embedding backfill endpoint** (`POST /admin/embeddings/backfill`): Generates
+  vector embeddings for lexical documents that don't yet have vector entries.
+  Supports domain filtering, batch size, limit, and dry-run mode. This is the
+  primary mechanism for generating vectors for data ingested before an embedding
+  provider was configured (e.g., CLI ingestion with embedding_provider=None).
+- **Unified embedding config**: The `_create_embedding_provider()` function in
+  `app.py` resolves the embedding provider from `[models.embedding]` slot config
+  first (same as what the UI manages), then falls back to the legacy `[embedding]`
+  section. This bridges the gap between the ModelSlotResolver's slot system and
+  the EmbeddingProvider infrastructure.
+
+#### Changed
+- `[embedding]` in `aip.config.toml` now defaults to `provider = "openai_compatible"`
+  with `model = "text-embedding-3-small"` and `base_url = "https://openrouter.ai/api"`
+  instead of `provider = "fake"`. This makes embedding functional out of the box
+  when an API key is provided via env var.
+- `app.py` lifespan: Replaced inline embedding provider creation with
+  `_create_embedding_provider()` which properly resolves from slot config.
+- `models.py` route: Uses `aip.logging.get_logger` instead of stdlib `logging`.
+
+#### Fixed
+- **Embedding config disconnect resolved**: Previously, `[models.embedding]` slot
+  and `[embedding]` section were disconnected — changing one didn't affect the other.
+  Now the slot config takes priority, and UI changes propagate to the actual
+  embedding provider at runtime.
+- **Beast and knowledge store embedding references**: When the embedding provider
+  is updated at runtime, Beast's `_embed` and knowledge store's `_embedding_provider`
+  references are also updated, so they use the new model immediately.
+
+---
+
 ## [0.1.0-alpha] — 2025-03-04
 
 ### Phase 1 — Foundation Bootstrap

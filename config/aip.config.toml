@@ -11,9 +11,14 @@ weight_frequency     = 0.10
 # CHUNK-3.9 example for Phase 3 real embedding slot (Rev 1.3).
 # In Phase 1/CI: provider = "fake" (default, uses deterministic fake_embed).
 # In Phase 3+: set provider = "local" (or "api") and specify model to load a real embedder.
+# NOTE: The [models.embedding] slot is now the primary config for the embedding
+# provider. The [embedding] section is kept for backward compatibility but the
+# models.embedding slot takes priority when both are configured.
 [embedding]
-provider = "fake"
-# model = "sentence-transformers/all-MiniLM-L6-v2"  # example for real local provider
+provider = "openai_compatible"
+model = "text-embedding-3-small"
+base_url = "https://openrouter.ai/api"
+# api_key = ""   # Set your key here, or use AIP_EMBEDDING_API_KEY / AIP_OPENAI_API_KEY env var
 
 # --- Phase 5 additions (append only) ---
 # Per CHUNK-7.0a ANNEX + prose: all Sexton/ACE/router/budget/beast params
