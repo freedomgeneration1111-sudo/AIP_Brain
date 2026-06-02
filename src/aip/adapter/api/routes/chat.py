@@ -27,14 +27,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from aip.adapter.api.dependencies import get_container
 from aip.adapter.api.routes.sessions import get_session_meta, increment_turn_count
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -48,7 +48,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
     allowing the backend's ModelSlotResolver to dispatch to the appropriate provider.
     """
     await websocket.accept()
-    logger.info("chat_ws_connected: session=%s", session_id)
+    logger.info("chat_ws_connected", session=session_id)
 
     _container = get_container(websocket)  # type: ignore  # in real lifespan context
 
@@ -61,9 +61,8 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
         model_slot = session_meta.get("model_slot", "synthesis")
         session_mode = session_meta.get("mode", "normal")
         auto_save_enabled = session_meta.get("auto_save", True)
-    logger.info("chat_ws_session: session=%s slot=%s mode=%s model_provider=%s",
-                session_id, model_slot, session_mode,
-                "yes" if _container.model_provider is not None else "NONE")
+    logger.info("chat_ws_session", session=session_id, slot=model_slot, mode=session_mode,
+                model_provider="yes" if _container.model_provider is not None else "NONE")
 
     try:
         while True:
@@ -163,9 +162,9 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                     })
                             except Exception as exc:
                                 # Retrieval failed — fall back to normal mode behavior
-                                import logging
-                                logging.getLogger(__name__).warning(
-                                    "Augmented retrieval failed, falling back to normal: %s", exc
+                                logger.warning(
+                                    "Augmented retrieval failed, falling back to normal",
+                                    error=str(exc),
                                 )
                                 if session_meta and session_meta.get("role"):
                                     role_hint = session_meta.get("role", "")
@@ -202,8 +201,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                     continue
                             except Exception as exc:
                                 # Budget check failure is non-critical — log and proceed
-                                import logging
-                                logging.getLogger(__name__).warning("Budget check failed, proceeding: %s", exc)
+                                logger.warning("Budget check failed, proceeding", error=str(exc))
 
                         result = await model_provider.call(effective_slot, messages)
 
@@ -244,8 +242,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                     model_slot=effective_slot,
                                 )
                             except Exception as exc:
-                                import logging
-                                logging.getLogger(__name__).debug("Budget record failed: %s", exc)
+                                logger.debug("Budget record failed", error=str(exc))
 
                         # Build response payload
                         response_payload = {
