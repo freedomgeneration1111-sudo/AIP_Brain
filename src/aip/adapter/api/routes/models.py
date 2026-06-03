@@ -183,37 +183,11 @@ def _recreate_embedding_provider(container: AipContainer) -> bool:
     from aip.adapter.api.app import _create_embedding_provider
 
     try:
-        # Close the old provider if it has a close() method
-        old_provider = container.embedding_provider
-        if old_provider is not None and hasattr(old_provider, "close"):
-            try:
-                # Close is async, but we're in a sync context.
-                # The old provider will be GC'd; its httpx client will close eventually.
-                # For production safety, we should handle this properly.
-                import asyncio
-                try:
-                    loop = asyncio.get_running_loop()
-                    loop.create_task(old_provider.close())
-                except RuntimeError:
-                    pass
-            except Exception:
-                pass
-
-        # Create a new provider from the current config
+        # Create a new provider from the current config.
+        # set_embedding_provider will handle closing the previous one (if any)
+        # and updating references on dependents.
         new_provider = _create_embedding_provider(container.config)
-        container.embedding_provider = new_provider
-
-        # Also update the vector store's embedding_provider reference
-        if container.vector_store is not None and hasattr(container.vector_store, "_embedding_provider"):
-            container.vector_store._embedding_provider = new_provider
-
-        # Also update Beast's embedding provider reference
-        if container.beast is not None and hasattr(container.beast, "_embed"):
-            container.beast._embed = new_provider
-
-        # Also update knowledge store's embedding provider
-        if container.knowledge_store is not None and hasattr(container.knowledge_store, "_embedding_provider"):
-            container.knowledge_store._embedding_provider = new_provider
+        container.set_embedding_provider(new_provider)
 
         model_name = ""
         if hasattr(new_provider, "model"):

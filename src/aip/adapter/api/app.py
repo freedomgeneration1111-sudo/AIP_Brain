@@ -343,10 +343,13 @@ async def lifespan(app: FastAPI):
     # =====================================================================
 
     # Lexical store — FTS5 full-text search (degrades to no text search)
+    # Use the same lexical.db derivation as CLI ingestion (cli/_db_path + ingestion/pipeline)
+    # so that backfill, augmented chat, etc. see chunks written by `aip ingest` / scripts/ingest_claude.py.
     try:
         _ls_mod = importlib.import_module("aip.adapter.lexical.sqlite_fts5_store")
         _SqliteFts5LexicalStore = _ls_mod.SqliteFts5LexicalStore
-        container.lexical_store = _SqliteFts5LexicalStore(db_path)
+        lexical_db = os.path.join(os.path.dirname(db_path), "lexical.db")
+        container.lexical_store = _SqliteFts5LexicalStore(lexical_db)
         await container.lexical_store.initialize()
         log.info("component_initialized", component="lexical_store", required=False)
     except Exception as exc:
@@ -361,7 +364,8 @@ async def lifespan(app: FastAPI):
     # [embedding] section for backward compatibility. This ensures the embedding
     # provider uses the same model/API key selected via the UI on /models.
     try:
-        container.embedding_provider = _create_embedding_provider(config)
+        prov = _create_embedding_provider(config)
+        container.set_embedding_provider(prov)
         provider_type = config.get("embedding", {}).get("provider", "mock")
         embed_slot = config.get("models", {}).get("embedding", {})
         if isinstance(embed_slot, dict) and embed_slot.get("provider"):

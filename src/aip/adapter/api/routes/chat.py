@@ -168,18 +168,20 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                 )
                                 if session_meta and session_meta.get("role"):
                                     role_hint = session_meta.get("role", "")
-                                    messages.append({
-                                        "role": "system",
-                                        "content": f"You are acting in the {role_hint} role. Respond accordingly.",
-                                    })
+                                    if role_hint:  # only inject for explicit actor roles (plain chat uses role=None)
+                                        messages.append({
+                                            "role": "system",
+                                            "content": f"You are acting in the {role_hint} role. Respond accordingly.",
+                                        })
                         else:
                             # === NORMAL MODE: Direct model dispatch ===
                             if session_meta and session_meta.get("role"):
                                 role_hint = session_meta.get("role", "")
-                                messages.append({
-                                    "role": "system",
-                                    "content": f"You are acting in the {role_hint} role. Respond accordingly.",
-                                })
+                                if role_hint:  # only inject for explicit actor roles (plain chat uses role=None; prevents Beast leak)
+                                    messages.append({
+                                        "role": "system",
+                                        "content": f"You are acting in the {role_hint} role. Respond accordingly.",
+                                    })
 
                         messages.append({"role": "user", "content": content})
 

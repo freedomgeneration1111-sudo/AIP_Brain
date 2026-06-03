@@ -313,6 +313,7 @@ class AskStores:
             self.project_store,
             self.ecs_store,
             self.model_provider,
+            self.embedding_provider,
         ):
             if store is not None and hasattr(store, "close"):
                 try:
@@ -369,14 +370,16 @@ async def create_ask_stores(db_path: str) -> AskStores:
     except Exception as exc:
         logger.info("No model provider configured: %s", exc)
 
-    # Embedding provider — optional, requires Ollama or similar
+    # Embedding provider — use centralized creation from [models.embedding] slot (or legacy [embedding])
+    # This removes the bypass/stale direct creation, so CLI `aip ask` and tests respect UI-selected embedding model.
     embedding_provider = None
     try:
-        from aip.adapter.embedding.ollama_client import OllamaEmbeddingClient
-
-        embedding_provider = OllamaEmbeddingClient()
+        config = _load_config()
+        if config is not None:
+            from aip.adapter.api.app import _create_embedding_provider
+            embedding_provider = _create_embedding_provider(config)
     except Exception:
-        pass  # No embedding provider available — lexical-only search
+        pass  # graceful: no embedding provider — lexical-only search
 
     return AskStores(
         artifact_store=artifact_store,

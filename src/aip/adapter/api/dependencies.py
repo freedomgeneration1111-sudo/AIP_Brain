@@ -78,6 +78,40 @@ class AipContainer:
         self.review_queue_store: Any = None
         # SessionStore — None when not initialized (degrades to in-memory)
         self.session_store: Any = None
+        # Backfill status for async backfill tracking (simple in-memory for now)
+        self.backfill_status: dict = {"running": False, "last_result": None, "progress": {}}
+
+    def set_embedding_provider(self, provider: "EmbeddingProvider | None") -> None:
+        """Safely replace the embedding provider.
+
+        Updates the container reference and pokes private attributes on
+        dependent components (vector_store, beast, knowledge_store) so that
+        runtime changes (e.g. from PATCH /models/slots/embedding/model) take
+        effect without requiring a full restart.
+
+        This centralizes the previously duplicated fragile poking logic.
+        """
+        old_provider = self.embedding_provider
+        if old_provider is not None and hasattr(old_provider, "close"):
+            try:
+                import asyncio
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(old_provider.close())
+                except RuntimeError:
+                    pass
+            except Exception:
+                pass
+
+        self.embedding_provider = provider
+
+        # Update dependents (fragile private attrs, but now in one place)
+        if self.vector_store is not None and hasattr(self.vector_store, "_embedding_provider"):
+            self.vector_store._embedding_provider = provider
+        if self.beast is not None and hasattr(self.beast, "_embed"):
+            self.beast._embed = provider
+        if self.knowledge_store is not None and hasattr(self.knowledge_store, "_embedding_provider"):
+            self.knowledge_store._embedding_provider = provider
 
 
 def get_container(request: "Request") -> AipContainer:

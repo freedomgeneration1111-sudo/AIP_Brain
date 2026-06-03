@@ -52,6 +52,29 @@ def get_embed_fn(config: dict | Any | None = None) -> Callable[[str], list[float
     else:
         cfg = {}
 
+    # Prefer centralized (models.embedding first) for consistency with API/UI selection.
+    try:
+        from aip.adapter.api.app import _create_embedding_provider
+        prov = _create_embedding_provider(cfg)
+        if prov is not None and hasattr(prov, "embed"):
+            # wrap async embed to sync for callers expecting sync fn
+            import asyncio
+            def _wrapped_embed(text: str) -> list[float]:
+                try:
+                    loop = asyncio.get_running_loop()
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                        fut = pool.submit(asyncio.run, prov.embed(text))
+                        return fut.result(timeout=60.0)
+                except RuntimeError:
+                    return asyncio.run(prov.embed(text))
+                except Exception as exc:
+                    logger.warning("embed via centralized provider failed, falling to fake: %s", exc)
+                    return fake_embed(text)
+            return _wrapped_embed
+    except Exception as exc:
+        logger.debug("get_embed_fn: _create_embedding_provider failed, falling to legacy: %s", exc)
+
     emb = cfg.get("embedding", {}) if isinstance(cfg, dict) else {}
     provider = emb.get("provider", "fake")
 
@@ -88,6 +111,18 @@ def get_embed_fn_async(config: dict | Any | None = None) -> Any:
         cfg = config
     else:
         cfg = {}
+
+    # Prefer the centralized embedding provider creation (same as API container's _create_embedding_provider)
+    # which looks at [models.embedding] slot first (with env overrides like AIP_EMBEDDING_MODEL),
+    # then legacy [embedding]. This makes workflow engine etc. respect the UI-selected model.
+    try:
+        from aip.adapter.api.app import _create_embedding_provider
+        prov = _create_embedding_provider(cfg)
+        if prov is not None:
+            # prov is already an EmbeddingProvider (real client or mock)
+            return prov
+    except Exception as exc:
+        logger.debug("get_embed_fn_async: _create_embedding_provider failed, falling back to legacy: %s", exc)
 
     emb = cfg.get("embedding", {}) if isinstance(cfg, dict) else {}
     provider = emb.get("provider", "fake")

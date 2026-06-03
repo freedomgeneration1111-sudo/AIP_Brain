@@ -838,6 +838,23 @@ class AipApiClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def trigger_backfill(self, domain: str | None = None, limit: int = 500, batch_size: int = 50, dry_run: bool = False) -> dict[str, Any]:
+        """Trigger backfill via POST /api/v1/admin/embeddings/backfill (now non-blocking)."""
+        client = self._get_http_client()
+        payload: dict[str, Any] = {"limit": limit, "batch_size": batch_size, "dry_run": dry_run}
+        if domain:
+            payload["domain"] = domain
+        resp = await client.post(f"{self.base_url}/api/v1/admin/embeddings/backfill", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_backfill_status(self) -> dict[str, Any]:
+        """Get backfill status via GET /api/v1/admin/embeddings/backfill/status."""
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/admin/embeddings/backfill/status")
+        resp.raise_for_status()
+        return resp.json()
+
     async def reject_review(self, artifact_id: str) -> dict[str, Any]:
         """Reject a review item via POST /api/v1/reviews/{id}/reject."""
         client = self._get_http_client()

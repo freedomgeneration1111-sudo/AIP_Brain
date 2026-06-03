@@ -9,6 +9,7 @@ lexical documents that don't yet have vector embeddings.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -190,21 +191,16 @@ async def backfill_embeddings(
 ):
     """Generate vector embeddings for lexical documents that don't have them yet.
 
-    This endpoint is used to backfill vector embeddings for data that was
-    ingested before an embedding provider was configured (e.g. CLI ingestion
-    with embedding_provider=None). It reads documents from the lexical store,
-    checks which ones don't have vector embeddings, and generates embeddings
-    using the currently active embedding provider.
+    This endpoint now starts the backfill in the background (non-blocking) so
+    the API remains responsive. Progress is available via GET /admin/embeddings/backfill/status .
 
-    Parameters:
-      - domain: Only backfill documents in this domain (default: all domains)
-      - limit: Maximum number of documents to process (default: 500)
-      - batch_size: Number of documents to embed before committing (default: 20)
-      - dry_run: If True, only report what would be done without making changes
+    It uses the currently active embedding provider from the container (tied to
+    the embedding slot selected in the UI).
 
-    Returns a summary with counts of documents scanned, embedded, and failed.
+    For large backfills (e.g. claude_komal ~14k chunks), use reasonable limit/batch
+    or trigger and let it run; it can be re-triggered to resume (skips done items).
     """
-    # Validate prerequisites
+    # Validate prerequisites (quick)
     if container.embedding_provider is None:
         raise HTTPException(503, "No embedding provider configured. Select an embedding model first.")
     if container.lexical_store is None:
@@ -228,22 +224,49 @@ async def backfill_embeddings(
             "skipped": 0,
         }
 
-    # Scan lexical store for documents
+    if container.backfill_status.get("running"):
+        return {
+            "ok": True,
+            "scheduled": False,
+            "message": "Backfill already running. Check status.",
+            "status": container.backfill_status,
+        }
+
+    # Schedule background work
+    container.backfill_status["running"] = True
+    container.backfill_status["progress"] = {"scanned": 0, "embedded": 0, "skipped": 0, "failed": 0, "domain": body.domain or "all"}
+    container.backfill_status["last_result"] = None
+
+    asyncio.create_task(
+        _run_backfill_in_background(body, container),
+        name="backfill-embeddings",
+    )
+
+    return {
+        "ok": True,
+        "scheduled": True,
+        "message": "Backfill started in background. Poll GET /admin/embeddings/backfill/status for progress and result.",
+        "status": container.backfill_status,
+    }
+
+
+async def _run_backfill_in_background(body: BackfillRequest, container: AipContainer) -> None:
+    """Background worker for backfill. Updates container.backfill_status with progress."""
     import json
     import sqlite3
 
-    lexical_store = container.lexical_store
-    vector_store = container.vector_store
-    embedding_provider = container.embedding_provider
-
-    # Query the lexical store's database directly for documents
-    # This is a pragmatic approach — the LexicalStore protocol doesn't have
-    # a "list all" method, so we access the underlying FTS5 database.
-    db_path = getattr(lexical_store, "_db_path", None)
-    if not db_path:
-        raise HTTPException(503, "Cannot access lexical store database path.")
-
     try:
+        lexical_store = container.lexical_store
+        vector_store = container.vector_store
+        embedding_provider = container.embedding_provider
+        provider_class = embedding_provider.__class__.__name__ if embedding_provider else "unknown"
+
+        db_path = getattr(lexical_store, "_db_path", None)
+        if not db_path:
+            container.backfill_status["running"] = False
+            container.backfill_status["last_result"] = {"ok": False, "error": "No lexical db_path"}
+            return
+
         scanned = 0
         embedded = 0
         failed = 0
@@ -253,7 +276,6 @@ async def backfill_embeddings(
         conn.row_factory = sqlite3.Row
 
         try:
-            # Get all document IDs and content from the lexical store
             if body.domain:
                 cursor = conn.execute(
                     "SELECT doc_id, content, domain, metadata FROM fts_documents "
@@ -275,23 +297,24 @@ async def backfill_embeddings(
                 metadata = json.loads(row["metadata"]) if row["metadata"] else {}
 
                 scanned += 1
+                container.backfill_status["progress"] = {
+                    "scanned": scanned, "embedded": embedded, "skipped": skipped, "failed": failed,
+                    "domain": body.domain or "all", "current_doc": doc_id
+                }
 
-                # Check if this document already has a vector embedding
                 try:
                     existing = await vector_store.get_by_id(doc_id)
                     if existing is not None:
                         skipped += 1
                         continue
                 except Exception:
-                    pass  # If get_by_id fails, proceed with embedding
+                    pass
 
                 if body.dry_run:
                     embedded += 1
                     continue
 
-                # Generate embedding
                 try:
-                    # Truncate content to avoid API limits (most models cap at ~8K tokens)
                     text_to_embed = content[:2000] if len(content) > 2000 else content
                     embedding = await embedding_provider.embed(text_to_embed)
 
@@ -342,8 +365,19 @@ async def backfill_embeddings(
                 domain=body.domain or "all",
             )
 
-        return result
+        container.backfill_status["last_result"] = result
+        container.backfill_status["progress"] = result  # final
 
     except Exception as exc:
         log.error("backfill_failed", error=str(exc), exc_info=True)
-        raise HTTPException(500, f"Backfill failed: {exc}")
+        container.backfill_status["last_result"] = {"ok": False, "error": str(exc)}
+    finally:
+        container.backfill_status["running"] = False
+
+
+@router.get("/admin/embeddings/backfill/status")
+async def get_backfill_status(container: AipContainer = Depends(get_container)):
+    """Get status of the (background) backfill process.
+    Includes running flag, current progress, and last result.
+    """
+    return container.backfill_status

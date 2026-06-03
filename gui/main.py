@@ -95,7 +95,7 @@ class GuiState:
     def __init__(self) -> None:
         self.api_client: AipApiClient = get_api_client()
         self.session_id: str | None = None
-        self.current_role: str = "beast"
+        self.current_role: str | None = None  # default: no actor role for plain chat (prevents "Beast" system prompt leakage into normal chat)
         self.current_model_slot: str = "synthesis"
         self.current_mode: str = "normal"  # "normal" or "augmented"
         self.available_slots: list[dict[str, Any]] = []
@@ -721,6 +721,15 @@ async def main_page():
     backend_status = await check_backend_health()
     slots = await load_model_slots()
 
+    # Populate local _role_model_assignments from backend's current slot config.
+    # This makes the assignments (used by chat model resolution and fallbacks)
+    # reflect the authoritative backend state (config + any AIP_*_MODEL env from PATCHes).
+    for s in slots:
+        sn = s.get("slot_name")
+        m = s.get("model")
+        if sn and m and not str(m).startswith("<"):
+            set_role_model(sn, m)
+
     # ---- STEP 3: Build universal model dropdown ----
     all_model_options = build_model_options(slots)
 
@@ -802,9 +811,12 @@ async def main_page():
         else:
             actors = {}
 
-        # AI actor roles get model dropdowns; Sexton is admin-only (no model)
+        # AI actor roles get model dropdowns; Sexton is admin-only (no model).
+        # Note: synthesis/Beast does not get a sidebar model picker here — the top
+        # "Chat Model" header is the authoritative controller for the synthesis slot
+        # (used by normal chat). This decouples chat model selection from the Beast actor UI.
         actor_defs = [
-            ("synthesis", "Beast", "brown", "rgba(121,85,72,0.08)", "beast", True),
+            ("synthesis", "Beast", "brown", "rgba(121,85,72,0.08)", "beast", False),
             ("evaluation", "Vigil", "indigo", "rgba(63,81,181,0.08)", "vigil", True),
             ("embedding", "Embed", "teal", "rgba(0,150,136,0.08)", "embedding", True),
             ("sexton", "Sexton", "grey", "rgba(0,0,0,0.04)", "sexton", False),
@@ -835,8 +847,12 @@ async def main_page():
                         on_change=lambda e, sn=slot_name: on_role_model_changed(sn, e.value),
                     ).props("dense").classes("flex-grow text-[11px]")
                 else:
-                    # Non-AI role (e.g. Sexton) — show status label instead of dropdown
-                    ui.label("(admin)").classes("text-[10px] text-grey-6")
+                    # Non-AI role (e.g. Sexton) — show status label instead of dropdown.
+                    # For Beast/synthesis the model is controlled exclusively by the top Chat Model header.
+                    if slot_name == "synthesis":
+                        ui.label("(Chat Model header)").classes("text-[10px] text-grey-6")
+                    else:
+                        ui.label("(admin)").classes("text-[10px] text-grey-6")
 
         # Trigger buttons (compact)
         ui.separator().classes("q-my-xs")
@@ -942,8 +958,11 @@ def on_chat_model_changed(model_id: str) -> None:
 
     Updates the GUI state AND pushes the model change to the backend
     so that the next chat message uses the selected model.
+    The top Chat Model is the authoritative control for normal chat (synthesis slot);
+    we explicitly ensure no actor role is attached to avoid Beast prompt leakage.
     """
     state = get_state()
+    state.current_role = None  # plain chat — never attach "beast" (or other) role here
     # The chat always uses the "synthesis" slot
     set_role_model("synthesis", model_id)
     state.reset_session()
@@ -1411,6 +1430,43 @@ async def model_catalog_page():
             ui.notify(f"Embedding model → {model_id}", color="positive")
 
         embed_table_container
+
+        # --- Backfill controls (tied to current embedding model) ---
+        ui.separator().classes("q-my-sm")
+        with ui.row().classes("items-center gap-2"):
+            ui.button("Trigger Backfill (claude_komal, limit 2000)", icon="refresh",
+                      on_click=lambda: asyncio.create_task(trigger_backfill_ui("claude_komal", 2000, 100))).props("dense")
+            ui.button("Trigger Full Backfill (all, limit 20000)", icon="refresh",
+                      on_click=lambda: asyncio.create_task(trigger_backfill_ui(None, 20000, 100))).props("dense outline")
+            ui.button("Refresh Status", icon="sync", on_click=lambda: asyncio.create_task(refresh_backfill_status_ui())).props("dense")
+        backfill_status_label = ui.label("Backfill status: unknown").classes("text-caption q-mt-xs")
+        backfill_log_label = ui.label("").classes("text-[10px] text-grey-6")
+
+        async def trigger_backfill_ui(domain, limit, batch):
+            try:
+                res = await state.api_client.trigger_backfill(domain=domain, limit=limit, batch_size=batch)
+                backfill_status_label.text = f"Backfill: {res.get('message', res)}"
+                await refresh_backfill_status_ui()
+            except Exception as e:
+                backfill_status_label.text = f"Backfill trigger error: {e}"
+
+        async def refresh_backfill_status_ui():
+            try:
+                st = await state.api_client.get_backfill_status()
+                running = st.get("running", False)
+                prog = st.get("progress", {})
+                last = st.get("last_result", {})
+                txt = f"running={running} | scanned={prog.get('scanned',0)} embedded={prog.get('embedded',0)} skipped={prog.get('skipped',0)}"
+                if last:
+                    txt += f" | last: scanned={last.get('scanned',0)} embedded={last.get('embedded',0)}"
+                backfill_status_label.text = f"Backfill status: {txt}"
+                backfill_log_label.text = f"last: {str(last)[:120]}..." if last else ""
+            except Exception as e:
+                backfill_status_label.text = f"Status error: {e}"
+
+        # initial status load
+        if state.api_client.has_openrouter_api_key():
+            await refresh_backfill_status_ui()
 
     # Auto-load models if API key is available
     if state.api_client.has_openrouter_api_key():

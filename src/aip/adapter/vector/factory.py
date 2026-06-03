@@ -90,7 +90,11 @@ async def _create_sqlite_vss(vector_cfg: dict, embedding_provider: Any = None) -
                 )
             return store
         else:
-            logger.warning("sqlite_vss extension not available, falling back to in-memory store")
+            logger.warning(
+                "sqlite_vss extension not available, using persistent sqlite metadata + "
+                "brute-force search (embeddings stored in embedding_json column for persistence)"
+            )
+            return store  # still return for persistent storage of vectors/metadata
     except Exception as e:
         logger.warning(f"sqlite_vss store creation failed ({e}), falling back to in-memory store")
 

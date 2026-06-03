@@ -83,6 +83,7 @@ async def _setup_project_and_ingest(db_path: str, sample_markdown_file: Path):
         artifact_store=ingest_stores.artifact_store,
         lexical_store=ingest_stores.lexical_store,
         vector_store=ingest_stores.vector_store,
+        embedding_provider=getattr(ingest_stores, "embedding_provider", None),
         event_store=ingest_stores.event_store,
         domain="test_project",
     )

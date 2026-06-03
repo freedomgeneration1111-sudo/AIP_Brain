@@ -52,15 +52,30 @@ class SqliteVssVectorStore(VectorStore):
         conn = sqlite3.connect(self._db_path)
         try:
             conn.enable_load_extension(True)
+            loaded = False
+            # Preferred: use sqlite-vss package if installed (provides correct .so path bundled in site-packages/sqlite_vss/vss0)
+            # This makes persistent vectors work after `uv pip install sqlite-vss`
             try:
-                conn.load_extension("vss0")
-                self._vss_available = True
-            except sqlite3.OperationalError:
+                import sqlite_vss
+                sqlite_vss.load_vss(conn)
+                loaded = True
+                logger.info("sqlite_vss loaded via sqlite-vss package")
+            except ImportError:
+                pass
+            except Exception as e:
+                logger.debug("sqlite_vss package load_vss failed (will try fallback): %s", e)
+            if not loaded:
                 try:
-                    conn.load_extension("./vss0")
-                    self._vss_available = True
+                    conn.load_extension("vss0")
+                    loaded = True
                 except sqlite3.OperationalError:
-                    pass  # sqlite_vss not available; store will raise on first use
+                    try:
+                        conn.load_extension("./vss0")
+                        loaded = True
+                    except sqlite3.OperationalError:
+                        pass  # sqlite_vss not available; store will raise on first use
+            if loaded:
+                self._vss_available = True
             conn.enable_load_extension(False)
 
             cur = conn.cursor()
@@ -70,6 +85,7 @@ class SqliteVssVectorStore(VectorStore):
                     content TEXT,
                     domain TEXT,
                     metadata_json TEXT,
+                    embedding_json TEXT,
                     created_at TEXT DEFAULT (datetime('now'))
                 )
             """)
@@ -77,6 +93,11 @@ class SqliteVssVectorStore(VectorStore):
                 CREATE INDEX IF NOT EXISTS idx_vm_domain
                 ON vector_metadata(domain)
             """)
+            # Add embedding_json column for !vss case (persistent vectors via json even without extension)
+            try:
+                cur.execute("ALTER TABLE vector_metadata ADD COLUMN embedding_json TEXT")
+            except sqlite3.OperationalError:
+                pass  # column exists or other
             if self._vss_available:
                 cur.execute(f"""
                     CREATE VIRTUAL TABLE IF NOT EXISTS vss_vectors
@@ -107,13 +128,15 @@ class SqliteVssVectorStore(VectorStore):
             cursor = await conn.execute("SELECT rowid FROM vector_metadata WHERE id = ?", (id,))
             existing = await cursor.fetchone()
             if existing:
-                await conn.execute("DELETE FROM vss_vectors WHERE rowid = ?", (existing[0],))
                 await conn.execute("DELETE FROM vector_metadata WHERE id = ?", (id,))
+                if self._vss_available:
+                    await conn.execute("DELETE FROM vss_vectors WHERE rowid = ?", (existing[0],))
 
             meta_json = json.dumps(metadata or {})
+            emb_json = json.dumps(embedding) if embedding else None
             await conn.execute(
-                "INSERT INTO vector_metadata (id, content, domain, metadata_json) VALUES (?, ?, ?, ?)",
-                (id, content, domain, meta_json),
+                "INSERT INTO vector_metadata (id, content, domain, metadata_json, embedding_json) VALUES (?, ?, ?, ?, ?)",
+                (id, content, domain, meta_json, emb_json),
             )
             cursor = await conn.execute("SELECT rowid FROM vector_metadata WHERE id = ?", (id,))
             row = await cursor.fetchone()
@@ -132,7 +155,7 @@ class SqliteVssVectorStore(VectorStore):
         top_k: int = 10,
     ) -> list[Chunk]:
         if not self._vss_available:
-            return []
+            return await self._brute_force_retrieve(query_vector, domain, top_k)
         conn = await self._get_conn()
         try:
             emb_str = json.dumps(query_vector)
@@ -170,14 +193,77 @@ class SqliteVssVectorStore(VectorStore):
         finally:
             await conn.close()
 
+    async def _brute_force_retrieve(
+        self,
+        query_vector: list[float],
+        domain: str | None = None,
+        top_k: int = 10,
+    ) -> list[Chunk]:
+        """Brute-force cosine similarity over stored embeddings (used when vss extension unavailable).
+        Embeddings are persisted in embedding_json column so vectors survive restarts.
+        """
+        conn = await self._get_conn()
+        try:
+            if domain:
+                cursor = await conn.execute(
+                    "SELECT id, content, domain, metadata_json, embedding_json FROM vector_metadata "
+                    "WHERE domain = ? AND embedding_json IS NOT NULL",
+                    (domain,),
+                )
+            else:
+                cursor = await conn.execute(
+                    "SELECT id, content, domain, metadata_json, embedding_json FROM vector_metadata "
+                    "WHERE embedding_json IS NOT NULL"
+                )
+            rows = await cursor.fetchall()
+            candidates = []
+            for row in rows:
+                id_, content, domain_val, meta_json, emb_json = row
+                if not emb_json:
+                    continue
+                try:
+                    vec = json.loads(emb_json)
+                    if not isinstance(vec, list) or len(vec) != len(query_vector):
+                        continue
+                    score = self._cosine_similarity(query_vector, vec)
+                    candidates.append((score, id_, content, domain_val, meta_json))
+                except Exception:
+                    continue
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            results = []
+            for score, id_, content, domain_val, meta_json in candidates[:top_k]:
+                results.append(
+                    Chunk(
+                        id=id_,
+                        content=content,
+                        score=score,
+                        metadata=json.loads(meta_json) if meta_json else {},
+                        domain=domain_val,
+                    ),
+                )
+            return results
+        finally:
+            await conn.close()
+
+    def _cosine_similarity(self, a: list[float], b: list[float]) -> float:
+        if not a or not b or len(a) != len(b):
+            return 0.0
+        dot = sum(x * y for x, y in zip(a, b))
+        na = sum(x * x for x in a) ** 0.5
+        nb = sum(x * x for x in b) ** 0.5
+        if na == 0 or nb == 0:
+            return 0.0
+        return dot / (na * nb)
+
     async def delete(self, id: str) -> None:
         conn = await self._get_conn()
         try:
             cursor = await conn.execute("SELECT rowid FROM vector_metadata WHERE id = ?", (id,))
             row = await cursor.fetchone()
             if row:
-                await conn.execute("DELETE FROM vss_vectors WHERE rowid = ?", (row[0],))
                 await conn.execute("DELETE FROM vector_metadata WHERE id = ?", (id,))
+                if self._vss_available:
+                    await conn.execute("DELETE FROM vss_vectors WHERE rowid = ?", (row[0],))
                 await conn.commit()
         finally:
             await conn.close()

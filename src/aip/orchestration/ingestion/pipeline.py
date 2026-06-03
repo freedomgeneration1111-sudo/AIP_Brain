@@ -177,6 +177,18 @@ async def ingest_conversation(
         lexical_indexed = len(errors) < len(chunks)
 
     # Step 4: Index chunks into VectorStore (when available)
+    # Auto-resolve embedding_provider from current slot config if not provided,
+    # so new ingest (chat auto-save, CLI with stores, etc.) always uses the
+    # UI-selected embedding model by default. No manual backfill needed for fresh data.
+    if embedding_provider is None:
+        try:
+            from aip.adapter.api.app import _load_toml_config, _create_embedding_provider
+            cfg = _load_toml_config()
+            if cfg:
+                embedding_provider = _create_embedding_provider(cfg)
+        except Exception:
+            pass  # graceful, will stay None -> no vectors this time
+
     if vector_store is not None and embedding_provider is not None and chunks:
         indexed_count = 0
         for chunk_id, chunk_text in chunks:
@@ -269,16 +281,20 @@ class IngestionStores:
     need to import concrete adapter implementations directly.
     """
 
-    def __init__(self, artifact_store, lexical_store, vector_store, event_store) -> None:
+    def __init__(self, artifact_store, lexical_store, vector_store, event_store, embedding_provider=None) -> None:
         self.artifact_store = artifact_store
         self.lexical_store = lexical_store
         self.vector_store = vector_store
         self.event_store = event_store
+        self.embedding_provider = embedding_provider
 
     async def close(self) -> None:
-        for store in (self.artifact_store, self.lexical_store, self.event_store):
-            if hasattr(store, "close"):
-                await store.close()
+        for store in (self.artifact_store, self.lexical_store, self.event_store, self.embedding_provider):
+            if store is not None and hasattr(store, "close"):
+                try:
+                    await store.close()
+                except Exception:
+                    pass
 
 
 async def create_ingestion_stores(db_path: str) -> IngestionStores:
@@ -286,6 +302,10 @@ async def create_ingestion_stores(db_path: str) -> IngestionStores:
 
     Encapsulates adapter-layer imports so that CLI and other
     orchestration callers do not import concrete adapters directly.
+
+    Now also creates embedding_provider using the centralized logic from
+    [models.embedding] slot (preferred) or legacy [embedding] so that
+    `aip ingest` respects the UI-selected embedding model instead of hardcoding None.
     """
     from aip.adapter.artifact_store_versioned import VersionedArtifactStore
     from aip.adapter.event_store_queryable import QueryableEventStore
@@ -304,4 +324,14 @@ async def create_ingestion_stores(db_path: str) -> IngestionStores:
     event_store = QueryableEventStore(db_path)
     await event_store.initialize()
 
-    return IngestionStores(artifact_store, lexical_store, vector_store, event_store)
+    # Create embedding provider using same logic as API container (models slot + env overrides first)
+    embedding_provider = None
+    try:
+        from aip.adapter.api.app import _load_toml_config, _create_embedding_provider
+        config = _load_toml_config()
+        if config:
+            embedding_provider = _create_embedding_provider(config)
+    except Exception:
+        pass  # graceful fallback to no embedding (e.g. no config, import issues) — vectors will be metadata-only
+
+    return IngestionStores(artifact_store, lexical_store, vector_store, event_store, embedding_provider)
