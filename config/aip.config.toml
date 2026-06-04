@@ -250,28 +250,28 @@ ci_mode = false
 provider = "openai_compatible"
 model = "google/gemma-3-4b-it"
 base_url = "https://openrouter.ai/api"
-api_key = "sk-or-v1-REDACTED-KEY-HERE"
+# api_key = ""   # Set your key here, or use AIP_SYNTHESIS_API_KEY / AIP_OPENAI_API_KEY env var
 
 [models.evaluation]
 provider = "openai_compatible"
 model = "google/gemma-3-4b-it"
 base_url = "https://openrouter.ai/api"
-api_key = "sk-or-v1-REDACTED-KEY-HERE"
+# api_key = ""   # Set your key here, or use AIP_EVALUATION_API_KEY / AIP_OPENAI_API_KEY env var
 
 [models.sexton]
 provider = "openai_compatible"
 model = "google/gemma-3-4b-it"
 base_url = "https://openrouter.ai/api"
-api_key = "sk-or-v1-REDACTED-KEY-HERE"
+# api_key = ""   # Set your key here, or use AIP_SEXTON_API_KEY / AIP_OPENAI_API_KEY env var
 
 [models.embedding]
 provider = "openai_compatible"
 model = "text-embedding-3-small"
 base_url = "https://openrouter.ai/api"
-api_key = "sk-or-v1-REDACTED-KEY-HERE"
+# api_key = ""   # Set your key here, or use AIP_EMBEDDING_API_KEY / AIP_OPENAI_API_KEY env var
 
 [models.beast]
 provider = "openai_compatible"
 model = "nvidia/nemotron-3-super-120b-a12b"
 base_url = "https://openrouter.ai/api"
-api_key = "sk-or-v1-REDACTED-KEY-HERE"
+# api_key = ""   # Set your key here, or use AIP_BEAST_API_KEY / AIP_OPENAI_API_KEY env var
