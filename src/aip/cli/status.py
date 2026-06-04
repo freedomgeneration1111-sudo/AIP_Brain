@@ -150,6 +150,88 @@ def status() -> None:
     except ImportError:
         click.echo("beast: not available")
 
+    # --- Model slots (incl. beast for LLM intelligence) ---
+    try:
+        config_path = Path("config/aip.config.toml")
+        if config_path.exists():
+            import tomllib
+            with open(config_path, "rb") as f:
+                cfg = tomllib.load(f)
+            from aip.adapter.model_slot_resolver import ModelSlotResolver
+            resolver = ModelSlotResolver(cfg)
+            slot_names = resolver.list_slots()
+            if slot_names:
+                details = []
+                for s in slot_names:
+                    try:
+                        r = resolver._resolve_slot_config(s)
+                        m = r.get("model", "<unset>")
+                        has_key = bool(r.get("api_key"))
+                        details.append(f"{s}={m}{' (key)' if has_key else ''}")
+                    except Exception:
+                        details.append(f"{s}=<error>")
+                click.echo("model_slots: " + ", ".join(details))
+            else:
+                click.echo("model_slots: none parsed from resolver")
+        else:
+            click.echo("model_slots: config not found")
+    except Exception as exc:
+        click.echo(f"model_slots: error reading ({exc})")
+
+    # --- Corpus turns (turn-level corpus, new atomic unit) ---
+    try:
+        from aip.adapter.corpus_turn_store import CorpusTurnStore
+        from aip.cli._db_path import get_default_db_path
+
+        db_path = get_default_db_path()
+        if Path(db_path).exists():
+            store = CorpusTurnStore(db_path)
+            # We can't easily await in sync status; use a tiny runner or just count via direct sql for status
+            # For simplicity and to keep status sync, do a direct read (status is best-effort)
+            import sqlite3
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            try:
+                total = conn.execute("SELECT COUNT(*) FROM corpus_turns").fetchone()[0]
+                untagged = conn.execute("SELECT COUNT(*) FROM corpus_turns WHERE tagging_version = 0").fetchone()[0]
+                tagged = total - untagged
+
+                # by_domain top 5 (only tagged turns)
+                by_dom = {}
+                for row in conn.execute(
+                    "SELECT primary_domain, COUNT(*) as c FROM corpus_turns "
+                    "WHERE tagging_version > 0 GROUP BY primary_domain ORDER BY c DESC LIMIT 5"
+                ):
+                    by_dom[row[0] or ""] = row[1]
+                dom_str = ", ".join(f"{(k or ''):<18}:{v}" for k, v in list(by_dom.items())[:5]) or "none"
+
+                by_src = {}
+                for row in conn.execute("SELECT source_model, COUNT(*) as c FROM corpus_turns GROUP BY source_model"):
+                    by_src[row[0] or "unknown"] = row[1]
+                by_src_str = ", ".join(f"{k}={v}" for k, v in sorted(by_src.items()))
+
+                # proposals_pending: beast_domain_proposal artifacts (GENERATED until reviewed)
+                proposals_pending = 0
+                try:
+                    proposals_pending = conn.execute(
+                        "SELECT COUNT(*) FROM artifacts WHERE metadata_json LIKE '%\"artifact_type\": \"beast_domain_proposal\"%'"
+                    ).fetchone()[0]
+                except Exception:
+                    pass
+
+                click.echo("corpus_turns:")
+                click.echo(f"  total: {total}")
+                click.echo(f"  tagged: {tagged} (tagging_version > 0)")
+                click.echo(f"  untagged: {untagged} (tagging_version == 0)")
+                click.echo(f"  by_domain: {dom_str}")
+                click.echo(f"  proposals_pending: {proposals_pending} (beast_domain_proposal artifacts in GENERATED state)")
+                click.echo(f"  by_source: {by_src_str}")
+            finally:
+                conn.close()
+        else:
+            click.echo("corpus_turns: no state.db yet")
+    except Exception as exc:
+        click.echo(f"corpus_turns: not initialized or error ({exc})")
+
     # --- Summary ---
     click.echo(f"\nDatabases: {db_found}/{len(expected_dbs)} found, {db_total_rows} total rows")
     if db_found == 0:

@@ -129,6 +129,12 @@ from .workflow import (
     WorkflowTemplate,
 )
 
+# -- corpus (turn-level) --
+from .corpus_turn import (
+    CorpusTurn,
+    make_turn_id,
+)
+
 __all__ = [
     # base
     "ContractTier",
@@ -170,6 +176,9 @@ __all__ = [
     "BeastCadenceConfig",
     "WorkflowTemplate",
     "DeploymentProfile",
+    # corpus (turn-level)
+    "CorpusTurn",
+    "make_turn_id",
     # ask
     "AskSource",
     "SourceReference",
