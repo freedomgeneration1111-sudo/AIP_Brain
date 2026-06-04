@@ -53,3 +53,12 @@ AIP uses a three-layer architecture with strict dependency rules:
 ## Commit Messages
 
 Write clear, concise commit messages that describe what changed and why. Avoid references to internal build process phases, chunk numbers, or agent workflow steps.
+
+## Development Hygiene (Non-Negotiable)
+
+Every development session that makes an architectural decision or completes
+a planned item must update ROADMAP.md, STATUS.md, and create an ADR before
+closing. No exceptions.
+
+ADR format: docs/decisions/ADR-NNN-[topic].md
+Commit format: "docs: [what changed]"

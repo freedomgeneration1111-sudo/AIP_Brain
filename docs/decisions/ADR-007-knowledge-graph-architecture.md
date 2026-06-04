@@ -136,3 +136,40 @@ connections that are the graph's primary value.
 - ROADMAP.md Phase 2B
 - docs/entity_aliases.md (to be created)
 ---
+## HippoRAG-Inspired Retrieval (Adopted)
+
+Research (June 2026) identified HippoRAG (OSU NLP, NeurIPS 2024 +
+ICML 2025) as the conceptually correct retrieval architecture for
+AIP's graph. Key adoption decisions:
+
+SCHEMALESS EXTRACTION: Beast performs Open Information Extraction
+(OpenIE) on high-importance turns — extracts entity-relation-entity
+triples without forcing typed schemas. Relationship types emerge from
+the corpus rather than being imposed on it.
+
+PERSONALIZED PAGERANK: Graph retrieval uses PPR seeded on query
+entities. Activates relevant subgraph in a single traversal step.
+Naturally surfaces cross-domain connections without explicit queries.
+Implemented via NetworkX nx.pagerank() with personalization vector.
+No new dependencies required.
+
+WHY THIS FITS AIP: PPR traversal is exactly the "show me everything
+connected to X" use case the DEFINER requires for cross-domain
+synthesis work. The brick kiln → GEF → water science → Balmelli
+chain emerges from PPR without the DEFINER knowing to query for it.
+
+SIMILARITY EDGES: After embedding pipeline (Phase 1.4), add edges
+between semantically similar entities using vector similarity. This
+is why embedding must precede graph construction.
+
+TYPED RELATIONSHIPS (revised): Minimal typed layer retained for
+display purposes (WORKS_ON, CONNECTS, AUTHORED etc.) but not used
+for retrieval. PPR traverses all edges regardless of type.
+
+VALIDATION CAVEAT: HippoRAG benchmarks are on structured QA datasets,
+not personal conversation corpora. Performance on first-person,
+cross-domain text with evolving terminology requires calibration.
+Plan for a tuning period after initial implementation.
+
+Implementation reference: github.com/osu-nlp-group/hipporag
+Papers: arXiv:2405.14831, arXiv:2502.14802
