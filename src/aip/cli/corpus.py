@@ -336,3 +336,164 @@ def corpus_tag_cmd(limit: int, retag: bool, db_path: str | None) -> None:
     except Exception as exc:
         click.echo(f"Error during tagging: {exc}", err=True)
         sys.exit(1)
+
+
+@corpus.command("clear-vectors")
+@click.option(
+    "--confirm",
+    is_flag=True,
+    default=False,
+    help="Required to confirm deletion of all vectors.",
+)
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
+def corpus_clear_vectors_cmd(confirm: bool, db_path: str | None) -> None:
+    """Clear all vectors from the vector store (vectors.db).
+
+    This removes stale or old vectors (e.g. from previous chunked ingestion).
+    Vectors will be re-embedded by the embedding pipeline.
+    Requires --confirm flag (no interactive prompt).
+    """
+    if not confirm:
+        click.echo("Error: --confirm flag is required. This will delete ALL vectors.", err=True)
+        click.echo("Usage: uv run aip corpus clear-vectors --confirm", err=True)
+        sys.exit(1)
+
+    async def _clear():
+        import tomllib
+        from pathlib import Path
+        import sqlite3
+        cfg: dict = {}
+        config_p = Path("config/aip.config.toml")
+        if config_p.exists():
+            with open(config_p, "rb") as f:
+                cfg = tomllib.load(f)
+        vec_db = cfg.get("vector_backend", {}).get("db_path", "db/vectors.db")
+        conn = sqlite3.connect(vec_db)
+        try:
+            cur = conn.execute("SELECT COUNT(*) FROM vector_metadata")
+            before = cur.fetchone()[0] or 0
+            conn.execute("DELETE FROM vector_metadata")
+            try:
+                conn.execute("DELETE FROM vss_vectors")
+            except Exception:
+                pass  # no vss table or not available
+            conn.commit()
+            click.echo(f"Cleared {before} vectors.")
+        finally:
+            conn.close()
+
+        # Also reset embedded flags in main db so status reflects 0 after clear
+        try:
+            from aip.cli._db_path import get_default_db_path
+            main_db = db_path or get_default_db_path()
+            connm = sqlite3.connect(main_db)
+            try:
+                connm.execute("UPDATE corpus_turns SET embedded = 0")
+                connm.commit()
+            finally:
+                connm.close()
+        except Exception:
+            pass  # best effort
+
+    try:
+        asyncio.run(_clear())
+    except Exception as exc:
+        click.echo(f"Error clearing vectors: {exc}", err=True)
+        sys.exit(1)
+
+
+@corpus.command("embed")
+@click.option(
+    "--limit",
+    default=500,
+    type=int,
+    help="Max turns to embed this run (default 500).",
+)
+@click.option(
+    "--reembed",
+    is_flag=True,
+    default=False,
+    help="If set, re-embed turns that already have embedded=1.",
+)
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
+def corpus_embed_cmd(limit: int, reembed: bool, db_path: str | None) -> None:
+    """Run corpus embedding pass directly (batch ~32 turns per embedding call)."""
+    if limit < 1:
+        limit = 1
+
+    resolved_db_path = db_path or get_default_db_path()
+
+    async def _run_embed():
+        import tomllib
+        from pathlib import Path
+
+        from aip.adapter.corpus_turn_store import CorpusTurnStore
+        from aip.orchestration.actors.beast import Beast
+
+        cfg: dict = {}
+        config_p = Path("config/aip.config.toml")
+        if config_p.exists():
+            with open(config_p, "rb") as f:
+                cfg = tomllib.load(f)
+
+        eslot = cfg.get("models", {}).get("embedding", {}) if isinstance(cfg.get("models"), dict) else {}
+        if not (isinstance(eslot, dict) and eslot.get("provider") and eslot.get("model")):
+            click.echo("No [models.embedding] slot configured (or AIP_EMBEDDING_* env). "
+                       "Embedding requires an embedding model. Configure and retry.", err=True)
+            sys.exit(1)
+
+        cts = CorpusTurnStore(db_path=resolved_db_path)
+        await cts.initialize()
+
+        from aip.adapter.api.app import _create_embedding_provider
+        embedding_provider = _create_embedding_provider(cfg)
+        if embedding_provider is None:
+            click.echo("Failed to create embedding provider.", err=True)
+            sys.exit(1)
+
+        class _DummyVectorStore:
+            async def health_check(self):
+                return {"connected": True}
+            async def list_stale_vectors(self, **k):
+                return []
+            async def upsert(self, **k):
+                return None
+
+        bconf_dict = cfg.get("beast", {}) if isinstance(cfg.get("beast"), dict) else {}
+        from aip.foundation.schemas import BeastCadenceConfig
+        bconf = BeastCadenceConfig(
+            **{k: v for k, v in bconf_dict.items() if k in BeastCadenceConfig.__dataclass_fields__}
+        )
+
+        beast = Beast(
+            config=bconf,
+            vector_store=_DummyVectorStore(),
+            embedding_provider=embedding_provider,
+            corpus_turn_store=cts,
+        )
+
+        try:
+            total = await cts.total_turns()
+            click.echo(f"Loading embedding model... {eslot.get('model', 'unknown')}")
+            if reembed:
+                unemb = total
+            else:
+                unemb = await cts.count_unembedded()
+            click.echo(f"Getting unembedded turns... {unemb} total (cap {limit})")
+
+            stats = await beast._run_embedding_pass(limit=limit, reembed=reembed)
+
+            emb_n = stats.get("embedded", 0)
+            failed_n = stats.get("failed", 0)
+            skipped_n = stats.get("skipped", 0)
+            click.echo(f"Embedded {emb_n} turns. {failed_n} failed. {skipped_n} skipped.")
+
+            return stats
+        finally:
+            await cts.close()
+
+    try:
+        asyncio.run(_run_embed())
+    except Exception as exc:
+        click.echo(f"Error during embedding: {exc}", err=True)
+        sys.exit(1)

@@ -80,6 +80,7 @@ class CorpusTurnStore:
                     tagging_version INTEGER NOT NULL DEFAULT 0,
                     searchable_text TEXT NOT NULL,
                     word_count INTEGER NOT NULL DEFAULT 0,
+                    embedded INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
@@ -106,6 +107,12 @@ class CorpusTurnStore:
                 CREATE INDEX IF NOT EXISTS idx_turns_importance
                 ON corpus_turns(importance DESC)
             """)
+
+            # Migration: add embedded column for embedding pipeline (idempotent)
+            try:
+                conn.execute("ALTER TABLE corpus_turns ADD COLUMN embedded INTEGER NOT NULL DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass  # column exists
 
             # FTS5 virtual table (content='corpus_turns' for external content)
             conn.execute("""
@@ -190,6 +197,7 @@ class CorpusTurnStore:
                     tagging_version INTEGER NOT NULL DEFAULT 0,
                     searchable_text TEXT NOT NULL,
                     word_count INTEGER NOT NULL DEFAULT 0,
+                    embedded INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
@@ -215,6 +223,12 @@ class CorpusTurnStore:
                 CREATE INDEX IF NOT EXISTS idx_turns_importance
                 ON corpus_turns(importance DESC)
             """)
+
+            # Migration: add embedded column for embedding pipeline (idempotent)
+            try:
+                await conn.execute("ALTER TABLE corpus_turns ADD COLUMN embedded INTEGER NOT NULL DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass  # column exists
 
             await conn.execute("""
                 CREATE VIRTUAL TABLE IF NOT EXISTS corpus_turns_fts USING fts5(
@@ -305,8 +319,9 @@ class CorpusTurnStore:
                     domains, primary_domain, tags, importance, bridges,
                     beast_confidence, tagging_version,
                     searchable_text, word_count,
+                    embedded,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     turn.turn_id,
@@ -329,6 +344,7 @@ class CorpusTurnStore:
                     int(turn.tagging_version or 0),
                     turn.searchable_text or "",
                     int(turn.word_count or 0),
+                    int(getattr(turn, 'embedded', 0) or 0),
                     created_at,
                     now,
                 ),
@@ -455,6 +471,36 @@ class CorpusTurnStore:
             await conn.close()
             self._conn = None
 
+    async def get_unembedded_turns(self, limit: int = 50) -> list[CorpusTurn]:
+        """Turns with embedded == 0 (not yet in vector store)."""
+        conn = await self._get_conn()
+        try:
+            cursor = await conn.execute(
+                """
+                SELECT * FROM corpus_turns
+                WHERE embedded = 0
+                ORDER BY importance DESC, created_at ASC
+                LIMIT ?
+                """,
+                (int(limit),),
+            )
+            rows = await cursor.fetchall()
+            return [self._row_to_turn(row) for row in rows]
+        finally:
+            await conn.close()
+            self._conn = None
+
+    async def count_unembedded(self) -> int:
+        """Count of turns not yet embedded."""
+        conn = await self._get_conn()
+        try:
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE embedded = 0")
+            row = await cursor.fetchone()
+            return int(row["c"]) if row else 0
+        finally:
+            await conn.close()
+            self._conn = None
+
     async def get_turns_for_retagging(
         self, max_tagging_version: int, limit: int = 20
     ) -> list[CorpusTurn]:
@@ -545,6 +591,7 @@ class CorpusTurnStore:
             bridges=json.loads(row["bridges"]) if row["bridges"] else [],
             beast_confidence=float(row["beast_confidence"] or 0.0),
             tagging_version=int(row["tagging_version"] or 0),
+            embedded=int(row["embedded"] or 0) if "embedded" in row.keys() else 0,
             searchable_text=row["searchable_text"] or "",
             word_count=int(row["word_count"] or 0),
         )

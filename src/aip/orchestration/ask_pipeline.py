@@ -220,28 +220,35 @@ async def _search_sources(
     vector_store: VectorStore | None = None,
     embedding_provider: EmbeddingProvider | None = None,
     max_sources: int = 10,
+    config: dict | None = None,
 ) -> list[SourceReference]:
     """Search for relevant sources using existing retrieval infrastructure.
 
     Primary search: LexicalStore (FTS5) — always available and persistent.
     Supplementary: VectorStore — when embedding provider is configured.
 
-    Results are filtered by source_filter and deduplicated.
+    For corpus turn vectors (turn_id keys after embedding pipeline), performs
+    hybrid scoring: 0.4 * lexical + 0.6 * vector (configurable via [retrieval]).
+    Legacy chunk retrieval continues to work unchanged (graceful: if no vectors
+    or no overlap, falls back to FTS5 + original vector scores).
     """
     all_chunks: list[Chunk] = []
 
     # Lexical search (persistent, always available)
     # Sanitize query for FTS5 MATCH syntax (remove special characters)
     fts_query = _sanitize_fts_query(query)
+    lexical_results = []
     try:
         lexical_hits = await lexical_store.search(
             fts_query, domain=project_domain, limit=max_sources * 3
         )
         all_chunks.extend(lexical_hits)
+        lexical_results = [(h.id, h.score) for h in lexical_hits]
     except Exception as exc:
         logger.warning("Lexical search failed: %s", exc)
 
     # Vector search (supplementary, when available)
+    vector_results = []
     if vector_store is not None and embedding_provider is not None:
         try:
             query_vec = await embedding_provider.embed(query)
@@ -250,13 +257,49 @@ async def _search_sources(
                     query_vec, domain=project_domain, top_k=max_sources * 2
                 )
                 all_chunks.extend(vec_hits)
+                vector_results = [(h.id, h.score) for h in vec_hits]
         except Exception as exc:
             logger.debug("Vector search failed (non-fatal): %s", exc)
+
+    # Hybrid scoring if we have both and overlap on ids (for corpus turns with turn_id keys)
+    # Normalize and combine only for overlapping ids; legacy paths unchanged.
+    if lexical_results and vector_results:
+        # Get weights from config or default per spec
+        if config is None:
+            config = {}
+        ret_cfg = config.get("retrieval", {}) if isinstance(config, dict) else {}
+        lex_w = float(ret_cfg.get("lexical_weight", 0.4))
+        vec_w = float(ret_cfg.get("vector_weight", 0.6))
+
+        # Normalize scores per source to 0-1 (rough, using max)
+        def _norm(pairs):
+            if not pairs:
+                return {}
+            scores = [s for _, s in pairs]
+            mx = max(scores) or 1.0
+            return {iid: min(1.0, s / mx) for iid, s in pairs}
+
+        lex_norm = _norm(lexical_results)
+        vec_norm = _norm(vector_results)
+
+        # Merge
+        combined = {}
+        for iid, ln in lex_norm.items():
+            vn = vec_norm.get(iid, 0.0)
+            combined[iid] = lex_w * ln + vec_w * vn
+        for iid, vn in vec_norm.items():
+            if iid not in combined:
+                combined[iid] = vec_w * vn
+
+        # Re-score the chunks we have
+        for chunk in all_chunks:
+            if chunk.id in combined:
+                chunk.score = combined[chunk.id]
 
     # Filter by source type
     filtered = [c for c in all_chunks if _source_type_matches(c, source_filter)]
 
-    # Deduplicate by chunk ID
+    # Deduplicate by chunk ID (or turn_id for corpus)
     seen_ids: set[str] = set()
     unique: list[Chunk] = []
     for chunk in filtered:

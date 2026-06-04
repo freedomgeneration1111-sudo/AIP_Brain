@@ -88,10 +88,10 @@ the roadmap, update both documents.
 - 🔲 Registry v1.2: (future — based on Beast proposals and dogfood observations)
 
 ### 1.4 Embedding Pipeline
-- 🔲 Embed corpus_turns.searchable_text using embedding slot
-- 🔲 Store vectors keyed by turn_id in vector store
-- 🔲 Hybrid FTS5+vector scoring in _search_sources
-- 🔲 Background embedding pass in Beast cycle (embed after tagging)
+- ✅ Embed corpus_turns.searchable_text using embedding slot
+- ✅ Store vectors keyed by turn_id in vector store
+- ✅ Hybrid FTS5+vector scoring in _search_sources
+- ✅ Background embedding pass in Beast cycle (embed after tagging)
 - 🔲 Re-embedding pass when embedding model changes
 - 🔲 DEFINER profile injection in augmented chat (profile prepended to system prompt)
 - 🔲 DEFINER profile injection in augmented chat (tiered, ~600 tokens)

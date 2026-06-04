@@ -83,9 +83,12 @@ class CorpusTurn:
     # Increments each time Beast re-evaluates this turn
     # 0 = never tagged, 1 = first tagging, 2+ = re-evaluated
 
+    embedded: int = 0
+    # 0 = not embedded, 1 = has vector in vector store (for embedding pipeline)
+
     # Computed fields — populated at ingestion time
     searchable_text: str = ""
-    # user_text + "\n\n" + assistant_text
+    # user_text + "\n\n" + assistant_text + (thinking if present)
     # This is what FTS5 and vector store index
     word_count: int = 0
     # len(searchable_text.split()) — for importance scoring

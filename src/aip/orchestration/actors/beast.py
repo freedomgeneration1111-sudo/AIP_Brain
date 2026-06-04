@@ -496,6 +496,22 @@ class Beast:
                 log.error("beast_turn_tagging_failed", error=str(exc))
                 tagging_stats = {"error": str(exc)}
 
+        # Embedding pass (new): embed unembedded corpus turns after tagging.
+        # Only if embedding provider + corpus_turns. Cap 200/cycle for background.
+        # CLI can pass larger limit.
+        embedding_stats: dict = {}
+        if getattr(self, "_embed", None) is not None and getattr(self, "_corpus_turns", None) is not None:
+            try:
+                # Probe for unembedded
+                unemb = 0
+                if hasattr(self._corpus_turns, "count_unembedded"):
+                    unemb = await self._corpus_turns.count_unembedded()
+                if unemb > 0:
+                    embedding_stats = await self._run_embedding_pass(limit=200)
+            except Exception as exc:
+                log.error("beast_embedding_failed", error=str(exc))
+                embedding_stats = {"error": str(exc)}
+
         elapsed = time.monotonic() - cycle_start
         self._last_cycle_time = time.time()
 
@@ -506,6 +522,7 @@ class Beast:
             "heartbeat": heartbeat,
             "summaries": summary_stats,
             "tagging": tagging_stats,
+            "embedding": embedding_stats,
             "cycle_elapsed_seconds": round(elapsed, 3),
             "last_cycle_time": self._last_cycle_time,
         }
@@ -1193,6 +1210,106 @@ Example response structure:
             "proposals_filed": proposals_filed,
             "domain_distribution": domain_counts,
             "avg_importance": round(avg_imp, 4),
+        }
+
+    async def _run_embedding_pass(self, limit: int = 200, reembed: bool = False) -> dict:
+        """Embed corpus turns' searchable_text into vector store, keyed by turn_id.
+
+        Batch size 32 for efficiency (cheaper than chat).
+        Truncates text to 8000 chars.
+        Sets embedded=1 on success in corpus_turns.
+        """
+        if self._corpus_turns is None or self._embed is None:
+            return {"skipped": "missing_corpus_turn_store_or_embedding_provider"}
+
+        # Query unembedded
+        try:
+            if reembed:
+                # to get all, use limit, then slice? but for simplicity use store search or direct
+                # since no get_all, use get_unembedded but ignore filter, or direct
+                import sqlite3
+                db_path = getattr(self._corpus_turns, "_db_path", None)
+                conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+                try:
+                    cursor = conn.execute(
+                        "SELECT turn_id, searchable_text FROM corpus_turns ORDER BY importance DESC LIMIT ?",
+                        (int(limit),),
+                    )
+                    to_embed = cursor.fetchall()
+                finally:
+                    conn.close()
+            else:
+                turns = await self._corpus_turns.get_unembedded_turns(limit=limit)
+                to_embed = [(t.turn_id, t.searchable_text) for t in turns]
+        except Exception as exc:
+            log.error("beast_get_unembedded_failed", error=str(exc))
+            return {"embedded": 0, "failed": 0, "skipped": 0, "error": str(exc)}
+
+        if not to_embed:
+            return {"embedded": 0, "failed": 0, "skipped": 0, "note": "nothing_to_embed"}
+
+        BATCH_SIZE = 32
+        total = len(to_embed)
+        embedded = 0
+        failed = 0
+        skipped = 0
+
+        for b_start in range(0, total, BATCH_SIZE):
+            batch = to_embed[b_start : b_start + BATCH_SIZE]
+            batch_idx = (b_start // BATCH_SIZE) + 1
+
+            if batch_idx % 5 == 1 or batch_idx == (total + BATCH_SIZE - 1) // BATCH_SIZE:
+                log.info("beast_embedding_progress", batch=batch_idx, of=(total + BATCH_SIZE - 1) // BATCH_SIZE, turns=f"{b_start+1}-{min(b_start+BATCH_SIZE, total)}/{total}")
+                try:
+                    print(f"Embedding batch {batch_idx}/{(total + BATCH_SIZE - 1) // BATCH_SIZE} (turns {b_start+1}-{min(b_start + BATCH_SIZE, total)})...")
+                except Exception:
+                    pass
+
+            for tid, stext in batch:
+                try:
+                    text = (stext or "")[:8000]
+                    if not text.strip():
+                        skipped += 1
+                        continue
+                    vec = await self._embed.embed(text)
+                    if not vec or len(vec) == 0:
+                        failed += 1
+                        continue
+                    # Store keyed by turn_id
+                    await self._vector.upsert(
+                        id=tid,
+                        embedding=vec,
+                        content=text[:500],  # snippet
+                        metadata={"type": "corpus_turn", "turn_id": tid},
+                        domain=None,  # or from turn?
+                    )
+                    # Mark embedded using direct sqlite (robust)
+                    try:
+                        import sqlite3
+                        dbp = getattr(self._corpus_turns, "_db_path", None)
+                        if dbp:
+                            c = sqlite3.connect(dbp)
+                            try:
+                                c.execute(
+                                    "UPDATE corpus_turns SET embedded = 1, updated_at = ? WHERE turn_id = ?",
+                                    (datetime.now(timezone.utc).isoformat() + "Z", tid),
+                                )
+                                c.commit()
+                            finally:
+                                c.close()
+                    except Exception:
+                        pass
+                    embedded += 1
+                except Exception as exc:
+                    log.warning("beast_embedding_failed", turn_id=tid, error=str(exc))
+                    failed += 1
+
+        log.info("beast_embedding_complete", embedded=embedded, failed=failed, skipped=skipped)
+
+        return {
+            "embedded": embedded,
+            "failed": failed,
+            "skipped": skipped,
         }
 
     # ------------------------------------------------------------------

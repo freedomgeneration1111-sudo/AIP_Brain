@@ -66,10 +66,12 @@ The following runtime gaps have been addressed. No known gap returns fake succes
 | **Total** | **2,766** | **2,766** | 100% tagged |
 
 Beast domain registry: v1.1 — 28 domains, 17 connectors
-Vector store: EMPTY — embedding pipeline Phase 1.4 (not yet built)
+Vector store: 50 vectors (from embed --limit 50) — embedding pipeline Phase 1.4
 Knowledge graph: NOT BUILT — Phase 2B
 Unclassified turns: 267 (parse failures + low-confidence — pending retag)
 Residual aip_methodology turns: 5 (pending cleanup retag)
+Embedded turns: 50
+Unembedded turns: 2716
 
 ## Known Scaffolding
 

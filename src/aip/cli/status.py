@@ -142,6 +142,20 @@ def status() -> None:
     except ImportError:
         click.echo("vector_backend: factory not importable")
 
+    # Vector rows (for embedding pipeline verification)
+    try:
+        import sqlite3
+        vdb = db_dir / "vectors.db"
+        if vdb.exists():
+            connv = sqlite3.connect(str(vdb))
+            try:
+                vcount = connv.execute("SELECT COUNT(*) FROM vector_metadata").fetchone()[0]
+                click.echo(f"vectors.db: {vcount} rows")
+            finally:
+                connv.close()
+    except Exception:
+        pass
+
     # --- Beast ---
     try:
         from aip.orchestration.actors.beast import Beast  # noqa: F401 -- import to test availability
@@ -185,7 +199,11 @@ def status() -> None:
 
         db_path = get_default_db_path()
         if Path(db_path).exists():
-            store = CorpusTurnStore(db_path)
+            # Trigger sync migration for embedded column (ALTER is idempotent)
+            try:
+                _ = CorpusTurnStore(db_path)
+            except Exception:
+                pass
             # We can't easily await in sync status; use a tiny runner or just count via direct sql for status
             # For simplicity and to keep status sync, do a direct read (status is best-effort)
             import sqlite3
@@ -194,6 +212,14 @@ def status() -> None:
                 total = conn.execute("SELECT COUNT(*) FROM corpus_turns").fetchone()[0]
                 untagged = conn.execute("SELECT COUNT(*) FROM corpus_turns WHERE tagging_version = 0").fetchone()[0]
                 tagged = total - untagged
+                embedded = 0
+                unembedded = total
+                try:
+                    embedded = conn.execute("SELECT COUNT(*) FROM corpus_turns WHERE embedded = 1").fetchone()[0]
+                    unembedded = total - embedded
+                except Exception:
+                    # column may not exist yet (pre-migration)
+                    pass
 
                 # by_domain top 5 (only tagged turns)
                 by_dom = {}
@@ -222,6 +248,8 @@ def status() -> None:
                 click.echo(f"  total: {total}")
                 click.echo(f"  tagged: {tagged} (tagging_version > 0)")
                 click.echo(f"  untagged: {untagged} (tagging_version == 0)")
+                click.echo(f"  embedded: {embedded}")
+                click.echo(f"  unembedded: {unembedded}")
                 click.echo(f"  by_domain: {dom_str}")
                 click.echo(f"  proposals_pending: {proposals_pending} (beast_domain_proposal artifacts in GENERATED state)")
                 click.echo(f"  by_source: {by_src_str}")
