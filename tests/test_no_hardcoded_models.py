@@ -25,6 +25,9 @@ MODEL_NAME_PATTERNS = [
 
 EXCLUDE_DIRS = {"config", "tests"}
 EXCLUDE_FILES = {".toml", ".md", ".txt"}
+EXCLUDE_SPECIFIC_FILES = {
+    "ingestion/parsers/claude_parser.py",  # source_model="claude" is provenance tag not model API call
+}
 
 PRODUCTION_DIRS = ["foundation", "orchestration", "adapter"]
 
@@ -43,6 +46,9 @@ def _get_python_files(base: Path) -> list[Path]:
                 # Skip anything under excluded dirs
                 parts = py.relative_to(base).parts
                 if any(part in EXCLUDE_DIRS for part in parts):
+                    continue
+                rel = str(py.relative_to(base))
+                if any(rel.endswith(f) for f in EXCLUDE_SPECIFIC_FILES):
                     continue
                 files.append(py)
     return files
