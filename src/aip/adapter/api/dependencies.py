@@ -59,6 +59,8 @@ class AipContainer:
         self.model_provider: ModelProvider | None = None
         self.embedding_provider: EmbeddingProvider | None = None
         self.knowledge_store: KnowledgeStore | None = None
+        # DefinerProfile — optional profile for augmented chat injection (degrades to no injection)
+        self.definer_profile: Any = None
         # VigilStore not in protocols yet — typed as Any
         self.vigil_store: Any = None
         # artifact_store already declared above as ArtifactStore | None

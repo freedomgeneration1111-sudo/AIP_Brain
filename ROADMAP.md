@@ -93,8 +93,8 @@ the roadmap, update both documents.
 - ✅ Hybrid FTS5+vector scoring in _search_sources
 - ✅ Background embedding pass in Beast cycle (embed after tagging)
 - 🔲 Re-embedding pass when embedding model changes
-- 🔲 DEFINER profile injection in augmented chat (profile prepended to system prompt)
-- 🔲 DEFINER profile injection in augmented chat (tiered, ~600 tokens)
+- ✅ DEFINER profile injection in augmented chat (profile prepended to system prompt)
+- ✅ DEFINER profile injection in augmented chat (tiered, ~600 tokens)
 
 ### 1.5 Multi-Corpus Architecture
 - 🔲 Corpus registry in config (named corpora with db_path)
@@ -140,7 +140,7 @@ the roadmap, update both documents.
 - 🔲 Publication export: approved articles exportable as manuscript sections
 
 ### 2A.3 DEFINER Profile System
-- 🔲 Tiered profile injection in augmented chat (~600 tokens)
+- ✅ Tiered profile injection in augmented chat (~600 tokens)
 - 🔲 DEFINER direct edit via UI markdown editor (immediate effect)
 - 🔲 Vigil metacognition cycle: proposes amendments as GENERATED artifacts
 - 🔲 Beast pattern detection: flags emerging corpus patterns not in profile

@@ -147,9 +147,8 @@ via `aip ask` to ground future design work in prior decisions.
    (aip hall model rename, new domains: ancient_archaeology, agi_philosophy)
 2. Tag 52 untagged turns from claude_export_2024_2025 and 32 seed turns
 3. Embedding pipeline: embed corpus_turns.searchable_text,
-   hybrid FTS5+vector scoring in augmented chat retrieval
-4. DEFINER profile injection in augmented chat system prompt
-5. Beast wiki generation: domain-level first (28 articles),
+   hybrid FTS5+vector scoring in augmented chat retrieval (done)
+4. Beast wiki generation: domain-level first (28 articles),
    markdown editor UI, approval workflow
-6. Knowledge graph: SQLite adjacency tables, bridge tags as seed edges,
+5. Knowledge graph: SQLite adjacency tables, bridge tags as seed edges,
    HippoRAG-inspired PPR retrieval, Cytoscape.js visualization

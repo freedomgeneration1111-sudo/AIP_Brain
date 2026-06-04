@@ -90,6 +90,23 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         response_sources = []  # Sources for augmented mode
 
                         if session_mode == "augmented" and _container.lexical_store is not None:
+                            # === DEFINER PROFILE INJECTION (before Beast context advisory) ===
+                            # Injected first in augmented mode only, if enabled in config.
+                            # Graceful: missing/empty/disabled/error -> inject nothing, no crash.
+                            try:
+                                definer_cfg = getattr(_container, "config", {}) or {}
+                                dcfg = definer_cfg.get("definer", {}) if isinstance(definer_cfg, dict) else {}
+                                if dcfg.get("inject_in_augmented_chat", True):
+                                    dp = getattr(_container, "definer_profile", None)
+                                    if dp is not None:
+                                        block = dp.get_injection_block(
+                                            max_tokens_estimate=dcfg.get("max_profile_tokens", 800)
+                                        )
+                                        if block:
+                                            messages.append({"role": "system", "content": block})
+                            except Exception as exc:
+                                logger.warning("definer_profile_injection_failed", error=str(exc))
+
                             # === AUGMENTED MODE: Retrieve sources + inject context ===
                             try:
                                 from aip.orchestration.ask_pipeline import (

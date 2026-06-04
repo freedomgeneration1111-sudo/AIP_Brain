@@ -456,6 +456,18 @@ async def lifespan(app: FastAPI):
     else:
         log.info("component_skipped", component="knowledge_store", reason="missing_vector_or_lexical_store")
 
+    # Definer profile — optional profile for augmented chat system prompt injection
+    # (degrades gracefully to no injection if missing/empty/disabled)
+    try:
+        _dp_mod = importlib.import_module("aip.adapter.definer_profile")
+        _DefinerProfile = _dp_mod.DefinerProfile
+        definer_cfg = config.get("definer", {})
+        profile_path = definer_cfg.get("profile_path", "examples/seed_corpus/definer_profile_v1.md")
+        container.definer_profile = _DefinerProfile(profile_path)
+        log.info("component_initialized", component="definer_profile", required=False)
+    except Exception as exc:
+        log.warning("component_failed", component="definer_profile", degradation="no_profile_injection", error=str(exc))
+
     # --- Wire BudgetManager ---
     if container.budget_store is not None:
         try:

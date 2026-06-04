@@ -232,3 +232,15 @@ provider = "openai_compatible"
 model = "nvidia/nemotron-3-super-120b-a12b"
 base_url = "https://openrouter.ai/api"
 # api_key = ""  # Set via env
+
+[definer]
+# Path to DEFINER profile markdown file (relative to repo root).
+# The profile provides personal context (identity, projects, communication prefs,
+# theology, methodology) injected into every augmented chat system prompt.
+profile_path = "examples/seed_corpus/definer_profile_v1.md"
+# Whether to inject the DEFINER profile into augmented chat system prompts.
+# Default true: every augmented session starts with DEFINER orientation.
+inject_in_augmented_chat = true
+# Approximate token budget for the profile block (rough 4 chars/token).
+# Profile will be truncated with a note if it exceeds this.
+max_profile_tokens = 800
