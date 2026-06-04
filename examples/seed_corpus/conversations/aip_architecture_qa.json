@@ -1,0 +1,326 @@
+[
+  {
+    "uuid": "seed-aip-arch-001",
+    "name": "AIP Overview — User Perspective",
+    "created_at": "2026-06-04T00:00:00Z",
+    "updated_at": "2026-06-04T00:00:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-msg-001-01",
+        "sender": "human",
+        "content": "What is AIP and what problem does it solve?",
+        "created_at": "2026-06-04T00:01:00Z"
+      },
+      {
+        "uuid": "seed-msg-001-02",
+        "sender": "assistant",
+        "content": "AIP — AI Poiesis — is a local-first sovereign knowledge engine. It solves a fundamental problem that every serious knowledge worker faces when using AI: your conversations, insights, and decisions disappear. Every session starts from scratch. The AI has no memory of what you decided last week, no access to the framework you built over years of research, no way to connect the theology conversation from Tuesday with the physics paper from Thursday.\n\nAIP captures every conversation turn you have with AI systems — Claude, ChatGPT, DeepSeek, and others — and builds a searchable, tagged, semantically indexed knowledge base from them. When you ask AIP a question in augmented mode, it searches your actual corpus of past thinking, finds the relevant turns, and grounds its answer in what you actually said and decided — not what the model thinks you might mean.\n\nThe sovereignty principle is central: no artifact leaves your system without your explicit approval. No model output is trusted without review. You — the DEFINER — remain in control of what enters your canonical knowledge base. AIP amplifies your intelligence without substituting for your judgment.",
+        "created_at": "2026-06-04T00:01:30Z"
+      },
+      {
+        "uuid": "seed-msg-001-03",
+        "sender": "human",
+        "content": "How is AIP different from just searching my chat history?",
+        "created_at": "2026-06-04T00:02:00Z"
+      },
+      {
+        "uuid": "seed-msg-001-04",
+        "sender": "assistant",
+        "content": "Chat history search finds conversations that contain your query words. AIP does something fundamentally different across four dimensions.\n\nFirst, semantic understanding. AIP embeds every conversation turn as a vector, so searching for 'the boundary problem in quantum cosmology' finds turns where you discussed that concept even if you used different words — 'null surface,' 'record formation threshold,' 'the recombination constraint.' Keyword search would miss these. Vector search finds the meaning.\n\nSecond, intelligent tagging. Beast — AIP's corpus intelligence actor — reads every turn and assigns domain tags, importance scores, and cross-domain bridge markers. A turn tagged as both 'nbcm' and 'theology_research' with a bridge marker 'nbcm→theology_research' is findable from either domain and surfaced as a connection between your research streams.\n\nThird, synthesized context. Before answering your question, AIP doesn't just find relevant turns — it prepares a context advisory that includes a domain overview (Beast's synthesis of what that domain contains) plus the specific retrieved turns. The synthesis model receives oriented, structured context, not raw fragments.\n\nFourth, provenance. Every answer AIP gives is traceable to specific turns in your corpus. You can see exactly which conversation, which exchange, which decision grounded the answer. No fabrication, no hallucination from training data — only what you actually said.",
+        "created_at": "2026-06-04T00:02:30Z"
+      },
+      {
+        "uuid": "seed-msg-001-05",
+        "sender": "human",
+        "content": "What does 'local-first sovereign' mean in practice?",
+        "created_at": "2026-06-04T00:03:00Z"
+      },
+      {
+        "uuid": "seed-msg-001-06",
+        "sender": "assistant",
+        "content": "Local-first means your corpus lives on your machine. Your conversation turns, domain tags, importance scores, wiki articles, and knowledge graph are stored in SQLite databases in your AIP directory — not in a cloud service, not on a vendor's server. You own the data. You can back it up, move it, inspect it with any SQLite tool, and it continues to work without internet access (except for model API calls).\n\nSovereign means no artifact enters your canonical knowledge base without your explicit approval. This is enforced by the DEFINER gate — a non-bypassable review requirement built into the ECS state machine. When Beast generates a domain summary, it goes into GENERATED state and sits in your review queue until you approve it. When the synthesis model produces an answer, it becomes a draft artifact that you can review, approve, reject, or request revision on before it becomes canonical.\n\nIn practice this means: Beast might generate a summary of your theology domain that gets something subtly wrong about your eschatological framework. You catch it in review, reject it with a note, and Beast incorporates your correction into its next generation. The system gets smarter through your judgment, not despite it.\n\nThe alternative — auto-approving model outputs — would mean AI-generated content gradually diluting your actual knowledge base with plausible-but-wrong synthesized claims. AIP is designed to make that impossible.",
+        "created_at": "2026-06-04T00:03:30Z"
+      }
+    ]
+  },
+  {
+    "uuid": "seed-aip-arch-002",
+    "name": "AIP Actors — User Perspective",
+    "created_at": "2026-06-04T00:05:00Z",
+    "updated_at": "2026-06-04T00:05:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-msg-002-01",
+        "sender": "human",
+        "content": "What are Beast, Vigil, and Sexton? What does each one do?",
+        "created_at": "2026-06-04T00:06:00Z"
+      },
+      {
+        "uuid": "seed-msg-002-02",
+        "sender": "assistant",
+        "content": "AIP has three background intelligence actors, each with a distinct role.\n\nBeast is the corpus intelligence actor — the system's long-term memory and quality guardian. Beast runs on a background scheduler and does two kinds of work. In its lightweight heartbeat mode (every cycle), it checks store health, flags stale artifacts, and monitors budget. In its full cycle mode (triggered when corpus content changes), Beast reads your newly ingested turns, assigns domain tags and importance scores using its LLM slot, generates domain wiki articles, and prepares the context advisories that augmented chat uses. Beast is the actor that makes your corpus intelligent rather than just searchable. Beast uses a powerful reasoning model (Nvidia Nemotron 120B) precisely because its work requires genuine understanding.\n\nVigil is the quality evaluation actor. Vigil monitors canonical artifacts and model slot health. When you change the synthesis model, Vigil marks existing canonicals for re-evaluation — ensuring that answers grounded in one model's outputs are reviewed for faithfulness when a different model is in use. Vigil also runs faithfulness scoring on augmented chat responses, checking whether the synthesis model's answer actually reflects the retrieved context or has drifted into confabulation.\n\nSexton is the failure classification actor. When something goes wrong in the pipeline — a retrieval returns nothing, a model call fails, an artifact is rejected repeatedly — Sexton classifies the failure type and derives intervention rules. Sexton currently uses deterministic classification rules. Its job is to make the system self-aware about its own failure modes so they can be corrected.",
+        "created_at": "2026-06-04T00:06:30Z"
+      },
+      {
+        "uuid": "seed-msg-002-03",
+        "sender": "human",
+        "content": "What is the DEFINER and why is that role important?",
+        "created_at": "2026-06-04T00:07:00Z"
+      },
+      {
+        "uuid": "seed-msg-002-04",
+        "sender": "assistant",
+        "content": "The DEFINER is the human expert who directs AIP. In a single-user installation, the DEFINER is you. The role carries specific powers and responsibilities that no AI actor in the system can bypass or simulate.\n\nOnly the DEFINER can approve artifacts from GENERATED to APPROVED state. Only the DEFINER can promote content to canonical status. Only the DEFINER can approve Beast's domain proposals — new domains that Beast discovers in the corpus but cannot add to the registry unilaterally. Only the DEFINER can configure the model slots, set budget limits, and modify the domain registry.\n\nThis matters because AIP is designed around a specific insight about human-AI collaboration: AI systems are extraordinarily capable amplifiers but they are not sovereign agents. They optimize for what they can measure, hallucinate confidently, and drift from human intent when given autonomy. The DEFINER gate is the architectural embodiment of the principle that human judgment must remain in the loop for anything that enters the canonical knowledge base.\n\nIn the AI Poiesis methodology, the relationship is described as: 'I direct. You amplify. Validate. Iterate. Refine.' The DEFINER directs. The actors amplify. The DEFINER validates. This is not a limitation of AIP — it is its defining feature. Systems that auto-approve AI outputs eventually corrupt their own knowledge bases with plausible-sounding errors that compound over time.",
+        "created_at": "2026-06-04T00:07:30Z"
+      },
+      {
+        "uuid": "seed-msg-002-05",
+        "sender": "human",
+        "content": "How does augmented chat actually work when I ask a question?",
+        "created_at": "2026-06-04T00:08:00Z"
+      },
+      {
+        "uuid": "seed-msg-002-06",
+        "sender": "assistant",
+        "content": "When you send a message in augmented chat mode, a sequence of steps happens before any model generates a response.\n\nFirst, BeastContextPreparer activates. It takes your query and searches the corpus using two methods simultaneously: FTS5 full-text search (finds turns containing your query terms) and vector similarity search (finds turns semantically related to your query intent, even without keyword overlap). The results are merged and deduplicated by source turn ID.\n\nSecond, BeastContextPreparer checks whether Beast has generated an approved domain summary for the relevant domain. If you're asking about NBCM theory, it retrieves the Beast wiki article for the nbcm domain. This gives the synthesis model orientation — an overview of what the domain contains — before it sees the specific retrieved turns.\n\nThird, a structured context advisory is assembled. This is a formatted block injected into the synthesis model's system prompt:\n  - Domain overview (from Beast's wiki article)\n  - Retrieved passages with source citations\n  - Explicit instructions to answer from sources only\n\nFourth, the synthesis model — your configured chat model — generates a response using this context. It is instructed to cite sources using the citation format and to say explicitly when the retrieved context is insufficient.\n\nFifth, the response and its source citations are returned to you. The context advisory metadata (which domain was searched, how many turns retrieved, Beast confidence) is also returned so the UI can display it.\n\nThe entire BeastContextPreparer step is stateless and makes no LLM calls — it reads from what Beast has already prepared in background cycles. This keeps augmented chat fast.",
+        "created_at": "2026-06-04T00:08:30Z"
+      }
+    ]
+  },
+  {
+    "uuid": "seed-aip-arch-003",
+    "name": "AIP Corpus and Domains — User Perspective",
+    "created_at": "2026-06-04T00:10:00Z",
+    "updated_at": "2026-06-04T00:10:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-msg-003-01",
+        "sender": "human",
+        "content": "What is a corpus turn and why does AIP use turns instead of chunks?",
+        "created_at": "2026-06-04T00:11:00Z"
+      },
+      {
+        "uuid": "seed-msg-003-02",
+        "sender": "assistant",
+        "content": "A corpus turn is the atomic unit of the AIP knowledge base — one complete exchange between you and an AI: your message plus the AI's response, stored together as a single retrievable unit.\n\nAIP uses turns instead of fixed-size text chunks because chunks are epistemically incoherent. A chunk might start mid-sentence, cut off before the key insight, or combine the end of one topic with the beginning of an unrelated one. When retrieved, a chunk gives you no context about what was asked or why the response was given. You get an answer without the question.\n\nA turn preserves the complete thought exchange. The question gives context to the answer. The answer is meaningful because you can see what prompted it. When AIP retrieves a turn about EZ water mechanisms, you see both what you asked and what the model said — you can immediately evaluate whether this is the specific exchange you need.\n\nTurns also preserve extended thinking blocks — Claude's internal reasoning traces that appear before the response. These are stored in a separate field (thinking_text) and included in the searchable index. Often the thinking block contains the most valuable content: the model working through implications, catching contradictions, connecting frameworks. Fixed-size chunking would have discarded these entirely.",
+        "created_at": "2026-06-04T00:11:30Z"
+      },
+      {
+        "uuid": "seed-msg-003-03",
+        "sender": "human",
+        "content": "What are domains and how does Beast decide which domain a turn belongs to?",
+        "created_at": "2026-06-04T00:12:00Z"
+      },
+      {
+        "uuid": "seed-msg-003-04",
+        "sender": "assistant",
+        "content": "Domains are the primary organizational taxonomy of your corpus — named areas of knowledge that reflect how you actually think about your work. AIP uses a DEFINER-maintained domain registry (docs/beast_domain_registry_v1.md) that defines each domain with a description, core keywords, exclusion rules, and a minimum importance floor.\n\nBeast assigns domains by reading batches of 8 turns and calling its LLM slot with the full registry as context. For each turn, Beast assigns:\n- primary_domain: a single best domain for retrieval routing\n- domains: all relevant domains (a turn can belong to multiple)\n- tags: specific topic tags within the domain\n- importance: 0.0-1.0 score\n- bridges: approved cross-domain connector tags\n\nBeast uses the domain registry — not intuition — to make these assignments. If a turn doesn't fit any approved domain with sufficient confidence, Beast assigns it to 'unclassified' and flags it for DEFINER review. Beast never invents new domains mid-tagging; it files a formal proposal (as a GENERATED artifact) when it discovers a pattern that doesn't fit existing domains.\n\nThe domain structure uses a hall model: 'aip' is the hall — the methodology and philosophy of the whole AI Poiesis project. 'aip_brain,' 'aip_loom,' 'codeforge,' and 'fg_translate' are rooms within the hall — specific products and tools. This distinction ensures that a conversation about the meaning of DEFINER sovereignty routes to 'aip' while a conversation about a specific API bug routes to 'aip_brain.'",
+        "created_at": "2026-06-04T00:12:30Z"
+      },
+      {
+        "uuid": "seed-msg-003-05",
+        "sender": "human",
+        "content": "What are domain bridges and why do they matter?",
+        "created_at": "2026-06-04T00:13:00Z"
+      },
+      {
+        "uuid": "seed-msg-003-06",
+        "sender": "assistant",
+        "content": "Domain bridges are tags that mark turns where two domains genuinely connect — where insight in one domain illuminates or depends on insight in another. They are among the most intellectually valuable tags in the corpus.\n\nExamples of approved bridges: 'nbcm→theology_research' marks turns where the Null-Boundary Constraint Manifold framework connects to biblical cosmology — turns where photon timelessness or null surface geometry illuminate theological questions about the nature of time and eternity. 'gef_tech→bonded_labor' marks turns where the GEF waste-to-energy technology connects to the brick kiln liberation campaign — turns where the economics of the technology become funding mechanisms for the policy intervention.\n\nThese bridges represent your most original thinking. Most people working in physics don't also work in theology. Most people working in waste-to-energy don't also work in bonded labor policy. The connections between your domains are where your unique synthesis lives. AIP is designed to surface these bridges in retrieval — a query about brick kiln economics should potentially retrieve the GEF turn that connects them, even though the GEF turn's primary domain is gef_tech.\n\nBeast can propose new bridges (as GENERATED artifacts for DEFINER review) when it discovers patterns of connection not captured in the approved connector vocabulary. The approved bridge list grows as your corpus and Beast's understanding of it matures.",
+        "created_at": "2026-06-04T00:13:30Z"
+      },
+      {
+        "uuid": "seed-msg-003-07",
+        "sender": "human",
+        "content": "How do I add my conversations from other AI platforms like ChatGPT or DeepSeek?",
+        "created_at": "2026-06-04T00:14:00Z"
+      },
+      {
+        "uuid": "seed-msg-003-08",
+        "sender": "assistant",
+        "content": "AIP supports ingestion from multiple AI platforms through source-specific parsers. Each platform exports conversations in a different format; AIP handles the conversion to the unified CorpusTurn schema automatically.\n\nFor Claude: export your conversations from claude.ai (Settings → Export data). You receive a zip file containing conversations.json. Extract it and run:\n  aip corpus ingest /path/to/conversations.json --source-model claude --source-account claude_export_june_2026\n\nFor ChatGPT: export from chat.openai.com (Settings → Data controls → Export). The format uses a tree structure for conversations rather than a linear array. AIP's ChatGPT parser handles this automatically.\n  aip corpus ingest /path/to/conversations.json --source-model gpt --source-account chatgpt_export_june_2026\n\nFor DeepSeek, GLM, Gemini, and xAI: similar export-and-ingest flow with --source-model set to the appropriate platform name.\n\nIngestion is idempotent — running the same export twice skips turns that are already in the corpus (identified by deterministic turn_id). You can re-export monthly and ingest without creating duplicates.\n\nAfter ingestion, Beast automatically detects that the corpus has changed (via corpus_modified event) and schedules a tagging cycle. Within one Beast cycle, newly ingested turns receive domain tags, importance scores, and bridge markers. The source platform (claude, gpt, deepseek) is stored on each turn as provenance metadata.",
+        "created_at": "2026-06-04T00:14:30Z"
+      }
+    ]
+  },
+  {
+    "uuid": "seed-aip-arch-004",
+    "name": "AIP Knowledge Graph and Wiki — User Perspective",
+    "created_at": "2026-06-04T00:15:00Z",
+    "updated_at": "2026-06-04T00:15:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-msg-004-01",
+        "sender": "human",
+        "content": "What is the AIP knowledge graph and how do I use it?",
+        "created_at": "2026-06-04T00:16:00Z"
+      },
+      {
+        "uuid": "seed-msg-004-02",
+        "sender": "assistant",
+        "content": "The AIP knowledge graph is a navigable map of entities and relationships extracted from your corpus. Where the corpus gives you turns (what was said), the graph gives you structure (who, what, and how things connect).\n\nEntities are the named things in your corpus: people (Zaman, Emmanuel, Balmelli), projects (HYDRA device, GEF technology, AIP Brain), concepts (null-boundary constraint manifold, EZ water, DEFINER sovereignty), places (Faisalabad, Wenatchee, Villa Guardia), and organizations (Freedom Generation School, Harvest Harmonics, Wenatchee Wind).\n\nRelationships are the typed connections between entities: 'Moses collaborates with Balmelli on water_science,' 'GEF technology funds bonded_labor intervention,' 'NBCM framework informs EZ water mechanism hypothesis,' 'Freedom Generation School serves brick kiln worker families.'\n\nYou use the graph in two ways. First, navigation: starting from any entity, you can explore what connects to it and follow relationship chains. 'Show everything connected to the brick kiln intervention' surfaces GEF technology, Islamic banking framework, Freedom Generation School, Jubilee mandate, and carbon credits — the full ecosystem of that project. Second, retrieval enrichment: augmented chat uses the graph to expand queries. A question about Balmelli also retrieves turns about Kyminasi, Harvest Harmonics, and EZ water because the graph knows these are connected.\n\nBeast builds the graph by extracting entities and relationships from tagged corpus turns and Beast wiki articles. The graph grows as your corpus grows.",
+        "created_at": "2026-06-04T00:16:30Z"
+      },
+      {
+        "uuid": "seed-msg-004-03",
+        "sender": "human",
+        "content": "What are Beast wiki articles and how are they different from my corpus turns?",
+        "created_at": "2026-06-04T00:17:00Z"
+      },
+      {
+        "uuid": "seed-msg-004-04",
+        "sender": "assistant",
+        "content": "Beast wiki articles are synthesized reference documents — Beast's understanding of each domain expressed as coherent prose. They are distinct from corpus turns in origin, purpose, and lifecycle.\n\nCorpus turns are raw — they are your actual conversation exchanges, preserved exactly as they occurred, with all the exploration, revision, and tangents that real conversations contain. They are the evidence.\n\nBeast wiki articles are synthesized — Beast reads dozens or hundreds of turns in a domain, identifies the key concepts, decisions, and frameworks, and generates a 300-500 word reference article that a reader could use to orient themselves in that domain quickly. They are the interpretation.\n\nLifecycle differs: corpus turns enter the system as GENERATED and become canonical after Beast tagging and DEFINER review of tags. Wiki articles are generated by Beast, enter as GENERATED artifacts, and require explicit DEFINER approval before they influence augmented chat responses. An approved wiki article for the 'nbcm' domain tells the synthesis model 'here is what this domain is about' before it reads specific retrieved turns.\n\nWiki articles are revisable: if Beast's understanding of a domain improves (more turns ingested, better tagging), it regenerates the wiki article. The new version supersedes the old in the ECS lifecycle. You review the new version and approve or reject it.\n\nThe wiki is essentially Beast's working memory about your corpus — what it has learned from reading your turns — made explicit and reviewable.",
+        "created_at": "2026-06-04T00:17:30Z"
+      }
+    ]
+  },
+  {
+    "uuid": "seed-aip-arch-005",
+    "name": "AIP Architecture — Developer Perspective",
+    "created_at": "2026-06-04T00:20:00Z",
+    "updated_at": "2026-06-04T00:20:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-msg-005-01",
+        "sender": "human",
+        "content": "What is the three-layer architecture and why is layer discipline enforced?",
+        "created_at": "2026-06-04T00:21:00Z"
+      },
+      {
+        "uuid": "seed-msg-005-02",
+        "sender": "assistant",
+        "content": "AIP enforces a strict three-layer architecture where each layer may only import from layers below it, never above.\n\nFoundation (src/aip/foundation/) is the innermost layer. It contains pure Python: dataclasses, protocols, enums, validation logic, and the ECS state graph. Foundation has zero external dependencies beyond stdlib. It never imports from orchestration or adapter. This layer defines the contracts — what a VectorStore must do, what a CorpusTurn contains, what ECS transitions are valid — without caring how they are implemented.\n\nOrchestration (src/aip/orchestration/) contains business logic: the ingestion pipeline, ask pipeline, review/export pipeline, and the actor implementations (Beast, Vigil, Sexton). Orchestration imports from foundation only. It never imports from adapter. Orchestration knows what to do but not how to store or expose it.\n\nAdapter (src/aip/adapter/) is the outermost layer. It contains everything that touches the outside world: FastAPI routes, CLI commands, SQLite store implementations, HTTP model clients, embedding providers. Adapter imports from foundation. Adapter never imports from orchestration directly — it uses the foundation protocols as interfaces.\n\nThis discipline is enforced by CI (a test checks for illegal imports) and by design review. The benefit: you can swap any adapter implementation without touching orchestration or foundation. The SQLite vector store can be replaced with pgvector without changing how Beast retrieves context. The Click CLI can be replaced with a different interface without changing the ingestion pipeline. Every layer is independently testable with mock implementations of the layers below it.",
+        "created_at": "2026-06-04T00:21:30Z"
+      },
+      {
+        "uuid": "seed-msg-005-03",
+        "sender": "human",
+        "content": "How does the ECS state machine work and what are the valid transitions?",
+        "created_at": "2026-06-04T00:22:00Z"
+      },
+      {
+        "uuid": "seed-msg-005-04",
+        "sender": "assistant",
+        "content": "ECS (Entity Control System) is the lifecycle state machine that every artifact in AIP passes through. States and transitions are declared in foundation/ecs_graph.py as the authoritative source of truth.\n\nStates:\n  SPECIFIED — artifact has been defined but not yet generated\n  GENERATED — artifact has been produced (by model or by Beast)\n  REVIEWED — artifact has been examined by DEFINER\n  APPROVED — artifact is canonical, may be exported and referenced\n  SUPERSEDED — artifact has been replaced by a newer version\n  REJECTED — artifact failed review (terminal state)\n  NEEDS_REVISION — artifact requires changes before re-review\n\nValid transitions:\n  SPECIFIED → GENERATED (model or Beast produces content)\n  GENERATED → REVIEWED (DEFINER examines)\n  GENERATED → REJECTED (DEFINER rejects without review)\n  REVIEWED → APPROVED (DEFINER approves)\n  REVIEWED → REJECTED (DEFINER rejects after review)\n  REVIEWED → NEEDS_REVISION (DEFINER requests changes)\n  NEEDS_REVISION → GENERATED (revised content produced)\n  APPROVED → SUPERSEDED (new version approved, old superseded)\n\nThe DEFINER gate is enforced at the REVIEWED → APPROVED transition. No code path may call this transition without DEFINER authentication (in production) or explicit override (laptop mode with auth disabled for local development).\n\nPersistentEcsStore writes every transition to SQLite with timestamp, actor, and optional note. The full transition history of any artifact is auditable. REJECTED is a terminal state — a rejected artifact cannot be transitioned forward. It must be replaced by a new GENERATED artifact.\n\nBeast-generated artifacts (domain summaries, wiki articles, proposals) enter at GENERATED. They never auto-advance to APPROVED.",
+        "created_at": "2026-06-04T00:22:30Z"
+      },
+      {
+        "uuid": "seed-msg-005-05",
+        "sender": "human",
+        "content": "How does the CorpusTurn schema relate to the existing artifact store? Are they the same store?",
+        "created_at": "2026-06-04T00:23:00Z"
+      },
+      {
+        "uuid": "seed-msg-005-06",
+        "sender": "assistant",
+        "content": "They are separate stores in the same database file (db/state.db) but with fundamentally different purposes and schemas.\n\nVersionedArtifactStore holds artifacts in the ECS lifecycle — documents, answers, Beast summaries, wiki articles, proposals. It is versioned: each write appends a new version row rather than overwriting. Schema: artifacts(id, version, content, metadata_json, created_at). Queried by artifact_id, artifact_type, or metadata LIKE. This store is the DEFINER-gated canonical knowledge store.\n\nCorpusTurnStore holds conversation turns — the raw atomic units of the knowledge corpus. It is not versioned in the same way; a turn is updated in-place when Beast retags it (tagging_version increments). Schema: corpus_turns(turn_id, conversation_id, conversation_name, turn_index, source_model, source_account, user_text, assistant_text, thinking_text, domains, primary_domain, tags, importance, bridges, beast_confidence, tagging_version, searchable_text, word_count, created_at, updated_at). Also has a corpus_turns_fts FTS5 virtual table with triggers for automatic sync.\n\nThe relationship: when Beast generates a wiki article from corpus turns, the wiki article goes into VersionedArtifactStore (as artifact_type='beast_wiki'). The corpus turns that informed it stay in CorpusTurnStore. When BeastContextPreparer assembles a context advisory, it reads from both: wiki article from artifact store, retrieved turns from corpus_turn_store.\n\nChat auto-save also writes to VersionedArtifactStore (artifact_type='conversation') for the existing artifact pipeline, AND to CorpusTurnStore for the corpus intelligence pipeline. These are parallel paths serving different purposes.",
+        "created_at": "2026-06-04T00:23:30Z"
+      },
+      {
+        "uuid": "seed-msg-005-07",
+        "sender": "human",
+        "content": "How does Beast's turn tagging work at the implementation level?",
+        "created_at": "2026-06-04T00:24:00Z"
+      },
+      {
+        "uuid": "seed-msg-005-08",
+        "sender": "assistant",
+        "content": "Beast's _run_turn_tagging method implements a batch LLM classification pipeline with proposal detection.\n\nOn invocation, Beast loads the domain registry from docs/beast_domain_registry_v1.md using DomainRegistry.load_registry(). This happens once per tagging session, not once per batch. The registry provides the approved domain list, approved connector vocabulary, and domain descriptions.\n\nBeast then queries CorpusTurnStore for untagged turns (tagging_version=0) up to the configured limit. If --retag is specified, it also fetches already-tagged turns for re-evaluation.\n\nTurns are grouped into batches of 8. For each batch, Beast constructs a prompt with:\n  - System prompt: role definition, approved domain list, importance scoring rules, quarantine criteria, proposal trigger instructions\n  - User prompt: the 8 turns formatted as turn_id / conversation / user[:400] / assistant[:600] / thinking[:300]\n\nThe truncation (400/600/300 chars) keeps batch prompts to roughly 3,000 input tokens — manageable for the beast model slot while preserving enough content for accurate classification.\n\nBeast calls beast_provider with this prompt and expects a JSON array response — one object per turn with fields: turn_id, primary_domain, domains, tags, importance, bridges, beast_confidence, and optional proposal.\n\nThe response is validated: invalid domain_ids are replaced with 'unclassified', unapproved bridge tags are removed, importance is clamped to 0.0-1.0. Parse failures mark affected turns as unclassified with beast_confidence=0.0.\n\nValid results call corpus_turn_store.update_beast_tags() which increments tagging_version and writes the new classification. Proposals are collected across all batches and written as beast_domain_proposal artifacts in GENERATED state after tagging completes.",
+        "created_at": "2026-06-04T00:24:30Z"
+      },
+      {
+        "uuid": "seed-msg-005-09",
+        "sender": "human",
+        "content": "How does the model slot system work? How do I configure different models for different actors?",
+        "created_at": "2026-06-04T00:25:00Z"
+      },
+      {
+        "uuid": "seed-msg-005-10",
+        "sender": "assistant",
+        "content": "AIP uses a named slot system for model configuration. Slots are named roles (synthesis, beast, vigil, sexton, embedding) rather than model identifiers. Each slot is independently configurable in config/aip.config.toml.\n\nSlot configuration:\n  [models.synthesis]\n  provider = 'openai_compatible'\n  base_url = 'https://openrouter.ai/api/v1'\n  model = 'meta-llama/llama-4-maverick:free'\n  api_key = 'sk-or-v1-...'\n\nEnvironment variable overrides follow the pattern AIP_<SLOT>_MODEL, AIP_<SLOT>_BASE_URL, AIP_<SLOT>_API_KEY. Environment variables take precedence over config file values.\n\nModelSlotResolver is the adapter that reads slot configuration and dispatches model calls. It supports two provider types: 'openai_compatible' (any OpenAI API-compatible endpoint including OpenRouter, local vLLM, LM Studio) and 'ollama' (local Ollama instance). resolver.call(slot='beast', messages=[...]) routes to the correct endpoint and model.\n\nThe embedding slot is special: it calls /v1/embeddings rather than /v1/chat/completions and expects a vector response rather than a text response. The embedding provider must be an actual embedding model (e.g., nvidia/llama-nemotron-embed-vl-1b-v2:free) not a chat model.\n\nSlot separation enables independent model selection per role: Beast uses a powerful reasoning model (120B) for complex corpus analysis; Vigil uses a fast efficient model for evaluation; Sexton uses a structured-output-capable model for classification; synthesis uses a model balanced for conversational quality and context following.",
+        "created_at": "2026-06-04T00:25:30Z"
+      },
+      {
+        "uuid": "seed-msg-005-11",
+        "sender": "human",
+        "content": "What is the hybrid retrieval system and how does FTS5 and vector search combine?",
+        "created_at": "2026-06-04T00:26:00Z"
+      },
+      {
+        "uuid": "seed-msg-005-12",
+        "sender": "assistant",
+        "content": "AIP's retrieval pipeline uses hybrid scoring — combining FTS5 lexical search with vector semantic search — to maximize recall across both exact-term matches and conceptual relevance.\n\nFTS5 (SQLite Full-Text Search 5) indexes the searchable_text field of every CorpusTurn. searchable_text = user_text + '\\n\\n' + assistant_text + '\\n\\n' + thinking_text. FTS5 uses BM25 ranking and returns results with relevance scores. It is fast, requires no embedding model, and works immediately on ingestion. FTS5 excels at finding turns that contain specific terminology, names, or exact phrases.\n\nVector search indexes the same searchable_text as dense vector embeddings. The embedding slot model converts text to a high-dimensional vector. At query time, the query is embedded and cosine similarity is computed against stored vectors. Vector search excels at finding semantically related turns regardless of exact wording — it finds 'record formation threshold' when you query 'observation collapse point.'\n\nThe _search_sources function in ask_pipeline.py runs both searches in parallel:\n  1. FTS5 search → list of (turn_id, lexical_score) pairs\n  2. Vector search → list of (turn_id, vector_similarity) pairs\n  3. Merge by turn_id: combined_score = (weight_lexical * lexical_score) + (weight_vector * vector_score)\n  4. Deduplicate, sort by combined_score, return top N\n\nDefault weights: lexical=0.4, vector=0.6 (configurable in [retrieval] config section). The vector weight is higher because semantic similarity is generally more valuable than keyword overlap for knowledge retrieval.\n\nIf no embeddings exist (embedding pipeline not yet run), vector search contributes nothing and FTS5 provides all results — graceful degradation with no errors.",
+        "created_at": "2026-06-04T00:26:30Z"
+      },
+      {
+        "uuid": "seed-msg-005-13",
+        "sender": "human",
+        "content": "How should I structure a Grok Build prompt to make changes to AIP without causing architectural drift?",
+        "created_at": "2026-06-04T00:27:00Z"
+      },
+      {
+        "uuid": "seed-msg-005-14",
+        "sender": "assistant",
+        "content": "AIP uses a disciplined prompt structure for all Grok Build coding sessions to prevent architectural drift — the gradual divergence between intended design and actual implementation.\n\nEvery Grok Build prompt must include:\n\n1. MANDATED READS — specific files Grok must read completely before writing any code. Always include the files directly relevant to the change plus their dependencies. Grok must report findings before proceeding.\n\n2. STOP GATE — explicit instruction: 'STOP after emitting the findings report. Do not proceed to implementation until the user explicitly says proceed.' This creates a checkpoint for DEFINER review of what Grok understands before it acts.\n\n3. ARCHITECTURAL CONTEXT — a brief description of what this change fits into. Reference the relevant ADR by number (e.g., 'see ADR-003-beast-context-advisory.md'). This gives Grok the intent, not just the task.\n\n4. WHAT TO BUILD — precise specification of new files, modified files, method signatures, and behavior. The specification describes outcomes, not implementation choices.\n\n5. LAYER DISCIPLINE — explicit statement of what each new file may and may not import. Always include: 'adapter never imports orchestration directly.'\n\n6. DO NOT LIST — explicit prohibitions. This is not optional. Include: do not change ECS lifecycle, do not auto-approve artifacts, do not create new database files, do not change config/aip.config.toml. Add task-specific prohibitions.\n\n7. VERIFICATION SEQUENCE — numbered steps with expected outputs. Each step must be independently runnable and produce verifiable output. Grok reports actual output for each step.\n\nThe findings report step is the most important. Intent drift happens when Grok makes assumptions about existing code without reading it. Mandating reads and a report before any writes eliminates this failure mode.",
+        "created_at": "2026-06-04T00:27:30Z"
+      },
+      {
+        "uuid": "seed-msg-005-15",
+        "sender": "human",
+        "content": "What is the multi-corpus architecture and when should I create a separate research corpus?",
+        "created_at": "2026-06-04T00:28:00Z"
+      },
+      {
+        "uuid": "seed-msg-005-16",
+        "sender": "assistant",
+        "content": "AIP supports multiple named corpora — independent knowledge bases that can be queried separately or together. The architecture uses separate SQLite databases per corpus, registered in config/aip.config.toml.\n\nThe personal corpus (db/state.db) is the primary corpus — your own conversation turns with AI systems. It is always private and never receives external content.\n\nResearch corpora are separate databases for external source material. Examples:\n  corpora/branham/state.db — Branham sermons, books, and critical analysis\n  corpora/nbcm_citations/state.db — Academic papers for NBCM and EZ water research\n\nCreate a separate research corpus when:\n  1. The content is authored by others, not you (sermons, academic papers)\n  2. The volume is large enough to dilute personal corpus retrieval\n  3. You want to share the corpus without exposing personal content\n  4. The content requires domain-specific Beast tagging not appropriate for personal corpus\n\nDo not create a separate corpus for:\n  1. Content you want to regularly cross-reference with personal turns\n     (use domain bridges instead)\n  2. Small collections of reference documents (< 100 turns equivalent)\n  3. Temporary research notes (ingest to personal corpus, quarantine if not relevant)\n\nEach research corpus has its own Beast tagging cycle, its own wiki generation, its own embedding index. A query can target one corpus, multiple named corpora, or all corpora. The personal corpus is always the default.\n\nResearch corpora can be exported as standalone packages for sharing — the relevant turns, wiki articles, and graph exported as a versioned archive that recipients can query without access to your personal corpus. See ADR-004-multi-corpus-architecture.md.",
+        "created_at": "2026-06-04T00:28:30Z"
+      }
+    ]
+  },
+  {
+    "uuid": "seed-aip-arch-006",
+    "name": "AIP Workflow and Operations — Mixed Perspective",
+    "created_at": "2026-06-04T00:30:00Z",
+    "updated_at": "2026-06-04T00:30:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-msg-006-01",
+        "sender": "human",
+        "content": "What is my regular maintenance routine as an AIP DEFINER?",
+        "created_at": "2026-06-04T00:31:00Z"
+      },
+      {
+        "uuid": "seed-msg-006-02",
+        "sender": "assistant",
+        "content": "As DEFINER, your regular maintenance routine falls into three cadences.\n\nDaily (or when working with AIP):\n  - Use augmented chat to do actual research and knowledge work\n  - Chat auto-saves turns to corpus automatically\n  - Review any flagged items in the review queue: aip review list\n\nWeekly or after significant work sessions:\n  - Export and ingest new conversations from your AI platforms\n    (Claude, ChatGPT, DeepSeek, etc.)\n  - aip corpus ingest conversations.json --source-model claude\n  - Beast cycles automatically after ingestion\n  - Review Beast domain proposals: aip review list (filter by beast_domain_proposal)\n  - Approve or reject Beast wiki articles as they appear in review queue\n\nMonthly:\n  - Review domain registry: does the current taxonomy still reflect your work?\n  - Update docs/beast_domain_registry_v1.md if needed\n  - Run a full retag pass after registry updates:\n    aip corpus tag --limit 3000 --retag\n  - Review corpus statistics: aip status (domain distribution, untagged count)\n  - Check for turns in 'unclassified' domain that need DEFINER assignment\n  - Update ROADMAP.md and STATUS.md to reflect current state\n  - Write ADRs for any architectural decisions made this month\n\nAs needed:\n  - Approve or reject Vigil faithfulness alerts\n  - Review Sexton failure classification reports\n  - Manage research corpus ingestion (Branham sermons, academic papers)\n  - Export domain packages for sharing with collaborators",
+        "created_at": "2026-06-04T00:31:30Z"
+      },
+      {
+        "uuid": "seed-msg-006-03",
+        "sender": "human",
+        "content": "How does AIP handle the case where I have sensitive personal conversations that I don't want in the searchable corpus?",
+        "created_at": "2026-06-04T00:32:00Z"
+      },
+      {
+        "uuid": "seed-msg-006-04",
+        "sender": "assistant",
+        "content": "AIP provides several mechanisms for handling sensitive content.\n\nThe quarantine domain is the primary mechanism. Beast assigns turns to quarantine when they have no retrieval value — short greetings, empty exchanges, purely administrative one-liners. You can also manually tag sensitive turns as quarantine during DEFINER review. Quarantined turns remain in the corpus database (they are not deleted) but are excluded from retrieval. Beast does not include them in domain summaries or wiki generation.\n\nThe personal_health domain has a deliberately low importance floor (0.2) and is excluded from cross-domain bridge recommendations. Medical conversations about family members are stored but treated as low-retrieval-priority content. They appear only when directly queried and are never surfaced in general-purpose augmented chat.\n\nFor content you want completely excluded from Beast tagging, you can mark turns as quarantine before Beast processes them. The update_beast_tags CLI (aip corpus tag --manual) allows DEFINER to manually assign any domain including quarantine.\n\nFor content that should never have been ingested, the turn can be deleted from corpus_turns directly via the CLI or SQLite. Deletion removes it from FTS5 (via trigger) and from the vector store. The conversation artifact in the legacy artifact store is unaffected.\n\nThe most important protection is the DEFINER gate itself: nothing in your corpus becomes canonical or shareable without your explicit approval. Even if sensitive content is ingested, it cannot enter an export package or a shared research corpus without you actively approving that specific artifact.",
+        "created_at": "2026-06-04T00:32:30Z"
+      },
+      {
+        "uuid": "seed-msg-006-05",
+        "sender": "human",
+        "content": "What is an Architecture Decision Record and how does AIP use them?",
+        "created_at": "2026-06-04T00:33:00Z"
+      },
+      {
+        "uuid": "seed-msg-006-06",
+        "sender": "assistant",
+        "content": "An Architecture Decision Record (ADR) is a short document that captures a significant architectural decision: what was decided, why, what alternatives were considered, and what the consequences are. AIP stores ADRs in docs/decisions/ with sequential numbering.\n\nADRs serve three purposes in AIP development.\n\nFirst, they prevent architectural drift. When Grok Build is given a coding prompt, it can reference an ADR by number. Grok reads the ADR before writing code and understands not just what to build but why the design was chosen. This prevents Grok from 'improving' a design decision it doesn't understand the rationale for.\n\nSecond, they preserve institutional memory. AIP is built over many sessions across weeks and months. A decision made in June might be questioned in August. The ADR explains the reasoning so the decision can be evaluated in its original context rather than re-debated from scratch.\n\nThird, they are the foundation for onboarding. When collaborators or future contributors approach AIP, the ADRs explain the system's design philosophy more accurately than code comments.\n\nAIP maintains these core ADRs:\n  ADR-001: Turn-level corpus ingestion (why turns, not chunks)\n  ADR-002: Beast domain registry (how domains work, the hall model)\n  ADR-003: Beast context advisory (how augmented chat works)\n  ADR-004: Multi-corpus architecture (personal vs research corpora)\n  ADR-005: AIP hall model (aip as the hall, rooms as products)\n\nWhen a new architectural decision is made — in conversation with Claude or in a build session — an ADR is written before any code changes. The ADR is committed to the repository as part of the same change.",
+        "created_at": "2026-06-04T00:33:30Z"
+      }
+    ]
+  }
+]
