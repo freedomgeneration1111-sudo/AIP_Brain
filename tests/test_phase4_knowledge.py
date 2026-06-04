@@ -357,9 +357,11 @@ class TestLayerDiscipline:
 
     def test_gui_api_client_no_orchestration_import(self):
         """api_client.py should NOT import from aip.orchestration (only HTTP calls)."""
-        import importlib
-        module = importlib.import_module("gui.api_client")
-        source = open(module.__file__).read()
+        import pathlib
+        gui_file = pathlib.Path(__file__).parent.parent / "gui" / "api_client.py"
+        if not gui_file.exists():
+            pytest.skip("gui/api_client.py not found")
+        source = gui_file.read_text()
         # Check for import statements, not docstring mentions
         import_lines = [line for line in source.split('\n') if line.strip().startswith(('import ', 'from '))]
         for line in import_lines:

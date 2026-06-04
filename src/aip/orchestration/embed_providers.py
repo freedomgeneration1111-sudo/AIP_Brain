@@ -238,6 +238,9 @@ def _make_mock_client(dimensions: int = 768) -> Any:
     return mod.MockOllamaEmbeddingClient(dimensions=dimensions)
 
 
+class ConfigurationError(Exception):
+    """Raised when required configuration (e.g. base_url) is missing for embedding providers."""
+
 def _make_openai_compatible_client_from_config(emb_cfg: dict) -> Any:
     """Create an OpenAICompatibleEmbeddingClient from embedding config.
 
@@ -247,7 +250,12 @@ def _make_openai_compatible_client_from_config(emb_cfg: dict) -> Any:
     """
     import os
 
-    base_url = emb_cfg.get("base_url", "https://api.openai.com")
+    base_url = emb_cfg.get("base_url")
+    if not base_url:
+        raise ConfigurationError(
+            "base_url must be provided in the config for openai_compatible embedding provider "
+            "(no hardcoded cloud defaults allowed in orchestration layer)"
+        )
     model = emb_cfg.get("model")
     # Support api_key from config, env var AIP_EMBEDDING_API_KEY, or AIP_OPENAI_API_KEY
     api_key = emb_cfg.get("api_key") or os.environ.get("AIP_EMBEDDING_API_KEY") or os.environ.get("AIP_OPENAI_API_KEY")
