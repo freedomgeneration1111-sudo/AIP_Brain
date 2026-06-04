@@ -58,16 +58,16 @@ The following runtime gaps have been addressed. No known gap returns fake succes
 
 ## Corpus Status (as of 2026-06-04)
 
-| Corpus | Turns | Tagged | Source |
-|--------|-------|--------|--------|
-| claude_export_june_2026 | 2,691 | 2,681 | Claude (current account) |
-| claude_export_2024_2025 | 52 | 0 | Claude (previous account) |
-| aip_seed | 32 | 0 | AIP self-knowledge Q&A |
+| Source Account | Turns | Tagged | Notes |
+|----------------|-------|--------|-------|
+| claude_export_june_2026 | 2,691 | 2,681 | Primary corpus |
+| claude_export_2024_2025 | 52 | 0 | Pending Beast tagging |
+| aip_seed | 32 | 0 | Self-knowledge Q&A |
 | **Total** | **2,775** | **2,681** | |
 
-Beast domain registry: v1.1 (28 domains, 15 connectors)
-Vector store: EMPTY — embedding pipeline not yet built
-Graph: NOT BUILT — planned Phase 2B
+Beast domain registry: v1.1 — 28 domains, 15 connectors
+Vector store: EMPTY — embedding pipeline Phase 1.4 (not yet built)
+Knowledge graph: NOT BUILT — Phase 2B
 
 ## Known Scaffolding
 
@@ -139,14 +139,13 @@ via `aip ask` to ground future design work in prior decisions.
 
 ## Next Priorities
 
-1. Fix GitHub secret scanning (API key in git history — rotate key,
-   amend commit, force push)
-2. Complete Beast corpus retag with registry v1.1
-   (aip→aip_methodology rename, ancient_archaeology, agi_philosophy)
-3. Embedding pipeline (vectors for corpus_turns.searchable_text,
-   hybrid FTS5+vector scoring in _search_sources)
+1. Complete Beast corpus retag with registry v1.1
+   (aip hall model rename, new domains: ancient_archaeology, agi_philosophy)
+2. Tag 52 untagged turns from claude_export_2024_2025 and 32 seed turns
+3. Embedding pipeline: embed corpus_turns.searchable_text,
+   hybrid FTS5+vector scoring in augmented chat retrieval
 4. DEFINER profile injection in augmented chat system prompt
-5. Beast wiki generation — domain level first (28 articles),
-   with markdown editor UI and approval workflow
-6. Knowledge graph — SQLite adjacency tables, bridge tags as seed
-   edges, Cytoscape.js visualization
+5. Beast wiki generation: domain-level first (28 articles),
+   markdown editor UI, approval workflow
+6. Knowledge graph: SQLite adjacency tables, bridge tags as seed edges,
+   HippoRAG-inspired PPR retrieval, Cytoscape.js visualization

@@ -1,0 +1,234 @@
+# AIP Configuration Example
+#
+# Copy this file to `config/aip.config.toml` and customize for your environment.
+# This is a SAFE template — all secrets (API keys, passwords) are set to empty
+# and MUST be provided via environment variables instead:
+#   AIP_SYNTHESIS_API_KEY, AIP_EVALUATION_API_KEY, etc.
+#
+# Do NOT commit real keys. The live `config/aip.config.toml` is (or should be)
+# ignored by .gitignore.
+#
+# Model names, hosts, ports, limits, and other non-secret values are shown
+# as working laptop-profile examples. Adjust for production as needed.
+# See ROADMAP.md, STATUS.md, and docs/ for context on phases and features.
+
+[retrieval]
+confidence_threshold = 0.3
+weight_semantic = 0.6
+weight_recency = 0.15
+weight_authority = 0.15
+weight_frequency = 0.1
+
+[embedding]
+provider = "openai_compatible"
+model = "text-embedding-3-small"
+base_url = "https://openrouter.ai/api"
+# api_key provided via env (AIP_EMBEDDING_API_KEY or similar)
+
+[sexton]
+classification_batch_size = 50
+classification_interval_seconds = 300
+audit_on_slot_change = true
+max_unclassified_before_alert = 10
+
+[ace_playbook]
+db_path = "db/ace_playbook.db"
+auto_derive = true
+min_confidence = 0.7
+
+[router]
+default_exploration_weight = 0.1
+min_sample_count = 10
+weight_decay = 0.95
+
+[router.domain_overrides]
+
+[budget]
+session_token_limit = 500000
+project_token_limit = 5000000
+daily_token_limit = 10000000
+budget_warning_threshold = 0.8
+budget_hard_stop = true
+
+[beast]
+corpus_reindex_interval_seconds = 3600
+entity_maintenance_interval_seconds = 1800
+health_check_interval_seconds = 60
+max_reindex_batch_size = 1000
+
+[api]
+host = "127.0.0.1"
+port = 8000
+cors_origins = ["http://localhost:3000"]
+workers = 1
+chat_max_history_turns = 50
+review_page_size = 20
+artifact_page_size = 20
+
+[cli]
+color = true
+pager = true
+output_format = "table"
+
+[mcp]
+enabled = true
+transport = "stdio"
+max_concurrent_tools = 5
+
+[chat]
+system_prompt_path = "prompts/chat_system.md"
+max_context_turns = 50
+auto_summarize_at = 40
+
+[autonomy]
+default_level = "read"
+escalation_requires_definer = true
+audit_retention_days = 90
+model_gen_assumption = "Models should not autonomously escalate to admin actions"
+
+[lexical]
+db_path = "db/lexical.db"
+fts5_tokenizer = "unicode61"
+
+[knowledge]
+compilation_model_slot = "synthesis"
+evaluation_model_slot = "evaluation"
+max_source_canonicals = 10
+compilation_confidence_threshold = 0.6
+auto_index_on_approval = true
+model_gen_assumption = "Synthesis model can reliably produce structured knowledge summaries from multiple canonical sources"
+
+[plugins]
+plugins_dir = "plugins"
+enabled = true
+auto_discover = true
+sandbox_mode = true
+model_gen_assumption = "Plugins provide extensibility for model providers beyond built-in slots"
+
+[collaborators]
+enabled = false
+max_collaborators = 5
+collaborator_can_create_drafts = true
+collaborator_can_submit_review = true
+collaborator_can_approve = false
+readonly_can_search = true
+
+[performance]
+profiling_enabled = false
+max_memory_mb = 4096
+retrieval_timeout_seconds = 30.0
+batch_embed_size = 32
+sqlite_wal_mode = true
+sqlite_busy_timeout_ms = 5000
+vector_query_limit = 50
+fts5_query_limit = 50
+
+[release]
+release_version = "0.1.0"
+release_date = ""
+release_status = "alpha"
+architecture_revision = "5.2"
+
+[review]
+faithfulness_threshold = 0.85
+domain_coherence_threshold = 0.8
+require_definer_approval = true
+auto_promote_on_approval = false
+
+[workflow]
+default_template = "workflow_01"
+max_parallel_nodes = 3
+context_reset_turn_threshold = 40
+
+[ecs]
+db_path = "db/ecs.db"
+transition_audit_enabled = true
+
+[trajectory]
+loop_detection_window = 5
+anxiety_threshold = 0.7
+failure_streak_threshold = 3
+context_reset_on_anxiety = true
+
+[evaluation]
+faithfulness_threshold = 0.85
+domain_coherence_threshold = 0.8
+adversarial_enabled = false
+
+[vigil]
+canonical_health_check_interval_seconds = 3600
+stale_threshold_days = 30
+re_evaluate_on_slot_change = true
+max_re_evaluate_batch_size = 50
+entity_consistency_check = true
+
+[auth]
+auth_enabled = false
+session_timeout_seconds = 86400
+api_key_enabled = ""  # Set via environment variable
+bcrypt_rounds = 12
+definer_identity = "definer"
+
+[rate_limit]
+enabled = true
+requests_per_minute = 60
+burst_size = 10
+
+[rate_limit.per_endpoint_overrides]
+model_budget_protection = true
+
+[canonical_pipeline]
+faithfulness_threshold = 0.85
+domain_coherence_threshold = 0.8
+require_vigil_health_check = true
+indexing_enabled = true
+require_definer_approval = true
+
+[deployment]
+profile_name = "laptop"
+vector_backend = "sqlite_vss"
+model_provider = "ollama"
+auth_enabled = false
+workers = 1
+memory_limit_mb = 4096
+
+[database]
+db_path = "db/state.db"
+
+[vector_backend]
+provider = "pgvector"
+host = "127.0.0.1"
+port = 5432
+
+[models]
+ci_mode = false
+
+[models.synthesis]
+provider = "openai_compatible"
+model = "google/gemma-3-4b-it"
+base_url = "https://openrouter.ai/api"
+# api_key = ""  # Set via AIP_SYNTHESIS_API_KEY env var (do not store here)
+
+[models.evaluation]
+provider = "openai_compatible"
+model = "google/gemma-3-4b-it"
+base_url = "https://openrouter.ai/api"
+# api_key = ""  # Set via env
+
+[models.sexton]
+provider = "openai_compatible"
+model = "google/gemma-3-4b-it"
+base_url = "https://openrouter.ai/api"
+# api_key = ""  # Set via env
+
+[models.embedding]
+provider = "openai_compatible"
+model = "text-embedding-3-small"
+base_url = "https://openrouter.ai/api"
+# api_key = ""  # Set via env
+
+[models.beast]
+provider = "openai_compatible"
+model = "nvidia/nemotron-3-super-120b-a12b"
+base_url = "https://openrouter.ai/api"
+# api_key = ""  # Set via env

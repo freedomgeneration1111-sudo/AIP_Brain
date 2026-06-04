@@ -1,6 +1,6 @@
 # AIP — AI Poiesis
 
-[![CI](https://github.com/freedomgeneration1111-sudo/aip/actions/workflows/ci.yml/badge.svg)](https://github.com/freedomgeneration1111-sudo/aip/actions/workflows/ci.yml)
+[![CI](https://github.com/freedomgeneration1111-sudo/AIP_Brain/actions/workflows/ci.yml/badge.svg)](https://github.com/freedomgeneration1111-sudo/AIP_Brain/actions/workflows/ci.yml)
 
 **Product:** AI Poiesis (AIP) v0.1
 **Status:** Alpha — dogfood-ready vertical slice (ingest → ask → review → approve → export)
@@ -9,14 +9,42 @@ A local-first sovereign knowledge engine with a three-layer architecture (founda
 
 > **No artifact may bypass DEFINER gates (§1.7).**
 
+## Alpha Status and Known Boundaries
+
+AIP v0.1 is alpha software in active development by a single DEFINER
+(B. Moses Jorgensen). The following capabilities are working:
+
+- Conversation ingestion from Claude exports (aip corpus ingest)
+- Beast turn tagging with 28-domain registry (aip corpus tag)
+- FTS5 full-text search across 2,700+ tagged turns
+- Source-grounded augmented chat (CHAT and AUGMENTED modes)
+- ECS artifact lifecycle (GENERATED → REVIEWED → APPROVED)
+- DEFINER review and approval gates
+- Markdown export with provenance
+
+The following are planned but not yet built:
+- Vector embeddings (vectors.db is empty — FTS5 only for now)
+- Beast wiki generation (domain articles)
+- Knowledge graph (entity extraction + Cytoscape.js visualization)
+- DEFINER profile injection in augmented chat
+- Multi-corpus support (Branham research corpus, NBCM citations)
+
+The following are scaffold (real structure, placeholder dispatch):
+- MCP tool dispatch
+- Adaptive router weight learning
+- ScriptNode production execution
+
+See ROADMAP.md for the full phased build plan.
+See STATUS.md for current test counts and known issues.
+
 ## Quick Start — Dogfood Loop
 
 From a clean checkout, the following path works without source-code inspection:
 
 ```bash
 # Install
-git clone https://github.com/freedomgeneration1111-sudo/aip.git
-cd aip
+git clone https://github.com/freedomgeneration1111-sudo/AIP_Brain.git
+cd AIP_Brain
 uv sync
 
 # Initialize
@@ -209,6 +237,15 @@ Environment variable overrides:
 | Sexton intervention derivation | Working | |
 | Config safety validation | Working | |
 | Vector search (pgvector / sqlite-vss / in-memory) | Working | |
+| Claude export ingestion (conversations.json) | Working | aip corpus ingest |
+| Beast domain tagging (28 domains) | Working | aip corpus tag --limit N --retag |
+| Domain registry (beast_domain_registry_v1.md) | Working | 26+ domains, event-driven |
+| Beast context advisory (augmented chat) | Working | Domain overview + retrieved turns |
+| Corpus turn store (FTS5 indexed) | Working | 2,700+ turns, thinking_text preserved |
+| Vector embeddings | Not built | vectors.db empty — Phase 1.4 |
+| Beast wiki articles | Not built | Phase 2A |
+| Knowledge graph | Not built | Phase 2B |
+| DEFINER profile injection | Not built | Phase 2A |
 | Dogfood smoke test | Working | `bash scripts/dogfood_smoke_test.sh` |
 | MCP tool server | Scaffold | Returns structured NOT_IMPLEMENTED |
 | ScriptNode execution | Disabled | Production safe |
@@ -230,6 +267,11 @@ matrix for this component's current status, including any open findings.
 
 - [`DOGFOOD_READY.md`](DOGFOOD_READY.md) — First-run dogfood guide (start here!)
 - `STATUS.md` — Current project status, maturity, and known issues
+- `ROADMAP.md` — Phased build plan, Phase 0 through Phase 5
+- `docs/decisions/` — Architecture Decision Records (ADR-001 through ADR-007)
+- `docs/beast_domain_registry_v1.md` — Domain taxonomy for Beast corpus tagging
+- `docs/entity_aliases.md` — Canonical entity name resolution for knowledge graph
+- `examples/seed_corpus/` — AIP self-knowledge Q&A seed corpus + ingest script
 - `docs/ARCHITECTURE.md` — Architecture overview and design principles
 - `docs/CONFIGURATION.md` — Configuration reference
 - `docs/internal/ingestion.md` — Ingestion pipeline documentation

@@ -1,3 +1,58 @@
+---
+## ⚠️ Read This First — Current Dogfood State (2026-06-04)
+
+The dogfood guide below describes the foundational ingest→ask→review→export
+loop. This still works. However AIP has grown significantly since that guide
+was written. The current recommended first-run sequence is:
+
+### Step 0 — Initialize
+```bash
+git clone https://github.com/freedomgeneration1111-sudo/AIP_Brain.git
+cd AIP_Brain
+uv sync
+uv run aip init
+```
+
+### Step 1 — Ingest your Claude conversations
+Export your conversations from claude.ai (Settings → Export data).
+Unzip and ingest:
+```bash
+uv run aip corpus ingest /path/to/conversations.json \
+  --source-model claude \
+  --source-account claude_export_$(date +%Y_%m)
+```
+
+### Step 2 — Tag your corpus with Beast
+```bash
+uv run aip corpus tag --limit 500
+# For a large corpus this takes time — Beast calls LLM for each batch of 8 turns
+# Run with --retag after updating docs/beast_domain_registry_v1.md
+```
+
+### Step 3 — Check corpus status
+```bash
+uv run aip status
+# Shows: total turns, tagged/untagged, domain distribution
+```
+
+### Step 4 — Start the server and use augmented chat
+```bash
+uv run aip serve
+# Open http://localhost:8000
+# Switch to AUGMENTED tab for Beast-context-enhanced responses
+```
+
+### Step 5 — Review Beast's domain proposals
+Any domains Beast couldn't classify appear in the review queue:
+```bash
+uv run aip review list
+```
+
+The original dogfood guide continues below for the foundational
+ask→review→approve→export pipeline.
+
+---
+
 # DOGFOOD_READY.md — AIP First-Run Guide
 
 This document provides the exact commands needed for a fresh user to go from

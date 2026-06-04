@@ -4,17 +4,9 @@
 # Date: 2026-06-04
 # Purpose: Canonical entity name resolution for knowledge graph construction.
 #          Beast reads this before creating graph nodes.
-#          Prevents co-reference fragmentation when entity appears under
-#          multiple names or when terminology has evolved over time.
+#          Prevents co-reference fragmentation.
 #
-# Format:
-#   canonical_name: the one true name Beast uses for the node
-#   aliases: other names this entity appears under in corpus turns
-#   deprecated: terms Beast should NOT create new nodes for
-#   entity_type: PERSON | PROJECT | CONCEPT | PLACE | ORGANIZATION | MANUSCRIPT
-#   domain: primary domain this entity belongs to
-#
-# DEFINER edits this file directly. Beast proposes additions as
+# DEFINER edits directly. Beast proposes additions as
 # beast_alias_proposal artifacts (GENERATED state) for DEFINER review.
 
 ## PEOPLE
@@ -33,7 +25,7 @@ domain: freedom_gen
 
 canonical_name: Zaman
 aliases: ["my friend Zaman", "the elder", "the patient",
-          "Komal's brother", "the CCU patient"]
+          "the CCU patient"]
 deprecated: []
 entity_type: PERSON
 domain: ministry
@@ -59,15 +51,13 @@ domain: ministry
 ## PROJECTS
 
 canonical_name: AIP Brain
-aliases: ["AIP", "aip", "aip_brain", "the knowledge engine",
-          "the system", "AIP v0.1"]
-deprecated: ["AIP_Brain (pre-2026 naming)"]
+aliases: ["AIP", "aip", "the knowledge engine", "AIP v0.1"]
+deprecated: []
 entity_type: PROJECT
 domain: aip_brain
 
 canonical_name: HYDRA Device
-aliases: ["HYDRA", "the water detector", "polarimetric detector",
-          "EZ water detector"]
+aliases: ["HYDRA", "the water detector", "EZ water detector"]
 deprecated: []
 entity_type: PROJECT
 domain: water_science
@@ -81,7 +71,7 @@ domain: gef_tech
 
 canonical_name: Freedom Generation School
 aliases: ["Freedom Generation", "FG School", "the school",
-          "FGWE", "FG", "the Faisalabad school"]
+          "FGWE", "the Faisalabad school"]
 deprecated: []
 entity_type: PROJECT
 domain: freedom_gen
@@ -94,7 +84,7 @@ entity_type: PROJECT
 domain: bonded_labor
 
 canonical_name: OxAway
-aliases: ["the rust product", "rust treatment", "oxaway"]
+aliases: ["the rust product", "rust treatment"]
 deprecated: []
 entity_type: PROJECT
 domain: oxaway
@@ -110,16 +100,15 @@ domain: forge_bars
 
 canonical_name: Null-Boundary Constraint Manifold
 aliases: ["NBCM", "null boundary", "constraint manifold",
-          "the framework", "boundary-first physics"]
+          "boundary-first physics"]
 deprecated: []
 entity_type: CONCEPT
 domain: nbcm
 
 canonical_name: Record Formation
-aliases: ["record formation threshold", "the recording event",
-          "wavefunction collapse (NBCM usage)"]
+aliases: ["record formation threshold", "the recording event"]
 deprecated: ["observation", "observation collapse",
-             "wavefunction collapse (standard usage in NBCM context)"]
+             "wavefunction collapse (NBCM context)"]
 entity_type: CONCEPT
 domain: nbcm
 
@@ -132,21 +121,19 @@ domain: water_science
 
 canonical_name: DEFINER Sovereignty
 aliases: ["DEFINER principle", "DEFINER gate",
-          "sovereign knowledge", "human in the loop (AIP usage)"]
+          "sovereign knowledge"]
 deprecated: []
 entity_type: CONCEPT
 domain: aip
 
 canonical_name: New Covenant
-aliases: ["new covenant theology", "the new covenant framework",
-          "covenant theology (Moses's usage)"]
+aliases: ["new covenant theology", "the new covenant framework"]
 deprecated: []
 entity_type: CONCEPT
 domain: theology_research
 
 canonical_name: AI Poiesis
-aliases: ["poiesis", "AI Poiesis methodology",
-          "the methodology", "the seed prompt approach"]
+aliases: ["poiesis", "AI Poiesis methodology", "the methodology"]
 deprecated: []
 entity_type: CONCEPT
 domain: aip
@@ -154,13 +141,13 @@ domain: aip
 ## MANUSCRIPTS
 
 canonical_name: Architecture of Mercy
-aliases: ["AoM", "the mercy manuscript", "architecture of mercy manuscript"]
+aliases: ["AoM", "the mercy manuscript"]
 deprecated: []
 entity_type: MANUSCRIPT
 domain: theology_research
 
 canonical_name: Covenant Man
-aliases: ["covenant man manuscript", "the covenant manuscript"]
+aliases: ["covenant man manuscript"]
 deprecated: []
 entity_type: MANUSCRIPT
 domain: theology_research
@@ -172,6 +159,5 @@ entity_type: MANUSCRIPT
 domain: theology_research
 
 ## VERSION HISTORY
-v1.0 — 2026-06-04 — Initial alias table. Core people, projects, concepts,
-manuscripts. Beast will propose additions as corpus is analyzed.
----
+v1.0 — 2026-06-04 — Initial alias table. Core people, projects,
+concepts, manuscripts. Beast proposes additions via corpus analysis.

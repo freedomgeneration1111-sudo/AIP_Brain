@@ -93,3 +93,5 @@ failed/*
 logs/*
 !logs/.gitkeep
 config/selected_models.json
+config/aip.config.toml
+config/*.toml
