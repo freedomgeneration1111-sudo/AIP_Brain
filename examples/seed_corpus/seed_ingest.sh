@@ -21,7 +21,7 @@ cd "$REPO_ROOT"
 echo "Ingesting AIP architecture Q&A..."
 uv run aip corpus ingest \
   examples/seed_corpus/conversations/aip_architecture_qa.json \
-  --source-model aip_seed \
+  --source-model claude \
   --source-account aip_v0.1_seed \
   --export-date 2026-06-04
 

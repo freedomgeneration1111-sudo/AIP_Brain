@@ -60,14 +60,16 @@ The following runtime gaps have been addressed. No known gap returns fake succes
 
 | Source Account | Turns | Tagged | Notes |
 |----------------|-------|--------|-------|
-| claude_export_june_2026 | 2,691 | 2,681 | Primary corpus |
-| claude_export_2024_2025 | 52 | 0 | Pending Beast tagging |
-| aip_seed | 32 | 0 | Self-knowledge Q&A |
-| **Total** | **2,775** | **2,681** | |
+| claude_export_june_2026 | 2,691 | 2,691 | Primary corpus |
+| claude_export_2024_2025 | 52 | 52 | Previous account |
+| aip_v0.1_seed | 23 | 23 | AIP self-knowledge Q&A |
+| **Total** | **2,766** | **2,766** | 100% tagged |
 
-Beast domain registry: v1.1 — 28 domains, 15 connectors
+Beast domain registry: v1.1 — 28 domains, 17 connectors
 Vector store: EMPTY — embedding pipeline Phase 1.4 (not yet built)
 Knowledge graph: NOT BUILT — Phase 2B
+Unclassified turns: 267 (parse failures + low-confidence — pending retag)
+Residual aip_methodology turns: 5 (pending cleanup retag)
 
 ## Known Scaffolding
 
