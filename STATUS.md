@@ -2,7 +2,7 @@
 
 **Version:** 0.1.0-alpha
 **Architecture Revision:** 5.2
-**Last Updated:** 2026-05-30
+**Last Updated:** 2026-06-04
 
 ## Production Safety Status
 
@@ -55,6 +55,19 @@ The following runtime gaps have been addressed. No known gap returns fake succes
 | F. ScriptNode.run | Disabled | Production mode returns structured DISABLED; fixture mode returns safe no-op; YAML loader defaults to fixture mode | test_workflow_script_node_contract.py | Safe sandbox not yet implemented |
 | G. Vigil model-slot re-evaluation | Fixed | on_model_slot_change marks affected canonicals for re-evaluation, writes trace events, respects batch size | test_vigil_model_slot_re_evaluation.py | Conservative: all canonicals marked as affected |
 | H. Sexton intervention derivation | Fixed | Deterministic rules for A-F + 7 special conditions; unknown returns None | test_sexton_intervention_derivation.py | Complex multi-signal derivation deferred |
+
+## Corpus Status (as of 2026-06-04)
+
+| Corpus | Turns | Tagged | Source |
+|--------|-------|--------|--------|
+| claude_export_june_2026 | 2,691 | 2,681 | Claude (current account) |
+| claude_export_2024_2025 | 52 | 0 | Claude (previous account) |
+| aip_seed | 32 | 0 | AIP self-knowledge Q&A |
+| **Total** | **2,775** | **2,681** | |
+
+Beast domain registry: v1.1 (28 domains, 15 connectors)
+Vector store: EMPTY — embedding pipeline not yet built
+Graph: NOT BUILT — planned Phase 2B
 
 ## Known Scaffolding
 
@@ -126,8 +139,14 @@ via `aip ask` to ground future design work in prior decisions.
 
 ## Next Priorities
 
-1. Implement real MCP tool dispatch (search → lexical+vector, approve → review pipeline)
-2. Implement adaptive router weights from routing outcomes
-3. Build review queue web UI for MANUAL mode
-4. Add streaming model support
-5. Add Anthropic provider to ModelSlotResolver
+1. Fix GitHub secret scanning (API key in git history — rotate key,
+   amend commit, force push)
+2. Complete Beast corpus retag with registry v1.1
+   (aip→aip_methodology rename, ancient_archaeology, agi_philosophy)
+3. Embedding pipeline (vectors for corpus_turns.searchable_text,
+   hybrid FTS5+vector scoring in _search_sources)
+4. DEFINER profile injection in augmented chat system prompt
+5. Beast wiki generation — domain level first (28 articles),
+   with markdown editor UI and approval workflow
+6. Knowledge graph — SQLite adjacency tables, bridge tags as seed
+   edges, Cytoscape.js visualization
