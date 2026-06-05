@@ -564,6 +564,160 @@ def _build_review_panel(state: GuiState) -> None:
     asyncio.create_task(_load())
 
 
+# ── CORPUS PANEL ─────────────────────────────────────────────────────
+
+def _build_corpus_panel(state: GuiState) -> None:
+    """CORPUS tab — stats bar, domain distribution, source browser."""
+
+    with ui.row().classes("w-full items-center px-4 py-2 gap-2").style(
+        f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};"
+    ):
+        ui.label("CORPUS").style(
+            f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};"
+        )
+        ui.space()
+        refresh_btn = ui.button("Refresh", icon="refresh").props("dense flat").style(
+            f"color:{C_MUTED};font-size:11px;"
+        )
+
+    # Stats bar
+    stats_row = ui.row().classes("w-full items-center px-4 py-2 gap-4").style(
+        f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};"
+    )
+
+    content = ui.column().classes("w-full px-4 py-2 gap-3").style(
+        f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:0;"
+    )
+
+    async def _load() -> None:
+        stats_row.clear()
+        content.clear()
+
+        results = await asyncio.gather(
+            state.api_client.get_sources_stats(),
+            state.api_client.list_sources(),
+            return_exceptions=True,
+        )
+        stats = results[0] if not isinstance(results[0], Exception) else {}
+        sources_r = results[1] if not isinstance(results[1], Exception) else {}
+        sources = (
+            sources_r.get("items", []) if isinstance(sources_r, dict)
+            else sources_r if isinstance(sources_r, list)
+            else []
+        )
+
+        entity_count = (
+            stats.get("entity_store", {}).get("total_entities", 0)
+            if isinstance(stats, dict) else 0
+        )
+        knowledge_count = (
+            stats.get("knowledge_store", {}).get("total_items", 0)
+            if isinstance(stats, dict) else 0
+        )
+        vector_count = (
+            stats.get("vector_store", {}).get("total_vectors", 0)
+            if isinstance(stats, dict) else 0
+        )
+
+        def _stat(label: str, val: str) -> None:
+            with ui.row().classes("items-baseline gap-1"):
+                ui.label(val).style(
+                    f"font-size:13px;font-weight:700;color:{C_CREAM};"
+                    f"font-family:{F_MONO};"
+                )
+                ui.label(label).style(
+                    f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};"
+                )
+
+        with stats_row:
+            _stat("entities", str(entity_count))
+            ui.label("·").style(f"color:{C_INK60};")
+            _stat("knowledge items", str(knowledge_count))
+            ui.label("·").style(f"color:{C_INK60};")
+            _stat("vectors", str(vector_count))
+
+        # Group sources by domain
+        by_domain: dict[str, list[dict]] = {}
+        for s in sources:
+            d = s.get("domain", "—") or "—"
+            by_domain.setdefault(d, []).append(s)
+
+        with content:
+            if not sources:
+                ui.label("No indexed sources yet.").style(
+                    f"color:{C_MUTED};font-size:12px;padding:16px;"
+                )
+                return
+
+            # Domain distribution table
+            ui.label("DOMAIN DISTRIBUTION").style(
+                f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};"
+                "margin-bottom:4px;"
+            )
+            with ui.element("table").classes("w-full").style(
+                f"border-collapse:collapse;font-family:{F_MONO};font-size:11px;"
+            ):
+                with ui.element("thead"):
+                    with ui.element("tr").style(f"color:{C_MUTED};border-bottom:1px solid {C_INK40};"):
+                        for col in ["Domain", "Items", "Type"]:
+                            ui.element("th").style(
+                                "text-align:left;padding:3px 8px;font-weight:500;"
+                                "font-size:10px;letter-spacing:.5px;"
+                            ).text = col
+                with ui.element("tbody"):
+                    for domain, items in sorted(by_domain.items()):
+                        types = {i.get("source_type", "—") for i in items}
+                        with ui.element("tr").style(
+                            f"border-bottom:.5px solid {C_INK40};"
+                            "cursor:pointer;"
+                        ):
+                            ui.element("td").style(
+                                f"padding:3px 8px;color:{C_AMBER};"
+                            ).text = domain
+                            ui.element("td").style(
+                                f"padding:3px 8px;color:{C_CREAM};"
+                            ).text = str(len(items))
+                            ui.element("td").style(
+                                f"padding:3px 8px;color:{C_MUTED};"
+                            ).text = ", ".join(sorted(types))
+
+            ui.separator().style(f"background:{C_INK40};margin:12px 0;")
+
+            # Source cards
+            ui.label("SOURCES").style(
+                f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};"
+                "margin-bottom:4px;"
+            )
+            for src in sources[:50]:
+                with ui.card().classes("w-full").style(
+                    f"background:{C_SURFACE};border:1px solid {C_INK40};"
+                    "border-radius:4px;padding:8px 12px;margin-bottom:4px;"
+                ):
+                    with ui.row().classes("w-full items-center gap-2"):
+                        d = src.get("domain", "—")
+                        ui.label(f"[{d}]").style(
+                            f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};"
+                        )
+                        ui.label(src.get("source_type", "—")).style(
+                            f"font-size:10px;background:{C_INK40};color:{C_MUTED};"
+                            "padding:1px 5px;border-radius:3px;"
+                        )
+                        ui.space()
+                        sid = src.get("source_id", "")
+                        uid_short = (sid[:24] + "…") if len(sid) > 24 else sid
+                        ui.label(uid_short).style(
+                            f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};"
+                        )
+                    title = src.get("title", "")
+                    if title:
+                        ui.label(title).style(
+                            f"font-size:12px;color:{C_CREAM};margin-top:2px;"
+                        )
+
+    refresh_btn.on("click", lambda: asyncio.create_task(_load()))
+    asyncio.create_task(_load())
+
+
 # ── CHAT PANEL ────────────────────────────────────────────────────────
 
 def _build_chat_panel(
@@ -783,9 +937,7 @@ async def main_page() -> None:
                 f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
             )
         with ui.tab_panel("corpus"):
-            ui.label("CORPUS — stage 0C").style(
-                f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
-            )
+            _build_corpus_panel(state)
         with ui.tab_panel("graph"):
             ui.label("GRAPH — stage 0C").style(
                 f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
