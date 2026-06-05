@@ -1446,4 +1446,4 @@ async def main_page() -> None:
     asyncio.create_task(refresh_budget_status(budget_lbl, state))
 
 
-ui.run(title="AIP_Brain", port=8082, reload=True)
+ui.run(title="AIP_Brain", port=8080, reload=True)
