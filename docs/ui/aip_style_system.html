@@ -1,0 +1,130 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.sys{background:#F5F3EF;padding:32px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif}
+.section-label{font-size:9px;letter-spacing:2.5px;color:#9A9590;text-transform:uppercase;margin-bottom:14px;padding-bottom:8px;border-bottom:0.5px solid #D8D4CC}
+.row{display:flex;gap:0;margin-bottom:20px}
+.swatch{height:64px;flex:1;display:flex;flex-direction:column;justify-content:flex-end;padding:8px;position:relative}
+.swatch-label{font-size:9px;color:inherit;letter-spacing:.5px;opacity:.85}
+.swatch-hex{font-size:8px;letter-spacing:.5px;font-family:'Courier New',monospace;opacity:.7;margin-top:2px}
+.type-row{margin-bottom:16px;border-bottom:0.5px solid #EDEAE4;padding-bottom:16px}
+.type-meta{font-size:9px;color:#9A9590;letter-spacing:1.5px;margin-bottom:6px}
+.tok-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px}
+.tok{background:#EDEAE4;border-radius:6px;padding:10px 12px}
+.tok-name{font-size:9px;letter-spacing:1.5px;color:#9A9590;margin-bottom:4px}
+.tok-val{font-size:12px;color:#111113;font-family:'Courier New',monospace}
+.divider{height:0.5px;background:#D8D4CC;margin:24px 0}
+</style>
+<div class="sys">
+
+<div class="section-label">Color system</div>
+
+<div class="row" style="border-radius:6px;overflow:hidden;margin-bottom:8px">
+  <div class="swatch" style="background:#0E0E0F;flex:2">
+    <span class="swatch-label" style="color:#F2EDE4">Ground</span>
+    <span class="swatch-hex" style="color:#F2EDE4">#0E0E0F</span>
+  </div>
+  <div class="swatch" style="background:#1A1D1F">
+    <span class="swatch-label" style="color:#F2EDE4">Surface</span>
+    <span class="swatch-hex" style="color:#F2EDE4">#1A1D1F</span>
+  </div>
+  <div class="swatch" style="background:#242829">
+    <span class="swatch-label" style="color:#F2EDE4">Raised</span>
+    <span class="swatch-hex" style="color:#F2EDE4">#242829</span>
+  </div>
+  <div class="swatch" style="background:#2A3540">
+    <span class="swatch-label" style="color:#F2EDE4">Ink 40</span>
+    <span class="swatch-hex" style="color:#F2EDE4">#2A3540</span>
+  </div>
+  <div class="swatch" style="background:#3D5566">
+    <span class="swatch-label" style="color:#F2EDE4">Ink 60</span>
+    <span class="swatch-hex" style="color:#F2EDE4">#3D5566</span>
+  </div>
+  <div class="swatch" style="background:#8FA8B8">
+    <span class="swatch-label" style="color:#0E0E0F">Muted</span>
+    <span class="swatch-hex" style="color:#0E0E0F">#8FA8B8</span>
+  </div>
+  <div class="swatch" style="background:#C4BFBA">
+    <span class="swatch-label" style="color:#0E0E0F">Tertiary</span>
+    <span class="swatch-hex" style="color:#0E0E0F">#C4BFBA</span>
+  </div>
+  <div class="swatch" style="background:#F2EDE4;flex:2">
+    <span class="swatch-label" style="color:#111113">Cream</span>
+    <span class="swatch-hex" style="color:#111113">#F2EDE4</span>
+  </div>
+</div>
+
+<div class="row" style="border-radius:6px;overflow:hidden;margin-bottom:24px">
+  <div class="swatch" style="background:#B8935A;flex:2">
+    <span class="swatch-label" style="color:#2A1A00">Amber — activation, state, CTA</span>
+    <span class="swatch-hex" style="color:#2A1A00">#B8935A</span>
+  </div>
+  <div class="swatch" style="background:#8C6E3A">
+    <span class="swatch-label" style="color:#F2EDE4">Amber pressed</span>
+    <span class="swatch-hex" style="color:#F2EDE4">#8C6E3A</span>
+  </div>
+  <div class="swatch" style="background:#1E3A2F">
+    <span class="swatch-label" style="color:#4EAA7A">Confirmed</span>
+    <span class="swatch-hex" style="color:#4EAA7A">#1E3A2F</span>
+  </div>
+  <div class="swatch" style="background:#3A1E1E">
+    <span class="swatch-label" style="color:#E07070">Danger</span>
+    <span class="swatch-hex" style="color:#E07070">#3A1E1E</span>
+  </div>
+  <div class="swatch" style="background:#2A2A1A">
+    <span class="swatch-label" style="color:#C8A84E">Caution</span>
+    <span class="swatch-hex" style="color:#C8A84E">#2A2A1A</span>
+  </div>
+</div>
+
+<div class="divider"></div>
+<div class="section-label">Type system</div>
+
+<div class="type-row">
+  <div class="type-meta">DISPLAY — Georgia or similar serif · 700 · −2 tracking</div>
+  <div style="font-family:Georgia,'Times New Roman',serif;font-size:36px;font-weight:700;letter-spacing:-1px;color:#111113;line-height:1.1">AIP corpus intelligence</div>
+</div>
+<div class="type-row">
+  <div class="type-meta">HEADING 1 — system sans · 500 · −0.5 tracking</div>
+  <div style="font-size:20px;font-weight:500;letter-spacing:-0.5px;color:#111113">Artifact review queue</div>
+</div>
+<div class="type-row">
+  <div class="type-meta">HEADING 2 — system sans · 500 · normal</div>
+  <div style="font-size:15px;font-weight:500;color:#111113">Project: AIP architecture</div>
+</div>
+<div class="type-row">
+  <div class="type-meta">BODY — system sans · 400 · normal · line-height 1.65</div>
+  <div style="font-size:13px;font-weight:400;color:#3A3834;line-height:1.65">Every generated artifact passes through the DEFINER gate before canonical promotion. No synthesis output reaches the library without explicit approval. The corpus is sovereign.</div>
+</div>
+<div class="type-row" style="border:none;margin-bottom:0;padding-bottom:0">
+  <div class="type-meta">LABEL / META — system sans · 400 · +2 tracking · uppercase</div>
+  <div style="font-size:10px;font-weight:400;letter-spacing:2px;color:#9A9590;text-transform:uppercase">Lifecycle state · Generated · 2026-05-31</div>
+</div>
+
+<div class="divider"></div>
+<div class="section-label">Design tokens</div>
+
+<div class="tok-grid">
+  <div class="tok"><div class="tok-name">RADIUS SM</div><div class="tok-val">4px</div></div>
+  <div class="tok"><div class="tok-name">RADIUS MD</div><div class="tok-val">6px</div></div>
+  <div class="tok"><div class="tok-name">RADIUS LG</div><div class="tok-val">10px</div></div>
+  <div class="tok"><div class="tok-name">BORDER</div><div class="tok-val">0.5px</div></div>
+  <div class="tok"><div class="tok-name">SPACE XS</div><div class="tok-val">4px</div></div>
+  <div class="tok"><div class="tok-name">SPACE SM</div><div class="tok-val">8px</div></div>
+  <div class="tok"><div class="tok-name">SPACE MD</div><div class="tok-val">16px</div></div>
+  <div class="tok"><div class="tok-name">SPACE LG</div><div class="tok-val">32px</div></div>
+</div>
+
+<div class="divider"></div>
+<div class="section-label">Usage rules</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+  <div>
+    <div style="font-size:10px;letter-spacing:1.5px;color:#4EAA7A;text-transform:uppercase;margin-bottom:6px">Use</div>
+    <div style="font-size:12px;color:#3A3834;line-height:1.7">Amber only for: primary action, active state, the corpus center node<br>Serif only for: display headings, wordmark<br>0.5px borders on all surfaces<br>Dark ground as the primary application environment</div>
+  </div>
+  <div>
+    <div style="font-size:10px;letter-spacing:1.5px;color:#E07070;text-transform:uppercase;margin-bottom:6px">Never</div>
+    <div style="font-size:12px;color:#3A3834;line-height:1.7">Gradients, drop shadows, or blur<br>Pure black (#000) or pure white (#FFF)<br>More than two accent colors in one view<br>Amber for anything decorative — it signals action</div>
+  </div>
+</div>
+
+</div>

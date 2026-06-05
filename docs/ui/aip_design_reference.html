@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AIP Design Reference — Claude Code Implementation Guide</title>
+<style>
+/* ── REFERENCE DOCUMENT CHROME ─────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  background: #F5F3EF;
+  color: #111113;
+  padding: 40px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+h1 { font-family: Georgia, serif; font-size: 28px; font-weight: 700;
+     letter-spacing: -0.5px; color: #111113; margin-bottom: 6px; }
+h2 { font-size: 11px; letter-spacing: 2.5px; color: #9A9590;
+     text-transform: uppercase; margin: 36px 0 14px;
+     padding-bottom: 8px; border-bottom: 0.5px solid #D8D4CC; }
+h3 { font-size: 12px; font-weight: 600; color: #3A3834; margin: 20px 0 8px; }
+p  { font-size: 13px; color: #5A5650; line-height: 1.7; margin-bottom: 10px; }
+code { font-family: 'Courier New', monospace; font-size: 11px;
+       background: #EDEAE4; padding: 2px 5px; border-radius: 3px; color: #3A3834; }
+pre { background: #1A1D1F; color: #8FA8B8; font-family: 'Courier New', monospace;
+      font-size: 11px; line-height: 1.6; padding: 16px; border-radius: 6px;
+      overflow-x: auto; margin: 10px 0; }
+pre .c { color: #3D5566; } /* comment */
+pre .k { color: #B8935A; } /* keyword/value */
+pre .s { color: #8FA8B8; } /* string */
+.rule { border: 0.5px solid #D8D4CC; background: #EDEAE4; border-radius: 6px;
+        padding: 12px 16px; margin: 8px 0; font-size: 12px; color: #3A3834; }
+.rule strong { color: #111113; }
+.do   { border-left: 2px solid #4EAA7A; }
+.dont { border-left: 2px solid #E07070; }
+.warn { border-left: 2px solid #B8935A; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+hr { border: none; border-top: 0.5px solid #D8D4CC; margin: 32px 0; }
+</style>
+</head>
+<body>
+
+<h1>AIP Design Reference</h1>
+<p style="color:#9A9590;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">
+  Claude Code Implementation Guide · Generated 2026-06-05
+</p>
+<p>This document is the authoritative source for all visual decisions in the AIP GUI.
+Every color, spacing token, component pattern, and typography rule flows from the
+design system produced in the Opus 4.8 design session and the subsequent wireframe session.
+<strong>Do not invent values. If something is not specified here, ask.</strong></p>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>1 · Logo Mark — Exact SVG</h2>
+
+<p>The AIP corpus mark: 3×3 node lattice, 8 peripheral nodes in slate-teal,
+weighted amber center node. Orthogonal edges at 1px, diagonal edges at 0.75px.
+The center node is the corpus — the anchor everything connects to.</p>
+
+<h3>Canonical inline mark (24×24, used in sidebar header)</h3>
+<pre>
+<span class="c">&lt;!-- Copy this exactly into gui/main.py via ui.html() --&gt;</span>
+&lt;svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"&gt;
+  <span class="c">&lt;!-- Orthogonal edges --&gt;</span>
+  &lt;line x1="4" y1="4"  x2="12" y2="4"  stroke="<span class="k">#2A3540</span>" stroke-width="1"/&gt;
+  &lt;line x1="12" y1="4" x2="20" y2="4"  stroke="<span class="k">#2A3540</span>" stroke-width="1"/&gt;
+  &lt;line x1="4" y1="12" x2="12" y2="12" stroke="<span class="k">#2A3540</span>" stroke-width="1"/&gt;
+  &lt;line x1="12" y1="12" x2="20" y2="12" stroke="<span class="k">#2A3540</span>" stroke-width="1"/&gt;
+  &lt;line x1="4" y1="20" x2="12" y2="20" stroke="<span class="k">#2A3540</span>" stroke-width="1"/&gt;
+  &lt;line x1="12" y1="20" x2="20" y2="20" stroke="<span class="k">#2A3540</span>" stroke-width="1"/&gt;
+  &lt;line x1="4"  y1="4"  x2="4"  y2="12" stroke="<span class="k">#2A3540</span>" stroke-width="1"/&gt;
+  &lt;line x1="4"  y1="12" x2="4"  y2="20" stroke="<span class="k">#2A3540</span>" stroke-width="1"/&gt;
+  &lt;line x1="12" y1="4"  x2="12" y2="12" stroke="<span class="k">#2A3540</span>" stroke-width="1"/&gt;
+  &lt;line x1="12" y1="12" x2="12" y2="20" stroke="<span class="k">#2A3540</span>" stroke-width="1"/&gt;
+  &lt;line x1="20" y1="4"  x2="20" y2="12" stroke="<span class="k">#2A3540</span>" stroke-width="1"/&gt;
+  &lt;line x1="20" y1="12" x2="20" y2="20" stroke="<span class="k">#2A3540</span>" stroke-width="1"/&gt;
+  <span class="c">&lt;!-- 8 peripheral nodes (slate-teal) --&gt;</span>
+  &lt;circle cx="4"  cy="4"  r="1.5" fill="<span class="k">#3D5566</span>"/&gt;
+  &lt;circle cx="12" cy="4"  r="1.5" fill="<span class="k">#3D5566</span>"/&gt;
+  &lt;circle cx="20" cy="4"  r="1.5" fill="<span class="k">#3D5566</span>"/&gt;
+  &lt;circle cx="4"  cy="12" r="1.5" fill="<span class="k">#3D5566</span>"/&gt;
+  &lt;circle cx="20" cy="12" r="1.5" fill="<span class="k">#3D5566</span>"/&gt;
+  &lt;circle cx="4"  cy="20" r="1.5" fill="<span class="k">#3D5566</span>"/&gt;
+  &lt;circle cx="12" cy="20" r="1.5" fill="<span class="k">#3D5566</span>"/&gt;
+  &lt;circle cx="20" cy="20" r="1.5" fill="<span class="k">#3D5566</span>"/&gt;
+  <span class="c">&lt;!-- Center corpus node (amber, weighted 2× the peripheral nodes) --&gt;</span>
+  &lt;circle cx="12" cy="12" r="3"   fill="<span class="k">#B8935A</span>"/&gt;
+&lt;/svg&gt;
+</pre>
+
+<h3>Large lockup mark (used in logo variants / splash)</h3>
+<p>Grid pitch 80px (nodes at 30, 110, 190). Peripheral node radius 4.5px.
+Center node radius 8px, fill <code>#C8A96E</code> (slightly lighter amber for larger sizes).
+Diagonal edges stroke <code>#1E2D38</code> at 0.75px weight.</p>
+
+<h3>Sidebar inline lockup Python (NiceGUI)</h3>
+<pre>
+<span class="c"># In sidebar header — mark + wordmark side by side</span>
+with ui.row().classes('items-center gap-2 px-4 py-5'):
+    ui.html(<span class="s">'''
+        &lt;svg width="24" height="24" viewBox="0 0 24 24"&gt;
+          ... (paste canonical mark SVG above) ...
+        &lt;/svg&gt;
+    '''</span>)
+    ui.label(<span class="s">'AIP'</span>).style(
+        <span class="s">'font-family: Georgia, serif; font-size: 18px; font-weight: 700; '</span>
+        <span class="s">'color: #F2EDE4; letter-spacing: -0.5px;'</span>
+    )
+</pre>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>2 · Color System — Complete Token Set</h2>
+
+<p>All values taken directly from <code>aip_style_system.html</code>.
+Use CSS variable names in NiceGUI <code>.style()</code> calls or inline styles.
+Never approximate — use the exact hex.</p>
+
+<!-- Color swatches rendered live -->
+<div style="display:flex;border-radius:6px;overflow:hidden;margin-bottom:8px">
+  <div style="background:#0E0E0F;flex:2;padding:10px;min-height:56px">
+    <div style="color:#F2EDE4;font-size:9px;letter-spacing:.5px">Ground</div>
+    <div style="color:#F2EDE4;font-size:9px;font-family:monospace;opacity:.7">#0E0E0F</div>
+  </div>
+  <div style="background:#1A1D1F;flex:1;padding:10px">
+    <div style="color:#F2EDE4;font-size:9px">Surface</div>
+    <div style="color:#F2EDE4;font-size:9px;font-family:monospace;opacity:.7">#1A1D1F</div>
+  </div>
+  <div style="background:#242829;flex:1;padding:10px">
+    <div style="color:#F2EDE4;font-size:9px">Raised</div>
+    <div style="color:#F2EDE4;font-size:9px;font-family:monospace;opacity:.7">#242829</div>
+  </div>
+  <div style="background:#2A3540;flex:1;padding:10px">
+    <div style="color:#F2EDE4;font-size:9px">Ink 40</div>
+    <div style="color:#F2EDE4;font-size:9px;font-family:monospace;opacity:.7">#2A3540</div>
+  </div>
+  <div style="background:#3D5566;flex:1;padding:10px">
+    <div style="color:#F2EDE4;font-size:9px">Ink 60</div>
+    <div style="color:#F2EDE4;font-size:9px;font-family:monospace;opacity:.7">#3D5566</div>
+  </div>
+  <div style="background:#8FA8B8;flex:1;padding:10px">
+    <div style="color:#0E0E0F;font-size:9px">Muted</div>
+    <div style="color:#0E0E0F;font-size:9px;font-family:monospace;opacity:.7">#8FA8B8</div>
+  </div>
+  <div style="background:#F2EDE4;flex:2;padding:10px">
+    <div style="color:#111113;font-size:9px">Cream</div>
+    <div style="color:#111113;font-size:9px;font-family:monospace;opacity:.7">#F2EDE4</div>
+  </div>
+</div>
+<div style="display:flex;border-radius:6px;overflow:hidden;margin-bottom:24px">
+  <div style="background:#B8935A;flex:2;padding:10px">
+    <div style="color:#2A1A00;font-size:9px">Amber — activation, state, CTA only</div>
+    <div style="color:#2A1A00;font-size:9px;font-family:monospace;opacity:.7">#B8935A</div>
+  </div>
+  <div style="background:#8C6E3A;flex:1;padding:10px">
+    <div style="color:#F2EDE4;font-size:9px">Amber pressed</div>
+    <div style="color:#F2EDE4;font-size:9px;font-family:monospace;opacity:.7">#8C6E3A</div>
+  </div>
+  <div style="background:#1E3A2F;flex:1;padding:10px">
+    <div style="color:#4EAA7A;font-size:9px">Confirmed</div>
+    <div style="color:#4EAA7A;font-size:9px;font-family:monospace;opacity:.7">#1E3A2F + #4EAA7A</div>
+  </div>
+  <div style="background:#3A1E1E;flex:1;padding:10px">
+    <div style="color:#E07070;font-size:9px">Danger</div>
+    <div style="color:#E07070;font-size:9px;font-family:monospace;opacity:.7">#3A1E1E + #E07070</div>
+  </div>
+  <div style="background:#2A2A1A;flex:1;padding:10px">
+    <div style="color:#C8A84E;font-size:9px">Caution</div>
+    <div style="color:#C8A84E;font-size:9px;font-family:monospace;opacity:.7">#2A2A1A + #C8A84E</div>
+  </div>
+</div>
+
+<h3>Python constants — paste at top of gui/main.py</h3>
+<pre>
+<span class="c"># ── AIP DESIGN TOKENS ───────────────────────────────────────────────</span>
+<span class="c"># Ground layers</span>
+<span class="k">C_GROUND</span>   = <span class="s">'#0E0E0F'</span>   <span class="c"># page/shell background</span>
+<span class="k">C_SURFACE</span>  = <span class="s">'#1A1D1F'</span>   <span class="c"># cards, panels</span>
+<span class="k">C_RAISED</span>   = <span class="s">'#242829'</span>   <span class="c"># hover states, inputs</span>
+<span class="c"># Structural ink (slate-teal family)</span>
+<span class="k">C_INK40</span>    = <span class="s">'#2A3540'</span>   <span class="c"># borders, edges, lines</span>
+<span class="k">C_INK60</span>    = <span class="s">'#3D5566'</span>   <span class="c"># labels, inactive text, secondary</span>
+<span class="k">C_MUTED</span>    = <span class="s">'#8FA8B8'</span>   <span class="c"># body text secondary, placeholder</span>
+<span class="k">C_CREAM</span>    = <span class="s">'#F2EDE4'</span>   <span class="c"># primary text on dark</span>
+<span class="c"># Activation (amber — use ONLY for: active tab, primary CTA, corpus node, Beast active)</span>
+<span class="k">C_AMBER</span>    = <span class="s">'#B8935A'</span>   <span class="c"># primary amber</span>
+<span class="k">C_AMBER_P</span>  = <span class="s">'#8C6E3A'</span>   <span class="c"># pressed/hover state</span>
+<span class="c"># Semantic states</span>
+<span class="k">C_OK_BG</span>    = <span class="s">'#1E3A2F'</span>   <span class="c"># confirmed/approved background</span>
+<span class="k">C_OK_FG</span>    = <span class="s">'#4EAA7A'</span>   <span class="c"># confirmed/approved text</span>
+<span class="k">C_ERR_BG</span>   = <span class="s">'#3A1E1E'</span>   <span class="c"># danger background</span>
+<span class="k">C_ERR_FG</span>   = <span class="s">'#E07070'</span>   <span class="c"># danger text</span>
+<span class="k">C_WARN_BG</span>  = <span class="s">'#2A2A1A'</span>   <span class="c"># caution/pending background</span>
+<span class="k">C_WARN_FG</span>  = <span class="s">'#C8A84E'</span>   <span class="c"># caution/pending text</span>
+<span class="c"># Typography</span>
+<span class="k">F_SERIF</span>    = <span class="s">"Georgia, 'Times New Roman', serif"</span>
+<span class="k">F_SANS</span>     = <span class="s">"'Helvetica Neue', Helvetica, Arial, sans-serif"</span>
+<span class="k">F_MONO</span>     = <span class="s">"'Courier New', monospace"</span>
+<span class="c"># Spacing (px values as strings for style() calls)</span>
+<span class="k">SP_XS</span> = <span class="s">'4px'</span>;  <span class="k">SP_SM</span> = <span class="s">'8px'</span>;  <span class="k">SP_MD</span> = <span class="s">'16px'</span>;  <span class="k">SP_LG</span> = <span class="s">'32px'</span>
+<span class="c"># Border</span>
+<span class="k">BORDER</span> = <span class="s">f'0.5px solid {C_INK40}'</span>
+<span class="c"># Radius</span>
+<span class="k">R_SM</span> = <span class="s">'4px'</span>;  <span class="k">R_MD</span> = <span class="s">'6px'</span>;  <span class="k">R_LG</span> = <span class="s">'8px'</span>
+</pre>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>3 · Typography Rules</h2>
+
+<div class="grid-2">
+  <div>
+    <div style="font-family:Georgia,serif;font-size:28px;font-weight:700;letter-spacing:-1px;color:#111113;line-height:1.1;margin-bottom:6px">AIP corpus intelligence</div>
+    <code>Georgia 700 −1 tracking — display only</code>
+  </div>
+  <div>
+    <div style="font-size:18px;font-weight:700;letter-spacing:-0.5px;color:#111113;margin-bottom:6px">Artifact review queue</div>
+    <code>system-sans 700 −0.5 tracking — H1</code>
+  </div>
+  <div>
+    <div style="font-size:13px;font-weight:500;color:#111113;margin-bottom:6px">Project: AIP architecture</div>
+    <code>system-sans 500 normal — H2 / panel title</code>
+  </div>
+  <div>
+    <div style="font-size:12px;color:#5A5650;line-height:1.65;margin-bottom:6px">Every artifact passes through the DEFINER gate. The corpus is sovereign.</div>
+    <code>system-sans 400 1.65 lh — body</code>
+  </div>
+  <div>
+    <div style="font-size:10px;letter-spacing:2px;color:#9A9590;text-transform:uppercase;margin-bottom:6px">LIFECYCLE STATE · GENERATED</div>
+    <code>system-sans 400 +2 tracking uppercase — label/meta</code>
+  </div>
+  <div>
+    <div style="font-family:'Courier New',monospace;font-size:11px;color:#3D5566;margin-bottom:6px">ask:a3f9c2d1 · 2026-05-31 04:51</div>
+    <code>monospace 11px — IDs, timestamps, status bar</code>
+  </div>
+</div>
+
+<h3>NiceGUI style() patterns for each type role</h3>
+<pre>
+<span class="c"># Wordmark (sidebar)</span>
+.style(<span class="s">f'font-family:{F_SERIF}; font-size:18px; font-weight:700; color:{C_CREAM}; letter-spacing:-0.5px;'</span>)
+
+<span class="c"># Panel / page title</span>
+.style(<span class="s">f'font-size:13px; font-weight:500; color:{C_CREAM};'</span>)
+
+<span class="c"># Body text</span>
+.style(<span class="s">f'font-size:12px; color:{C_MUTED}; line-height:1.65;'</span>)
+
+<span class="c"># Label / meta uppercase</span>
+.style(<span class="s">f'font-size:9px; letter-spacing:2px; color:{C_INK60}; text-transform:uppercase;'</span>)
+
+<span class="c"># Monospace ID / timestamp</span>
+.style(<span class="s">f'font-family:{F_MONO}; font-size:9px; color:{C_INK60};'</span>)
+
+<span class="c"># Status bar (bottom of shell)</span>
+.style(<span class="s">f'font-family:{F_MONO}; font-size:11px; color:{C_INK60};'</span>)
+</pre>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>4 · Component Patterns — Exact CSS Translated to NiceGUI</h2>
+
+<p>Every component below is taken directly from <code>aip_ui_mockup.html</code>.
+Replicate structure and style exactly. Do not add drop shadows, gradients, or blur.</p>
+
+<h3>4.1 Shell structure</h3>
+<pre>
+<span class="c"># Root shell — dark ground, no rounding on app container</span>
+ui.query(<span class="s">'body'</span>).style(<span class="s">f'background:{C_GROUND}; margin:0; padding:0;'</span>)
+
+<span class="c"># Main layout: sidebar (220px fixed) + content area (flex 1)</span>
+with ui.row().style(<span class="s">'width:100vw; height:100vh; gap:0; overflow:hidden;'</span>):
+    sidebar = ui.column().style(
+        <span class="s">f'width:220px; min-width:220px; background:{C_GROUND}; '</span>
+        <span class="s">f'border-right:{BORDER}; height:100vh; overflow:hidden; gap:0;'</span>
+    )
+    content = ui.column().style(<span class="s">'flex:1; height:100vh; overflow:hidden; gap:0;'</span>)
+</pre>
+
+<h3>4.2 Navigation item</h3>
+
+<!-- Live example -->
+<div style="background:#0E0E0F;padding:8px;border-radius:6px;width:200px;margin-bottom:12px">
+  <div style="display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:5px;font-size:12px;color:#F2EDE4;background:#1A1D1F;margin-bottom:2px">
+    ▪ Console <span style="color:#3D5566;font-size:10px;margin-left:auto">active</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:5px;font-size:12px;color:#8FA8B8;">
+    ▪ Ask
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 8px;border-radius:5px;font-size:12px;color:#8FA8B8;">
+    <span>▪ Review</span>
+    <span style="background:#B8935A;color:#0E0800;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500">4</span>
+  </div>
+</div>
+
+<pre>
+<span class="c"># Nav section label</span>
+ui.label(<span class="s">'Workspace'</span>).style(
+    <span class="s">f'font-size:9px; letter-spacing:2px; color:{C_INK60}; '</span>
+    <span class="s">f'text-transform:uppercase; padding:8px 8px 6px;'</span>
+)
+
+<span class="c"># Inactive nav item</span>
+def nav_item(label, icon=<span class="s">'▪'</span>, badge=<span class="k">None</span>, active=<span class="k">False</span>, on_click=<span class="k">None</span>):
+    bg = <span class="s">f'background:{C_SURFACE};'</span> if active else <span class="s">''</span>
+    fg = C_CREAM if active else C_MUTED
+    with ui.row().style(
+        <span class="s">f'align-items:center; gap:10px; padding:7px 8px; border-radius:5px; '</span>
+        <span class="s">f'font-size:12px; color:{fg}; cursor:pointer; margin-bottom:1px; {bg}'</span>
+    ).on(<span class="s">'click'</span>, on_click):
+        ui.label(icon)
+        ui.label(label)
+        if badge:
+            ui.label(str(badge)).style(
+                <span class="s">f'margin-left:auto; background:{C_AMBER}; color:#0E0800; '</span>
+                <span class="s">'font-size:9px; padding:1px 5px; border-radius:3px; font-weight:500;'</span>
+            )
+</pre>
+
+<h3>4.3 Card</h3>
+
+<!-- Live example -->
+<div style="background:#1A1D1F;border:0.5px solid #242829;border-radius:8px;padding:16px;margin-bottom:12px;max-width:500px">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
+    <div>
+      <div style="font-size:13px;font-weight:500;color:#F2EDE4;line-height:1.4">AIP retrieval — ECS state machine and DEFINER gate</div>
+      <div style="font-size:9px;font-family:monospace;color:#3D5566;margin-top:3px">ask:a3f9c2d1 · 2026-05-31 04:51</div>
+    </div>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;padding:3px 8px;border-radius:4px;border:0.5px solid #8C6E3A;color:#B8935A;background:#1A1200;flex-shrink:0;margin-left:12px">Generated</span>
+  </div>
+  <div style="font-size:12px;color:#8FA8B8;line-height:1.65;margin-bottom:12px">The ECS state machine enforces strict unidirectional transitions. No artifact may skip states.</div>
+  <div style="border-top:0.5px solid #1E2428;padding-top:10px">
+    <div style="font-size:9px;letter-spacing:1.5px;color:#3D5566;text-transform:uppercase;margin-bottom:6px">Sources · 3 retrieved</div>
+    <div style="font-size:10px;color:#4A6070;margin-bottom:4px">· AIP architecture · Rev 5.1 · chunk 0041</div>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:12px">
+    <button style="padding:6px 14px;border-radius:5px;font-size:11px;font-weight:500;background:#B8935A;color:#0E0800;border:0.5px solid #B8935A;cursor:pointer">Approve</button>
+    <button style="padding:6px 14px;border-radius:5px;font-size:11px;font-weight:500;background:transparent;color:#8FA8B8;border:0.5px solid #2A3540;cursor:pointer">Reject</button>
+    <button style="padding:6px 14px;border-radius:5px;font-size:10px;background:transparent;color:#3D5566;border:0.5px solid #1E2428;cursor:pointer">View sources ↗</button>
+  </div>
+</div>
+
+<pre>
+def aip_card(title, artifact_id, body, sources=<span class="k">None</span>, status=<span class="s">'Generated'</span>,
+             on_approve=<span class="k">None</span>, on_reject=<span class="k">None</span>):
+    with ui.column().style(
+        <span class="s">f'background:{C_SURFACE}; border:{BORDER.replace(C_INK40, C_RAISED)}; '</span>
+        <span class="s">f'border-radius:{R_LG}; padding:16px; gap:0; width:100%;'</span>
+    ):
+        <span class="c"># Header row: title + status pill</span>
+        with ui.row().style(<span class="s">'align-items:flex-start; justify-content:space-between; margin-bottom:10px; width:100%;'</span>):
+            with ui.column().style(<span class="s">'gap:3px; flex:1;'</span>):
+                ui.label(title).style(<span class="s">f'font-size:13px; font-weight:500; color:{C_CREAM}; line-height:1.4;'</span>)
+                ui.label(artifact_id).style(<span class="s">f'font-family:{F_MONO}; font-size:9px; color:{C_INK60};'</span>)
+            status_pill(status)
+        <span class="c"># Body</span>
+        ui.label(body).style(<span class="s">f'font-size:12px; color:{C_MUTED}; line-height:1.65; margin-bottom:12px;'</span>)
+        <span class="c"># Sources</span>
+        if sources:
+            ui.separator().style(<span class="s">f'background:{C_INK40}; height:0.5px; margin-bottom:10px;'</span>)
+            ui.label(<span class="s">f'Sources · {len(sources)} retrieved'</span>).style(
+                <span class="s">f'font-size:9px; letter-spacing:1.5px; color:{C_INK60}; text-transform:uppercase; margin-bottom:6px;'</span>
+            )
+            for s in sources:
+                ui.label(<span class="s">f'· {s}'</span>).style(<span class="s">f'font-size:10px; color:#4A6070; margin-bottom:4px;'</span>)
+        <span class="c"># Actions</span>
+        with ui.row().style(<span class="s">'gap:8px; margin-top:12px;'</span>):
+            ui.button(<span class="s">'Approve'</span>, on_click=on_approve).style(btn_primary())
+            ui.button(<span class="s">'Reject'</span>, on_click=on_reject).style(btn_secondary())
+            ui.button(<span class="s">'View sources ↗'</span>).style(btn_ghost())
+</pre>
+
+<h3>4.4 Status pills</h3>
+
+<!-- Live examples -->
+<div style="display:flex;gap:8px;margin-bottom:12px">
+  <span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;padding:3px 8px;border-radius:4px;border:0.5px solid #8C6E3A;color:#B8935A;background:#1A1200">Generated</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;padding:3px 8px;border-radius:4px;border:0.5px solid #1E4030;color:#4EAA7A;background:#0E1F17">Approved</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;padding:3px 8px;border-radius:4px;border:0.5px solid #2A3540;color:#8FA8B8;background:transparent">Idle</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;padding:3px 8px;border-radius:4px;border:0.5px solid #3A1E1E;color:#E07070;background:#1A0000">Error</span>
+</div>
+
+<pre>
+def status_pill(status: str) -> None:
+    styles = {
+        <span class="s">'Generated'</span>: (<span class="s">'#B8935A'</span>, <span class="s">'#8C6E3A'</span>, <span class="s">'#1A1200'</span>),
+        <span class="s">'Approved'</span>:  (<span class="s">'#4EAA7A'</span>, <span class="s">'#1E4030'</span>, <span class="s">'#0E1F17'</span>),
+        <span class="s">'Rejected'</span>:  (<span class="s">'#E07070'</span>, <span class="s">'#3A1E1E'</span>, <span class="s">'#1A0000'</span>),
+        <span class="s">'Idle'</span>:      (<span class="s">'#8FA8B8'</span>, <span class="s">'#2A3540'</span>, <span class="s">'transparent'</span>),
+        <span class="s">'Active'</span>:    (<span class="s">'#B8935A'</span>, <span class="s">'#8C6E3A'</span>, <span class="s">'#1A0E00'</span>),
+    }
+    fg, border, bg = styles.get(status, (<span class="s">'#8FA8B8'</span>, <span class="s">'#2A3540'</span>, <span class="s">'transparent'</span>))
+    ui.label(status).style(
+        <span class="s">f'display:inline-flex; align-items:center; font-size:10px; letter-spacing:.5px; '</span>
+        <span class="s">f'padding:3px 8px; border-radius:4px; border:0.5px solid {border}; '</span>
+        <span class="s">f'color:{fg}; background:{bg}; flex-shrink:0;'</span>
+    )
+</pre>
+
+<h3>4.5 Buttons</h3>
+
+<!-- Live examples -->
+<div style="display:flex;gap:8px;margin-bottom:16px">
+  <button style="padding:6px 14px;border-radius:5px;font-size:11px;font-weight:500;background:#B8935A;color:#0E0800;border:0.5px solid #B8935A;cursor:pointer">Approve</button>
+  <button style="padding:6px 14px;border-radius:5px;font-size:11px;font-weight:500;background:transparent;color:#8FA8B8;border:0.5px solid #2A3540;cursor:pointer">Reject</button>
+  <button style="padding:6px 14px;border-radius:5px;font-size:10px;background:transparent;color:#3D5566;border:0.5px solid #1E2428;cursor:pointer">View sources ↗</button>
+</div>
+
+<pre>
+<span class="c"># Button style helpers</span>
+def btn_primary() -> str:
+    return (<span class="s">f'background:{C_AMBER}; color:#0E0800; border:0.5px solid {C_AMBER}; '</span>
+            <span class="s">f'padding:6px 14px; border-radius:{R_SM}; font-size:11px; font-weight:500;'</span>)
+
+def btn_secondary() -> str:
+    return (<span class="s">f'background:transparent; color:{C_MUTED}; border:0.5px solid {C_INK40}; '</span>
+            <span class="s">f'padding:6px 14px; border-radius:{R_SM}; font-size:11px; font-weight:500;'</span>)
+
+def btn_ghost() -> str:
+    return (<span class="s">f'background:transparent; color:{C_INK60}; border:0.5px solid #1E2428; '</span>
+            <span class="s">f'padding:6px 14px; border-radius:{R_SM}; font-size:10px;'</span>)
+</pre>
+
+<h3>4.6 Stat tile</h3>
+
+<!-- Live example -->
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:400px;margin-bottom:16px">
+  <div style="background:#141618;border:0.5px solid #1E2428;border-radius:6px;padding:10px 12px">
+    <div style="font-size:18px;font-weight:500;color:#F2EDE4;letter-spacing:-0.5px">2,766</div>
+    <div style="font-size:9px;letter-spacing:1.5px;color:#3D5566;text-transform:uppercase;margin-top:2px">Corpus turns</div>
+  </div>
+  <div style="background:#141618;border:0.5px solid #1E2428;border-radius:6px;padding:10px 12px">
+    <div style="font-size:18px;font-weight:500;color:#F2EDE4;letter-spacing:-0.5px">26</div>
+    <div style="font-size:9px;letter-spacing:1.5px;color:#3D5566;text-transform:uppercase;margin-top:2px">Domains</div>
+  </div>
+  <div style="background:#141618;border:0.5px solid #1E2428;border-radius:6px;padding:10px 12px">
+    <div style="font-size:18px;font-weight:500;color:#B8935A;letter-spacing:-0.5px">26</div>
+    <div style="font-size:9px;letter-spacing:1.5px;color:#3D5566;text-transform:uppercase;margin-top:2px">Pending review</div>
+  </div>
+</div>
+
+<pre>
+def stat_tile(value: str, label: str, value_color=<span class="k">None</span>):
+    vc = value_color or C_CREAM
+    with ui.column().style(
+        <span class="s">f'background:#141618; border:0.5px solid #1E2428; border-radius:{R_MD}; padding:10px 12px; gap:2px;'</span>
+    ):
+        ui.label(value).style(<span class="s">f'font-size:18px; font-weight:500; color:{vc}; letter-spacing:-0.5px;'</span>)
+        ui.label(label).style(<span class="s">f'font-size:9px; letter-spacing:1.5px; color:{C_INK60}; text-transform:uppercase;'</span>)
+</pre>
+
+<h3>4.7 Token budget bar (sidebar footer)</h3>
+
+<!-- Live example -->
+<div style="background:#0E0E0F;padding:12px 16px;border-top:0.5px solid #1E2428;width:220px;border-radius:0 0 6px 6px;margin-bottom:16px">
+  <div style="font-size:9px;letter-spacing:1.5px;color:#3D5566;text-transform:uppercase;margin-bottom:6px">Token budget</div>
+  <div style="height:2px;background:#1E2428;border-radius:1px;margin-bottom:4px">
+    <div style="height:2px;background:#B8935A;border-radius:1px;width:38%"></div>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:9px;color:#3D5566">
+    <span>$1.84 used</span><span>$5.00 limit</span>
+  </div>
+</div>
+
+<pre>
+with ui.column().style(
+    <span class="s">f'padding:12px 16px; border-top:{BORDER}; gap:0;'</span>
+):
+    ui.label(<span class="s">'Token budget'</span>).style(
+        <span class="s">f'font-size:9px; letter-spacing:1.5px; color:{C_INK60}; text-transform:uppercase; margin-bottom:6px;'</span>
+    )
+    <span class="c"># Track</span>
+    with ui.element(<span class="s">'div'</span>).style(<span class="s">'height:2px; background:#1E2428; border-radius:1px; margin-bottom:4px; width:100%;'</span>):
+        budget_pct = <span class="s">'38%'</span>  <span class="c"># compute from actual token usage</span>
+        ui.element(<span class="s">'div'</span>).style(<span class="s">f'height:2px; background:{C_AMBER}; border-radius:1px; width:{budget_pct};'</span>)
+    with ui.row().style(<span class="s">'justify-content:space-between; font-size:9px; color:#3D5566;'</span>):
+        ui.label(<span class="s">'$1.84 used'</span>)
+        ui.label(<span class="s">'$5.00 limit'</span>)
+</pre>
+
+<h3>4.8 Status bar (bottom of shell)</h3>
+
+<!-- Live example -->
+<div style="background:#0E0E0F;border-top:0.5px solid #1E2428;padding:0 16px;height:28px;display:flex;align-items:center;justify-content:space-between;font-family:monospace;font-size:11px;color:#3D5566;border-radius:0 0 6px 6px;max-width:700px;margin-bottom:16px">
+  <span>aip_brain</span>
+  <span>corpus: 2,766t · beast: idle · vigil: idle · sexton: next 47s</span>
+  <span style="color:#4EAA7A">● Live</span>
+</div>
+
+<pre>
+with ui.row().style(
+    <span class="s">f'background:{C_GROUND}; border-top:{BORDER}; padding:0 16px; '</span>
+    <span class="s">'height:28px; align-items:center; justify-content:space-between; width:100%;'</span>
+):
+    ui.label(<span class="s">'aip_brain'</span>).style(<span class="s">f'font-family:{F_MONO}; font-size:11px; color:{C_INK60};'</span>)
+    ui.label(status_text).style(<span class="s">f'font-family:{F_MONO}; font-size:11px; color:{C_INK60};'</span>)
+    ui.label(<span class="s">'● Live'</span>).style(<span class="s">f'font-family:{F_MONO}; font-size:11px; color:{C_OK_FG};'</span>)
+</pre>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>5 · Usage Rules — Non-Negotiable</h2>
+
+<div class="grid-2">
+  <div>
+    <div class="rule do"><strong>✓ DO</strong><br>
+      Amber only for: primary CTA, active tab indicator, corpus center node, Beast active dot<br>
+      Georgia serif only for: wordmark, display headings, nothing else<br>
+      0.5px borders on all surface separations<br>
+      Dark ground (#0E0E0F) as the primary application environment<br>
+      Monospace for all IDs, timestamps, status bar text<br>
+      Small-caps with 2px letter-spacing for all section labels
+    </div>
+  </div>
+  <div>
+    <div class="rule dont"><strong>✗ NEVER</strong><br>
+      Gradients, drop shadows, or blur effects anywhere<br>
+      Pure black (#000) or pure white (#FFF)<br>
+      More than two accent colors visible in one view<br>
+      Amber for decorative purposes — it signals action only<br>
+      Rounded corners larger than 8px<br>
+      Border width other than 0.5px for structural borders<br>
+      Inter, Roboto, or any custom webfont (system-sans only for body)
+    </div>
+  </div>
+</div>
+
+<div class="rule warn" style="margin-top:12px">
+  <strong>⚠ NiceGUI-specific</strong><br>
+  NiceGUI renders buttons with its own default styling. Always chain <code>.style()</code> and <code>.props('flat')</code> or override with <code>.classes('')</code> to strip Quasar defaults before applying AIP styles. Test every button in the running app — NiceGUI's Quasar layer can override inline styles unexpectedly.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>6 · Tab Navigation Pattern</h2>
+
+<p>Top nav bar: tabs are text labels only, no icons in the topbar. Active tab:
+amber 2px bottom border. Review tab has an amber badge with pending count.
+All tabs are persistent — switching tabs does NOT destroy any page state.</p>
+
+<!-- Live example -->
+<div style="background:#0E0E0F;padding:0 20px;border-bottom:0.5px solid #1E2428;display:flex;align-items:center;gap:0;max-width:700px;margin-bottom:16px">
+  <div style="padding:14px 16px;font-size:13px;color:#F2EDE4;border-bottom:2px solid #B8935A;font-weight:500;cursor:pointer">CHAT</div>
+  <div style="padding:14px 16px;font-size:13px;color:#8FA8B8;border-bottom:2px solid transparent;cursor:pointer">AUGMENTED</div>
+  <div style="padding:14px 16px;font-size:13px;color:#8FA8B8;border-bottom:2px solid transparent;cursor:pointer;display:flex;align-items:center;gap:6px">REVIEW <span style="background:#B8935A;color:#0E0800;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500">26</span></div>
+  <div style="padding:14px 16px;font-size:13px;color:#8FA8B8;border-bottom:2px solid transparent;cursor:pointer">WIKI</div>
+  <div style="padding:14px 16px;font-size:13px;color:#8FA8B8;border-bottom:2px solid transparent;cursor:pointer">CORPUS</div>
+  <div style="padding:14px 16px;font-size:13px;color:#8FA8B8;border-bottom:2px solid transparent;cursor:pointer">GRAPH</div>
+  <div style="padding:14px 16px;font-size:13px;color:#8FA8B8;border-bottom:2px solid transparent;cursor:pointer">STATUS</div>
+</div>
+
+<pre>
+<span class="c"># Top tab bar — fixed shell approach</span>
+TABS = [<span class="s">'CHAT'</span>, <span class="s">'AUGMENTED'</span>, <span class="s">'COHORT'</span>, <span class="s">'REVIEW'</span>, <span class="s">'WIKI'</span>, <span class="s">'CORPUS'</span>, <span class="s">'GRAPH'</span>, <span class="s">'STATUS'</span>]
+current_tab = ui.state(<span class="s">'CHAT'</span>)
+
+with ui.row().style(
+    <span class="s">f'background:{C_GROUND}; border-bottom:{BORDER}; padding:0 20px; '</span>
+    <span class="s">'align-items:center; gap:0; width:100%; flex-shrink:0;'</span>
+):
+    for tab in TABS:
+        is_active = current_tab.value == tab
+        border = <span class="s">f'border-bottom:2px solid {C_AMBER};'</span> if is_active else <span class="s">'border-bottom:2px solid transparent;'</span>
+        color = C_CREAM if is_active else C_MUTED
+        with ui.row().style(<span class="s">f'padding:14px 16px; cursor:pointer; align-items:center; gap:6px; {border}'</span>).on(<span class="s">'click'</span>, lambda t=tab: current_tab.set(t)):
+            ui.label(tab).style(<span class="s">f'font-size:13px; font-weight:500; color:{color};'</span>)
+            if tab == <span class="s">'REVIEW'</span> and pending_count > 0:
+                ui.label(str(pending_count)).style(
+                    <span class="s">f'background:{C_AMBER}; color:#0E0800; font-size:9px; '</span>
+                    <span class="s">'padding:1px 5px; border-radius:3px; font-weight:500;'</span>
+                )
+</pre>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>7 · Reference Files In Repo</h2>
+
+<div style="background:#1A1D1F;border:0.5px solid #2A3540;border-radius:6px;padding:16px;font-family:monospace;font-size:12px;color:#8FA8B8;margin-bottom:8px">
+  docs/ui/aip_design_reference.html &nbsp;&nbsp;&nbsp;← this file<br>
+  docs/ui/aip_brain_shell_architecture.html &nbsp;&nbsp;← wireframe mockup<br>
+  docs/ui/claude_code_ui_full.md &nbsp;&nbsp;&nbsp;← build prompt / spec<br>
+  docs/ui/aip_style_system.html &nbsp;&nbsp;&nbsp;← original Opus style tile<br>
+  docs/ui/aip_ui_mockup.html &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← original Opus UI mockup<br>
+  docs/ui/aip_logo_mark.svg &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← logo mark SVG<br>
+  docs/ui/aip_logo_variants.svg &nbsp;&nbsp;&nbsp;← scale variants SVG
+</div>
+
+<p>When starting a Claude Code session: <code>cat docs/ui/aip_design_reference.html</code>
+then <code>cat docs/ui/claude_code_ui_full.md</code>. The design reference is authoritative
+for all visual decisions. The UI spec is authoritative for all structural decisions.</p>
+
+<hr>
+<p style="font-size:10px;color:#9A9590;text-align:center">
+  AIP Design System · Opus 4.8 design session · 2026-05-31 · do not edit without DEFINER approval
+</p>
+
+</body>
+</html>
