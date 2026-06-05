@@ -1038,6 +1038,172 @@ def _build_graph_panel(state: GuiState) -> None:
     ))
 
 
+# ── COHORT PANEL ─────────────────────────────────────────────────────
+
+_COHORT_MODELS = [
+    {"id": "anthropic/claude-sonnet-4-6",       "label": "Claude Sonnet 4.6",    "price": "$1.50/1M",  "tag": "claude"},
+    {"id": "deepseek/deepseek-r1",               "label": "DeepSeek R1",           "price": "$0.55/1M",  "tag": "deepseek"},
+    {"id": "openai/gpt-4o-mini",                 "label": "GPT-4o Mini",           "price": "$0.15/1M",  "tag": "openai"},
+    {"id": "google/gemini-2.0-flash-001",        "label": "Gemini 2.0 Flash",      "price": "$0.10/1M",  "tag": "gemini"},
+    {"id": "x-ai/grok-3-mini",                   "label": "Grok 3 Mini",           "price": "$0.30/1M",  "tag": "grok"},
+]
+
+_COHORT_SYNTH_OPTS = [
+    "anthropic/claude-sonnet-4-6",
+    "deepseek/deepseek-r1",
+    "google/gemini-2.0-flash-001",
+]
+
+_MOCK_COHORT_RESULT = {
+    "question": "(mock) What is the NBCM framework?",
+    "responses": [
+        {
+            "model": "anthropic/claude-sonnet-4-6",
+            "content": "The NBCM (Null-Boundary Constraint Manifold) framework posits that "
+                       "physical laws emerge from boundary conditions on null hypersurfaces...",
+        },
+        {
+            "model": "deepseek/deepseek-r1",
+            "content": "NBCM is a theoretical physics framework developed by Moses Jorgensen "
+                       "proposing that spacetime structure arises from constraints at null boundaries...",
+        },
+    ],
+    "synthesis": "Both models agree that NBCM is a framework relating null boundary conditions "
+                 "to physical law, with emphasis on the exclusion zone connection.",
+}
+
+
+def _build_cohort_panel(state: GuiState) -> None:
+    """COHORT tab — multi-model synthesis scaffold (Phase 3); backend stubbed."""
+
+    with ui.column().classes("w-full px-5 py-4 gap-3").style(
+        f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:0;max-width:860px;"
+    ):
+        ui.label("COHORT SYNTHESIS").style(
+            f"font-family:{F_SERIF};font-size:18px;font-weight:700;color:{C_CREAM};"
+        )
+        ui.label("Ask a question across multiple models simultaneously.").style(
+            f"font-size:12px;color:{C_MUTED};margin-top:-8px;"
+        )
+
+        # Question input
+        question_inp = ui.textarea(placeholder="Enter your question for the cohort…").props(
+            "outlined dense rows=3"
+        ).classes("w-full").style(
+            f"background:{C_SURFACE};color:{C_CREAM};font-size:13px;"
+        )
+
+        # Model selector
+        ui.label("SELECT MODELS  (up to 5)").style(
+            f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};"
+        )
+        selected_models: set[str] = {"anthropic/claude-sonnet-4-6", "deepseek/deepseek-r1"}
+        checkboxes: dict[str, Any] = {}
+
+        with ui.column().classes("gap-1"):
+            for m in _COHORT_MODELS:
+                with ui.row().classes("items-center gap-3").style(
+                    f"background:{C_SURFACE};border:1px solid {C_INK40};"
+                    "border-radius:4px;padding:6px 10px;"
+                ):
+                    cb = ui.checkbox(
+                        value=m["id"] in selected_models,
+                    ).props("dense").style(f"color:{C_AMBER};")
+                    checkboxes[m["id"]] = cb
+                    ui.label(m["label"]).style(
+                        f"font-size:12px;color:{C_CREAM};min-width:160px;"
+                    )
+                    ui.label(m["price"]).style(
+                        f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};min-width:80px;"
+                    )
+                    ui.label(f"[{m['tag']}]").style(
+                        f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};"
+                    )
+
+        # Synthesis model + estimated cost
+        with ui.row().classes("w-full items-center gap-4"):
+            ui.label("Synthesis model:").style(f"font-size:12px;color:{C_MUTED};")
+            synth_select = ui.select(_COHORT_SYNTH_OPTS, value=_COHORT_SYNTH_OPTS[0]).props(
+                "dense outlined"
+            ).classes("min-w-[260px]")
+            cost_lbl = ui.label("Estimated cost: ~$0.03").style(
+                f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};"
+            )
+
+        # ASK button
+        ask_btn = ui.button("ASK COHORT").style(
+            f"background:{C_AMBER};color:{C_GROUND};"
+            "font-size:12px;font-weight:700;letter-spacing:.5px;padding:8px 24px;"
+        )
+
+        ui.separator().style(f"background:{C_INK40};margin:4px 0;")
+
+        # Results area
+        results_col = ui.column().classes("w-full gap-3")
+
+        async def _ask() -> None:
+            question = question_inp.value.strip()
+            if not question:
+                ui.notify("Enter a question first.", color="warning")
+                return
+
+            chosen = [mid for mid, cb in checkboxes.items() if cb.value]
+            if not chosen:
+                ui.notify("Select at least one model.", color="warning")
+                return
+            if len(chosen) > 5:
+                ui.notify("Maximum 5 models.", color="warning")
+                return
+
+            results_col.clear()
+            with results_col:
+                ui.label("Querying cohort…").style(
+                    f"color:{C_MUTED};font-size:12px;font-family:{F_MONO};"
+                )
+
+            # Stub — returns mock result; wire POST /api/v1/cohort/synthesize in Phase 3
+            await asyncio.sleep(0.5)
+            result = _MOCK_COHORT_RESULT.copy()
+            result["question"] = question
+
+            results_col.clear()
+            with results_col:
+                ui.label("INDIVIDUAL RESPONSES").style(
+                    f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};"
+                )
+                for resp in result.get("responses", []):
+                    with ui.card().classes("w-full").style(
+                        f"background:{C_SURFACE};border:1px solid {C_INK40};"
+                        "border-radius:4px;padding:10px 14px;"
+                    ):
+                        ui.label(resp.get("model", "")).style(
+                            f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};"
+                            "margin-bottom:4px;"
+                        )
+                        ui.markdown(resp.get("content", "")).style(
+                            f"font-size:12px;color:{C_CREAM};line-height:1.6;"
+                        )
+
+                if result.get("synthesis"):
+                    ui.separator().style(f"background:{C_INK40};margin:8px 0;")
+                    ui.label("SYNTHESIS").style(
+                        f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};"
+                    )
+                    with ui.card().classes("w-full").style(
+                        f"background:{C_RAISED};border:1px solid {C_AMBER};"
+                        "border-radius:4px;padding:10px 14px;"
+                    ):
+                        ui.markdown(result["synthesis"]).style(
+                            f"font-size:13px;color:{C_CREAM};line-height:1.6;"
+                        )
+
+                ui.label("[Phase 3: wire POST /api/v1/cohort/synthesize]").style(
+                    f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};margin-top:4px;"
+                )
+
+        ask_btn.on("click", lambda: asyncio.create_task(_ask()))
+
+
 # ── CHAT PANEL ────────────────────────────────────────────────────────
 
 def _build_chat_panel(
@@ -1247,9 +1413,7 @@ async def main_page() -> None:
         with ui.tab_panel("augmented"):
             _build_chat_panel("augmented", state, slots, opts)
         with ui.tab_panel("cohort"):
-            ui.label("COHORT — tier 9 scaffold").style(
-                f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
-            )
+            _build_cohort_panel(state)
         with ui.tab_panel("review"):
             _build_review_panel(state)
         with ui.tab_panel("wiki"):
