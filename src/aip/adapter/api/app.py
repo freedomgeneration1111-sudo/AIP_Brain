@@ -355,6 +355,15 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.warning("component_failed", component="lexical_store", degradation="no_text_search", error=str(exc))
 
+    # CorpusTurnStore — corpus turn FTS5 search for augmented chat (degrades to no corpus search)
+    try:
+        from aip.adapter.corpus_turn_store import CorpusTurnStore
+        container.corpus_turn_store = CorpusTurnStore(db_path)
+        await container.corpus_turn_store.initialize()
+        log.info("component_initialized", component="corpus_turn_store", required=False)
+    except Exception as exc:
+        log.warning("component_failed", component="corpus_turn_store", degradation="no_corpus_search", error=str(exc))
+
     # Embedding provider — vector embedding (degrades to fake_embed)
     # NOTE: Initialized before vector store so it can be passed to the factory
     # for SqliteVssVectorStore's store() compat method.
@@ -787,6 +796,7 @@ async def lifespan(app: FastAPI):
         beast=container.beast is not None,
         session_store=container.session_store is not None,
         session_manager=container.session_manager is not None,
+        corpus_turn_store=getattr(container, "corpus_turn_store", None) is not None,
     )
 
     yield
@@ -822,6 +832,7 @@ async def lifespan(app: FastAPI):
         ("ecs_store", container.ecs_store),
         ("review_queue_store", container.review_queue_store),
         ("session_store", container.session_store),
+        ("corpus_turn_store", getattr(container, "corpus_turn_store", None)),
     ]:
         if store and hasattr(store, "close"):
             try:

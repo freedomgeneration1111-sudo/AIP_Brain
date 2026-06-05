@@ -80,6 +80,8 @@ class AipContainer:
         self.review_queue_store: Any = None
         # SessionStore — None when not initialized (degrades to in-memory)
         self.session_store: Any = None
+        # CorpusTurnStore — None when not initialized (degrades to no corpus search in augmented chat)
+        self.corpus_turn_store: Any = None
         # Backfill status for async backfill tracking (simple in-memory for now)
         self.backfill_status: dict = {"running": False, "last_result": None, "progress": {}}
 

@@ -90,6 +90,60 @@ async def _get_wiki_overview(domain: str, artifact_store: Any, ecs_store: Any) -
         return None
 
 
+async def _search_corpus_turns(
+    query: str,
+    corpus_turn_store: Any,
+    domain: str | None = None,
+    limit: int = 8,
+    min_importance: float = 0.3,
+) -> list[dict]:
+    """Search corpus turns via FTS5 and return formatted source dicts."""
+    try:
+        from aip.orchestration.ask_pipeline import _sanitize_fts_query
+        fts_query = _sanitize_fts_query(query)
+    except Exception:
+        fts_query = query
+    turns = await corpus_turn_store.search(
+        query=fts_query,
+        primary_domain=domain,
+        min_importance=min_importance,
+        limit=limit,
+    )
+    return [
+        {
+            "source_id": f"corpus:{t.turn_id[:12]}",
+            "turn_id": t.turn_id,
+            "user_text": t.user_text,
+            "assistant_text": t.assistant_text,
+            "content_preview": t.searchable_text[:500],
+            "score": t.importance,
+            "domain": t.primary_domain,
+            "importance": t.importance,
+            "conversation_name": t.conversation_name or "",
+        }
+        for t in turns
+    ]
+
+
+def _assemble_corpus_context(source_dicts: list[dict]) -> str:
+    """Format corpus turns as Q/A pairs for model context."""
+    if not source_dicts:
+        return "No relevant corpus turns found."
+    parts: list[str] = []
+    for i, s in enumerate(source_dicts, 1):
+        domain = s.get("domain") or "unknown"
+        importance = float(s.get("importance") or 0.0)
+        conv_name = (s.get("conversation_name") or "")[:40]
+        user_text = (s.get("user_text") or "")[:200]
+        assistant_text = (s.get("assistant_text") or "")[:400]
+        parts.append(
+            f"[Source {i}: {domain} | importance:{importance:.2f} | {conv_name}]\n"
+            f"Q: {user_text}\n"
+            f"A: {assistant_text}"
+        )
+    return "\n\n".join(parts)
+
+
 @router.websocket("/chat/{session_id}")
 async def chat_websocket(websocket: WebSocket, session_id: str):
     """WebSocket chat endpoint with DEFINER gate handling and ModelSlotResolver routing.
@@ -140,10 +194,11 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         messages = []
                         response_sources = []  # Sources for augmented mode
 
-                        if session_mode == "augmented" and _container.lexical_store is not None:
-                            # === DEFINER PROFILE INJECTION (before Beast context advisory) ===
-                            # Injected first in augmented mode only, if enabled in config.
-                            # Graceful: missing/empty/disabled/error -> inject nothing, no crash.
+                        if session_mode == "augmented" and (
+                            _container.corpus_turn_store is not None
+                            or _container.lexical_store is not None
+                        ):
+                            # === 1. DEFINER PROFILE INJECTION ===
                             try:
                                 definer_cfg = getattr(_container, "config", {}) or {}
                                 dcfg = definer_cfg.get("definer", {}) if isinstance(definer_cfg, dict) else {}
@@ -159,17 +214,15 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                 logger.warning("definer_profile_injection_failed", error=str(exc))
 
                             # === AUGMENTED MODE: Retrieve sources + inject context ===
+                            # Order: DEFINER (done) → Wiki → Graph → Sources → Synthesis instruction
                             try:
                                 from aip.orchestration.ask_pipeline import (
                                     _search_sources,
                                     _assemble_context,
-                                    _sanitize_fts_query,
                                 )
 
                                 # Resolve domain from session or project
                                 domain = (session_meta or {}).get("domain")
-
-                                # If project_id is set, try to resolve domain from project store
                                 project_id = (session_meta or {}).get("project_id")
                                 if project_id and _container.project_store is not None:
                                     try:
@@ -179,51 +232,54 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                                 domain = p.get("domain") or domain
                                                 break
                                     except Exception:
-                                        logger.warning("project lookup failed", exc_info=True)
-                                        pass
+                                        logger.warning("project_lookup_failed", exc_info=True)
 
-                                # Retrieve relevant sources
-                                source_refs = await _search_sources(
-                                    query=content,
-                                    project_domain=domain,
-                                    source_filter="all",
-                                    lexical_store=_container.lexical_store,
-                                    vector_store=_container.vector_store,
-                                    embedding_provider=_container.embedding_provider,
-                                    max_sources=10,
-                                )
+                                # --- Primary: corpus turn retrieval ---
+                                corpus_turns_used = False
+                                source_dicts: list[dict] = []
+                                if _container.corpus_turn_store is not None:
+                                    source_dicts = await _search_corpus_turns(
+                                        query=content,
+                                        corpus_turn_store=_container.corpus_turn_store,
+                                        domain=domain,
+                                        limit=8,
+                                        min_importance=0.3,
+                                    )
+                                    if source_dicts:
+                                        corpus_turns_used = True
+                                    else:
+                                        logger.info(
+                                            "corpus_turn_search_empty_fallback",
+                                            query_len=len(content),
+                                            domain=domain,
+                                        )
 
-                                if source_refs:
-                                    # Assemble context and build source-grounded system prompt
-                                    context = _assemble_context(source_refs, max_sources=10)
+                                # --- Fallback: legacy lexical/vector store ---
+                                source_refs: list = []
+                                if not corpus_turns_used and _container.lexical_store is not None:
+                                    source_refs = await _search_sources(
+                                        query=content,
+                                        project_domain=domain,
+                                        source_filter="all",
+                                        lexical_store=_container.lexical_store,
+                                        vector_store=_container.vector_store,
+                                        embedding_provider=_container.embedding_provider,
+                                        max_sources=10,
+                                    )
 
-                                    # === GRAPH CONNECTIONS INJECTION ===
-                                    # Inject domain neighbors from knowledge graph (lightweight).
-                                    # Domain-level only; full PPR is Phase 3.
+                                # --- Determine active domain for wiki/graph ---
+                                if corpus_turns_used and source_dicts:
+                                    query_domain: str | None = source_dicts[0].get("domain") or domain
+                                elif source_refs:
+                                    query_domain = source_refs[0].domain
+                                else:
+                                    query_domain = domain
+
+                                has_sources = bool(source_dicts or source_refs)
+
+                                if has_sources:
+                                    # === 2. WIKI OVERVIEW INJECTION ===
                                     try:
-                                        gc_domain = source_refs[0].domain if source_refs else None
-                                        if gc_domain and _container.artifact_store is not None:
-                                            graph_neighbors = _get_graph_neighbors(gc_domain)
-                                            if graph_neighbors:
-                                                neighbors_str = ", ".join(graph_neighbors[:5])
-                                                messages.append({
-                                                    "role": "system",
-                                                    "content": (
-                                                        f"=== GRAPH CONNECTIONS ===\n"
-                                                        f"Domain '{gc_domain}' connects to: {neighbors_str}\n"
-                                                        f"These domains may provide relevant context.\n"
-                                                        f"=== END GRAPH CONNECTIONS ==="
-                                                    ),
-                                                })
-                                    except Exception as _graph_exc:
-                                        logger.debug("graph_neighbors_injection_failed", error=str(_graph_exc))
-
-                                    # === WIKI OVERVIEW INJECTION ===
-                                    # Inject APPROVED (or GENERATED draft) beast_wiki overview
-                                    # for the query domain, between profile and sources.
-                                    # Graceful: any failure skips silently.
-                                    try:
-                                        query_domain = source_refs[0].domain if source_refs else None
                                         if (
                                             query_domain
                                             and _container.artifact_store is not None
@@ -246,47 +302,82 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                     except Exception as _wiki_exc:
                                         logger.debug("wiki_overview_injection_failed", error=str(_wiki_exc))
 
+                                    # === 3. GRAPH CONNECTIONS INJECTION ===
+                                    try:
+                                        if query_domain:
+                                            graph_neighbors = _get_graph_neighbors(query_domain)
+                                            if graph_neighbors:
+                                                neighbors_str = ", ".join(graph_neighbors[:5])
+                                                messages.append({
+                                                    "role": "system",
+                                                    "content": (
+                                                        f"=== GRAPH CONNECTIONS ===\n"
+                                                        f"Domain '{query_domain}' connects to: {neighbors_str}\n"
+                                                        f"These domains may provide relevant context.\n"
+                                                        f"=== END GRAPH CONNECTIONS ==="
+                                                    ),
+                                                })
+                                    except Exception as _graph_exc:
+                                        logger.debug("graph_neighbors_injection_failed", error=str(_graph_exc))
+
+                                    # === 4. SOURCES INJECTION ===
+                                    if corpus_turns_used:
+                                        context = _assemble_corpus_context(source_dicts)
+                                        response_sources = [
+                                            {
+                                                "source_id": s["source_id"],
+                                                "source_type": "corpus_turn",
+                                                "title": (s["conversation_name"][:60] or s["domain"]),
+                                                "score": s["score"],
+                                                "content_snippet": (s.get("user_text") or s["content_preview"])[:200],
+                                                "domain": s["domain"],
+                                            }
+                                            for s in source_dicts
+                                        ]
+                                    else:
+                                        context = _assemble_context(source_refs, max_sources=10)
+                                        response_sources = [
+                                            {
+                                                "source_id": s.source_id,
+                                                "source_type": s.source_type,
+                                                "title": s.title,
+                                                "score": s.score,
+                                                "content_snippet": s.content_snippet,
+                                                "domain": s.domain,
+                                            }
+                                            for s in source_refs
+                                        ]
+
+                                    messages.append({
+                                        "role": "system",
+                                        "content": f"Corpus turns retrieved from knowledge base:\n\n{context}",
+                                    })
+
+                                    # === 5. SYNTHESIS INSTRUCTION (separate message) ===
                                     messages.append({
                                         "role": "system",
                                         "content": (
-                                            f"You are AIP, a source-grounded knowledge assistant. "
-                                            f"Answer the user's question based on the provided sources. "
-                                            f"Cite sources using [source: <source_id>] notation. "
-                                            f"If the sources do not contain enough information, say so explicitly.\n\n"
-                                            f"Sources:\n{context}"
+                                            "You are AIP, a source-grounded knowledge assistant for B. Moses Jorgensen. "
+                                            "Answer based on the provided corpus turns. "
+                                            "Cite sources using [source: turn_id] notation. "
+                                            "Draw on the DEFINER profile and domain context above. "
+                                            "If sources don't contain enough information, say so explicitly."
                                         ),
                                     })
-                                    # Store sources for the response payload
-                                    response_sources = [
-                                        {
-                                            "source_id": s.source_id,
-                                            "source_type": s.source_type,
-                                            "title": s.title,
-                                            "score": s.score,
-                                            "content_snippet": s.content_snippet,
-                                            "domain": s.domain,
-                                        }
-                                        for s in source_refs
-                                    ]
                                 else:
-                                    # No sources found — still add a note in system prompt
                                     messages.append({
                                         "role": "system",
                                         "content": (
-                                            "You are AIP, a knowledge assistant. "
+                                            "You are AIP, a knowledge assistant for B. Moses Jorgensen. "
                                             "No relevant sources were found in the knowledge base for this query. "
                                             "Answer based on your general knowledge but note that no source material was available."
                                         ),
                                     })
                             except Exception as exc:
-                                # Retrieval failed — fall back to normal mode behavior
-                                logger.warning(
-                                    "Augmented retrieval failed, falling back to normal",
-                                    error=str(exc),
-                                )
+                                logger.warning("augmented_retrieval_failed", error=str(exc))
                                 if session_meta and session_meta.get("role"):
                                     role_hint = session_meta.get("role", "")
-                                    if role_hint:  # only inject for explicit actor roles (plain chat uses role=None)
+                                    if role_hint:
                                         messages.append({
                                             "role": "system",
                                             "content": f"You are acting in the {role_hint} role. Respond accordingly.",
