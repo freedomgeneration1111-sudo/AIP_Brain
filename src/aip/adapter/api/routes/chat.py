@@ -207,7 +207,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                 definer_cfg = getattr(_container, "config", {}) or {}
                                 if not definer_cfg:
                                     definer_cfg = getattr(websocket.app.state, "raw_config", {}) or {}
-                                print(f"DEBUG chat route config keys: {list(definer_cfg.keys())[:10]}")
+                                logger.debug("chat_route_config", keys=list(definer_cfg.keys())[:10] if isinstance(definer_cfg, dict) else "not-a-dict")
                                 dcfg = definer_cfg.get("definer", {}) if isinstance(definer_cfg, dict) else {}
                                 if dcfg.get("inject_in_augmented_chat", True):
                                     dp = getattr(_container, "definer_profile", None)

@@ -1430,7 +1430,7 @@ def _build_chat_panel(
                 r = await state.api_client.augmented_ask(
                     query=prompt,
                     project_name=state.current_project,
-                    model_slot=get_role_model("synthesis") or "synthesis",
+                    model_slot="synthesis",  # Always pass slot name, not model ID
                 )
                 think.delete()
                 status = r.get("status", "")

@@ -162,7 +162,7 @@ class ModelSlotResolver(ModelProvider):
         if not isinstance(slot_cfg, dict):
             slot_cfg = {}
 
-        print(f"DEBUG slot_cfg for {slot_name}: {slot_cfg}")
+        log.debug("slot_config_resolved", slot=slot_name, has_cfg=bool(slot_cfg), cfg_keys=list(slot_cfg.keys()) if isinstance(slot_cfg, dict) else [])
 
         env_prefix = f"AIP_{slot_name.upper()}_"
 
@@ -237,6 +237,25 @@ class ModelSlotResolver(ModelProvider):
         On provider failure, returns an error dict with content set to an
         error message and error=True, rather than raising.
         """
+        # Guard: reject unknown slot names early with a clear error.
+        # A slot name like "meta-llama/llama-4-maverick" is a model ID,
+        # not a slot — the caller likely passed the model ID by mistake.
+        if slot_name not in self._models or not isinstance(self._models.get(slot_name), dict):
+            known = [k for k, v in self._models.items() if isinstance(v, dict)]
+            return {
+                "content": "",
+                "model": slot_name,
+                "usage": {},
+                "latency_ms": 0,
+                "cost_usd": 0.0,
+                "error": True,
+                "error_message": (
+                    f"Unknown model slot '{slot_name}'. "
+                    f"Did you pass a model ID instead of a slot name? "
+                    f"Known slots: {known}"
+                ),
+            }
+
         resolved = self._resolve_slot_config(slot_name)
         provider = resolved["provider"]
         model = resolved["model"]
@@ -253,6 +272,24 @@ class ModelSlotResolver(ModelProvider):
                 "usage": {"prompt_tokens": len(prompt) // 4, "completion_tokens": 50},
                 "latency_ms": 5,
                 "cost_usd": 0.0,
+            }
+
+        # Guard: refuse to send sentinel model names (e.g. "<synthesis>") to any API.
+        # These are placeholder defaults from _resolve_slot_config when a slot has
+        # no model configured — they are never valid API model identifiers.
+        if model.startswith("<") and model.endswith(">"):
+            return {
+                "content": "",
+                "model": model,
+                "usage": {},
+                "latency_ms": 0,
+                "cost_usd": 0.0,
+                "error": True,
+                "error_message": (
+                    f"Slot '{slot_name}' has no model configured (resolved to sentinel '{model}'). "
+                    f"Set a model via config/aip.config.toml [models.{slot_name}] or "
+                    f"the AIP_{slot_name.upper()}_MODEL environment variable."
+                ),
             }
 
         # Real dispatch
