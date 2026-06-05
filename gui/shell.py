@@ -1566,17 +1566,11 @@ async def main_page() -> None:
     async def _deferred_backend_load() -> None:
         """Load backend health + slots + project after the page has rendered.
 
-        Also shows the API key prompt if needed — deferred so it does not
-        block NiceGUI's page rendering (which causes 'Response for / not
-        ready after 3.0 seconds' if the dialog takes too long).
+        Also checks API key status via the backend endpoint and shows
+        the prompt if needed — deferred so it does not block NiceGUI's
+        page rendering.
         """
         nonlocal backend_status
-        # API key prompt — deferred so page renders first
-        if not state.api_client.has_openrouter_api_key():
-            key = await _show_api_key_prompt()
-            if key:
-                state.api_client.set_openrouter_api_key(key)
-                ui.notify("API key saved!", color="positive", position="top")
         bs = await check_backend_health(state)
         loaded_slots = await load_model_slots(state)
         for s in loaded_slots:
@@ -1598,6 +1592,37 @@ async def main_page() -> None:
                 log.warning("no projects found — augmented ask will show guidance")
         except Exception as exc:
             log.warning("failed to list projects: %s", exc)
+        # Check API key status via backend endpoint (not just local env var)
+        # This catches keys configured in TOML or .env that the backend
+        # picks up but the GUI process doesn't see locally.
+        try:
+            key_status = await state.api_client.check_api_key_status()
+            if key_status.get("has_any_key"):
+                # Backend has a key — propagate to local state so
+                # has_openrouter_api_key() returns True for UI checks.
+                # Read the actual key from env (set by backend's .env loader).
+                if not state.api_client.has_openrouter_api_key():
+                    # Backend has the key but GUI doesn't know it locally.
+                    # The backend's dotenv loader set AIP_OPENAI_API_KEY in the
+                    # backend process, but our process may not have it.
+                    # Set a flag so the UI knows a key exists server-side.
+                    state.api_client._openrouter_api_key = "__backend_configured__"
+                log.info("api key status: backend has key (slots=%s)", key_status.get("slots"))
+            else:
+                log.warning("api key status: no key configured on backend")
+                # No key anywhere — show the prompt
+                key = await _show_api_key_prompt()
+                if key:
+                    state.api_client.set_openrouter_api_key(key)
+                    ui.notify("API key saved!", color="positive", position="top")
+        except Exception as exc:
+            log.warning("failed to check api key status: %s", exc)
+            # Fallback: check locally (env var)
+            if not state.api_client.has_openrouter_api_key():
+                key = await _show_api_key_prompt()
+                if key:
+                    state.api_client.set_openrouter_api_key(key)
+                    ui.notify("API key saved!", color="positive", position="top")
         # Update footer label with backend status
         try:
             budget_lbl.text = bs

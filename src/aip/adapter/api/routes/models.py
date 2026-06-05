@@ -36,6 +36,43 @@ class ModelOverrideRequest(BaseModel):
     api_key: str | None = None
 
 
+@router.get("/models/api_key_status")
+async def api_key_status(container: AipContainer = Depends(get_container)):
+    """Check whether the backend has a valid API key configured.
+
+    The GUI calls this on startup to determine if it should show the
+    API key prompt. This checks the actual resolved configuration
+    (env vars + TOML config), not just a local env var.
+
+    Returns per-slot has_key status and a global has_any_key flag.
+    """
+    model_provider = container.model_provider
+    if model_provider is None:
+        return {"has_any_key": False, "slots": {}}
+
+    result: dict[str, Any] = {"has_any_key": False, "slots": {}}
+    try:
+        slot_names = model_provider.list_slots()
+    except Exception:
+        slot_names = []
+
+    for slot_name in slot_names:
+        try:
+            resolved = model_provider._resolve_slot_config(slot_name)
+            api_key = resolved.get("api_key")
+            has_key = api_key is not None and len(str(api_key).strip()) > 0
+            result["slots"][slot_name] = {
+                "has_key": has_key,
+                "provider": resolved.get("provider", "unknown"),
+            }
+            if has_key:
+                result["has_any_key"] = True
+        except Exception:
+            result["slots"][slot_name] = {"has_key": False, "provider": "unknown"}
+
+    return result
+
+
 @router.get("/models/slots")
 async def list_model_slots(container: AipContainer = Depends(get_container)):
     """List all configured model slots with resolved provider and model info.

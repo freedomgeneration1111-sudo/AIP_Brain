@@ -89,6 +89,24 @@ class AipApiClient:
         except Exception:
             return False
 
+    async def check_api_key_status(self) -> dict[str, Any]:
+        """Check whether the backend has a valid API key configured.
+
+        Calls GET /api/v1/models/api_key_status which inspects the
+        actual resolved configuration (env vars + TOML config) on the
+        backend, not just the local process env var.
+
+        Returns dict with 'has_any_key' (bool) and 'slots' (dict of
+        slot_name -> {has_key, provider}).
+        """
+        client = self._get_http_client()
+        resp = await client.get(
+            f"{self.base_url}/api/v1/models/api_key_status",
+            timeout=5.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     # ------------------------------------------------------------------
     # Model Slots
     # ------------------------------------------------------------------
