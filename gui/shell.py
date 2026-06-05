@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from nicegui import context, ui
+from nicegui import app, context, ui
 from gui.api_client import get_api_client, AipApiClient
 
 log = logging.getLogger("gui.shell")
@@ -177,6 +177,32 @@ async def check_backend_health(state: GuiState) -> str:
     except Exception:
         state.backend_reachable = False
         return "backend unreachable"
+
+
+async def check_backend() -> None:
+    """Non-blocking background health check — registered via app.on_startup.
+
+    Runs in the event loop without blocking NiceGUI page rendering.
+    Retries up to 10 times with 3-second intervals.
+    """
+    import httpx
+    state = get_state()
+    for _ in range(10):
+        try:
+            async with httpx.AsyncClient() as client:
+                r = await client.get(
+                    "http://127.0.0.1:8000/api/v1/health",
+                    timeout=2,
+                )
+                if r.status_code == 200:
+                    state.backend_reachable = True
+                    log.info("backend health check: OK")
+                    return
+        except Exception:
+            pass
+        await asyncio.sleep(3)
+    state.backend_reachable = False
+    log.warning("backend health check: unreachable after 10 attempts")
 
 
 async def load_model_slots(state: GuiState) -> list:
@@ -1350,14 +1376,33 @@ async def main_page() -> None:
             state.api_client.set_openrouter_api_key(key)
             ui.notify("API key saved!", color="positive", position="top")
 
-    # Backend load — hard-capped at 4 s
-    backend_status = await check_backend_health(state)
-    slots = await load_model_slots(state)
-    for s in slots:
-        sn, m = s.get("slot_name"), s.get("model")
-        if sn and m and not str(m).startswith("<"):
-            _role_models[sn] = m
+    # Non-blocking: render shell immediately, load backend data in background
+    backend_status = "connecting..."
+    slots: list = []
     opts = build_model_options(slots)
+
+    async def _deferred_backend_load() -> None:
+        """Load backend health + slots after the page has rendered."""
+        nonlocal backend_status
+        bs = await check_backend_health(state)
+        loaded_slots = await load_model_slots(state)
+        for s in loaded_slots:
+            sn, m = s.get("slot_name"), s.get("model")
+            if sn and m and not str(m).startswith("<"):
+                _role_models[sn] = m
+        state.available_slots = loaded_slots
+        # Update footer label with backend status
+        try:
+            budget_lbl.text = bs
+            dot_color = C_OK_FG if state.backend_reachable else C_ERR_FG
+            status_dot.set_content(
+                f'<span style="display:inline-block;width:6px;height:6px;'
+                f'border-radius:50%;background:{dot_color};"></span>'
+            )
+        except Exception:
+            pass
+
+    asyncio.create_task(_deferred_backend_load())
 
     def _on_tab(name: str) -> None:
         if name == "augmented" and state.current_mode != "augmented":
@@ -1431,7 +1476,7 @@ async def main_page() -> None:
         "padding:3px 12px;min-height:26px;"
     ):
         with ui.row().classes("w-full items-center gap-3"):
-            ui.html(
+            status_dot = ui.html(
                 f'<span style="display:inline-block;width:6px;height:6px;'
                 f'border-radius:50%;background:{C_INK60};"></span>'
             )
@@ -1445,5 +1490,8 @@ async def main_page() -> None:
 
     asyncio.create_task(refresh_budget_status(budget_lbl, state))
 
+
+# Register non-blocking backend health check on app startup
+app.on_startup(check_backend)
 
 ui.run(title="AIP_Brain", port=8080, reload=True)
