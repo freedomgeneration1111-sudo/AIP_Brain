@@ -1558,21 +1558,25 @@ async def main_page() -> None:
         f".q-tabs__arrow{{color:{C_INK60}}}</style>"
     )
 
-    # API key check — blocking prompt if missing
-    if not state.api_client.has_openrouter_api_key():
-        key = await _show_api_key_prompt()
-        if key:
-            state.api_client.set_openrouter_api_key(key)
-            ui.notify("API key saved!", color="positive", position="top")
-
-    # Non-blocking: render shell immediately, load backend data in background
+    # Non-blocking: render shell immediately, defer API key prompt + backend load
     backend_status = "connecting..."
     slots: list = []
     opts = build_model_options(slots)
 
     async def _deferred_backend_load() -> None:
-        """Load backend health + slots + project after the page has rendered."""
+        """Load backend health + slots + project after the page has rendered.
+
+        Also shows the API key prompt if needed — deferred so it does not
+        block NiceGUI's page rendering (which causes 'Response for / not
+        ready after 3.0 seconds' if the dialog takes too long).
+        """
         nonlocal backend_status
+        # API key prompt — deferred so page renders first
+        if not state.api_client.has_openrouter_api_key():
+            key = await _show_api_key_prompt()
+            if key:
+                state.api_client.set_openrouter_api_key(key)
+                ui.notify("API key saved!", color="positive", position="top")
         bs = await check_backend_health(state)
         loaded_slots = await load_model_slots(state)
         for s in loaded_slots:
