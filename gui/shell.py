@@ -718,6 +718,201 @@ def _build_corpus_panel(state: GuiState) -> None:
     asyncio.create_task(_load())
 
 
+# ── WIKI PANEL ───────────────────────────────────────────────────────
+
+def _build_wiki_panel(state: GuiState) -> None:
+    """WIKI tab — two-pane domain navigator + article reader."""
+
+    with ui.row().classes("w-full").style(
+        f"flex:1;min-height:0;background:{C_GROUND};"
+    ):
+        # ── LEFT PANE — domain navigator ──
+        with ui.column().style(
+            f"width:260px;min-width:260px;background:{C_SURFACE};"
+            f"border-right:1px solid {C_INK40};overflow-y:auto;padding:8px 0;"
+        ):
+            with ui.row().classes("w-full items-center px-3 py-2 gap-2"):
+                ui.label("DOMAINS").style(
+                    f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};"
+                )
+                ui.space()
+                refresh_btn = ui.button(icon="refresh").props("dense flat round").style(
+                    f"color:{C_MUTED};"
+                )
+
+            search_inp = ui.input(placeholder="search…").props("dense borderless").style(
+                f"font-size:11px;color:{C_CREAM};background:{C_RAISED};"
+                f"border:.5px solid {C_INK40};border-radius:3px;"
+                "padding:2px 8px;margin:0 8px;width:calc(100% - 16px);"
+            )
+
+            domain_list = ui.column().classes("w-full").style("padding:4px 0;")
+
+        # ── RIGHT PANE — article reader ──
+        reader = ui.column().classes("flex-1 px-5 py-4").style(
+            f"overflow-y:auto;background:{C_GROUND};min-height:0;"
+        )
+        with reader:
+            ui.label("Select a domain to view articles.").style(
+                f"color:{C_MUTED};font-size:12px;"
+            )
+
+    # State: all knowledge items, current domain filter
+    _all_items: list[dict] = []
+    _current_domain: list[str] = [""]
+
+    def _render_domain_list(filter_text: str = "") -> None:
+        domain_list.clear()
+        by_domain: dict[str, list] = {}
+        for item in _all_items:
+            d = item.get("domain", "—") or "—"
+            by_domain.setdefault(d, []).append(item)
+
+        for domain, items in sorted(by_domain.items()):
+            if filter_text and filter_text.lower() not in domain.lower():
+                continue
+            approved = sum(1 for i in items if i.get("state") == "APPROVED")
+            pending = sum(1 for i in items if i.get("state") == "GENERATED")
+            count_text = f"{len(items)} article{'s' if len(items) != 1 else ''}"
+            badge = "✅" if approved == len(items) and len(items) > 0 else ("⏳" if pending > 0 else "")
+
+            active = _current_domain[0] == domain
+            bg = C_RAISED if active else "transparent"
+
+            with domain_list:
+                with ui.row().classes("w-full items-center px-3 py-2 gap-1").style(
+                    f"cursor:pointer;background:{bg};"
+                    f"border-left:2px solid {'#B8935A' if active else 'transparent'};"
+                ).on("click", lambda d=domain: _show_domain(d)):
+                    ui.label(domain).style(
+                        f"font-size:11px;color:{C_AMBER if active else C_CREAM};"
+                        "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                    )
+                    ui.label(badge + " " + count_text).style(
+                        f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};"
+                        "white-space:nowrap;"
+                    )
+
+    def _show_domain(domain: str) -> None:
+        _current_domain[0] = domain
+        _render_domain_list()
+        reader.clear()
+        domain_items = [i for i in _all_items if i.get("domain") == domain]
+        if not domain_items:
+            with reader:
+                ui.label(f"No articles for {domain}.").style(
+                    f"color:{C_MUTED};font-size:12px;"
+                )
+            return
+        with reader:
+            ui.label(domain).style(
+                f"font-family:{F_SERIF};font-size:20px;font-weight:700;"
+                f"color:{C_CREAM};margin-bottom:4px;"
+            )
+            for item in domain_items:
+                _render_article_card(item)
+
+    def _render_article_card(item: dict) -> None:
+        kid = item.get("knowledge_id") or item.get("id", "")
+        st = item.get("state", "")
+        content_text = item.get("content", "") or ""
+        created = item.get("created_at", "")[:10] if item.get("created_at") else "—"
+        approved_at = item.get("approved_at", "")[:10] if item.get("approved_at") else "—"
+        word_count = len(content_text.split()) if content_text else 0
+
+        expanded_state: list[bool] = [False]
+
+        with ui.card().classes("w-full").style(
+            f"background:{C_SURFACE};border:1px solid {C_INK40};"
+            "border-radius:4px;padding:0;margin-bottom:12px;"
+        ):
+            with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(
+                f"border-bottom:.5px solid {C_INK40};"
+            ):
+                st_color = C_OK_FG if st == "APPROVED" else C_WARN_FG
+                ui.label(st or "—").style(
+                    f"font-size:9px;background:{C_OK_BG if st == 'APPROVED' else C_WARN_BG};"
+                    f"color:{st_color};padding:1px 6px;border-radius:3px;"
+                    "font-family:{F_MONO};font-weight:700;"
+                )
+                uid_short = (kid[:24] + "…") if len(kid) > 24 else kid
+                ui.label(uid_short).style(
+                    f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};"
+                )
+                ui.space()
+                ui.label(f"{word_count} words").style(
+                    f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};"
+                )
+
+            preview_col = ui.column().classes("w-full px-3 py-2")
+            with preview_col:
+                preview = (content_text[:300] + "…") if len(content_text) > 300 else content_text
+                ui.label(preview or "(empty)").style(
+                    f"font-size:12px;color:{C_CREAM};line-height:1.5;"
+                )
+
+            full_col = ui.column().classes("w-full px-3 py-2").style("display:none;")
+            with full_col:
+                ui.markdown(content_text or "(no content)").style(
+                    f"font-size:13px;color:{C_CREAM};line-height:1.7;"
+                )
+
+            with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(
+                f"border-top:.5px solid {C_INK40};"
+            ):
+                ui.label(
+                    f"generated: {created}"
+                    + (f"  ·  approved: {approved_at}" if st == "APPROVED" else "")
+                ).style(f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};")
+                ui.space()
+                expand_btn = ui.button("EXPAND ↓").props("dense flat").style(
+                    f"color:{C_MUTED};font-size:10px;"
+                )
+
+            def _toggle(fc=full_col, pc=preview_col, es=expanded_state, btn=expand_btn) -> None:
+                es[0] = not es[0]
+                if es[0]:
+                    fc.style("display:block;")
+                    pc.style("display:none;")
+                    btn.text = "COLLAPSE ↑"
+                else:
+                    fc.style("display:none;")
+                    pc.style("display:block;")
+                    btn.text = "EXPAND ↓"
+
+            expand_btn.on("click", _toggle)
+
+    async def _load() -> None:
+        domain_list.clear()
+        reader.clear()
+        _all_items.clear()
+        _current_domain[0] = ""
+
+        with domain_list:
+            ui.label("Loading…").style(
+                f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};padding:8px;"
+            )
+
+        result = await state.api_client.list_knowledge()
+        if isinstance(result, dict):
+            _all_items.extend(result.get("items", []))
+
+        _render_domain_list()
+        with reader:
+            if _all_items:
+                ui.label("Select a domain.").style(
+                    f"color:{C_MUTED};font-size:12px;"
+                )
+            else:
+                ui.label("No knowledge articles yet.").style(
+                    f"color:{C_MUTED};font-size:12px;"
+                )
+
+    search_inp.on("keyup", lambda e: _render_domain_list(search_inp.value))
+    refresh_btn.on("click", lambda: asyncio.create_task(_load()))
+    asyncio.create_task(_load())
+
+
 # ── CHAT PANEL ────────────────────────────────────────────────────────
 
 def _build_chat_panel(
@@ -933,9 +1128,7 @@ async def main_page() -> None:
         with ui.tab_panel("review"):
             _build_review_panel(state)
         with ui.tab_panel("wiki"):
-            ui.label("WIKI — stage 0C").style(
-                f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
-            )
+            _build_wiki_panel(state)
         with ui.tab_panel("corpus"):
             _build_corpus_panel(state)
         with ui.tab_panel("graph"):
