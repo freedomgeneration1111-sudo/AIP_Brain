@@ -338,6 +338,146 @@ def corpus_tag_cmd(limit: int, retag: bool, db_path: str | None) -> None:
         sys.exit(1)
 
 
+@corpus.command("wiki")
+@click.option("--domain", default=None, help="Generate wiki for one specific domain.")
+@click.option("--force", is_flag=True, default=False, help="Regenerate even if wiki exists and is recent.")
+@click.option("--all", "all_domains", is_flag=True, default=False, help="Generate for all domains (default if no --domain).")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
+def corpus_wiki_cmd(domain: str | None, force: bool, all_domains: bool, db_path: str | None) -> None:
+    """Generate domain wiki articles from tagged corpus turns.
+
+    Beast generates one wiki article per active domain using top-importance
+    tagged turns as evidence. Articles go into GENERATED state for DEFINER
+    review before becoming canonical.
+
+    Examples:
+      uv run aip corpus wiki --domain aip
+      uv run aip corpus wiki --domain theology_research --force
+      uv run aip corpus wiki --all
+    """
+    resolved_db_path = db_path or get_default_db_path()
+
+    async def _run_wiki():
+        import tomllib
+        from pathlib import Path
+        from typing import Any
+
+        from aip.adapter.model_slot_resolver import ModelSlotResolver
+        from aip.foundation.schemas import BeastCadenceConfig
+        from aip.orchestration.actors.beast import Beast
+
+        cfg: dict = {}
+        config_p = Path("config/aip.config.toml")
+        if config_p.exists():
+            with open(config_p, "rb") as f:
+                cfg = tomllib.load(f)
+
+        resolver = None
+        try:
+            resolver = ModelSlotResolver(cfg)
+            bslot = cfg.get("models", {}).get("beast", {}) if isinstance(cfg.get("models"), dict) else {}
+            if not (isinstance(bslot, dict) and bslot.get("provider") and bslot.get("model")):
+                resolver = None
+        except Exception as exc:
+            click.echo(f"Warning: beast slot resolver failed ({exc})", err=True)
+            resolver = None
+
+        if resolver is None:
+            click.echo(
+                "No [models.beast] slot with model configured. "
+                "Wiki generation requires a beast LLM. Configure and retry.",
+                err=True,
+            )
+            sys.exit(1)
+
+        cts = CorpusTurnStore(db_path=resolved_db_path)
+        await cts.initialize()
+
+        arts = None
+        if VersionedArtifactStore is not None:
+            try:
+                arts = VersionedArtifactStore(db_path=resolved_db_path)
+                await arts.initialize()
+            except Exception:
+                arts = None
+
+        ecs = None
+        if PersistentEcsStore is not None:
+            try:
+                ecs = PersistentEcsStore(db_path=resolved_db_path, event_store=None)
+                await ecs.initialize()
+            except Exception:
+                ecs = None
+
+        class _DummyVectorStore:
+            async def health_check(self) -> dict:
+                return {"connected": True}
+            async def list_stale_vectors(self, **kwargs: Any) -> list[dict]:
+                return []
+            async def upsert(self, **kwargs: Any) -> None:
+                return None
+
+        class _DummyEmbeddingProvider:
+            async def embed(self, text: str) -> list[float]:
+                return [0.0] * 8
+
+        bconf_dict = cfg.get("beast", {}) if isinstance(cfg.get("beast"), dict) else {}
+        bconf = BeastCadenceConfig(
+            **{k: v for k, v in bconf_dict.items() if k in BeastCadenceConfig.__dataclass_fields__}
+        )
+
+        beast = Beast(
+            config=bconf,
+            vector_store=_DummyVectorStore(),
+            embedding_provider=_DummyEmbeddingProvider(),
+            beast_provider=resolver,
+            artifact_store=arts,
+            ecs_store=ecs,
+            corpus_turn_store=cts,
+        )
+
+        try:
+            force_domains = [domain] if domain else None
+            # CLI --all or no --domain: no cap
+            max_per = 9999 if (all_domains or domain is None) else 1
+
+            if force:
+                # Pass force_domains even for --all to trigger force logic
+                if force_domains is None:
+                    # Load registry to get all domain ids
+                    try:
+                        from aip.orchestration.actors.domain_registry import load_registry
+                        reg = load_registry("docs/beast_domain_registry_v1.md")
+                        excluded = {"quarantine", "unclassified"}
+                        force_domains = [d for d in reg.get_domain_ids() if d not in excluded]
+                    except Exception:
+                        pass  # will still work; force handled inside _run_wiki_generation
+
+            stats = await beast._run_wiki_generation(
+                force_domains=force_domains if force else (force_domains),
+                max_per_cycle=max_per,
+            )
+
+            gen_n = stats.get("domains_generated", 0)
+            skip_n = stats.get("domains_skipped", 0)
+            err_n = stats.get("errors", 0)
+            click.echo(f"Generated {gen_n} wiki articles. {skip_n} skipped (recent).")
+            if err_n:
+                click.echo(f"Errors: {err_n}", err=True)
+            if stats.get("skipped"):
+                click.echo(f"Skipped reason: {stats['skipped']}")
+        finally:
+            await cts.close()
+
+    try:
+        asyncio.run(_run_wiki())
+    except SystemExit:
+        raise
+    except Exception as exc:
+        click.echo(f"Error during wiki generation: {exc}", err=True)
+        sys.exit(1)
+
+
 @corpus.command("clear-vectors")
 @click.option(
     "--confirm",

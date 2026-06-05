@@ -260,6 +260,71 @@ def status() -> None:
     except Exception as exc:
         click.echo(f"corpus_turns: not initialized or error ({exc})")
 
+    # --- Wiki articles (beast_wiki artifacts) ---
+    try:
+        main_db_for_wiki = get_default_db_path()
+        if Path(main_db_for_wiki).exists():
+            conn_w = sqlite3.connect(f"file:{main_db_for_wiki}?mode=ro", uri=True)
+            try:
+                # Load active domains from registry to compute "domains without wiki"
+                active_domains: list[str] = []
+                try:
+                    import sys as _sys
+                    _sys.path.insert(0, "src")
+                    from aip.orchestration.actors.domain_registry import load_registry as _load_reg
+                    _reg = _load_reg("docs/beast_domain_registry_v1.md")
+                    _excluded = {"quarantine", "unclassified"}
+                    active_domains = [d for d in _reg.get_domain_ids() if d not in _excluded]
+                except Exception:
+                    pass
+
+                # Count beast_wiki artifacts
+                total_wiki = conn_w.execute(
+                    "SELECT COUNT(*) FROM artifacts WHERE metadata_json LIKE '%\"artifact_type\": \"beast_wiki\"%'"
+                ).fetchone()[0] or 0
+
+                # Per state counts require ECS — approximate from latest version metadata
+                # Use the ecs_transitions table if available
+                approved_wiki = 0
+                generated_wiki = 0
+                try:
+                    # ecs_transitions: artifact_id, from_state, to_state
+                    ecs_rows = conn_w.execute(
+                        "SELECT artifact_id, to_state FROM ecs_transitions "
+                        "WHERE artifact_id LIKE 'beast:wiki:%' ORDER BY id DESC"
+                    ).fetchall()
+                    # For each artifact, take last transition
+                    last_state: dict[str, str] = {}
+                    for aid, to_st in ecs_rows:
+                        if aid not in last_state:
+                            last_state[aid] = to_st
+                    approved_wiki = sum(1 for s in last_state.values() if s == "APPROVED")
+                    generated_wiki = sum(1 for s in last_state.values() if s == "GENERATED")
+                except Exception:
+                    pass
+
+                # Domains with any wiki (GENERATED or APPROVED)
+                wiki_domain_rows = conn_w.execute(
+                    "SELECT DISTINCT json_extract(metadata_json, '$.domain') "
+                    "FROM artifacts WHERE metadata_json LIKE '%\"artifact_type\": \"beast_wiki\"%'"
+                ).fetchall()
+                domains_with_wiki = {r[0] for r in wiki_domain_rows if r[0]}
+                domains_without = sorted([d for d in active_domains if d not in domains_with_wiki])
+
+                click.echo("wiki_articles:")
+                click.echo(f"  total_domains: {len(active_domains)}")
+                click.echo(f"  articles_generated: {total_wiki} (GENERATED + APPROVED)")
+                click.echo(f"  articles_approved: {approved_wiki} (APPROVED only)")
+                click.echo(f"  articles_pending_review: {generated_wiki} (GENERATED only)")
+                if domains_without:
+                    click.echo(f"  domains_without_wiki: {domains_without}")
+                else:
+                    click.echo("  domains_without_wiki: (all domains have at least one wiki article)")
+            finally:
+                conn_w.close()
+    except Exception as exc:
+        click.echo(f"wiki_articles: error ({exc})")
+
     # --- Summary ---
     click.echo(f"\nDatabases: {db_found}/{len(expected_dbs)} found, {db_total_rows} total rows")
     if db_found == 0:

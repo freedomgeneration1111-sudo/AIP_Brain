@@ -512,6 +512,20 @@ class Beast:
                 log.error("beast_embedding_failed", error=str(exc))
                 embedding_stats = {"error": str(exc)}
 
+        # Wiki generation: domain-level articles from tagged corpus turns.
+        # Cap 5 per background cycle. CLI --all bypasses cap.
+        wiki_stats: dict = {}
+        if (
+            self._beast_provider is not None
+            and getattr(self, "_corpus_turns", None) is not None
+            and self._artifacts is not None
+        ):
+            try:
+                wiki_stats = await self._run_wiki_generation(max_per_cycle=5)
+            except Exception as exc:
+                log.error("beast_wiki_generation_failed", error=str(exc))
+                wiki_stats = {"error": str(exc)}
+
         elapsed = time.monotonic() - cycle_start
         self._last_cycle_time = time.time()
 
@@ -523,6 +537,7 @@ class Beast:
             "summaries": summary_stats,
             "tagging": tagging_stats,
             "embedding": embedding_stats,
+            "wiki": wiki_stats,
             "cycle_elapsed_seconds": round(elapsed, 3),
             "last_cycle_time": self._last_cycle_time,
         }
@@ -1311,6 +1326,434 @@ Example response structure:
             "failed": failed,
             "skipped": skipped,
         }
+
+    # ------------------------------------------------------------------
+    # Wiki generation (domain-level articles from tagged corpus)
+    # ------------------------------------------------------------------
+
+    _WIKI_EXCLUDED_DOMAINS = frozenset({"quarantine", "unclassified"})
+    _WIKI_WORD_THRESHOLD = 200_000
+
+    async def _run_wiki_generation(
+        self,
+        force_domains: list[str] | None = None,
+        max_per_cycle: int = 5,
+    ) -> dict:
+        """Generate domain wiki articles from tagged corpus turns.
+
+        For each active domain: checks whether generation is needed
+        (no wiki exists OR >200k new words since last wiki), then calls
+        beast_provider with the wiki prompt, and writes a GENERATED artifact.
+
+        max_per_cycle: cap for background cycle use (5). CLI uses 9999.
+        force_domains: if set, only generate for those domains (ignores threshold).
+        """
+        if self._beast_provider is None or self._artifacts is None or self._corpus_turns is None:
+            return {"skipped": "missing_provider_or_artifact_store_or_corpus_turns"}
+
+        try:
+            from .domain_registry import load_registry
+            registry = load_registry("docs/beast_domain_registry_v1.md")
+        except Exception as exc:
+            log.warning("beast_wiki_skipped_no_registry", error=str(exc))
+            return {"skipped": "registry_not_found", "error": str(exc)}
+
+        active_domains = [
+            d for d in registry.get_domain_ids()
+            if d not in self._WIKI_EXCLUDED_DOMAINS
+        ]
+        if force_domains is not None:
+            active_domains = [d for d in active_domains if d in force_domains]
+
+        db_path = getattr(self._corpus_turns, "_db_path", None)
+        generated = 0
+        skipped = 0
+        errors = 0
+        domains_generated: list[str] = []
+        domains_skipped: list[str] = []
+        cycle_num = int(time.time())
+
+        for domain_id in active_domains:
+            if force_domains is None and generated >= max_per_cycle:
+                break
+
+            domain_entry = registry.get_domain(domain_id)
+            if domain_entry is None:
+                continue
+
+            force_this = force_domains is not None
+
+            needs_gen, last_wiki_ts = await self._wiki_needs_generation(domain_id, force=force_this)
+            if not needs_gen:
+                skipped += 1
+                domains_skipped.append(domain_id)
+                continue
+
+            domain_data = await self._get_wiki_domain_data(domain_id, db_path, last_wiki_ts)
+
+            if domain_data["total_turns"] == 0:
+                skipped += 1
+                domains_skipped.append(domain_id)
+                log.info("beast_wiki_skipped_no_turns", domain=domain_id)
+                continue
+
+            try:
+                print(f"Generating wiki for {domain_id}...")
+            except Exception:
+                pass
+
+            try:
+                wiki_content = await self._call_beast_for_wiki(domain_id, domain_entry, domain_data)
+            except Exception as exc:
+                log.error("beast_wiki_llm_failed", domain=domain_id, error=str(exc))
+                errors += 1
+                continue
+
+            if not wiki_content:
+                errors += 1
+                continue
+
+            aid = await self._write_wiki_artifact(domain_id, domain_entry, wiki_content, domain_data, cycle_num)
+            if aid:
+                generated += 1
+                domains_generated.append(domain_id)
+                wc = len(wiki_content.split())
+                log.info("beast_wiki_generated", domain=domain_id, word_count=wc, artifact=aid)
+                try:
+                    print(f"Generated wiki article for {domain_id}: {wc} words")
+                except Exception:
+                    pass
+            else:
+                errors += 1
+
+        await self._emit_event(
+            event_type="beast_wiki_cycle_complete",
+            artifact_id="system",
+            metadata={
+                "domains_generated": domains_generated,
+                "domains_skipped": domains_skipped,
+                "domains_generated_count": generated,
+                "domains_skipped_count": skipped,
+                "errors": errors,
+                "cycle": cycle_num,
+            },
+        )
+
+        return {
+            "domains_generated": generated,
+            "domains_skipped": skipped,
+            "errors": errors,
+            "domains_generated_list": domains_generated,
+        }
+
+    async def _wiki_needs_generation(self, domain_id: str, force: bool = False) -> tuple[bool, str | None]:
+        """Return (needs_generation, last_wiki_created_at_or_None).
+
+        Checks artifact store for any existing beast_wiki for this domain.
+        If none: needs generation. If force: always generate.
+        If exists: check word count since last wiki (>200k threshold).
+        """
+        last_wiki_ts: str | None = None
+        try:
+            arts = await self._artifacts.list_artifacts_by_metadata(
+                key="artifact_type", value="beast_wiki", limit=200
+            )
+            domain_arts = [
+                a for a in arts
+                if (a.get("metadata", {}) or {}).get("domain") == domain_id
+            ]
+            if domain_arts:
+                domain_arts.sort(key=lambda a: a.get("created_at", ""), reverse=True)
+                last_wiki_ts = domain_arts[0].get("created_at", "")
+        except Exception as exc:
+            log.warning("beast_wiki_lookup_failed", domain=domain_id, error=str(exc))
+
+        if force:
+            return True, last_wiki_ts
+
+        if last_wiki_ts is None:
+            return True, None
+
+        # Count new words since last wiki
+        if not hasattr(self._corpus_turns, "_db_path"):
+            return False, last_wiki_ts
+        try:
+            import sqlite3
+            db_path = getattr(self._corpus_turns, "_db_path", None)
+            if not db_path:
+                return False, last_wiki_ts
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            try:
+                row = conn.execute(
+                    "SELECT COALESCE(SUM(word_count), 0) FROM corpus_turns "
+                    "WHERE primary_domain = ? AND tagging_version > 0 AND updated_at >= ?",
+                    (domain_id, last_wiki_ts),
+                ).fetchone()
+                new_words = int(row[0]) if row else 0
+            finally:
+                conn.close()
+            return new_words >= self._WIKI_WORD_THRESHOLD, last_wiki_ts
+        except Exception as exc:
+            log.warning("beast_wiki_word_count_failed", domain=domain_id, error=str(exc))
+            return False, last_wiki_ts
+
+    async def _get_wiki_domain_data(
+        self, domain_id: str, db_path: str | None, last_wiki_ts: str | None
+    ) -> dict:
+        """Gather domain statistics and sample turns for wiki generation."""
+        data: dict = {
+            "total_turns": 0,
+            "avg_importance": 0.0,
+            "top_tags": [],
+            "bridge_connectors": [],
+            "sample_turns": [],
+            "max_tagging_version": 0,
+        }
+        if not db_path:
+            return data
+        try:
+            import sqlite3
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            try:
+                # Stats
+                row = conn.execute(
+                    "SELECT COUNT(*) as c, COALESCE(AVG(importance), 0) as ai, "
+                    "COALESCE(MAX(tagging_version), 0) as mv "
+                    "FROM corpus_turns WHERE primary_domain = ? AND tagging_version > 0",
+                    (domain_id,),
+                ).fetchone()
+                if row:
+                    data["total_turns"] = int(row[0])
+                    data["avg_importance"] = round(float(row[1]), 4)
+                    data["max_tagging_version"] = int(row[2])
+
+                # Top tags (aggregate from JSON)
+                tag_rows = conn.execute(
+                    "SELECT tags FROM corpus_turns WHERE primary_domain = ? AND tagging_version > 0 LIMIT 200",
+                    (domain_id,),
+                ).fetchall()
+                tag_counts: dict[str, int] = {}
+                for (tags_json,) in tag_rows:
+                    try:
+                        for t in json.loads(tags_json or "[]"):
+                            tag_counts[t] = tag_counts.get(t, 0) + 1
+                    except Exception:
+                        pass
+                data["top_tags"] = [t for t, _ in sorted(tag_counts.items(), key=lambda kv: -kv[1])[:10]]
+
+                # Bridge connectors mentioned
+                bridge_rows = conn.execute(
+                    "SELECT bridges FROM corpus_turns WHERE primary_domain = ? "
+                    "AND bridges != '[]' AND tagging_version > 0 LIMIT 100",
+                    (domain_id,),
+                ).fetchall()
+                bridge_counts: dict[str, int] = {}
+                for (bridges_json,) in bridge_rows:
+                    try:
+                        for b in json.loads(bridges_json or "[]"):
+                            bridge_counts[b] = bridge_counts.get(b, 0) + 1
+                    except Exception:
+                        pass
+                data["bridge_connectors"] = sorted(bridge_counts.keys())
+
+                # Sample top 20 turns by importance
+                turn_rows = conn.execute(
+                    "SELECT turn_id, importance, tags, bridges, user_text, assistant_text "
+                    "FROM corpus_turns WHERE primary_domain = ? AND tagging_version > 0 "
+                    "ORDER BY importance DESC LIMIT 20",
+                    (domain_id,),
+                ).fetchall()
+                sample_turns = []
+                for row in turn_rows:
+                    try:
+                        tags_list = json.loads(row[2] or "[]")
+                        bridges_list = json.loads(row[3] or "[]")
+                        sample_turns.append({
+                            "turn_id": row[0],
+                            "importance": float(row[1]),
+                            "tags": tags_list,
+                            "bridges": bridges_list,
+                            "user_text": (row[4] or "")[:300],
+                            "assistant_text": (row[5] or "")[:500],
+                        })
+                    except Exception:
+                        pass
+                data["sample_turns"] = sample_turns
+            finally:
+                conn.close()
+        except Exception as exc:
+            log.warning("beast_wiki_domain_data_failed", domain=domain_id, error=str(exc))
+        return data
+
+    async def _call_beast_for_wiki(self, domain_id: str, domain_entry: Any, domain_data: dict) -> str:
+        """Call beast_provider with wiki generation prompt. Returns article text."""
+        system_prompt = f"""You are AIP Beast, corpus intelligence actor for a
+sovereign knowledge engine. You are generating a domain wiki article
+from corpus turns written by B. Moses Jorgensen (the DEFINER).
+
+The DEFINER is a cross-domain researcher and systems builder with deep
+expertise in: chemistry (30+ years), data analytics, AI methodology
+(AI Poiesis), New Covenant theology (30+ years independent study),
+and systems thinking across technical, theological, and policy domains.
+
+You are writing a wiki article for the domain: {domain_id}
+Domain description: {domain_entry.description}
+
+The article must have exactly this structure:
+
+## Overview
+[3-5 sentences. Dense, assumes full domain knowledge. Written for
+LLM injection — maximum information per token. Captures the DEFINER's
+actual current position and framework, not generic domain description.
+Use the DEFINER's own terminology from the corpus turns.]
+
+## Key Concepts
+[The 5-8 most important concepts, frameworks, or positions in this
+domain as they appear in the corpus. Each concept gets 2-4 sentences.
+Use the DEFINER's actual terminology. If terminology has evolved
+(e.g., "record formation" replaced "observation collapse"), use
+the current term and note the evolution.]
+
+## Current State
+[Where the work in this domain currently stands. Decisions made,
+conclusions reached, open questions. What has been resolved vs
+what is still being worked out. Be specific — cite the actual
+state of manuscripts, experiments, projects, or frameworks.]
+
+## Cross-Domain Connections
+[How this domain connects to other domains in the corpus. Use the
+approved bridge vocabulary. Explain WHY the connection matters,
+not just that it exists. 3-6 connections maximum.]
+
+## Evolution
+[How the thinking in this domain has changed over the corpus period.
+What was the starting position, what changed, why. This section
+reveals intellectual development — it is among the most valuable
+sections for the DEFINER to review.]
+
+## Key Turns
+[List 3-5 turn_ids that are most representative or important for
+this domain. Format: turn_id | brief description of what makes it
+significant]
+
+## Open Questions
+[What remains unresolved, actively debated, or in progress.
+3-5 specific questions the DEFINER appears to be working on.
+These should spark further thinking when the DEFINER reads the article.]
+
+CRITICAL CONSTRAINTS:
+- Write from corpus evidence only. Do not add knowledge from your
+  training data that is not reflected in the provided turns.
+- Use the DEFINER's own language and frameworks.
+- The Overview section will be injected into AI chat sessions —
+  it must be maximally informative in minimum space.
+- Do not hallucinate project names, people, or positions not
+  evidenced in the provided turns.
+- If a section cannot be written from the evidence (e.g., insufficient
+  turns for Evolution), write: "[Insufficient corpus evidence for
+  this section — more turns needed]"
+"""
+
+        turns_text = ""
+        for i, t in enumerate(domain_data.get("sample_turns", []), 1):
+            turns_text += (
+                f"--- TURN {i} ---\n"
+                f"turn_id: {t['turn_id']}\n"
+                f"importance: {t['importance']}\n"
+                f"tags: {t['tags']}\n"
+                f"bridges: {t['bridges']}\n"
+                f"user: {t['user_text']}\n"
+                f"assistant: {t['assistant_text']}\n"
+                f"---\n\n"
+            )
+
+        user_prompt = (
+            f"Generate a wiki article for domain: {domain_id}\n\n"
+            f"Domain statistics:\n"
+            f"- Total turns: {domain_data['total_turns']}\n"
+            f"- Average importance: {domain_data['avg_importance']:.2f}\n"
+            f"- Top tags: {domain_data['top_tags']}\n"
+            f"- Active connectors: {domain_data['bridge_connectors']}\n\n"
+            f"Sample turns (highest importance, use as evidence base):\n"
+            f"{turns_text}\n"
+            f"Generate the complete wiki article now."
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        result = await self._beast_provider.call("beast", messages)
+        content = (result or {}).get("content") or ""
+        return content.strip()
+
+    async def _write_wiki_artifact(
+        self,
+        domain_id: str,
+        domain_entry: Any,
+        wiki_content: str,
+        domain_data: dict,
+        cycle_num: int,
+    ) -> str:
+        """Write wiki article as GENERATED artifact. Returns artifact_id."""
+        if self._artifacts is None:
+            return ""
+        try:
+            ts = datetime.now(timezone.utc).isoformat()
+            short_ts = ts.replace(":", "").replace("-", "")[:15]
+            aid = f"beast:wiki:{domain_id}:{short_ts}"
+
+            # Extract overview text (between ## Overview and next ##)
+            overview_text = ""
+            try:
+                lines = wiki_content.split("\n")
+                in_overview = False
+                overview_lines: list[str] = []
+                for line in lines:
+                    if line.strip() == "## Overview":
+                        in_overview = True
+                        continue
+                    if in_overview and line.startswith("## "):
+                        break
+                    if in_overview and line.strip():
+                        overview_lines.append(line.strip())
+                overview_text = " ".join(overview_lines).strip()
+            except Exception:
+                pass
+
+            word_count = len(wiki_content.split())
+            meta = {
+                "artifact_type": "beast_wiki",
+                "domain": domain_id,
+                "domain_display": getattr(domain_entry, "domain_id", domain_id),
+                "generated_at": ts,
+                "turns_sampled": len(domain_data.get("sample_turns", [])),
+                "total_domain_turns": domain_data.get("total_turns", 0),
+                "avg_importance": domain_data.get("avg_importance", 0.0),
+                "top_tags": domain_data.get("top_tags", []),
+                "overview_text": overview_text,
+                "word_count": word_count,
+                "tagging_version_at_generation": domain_data.get("max_tagging_version", 0),
+                "beast_cycle": cycle_num,
+            }
+
+            await self._artifacts.write(aid, wiki_content, meta)
+
+            if self._ecs is not None:
+                try:
+                    await self._ecs.transition(
+                        artifact_id=aid,
+                        from_state=None,
+                        to_state="GENERATED",
+                        actor="beast",
+                        reason="Beast domain wiki — pending DEFINER review",
+                    )
+                except Exception as e:
+                    log.warning("beast_wiki_ecs_failed", aid=aid, error=str(e))
+            return aid
+        except Exception as exc:
+            log.error("beast_wiki_write_failed", domain=domain_id, error=str(exc))
+            return ""
 
     # ------------------------------------------------------------------
     # Helpers

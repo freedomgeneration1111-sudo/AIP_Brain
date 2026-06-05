@@ -162,6 +162,51 @@ async def review_list(
     return {"artifacts": results, "project": project_name}
 
 
+async def review_list_by_type(
+    artifact_type: str,
+    stores: ReviewExportStores,
+    states: list[str] | None = None,
+) -> dict:
+    """List artifacts by artifact_type across all projects.
+
+    Used for beast_wiki, beast_domain_proposal, and other cross-project
+    artifact types. Returns all artifacts matching the type from ECS states.
+    """
+    if states is None:
+        states = ["GENERATED"]
+
+    artifact_ids: set[str] = set()
+    for state in states:
+        ids = await stores.ecs_store.list_by_state(state)
+        artifact_ids.update(ids)
+
+    results = []
+    for aid in sorted(artifact_ids):
+        try:
+            metadata = await stores.artifact_store.read_metadata(aid)
+        except KeyError:
+            continue
+
+        if metadata.get("artifact_type") != artifact_type:
+            continue
+
+        ecs_state = await stores.ecs_store.current_state(aid) or "UNKNOWN"
+        source_ids = metadata.get("source_ids", [])
+        results.append({
+            "artifact_id": aid,
+            "title": metadata.get("domain", aid)[:80],
+            "project": metadata.get("domain", ""),
+            "lifecycle_state": ecs_state,
+            "created_at": metadata.get("created_at", metadata.get("generated_at", "")),
+            "source_count": len(source_ids),
+            "artifact_type": artifact_type,
+            "domain": metadata.get("domain", ""),
+            "word_count": metadata.get("word_count", 0),
+        })
+
+    return {"artifacts": results, "type": artifact_type}
+
+
 # ---------------------------------------------------------------------------
 # Review show
 # ---------------------------------------------------------------------------

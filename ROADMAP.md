@@ -108,7 +108,7 @@ the roadmap, update both documents.
 
 ## PHASE 2A — Beast Wiki
 *Concept-level knowledge base, human-browsable and LLM-injectable.*
-*Status: NOT STARTED — planned after embedding pipeline*
+*Status: IN PROGRESS — wiki generation + CLI + augmented chat injection complete*
 *Reference: ADR-006-wiki-architecture.md*
 
 ### Design Principles
@@ -124,12 +124,12 @@ the roadmap, update both documents.
   Not timer-driven.
 
 ### 2A.1 Wiki Generation
-- 🔲 Beast wiki article generation (domain-level first, 28 articles)
-- 🔲 Article structure: Overview / Key Concepts / Cross-Domain
+- ✅ Beast wiki article generation (domain-level first, 28 articles)
+- ✅ Article structure: Overview / Key Concepts / Cross-Domain
      Connections / Current State / Evolution / Key Turns / Open Questions
-- 🔲 Overview section (3-5 sentences) injected into augmented chat
-- 🔲 Wiki articles as GENERATED → DEFINER review → APPROVED
-- 🔲 Token-threshold trigger per domain (~1M new tokens)
+- ✅ Overview section (3-5 sentences) injected into augmented chat
+- ✅ Wiki articles as GENERATED → DEFINER review → APPROVED
+- ✅ Word-threshold trigger per domain (~200k words since last wiki)
 - 🔲 Wiki versioning (ECS: new article supersedes old)
 
 ### 2A.2 Wiki UI

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -37,6 +38,44 @@ from aip.logging import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+async def _get_wiki_overview(domain: str, artifact_store: Any, ecs_store: Any) -> str | None:
+    """Return wiki overview_text for domain from APPROVED (fallback GENERATED) artifact.
+
+    Returns None if no wiki exists. Never raises.
+    """
+    try:
+        arts = await artifact_store.list_artifacts_by_metadata(
+            key="artifact_type", value="beast_wiki", limit=200
+        )
+        domain_arts = [
+            a for a in arts
+            if (a.get("metadata", {}) or {}).get("domain") == domain
+        ]
+        if not domain_arts:
+            return None
+        domain_arts.sort(key=lambda a: a.get("created_at", ""), reverse=True)
+
+        # Prefer APPROVED, fall back to GENERATED
+        approved_overview = None
+        generated_overview = None
+        for art in domain_arts:
+            aid = art.get("id", "")
+            if not aid:
+                continue
+            try:
+                state = await ecs_store.current_state(aid)
+            except Exception:
+                state = None
+            overview = (art.get("metadata", {}) or {}).get("overview_text", "")
+            if state == "APPROVED" and overview and approved_overview is None:
+                approved_overview = overview
+            elif state == "GENERATED" and overview and generated_overview is None:
+                generated_overview = f"[Draft] {overview}"
+        return approved_overview or generated_overview
+    except Exception:
+        return None
 
 
 @router.websocket("/chat/{session_id}")
@@ -145,6 +184,35 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                 if source_refs:
                                     # Assemble context and build source-grounded system prompt
                                     context = _assemble_context(source_refs, max_sources=10)
+
+                                    # === WIKI OVERVIEW INJECTION ===
+                                    # Inject APPROVED (or GENERATED draft) beast_wiki overview
+                                    # for the query domain, between profile and sources.
+                                    # Graceful: any failure skips silently.
+                                    try:
+                                        query_domain = source_refs[0].domain if source_refs else None
+                                        if (
+                                            query_domain
+                                            and _container.artifact_store is not None
+                                            and _container.ecs_store is not None
+                                        ):
+                                            wiki_overview = await _get_wiki_overview(
+                                                query_domain,
+                                                _container.artifact_store,
+                                                _container.ecs_store,
+                                            )
+                                            if wiki_overview:
+                                                messages.append({
+                                                    "role": "system",
+                                                    "content": (
+                                                        f"=== DOMAIN CONTEXT: {query_domain} ===\n"
+                                                        f"{wiki_overview}\n"
+                                                        f"=== END DOMAIN CONTEXT ==="
+                                                    ),
+                                                })
+                                    except Exception as _wiki_exc:
+                                        logger.debug("wiki_overview_injection_failed", error=str(_wiki_exc))
+
                                     messages.append({
                                         "role": "system",
                                         "content": (

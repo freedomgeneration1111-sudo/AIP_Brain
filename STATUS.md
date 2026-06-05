@@ -56,7 +56,7 @@ The following runtime gaps have been addressed. No known gap returns fake succes
 | G. Vigil model-slot re-evaluation | Fixed | on_model_slot_change marks affected canonicals for re-evaluation, writes trace events, respects batch size | test_vigil_model_slot_re_evaluation.py | Conservative: all canonicals marked as affected |
 | H. Sexton intervention derivation | Fixed | Deterministic rules for A-F + 7 special conditions; unknown returns None | test_sexton_intervention_derivation.py | Complex multi-signal derivation deferred |
 
-## Corpus Status (as of 2026-06-04)
+## Corpus Status (as of 2026-06-05)
 
 | Source Account | Turns | Tagged | Notes |
 |----------------|-------|--------|-------|
@@ -141,14 +141,23 @@ conversations. The project eats its own dog food: architecture decisions, design
 discussions, and meeting transcripts are ingested into `db/state.db` and queried
 via `aip ask` to ground future design work in prior decisions.
 
+## Wiki Articles Status (as of 2026-06-05)
+
+| Domain | Status | Words |
+|--------|--------|-------|
+| theology_research | APPROVED | 1,266 |
+| nbcm | GENERATED | 708 |
+| ministry | GENERATED | 871 |
+| scripture_linguistics | GENERATED | 841 |
+| All others (22) | NO WIKI — no tagged turns yet | — |
+
+Beast generates wikis from tagged turns only. 2,649 turns are still untagged.
+After corpus retag completes, remaining domain wikis will generate in Beast cycles.
+
 ## Next Priorities
 
-1. Complete Beast corpus retag with registry v1.1
-   (aip hall model rename, new domains: ancient_archaeology, agi_philosophy)
-2. Tag 52 untagged turns from claude_export_2024_2025 and 32 seed turns
-3. Embedding pipeline: embed corpus_turns.searchable_text,
-   hybrid FTS5+vector scoring in augmented chat retrieval (done)
-4. Beast wiki generation: domain-level first (28 articles),
-   markdown editor UI, approval workflow
-5. Knowledge graph: SQLite adjacency tables, bridge tags as seed edges,
+1. Complete Beast corpus retag (2,649 untagged turns still pending)
+2. Wiki UI: markdown editor, article browser, filterable by domain/review status
+3. Wiki versioning (ECS supersession when article regenerated)
+4. Knowledge graph: SQLite adjacency tables, bridge tags as seed edges,
    HippoRAG-inspired PPR retrieval, Cytoscape.js visualization

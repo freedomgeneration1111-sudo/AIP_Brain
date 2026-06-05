@@ -28,17 +28,27 @@ def review() -> None:
 
 
 @review.command("list")
-@click.option("--project", required=True, help="Project name to list artifacts for.")
+@click.option("--project", default=None, help="Project name to list artifacts for.")
+@click.option("--type", "artifact_type", default=None, help="Filter by artifact type (e.g. beast_wiki).")
 @click.option("--state", multiple=True, help="Filter by lifecycle state (default: GENERATED).")
 @click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
-def review_list(project: str, state: tuple[str, ...], db_path: str | None) -> None:
-    """List artifacts pending review for a project.
+def review_list(project: str | None, artifact_type: str | None, state: tuple[str, ...], db_path: str | None) -> None:
+    """List artifacts pending review.
 
-    Shows artifact ID, title, lifecycle status, source count, and model info.
+    Filter by project, artifact type, or both.
+    Shows artifact ID, title, type, lifecycle status, and creation time.
+
+    Examples:
+      aip review list --project myproject
+      aip review list --type beast_wiki
+      aip review list --type beast_wiki --state GENERATED
     """
+    if project is None and artifact_type is None:
+        click.echo("Error: provide --project, --type, or both.", err=True)
+        sys.exit(1)
     try:
-        result = asyncio.run(_review_list_async(project, state, db_path))
-        _print_list_result(result, project)
+        result = asyncio.run(_review_list_async(project, state, db_path, artifact_type=artifact_type))
+        _print_list_result(result, project or f"type:{artifact_type}")
     except Exception as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
@@ -147,13 +157,33 @@ def _get_db_path(db_path: str | None) -> str:
     return db_path
 
 
-async def _review_list_async(project: str, state: tuple[str, ...], db_path: str | None):
-    from aip.orchestration.review_export_pipeline import create_review_export_stores, review_list
+async def _review_list_async(
+    project: str | None,
+    state: tuple[str, ...],
+    db_path: str | None,
+    artifact_type: str | None = None,
+):
+    from aip.orchestration.review_export_pipeline import (
+        create_review_export_stores,
+        review_list,
+        review_list_by_type,
+    )
 
     stores = await create_review_export_stores(_get_db_path(db_path))
     try:
         states = list(state) if state else None
-        return await review_list(project, stores, states=states)
+        if artifact_type is not None and project is None:
+            return await review_list_by_type(artifact_type, stores, states=states)
+        elif artifact_type is not None and project is not None:
+            result = await review_list_by_type(artifact_type, stores, states=states)
+            # Further filter by project
+            filtered = [
+                a for a in result.get("artifacts", [])
+                if a.get("project") == project or project in (a.get("artifact_id", ""))
+            ]
+            return {"artifacts": filtered, "project": project, "type": artifact_type}
+        else:
+            return await review_list(project, stores, states=states)
     finally:
         await stores.close()
 
@@ -225,18 +255,26 @@ def _print_list_result(result: dict, project_name: str = "") -> None:
     project = result.get("project", project_name)
 
     if not artifacts:
-        click.echo(f"No artifacts found for project '{project}'.")
-        click.echo(f"Generate one with: aip ask \"<question>\" --project {project} --save-artifact")
+        click.echo(f"No artifacts found for '{project_name}'.")
+        if not any(c in project_name for c in [":", "type"]):
+            click.echo(f"Generate one with: aip ask \"<question>\" --project {project_name} --save-artifact")
         return
 
-    click.echo(f"Artifacts for project '{project}':")
+    click.echo(f"Artifacts for '{project_name}':")
     click.echo("=" * 80)
     for art in artifacts:
         click.echo(f"  ID:       {art['artifact_id']}")
-        click.echo(f"  Title:    {art['title']}")
+        if art.get("domain"):
+            click.echo(f"  Domain:   {art['domain']}")
+        else:
+            click.echo(f"  Title:    {art['title']}")
+        click.echo(f"  Type:     {art.get('artifact_type', '')}")
         click.echo(f"  State:    {art['lifecycle_state']}")
         click.echo(f"  Created:  {art['created_at']}")
-        click.echo(f"  Sources:  {art['source_count']}")
+        if art.get("word_count"):
+            click.echo(f"  Words:    {art['word_count']}")
+        if art.get("source_count"):
+            click.echo(f"  Sources:  {art['source_count']}")
         if art.get("session_id"):
             click.echo(f"  Session:  {art['session_id']}")
         if art.get("model_slot"):
