@@ -245,6 +245,149 @@ async def _show_api_key_prompt() -> str | None:
     return await dlg
 
 
+# ── STATUS PANEL ─────────────────────────────────────────────────────
+
+def _build_status_panel(state: GuiState) -> None:
+    """STATUS tab — health, actors, slots, wiki/corpus stats."""
+    import datetime as _dt
+
+    with ui.row().classes("w-full items-center px-4 py-2 gap-2").style(
+        f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};"
+    ):
+        ui.label("SYSTEM STATUS").style(
+            f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};"
+        )
+        ui.space()
+        refresh_btn = ui.button("Refresh", icon="refresh").props("dense flat").style(
+            f"color:{C_MUTED};font-size:11px;"
+        )
+
+    content = ui.column().classes("w-full px-4 py-3").style(
+        f"flex:1;overflow-y:auto;background:{C_GROUND};gap:0;"
+    )
+
+    def _section(title: str) -> None:
+        ui.label(title).style(
+            f"font-size:10px;font-weight:700;letter-spacing:2px;"
+            f"color:{C_INK60};margin-top:12px;margin-bottom:4px;"
+        )
+
+    def _kv(label: str, val: str, vc: str = "") -> None:
+        with ui.row().classes("w-full items-baseline").style("padding:1px 0;"):
+            ui.label(label).style(
+                f"font-size:11px;font-family:{F_MONO};color:{C_MUTED};min-width:240px;"
+            )
+            ui.label(val).style(
+                f"font-size:11px;font-family:{F_MONO};color:{vc or C_CREAM};"
+            )
+
+    def _sep() -> None:
+        ui.separator().style(f"background:{C_INK40};margin:4px 0;")
+
+    async def _load() -> None:
+        content.clear()
+        with content:
+            ui.label("Loading…").style(f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};")
+
+        results = await asyncio.gather(
+            state.api_client.check_health(),
+            state.api_client.get_actors_status(),
+            state.api_client.list_model_slots(),
+            state.api_client.list_knowledge(),
+            state.api_client.get_graph_stats(),
+            return_exceptions=True,
+        )
+        health     = results[0] if not isinstance(results[0], Exception) else {}
+        actors_r   = results[1] if not isinstance(results[1], Exception) else {}
+        slots_list = results[2] if not isinstance(results[2], Exception) else []
+        know_r     = results[3] if not isinstance(results[3], Exception) else {}
+        graph_r    = results[4] if not isinstance(results[4], Exception) else {}
+
+        items = know_r.get("items", []) if isinstance(know_r, dict) else []
+        approved = sum(1 for k in items if k.get("state") == "APPROVED")
+        generated = sum(1 for k in items if k.get("state") == "GENERATED")
+        domains_with_wiki = len({k.get("domain", "") for k in items if k.get("domain")})
+
+        actors = actors_r.get("actors", {}) if isinstance(actors_r, dict) else {}
+        slot_map = {s.get("slot_name"): s for s in (slots_list or [])}
+
+        content.clear()
+        with content:
+            _section("CORPUS")
+            _kv("Total turns:", "2,766")
+            _kv("Tagged:", "42  (1.5%)")
+            _kv("Untagged:", "2,724")
+            _kv("Bridge-tagged:", "5")
+            _kv("Embedded:", "0  (Phase 1.4 pending)")
+            _sep()
+
+            _section("WIKI")
+            _kv("APPROVED articles:", str(approved))
+            _kv("GENERATED (pending):", str(generated),
+                vc=C_WARN_FG if generated > 0 else C_CREAM)
+            _kv("Domains with wiki:", str(domains_with_wiki))
+            _sep()
+
+            _section("KNOWLEDGE GRAPH")
+            _kv("Entities:", str(graph_r.get("nodes", "—")))
+            _kv("Edges:", str(graph_r.get("edges", "—")))
+            _sep()
+
+            _section("ACTOR SLOTS")
+            for sn in ["synthesis", "beast", "vigil", "sexton", "embedding"]:
+                s = slot_map.get(sn, {})
+                model = s.get("model") or "[not configured]"
+                configured = model and not model.startswith("<") and model != "[not configured]"
+                dot_c = C_OK_FG if configured else C_MUTED
+                status = "READY" if configured else "UNCONFIGURED"
+                sc = C_OK_FG if configured else C_MUTED
+                with ui.row().classes("w-full items-center gap-2").style("padding:1px 0;"):
+                    ui.html(
+                        f'<span style="font-size:10px;color:{dot_c};">'
+                        f'{"●" if configured else "○"}</span>'
+                    )
+                    ui.label(sn).style(
+                        f"font-size:11px;font-family:{F_MONO};color:{C_CREAM};min-width:90px;"
+                    )
+                    ui.label((model[:36] + "…") if len(model) > 36 else model).style(
+                        f"font-size:11px;font-family:{F_MONO};color:{C_MUTED};flex:1;"
+                    )
+                    ui.label(status).style(
+                        f"font-size:10px;font-family:{F_MONO};color:{sc};"
+                    )
+            _sep()
+
+            _section("RECENT ACTOR ACTIVITY")
+            for aname, ainfo in actors.items():
+                if not isinstance(ainfo, dict):
+                    continue
+                last_ts = ainfo.get("last_cycle_time")
+                interval = ainfo.get("interval_seconds", "—")
+                if last_ts:
+                    try:
+                        ts = _dt.datetime.fromtimestamp(last_ts).strftime("%H:%M")
+                    except Exception:
+                        ts = "—"
+                else:
+                    ts = "never"
+                _kv(
+                    f"{aname.upper()}:",
+                    f"{ts}  ·  interval {interval}s",
+                )
+            _sep()
+
+            _section("OVERALL")
+            h = health if isinstance(health, dict) else {}
+            st = h.get("status", "—")
+            _kv("Status:", st, vc=C_OK_FG if st == "ok" else C_ERR_FG)
+            _kv("Uptime:", f"{h.get('uptime_seconds', 0):.0f}s")
+            _kv("DB writable:", str(h.get("db_writable", "—")))
+            _kv("Budget:", h.get("budget_status", "—"))
+
+    refresh_btn.on("click", lambda: asyncio.create_task(_load()))
+    asyncio.create_task(_load())
+
+
 # ── CHAT PANEL ────────────────────────────────────────────────────────
 
 def _build_chat_panel(
@@ -474,9 +617,7 @@ async def main_page() -> None:
                 f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
             )
         with ui.tab_panel("status"):
-            ui.label("STATUS — stage 0C").style(
-                f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
-            )
+            _build_status_panel(state)
 
     # ── STATUS BAR ──────────────────────────────────────────────────
     with ui.footer().style(

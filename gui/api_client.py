@@ -862,6 +862,20 @@ class AipApiClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def get_graph_stats(self) -> dict[str, Any]:
+        """Get knowledge graph node/edge statistics via GET /api/v1/graph/stats."""
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/graph/stats")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_graph_node(self, node_id: str) -> dict[str, Any]:
+        """Get graph node neighbors via GET /api/v1/graph/neighbors/{node_id}."""
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/graph/neighbors/{node_id}")
+        resp.raise_for_status()
+        return resp.json()
+
 
 # Module-level singleton for the GUI to use
 _api_client: AipApiClient | None = None
