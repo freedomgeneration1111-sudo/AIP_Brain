@@ -7,6 +7,7 @@ Final entry point after Stage 0D: replaces gui/main.py on port 8080.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -116,6 +117,259 @@ def get_state() -> GuiState:
     return _state
 
 
+# ── PERSISTENCE & MODULE STATE ────────────────────────────────────────
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_SELECTED_MODELS_FILE = _PROJECT_ROOT / "config" / "selected_models.json"
+
+
+def _load_sel() -> list[str]:
+    try:
+        if _SELECTED_MODELS_FILE.exists():
+            d = json.loads(_SELECTED_MODELS_FILE.read_text())
+            return d if isinstance(d, list) else []
+    except Exception:
+        pass
+    return []
+
+
+def _save_sel(models: list[str]) -> None:
+    try:
+        _SELECTED_MODELS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _SELECTED_MODELS_FILE.write_text(json.dumps(models, indent=2))
+    except Exception:
+        pass
+
+
+_selected_models: list[str] = _load_sel()
+_role_models: dict[str, str] = {
+    "synthesis": "", "evaluation": "", "sexton": "", "embedding": "",
+}
+
+
+def get_selected_models() -> list[str]:
+    return _selected_models
+
+
+def set_selected_models(models: list[str]) -> None:
+    global _selected_models
+    _selected_models = models
+    _save_sel(models)
+
+
+def get_role_model(slot: str) -> str:
+    return _role_models.get(slot, "")
+
+
+def set_role_model(slot: str, model: str) -> None:
+    _role_models[slot] = model
+
+
+# ── BACKEND & MODEL HELPERS ───────────────────────────────────────────
+
+async def check_backend_health(state: GuiState) -> str:
+    try:
+        h = await asyncio.wait_for(state.api_client.check_health(), timeout=4.0)
+        state.backend_reachable = True
+        return "backend OK · " + ", ".join(h.get("model_slots", []))
+    except asyncio.TimeoutError:
+        state.backend_reachable = False
+        return "backend timeout (>4s)"
+    except Exception:
+        state.backend_reachable = False
+        return "backend unreachable"
+
+
+async def load_model_slots(state: GuiState) -> list:
+    try:
+        slots = await state.api_client.list_model_slots()
+        state.available_slots = slots
+        return slots
+    except Exception:
+        return []
+
+
+def build_model_options(slots: list) -> list[str]:
+    sel = get_selected_models()
+    backend = [
+        s.get("model", "") for s in slots
+        if s.get("model") and not s.get("model", "").startswith("<")
+    ]
+    opts = list(dict.fromkeys(sel + backend + ["google/gemma-3-4b-it"]))
+    return [m for m in opts if m] or ["(no models — open Settings)"]
+
+
+def on_chat_model_changed(model_id: str) -> None:
+    state = get_state()
+    state.current_role = None
+    set_role_model("synthesis", model_id)
+    state.reset_session()
+    asyncio.create_task(
+        state.api_client.update_slot_model(
+            "synthesis", model_id, api_key=state.api_client.get_openrouter_api_key()
+        )
+    )
+    ui.notify(f"Chat model → {model_id}", color="info")
+
+
+async def refresh_budget_status(label, state: GuiState) -> None:
+    while True:
+        try:
+            b = await state.api_client.get_budget_status(scope="session", scope_id="default")
+            consumed = b.get("consumed_tokens", 0)
+            limit = b.get("limit", 0)
+            fraction = b.get("fraction_used", 0)
+            def _u():
+                if limit:
+                    label.text = f"budget: {consumed}/{limit} ({fraction:.0%})"
+                    if fraction >= 0.8:
+                        label.style(f"color:{C_ERR_FG};font-size:10px;font-family:{F_MONO};")
+                elif b.get("budget_manager") is False:
+                    label.text = "budget: n/a"
+            if state.client:
+                with state.client: _u()
+            else:
+                _u()
+        except Exception:
+            pass
+        await asyncio.sleep(30)
+
+
+async def _show_api_key_prompt() -> str | None:
+    with ui.dialog().props("persistent") as dlg, ui.card().classes("p-6 min-w-[420px]"):
+        ui.label("OpenRouter API Key Required").classes("text-h6")
+        ui.label("AIP_Brain uses OpenRouter for all model slots.").classes("text-body2 q-mt-sm")
+        inp = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("w-full q-mt-md")
+        with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
+            ui.button("Skip", color="grey", on_click=lambda: dlg.submit(None))
+            ui.button("Save Key", color="primary", on_click=lambda: dlg.submit(inp.value.strip()))
+    return await dlg
+
+
+# ── CHAT PANEL ────────────────────────────────────────────────────────
+
+def _build_chat_panel(
+    mode: str,
+    state: GuiState,
+    slots: list,
+    opts: list[str],
+) -> None:
+    """Build chat panel. Send uses direct OpenRouter in 0B; WebSocket wired in 0C."""
+    is_aug = mode == "augmented"
+
+    with ui.row().classes("w-full items-center px-4 py-2 gap-2").style(
+        f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};"
+    ):
+        ui.label("AUGMENTED" if is_aug else "CHAT").style(
+            f"font-size:11px;font-weight:600;letter-spacing:1px;"
+            f"color:{C_AMBER if is_aug else C_CREAM};"
+        )
+        if is_aug:
+            ui.label("INGESTED DATA").style(
+                f"font-size:9px;background:{C_AMBER};color:{C_GROUND};"
+                "padding:1px 6px;border-radius:3px;font-weight:700;"
+            )
+        ui.space()
+        cur = get_role_model("synthesis")
+        if not cur or cur not in opts:
+            cur = opts[0] if opts else ""
+        ui.select(opts, value=cur, on_change=lambda e: on_chat_model_changed(e.value)).props(
+            "dense"
+        ).classes("min-w-[200px]")
+
+    msgs = ui.column().classes("w-full px-4 py-2").style(
+        f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:320px;"
+    )
+    with msgs:
+        ok = state.backend_reachable and state.api_client.has_openrouter_api_key()
+        ui.label(
+            ("Connected" if state.backend_reachable else "Offline")
+            + f" · {len(slots)} slot(s)"
+            + (" · API key set" if state.api_client.has_openrouter_api_key() else " · API key missing")
+        ).style(f"color:{C_OK_FG if ok else C_WARN_FG};font-size:11px;padding:8px;")
+
+    with ui.row().classes("w-full items-center px-4 py-2 gap-2").style(
+        f"border-top:.5px solid {C_INK40};background:{C_SURFACE};"
+    ):
+        fld = ui.input(placeholder="Ask anything...").props("outlined dense").classes("flex-grow")
+        btn = ui.button("SEND").style(
+            f"background:{C_INK60};color:{C_CREAM};font-size:11px;letter-spacing:.5px;"
+        )
+
+    def _msg(role: str, text: str, model: str | None = None, lat: int | None = None) -> None:
+        with msgs:
+            with ui.row().classes("w-full"):
+                lbl = (model or "Assistant") if role == "assistant" else "You"
+                ui.markdown(f"**{lbl}**" + (f"  ({lat}ms)" if lat else "")).style(
+                    f"color:{C_MUTED};font-size:11px;"
+                )
+            with ui.row().classes("w-full"):
+                ui.markdown(text).style(
+                    f"background:{C_SURFACE if role == 'assistant' else C_RAISED};"
+                    f"border:.5px solid {C_INK40};border-radius:4px;"
+                    f"padding:8px 10px;max-width:80%;font-size:13px;color:{C_CREAM};"
+                )
+
+    def _sys(text: str) -> None:
+        with msgs:
+            with ui.row().classes("w-full justify-center"):
+                ui.label(text).style(
+                    f"color:{C_MUTED};font-size:10px;font-family:{F_MONO};padding:2px 0;"
+                )
+
+    async def _send() -> None:
+        prompt = fld.value.strip()
+        if not prompt:
+            return
+        model = get_role_model("synthesis")
+        if not model or model.startswith("("):
+            sel = get_selected_models()
+            model = sel[0] if sel else ""
+        if not model or model.startswith("("):
+            opts_now = build_model_options(state.available_slots)
+            model = opts_now[0] if opts_now and not opts_now[0].startswith("(") else ""
+        if not model:
+            ui.notify("No model — open Settings", color="warning")
+            return
+        _msg("user", prompt)
+        fld.value = ""
+        with msgs:
+            think = ui.label("Thinking...").style(f"color:{C_MUTED};font-size:12px;")
+        try:
+            r = await state.api_client.chat_direct_openrouter(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                api_key=state.api_client.get_openrouter_api_key(),
+            )
+            think.delete()
+            if r.get("error"):
+                _sys(f"error: {r.get('content', '?')}")
+                ui.notify(r.get("content", ""), color="negative")
+            else:
+                _msg("assistant", r.get("content", ""), model=r.get("model", model), lat=r.get("latency_ms"))
+                if r.get("tokens_used", 0):
+                    _sys(f"tokens: {r['tokens_used']}")
+        except Exception as exc:
+            think.delete()
+            _sys(f"failed: {exc}")
+            ui.notify(f"failed: {exc}", color="negative")
+
+    async def _send_ctx() -> None:
+        try:
+            if state.client:
+                with state.client:
+                    await _send()
+            else:
+                await _send()
+        except Exception as exc:
+            try:
+                ui.notify(f"send failed: {exc}", color="negative", timeout=8000)
+            except Exception:
+                pass
+
+    fld.on("keydown.enter", lambda: asyncio.create_task(_send_ctx()))
+    btn.on("click", lambda: asyncio.create_task(_send_ctx()))
+
+
 # ── SHELL PAGE ────────────────────────────────────────────────────────
 
 @ui.page("/")
@@ -130,6 +384,30 @@ async def main_page() -> None:
         f".q-tabs__arrow{{color:{C_INK60}}}</style>"
     )
 
+    # API key check — blocking prompt if missing
+    if not state.api_client.has_openrouter_api_key():
+        key = await _show_api_key_prompt()
+        if key:
+            state.api_client.set_openrouter_api_key(key)
+            ui.notify("API key saved!", color="positive", position="top")
+
+    # Backend load — hard-capped at 4 s
+    backend_status = await check_backend_health(state)
+    slots = await load_model_slots(state)
+    for s in slots:
+        sn, m = s.get("slot_name"), s.get("model")
+        if sn and m and not str(m).startswith("<"):
+            _role_models[sn] = m
+    opts = build_model_options(slots)
+
+    def _on_tab(name: str) -> None:
+        if name == "augmented" and state.current_mode != "augmented":
+            state.current_mode = "augmented"
+            state.reset_session()
+        elif name == "chat" and state.current_mode != "normal":
+            state.current_mode = "normal"
+            state.reset_session()
+
     # ── TOPBAR ──────────────────────────────────────────────────────
     with ui.header().style(
         f"background:{C_GROUND};border-bottom:0.5px solid {C_INK40};"
@@ -142,7 +420,7 @@ async def main_page() -> None:
                 f"color:{C_AMBER};letter-spacing:2px;margin-right:10px;"
             )
 
-            tabs = ui.tabs(value="chat").props(
+            tabs = ui.tabs(value="chat", on_change=lambda e: _on_tab(e.value)).props(
                 "dense no-caps indicator-color=amber align=left"
             ).style(f"color:{C_MUTED};")
             with tabs:
@@ -160,45 +438,43 @@ async def main_page() -> None:
             key_set = state.api_client.has_openrouter_api_key()
             ui.icon("vpn_key", size="xs").style(
                 f"color:{'#4EAA7A' if key_set else '#E07070'};cursor:pointer;"
-            ).tooltip("OpenRouter API key set" if key_set else "API key missing — click to set")
+            ).on("click", lambda: asyncio.create_task(_show_api_key_prompt())).tooltip(
+                "API key set" if key_set else "API key missing — click to set"
+            )
             ui.icon("settings", size="xs").style(
                 f"color:{C_INK60};cursor:pointer;"
-            ).tooltip("Model catalog & settings")
+            ).tooltip("Model catalog — stage 0C")
 
     # ── CONTENT PANELS ──────────────────────────────────────────────
     with ui.tab_panels(tabs, value="chat").classes("w-full").style(
         f"flex:1;background:{C_GROUND};min-height:0;"
     ):
         with ui.tab_panel("chat"):
-            ui.label("CHAT — wired in stage 0B").style(
-                f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
-            )
+            _build_chat_panel("normal", state, slots, opts)
         with ui.tab_panel("augmented"):
-            ui.label("AUGMENTED — wired in stage 0B").style(
-                f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
-            )
+            _build_chat_panel("augmented", state, slots, opts)
         with ui.tab_panel("cohort"):
             ui.label("COHORT — tier 9 scaffold").style(
                 f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
             )
         with ui.tab_panel("review"):
-            ui.label("REVIEW — wired in stage 0C").style(
+            ui.label("REVIEW — stage 0C").style(
                 f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
             )
         with ui.tab_panel("wiki"):
-            ui.label("WIKI — wired in stage 0C").style(
+            ui.label("WIKI — stage 0C").style(
                 f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
             )
         with ui.tab_panel("corpus"):
-            ui.label("CORPUS — wired in stage 0C").style(
+            ui.label("CORPUS — stage 0C").style(
                 f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
             )
         with ui.tab_panel("graph"):
-            ui.label("GRAPH — wired in stage 0C").style(
+            ui.label("GRAPH — stage 0C").style(
                 f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
             )
         with ui.tab_panel("status"):
-            ui.label("STATUS — wired in stage 0C").style(
+            ui.label("STATUS — stage 0C").style(
                 f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
             )
 
@@ -212,13 +488,15 @@ async def main_page() -> None:
                 f'<span style="display:inline-block;width:6px;height:6px;'
                 f'border-radius:50%;background:{C_INK60};"></span>'
             )
-            _status = ui.label("initialising...").style(
+            budget_lbl = ui.label(backend_status).style(
                 f"color:#555;font-size:10px;font-family:{F_MONO};"
             )
             ui.space()
             ui.label("aip_brain · AIP v0.1").style(
                 f"color:{C_INK60};font-size:10px;font-family:{F_MONO};"
             )
+
+    asyncio.create_task(refresh_budget_status(budget_lbl, state))
 
 
 ui.run(title="AIP_Brain", port=8082, reload=True)
