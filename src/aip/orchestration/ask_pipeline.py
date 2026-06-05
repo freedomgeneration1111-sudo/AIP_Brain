@@ -221,10 +221,17 @@ async def _search_sources(
     embedding_provider: EmbeddingProvider | None = None,
     max_sources: int = 10,
     config: dict | None = None,
+    corpus_turn_store: Any = None,
 ) -> list[SourceReference]:
     """Search for relevant sources using existing retrieval infrastructure.
 
-    Primary search: LexicalStore (FTS5) — always available and persistent.
+    Primary search: CorpusTurnStore (FTS5 on corpus_turns) — the canonical
+    corpus of ingested turns. Corpus is project-agnostic: no domain/project
+    filter is applied so all turns are searched regardless of project.
+
+    Supplementary: LexicalStore (FTS5 on fts_documents) — always available,
+    also searched without domain filter to catch artifacts and indexed content.
+
     Supplementary: VectorStore — when embedding provider is configured.
 
     For corpus turn vectors (turn_id keys after embedding pipeline), performs
@@ -234,27 +241,62 @@ async def _search_sources(
     """
     all_chunks: list[Chunk] = []
 
-    # Lexical search (persistent, always available)
     # Sanitize query for FTS5 MATCH syntax (remove special characters)
     fts_query = _sanitize_fts_query(query)
+
+    # Corpus turn search (project-agnostic — no domain filter)
+    # The corpus_turns table has no project_id column; corpus is global.
+    # Results come back ordered by FTS5 BM25 rank (most relevant first).
+    if corpus_turn_store is not None:
+        try:
+            corpus_turns = await corpus_turn_store.search(
+                query=fts_query,
+                primary_domain=None,  # no domain filter — search ALL turns
+                limit=max_sources * 3,
+            )
+            for i, turn in enumerate(corpus_turns):
+                # CorpusTurnStore.search() returns results ordered by FTS5 BM25 rank.
+                # Use position-based score to preserve relevance ordering (1.0 → ~0.5)
+                # plus an importance boost so Beast-tagged high-importance turns rank higher.
+                position_score = 1.0 - (i / max(len(corpus_turns), 1)) * 0.5
+                importance_boost = float(turn.importance or 0.0) * 0.3
+                chunk = Chunk(
+                    id=turn.turn_id,
+                    content=turn.searchable_text or "",
+                    score=position_score + importance_boost,
+                    metadata={
+                        "type": "conversation_chunk",
+                        "conversation_id": turn.conversation_id,
+                        "source_format": "corpus_turn",
+                        "domain": turn.primary_domain or "",
+                        "importance": float(turn.importance or 0.0),
+                    },
+                    domain=turn.primary_domain or "",
+                )
+                all_chunks.append(chunk)
+        except Exception as exc:
+            logger.warning("CorpusTurnStore search failed: %s", exc)
+
+    # Lexical search (persistent, always available — no domain filter)
+    # Corpus is project-agnostic, so we search all domains.
     lexical_results = []
     try:
         lexical_hits = await lexical_store.search(
-            fts_query, domain=project_domain, limit=max_sources * 3
+            fts_query, domain=None, limit=max_sources * 3
         )
         all_chunks.extend(lexical_hits)
         lexical_results = [(h.id, h.score) for h in lexical_hits]
     except Exception as exc:
         logger.warning("Lexical search failed: %s", exc)
 
-    # Vector search (supplementary, when available)
+    # Vector search (supplementary, when available — no domain filter)
     vector_results = []
     if vector_store is not None and embedding_provider is not None:
         try:
             query_vec = await embedding_provider.embed(query)
             if query_vec and len(query_vec) > 0:
                 vec_hits = await vector_store.retrieve(
-                    query_vec, domain=project_domain, top_k=max_sources * 2
+                    query_vec, domain=None, top_k=max_sources * 2
                 )
                 all_chunks.extend(vec_hits)
                 vector_results = [(h.id, h.score) for h in vec_hits]
@@ -337,6 +379,7 @@ class AskStores:
         ecs_store: EcsStore | None = None,
         model_provider: ModelProvider | None = None,
         embedding_provider: EmbeddingProvider | None = None,
+        corpus_turn_store: Any = None,
     ) -> None:
         self.artifact_store = artifact_store
         self.lexical_store = lexical_store
@@ -346,6 +389,7 @@ class AskStores:
         self.ecs_store = ecs_store
         self.model_provider = model_provider
         self.embedding_provider = embedding_provider
+        self.corpus_turn_store = corpus_turn_store
 
     async def close(self) -> None:
         """Close all stores that have a close method."""
@@ -357,6 +401,7 @@ class AskStores:
             self.ecs_store,
             self.model_provider,
             self.embedding_provider,
+            self.corpus_turn_store,
         ):
             if store is not None and hasattr(store, "close"):
                 try:
@@ -424,6 +469,15 @@ async def create_ask_stores(db_path: str) -> AskStores:
     except Exception:
         pass  # graceful: no embedding provider — lexical-only search
 
+    # CorpusTurnStore — the canonical corpus of ingested turns (project-agnostic)
+    corpus_turn_store = None
+    try:
+        from aip.adapter.corpus_turn_store import CorpusTurnStore
+        corpus_turn_store = CorpusTurnStore(db_path)
+        await corpus_turn_store.initialize()
+    except Exception as exc:
+        logger.info("CorpusTurnStore not available for ask pipeline: %s", exc)
+
     return AskStores(
         artifact_store=artifact_store,
         lexical_store=lexical_store,
@@ -433,6 +487,7 @@ async def create_ask_stores(db_path: str) -> AskStores:
         ecs_store=ecs_store,
         model_provider=model_provider,
         embedding_provider=embedding_provider,
+        corpus_turn_store=corpus_turn_store,
     )
 
 
@@ -516,15 +571,19 @@ async def ask(
     project_domain = project.get("domain") or project_name
 
     # Step 2: Search for relevant sources
+    # Corpus is project-agnostic: we pass corpus_turn_store and search all
+    # turns regardless of project domain. The project_domain param is kept
+    # for future use but does not limit retrieval.
     try:
         sources = await _search_sources(
             query=question,
-            project_domain=project_domain,
+            project_domain=None,  # project-agnostic: search ALL corpus turns
             source_filter=source,
             lexical_store=stores.lexical_store,
             vector_store=stores.vector_store,
             embedding_provider=stores.embedding_provider,
             max_sources=max_sources,
+            corpus_turn_store=stores.corpus_turn_store,
         )
     except Exception as exc:
         logger.error("Source search failed: %s", exc)

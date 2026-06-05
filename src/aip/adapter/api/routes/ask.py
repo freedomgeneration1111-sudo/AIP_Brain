@@ -87,6 +87,7 @@ async def ask_query(payload: dict, container: AipContainer = Depends(get_contain
         ecs_store=container.ecs_store,
         model_provider=container.model_provider,
         embedding_provider=container.embedding_provider,
+        corpus_turn_store=container.corpus_turn_store,
     )
 
     # Import and call the ask pipeline
@@ -162,28 +163,20 @@ async def ask_retrieve_only(payload: dict, container: AipContainer = Depends(get
 
     from aip.orchestration.ask_pipeline import _search_sources, _sanitize_fts_query
 
-    # Resolve domain from project if project_name given
-    project_domain = domain
-    if domain and container.project_store is not None:
-        try:
-            projects = await container.project_store.list_projects()
-            for p in projects:
-                if p.get("name") == domain or p.get("project_id") == domain:
-                    project_domain = p.get("domain") or domain
-                    break
-        except Exception:
-            logger.warning("project domain lookup failed for ask_retrieve", exc_info=True)
-            pass
+    # Corpus is project-agnostic: do not filter by domain/project.
+    # project_domain is kept for future use but does not limit retrieval.
+    project_domain = None
 
     try:
         sources = await _search_sources(
             query=question,
-            project_domain=project_domain,
+            project_domain=None,  # project-agnostic: search ALL corpus turns
             source_filter=source,
             lexical_store=container.lexical_store,
             vector_store=container.vector_store,
             embedding_provider=container.embedding_provider,
             max_sources=max_sources,
+            corpus_turn_store=container.corpus_turn_store,
         )
     except Exception as exc:
         logger.error("Source retrieval failed: %s", exc, exc_info=True)
