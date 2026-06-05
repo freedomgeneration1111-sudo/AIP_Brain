@@ -40,6 +40,18 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+def _get_graph_neighbors(domain: str) -> list[str]:
+    """Return domain neighbors from the knowledge graph. Synchronous, fast."""
+    try:
+        from aip.adapter.graph_store import GraphStore
+        from aip.cli._db_path import get_default_db_path
+        store = GraphStore(get_default_db_path())
+        neighbors = store.get_neighbors(domain, min_confidence=0.4)
+        return [n.canonical_name for n in neighbors if n.id != domain]
+    except Exception:
+        return []
+
+
 async def _get_wiki_overview(domain: str, artifact_store: Any, ecs_store: Any) -> str | None:
     """Return wiki overview_text for domain from APPROVED (fallback GENERATED) artifact.
 
@@ -184,6 +196,27 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                 if source_refs:
                                     # Assemble context and build source-grounded system prompt
                                     context = _assemble_context(source_refs, max_sources=10)
+
+                                    # === GRAPH CONNECTIONS INJECTION ===
+                                    # Inject domain neighbors from knowledge graph (lightweight).
+                                    # Domain-level only; full PPR is Phase 3.
+                                    try:
+                                        gc_domain = source_refs[0].domain if source_refs else None
+                                        if gc_domain and _container.artifact_store is not None:
+                                            graph_neighbors = _get_graph_neighbors(gc_domain)
+                                            if graph_neighbors:
+                                                neighbors_str = ", ".join(graph_neighbors[:5])
+                                                messages.append({
+                                                    "role": "system",
+                                                    "content": (
+                                                        f"=== GRAPH CONNECTIONS ===\n"
+                                                        f"Domain '{gc_domain}' connects to: {neighbors_str}\n"
+                                                        f"These domains may provide relevant context.\n"
+                                                        f"=== END GRAPH CONNECTIONS ==="
+                                                    ),
+                                                })
+                                    except Exception as _graph_exc:
+                                        logger.debug("graph_neighbors_injection_failed", error=str(_graph_exc))
 
                                     # === WIKI OVERVIEW INJECTION ===
                                     # Inject APPROVED (or GENERATED draft) beast_wiki overview

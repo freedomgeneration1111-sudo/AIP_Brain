@@ -147,8 +147,9 @@ the roadmap, update both documents.
 
 ## PHASE 2B — Knowledge Graph
 *Entity graph as interactive mind map for cross-domain synthesis.*
-*Status: NOT STARTED — planned after Phase 2A wiki*
+*Status: COMPLETE — SQLite graph tables + bridge seed + Beast extraction + PPR retrieval + Cytoscape.js viz*
 *Reference: ADR-007-knowledge-graph-architecture.md*
+*Last Updated: 2026-06-05*
 
 ### Design Principles
 - Mind map for complex work — interactive, filterable, thought-provoking
@@ -164,25 +165,26 @@ the roadmap, update both documents.
   (no LLM extraction needed for initial build)
 
 ### 2B.1 Graph Storage
-- 🔲 graph_nodes table in state.db
-- 🔲 graph_edges table in state.db
-- 🔲 Entity types: PERSON, PROJECT, CONCEPT, PLACE, ORGANIZATION, MANUSCRIPT
-- 🔲 Relationship types: WORKS_ON, CONNECTS, LOCATED_IN, FUNDED_BY,
-     AUTHORED, RELATES_TO
-- 🔲 docs/entity_aliases.md (canonical co-reference resolution)
+- ✅ graph_nodes, graph_edges, graph_extraction_log tables in state.db
+- ✅ Entity types: PERSON, PROJECT, CONCEPT, PLACE, ORGANIZATION, MANUSCRIPT, DOMAIN
+- ✅ Relationship types: WORKS_ON, CONNECTS, LOCATED_IN, FUNDED_BY, AUTHORED, RELATES_TO
+- ✅ docs/entity_aliases.md (canonical co-reference resolution via EntityAliasRegistry)
 
 ### 2B.2 Graph Construction
-- 🔲 Phase 1: Bridge tags as seed edges (immediate, no LLM extraction)
-- 🔲 Phase 2: Beast OpenIE entity extraction on high-importance turns
-- 🔲 PPR retrieval: NetworkX nx.pagerank() with personalization vector
-- 🔲 Similarity edges after embedding pipeline
-- 🔲 Incremental updates triggered by corpus_modified events
+- ✅ Phase 1: Bridge tags as seed edges (`aip corpus graph --build-from-bridges`)
+- ✅ Phase 2: Beast entity extraction on high-importance turns (`aip corpus graph --extract`)
+- ✅ PPR retrieval: networkx nx.pagerank() with personalization (GraphRetriever)
+- ✅ Domain neighbor lookup in augmented chat (1-hop, synchronous, non-blocking)
+- 🔲 Full PPR in augmented chat (Phase 3 — blocked on query entity extraction latency, see TECH_DEBT.md#DEBT-002)
+- 🔲 Similarity edges after embedding pipeline (Phase 3)
+- 🔲 Incremental updates triggered by corpus_modified events (Phase 3)
 
 ### 2B.3 Graph UI
-- 🔲 Cytoscape.js interactive visualization in GUI
-- 🔲 Mind map mode: filterable by domain, entity type, confidence
-- 🔲 Node detail panel: entity info, connected turns, wiki article link
-- 🔲 Graph-augmented retrieval in augmented chat (PPR expansion)
+- ✅ /graph-viz standalone Cytoscape.js page (dark-mode, filterable by domain/type/confidence)
+- ✅ Node detail panel (click node to see entity info)
+- ✅ `/api/v1/graph/data`, `/api/v1/graph/neighbors/{id}`, `/api/v1/graph/stats` endpoints
+- 🔲 Full NiceGUI sidebar panel integration (Phase 4)
+- 🔲 Turn detail view from graph node (link from entity to corpus turns)
 
 ---
 
@@ -296,3 +298,4 @@ the roadmap, update both documents.
 | 2026-06-04 | Phase 1 corpus work reflected               | Claude + Moses |
 | 2026-06-04 | Phase 2A wiki + Phase 2B graph added from research | Claude + Moses |
 | 2026-06-04 | Phase 2A wiki + Phase 2B graph + HippoRAG adoption | Claude + Moses |
+| 2026-06-05 | Phase 2B complete: graph tables, bridge seed, Beast extraction, PPR, Cytoscape.js | Claude + Moses |

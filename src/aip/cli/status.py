@@ -325,6 +325,33 @@ def status() -> None:
     except Exception as exc:
         click.echo(f"wiki_articles: error ({exc})")
 
+    # --- Knowledge graph ---
+    try:
+        from aip.adapter.graph_store import GraphStore
+        from aip.cli._db_path import get_default_db_path as _gdp
+        _kg_path = _gdp()
+        if Path(_kg_path).exists():
+            _kg_store = GraphStore(_kg_path)
+            _kg_nodes = _kg_store.get_all_nodes()
+            _kg_edges = _kg_store.get_all_edges()
+            _by_source: dict[str, int] = {}
+            _domain_nodes: set[str] = set()
+            for _n in _kg_nodes:
+                _by_source[_n.source] = _by_source.get(_n.source, 0) + 1
+                if _n.entity_type == "DOMAIN":
+                    _domain_nodes.add(_n.id)
+            _bridge_edges = sum(1 for _e in _kg_edges if _e.bridge_tag is not None)
+            _extracted_edges = sum(1 for _e in _kg_edges if _e.bridge_tag is None)
+            click.echo("knowledge_graph:")
+            click.echo(f"  nodes: {len(_kg_nodes)}")
+            click.echo(f"  edges: {len(_kg_edges)}")
+            click.echo(f"  bridge_edges: {_bridge_edges} (from bridge tags)")
+            click.echo(f"  extracted_edges: {_extracted_edges} (from Beast extraction)")
+            click.echo(f"  domains_in_graph: {len(_domain_nodes)}")
+            click.echo(f"  by_source: {_by_source}")
+    except Exception as _kg_exc:
+        click.echo(f"knowledge_graph: error ({_kg_exc})")
+
     # --- Summary ---
     click.echo(f"\nDatabases: {db_found}/{len(expected_dbs)} found, {db_total_rows} total rows")
     if db_found == 0:

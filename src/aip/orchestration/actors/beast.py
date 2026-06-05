@@ -526,6 +526,16 @@ class Beast:
                 log.error("beast_wiki_generation_failed", error=str(exc))
                 wiki_stats = {"error": str(exc)}
 
+        # Graph extraction: entity/relationship extraction on high-importance turns.
+        # Cap 50 turns per background cycle. Requires beast_provider + corpus_turns.
+        graph_stats: dict = {}
+        if self._beast_provider is not None and getattr(self, "_corpus_turns", None) is not None:
+            try:
+                graph_stats = await self._run_graph_extraction(limit=50)
+            except Exception as exc:
+                log.error("beast_graph_extraction_failed", error=str(exc))
+                graph_stats = {"error": str(exc)}
+
         elapsed = time.monotonic() - cycle_start
         self._last_cycle_time = time.time()
 
@@ -538,6 +548,7 @@ class Beast:
             "tagging": tagging_stats,
             "embedding": embedding_stats,
             "wiki": wiki_stats,
+            "graph": graph_stats,
             "cycle_elapsed_seconds": round(elapsed, 3),
             "last_cycle_time": self._last_cycle_time,
         }
@@ -1754,6 +1765,237 @@ CRITICAL CONSTRAINTS:
         except Exception as exc:
             log.error("beast_wiki_write_failed", domain=domain_id, error=str(exc))
             return ""
+
+    # ------------------------------------------------------------------
+    # Graph extraction (entity/relationship extraction via Beast LLM)
+    # ------------------------------------------------------------------
+
+    async def _run_graph_extraction(self, limit: int = 50) -> dict:
+        """Extract entities and relationships from high-importance corpus turns.
+
+        Processes turns with importance > 0.7, tagging_version > 0, not yet
+        graph-extracted. Creates/updates GraphNode and GraphEdge records.
+        Tracks processed turns in graph_extraction_log table.
+        Cap at `limit` turns per invocation.
+        """
+        if self._beast_provider is None or self._corpus_turns is None:
+            return {"skipped": "missing_provider_or_corpus_turns"}
+
+        db_path = getattr(self._corpus_turns, "_db_path", None)
+        if not db_path:
+            return {"skipped": "no_db_path"}
+
+        try:
+            from aip.adapter.graph_store import GraphStore, GraphNode, GraphEdge
+            from aip.adapter.entity_alias_loader import EntityAliasRegistry
+        except Exception as exc:
+            log.warning("beast_graph_import_failed", error=str(exc))
+            return {"skipped": "import_error", "error": str(exc)}
+
+        graph_store = GraphStore(db_path)
+        registry = EntityAliasRegistry("docs/entity_aliases.md")
+
+        # Build compact alias list for prompt
+        alias_lines = []
+        for cn in registry.all_canonical_names()[:40]:
+            entry = registry.get_entry(cn)
+            if entry:
+                aliases_str = ", ".join(entry.aliases[:3]) if entry.aliases else ""
+                alias_lines.append(f"  {cn} ({entry.entity_type}){': ' + aliases_str if aliases_str else ''}")
+        alias_registry_compact = "\n".join(alias_lines)
+
+        # Get unextracted high-importance turns
+        turns = graph_store.get_unextracted_high_importance_turns(db_path, min_importance=0.7, limit=limit)
+
+        if not turns:
+            return {"turns_processed": 0, "entities_created": 0, "relationships_created": 0, "note": "nothing_to_extract"}
+
+        system_prompt = f"""You are AIP Beast extracting entities and relationships
+from a conversation turn for a personal knowledge graph.
+
+CANONICAL ENTITY TYPES:
+- PERSON: Named individuals
+- PROJECT: Named projects, products, technologies, devices
+- CONCEPT: Named theoretical frameworks, principles, methodologies
+- PLACE: Named locations
+- ORGANIZATION: Named organizations, institutions, companies
+- MANUSCRIPT: Named documents, papers, books
+
+CANONICAL RELATIONSHIP TYPES:
+- CONNECTS: Two concepts or domains connect intellectually
+- WORKS_ON: A person works on a project/manuscript
+- FUNDED_BY: A project is funded by a mechanism
+- AUTHORED: A person authored a manuscript/document
+- LOCATED_IN: An entity is located in a place
+- RELATES_TO: Generic relationship when type unclear
+
+ENTITY ALIAS TABLE (resolve mentions to these canonical names):
+{alias_registry_compact}
+
+RULES:
+- Only extract named entities that appear explicitly in the text
+- Resolve aliases to canonical names before outputting
+- Do NOT extract generic concepts (e.g., "physics", "theology")
+  only named specific ones (e.g., "NBCM", "New Covenant Displaced")
+- Do NOT extract the DEFINER himself as an entity
+- Minimum confidence 0.5 to include
+- Return ONLY valid JSON array, no preamble
+
+Output format:
+[
+  {{
+    "entity_type": "CONCEPT",
+    "canonical_name": "NBCM",
+    "confidence": 0.95
+  }},
+  {{
+    "relationship_type": "CONNECTS",
+    "source": "NBCM",
+    "target": "EZ Water",
+    "confidence": 0.8
+  }}
+]
+"""
+
+        total_processed = 0
+        total_entities = 0
+        total_relationships = 0
+
+        for turn in turns:
+            turn_id = turn["turn_id"]
+            user_text = (turn.get("user_text") or "")[:400]
+            assistant_text = (turn.get("assistant_text") or "")[:600]
+            primary_domain = turn.get("primary_domain", "")
+            importance = turn.get("importance", 0.0)
+
+            user_prompt = (
+                f"Extract entities and relationships from this turn:\n\n"
+                f"turn_id: {turn_id}\n"
+                f"domain: {primary_domain}\n"
+                f"importance: {importance}\n"
+                f"user: {user_text}\n"
+                f"assistant: {assistant_text}\n"
+            )
+
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+
+            try:
+                result = await self._beast_provider.call("beast", messages)
+                content = (result or {}).get("content") or ""
+                parsed = json.loads(content.strip()) if content.strip() else []
+                if not isinstance(parsed, list):
+                    parsed = []
+            except Exception as exc:
+                log.warning("beast_graph_extraction_parse_failed", turn_id=turn_id, error=str(exc))
+                graph_store.log_turn_extracted(turn_id, 0, 0)
+                total_processed += 1
+                continue
+
+            entities_this_turn = 0
+            rels_this_turn = 0
+
+            for item in parsed:
+                if not isinstance(item, dict):
+                    continue
+
+                if "entity_type" in item:
+                    # Entity item
+                    raw_name = (item.get("canonical_name") or "").strip()
+                    if not raw_name:
+                        continue
+                    resolved = registry.resolve(raw_name) or raw_name
+                    if not resolved:
+                        continue
+                    node_id = resolved.lower().replace(" ", "_")
+                    entity_type = item.get("entity_type", "CONCEPT")
+                    confidence = max(0.0, min(1.0, float(item.get("confidence", 0.7))))
+                    if confidence < 0.5:
+                        continue
+
+                    existing = graph_store.get_node(node_id)
+                    if existing is None:
+                        domain_hint = registry.get_domain(resolved) or primary_domain or None
+                        et = registry.get_entity_type(resolved) or entity_type
+                        node = GraphNode(
+                            id=node_id,
+                            entity_type=et,
+                            canonical_name=resolved,
+                            domain=domain_hint,
+                            confidence=confidence,
+                            source="beast_extraction",
+                        )
+                        graph_store.upsert_node(node)
+                        entities_this_turn += 1
+
+                elif "relationship_type" in item:
+                    # Relationship item
+                    src_raw = (item.get("source") or "").strip()
+                    tgt_raw = (item.get("target") or "").strip()
+                    rel_type = (item.get("relationship_type") or "RELATES_TO").strip()
+                    confidence = max(0.0, min(1.0, float(item.get("confidence", 0.7))))
+                    if confidence < 0.5 or not src_raw or not tgt_raw:
+                        continue
+
+                    src_resolved = registry.resolve(src_raw) or src_raw
+                    tgt_resolved = registry.resolve(tgt_raw) or tgt_raw
+                    src_id = src_resolved.lower().replace(" ", "_")
+                    tgt_id = tgt_resolved.lower().replace(" ", "_")
+
+                    # Ensure both nodes exist
+                    for nid, nname in ((src_id, src_resolved), (tgt_id, tgt_resolved)):
+                        if graph_store.get_node(nid) is None:
+                            graph_store.upsert_node(GraphNode(
+                                id=nid,
+                                entity_type="CONCEPT",
+                                canonical_name=nname,
+                                domain=primary_domain or None,
+                                confidence=0.6,
+                                source="beast_extraction",
+                            ))
+
+                    edge_id = f"{src_id}__{rel_type}__{tgt_id}"
+                    edge = GraphEdge(
+                        id=edge_id,
+                        source_id=src_id,
+                        target_id=tgt_id,
+                        relationship_type=rel_type,
+                        confidence=confidence,
+                        evidence_turn_ids=[turn_id],
+                        weight=1.0,
+                    )
+                    graph_store.upsert_edge(edge)
+                    rels_this_turn += 1
+
+            graph_store.log_turn_extracted(turn_id, entities_this_turn, rels_this_turn)
+            total_processed += 1
+            total_entities += entities_this_turn
+            total_relationships += rels_this_turn
+
+        log.info(
+            "beast_graph_extraction_complete",
+            turns=total_processed,
+            entities=total_entities,
+            relationships=total_relationships,
+        )
+
+        await self._emit_event(
+            event_type="beast_graph_extraction_complete",
+            artifact_id="system",
+            metadata={
+                "turns_processed": total_processed,
+                "entities_created": total_entities,
+                "relationships_created": total_relationships,
+            },
+        )
+
+        return {
+            "turns_processed": total_processed,
+            "entities_created": total_entities,
+            "relationships_created": total_relationships,
+        }
 
     # ------------------------------------------------------------------
     # Helpers

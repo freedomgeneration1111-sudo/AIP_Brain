@@ -2,7 +2,7 @@
 
 **Version:** 0.1.0-alpha
 **Architecture Revision:** 5.2
-**Last Updated:** 2026-06-04
+**Last Updated:** 2026-06-05
 
 ## Production Safety Status
 
@@ -34,7 +34,7 @@ Production configuration is **enforced programmatically**. Unsafe configs fail a
 
 ## Module Status
 
-- **Tests:** 763 passing, 15 skipped (sqlite_vss extension), 0 failures
+- **Tests:** 1002 passing, 23 skipped (sqlite_vss extension + pre-existing governance), 2 pre-existing failures
 - **Architecture:** Three-layer (foundation → orchestration → adapter)
 - **Default DB path:** `db/state.db` (SQLite, laptop profile)
 - **Scaffolding:** ~5-8% overall (MCP dispatch, adaptive router, ScriptNode sandbox)
@@ -67,7 +67,11 @@ The following runtime gaps have been addressed. No known gap returns fake succes
 
 Beast domain registry: v1.1 — 28 domains, 17 connectors
 Vector store: 50 vectors (from embed --limit 50) — embedding pipeline Phase 1.4
-Knowledge graph: NOT BUILT — Phase 2B
+Knowledge graph: 28 nodes, 5 edges (bridge seed) — Phase 2B COMPLETE
+  - 6 DOMAIN nodes, 7 PROJECT, 6 PERSON, 6 CONCEPT, 3 MANUSCRIPT
+  - Bridge edges: 5 | Extracted edges: 0 (Beast extraction needs active API key)
+  - Visualization: /graph-viz (Cytoscape.js, dark-mode, filterable)
+  - aip_methodology orphan node present (pre-rename artifact — see TECH_DEBT.md#DEBT-001)
 Unclassified turns: 267 (parse failures + low-confidence — pending retag)
 Residual aip_methodology turns: 5 (pending cleanup retag)
 Embedded turns: 50
@@ -154,10 +158,23 @@ via `aip ask` to ground future design work in prior decisions.
 Beast generates wikis from tagged turns only. 2,649 turns are still untagged.
 After corpus retag completes, remaining domain wikis will generate in Beast cycles.
 
+## Knowledge Graph Status (as of 2026-06-05)
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| graph_nodes / graph_edges tables | COMPLETE | state.db, synchronous GraphStore |
+| Bridge seed (`--build-from-bridges`) | COMPLETE | 28 nodes, 5 edges |
+| Entity alias registry | COMPLETE | 22 entries from entity_aliases.md |
+| Beast extraction (`--extract`) | COMPLETE (infra) | Requires active Beast LLM API key |
+| PPR retrieval | COMPLETE (infra) | GraphRetriever with networkx pagerank |
+| Graph API endpoints | COMPLETE | /api/v1/graph/data, /neighbors, /stats |
+| Cytoscape.js visualization | COMPLETE | /graph-viz standalone dark-mode page |
+| Chat augmentation | COMPLETE | Domain neighbor injection in augmented chat |
+
 ## Next Priorities
 
-1. Complete Beast corpus retag (2,649 untagged turns still pending)
+1. Complete Beast corpus retag (2,649 untagged turns still pending — will grow graph substantially)
 2. Wiki UI: markdown editor, article browser, filterable by domain/review status
 3. Wiki versioning (ECS supersession when article regenerated)
-4. Knowledge graph: SQLite adjacency tables, bridge tags as seed edges,
-   HippoRAG-inspired PPR retrieval, Cytoscape.js visualization
+4. Graph node merge after corpus retag: `aip corpus graph --merge-nodes aip_methodology aip`
+   (see TECH_DEBT.md#DEBT-001)

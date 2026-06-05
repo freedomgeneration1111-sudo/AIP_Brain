@@ -21,6 +21,7 @@ dependencies = [
     "nicegui>=3.12.1",
     "python-dotenv>=1.2.2",
     "aiohttp>=3.14.0",
+    "networkx>=3.0",
 ]
 
 [project.scripts]
