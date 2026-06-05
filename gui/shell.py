@@ -24,40 +24,97 @@ except ImportError:
     pass
 
 # ── AIP DESIGN TOKENS  (aip_design_reference.html §2) ────────────────
-C_GROUND   = '#0E0E0F'
-C_SURFACE  = '#1A1D1F'
-C_RAISED   = '#242829'
-C_INK40    = '#2A3540'
-C_INK60    = '#3D5566'
-C_MUTED    = '#8FA8B8'
-C_CREAM    = '#F2EDE4'
-C_AMBER    = '#B8935A'
-C_AMBER_P  = '#8C6E3A'
-C_OK_BG    = '#1E3A2F'
-C_OK_FG    = '#4EAA7A'
-C_ERR_BG   = '#3A1E1E'
-C_ERR_FG   = '#E07070'
-C_WARN_BG  = '#2A2A1A'
-C_WARN_FG  = '#C8A84E'
+# Ground layers
+C_GROUND   = '#0E0E0F'   # page/shell background
+C_SURFACE  = '#1A1D1F'   # cards, panels
+C_RAISED   = '#242829'   # hover states, inputs
+# Structural ink (slate-teal family)
+C_INK40    = '#2A3540'   # borders, edges, lines
+C_INK60    = '#3D5566'   # labels, inactive text, secondary
+C_MUTED    = '#8FA8B8'   # body text secondary, placeholder
+C_CREAM    = '#F2EDE4'   # primary text on dark
+# Activation (amber — use ONLY for: active tab, primary CTA, corpus node)
+C_AMBER    = '#B8935A'   # primary amber
+C_AMBER_P  = '#8C6E3A'   # pressed/hover state
+# Semantic states
+C_OK_BG    = '#1E3A2F'   # confirmed/approved background
+C_OK_FG    = '#4EAA7A'   # confirmed/approved text
+C_ERR_BG   = '#3A1E1E'   # danger background
+C_ERR_FG   = '#E07070'   # danger text
+C_WARN_BG  = '#2A2A1A'   # caution/pending background
+C_WARN_FG  = '#C8A84E'   # caution/pending text
+# Typography
 F_SERIF    = "Georgia, 'Times New Roman', serif"
 F_SANS     = "'Helvetica Neue', Helvetica, Arial, sans-serif"
 F_MONO     = "'Courier New', monospace"
+# Spacing (px values as strings for style() calls)
+SP_XS = '4px';  SP_SM = '8px';  SP_MD = '16px';  SP_LG = '32px'
+# Border
+BORDER = f'0.5px solid {C_INK40}'
+# Radius
+R_SM = '4px';  R_MD = '6px';  R_LG = '8px'
+# Stat tile background
+C_STAT_BG  = '#141618'
+C_STAT_BD  = '#1E2428'
+# Status pill colors (per aip_design_reference.html §4.4)
+_PILL_STYLES = {
+    'GENERATED': (C_AMBER, C_AMBER_P, '#1A1200'),
+    'APPROVED':  (C_OK_FG, '#1E4030', '#0E1F17'),
+    'REJECTED':  (C_ERR_FG, C_ERR_BG, '#1A0000'),
+    'IDLE':      (C_MUTED, C_INK40, 'transparent'),
+    'ACTIVE':    (C_AMBER, C_AMBER_P, '#1A0E00'),
+    'READY':     (C_OK_FG, '#1E4030', '#0E1F17'),
+    'UNCONFIGURED': (C_MUTED, C_INK40, 'transparent'),
+}
 
-# ── AIP CORPUS MARK  (aip_design_reference.html §1) ──────────────────
+
+# ── BUTTON STYLE HELPERS  (aip_design_reference.html §4.5) ──────────
+def btn_primary() -> str:
+    return (f'background:{C_AMBER}; color:#0E0800; border:0.5px solid {C_AMBER}; '
+            f'padding:6px 14px; border-radius:{R_SM}; font-size:11px; font-weight:500;')
+
+
+def btn_secondary() -> str:
+    return (f'background:transparent; color:{C_MUTED}; border:0.5px solid {C_INK40}; '
+            f'padding:6px 14px; border-radius:{R_SM}; font-size:11px; font-weight:500;')
+
+
+def btn_ghost() -> str:
+    return (f'background:transparent; color:{C_INK60}; border:0.5px solid {C_STAT_BD}; '
+            f'padding:6px 14px; border-radius:{R_SM}; font-size:10px;')
+
+
+# ── STATUS PILL HELPER  (aip_design_reference.html §4.4) ────────────
+def status_pill(status: str) -> None:
+    """Render an inline status pill with correct semantic colors."""
+    fg, border_c, bg = _PILL_STYLES.get(
+        status.upper(), (C_MUTED, C_INK40, 'transparent')
+    )
+    ui.label(status).style(
+        f'display:inline-flex; align-items:center; font-size:10px; '
+        f'letter-spacing:.5px; padding:3px 8px; border-radius:{R_SM}; '
+        f'border:0.5px solid {border_c}; color:{fg}; background:{bg}; '
+        f'flex-shrink:0;'
+    )
+
+
+# ── AIP CORPUS MARK  (aip_design_reference.html §1 — canonical 24×24) ──
 _AIP_MARK = (
-    '<svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">'
-    '<line x1="4" y1="4" x2="12" y2="4" stroke="#2A3540" stroke-width="1"/>'
-    '<line x1="12" y1="4" x2="20" y2="4" stroke="#2A3540" stroke-width="1"/>'
+    '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">'
+    '<!-- Orthogonal edges -->'
+    '<line x1="4" y1="4"  x2="12" y2="4"  stroke="#2A3540" stroke-width="1"/>'
+    '<line x1="12" y1="4" x2="20" y2="4"  stroke="#2A3540" stroke-width="1"/>'
     '<line x1="4" y1="12" x2="12" y2="12" stroke="#2A3540" stroke-width="1"/>'
     '<line x1="12" y1="12" x2="20" y2="12" stroke="#2A3540" stroke-width="1"/>'
     '<line x1="4" y1="20" x2="12" y2="20" stroke="#2A3540" stroke-width="1"/>'
     '<line x1="12" y1="20" x2="20" y2="20" stroke="#2A3540" stroke-width="1"/>'
-    '<line x1="4" y1="4" x2="4" y2="12" stroke="#2A3540" stroke-width="1"/>'
-    '<line x1="4" y1="12" x2="4" y2="20" stroke="#2A3540" stroke-width="1"/>'
-    '<line x1="12" y1="4" x2="12" y2="12" stroke="#2A3540" stroke-width="1"/>'
+    '<line x1="4"  y1="4"  x2="4"  y2="12" stroke="#2A3540" stroke-width="1"/>'
+    '<line x1="4"  y1="12" x2="4"  y2="20" stroke="#2A3540" stroke-width="1"/>'
+    '<line x1="12" y1="4"  x2="12" y2="12" stroke="#2A3540" stroke-width="1"/>'
     '<line x1="12" y1="12" x2="12" y2="20" stroke="#2A3540" stroke-width="1"/>'
-    '<line x1="20" y1="4" x2="20" y2="12" stroke="#2A3540" stroke-width="1"/>'
+    '<line x1="20" y1="4"  x2="20" y2="12" stroke="#2A3540" stroke-width="1"/>'
     '<line x1="20" y1="12" x2="20" y2="20" stroke="#2A3540" stroke-width="1"/>'
+    '<!-- 8 peripheral nodes (slate-teal) -->'
     '<circle cx="4"  cy="4"  r="1.5" fill="#3D5566"/>'
     '<circle cx="12" cy="4"  r="1.5" fill="#3D5566"/>'
     '<circle cx="20" cy="4"  r="1.5" fill="#3D5566"/>'
@@ -66,6 +123,7 @@ _AIP_MARK = (
     '<circle cx="4"  cy="20" r="1.5" fill="#3D5566"/>'
     '<circle cx="12" cy="20" r="1.5" fill="#3D5566"/>'
     '<circle cx="20" cy="20" r="1.5" fill="#3D5566"/>'
+    '<!-- Center corpus node (amber, weighted 2× the peripheral nodes) -->'
     '<circle cx="12" cy="12" r="3"   fill="#B8935A"/>'
     '</svg>'
 )
@@ -294,8 +352,8 @@ def _build_status_panel(state: GuiState) -> None:
 
     def _section(title: str) -> None:
         ui.label(title).style(
-            f"font-size:10px;font-weight:700;letter-spacing:2px;"
-            f"color:{C_INK60};margin-top:12px;margin-bottom:4px;"
+            f"font-size:9px;font-weight:500;letter-spacing:2px;"
+            f"color:{C_INK60};text-transform:uppercase;margin-top:12px;margin-bottom:4px;"
         )
 
     def _kv(label: str, val: str, vc: str = "") -> None:
@@ -426,8 +484,9 @@ def _build_review_panel(state: GuiState) -> None:
             f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};"
         )
         count_lbl = ui.label("").style(
-            f"font-size:10px;background:{C_WARN_BG};color:{C_WARN_FG};"
-            "padding:1px 6px;border-radius:3px;font-family:{F_MONO};"
+            f"font-size:10px;background:#1A1200;color:{C_AMBER};"
+            f"padding:1px 6px;border-radius:3px;font-family:{F_MONO};"
+            f"border:0.5px solid {C_AMBER_P};"
         )
         ui.space()
         refresh_btn = ui.button("Refresh", icon="refresh").props("dense flat").style(
@@ -504,8 +563,8 @@ def _build_review_panel(state: GuiState) -> None:
 
         with parent:
             with ui.card().classes("w-full").style(
-                f"background:{C_SURFACE};border:1px solid {C_INK40};"
-                "border-radius:4px;padding:0;"
+                f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
+                f"border-radius:{R_LG};padding:0;"
             ):
                 # Header bar
                 with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(
@@ -543,16 +602,14 @@ def _build_review_panel(state: GuiState) -> None:
                     f"border-top:0.5px solid {C_INK40};"
                 ):
                     approve_btn = ui.button("APPROVE").style(
-                        f"background:{C_OK_BG};color:{C_OK_FG};"
-                        "font-size:10px;letter-spacing:.5px;font-weight:700;"
-                    ).props("dense")
+                        btn_primary()
+                    ).props("dense flat")
                     reject_btn = ui.button("REJECT").style(
-                        f"background:{C_ERR_BG};color:{C_ERR_FG};"
-                        "font-size:10px;letter-spacing:.5px;font-weight:700;"
-                    ).props("dense")
+                        btn_secondary()
+                    ).props("dense flat")
                     ui.space()
                     expand_btn = ui.button("EXPAND ↓").props("dense flat").style(
-                        f"color:{C_MUTED};font-size:10px;"
+                        btn_ghost()
                     )
 
                 async def _approve(aid: str = artifact_id) -> None:
@@ -646,13 +703,17 @@ def _build_corpus_panel(state: GuiState) -> None:
         )
 
         def _stat(label: str, val: str) -> None:
-            with ui.row().classes("items-baseline gap-1"):
+            with ui.row().classes("items-baseline gap-1").style(
+                f"background:{C_STAT_BG};border:0.5px solid {C_STAT_BD};"
+                f"border-radius:{R_MD};padding:6px 10px;"
+            ):
                 ui.label(val).style(
-                    f"font-size:13px;font-weight:700;color:{C_CREAM};"
-                    f"font-family:{F_MONO};"
+                    f"font-size:18px;font-weight:500;color:{C_CREAM};"
+                    f"letter-spacing:-0.5px;"
                 )
                 ui.label(label).style(
-                    f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};"
+                    f"font-size:9px;letter-spacing:1.5px;color:{C_INK60};"
+                    f"text-transform:uppercase;"
                 )
 
         with stats_row:
@@ -684,7 +745,7 @@ def _build_corpus_panel(state: GuiState) -> None:
                 f"border-collapse:collapse;font-family:{F_MONO};font-size:11px;"
             ):
                 with ui.element("thead"):
-                    with ui.element("tr").style(f"color:{C_MUTED};border-bottom:1px solid {C_INK40};"):
+                    with ui.element("tr").style(f"color:{C_MUTED};border-bottom:0.5px solid {C_INK40};"):
                         for col in ["Domain", "Items", "Type"]:
                             ui.element("th").style(
                                 "text-align:left;padding:3px 8px;font-weight:500;"
@@ -716,8 +777,8 @@ def _build_corpus_panel(state: GuiState) -> None:
             )
             for src in sources[:50]:
                 with ui.card().classes("w-full").style(
-                    f"background:{C_SURFACE};border:1px solid {C_INK40};"
-                    "border-radius:4px;padding:8px 12px;margin-bottom:4px;"
+                    f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
+                    f"border-radius:{R_MD};padding:8px 12px;margin-bottom:4px;"
                 ):
                     with ui.row().classes("w-full items-center gap-2"):
                         d = src.get("domain", "—")
@@ -755,7 +816,7 @@ def _build_wiki_panel(state: GuiState) -> None:
         # ── LEFT PANE — domain navigator ──
         with ui.column().style(
             f"width:260px;min-width:260px;background:{C_SURFACE};"
-            f"border-right:1px solid {C_INK40};overflow-y:auto;padding:8px 0;"
+            f"border-right:0.5px solid {C_INK40};overflow-y:auto;padding:8px 0;"
         ):
             with ui.row().classes("w-full items-center px-3 py-2 gap-2"):
                 ui.label("DOMAINS").style(
@@ -849,8 +910,8 @@ def _build_wiki_panel(state: GuiState) -> None:
         expanded_state: list[bool] = [False]
 
         with ui.card().classes("w-full").style(
-            f"background:{C_SURFACE};border:1px solid {C_INK40};"
-            "border-radius:4px;padding:0;margin-bottom:12px;"
+            f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
+            f"border-radius:{R_LG};padding:0;margin-bottom:12px;"
         ):
             with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(
                 f"border-bottom:.5px solid {C_INK40};"
@@ -892,7 +953,7 @@ def _build_wiki_panel(state: GuiState) -> None:
                 ).style(f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};")
                 ui.space()
                 expand_btn = ui.button("EXPAND ↓").props("dense flat").style(
-                    f"color:{C_MUTED};font-size:10px;"
+                    btn_ghost()
                 )
 
             def _toggle(fc=full_col, pc=preview_col, es=expanded_state, btn=expand_btn) -> None:
@@ -963,7 +1024,7 @@ def _build_graph_panel(state: GuiState) -> None:
         # Node detail side panel (hidden until a node is selected)
         detail_panel = ui.column().style(
             f"width:0;overflow:hidden;background:{C_SURFACE};"
-            f"border-left:1px solid {C_INK40};transition:width .2s;"
+            f"border-left:0.5px solid {C_INK40};transition:width .2s;"
             "padding:0;"
         )
 
@@ -980,7 +1041,7 @@ def _build_graph_panel(state: GuiState) -> None:
 
         detail_panel.style(
             f"width:300px;overflow:visible;background:{C_SURFACE};"
-            f"border-left:1px solid {C_INK40};padding:0;"
+            f"border-left:0.5px solid {C_INK40};padding:0;"
         )
         detail_content.clear()
         detail_content.move(detail_panel)
@@ -1129,8 +1190,8 @@ def _build_cohort_panel(state: GuiState) -> None:
         with ui.column().classes("gap-1"):
             for m in _COHORT_MODELS:
                 with ui.row().classes("items-center gap-3").style(
-                    f"background:{C_SURFACE};border:1px solid {C_INK40};"
-                    "border-radius:4px;padding:6px 10px;"
+                    f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
+                    f"border-radius:{R_LG};padding:6px 10px;"
                 ):
                     cb = ui.checkbox(
                         value=m["id"] in selected_models,
@@ -1157,9 +1218,8 @@ def _build_cohort_panel(state: GuiState) -> None:
             )
 
         # ASK button
-        ask_btn = ui.button("ASK COHORT").style(
-            f"background:{C_AMBER};color:{C_GROUND};"
-            "font-size:12px;font-weight:700;letter-spacing:.5px;padding:8px 24px;"
+        ask_btn = ui.button("ASK COHORT").props("flat").style(
+            btn_primary() + "font-size:12px;font-weight:700;letter-spacing:.5px;padding:8px 24px;"
         )
 
         ui.separator().style(f"background:{C_INK40};margin:4px 0;")
@@ -1199,8 +1259,8 @@ def _build_cohort_panel(state: GuiState) -> None:
                 )
                 for resp in result.get("responses", []):
                     with ui.card().classes("w-full").style(
-                        f"background:{C_SURFACE};border:1px solid {C_INK40};"
-                        "border-radius:4px;padding:10px 14px;"
+                        f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
+                        f"border-radius:{R_LG};padding:10px 14px;"
                     ):
                         ui.label(resp.get("model", "")).style(
                             f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};"
@@ -1216,8 +1276,8 @@ def _build_cohort_panel(state: GuiState) -> None:
                         f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};"
                     )
                     with ui.card().classes("w-full").style(
-                        f"background:{C_RAISED};border:1px solid {C_AMBER};"
-                        "border-radius:4px;padding:10px 14px;"
+                        f"background:{C_RAISED};border:0.5px solid {C_AMBER};"
+                        f"border-radius:{R_LG};padding:10px 14px;"
                     ):
                         ui.markdown(result["synthesis"]).style(
                             f"font-size:13px;color:{C_CREAM};line-height:1.6;"
@@ -1276,8 +1336,8 @@ def _build_chat_panel(
         f"border-top:.5px solid {C_INK40};background:{C_SURFACE};"
     ):
         fld = ui.input(placeholder="Ask anything...").props("outlined dense").classes("flex-grow")
-        btn = ui.button("SEND").style(
-            f"background:{C_INK60};color:{C_CREAM};font-size:11px;letter-spacing:.5px;"
+        btn = ui.button("SEND").props("flat").style(
+            btn_primary()
         )
 
     def _msg(role: str, text: str, model: str | None = None, lat: int | None = None) -> None:
@@ -1290,7 +1350,7 @@ def _build_chat_panel(
             with ui.row().classes("w-full"):
                 ui.markdown(text).style(
                     f"background:{C_SURFACE if role == 'assistant' else C_RAISED};"
-                    f"border:.5px solid {C_INK40};border-radius:4px;"
+                    f"border:0.5px solid {C_INK40};border-radius:{R_LG};"
                     f"padding:8px 10px;max-width:80%;font-size:13px;color:{C_CREAM};"
                 )
 
@@ -1365,7 +1425,10 @@ async def main_page() -> None:
 
     ui.add_head_html(
         f"<style>body,.q-page,.q-layout{{background:{C_GROUND}!important}}"
-        f".q-tab__label{{font-size:11px;letter-spacing:.5px;font-family:{F_SANS}}}"
+        f".q-tab{{padding:14px 16px;font-size:13px;font-weight:500;color:{C_MUTED};border-bottom:2px solid transparent;}}"
+        f".q-tab--active{{color:{C_CREAM};border-bottom:2px solid {C_AMBER};}}"
+        f".q-tabs{{border-bottom:0.5px solid {C_INK40};}}"
+        f".q-tab__label{{font-size:13px;font-weight:500;font-family:{F_SANS}}}"
         f".q-tabs__arrow{{color:{C_INK60}}}</style>"
     )
 
@@ -1420,12 +1483,12 @@ async def main_page() -> None:
         with ui.row().classes("items-center w-full gap-1").style("height:40px"):
             ui.html(_AIP_MARK)
             ui.label("AIP").style(
-                f"font-family:{F_SERIF};font-size:15px;font-weight:700;"
-                f"color:{C_AMBER};letter-spacing:2px;margin-right:10px;"
+                f"font-family:{F_SERIF};font-size:18px;font-weight:700;"
+                f"color:{C_CREAM};letter-spacing:-0.5px;margin-right:10px;"
             )
 
             tabs = ui.tabs(value="chat", on_change=lambda e: _on_tab(e.value)).props(
-                "dense no-caps indicator-color=amber align=left"
+                "dense no-caps align=left"
             ).style(f"color:{C_MUTED};")
             with tabs:
                 ui.tab("chat",      label="CHAT")
@@ -1472,20 +1535,20 @@ async def main_page() -> None:
 
     # ── STATUS BAR ──────────────────────────────────────────────────
     with ui.footer().style(
-        f"background:{C_GROUND};border-top:0.5px solid {C_INK40};"
-        "padding:3px 12px;min-height:26px;"
+        f"background:{C_GROUND};border-top:{BORDER};"
+        "height:28px;padding:0 16px;"
     ):
-        with ui.row().classes("w-full items-center gap-3"):
+        with ui.row().classes("w-full items-center gap-3").style("height:28px"):
             status_dot = ui.html(
                 f'<span style="display:inline-block;width:6px;height:6px;'
                 f'border-radius:50%;background:{C_INK60};"></span>'
             )
             budget_lbl = ui.label(backend_status).style(
-                f"color:#555;font-size:10px;font-family:{F_MONO};"
+                f"color:{C_INK60};font-size:11px;font-family:{F_MONO};"
             )
             ui.space()
             ui.label("aip_brain · AIP v0.1").style(
-                f"color:{C_INK60};font-size:10px;font-family:{F_MONO};"
+                f"color:{C_INK60};font-size:11px;font-family:{F_MONO};"
             )
 
     asyncio.create_task(refresh_budget_status(budget_lbl, state))
