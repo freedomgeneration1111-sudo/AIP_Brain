@@ -177,7 +177,30 @@ def get_state() -> GuiState:
 
 # ── PERSISTENCE & MODULE STATE ────────────────────────────────────────
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_SLOT_MODELS_FILE = _PROJECT_ROOT / "config" / "slot_models.json"
 _SELECTED_MODELS_FILE = _PROJECT_ROOT / "config" / "selected_models.json"
+
+
+def _load_slot_models() -> dict[str, str]:
+    """Load persisted slot→model mapping from config/slot_models.json."""
+    try:
+        if _SLOT_MODELS_FILE.exists():
+            d = json.loads(_SLOT_MODELS_FILE.read_text())
+            if isinstance(d, dict):
+                return {k: v for k, v in d.items() if isinstance(k, str) and isinstance(v, str)}
+    except Exception:
+        pass
+    return {}
+
+
+def _save_slot_models() -> None:
+    """Persist current _role_models to config/slot_models.json."""
+    try:
+        _SLOT_MODELS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _SLOT_MODELS_FILE.write_text(json.dumps(_role_models, indent=2))
+        log.debug("slot models persisted: %s", _role_models)
+    except Exception as exc:
+        log.warning("failed to persist slot models: %s", exc)
 
 
 def _load_sel() -> list[str]:
@@ -198,10 +221,13 @@ def _save_sel(models: list[str]) -> None:
         pass
 
 
+# Load persisted slot assignments on module import
+_role_models: dict[str, str] = _load_slot_models()
+# Ensure standard slots exist even if not in saved file
+for _slot in ("synthesis", "evaluation", "sexton", "embedding", "beast", "vigil"):
+    _role_models.setdefault(_slot, "")
+
 _selected_models: list[str] = _load_sel()
-_role_models: dict[str, str] = {
-    "synthesis": "", "evaluation": "", "sexton": "", "embedding": "",
-}
 
 
 def get_selected_models() -> list[str]:
@@ -219,7 +245,9 @@ def get_role_model(slot: str) -> str:
 
 
 def set_role_model(slot: str, model: str) -> None:
+    """Set a model for a slot and persist immediately."""
     _role_models[slot] = model
+    _save_slot_models()
 
 
 # ── BACKEND & MODEL HELPERS ───────────────────────────────────────────
@@ -274,18 +302,24 @@ async def load_model_slots(state: GuiState) -> list:
 
 def build_model_options(slots: list) -> list[str]:
     sel = get_selected_models()
+    # Include persisted slot model assignments so they appear even before backend connects
+    persisted = [m for m in _role_models.values() if m and not m.startswith("<")]
     backend = [
         s.get("model", "") for s in slots
         if s.get("model") and not s.get("model", "").startswith("<")
     ]
-    opts = list(dict.fromkeys(sel + backend + ["google/gemma-3-4b-it"]))
+    opts = list(dict.fromkeys(sel + persisted + backend + ["google/gemma-3-4b-it"]))
     return [m for m in opts if m] or ["(no models — open Settings)"]
 
 
 def on_chat_model_changed(model_id: str) -> None:
     state = get_state()
     state.current_role = None
-    set_role_model("synthesis", model_id)
+    set_role_model("synthesis", model_id)  # persists to slot_models.json
+    # Also track in selected models list for build_model_options
+    if model_id not in _selected_models:
+        _selected_models.insert(0, model_id)
+        _save_sel(_selected_models)
     state.reset_session()
     asyncio.create_task(
         state.api_client.update_slot_model(
@@ -1453,6 +1487,8 @@ async def main_page() -> None:
             sn, m = s.get("slot_name"), s.get("model")
             if sn and m and not str(m).startswith("<"):
                 _role_models[sn] = m
+        # Persist any new slots from backend
+        _save_slot_models()
         state.available_slots = loaded_slots
         # Update footer label with backend status
         try:
