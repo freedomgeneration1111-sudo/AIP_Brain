@@ -155,6 +155,7 @@ function renderGraph(data, minConf, domainFilter, typeFilter) {
 
   cy.on('tap', 'node', (evt) => {
     const n = evt.target.data();
+    window.parent.postMessage({type: 'node_selected', node_id: n.id}, '*');
     document.getElementById('detail').style.display = 'block';
     document.getElementById('detail-title').textContent = n.label;
     document.getElementById('detail-body').innerHTML = `

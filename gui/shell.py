@@ -913,6 +913,131 @@ def _build_wiki_panel(state: GuiState) -> None:
     asyncio.create_task(_load())
 
 
+# ── GRAPH PANEL ──────────────────────────────────────────────────────
+
+def _build_graph_panel(state: GuiState) -> None:
+    """GRAPH tab — Cytoscape iframe + postMessage node-detail side panel."""
+
+    _selected_node: list[dict] = [{}]
+
+    with ui.row().classes("w-full").style(
+        f"flex:1;min-height:0;background:{C_GROUND};position:relative;"
+    ):
+        # iframe — full area
+        iframe_col = ui.column().classes("flex-1").style("min-height:0;")
+        with iframe_col:
+            ui.html(
+                '<iframe id="graph-iframe" '
+                'src="http://127.0.0.1:8000/graph-viz" '
+                'style="width:100%;height:100%;min-height:560px;'
+                'border:none;background:#141414;">'
+                '</iframe>'
+            )
+
+        # Node detail side panel (hidden until a node is selected)
+        detail_panel = ui.column().style(
+            f"width:0;overflow:hidden;background:{C_SURFACE};"
+            f"border-left:1px solid {C_INK40};transition:width .2s;"
+            "padding:0;"
+        )
+
+    detail_content = ui.column().classes("px-4 py-3 gap-2").style(
+        f"min-width:280px;background:{C_SURFACE};overflow-y:auto;"
+    )
+    detail_panel.move(detail_panel)  # no-op; content added below
+
+    async def _show_node(node_id: str) -> None:
+        try:
+            data = await state.api_client.get_graph_node(node_id)
+        except Exception as exc:
+            data = {"error": str(exc)}
+
+        detail_panel.style(
+            f"width:300px;overflow:visible;background:{C_SURFACE};"
+            f"border-left:1px solid {C_INK40};padding:0;"
+        )
+        detail_content.clear()
+        detail_content.move(detail_panel)
+
+        with detail_content:
+            with ui.row().classes("w-full items-center gap-2"):
+                ui.label("NODE DETAIL").style(
+                    f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};flex:1;"
+                )
+                ui.button(icon="close").props("dense flat round").style(
+                    f"color:{C_MUTED};"
+                ).on("click", _close_detail)
+
+            if data.get("error"):
+                ui.label(f"Error: {data['error']}").style(
+                    f"color:{C_ERR_FG};font-size:11px;"
+                )
+                return
+
+            # Node info from neighbors response
+            nodes = data.get("nodes", [])
+            edges = data.get("edges", [])
+            # Find the selected node itself
+            sel = next((n for n in nodes if n.get("id") == node_id), {})
+            if not sel and nodes:
+                sel = nodes[0]
+
+            ui.label(sel.get("label") or node_id).style(
+                f"font-family:{F_SERIF};font-size:15px;font-weight:700;color:{C_CREAM};"
+            )
+
+            def _field(k: str, v: str) -> None:
+                with ui.row().classes("w-full items-baseline gap-2"):
+                    ui.label(k + ":").style(
+                        f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};min-width:80px;"
+                    )
+                    ui.label(v).style(
+                        f"font-size:11px;color:{C_CREAM};font-family:{F_MONO};"
+                    )
+
+            _field("ID", node_id)
+            _field("Type", sel.get("entity_type", "—"))
+            _field("Domain", sel.get("domain", "—"))
+            _field("Connections", str(len(edges)))
+
+            if nodes:
+                ui.separator().style(f"background:{C_INK40};margin:6px 0;")
+                ui.label("NEIGHBOR NODES").style(
+                    f"font-size:10px;font-weight:700;letter-spacing:1.5px;color:{C_INK60};"
+                )
+                neighbors = [n for n in nodes if n.get("id") != node_id]
+                with ui.row().classes("flex-wrap gap-1"):
+                    for nb in neighbors[:12]:
+                        label = nb.get("label") or nb.get("id", "")
+                        nb_id = nb.get("id", "")
+                        ui.button(label).props("dense").style(
+                            f"background:{C_RAISED};color:{C_AMBER};"
+                            "font-size:10px;padding:2px 6px;border-radius:3px;"
+                        ).on("click", lambda nid=nb_id: _navigate_node(nid))
+
+    def _navigate_node(node_id: str) -> None:
+        ui.run_javascript(
+            f"document.getElementById('graph-iframe').contentWindow"
+            f".postMessage({{type:'navigate_node', node_id:'{node_id}'}}, '*');"
+        )
+        asyncio.create_task(_show_node(node_id))
+
+    def _close_detail() -> None:
+        detail_panel.style("width:0;overflow:hidden;")
+
+    # postMessage bridge — listen for node_selected from the iframe
+    ui.run_javascript("""
+        window.addEventListener('message', function(evt) {
+            if (evt.data && evt.data.type === 'node_selected') {
+                emitEvent('graph_node_selected', {node_id: evt.data.node_id});
+            }
+        });
+    """)
+    ui.on("graph_node_selected", lambda e: asyncio.create_task(
+        _show_node(e.args.get("node_id", "") if hasattr(e, "args") else "")
+    ))
+
+
 # ── CHAT PANEL ────────────────────────────────────────────────────────
 
 def _build_chat_panel(
@@ -1132,9 +1257,7 @@ async def main_page() -> None:
         with ui.tab_panel("corpus"):
             _build_corpus_panel(state)
         with ui.tab_panel("graph"):
-            ui.label("GRAPH — stage 0C").style(
-                f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
-            )
+            _build_graph_panel(state)
         with ui.tab_panel("status"):
             _build_status_panel(state)
 
