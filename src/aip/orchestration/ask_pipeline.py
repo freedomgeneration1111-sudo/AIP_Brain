@@ -543,32 +543,19 @@ async def ask(
     if session_id is None:
         session_id = f"ask:{uuid.uuid4()}"
 
-    # Step 1: Resolve project
+    # Step 1: Resolve project (soft — corpus is project-agnostic, so a missing
+    # project does NOT block the ask. We still search all corpus turns.)
+    project = None
+    project_id = project_name
+    project_domain = project_name
     try:
         project = await _resolve_project(project_name, stores.project_store)
     except Exception as exc:
-        logger.error("Failed to resolve project '%s': %s", project_name, exc)
-        return AskResult(
-            status="NO_PROJECT",
-            answer=f"Error resolving project '{project_name}': {exc}",
-            prompt=question,
-            project_name=project_name,
-            session_id=session_id,
-            errors=[str(exc)],
-        )
+        logger.warning("Failed to resolve project '%s' (non-fatal): %s", project_name, exc)
 
-    if project is None:
-        return AskResult(
-            status="NO_PROJECT",
-            answer=f"Project '{project_name}' not found. Create it with: aip project create --name {project_name}",
-            prompt=question,
-            project_name=project_name,
-            session_id=session_id,
-            errors=[f"Project '{project_name}' does not exist"],
-        )
-
-    project_id = project.get("project_id", project_name)
-    project_domain = project.get("domain") or project_name
+    if project is not None:
+        project_id = project.get("project_id", project_name)
+        project_domain = project.get("domain") or project_name
 
     # Step 2: Search for relevant sources
     # Corpus is project-agnostic: we pass corpus_turn_store and search all

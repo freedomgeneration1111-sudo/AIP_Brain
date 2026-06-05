@@ -69,11 +69,8 @@ async def ask_query(payload: dict, container: AipContainer = Depends(get_contain
             detail="Artifact store not available — cannot perform knowledge queries.",
         )
 
-    if container.project_store is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Project store not available — cannot resolve project names.",
-        )
+    # Project store is optional — corpus is project-agnostic and search
+    # proceeds even when no project exists in the database.
 
     # Build AskStores from container's already-wired components
     from aip.orchestration.ask_pipeline import AskStores
