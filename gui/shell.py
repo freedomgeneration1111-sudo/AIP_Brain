@@ -1036,12 +1036,16 @@ def _build_graph_panel(state: GuiState) -> None:
         # iframe — full area
         iframe_col = ui.column().classes("flex-1").style("min-height:0;")
         with iframe_col:
+            # Use the backend base URL for the graph-viz iframe.
+            # The backend serves /graph-viz as a standalone HTML page.
+            _gv_base = state.api_client.base_url.rstrip("/")
+            _gv_url = f"{_gv_base}/graph-viz"
             ui.html(
-                '<iframe id="graph-iframe" '
-                'src="http://127.0.0.1:8000/graph-viz" '
-                'style="width:100%;height:100%;min-height:560px;'
-                'border:none;background:#141414;">'
-                '</iframe>'
+                f'<iframe id="graph-iframe" '
+                f'src="{_gv_url}" '
+                f'style="width:100%;height:100%;min-height:560px;'
+                f'border:none;background:#141414;">'
+                f'</iframe>'
             )
 
         # Node detail side panel (hidden until a node is selected)
