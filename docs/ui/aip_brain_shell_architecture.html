@@ -1,0 +1,239 @@
+
+<style>
+  .wf { font-family: var(--font-sans); font-size: 13px; color: var(--color-text-primary); background: var(--color-background-tertiary); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .topbar { background: #0E0E0F; color: #F2EDE4; border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; gap: 4px; font-size: 12px; }
+  .topbar-logo { font-family: Georgia, serif; font-size: 15px; font-weight: 700; color: #B8935A; letter-spacing: 2px; margin-right: 12px; }
+  .topbar-tab { padding: 5px 12px; border-radius: 5px; color: #666; font-size: 11px; letter-spacing: 0.5px; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+  .topbar-tab.active { background: #1e2a32; color: #F2EDE4; }
+  .tab-badge { background: #B8935A; color: #0E0E0F; font-size: 9px; padding: 1px 5px; border-radius: 10px; font-weight: 700; }
+  .topbar-spacer { flex: 1; }
+  .topbar-right { display: flex; gap: 6px; align-items: center; }
+  .topbar-icon { color: #3D5566; font-size: 15px; padding: 5px; border-radius: 4px; }
+  .main { display: flex; gap: 8px; height: 460px; }
+  .left-panel { width: 190px; display: flex; flex-direction: column; gap: 6px; }
+  .actor-card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: 8px; padding: 10px; flex: 1; display: flex; flex-direction: column; gap: 5px; }
+  .actor-header { display: flex; align-items: center; justify-content: space-between; }
+  .actor-name { font-size: 11px; font-weight: 500; letter-spacing: 0.5px; }
+  .actor-status { width: 7px; height: 7px; border-radius: 50%; }
+  .status-active { background: #3D5566; }
+  .status-amber { background: #B8935A; }
+  .status-idle { background: #555; }
+  .actor-activity { font-size: 10px; color: var(--color-text-secondary); line-height: 1.45; flex: 1; }
+  .actor-footer { display: flex; justify-content: space-between; margin-top: 4px; }
+  .actor-link { font-size: 10px; color: #3D5566; display: flex; align-items: center; gap: 2px; }
+
+  .center { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .content-pane { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: 8px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .pane-header { padding: 8px 12px; border-bottom: 0.5px solid var(--color-border-tertiary); display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--color-text-secondary); }
+  .context-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+  .ctx-chip { font-size: 9px; padding: 2px 6px; border-radius: 3px; background: #3D556614; color: #3D5566; border: 1px solid #3D556630; }
+  .ctx-chip.amber { background: #B8935A14; color: #B8935A; border-color: #B8935A30; }
+  .chat-messages { flex: 1; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+  .msg-user { align-self: flex-end; background: var(--color-background-secondary); border-radius: 10px 10px 2px 10px; padding: 7px 10px; max-width: 75%; font-size: 12px; }
+  .msg-system { align-self: flex-start; border: 0.5px solid var(--color-border-tertiary); border-radius: 2px 10px 10px 10px; padding: 7px 10px; max-width: 82%; font-size: 12px; line-height: 1.5; }
+  .msg-sources { align-self: flex-start; display: flex; gap: 4px; flex-wrap: wrap; padding: 0 2px; }
+  .source-chip { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; gap: 3px; }
+  .source-chip:hover { border-color: #3D5566; color: #3D5566; }
+  .src-domain { color: #3D5566; font-weight: 500; }
+  .chat-input-area { padding: 8px 10px; border-top: 0.5px solid var(--color-border-tertiary); display: flex; gap: 8px; align-items: center; }
+  .chat-input { flex: 1; border: 0.5px solid var(--color-border-tertiary); border-radius: 6px; padding: 7px 10px; font-size: 12px; background: var(--color-background-secondary); color: var(--color-text-primary); }
+  .send-btn { background: #0E0E0F; color: #F2EDE4; border: none; border-radius: 6px; padding: 7px 12px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+
+  .thread-log { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: 8px; height: 110px; display: flex; flex-direction: column; overflow: hidden; }
+  .thread-header { padding: 6px 10px; border-bottom: 0.5px solid var(--color-border-tertiary); display: flex; align-items: center; gap: 8px; }
+  .thread-label { font-size: 10px; font-weight: 500; color: var(--color-text-secondary); letter-spacing: 0.5px; }
+  .thread-filter { font-size: 10px; padding: 2px 8px; border-radius: 10px; border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); color: var(--color-text-secondary); cursor: pointer; }
+  .thread-filter.on { background: #3D556618; color: #3D5566; border-color: #3D556640; }
+  .thread-spacer { flex: 1; }
+  .thread-search { font-size: 10px; padding: 2px 8px; border-radius: 4px; border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); color: var(--color-text-primary); width: 120px; }
+  .thread-items { flex: 1; overflow-y: auto; padding: 4px 8px; display: flex; flex-direction: column; gap: 2px; }
+  .thread-item { display: flex; align-items: baseline; gap: 6px; padding: 3px 4px; border-radius: 4px; cursor: pointer; }
+  .thread-item:hover { background: var(--color-background-secondary); }
+  .thread-item.active { background: #3D556610; }
+  .thread-time { font-size: 9px; color: var(--color-text-secondary); min-width: 36px; font-family: var(--font-mono); }
+  .thread-domain { font-size: 9px; padding: 1px 4px; border-radius: 3px; background: #3D556614; color: #3D5566; min-width: 60px; }
+  .thread-text { font-size: 10px; color: var(--color-text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .right-panel { width: 170px; display: flex; flex-direction: column; gap: 6px; }
+  .right-card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: 8px; padding: 10px; }
+  .right-label { font-size: 10px; font-weight: 500; color: var(--color-text-secondary); letter-spacing: 0.5px; margin-bottom: 7px; text-transform: uppercase; }
+  .slot-row { display: flex; align-items: center; justify-content: space-between; padding: 3px 0; border-bottom: 0.5px solid var(--color-border-tertiary); gap: 4px; }
+  .slot-row:last-child { border-bottom: none; }
+  .slot-name { font-size: 10px; color: var(--color-text-secondary); }
+  .slot-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+  .slot-model { font-size: 10px; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80px; }
+  .wiki-item { font-size: 10px; padding: 4px 0; border-bottom: 0.5px solid var(--color-border-tertiary); display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+  .wiki-item:last-child { border-bottom: none; }
+  .wiki-domain { color: #3D5566; font-weight: 500; font-size: 10px; }
+  .ws-gen { font-size: 9px; padding: 1px 4px; border-radius: 3px; background: #B8935A14; color: #B8935A; border: 1px solid #B8935A30; }
+  .ws-app { font-size: 9px; padding: 1px 4px; border-radius: 3px; background: #3D556614; color: #3D5566; border: 1px solid #3D556630; }
+  .corpus-stat { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .corpus-stat:last-child { border-bottom: none; }
+  .cs-label { font-size: 10px; color: var(--color-text-secondary); }
+  .cs-value { font-size: 10px; color: var(--color-text-primary); font-weight: 500; }
+  .status-bar { background: #0E0E0F; color: #555; border-radius: 8px; padding: 5px 12px; display: flex; gap: 12px; font-size: 10px; font-family: var(--font-mono); align-items: center; }
+  .sb-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 3px; }
+  .sb-teal { background: #3D5566; }
+  .sb-amber { background: #B8935A; }
+</style>
+<div class="wf">
+  <div class="topbar">
+    <span class="topbar-logo">AIP</span>
+    <span class="topbar-tab active">CHAT</span>
+    <span class="topbar-tab">AUGMENTED</span>
+    <span class="topbar-tab">WIKI</span>
+    <span class="topbar-tab">GRAPH</span>
+    <span class="topbar-tab">REVIEW <span class="tab-badge">6</span></span>
+    <span class="topbar-tab">CORPUS</span>
+    <span class="topbar-spacer"></span>
+    <div class="topbar-right">
+      <i class="ti ti-search topbar-icon" aria-hidden="true"></i>
+      <i class="ti ti-settings topbar-icon" aria-hidden="true"></i>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="left-panel">
+      <div style="font-size:9px; color:var(--color-text-secondary); letter-spacing:1px; padding: 0 4px;">ACTORS</div>
+      <div class="actor-card">
+        <div class="actor-header">
+          <span class="actor-name">BEAST</span>
+          <span class="actor-status status-amber"></span>
+        </div>
+        <div class="actor-activity">Wiki cycle: nbcm article generating (token threshold reached). Tagging queue: 0 untagged.</div>
+        <div class="actor-footer">
+          <span class="actor-link"><i class="ti ti-external-link" style="font-size:10px"></i> logs</span>
+          <span class="actor-link" style="color:#555"><i class="ti ti-arrows-maximize" style="font-size:10px"></i> expand</span>
+        </div>
+      </div>
+      <div class="actor-card">
+        <div class="actor-header">
+          <span class="actor-name">VIGIL</span>
+          <span class="actor-status status-idle"></span>
+        </div>
+        <div class="actor-activity">Idle. Last: profile amendment proposed 2h ago. No anomalies detected.</div>
+        <div class="actor-footer">
+          <span class="actor-link"><i class="ti ti-external-link" style="font-size:10px"></i> logs</span>
+          <span class="actor-link" style="color:#555"><i class="ti ti-arrows-maximize" style="font-size:10px"></i> expand</span>
+        </div>
+      </div>
+      <div class="actor-card">
+        <div class="actor-header">
+          <span class="actor-name">SEXTON</span>
+          <span class="actor-status status-active"></span>
+        </div>
+        <div class="actor-activity">Health OK. 267 unclassified flagged. Stale vector check: 0. Next: 3m.</div>
+        <div class="actor-footer">
+          <span class="actor-link"><i class="ti ti-external-link" style="font-size:10px"></i> logs</span>
+          <span class="actor-link" style="color:#555"><i class="ti ti-arrows-maximize" style="font-size:10px"></i> expand</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="center">
+      <div class="content-pane">
+        <div class="pane-header">
+          <span style="color:var(--color-text-primary); font-weight:500;">AUGMENTED</span>
+          <span style="color:#555;">·</span>
+          <div class="context-chips">
+            <span class="ctx-chip">DEFINER profile</span>
+            <span class="ctx-chip">nbcm wiki</span>
+            <span class="ctx-chip">3 graph links</span>
+            <span class="ctx-chip">8 turns</span>
+          </div>
+        </div>
+        <div class="chat-messages">
+          <div class="msg-user">what is my framework for time in nbcm</div>
+          <div class="msg-system">In NBCM, time is not fundamental — it emerges relationally from constraint satisfactions on null surfaces. The photon (t=0) is the temporal reference; all massive particle proper times are measured relative to null geodesic paths [source: ct_88552c] [source: ct_9bcda9].</div>
+          <div class="msg-sources">
+            <span class="source-chip"><span class="src-domain">nbcm</span> ct_88552c · 0.92</span>
+            <span class="source-chip"><span class="src-domain">nbcm</span> ct_9bcda9 · 0.88</span>
+            <span class="source-chip"><span class="src-domain">physics_ed</span> ct_04775e · 0.71</span>
+          </div>
+          <div class="msg-user">how does this connect to theology</div>
+          <div class="msg-system">The bridge runs through constraint geometry: miracles are constraint-satisfying updates to the null ledger rather than law violations. A spiritual being outside spacetime would perceive vacuum decay events the corpus calls "scroll-rolling" [source: ct_9777] [source: Profile].</div>
+          <div class="msg-sources">
+            <span class="source-chip"><span class="src-domain">nbcm</span> ct_9777 · 0.85</span>
+            <span class="source-chip"><span class="src-domain">theology</span> ct_d741 · 0.79</span>
+            <span class="source-chip amber" style="background:#B8935A14; color:#B8935A; border-color:#B8935A30;">Profile</span>
+          </div>
+        </div>
+        <div class="chat-input-area">
+          <input class="chat-input" placeholder="Ask anything..." />
+          <button class="send-btn">SEND <i class="ti ti-arrow-right" style="font-size:11px" aria-hidden="true"></i></button>
+        </div>
+      </div>
+
+      <div class="thread-log">
+        <div class="thread-header">
+          <span class="thread-label">THREAD LOG</span>
+          <span class="thread-filter on">ALL</span>
+          <span class="thread-filter">nbcm</span>
+          <span class="thread-filter">theology</span>
+          <span class="thread-filter">aip</span>
+          <span class="thread-spacer"></span>
+          <input class="thread-search" placeholder="search turns..." />
+        </div>
+        <div class="thread-items">
+          <div class="thread-item active">
+            <span class="thread-time">14:22</span>
+            <span class="thread-domain">nbcm</span>
+            <span class="thread-text">what is my framework for time in nbcm</span>
+          </div>
+          <div class="thread-item active">
+            <span class="thread-time">14:23</span>
+            <span class="thread-domain">nbcm→theo</span>
+            <span class="thread-text">how does this connect to theology</span>
+          </div>
+          <div class="thread-item" style="opacity:0.5">
+            <span class="thread-time">13:41</span>
+            <span class="thread-domain">theology</span>
+            <span class="thread-text">what is my position on tithing</span>
+          </div>
+          <div class="thread-item" style="opacity:0.5">
+            <span class="thread-time">13:39</span>
+            <span class="thread-domain">aip</span>
+            <span class="thread-text">why did jesus have to die</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <div class="right-card">
+        <div class="right-label">Synthesis</div>
+        <div style="font-size:11px; color:var(--color-text-primary); padding: 4px 0;">llama-4-maverick</div>
+        <div style="font-size:10px; color:var(--color-text-secondary);">OpenRouter · free</div>
+      </div>
+      <div class="right-card">
+        <div class="right-label">Slots</div>
+        <div class="slot-row"><span class="slot-name">vigil</span><span class="slot-dot" style="background:#3D5566"></span><span class="slot-model">gpt-oss-20b</span></div>
+        <div class="slot-row"><span class="slot-name">beast</span><span class="slot-dot" style="background:#B8935A"></span><span class="slot-model">nemotron-120b</span></div>
+        <div class="slot-row"><span class="slot-name">embed</span><span class="slot-dot" style="background:#555"></span><span class="slot-model">nemotron-embed</span></div>
+        <div class="slot-row"><span class="slot-name">sexton</span><span class="slot-dot" style="background:#3D5566"></span><span class="slot-model">gemma-4-31b</span></div>
+      </div>
+      <div class="right-card">
+        <div class="right-label">Wiki queue</div>
+        <div class="wiki-item"><span class="wiki-domain">nbcm</span><span class="ws-gen">draft</span></div>
+        <div class="wiki-item"><span class="wiki-domain">theology</span><span class="ws-gen">draft</span></div>
+        <div class="wiki-item"><span class="wiki-domain">bonded_labor</span><span class="ws-gen">draft</span></div>
+        <div class="wiki-item"><span class="wiki-domain">water_sci</span><span class="ws-app">approved</span></div>
+      </div>
+      <div class="right-card">
+        <div class="right-label">Corpus</div>
+        <div class="corpus-stat"><span class="cs-label">turns</span><span class="cs-value">2,766</span></div>
+        <div class="corpus-stat"><span class="cs-label">tagged</span><span class="cs-value">100%</span></div>
+        <div class="corpus-stat"><span class="cs-label">embedded</span><span class="cs-value">2,715</span></div>
+        <div class="corpus-stat"><span class="cs-label">graph nodes</span><span class="cs-value">36</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span><span class="sb-dot sb-teal"></span>backend OK</span>
+    <span><span class="sb-dot sb-amber"></span>beast active</span>
+    <span>budget: 0 / 500k</span>
+    <span>aip_brain</span>
+    <span style="margin-left:auto; color:#3D5566;">AIP v0.1 · Live</span>
+  </div>
+</div>
