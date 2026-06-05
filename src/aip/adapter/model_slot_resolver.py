@@ -51,6 +51,9 @@ class ModelSlotResolver(ModelProvider):
     ``AIP_<SLOT>_PROVIDER`` environment variable.
     """
 
+    # Known slot names used to detect when a config dict IS the models sub-dict
+    _KNOWN_SLOT_NAMES = frozenset({"synthesis", "evaluation", "sexton", "embedding", "beast"})
+
     def __init__(self, config: dict | Any) -> None:
         if hasattr(config, "model_dump"):
             self._cfg = config.model_dump()
@@ -60,11 +63,66 @@ class ModelSlotResolver(ModelProvider):
             self._cfg = {}
 
         self._models = self._cfg.get("models", {})
+
+        # Fallback 1: if no "models" key, check if the config itself IS the models dict
+        # (i.e. has known slot names like "synthesis", "evaluation" as top-level keys)
+        if not self._models and isinstance(self._cfg, dict):
+            if self._KNOWN_SLOT_NAMES & set(self._cfg.keys()):
+                self._models = self._cfg
+                log.info("slot_resolver_fallback", reason="config_is_models_dict", slots=list(self._models.keys()))
+
+        # Fallback 2: if still empty, try loading from the TOML config file
+        if not self._models:
+            toml_models = self._try_load_toml_models()
+            if toml_models:
+                self._models = toml_models
+                log.info("slot_resolver_fallback", reason="loaded_from_toml", slots=list(toml_models.keys()))
+
         # ci_mode defaults to True unless explicitly set to False
         self._ci_mode = self._models.get("ci_mode", True)
 
         # Lazy httpx client — created on first real call, reused thereafter
         self._http_client: Any = None
+
+    @staticmethod
+    def _try_load_toml_models() -> dict:
+        """Attempt to load the models section from the default TOML config file.
+
+        Searches the same paths as app.py's _load_toml_config():
+          1. AIP_CONFIG_PATH env var
+          2. config/aip.config.toml relative to CWD
+          3. config/aip.config.toml relative to this source file
+
+        Returns the models sub-dict, or {} if not found / no models section.
+        """
+        from pathlib import Path
+
+        config_path = os.environ.get("AIP_CONFIG_PATH", "")
+        candidates: list[Path] = []
+        if config_path:
+            candidates.append(Path(config_path))
+        else:
+            candidates.append(Path.cwd() / "config" / "aip.config.toml")
+            # Relative to this source file: src/aip/adapter/ → project root
+            project_root = Path(__file__).resolve().parent.parent.parent.parent
+            candidates.append(project_root / "config" / "aip.config.toml")
+
+        for path in candidates:
+            if path.is_file():
+                try:
+                    try:
+                        import tomllib
+                    except ImportError:
+                        import tomli as tomllib  # type: ignore[no-redef]
+                    with open(path, "rb") as f:
+                        cfg = tomllib.load(f)
+                    models = cfg.get("models", {})
+                    if models:
+                        log.info("slot_resolver_toml_loaded", path=str(path))
+                        return models
+                except Exception as exc:
+                    log.warning("slot_resolver_toml_failed", path=str(path), error=str(exc))
+        return {}
 
     def _get_http_client(self) -> Any:
         """Lazily create an httpx.AsyncClient for real provider calls.
@@ -103,6 +161,8 @@ class ModelSlotResolver(ModelProvider):
         slot_cfg = self._models.get(slot_name, {})
         if not isinstance(slot_cfg, dict):
             slot_cfg = {}
+
+        print(f"DEBUG slot_cfg for {slot_name}: {slot_cfg}")
 
         env_prefix = f"AIP_{slot_name.upper()}_"
 
