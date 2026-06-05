@@ -173,6 +173,29 @@ class AipApiClient:
         return resp.json()
 
     # ------------------------------------------------------------------
+    # Projects
+    # ------------------------------------------------------------------
+
+    async def list_projects(self) -> list[dict[str, Any]]:
+        """Fetch all projects via GET /api/v1/projects.
+
+        Returns a list of project dicts with at least:
+          project_id, name, domain
+        Used by the AUGMENTED panel to resolve a valid project_name
+        for the /api/v1/ask endpoint.
+        """
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/projects", timeout=5.0)
+        resp.raise_for_status()
+        data = resp.json()
+        # API returns {"projects": [...]}
+        if isinstance(data, dict):
+            return data.get("projects", [])
+        if isinstance(data, list):
+            return data
+        return []
+
+    # ------------------------------------------------------------------
     # Review Queue
     # ------------------------------------------------------------------
 

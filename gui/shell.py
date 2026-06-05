@@ -145,6 +145,7 @@ class GuiState:
         self.auto_save: bool = True
         self.ingestion_status: str = "idle"
         self.chunks_indexed: int = 0
+        self.current_project: str | None = None  # resolved from GET /api/v1/projects
         self.client = None
 
     async def ensure_session(self) -> str:
@@ -1406,15 +1407,42 @@ def _build_chat_panel(
 
         if is_aug:
             # ── AUGMENTED MODE: POST to /api/v1/ask via backend ──
+            # Check that we have a valid project before asking
+            if not state.current_project:
+                think.delete()
+                _sys(
+                    "No project found. Run: aip project create --name default"
+                )
+                ui.notify(
+                    "No project found. Run: aip project create --name default",
+                    color="warning",
+                    timeout=8000,
+                )
+                return
             try:
                 r = await state.api_client.augmented_ask(
                     query=prompt,
+                    project_name=state.current_project,
                     model_slot=get_role_model("synthesis") or "synthesis",
                 )
                 think.delete()
                 status = r.get("status", "")
                 answer = r.get("answer", "")
                 errors = r.get("errors", [])
+                # Handle NO_PROJECT specifically with actionable guidance
+                if status == "NO_PROJECT":
+                    _sys(
+                        f"Project '{state.current_project}' not found. "
+                        f"Run: aip project create --name {state.current_project}"
+                    )
+                    ui.notify(
+                        f"Project '{state.current_project}' not found",
+                        color="warning",
+                        timeout=6000,
+                    )
+                    # Invalidate cached project so next attempt re-resolves
+                    state.current_project = None
+                    return
                 if status != "OK" or errors:
                     err_text = "; ".join(errors) if errors else f"status={status}"
                     _sys(f"ask error: {err_text}")
@@ -1543,7 +1571,7 @@ async def main_page() -> None:
     opts = build_model_options(slots)
 
     async def _deferred_backend_load() -> None:
-        """Load backend health + slots after the page has rendered."""
+        """Load backend health + slots + project after the page has rendered."""
         nonlocal backend_status
         bs = await check_backend_health(state)
         loaded_slots = await load_model_slots(state)
@@ -1554,6 +1582,18 @@ async def main_page() -> None:
         # Persist any new slots from backend
         _save_slot_models()
         state.available_slots = loaded_slots
+        # Resolve a valid project for the AUGMENTED ask endpoint
+        try:
+            projects = await state.api_client.list_projects()
+            if projects:
+                # Use the first available project's name or id
+                first = projects[0]
+                state.current_project = first.get("name") or first.get("project_id") or first.get("id")
+                log.info("resolved project for augmented ask: %s", state.current_project)
+            else:
+                log.warning("no projects found — augmented ask will show guidance")
+        except Exception as exc:
+            log.warning("failed to list projects: %s", exc)
         # Update footer label with backend status
         try:
             budget_lbl.text = bs
