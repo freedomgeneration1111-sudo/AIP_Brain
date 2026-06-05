@@ -1264,51 +1264,66 @@ def _build_cohort_panel(state: GuiState) -> None:
                 ui.notify("Maximum 5 models.", color="warning")
                 return
 
-            results_col.clear()
-            with results_col:
-                ui.label("Querying cohort…").style(
-                    f"color:{C_MUTED};font-size:12px;font-family:{F_MONO};"
-                )
+            # Clear previous responses and synthesis before showing new results
+            def _clear_and_show_loading() -> None:
+                results_col.clear()
+                with results_col:
+                    ui.label("Querying cohort…").style(
+                        f"color:{C_MUTED};font-size:12px;font-family:{F_MONO};"
+                    )
+
+            if state.client:
+                with state.client:
+                    _clear_and_show_loading()
+            else:
+                _clear_and_show_loading()
 
             # Stub — returns mock result; wire POST /api/v1/cohort/synthesize in Phase 3
             await asyncio.sleep(0.5)
             result = _MOCK_COHORT_RESULT.copy()
             result["question"] = question
 
-            results_col.clear()
-            with results_col:
-                ui.label("INDIVIDUAL RESPONSES").style(
-                    f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
-                )
-                for resp in result.get("responses", []):
-                    with ui.card().classes("w-full").style(
-                        f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
-                        f"border-radius:{R_LG};padding:10px 14px;"
-                    ):
-                        ui.label(resp.get("model", "")).style(
-                            f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};"
-                            "margin-bottom:4px;"
-                        )
-                        ui.markdown(resp.get("content", "")).style(
-                            f"font-size:12px;color:{C_CREAM};line-height:1.6;"
-                        )
-
-                if result.get("synthesis"):
-                    ui.separator().style(f"background:{C_INK40};margin:8px 0;")
-                    ui.label("SYNTHESIS").style(
+            def _render_results() -> None:
+                results_col.clear()
+                with results_col:
+                    ui.label("INDIVIDUAL RESPONSES").style(
                         f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
                     )
-                    with ui.card().classes("w-full").style(
-                        f"background:{C_RAISED};border:0.5px solid {C_AMBER};"
-                        f"border-radius:{R_LG};padding:10px 14px;"
-                    ):
-                        ui.markdown(result["synthesis"]).style(
-                            f"font-size:13px;color:{C_CREAM};line-height:1.6;"
-                        )
+                    for resp in result.get("responses", []):
+                        with ui.card().classes("w-full").style(
+                            f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
+                            f"border-radius:{R_LG};padding:10px 14px;"
+                        ):
+                            ui.label(resp.get("model", "")).style(
+                                f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};"
+                                "margin-bottom:4px;"
+                            )
+                            ui.markdown(resp.get("content", "")).style(
+                                f"font-size:12px;color:{C_CREAM};line-height:1.6;"
+                            )
 
-                ui.label("[Phase 3: wire POST /api/v1/cohort/synthesize]").style(
-                    f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};margin-top:4px;"
-                )
+                    if result.get("synthesis"):
+                        ui.separator().style(f"background:{C_INK40};margin:8px 0;")
+                        ui.label("SYNTHESIS").style(
+                            f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
+                        )
+                        with ui.card().classes("w-full").style(
+                            f"background:{C_RAISED};border:0.5px solid {C_AMBER};"
+                            f"border-radius:{R_LG};padding:10px 14px;"
+                        ):
+                            ui.markdown(result["synthesis"]).style(
+                                f"font-size:13px;color:{C_CREAM};line-height:1.6;"
+                            )
+
+                    ui.label("[Phase 3: wire POST /api/v1/cohort/synthesize]").style(
+                        f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};margin-top:4px;"
+                    )
+
+            if state.client:
+                with state.client:
+                    _render_results()
+            else:
+                _render_results()
 
         ask_btn.on("click", lambda: asyncio.create_task(_ask()))
 
