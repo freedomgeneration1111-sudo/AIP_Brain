@@ -963,8 +963,19 @@ def create_app(config: dict | None = None) -> "FastAPI":
     if _static_dir.is_dir():
         app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
-    @app.get("/")
-    async def root():
-        return {"status": "ok", "service": "aip-surfaces"}
+    # Mount NiceGUI shell interface
+    import sys
+    from pathlib import Path
+    gui_path = Path(__file__).parent.parent.parent.parent / "gui"
+    if str(gui_path) not in sys.path:
+        sys.path.insert(0, str(gui_path))
+
+    try:
+        import shell
+        app.mount("/", shell, name="gui")
+    except ImportError:
+        @app.get("/")
+        async def root():
+            return {"status": "ok", "service": "aip-surfaces"}
 
     return app
