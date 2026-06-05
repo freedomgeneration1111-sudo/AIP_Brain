@@ -202,7 +202,7 @@ require_definer_approval = true
 [deployment]
 profile_name = "laptop"
 vector_backend = "sqlite_vss"
-model_provider = "ollama"
+model_provider = "openrouter"
 # IMPORTANT: auth_enabled must be true in production deployments.
 # The laptop profile defaults to false for local development convenience.
 # Production deployments MUST set auth_enabled = true or provide the
