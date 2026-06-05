@@ -710,6 +710,13 @@ class AipApiClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def get_corpus_stats(self) -> dict[str, Any]:
+        """Get corpus turn statistics via GET /api/v1/corpus/stats."""
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/corpus/stats")
+        resp.raise_for_status()
+        return resp.json()
+
     # ------------------------------------------------------------------
     # Budget Status
     # ------------------------------------------------------------------

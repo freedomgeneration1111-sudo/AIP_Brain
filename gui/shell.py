@@ -712,11 +712,11 @@ def _build_corpus_panel(state: GuiState) -> None:
         content.clear()
 
         results = await asyncio.gather(
-            state.api_client.get_sources_stats(),
+            state.api_client.get_corpus_stats(),
             state.api_client.list_sources(),
             return_exceptions=True,
         )
-        stats = results[0] if not isinstance(results[0], Exception) else {}
+        corpus_stats = results[0] if not isinstance(results[0], Exception) else {}
         sources_r = results[1] if not isinstance(results[1], Exception) else {}
         sources = (
             sources_r.get("items", []) if isinstance(sources_r, dict)
@@ -724,18 +724,11 @@ def _build_corpus_panel(state: GuiState) -> None:
             else []
         )
 
-        entity_count = (
-            stats.get("entity_store", {}).get("total_entities", 0)
-            if isinstance(stats, dict) else 0
-        )
-        knowledge_count = (
-            stats.get("knowledge_store", {}).get("total_items", 0)
-            if isinstance(stats, dict) else 0
-        )
-        vector_count = (
-            stats.get("vector_store", {}).get("total_vectors", 0)
-            if isinstance(stats, dict) else 0
-        )
+        total_turns = corpus_stats.get("total_turns", 0) if isinstance(corpus_stats, dict) else 0
+        tagged = corpus_stats.get("tagged", 0) if isinstance(corpus_stats, dict) else 0
+        untagged = corpus_stats.get("untagged", 0) if isinstance(corpus_stats, dict) else 0
+        embedded = corpus_stats.get("embedded", 0) if isinstance(corpus_stats, dict) else 0
+        domains = corpus_stats.get("domains", []) if isinstance(corpus_stats, dict) else []
 
         def _stat(label: str, val: str) -> None:
             with ui.row().classes("items-baseline gap-1").style(
@@ -752,21 +745,20 @@ def _build_corpus_panel(state: GuiState) -> None:
                 )
 
         with stats_row:
-            _stat("entities", str(entity_count))
+            _stat("turns", f"{total_turns:,}")
             ui.label("·").style(f"color:{C_INK60};")
-            _stat("knowledge items", str(knowledge_count))
+            _stat("tagged", str(tagged))
             ui.label("·").style(f"color:{C_INK60};")
-            _stat("vectors", str(vector_count))
+            _stat("untagged", str(untagged))
+            ui.label("·").style(f"color:{C_INK60};")
+            _stat("embedded", str(embedded))
 
-        # Group sources by domain
-        by_domain: dict[str, list[dict]] = {}
-        for s in sources:
-            d = s.get("domain", "—") or "—"
-            by_domain.setdefault(d, []).append(s)
+        # Build domain data from corpus stats (primary source of truth)
+        by_domain: dict[str, int] = {d["name"]: d["count"] for d in domains if isinstance(d, dict)}
 
         with content:
-            if not sources:
-                ui.label("No indexed sources yet.").style(
+            if not domains and not sources:
+                ui.label("No corpus turns indexed yet. Run: aip ingest file <path>").style(
                     f"color:{C_MUTED};font-size:12px;padding:16px;"
                 )
                 return
@@ -781,27 +773,23 @@ def _build_corpus_panel(state: GuiState) -> None:
             ):
                 with ui.element("thead"):
                     with ui.element("tr").style(f"color:{C_MUTED};border-bottom:0.5px solid {C_INK40};"):
-                        for col in ["Domain", "Items", "Type"]:
+                        for col in ["Domain", "Turns"]:
                             ui.element("th").style(
                                 "text-align:left;padding:3px 8px;font-weight:500;"
                                 "font-size:10px;letter-spacing:.5px;"
                             ).text = col
                 with ui.element("tbody"):
-                    for domain, items in sorted(by_domain.items()):
-                        types = {i.get("source_type", "—") for i in items}
+                    for domain_name, count in sorted(by_domain.items(), key=lambda x: -x[1]):
                         with ui.element("tr").style(
                             f"border-bottom:.5px solid {C_INK40};"
                             "cursor:pointer;"
                         ):
                             ui.element("td").style(
                                 f"padding:3px 8px;color:{C_AMBER};"
-                            ).text = domain
+                            ).text = domain_name
                             ui.element("td").style(
                                 f"padding:3px 8px;color:{C_CREAM};"
-                            ).text = str(len(items))
-                            ui.element("td").style(
-                                f"padding:3px 8px;color:{C_MUTED};"
-                            ).text = ", ".join(sorted(types))
+                            ).text = f"{count:,}"
 
             ui.separator().style(f"background:{C_INK40};margin:12px 0;")
 
