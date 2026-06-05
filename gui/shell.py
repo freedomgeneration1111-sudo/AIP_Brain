@@ -388,6 +388,182 @@ def _build_status_panel(state: GuiState) -> None:
     asyncio.create_task(_load())
 
 
+# ── REVIEW PANEL ─────────────────────────────────────────────────────
+
+def _build_review_panel(state: GuiState) -> None:
+    """REVIEW tab — beast_wiki artifacts in GENERATED state, approve/reject."""
+
+    with ui.row().classes("w-full items-center px-4 py-2 gap-2").style(
+        f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};"
+    ):
+        ui.label("REVIEW").style(
+            f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};"
+        )
+        count_lbl = ui.label("").style(
+            f"font-size:10px;background:{C_WARN_BG};color:{C_WARN_FG};"
+            "padding:1px 6px;border-radius:3px;font-family:{F_MONO};"
+        )
+        ui.space()
+        refresh_btn = ui.button("Refresh", icon="refresh").props("dense flat").style(
+            f"color:{C_MUTED};font-size:11px;"
+        )
+
+    content = ui.column().classes("w-full px-4 py-3 gap-3").style(
+        f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:0;"
+    )
+
+    async def _load() -> None:
+        content.clear()
+        count_lbl.text = ""
+        with content:
+            ui.label("Loading…").style(
+                f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};"
+            )
+
+        reviews, knowledge = await asyncio.gather(
+            state.api_client.list_pending_reviews(),
+            state.api_client.list_knowledge(state="GENERATED"),
+            return_exceptions=True,
+        )
+        review_items = reviews if isinstance(reviews, list) else []
+        know_items = (
+            knowledge.get("items", [])
+            if isinstance(knowledge, dict)
+            else []
+        )
+
+        # Merge: reviews queue + knowledge with GENERATED state
+        seen_ids: set[str] = set()
+        cards: list[dict] = []
+        for r in review_items:
+            rid = r.get("artifact_id") or r.get("id", "")
+            seen_ids.add(rid)
+            cards.append({"id": rid, "source": "review_queue", **r})
+        for k in know_items:
+            kid = k.get("knowledge_id") or k.get("id", "")
+            if kid not in seen_ids:
+                cards.append({
+                    "id": kid,
+                    "source": "knowledge",
+                    "domain": k.get("domain", ""),
+                    "state": k.get("state", ""),
+                    "content": k.get("content", ""),
+                    "artifact_type": "wiki",
+                    **k,
+                })
+
+        count_lbl.text = f"{len(cards)} pending" if cards else ""
+
+        content.clear()
+        if not cards:
+            with content:
+                ui.label("No items pending review.").style(
+                    f"color:{C_MUTED};font-size:12px;padding:24px;"
+                )
+            return
+
+        for card in cards:
+            _render_review_card(content, card, state, _load)
+
+    def _render_review_card(
+        parent, card: dict, state: GuiState, reload_fn
+    ) -> None:
+        artifact_id = card.get("id", "")
+        domain = card.get("domain", "—")
+        artifact_type = card.get("artifact_type", card.get("type", "artifact"))
+        content_text = card.get("content", "")
+        preview = (content_text[:300] + "…") if len(content_text) > 300 else content_text
+
+        expanded_state: list[bool] = [False]
+
+        with parent:
+            with ui.card().classes("w-full").style(
+                f"background:{C_SURFACE};border:1px solid {C_INK40};"
+                "border-radius:4px;padding:0;"
+            ):
+                # Header bar
+                with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(
+                    f"border-bottom:0.5px solid {C_INK40};"
+                ):
+                    ui.label(f"[{domain.upper()}]").style(
+                        f"font-size:10px;font-family:{F_MONO};color:{C_AMBER};"
+                    )
+                    uid_short = artifact_id[:20] + "…" if len(artifact_id) > 20 else artifact_id
+                    ui.label(uid_short).style(
+                        f"font-size:10px;font-family:{F_MONO};color:{C_MUTED};"
+                    )
+                    ui.space()
+                    ui.label(artifact_type).style(
+                        f"font-size:9px;background:{C_INK40};color:{C_MUTED};"
+                        "padding:1px 5px;border-radius:3px;"
+                    )
+
+                # Preview content
+                preview_col = ui.column().classes("w-full px-3 py-2")
+                with preview_col:
+                    ui.label(preview or "(empty)").style(
+                        f"font-size:12px;color:{C_CREAM};line-height:1.5;"
+                    )
+
+                # Expanded content (hidden by default)
+                full_col = ui.column().classes("w-full px-3 py-2").style("display:none;")
+                with full_col:
+                    ui.markdown(content_text or "(no content)").style(
+                        f"font-size:12px;color:{C_CREAM};line-height:1.6;"
+                    )
+
+                # Action bar
+                with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(
+                    f"border-top:0.5px solid {C_INK40};"
+                ):
+                    approve_btn = ui.button("APPROVE").style(
+                        f"background:{C_OK_BG};color:{C_OK_FG};"
+                        "font-size:10px;letter-spacing:.5px;font-weight:700;"
+                    ).props("dense")
+                    reject_btn = ui.button("REJECT").style(
+                        f"background:{C_ERR_BG};color:{C_ERR_FG};"
+                        "font-size:10px;letter-spacing:.5px;font-weight:700;"
+                    ).props("dense")
+                    ui.space()
+                    expand_btn = ui.button("EXPAND ↓").props("dense flat").style(
+                        f"color:{C_MUTED};font-size:10px;"
+                    )
+
+                async def _approve(aid: str = artifact_id) -> None:
+                    try:
+                        await state.api_client.approve_review(aid)
+                        ui.notify(f"Approved: {aid[:16]}…", color="positive")
+                        asyncio.create_task(reload_fn())
+                    except Exception as exc:
+                        ui.notify(f"Approve failed: {exc}", color="negative")
+
+                async def _reject(aid: str = artifact_id) -> None:
+                    try:
+                        await state.api_client.reject_review(aid)
+                        ui.notify(f"Rejected: {aid[:16]}…", color="warning")
+                        asyncio.create_task(reload_fn())
+                    except Exception as exc:
+                        ui.notify(f"Reject failed: {exc}", color="negative")
+
+                def _expand(fc=full_col, pc=preview_col, es=expanded_state, btn=expand_btn) -> None:
+                    es[0] = not es[0]
+                    if es[0]:
+                        fc.style("display:block;")
+                        pc.style("display:none;")
+                        btn.text = "COLLAPSE ↑"
+                    else:
+                        fc.style("display:none;")
+                        pc.style("display:block;")
+                        btn.text = "EXPAND ↓"
+
+                approve_btn.on("click", lambda: asyncio.create_task(_approve()))
+                reject_btn.on("click", lambda: asyncio.create_task(_reject()))
+                expand_btn.on("click", _expand)
+
+    refresh_btn.on("click", lambda: asyncio.create_task(_load()))
+    asyncio.create_task(_load())
+
+
 # ── CHAT PANEL ────────────────────────────────────────────────────────
 
 def _build_chat_panel(
@@ -601,9 +777,7 @@ async def main_page() -> None:
                 f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
             )
         with ui.tab_panel("review"):
-            ui.label("REVIEW — stage 0C").style(
-                f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
-            )
+            _build_review_panel(state)
         with ui.tab_panel("wiki"):
             ui.label("WIKI — stage 0C").style(
                 f"color:{C_MUTED};padding:24px;font-family:{F_MONO};font-size:12px;"
