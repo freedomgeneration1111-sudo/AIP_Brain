@@ -388,7 +388,7 @@ def _build_status_panel(state: GuiState) -> None:
     def _section(title: str) -> None:
         ui.label(title).style(
             f"font-size:9px;font-weight:500;letter-spacing:2px;"
-            f"color:{C_INK60};text-transform:uppercase;margin-top:12px;margin-bottom:4px;"
+            f"color:{C_MUTED};text-transform:uppercase;margin-top:12px;margin-bottom:4px;"
         )
 
     def _kv(label: str, val: str, vc: str = "") -> None:
@@ -747,7 +747,7 @@ def _build_corpus_panel(state: GuiState) -> None:
                     f"letter-spacing:-0.5px;"
                 )
                 ui.label(label).style(
-                    f"font-size:9px;letter-spacing:1.5px;color:{C_INK60};"
+                    f"font-size:9px;letter-spacing:1.5px;color:{C_MUTED};"
                     f"text-transform:uppercase;"
                 )
 
@@ -773,7 +773,7 @@ def _build_corpus_panel(state: GuiState) -> None:
 
             # Domain distribution table
             ui.label("DOMAIN DISTRIBUTION").style(
-                f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};"
+                f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
                 "margin-bottom:4px;"
             )
             with ui.element("table").classes("w-full").style(
@@ -807,7 +807,7 @@ def _build_corpus_panel(state: GuiState) -> None:
 
             # Source cards
             ui.label("SOURCES").style(
-                f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};"
+                f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
                 "margin-bottom:4px;"
             )
             for src in sources[:50]:
@@ -855,7 +855,7 @@ def _build_wiki_panel(state: GuiState) -> None:
         ):
             with ui.row().classes("w-full items-center px-3 py-2 gap-2"):
                 ui.label("DOMAINS").style(
-                    f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};"
+                    f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
                 )
                 ui.space()
                 refresh_btn = ui.button(icon="refresh").props("dense flat round").style(
@@ -1084,7 +1084,7 @@ def _build_graph_panel(state: GuiState) -> None:
         with detail_content:
             with ui.row().classes("w-full items-center gap-2"):
                 ui.label("NODE DETAIL").style(
-                    f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};flex:1;"
+                    f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};flex:1;"
                 )
                 ui.button(icon="close").props("dense flat round").style(
                     f"color:{C_MUTED};"
@@ -1125,7 +1125,7 @@ def _build_graph_panel(state: GuiState) -> None:
             if nodes:
                 ui.separator().style(f"background:{C_INK40};margin:6px 0;")
                 ui.label("NEIGHBOR NODES").style(
-                    f"font-size:10px;font-weight:700;letter-spacing:1.5px;color:{C_INK60};"
+                    f"font-size:10px;font-weight:700;letter-spacing:1.5px;color:{C_MUTED};"
                 )
                 neighbors = [n for n in nodes if n.get("id") != node_id]
                 with ui.row().classes("flex-wrap gap-1"):
@@ -1217,7 +1217,7 @@ def _build_cohort_panel(state: GuiState) -> None:
 
         # Model selector
         ui.label("SELECT MODELS  (up to 5)").style(
-            f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};"
+            f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
         )
         selected_models: set[str] = {"anthropic/claude-sonnet-4-6", "deepseek/deepseek-r1"}
         checkboxes: dict[str, Any] = {}
@@ -1290,7 +1290,7 @@ def _build_cohort_panel(state: GuiState) -> None:
             results_col.clear()
             with results_col:
                 ui.label("INDIVIDUAL RESPONSES").style(
-                    f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};"
+                    f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
                 )
                 for resp in result.get("responses", []):
                     with ui.card().classes("w-full").style(
@@ -1308,7 +1308,7 @@ def _build_cohort_panel(state: GuiState) -> None:
                 if result.get("synthesis"):
                     ui.separator().style(f"background:{C_INK40};margin:8px 0;")
                     ui.label("SYNTHESIS").style(
-                        f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_INK60};"
+                        f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
                     )
                     with ui.card().classes("w-full").style(
                         f"background:{C_RAISED};border:0.5px solid {C_AMBER};"
@@ -1341,7 +1341,7 @@ def _build_chat_panel(
     ):
         ui.label("AUGMENTED" if is_aug else "CHAT").style(
             f"font-size:11px;font-weight:600;letter-spacing:1px;"
-            f"color:{C_AMBER if is_aug else C_CREAM};"
+            f"color:{C_CREAM};"
         )
         if is_aug:
             ui.label("INGESTED DATA").style(
@@ -1678,7 +1678,7 @@ async def main_page() -> None:
                 "API key set" if key_set else "API key missing — click to set"
             )
             ui.icon("settings", size="xs").style(
-                f"color:{C_INK60};cursor:pointer;"
+                f"color:{C_MUTED};cursor:pointer;"
             ).tooltip("Model catalog — stage 0C")
 
     # ── CONTENT PANELS ──────────────────────────────────────────────
@@ -1713,11 +1713,11 @@ async def main_page() -> None:
                 f'border-radius:50%;background:{C_INK60};"></span>'
             )
             budget_lbl = ui.label(backend_status).style(
-                f"color:{C_INK60};font-size:11px;font-family:{F_MONO};"
+                f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};"
             )
             ui.space()
             ui.label("aip_brain · AIP v0.1").style(
-                f"color:{C_INK60};font-size:11px;font-family:{F_MONO};"
+                f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};"
             )
 
     asyncio.create_task(refresh_budget_status(budget_lbl, state))
