@@ -496,6 +496,43 @@ class AipApiClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def augmented_ask(
+        self,
+        query: str,
+        *,
+        project_name: str = "default",
+        source: str = "all",
+        max_sources: int = 10,
+        model_slot: str = "synthesis",
+    ) -> dict[str, Any]:
+        """Submit a knowledge-augmented query via POST /api/v1/ask.
+
+        Convenience wrapper for the ask endpoint used by the AUGMENTED
+        chat panel.  The backend requires ``question`` and ``project_name``
+        as required fields; this method maps the GUI's ``query`` param
+        to the backend's ``question`` field and defaults project_name
+        to "default" so callers don't need to know the schema.
+
+        Returns the raw AskResult dict: status, answer, sources (list of
+        {source_id, source_type, title, score, content_snippet, domain,
+        metadata}), model_slot, model_provider, artifact_id, errors, etc.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {
+            "question": query,
+            "project_name": project_name,
+            "source": source,
+            "max_sources": max_sources,
+            "model_slot": model_slot,
+        }
+        resp = await client.post(
+            f"{self.base_url}/api/v1/ask",
+            json=payload,
+            timeout=60.0,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     async def ask_retrieve(
         self,
         question: str,

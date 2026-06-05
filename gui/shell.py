@@ -1399,38 +1399,102 @@ def _build_chat_panel(
         prompt = fld.value.strip()
         if not prompt:
             return
-        model = get_role_model("synthesis")
-        if not model or model.startswith("("):
-            sel = get_selected_models()
-            model = sel[0] if sel else ""
-        if not model or model.startswith("("):
-            opts_now = build_model_options(state.available_slots)
-            model = opts_now[0] if opts_now and not opts_now[0].startswith("(") else ""
-        if not model:
-            ui.notify("No model — open Settings", color="warning")
-            return
         _msg("user", prompt)
         fld.value = ""
         with msgs:
             think = ui.label("Thinking...").style(f"color:{C_MUTED};font-size:12px;")
-        try:
-            r = await state.api_client.chat_direct_openrouter(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                api_key=state.api_client.get_openrouter_api_key(),
-            )
-            think.delete()
-            if r.get("error"):
-                _sys(f"error: {r.get('content', '?')}")
-                ui.notify(r.get("content", ""), color="negative")
-            else:
-                _msg("assistant", r.get("content", ""), model=r.get("model", model), lat=r.get("latency_ms"))
-                if r.get("tokens_used", 0):
-                    _sys(f"tokens: {r['tokens_used']}")
-        except Exception as exc:
-            think.delete()
-            _sys(f"failed: {exc}")
-            ui.notify(f"failed: {exc}", color="negative")
+
+        if is_aug:
+            # ── AUGMENTED MODE: POST to /api/v1/ask via backend ──
+            try:
+                r = await state.api_client.augmented_ask(
+                    query=prompt,
+                    model_slot=get_role_model("synthesis") or "synthesis",
+                )
+                think.delete()
+                status = r.get("status", "")
+                answer = r.get("answer", "")
+                errors = r.get("errors", [])
+                if status != "OK" or errors:
+                    err_text = "; ".join(errors) if errors else f"status={status}"
+                    _sys(f"ask error: {err_text}")
+                    ui.notify(f"Ask failed: {err_text}", color="negative")
+                if answer:
+                    model_label = r.get("model_provider", "") or r.get("model_slot", "augmented")
+                    _msg("assistant", answer, model=model_label)
+                # Display retrieved domain + source turns
+                sources = r.get("sources", [])
+                if sources:
+                    with msgs:
+                        with ui.row().classes("w-full"):
+                            ui.label(f"Retrieved {len(sources)} source(s)").style(
+                                f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};"
+                            )
+                        for src in sources[:10]:
+                            domain = src.get("domain", "")
+                            src_type = src.get("source_type", "")
+                            title = src.get("title", "")
+                            snippet = src.get("content_snippet", "")
+                            score = src.get("score", 0)
+                            with ui.row().classes("w-full").style(
+                                f"background:{C_SURFACE};border:0.5px solid {C_INK40};"
+                                f"border-radius:{R_SM};padding:6px 10px;margin:2px 0;"
+                                f"max-width:85%;"
+                            ):
+                                with ui.column().classes("w-full").style("gap:2px;"):
+                                    hdr_parts = []
+                                    if domain:
+                                        hdr_parts.append(f"[{domain}]")
+                                    if src_type:
+                                        hdr_parts.append(src_type)
+                                    if title:
+                                        hdr_parts.append(title)
+                                    if score:
+                                        hdr_parts.append(f"score:{score:.2f}")
+                                    ui.label(" ".join(hdr_parts)).style(
+                                        f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};"
+                                    )
+                                    if snippet:
+                                        ui.label(snippet[:200] + ("..." if len(snippet) > 200 else "")).style(
+                                            f"font-size:11px;color:{C_MUTED};line-height:1.4;"
+                                        )
+                if not answer and not sources:
+                    _sys("no answer or sources returned")
+            except Exception as exc:
+                think.delete()
+                _sys(f"augmented ask failed: {exc}")
+                ui.notify(f"Augmented ask failed: {exc}", color="negative")
+        else:
+            # ── CHAT MODE: direct OpenRouter (existing path) ──
+            model = get_role_model("synthesis")
+            if not model or model.startswith("("):
+                sel = get_selected_models()
+                model = sel[0] if sel else ""
+            if not model or model.startswith("("):
+                opts_now = build_model_options(state.available_slots)
+                model = opts_now[0] if opts_now and not opts_now[0].startswith("(") else ""
+            if not model:
+                think.delete()
+                ui.notify("No model — open Settings", color="warning")
+                return
+            try:
+                r = await state.api_client.chat_direct_openrouter(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    api_key=state.api_client.get_openrouter_api_key(),
+                )
+                think.delete()
+                if r.get("error"):
+                    _sys(f"error: {r.get('content', '?')}")
+                    ui.notify(r.get("content", ""), color="negative")
+                else:
+                    _msg("assistant", r.get("content", ""), model=r.get("model", model), lat=r.get("latency_ms"))
+                    if r.get("tokens_used", 0):
+                        _sys(f"tokens: {r['tokens_used']}")
+            except Exception as exc:
+                think.delete()
+                _sys(f"failed: {exc}")
+                ui.notify(f"failed: {exc}", color="negative")
 
     async def _send_ctx() -> None:
         try:
