@@ -113,7 +113,7 @@ class ModelSlotResolver(ModelProvider):
         env_api_key = os.environ.get(f"{env_prefix}API_KEY")
 
         resolved = {
-            "provider": env_provider or slot_cfg.get("provider", PROVIDER_OLLAMA),
+            "provider": env_provider or slot_cfg.get("provider", PROVIDER_OPENAI_COMPATIBLE),
             "model": env_model or slot_cfg.get("model", f"<{slot_name}>"),
             "base_url": env_base_url or slot_cfg.get("base_url"),
             "api_key": env_api_key or slot_cfg.get("api_key"),
@@ -150,6 +150,8 @@ class ModelSlotResolver(ModelProvider):
 
         # Merge with env var overrides for the returned config
         resolved = self._resolve_slot_config(slot_name)
+
+        log.info(f"slot {slot_name}: provider={resolved['provider']} model={resolved.get('model')} base_url={resolved.get('base_url')}")
 
         return ModelSlotConfig(
             slot_name=slot_name,
