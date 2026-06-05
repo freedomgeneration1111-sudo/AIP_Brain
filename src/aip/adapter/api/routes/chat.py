@@ -200,7 +200,14 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         ):
                             # === 1. DEFINER PROFILE INJECTION ===
                             try:
+                                # Use the full app config — same pattern as ask pipeline.
+                                # _container.config is set in AipContainer.__init__ from the
+                                # full TOML dict, but fall back to app.state.raw_config if empty
+                                # (e.g. test mode without lifespan).
                                 definer_cfg = getattr(_container, "config", {}) or {}
+                                if not definer_cfg:
+                                    definer_cfg = getattr(websocket.app.state, "raw_config", {}) or {}
+                                print(f"DEBUG chat route config keys: {list(definer_cfg.keys())[:10]}")
                                 dcfg = definer_cfg.get("definer", {}) if isinstance(definer_cfg, dict) else {}
                                 if dcfg.get("inject_in_augmented_chat", True):
                                     dp = getattr(_container, "definer_profile", None)
