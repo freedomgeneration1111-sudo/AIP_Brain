@@ -77,7 +77,7 @@ class AipApiClient:
         Used for graceful degradation in the GUI.
         """
         client = self._get_http_client()
-        resp = await client.get(f"{self.base_url}/api/v1/health")
+        resp = await client.get(f"{self.base_url}/api/v1/health", timeout=5.0)
         resp.raise_for_status()
         return resp.json()
 
@@ -101,7 +101,7 @@ class AipApiClient:
         This replaces the old direct read of enabled_models.json.
         """
         client = self._get_http_client()
-        resp = await client.get(f"{self.base_url}/api/v1/models/slots")
+        resp = await client.get(f"{self.base_url}/api/v1/models/slots", timeout=5.0)
         resp.raise_for_status()
         data = resp.json()
         return data.get("slots", [])
@@ -136,7 +136,7 @@ class AipApiClient:
         if domain:
             payload["domain"] = domain
 
-        resp = await client.post(f"{self.base_url}/api/v1/sessions", json=payload)
+        resp = await client.post(f"{self.base_url}/api/v1/sessions", json=payload, timeout=5.0)
         resp.raise_for_status()
         return resp.json()
 

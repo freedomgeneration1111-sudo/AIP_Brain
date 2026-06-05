@@ -220,13 +220,19 @@ def add_system_message(text: str) -> None:
 
 
 async def check_backend_health() -> str:
-    """Check if the AIP backend is reachable. Returns status string."""
+    """Check if the AIP backend is reachable. Returns status string.
+
+    Hard cap of 4 seconds total — page renders regardless of backend state.
+    """
     state = get_state()
     try:
-        health = await state.api_client.check_health()
+        health = await asyncio.wait_for(state.api_client.check_health(), timeout=4.0)
         state.backend_reachable = True
         slots = health.get("model_slots", [])
         return f"Backend: OK (slots: {', '.join(slots)})"
+    except asyncio.TimeoutError:
+        state.backend_reachable = False
+        return "Backend: TIMEOUT (>4s) — using direct OpenRouter"
     except Exception as exc:
         state.backend_reachable = False
         return f"Backend: UNREACHABLE — {exc}"
@@ -320,6 +326,17 @@ async def _send_prompt_inner() -> None:
     with chat_container:
         thinking_label = ui.label("Thinking...").classes("text-grey")
 
+    # ---- Lazy backend retry ----
+    # If backend was unreachable at page load (timeout/down), probe once per send
+    # so recovery is automatic once the backend comes up — no page reload needed.
+    if not state.backend_reachable:
+        try:
+            await asyncio.wait_for(state.api_client.check_health(), timeout=3.0)
+            state.backend_reachable = True
+            log.info("send_prompt: backend recovered (lazy retry)")
+        except Exception:
+            pass  # Still down — fall through to direct OpenRouter below
+
     # ---- Route 1: Backend reachable → use WebSocket chat ----
     if state.backend_reachable:
         try:
@@ -401,8 +418,10 @@ async def _send_prompt_inner() -> None:
         except Exception as exc:
             log.error("send_prompt: websocket failed: %s", exc)
             thinking_label.delete()
-            # Backend failed — fall through to direct OpenRouter
+            # Backend failed — fall through to direct OpenRouter.
+            # Reset session so next send creates a fresh one (backend may restart).
             state.backend_reachable = False
+            state.reset_session()
             add_system_message(f"Backend chat failed, trying direct OpenRouter: {exc}")
 
     # ---- Route 2: Backend unreachable → direct OpenRouter API call ----
