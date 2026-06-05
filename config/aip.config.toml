@@ -16,7 +16,7 @@ weight_frequency     = 0.10
 # models.embedding slot takes priority when both are configured.
 [embedding]
 provider = "openai_compatible"
-model = "text-embedding-3-small"
+model = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
 base_url = "https://openrouter.ai/api"
 # api_key = ""   # Set your key here, or use AIP_EMBEDDING_API_KEY / AIP_OPENAI_API_KEY env var
 
@@ -248,25 +248,25 @@ ci_mode = false
 
 [models.synthesis]
 provider = "openai_compatible"
-model = "google/gemma-3-4b-it"
+model = "meta-llama/llama-4-maverick:free"
 base_url = "https://openrouter.ai/api"
 # api_key = ""   # Set your key here, or use AIP_SYNTHESIS_API_KEY / AIP_OPENAI_API_KEY env var
 
 [models.evaluation]
 provider = "openai_compatible"
-model = "google/gemma-3-4b-it"
+model = "openai/gpt-oss-20b:free"
 base_url = "https://openrouter.ai/api"
 # api_key = ""   # Set your key here, or use AIP_EVALUATION_API_KEY / AIP_OPENAI_API_KEY env var
 
 [models.sexton]
 provider = "openai_compatible"
-model = "google/gemma-3-4b-it"
+model = "google/gemma-4-31b-it:free"
 base_url = "https://openrouter.ai/api"
 # api_key = ""   # Set your key here, or use AIP_SEXTON_API_KEY / AIP_OPENAI_API_KEY env var
 
 [models.embedding]
 provider = "openai_compatible"
-model = "text-embedding-3-small"
+model = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
 base_url = "https://openrouter.ai/api"
 # api_key = ""   # Set your key here, or use AIP_EMBEDDING_API_KEY / AIP_OPENAI_API_KEY env var
 
