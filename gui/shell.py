@@ -414,6 +414,7 @@ def _build_status_panel(state: GuiState) -> None:
             state.api_client.list_model_slots(),
             state.api_client.list_wiki_articles(),
             state.api_client.get_graph_stats(),
+            state.api_client.get_corpus_stats(),
             return_exceptions=True,
         )
         health     = results[0] if not isinstance(results[0], Exception) else {}
@@ -421,6 +422,7 @@ def _build_status_panel(state: GuiState) -> None:
         slots_list = results[2] if not isinstance(results[2], Exception) else []
         know_r     = results[3] if not isinstance(results[3], Exception) else {}
         graph_r    = results[4] if not isinstance(results[4], Exception) else {}
+        corpus_r   = results[5] if not isinstance(results[5], Exception) else {}
 
         items = know_r.get("items", []) if isinstance(know_r, dict) else []
         approved = sum(1 for k in items if k.get("state") == "APPROVED")
@@ -430,14 +432,20 @@ def _build_status_panel(state: GuiState) -> None:
         actors = actors_r.get("actors", {}) if isinstance(actors_r, dict) else {}
         slot_map = {s.get("slot_name"): s for s in (slots_list or [])}
 
+        # Corpus stats from API (uses primary_domain, not tagging_version)
+        total_turns = corpus_r.get("total_turns", 0) if isinstance(corpus_r, dict) else 0
+        tagged = corpus_r.get("tagged", 0) if isinstance(corpus_r, dict) else 0
+        untagged = corpus_r.get("untagged", 0) if isinstance(corpus_r, dict) else 0
+        embedded = corpus_r.get("embedded", 0) if isinstance(corpus_r, dict) else 0
+        pct = f"  ({100*tagged/total_turns:.1f}%)" if total_turns > 0 else ""
+
         content.clear()
         with content:
             _section("CORPUS")
-            _kv("Total turns:", "2,766")
-            _kv("Tagged:", "42  (1.5%)")
-            _kv("Untagged:", "2,724")
-            _kv("Bridge-tagged:", "5")
-            _kv("Embedded:", "0  (Phase 1.4 pending)")
+            _kv("Total turns:", f"{total_turns:,}")
+            _kv("Tagged:", f"{tagged:,}{pct}")
+            _kv("Untagged:", f"{untagged:,}")
+            _kv("Embedded:", str(embedded))
             _sep()
 
             _section("WIKI")
