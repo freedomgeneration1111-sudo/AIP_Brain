@@ -17,13 +17,13 @@ echo ""
 
 cd "$REPO_ROOT"
 
-# Ingest architecture Q&A
-echo "Ingesting AIP architecture Q&A..."
-uv run aip corpus ingest \
-  examples/seed_corpus/conversations/aip_architecture_qa.json \
-  --source-model claude \
-  --source-account aip_v0.1_seed \
-  --export-date 2026-06-04
+# Ingest all conversation JSON files
+for f in "$SCRIPT_DIR/conversations/"*.json; do
+    echo "Ingesting $(basename "$f")..."
+    uv run aip corpus ingest "$f" \
+      --source-model claude \
+      --source-account aip_seed
+done
 
 echo ""
 echo "=== Seed corpus ingest complete ==="

@@ -4,7 +4,7 @@
 # Populates a new AIP install with:
 #   1. Database schemas (via aip init)
 #   2. Graph nodes (28 entities), edges (5 domain bridges), default project
-#   3. AIP self-knowledge corpus (38 Q&A turns)
+#   3. AIP self-knowledge corpus (all conversation JSON files)
 #
 # Safe to run multiple times — all inserts use OR IGNORE.
 #
@@ -16,6 +16,7 @@
 set -e
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
 
 echo "=== AIP Seed Bootstrap ==="
@@ -55,13 +56,14 @@ conn.close()
 "
 echo ""
 
-# 3. Ingest AIP self-knowledge corpus
+# 3. Ingest AIP self-knowledge corpus (all JSON files in conversations/)
 echo "--- Step 3: Ingest AIP self-knowledge corpus ---"
-uv run aip corpus ingest \
-  examples/seed_corpus/conversations/aip_architecture_qa.json \
-  --source-model claude \
-  --source-account aip_seed_v0.2 \
-  --export-date 2026-06-04
+for f in "$SCRIPT_DIR/conversations/"*.json; do
+    echo "Ingesting $(basename "$f")..."
+    uv run aip corpus ingest "$f" \
+      --source-model claude \
+      --source-account aip_seed
+done
 echo ""
 
 echo "=== Bootstrap complete ==="
