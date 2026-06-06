@@ -40,12 +40,26 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-def _get_graph_neighbors(domain: str) -> list[str]:
-    """Return domain neighbors from the knowledge graph. Synchronous, fast."""
+def _get_graph_neighbors(domain: str, container: Any = None) -> list[str]:
+    """Return domain neighbors from the knowledge graph. Synchronous, fast.
+
+    Uses container.config db_path when available (same pattern as graph.py
+    commit f269407). Falls back to get_default_db_path() for CLI contexts.
+    """
     try:
         from aip.adapter.graph_store import GraphStore
-        from aip.cli._db_path import get_default_db_path
-        store = GraphStore(get_default_db_path())
+
+        db_path = ""
+        if container is not None:
+            db_path = getattr(container, "config", {}).get("db_path", "") or ""
+        if not db_path:
+            try:
+                from aip.cli._db_path import get_default_db_path
+
+                db_path = get_default_db_path()
+            except Exception:
+                db_path = "db/state.db"
+        store = GraphStore(db_path)
         neighbors = store.get_neighbors(domain, min_confidence=0.4)
         return [n.canonical_name for n in neighbors if n.id != domain]
     except Exception:
@@ -58,13 +72,8 @@ async def _get_wiki_overview(domain: str, artifact_store: Any, ecs_store: Any) -
     Returns None if no wiki exists. Never raises.
     """
     try:
-        arts = await artifact_store.list_artifacts_by_metadata(
-            key="artifact_type", value="beast_wiki", limit=200
-        )
-        domain_arts = [
-            a for a in arts
-            if (a.get("metadata", {}) or {}).get("domain") == domain
-        ]
+        arts = await artifact_store.list_artifacts_by_metadata(key="artifact_type", value="beast_wiki", limit=200)
+        domain_arts = [a for a in arts if (a.get("metadata", {}) or {}).get("domain") == domain]
         if not domain_arts:
             return None
         domain_arts.sort(key=lambda a: a.get("created_at", ""), reverse=True)
@@ -100,6 +109,7 @@ async def _search_corpus_turns(
     """Search corpus turns via FTS5 and return formatted source dicts."""
     try:
         from aip.orchestration.ask_pipeline import _sanitize_fts_query
+
         fts_query = _sanitize_fts_query(query)
     except Exception:
         fts_query = query
@@ -137,9 +147,7 @@ def _assemble_corpus_context(source_dicts: list[dict]) -> str:
         user_text = (s.get("user_text") or "")[:200]
         assistant_text = (s.get("assistant_text") or "")[:400]
         parts.append(
-            f"[Source {i}: {domain} | importance:{importance:.2f} | {conv_name}]\n"
-            f"Q: {user_text}\n"
-            f"A: {assistant_text}"
+            f"[Source {i}: {domain} | importance:{importance:.2f} | {conv_name}]\nQ: {user_text}\nA: {assistant_text}"
         )
     return "\n\n".join(parts)
 
@@ -166,8 +174,13 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
         model_slot = session_meta.get("model_slot", "synthesis")
         session_mode = session_meta.get("mode", "normal")
         auto_save_enabled = session_meta.get("auto_save", True)
-    logger.info("chat_ws_session", session=session_id, slot=model_slot, mode=session_mode,
-                model_provider="yes" if _container.model_provider is not None else "NONE")
+    logger.info(
+        "chat_ws_session",
+        session=session_id,
+        slot=model_slot,
+        mode=session_mode,
+        model_provider="yes" if _container.model_provider is not None else "NONE",
+    )
 
     try:
         while True:
@@ -183,7 +196,13 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                 # Allow per-message slot override
                 override_slot = msg.get("model_slot")
                 effective_slot = override_slot or model_slot
-                logger.info("chat_message_received", slot=effective_slot, content_len=len(content), session=session_id, mode=session_mode)
+                logger.info(
+                    "chat_message_received",
+                    slot=effective_slot,
+                    content_len=len(content),
+                    session=session_id,
+                    mode=session_mode,
+                )
 
                 # Route through ModelSlotResolver if available
                 model_provider = _container.model_provider
@@ -195,8 +214,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         response_sources = []  # Sources for augmented mode
 
                         if session_mode == "augmented" and (
-                            _container.corpus_turn_store is not None
-                            or _container.lexical_store is not None
+                            _container.corpus_turn_store is not None or _container.lexical_store is not None
                         ):
                             # === 1. DEFINER PROFILE INJECTION ===
                             try:
@@ -207,7 +225,12 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                 definer_cfg = getattr(_container, "config", {}) or {}
                                 if not definer_cfg:
                                     definer_cfg = getattr(websocket.app.state, "raw_config", {}) or {}
-                                logger.debug("chat_route_config", keys=list(definer_cfg.keys())[:10] if isinstance(definer_cfg, dict) else "not-a-dict")
+                                logger.debug(
+                                    "chat_route_config",
+                                    keys=list(definer_cfg.keys())[:10]
+                                    if isinstance(definer_cfg, dict)
+                                    else "not-a-dict",
+                                )
                                 dcfg = definer_cfg.get("definer", {}) if isinstance(definer_cfg, dict) else {}
                                 if dcfg.get("inject_in_augmented_chat", True):
                                     dp = getattr(_container, "definer_profile", None)
@@ -224,8 +247,8 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                             # Order: DEFINER (done) → Wiki → Graph → Sources → Synthesis instruction
                             try:
                                 from aip.orchestration.ask_pipeline import (
-                                    _search_sources,
                                     _assemble_context,
+                                    _search_sources,
                                 )
 
                                 # Resolve domain from session or project
@@ -298,32 +321,36 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                                 _container.ecs_store,
                                             )
                                             if wiki_overview:
-                                                messages.append({
-                                                    "role": "system",
-                                                    "content": (
-                                                        f"=== DOMAIN CONTEXT: {query_domain} ===\n"
-                                                        f"{wiki_overview}\n"
-                                                        f"=== END DOMAIN CONTEXT ==="
-                                                    ),
-                                                })
+                                                messages.append(
+                                                    {
+                                                        "role": "system",
+                                                        "content": (
+                                                            f"=== DOMAIN CONTEXT: {query_domain} ===\n"
+                                                            f"{wiki_overview}\n"
+                                                            f"=== END DOMAIN CONTEXT ==="
+                                                        ),
+                                                    }
+                                                )
                                     except Exception as _wiki_exc:
                                         logger.debug("wiki_overview_injection_failed", error=str(_wiki_exc))
 
                                     # === 3. GRAPH CONNECTIONS INJECTION ===
                                     try:
                                         if query_domain:
-                                            graph_neighbors = _get_graph_neighbors(query_domain)
+                                            graph_neighbors = _get_graph_neighbors(query_domain, container=_container)
                                             if graph_neighbors:
                                                 neighbors_str = ", ".join(graph_neighbors[:5])
-                                                messages.append({
-                                                    "role": "system",
-                                                    "content": (
-                                                        f"=== GRAPH CONNECTIONS ===\n"
-                                                        f"Domain '{query_domain}' connects to: {neighbors_str}\n"
-                                                        f"These domains may provide relevant context.\n"
-                                                        f"=== END GRAPH CONNECTIONS ==="
-                                                    ),
-                                                })
+                                                messages.append(
+                                                    {
+                                                        "role": "system",
+                                                        "content": (
+                                                            f"=== GRAPH CONNECTIONS ===\n"
+                                                            f"Domain '{query_domain}' connects to: {neighbors_str}\n"
+                                                            f"These domains may provide relevant context.\n"
+                                                            f"=== END GRAPH CONNECTIONS ==="
+                                                        ),
+                                                    }
+                                                )
                                     except Exception as _graph_exc:
                                         logger.debug("graph_neighbors_injection_failed", error=str(_graph_exc))
 
@@ -355,49 +382,59 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                             for s in source_refs
                                         ]
 
-                                    messages.append({
-                                        "role": "system",
-                                        "content": f"Corpus turns retrieved from knowledge base:\n\n{context}",
-                                    })
+                                    messages.append(
+                                        {
+                                            "role": "system",
+                                            "content": f"Corpus turns retrieved from knowledge base:\n\n{context}",
+                                        }
+                                    )
 
                                     # === 5. SYNTHESIS INSTRUCTION (separate message) ===
-                                    messages.append({
-                                        "role": "system",
-                                        "content": (
-                                            "You are AIP, a source-grounded knowledge assistant for B. Moses Jorgensen. "
-                                            "Answer based on the provided corpus turns. "
-                                            "Cite sources using [source: turn_id] notation. "
-                                            "Draw on the DEFINER profile and domain context above. "
-                                            "If sources don't contain enough information, say so explicitly."
-                                        ),
-                                    })
+                                    messages.append(
+                                        {
+                                            "role": "system",
+                                            "content": (
+                                                "You are AIP, a source-grounded knowledge assistant for B. Moses Jorgensen. "
+                                                "Answer based on the provided corpus turns. "
+                                                "Cite sources using [source: turn_id] notation. "
+                                                "Draw on the DEFINER profile and domain context above. "
+                                                "If sources don't contain enough information, say so explicitly."
+                                            ),
+                                        }
+                                    )
                                 else:
-                                    messages.append({
-                                        "role": "system",
-                                        "content": (
-                                            "You are AIP, a knowledge assistant for B. Moses Jorgensen. "
-                                            "No relevant sources were found in the knowledge base for this query. "
-                                            "Answer based on your general knowledge but note that no source material was available."
-                                        ),
-                                    })
+                                    messages.append(
+                                        {
+                                            "role": "system",
+                                            "content": (
+                                                "You are AIP, a knowledge assistant for B. Moses Jorgensen. "
+                                                "No relevant sources were found in the knowledge base for this query. "
+                                                "Answer based on your general knowledge but note that no source material was available."
+                                            ),
+                                        }
+                                    )
                             except Exception as exc:
                                 logger.warning("augmented_retrieval_failed", error=str(exc))
                                 if session_meta and session_meta.get("role"):
                                     role_hint = session_meta.get("role", "")
                                     if role_hint:
-                                        messages.append({
-                                            "role": "system",
-                                            "content": f"You are acting in the {role_hint} role. Respond accordingly.",
-                                        })
+                                        messages.append(
+                                            {
+                                                "role": "system",
+                                                "content": f"You are acting in the {role_hint} role. Respond accordingly.",
+                                            }
+                                        )
                         else:
                             # === NORMAL MODE: Direct model dispatch ===
                             if session_meta and session_meta.get("role"):
                                 role_hint = session_meta.get("role", "")
                                 if role_hint:  # only inject for explicit actor roles (plain chat uses role=None; prevents Beast leak)
-                                    messages.append({
-                                        "role": "system",
-                                        "content": f"You are acting in the {role_hint} role. Respond accordingly.",
-                                    })
+                                    messages.append(
+                                        {
+                                            "role": "system",
+                                            "content": f"You are acting in the {role_hint} role. Respond accordingly.",
+                                        }
+                                    )
 
                         messages.append({"role": "user", "content": content})
 
@@ -410,12 +447,14 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                     estimated_tokens=2000,  # rough estimate per turn
                                 )
                                 if not budget_ok:
-                                    await websocket.send_json({
-                                        "type": "error",
-                                        "content": "Budget limit reached. Session token budget has been exceeded. Consider starting a new session.",
-                                        "error_type": "budget_exhausted",
-                                        "model_slot": effective_slot,
-                                    })
+                                    await websocket.send_json(
+                                        {
+                                            "type": "error",
+                                            "content": "Budget limit reached. Session token budget has been exceeded. Consider starting a new session.",
+                                            "error_type": "budget_exhausted",
+                                            "model_slot": effective_slot,
+                                        }
+                                    )
                                     continue
                             except Exception as exc:
                                 # Budget check failure is non-critical — log and proceed
@@ -426,7 +465,13 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         # Check for error from model provider
                         if result.get("error"):
                             error_msg = result.get("error_message", "Model call failed — provider returned an error.")
-                            logger.error("chat_model_provider_error", slot=effective_slot, error=error_msg, model=result.get("model", "?"), session=session_id)
+                            logger.error(
+                                "chat_model_provider_error",
+                                slot=effective_slot,
+                                error=error_msg,
+                                model=result.get("model", "?"),
+                                session=session_id,
+                            )
                             await websocket.send_json(
                                 {
                                     "type": "error",
@@ -443,7 +488,14 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         model_used = result.get("model", effective_slot)
                         usage = result.get("usage", {})
                         latency = result.get("latency_ms", 0)
-                        logger.info("chat_response_sent", slot=effective_slot, model=model_used, latency_ms=latency, content_len=len(response_content), session=session_id)
+                        logger.info(
+                            "chat_response_sent",
+                            slot=effective_slot,
+                            model=model_used,
+                            latency_ms=latency,
+                            content_len=len(response_content),
+                            session=session_id,
+                        )
 
                         # Increment turn counter
                         increment_turn_count(session_id, _container)
@@ -451,7 +503,9 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         # Record budget consumption
                         if _container.budget_manager is not None:
                             try:
-                                tokens_used = usage.get("total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0))
+                                tokens_used = usage.get(
+                                    "total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
+                                )
                                 await _container.budget_manager.record_consumption(
                                     scope="session",
                                     scope_id=session_id,
@@ -469,10 +523,14 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                             "model_slot": effective_slot,
                             "model": model_used,
                             "artifacts": [],
-                            "tokens_used": usage.get("total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)),
+                            "tokens_used": usage.get(
+                                "total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
+                            ),
                             "latency_ms": result.get("latency_ms", 0),
                             "cost_usd": result.get("cost_usd", 0.0),
-                            "auto_save": auto_save_enabled and _container.artifact_store is not None and _container.lexical_store is not None,
+                            "auto_save": auto_save_enabled
+                            and _container.artifact_store is not None
+                            and _container.lexical_store is not None,
                             "sources": response_sources,  # Empty in normal mode, populated in augmented mode
                             "mode": session_mode,  # Echo the mode so GUI knows how the response was generated
                         }
@@ -481,10 +539,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         # This is a transitional approach — full workflow integration comes later.
                         # For now, augmented mode + ReviewQueueStore means the response
                         # includes a review_available flag so the GUI can show the review panel.
-                        if (
-                            session_mode == "augmented"
-                            and _container.review_queue_store is not None
-                        ):
+                        if session_mode == "augmented" and _container.review_queue_store is not None:
                             response_payload["review_available"] = True
 
                         await websocket.send_json(response_payload)
@@ -507,7 +562,8 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                         artifacts_produced=updated_meta.get("artifacts_produced", []),
                                     )
                                     signals, should_intervene = await _container.session_manager.check_trajectory(
-                                        ctx, _container.event_store,
+                                        ctx,
+                                        _container.event_store,
                                     )
                                     if should_intervene:
                                         # Send trajectory warning to client
@@ -534,7 +590,11 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         # Auto-save ingestion: after a successful chat turn,
                         # trigger background ingestion if auto_save is enabled
                         # and the required stores (artifact_store, lexical_store) are available.
-                        if auto_save_enabled and _container.artifact_store is not None and _container.lexical_store is not None:
+                        if (
+                            auto_save_enabled
+                            and _container.artifact_store is not None
+                            and _container.lexical_store is not None
+                        ):
                             try:
                                 from aip.adapter.api.routes.ingest import auto_save_chat_turn
 
@@ -565,7 +625,13 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         )
                     except Exception as exc:
                         # Model call failed — send error rather than crashing
-                        logger.error("chat_model_call_failed", slot=effective_slot, error=str(exc), session=session_id, exc_info=True)
+                        logger.error(
+                            "chat_model_call_failed",
+                            slot=effective_slot,
+                            error=str(exc),
+                            session=session_id,
+                            exc_info=True,
+                        )
                         await websocket.send_json(
                             {
                                 "type": "error",
@@ -591,10 +657,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                 queue_item_id = msg.get("queue_item_id")
 
                 # Integrate with ReviewQueueStore when available
-                if (
-                    _container.review_queue_store is not None
-                    and queue_item_id is not None
-                ):
+                if _container.review_queue_store is not None and queue_item_id is not None:
                     try:
                         decision = "approved" if approved else "rejected"
                         result = await _container.review_queue_store.decide(
