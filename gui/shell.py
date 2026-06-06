@@ -1248,19 +1248,35 @@ def _build_unified_chat_panel(
 
     # Chat mode picker (per AIP_UNIFIED_CHAT_SPEC §Chat Mode Picker)
     _CHAT_MODES = ["Engineering", "Research", "Ideation", "Teaching"]
-    _MODE_MODIFIERS: dict[str, str] = {
+    # Auto-detection keywords (per spec)
+    _MODE_KEYWORDS: dict[str, list[str]] = {
+        "Ideation": ["brainstorm", "ideate", "blue sky", "what if", "imagine", "riff on"],
+        "Research": ["what does the literature say", "find sources", "what's the evidence", "find evidence"],
+        "Teaching": ["explain for", "simplify", "how would i teach", "help me explain"],
+    }
+
+    # Epistemic flag sentences (each flag maps to a specific sentence)
+    _FLAG_SENTENCES: dict[str, str] = {
+        "flag_uncertainty": "When uncertain, say so and quantify the uncertainty if possible.",
+        "suggest_validation": "Suggest validation steps for claims that require empirical confirmation.",
+        "no_flattery": "Do not flatter. Do not pad. Get to the substance.",
+        "report_conflicts": (
+            "Report conflicting evidence when it exists. "
+            "Do not resolve genuine uncertainty artificially."
+        ),
+    }
+
+    # Base mode texts (Engineering includes all 4 flag sentences by default;
+    # other modes do NOT include them — flags are additive for non-Engineering)
+    _MODE_BASES: dict[str, str] = {
         "Engineering": (
             "You are operating in Engineering/Synthesis mode.\n"
-            "Respond with precision over coverage. Flag assumptions explicitly.\n"
-            "When uncertain, say so and quantify the uncertainty if possible.\n"
-            "Suggest validation steps for claims that require empirical confirmation.\n"
-            "Do not flatter. Do not pad. Get to the substance."
+            "Respond with precision over coverage. Flag assumptions explicitly."
         ),
         "Research": (
             "You are operating in Research mode.\n"
             "Prioritize source citation and epistemic traceability.\n"
             "Distinguish: what is established, what is contested, what is speculative.\n"
-            "Report conflicting evidence when it exists. Do not resolve genuine uncertainty artificially.\n"
             "Prefer precise claims over broad ones."
         ),
         "Ideation": (
@@ -1277,12 +1293,30 @@ def _build_unified_chat_panel(
             "Flag where simplification sacrifices precision."
         ),
     }
-    # Auto-detection keywords (per spec)
-    _MODE_KEYWORDS: dict[str, list[str]] = {
-        "Ideation": ["brainstorm", "ideate", "blue sky", "what if", "imagine", "riff on"],
-        "Research": ["what does the literature say", "find sources", "what's the evidence", "find evidence"],
-        "Teaching": ["explain for", "simplify", "how would i teach", "help me explain"],
-    }
+
+    def _build_mode_modifier(mode: str, flags: dict[str, bool]) -> str:
+        """Build the mode modifier text with epistemic flags applied.
+
+        Engineering mode: base includes all 4 sentences by default;
+        unchecking a flag REMOVES that sentence from the modifier.
+        Other modes: base does NOT include flag sentences;
+        checking a flag ADDS that sentence to the modifier.
+        """
+        base = _MODE_BASES.get(mode, "")
+        if not base:
+            return ""
+        parts = [base]
+        for flag_key, sentence in _FLAG_SENTENCES.items():
+            is_checked = flags.get(flag_key, True)
+            if mode == "Engineering":
+                # Engineering: include sentence only if flag is checked
+                if is_checked:
+                    parts.append(sentence)
+            else:
+                # Non-Engineering: include sentence only if flag is checked (additive)
+                if is_checked:
+                    parts.append(sentence)
+        return "\n".join(parts)
     current_chat_mode: list[str] = ["Engineering"]
 
     with (
@@ -1629,8 +1663,10 @@ def _build_unified_chat_panel(
             mode_select.value = detected
             ui.notify(f"Switched to {detected} mode", color="info", timeout=3000)
 
-        # Get the mode modifier text for the current mode
-        mode_modifier = _MODE_MODIFIERS.get(current_chat_mode[0], "")
+        # Build the mode modifier with epistemic flags applied
+        mode_modifier = _build_mode_modifier(
+            current_chat_mode[0], state.epistemic_flags
+        )
 
         # Determine dispatch path based on model count
         active_models = selected_model_ids[0]
