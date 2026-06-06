@@ -529,6 +529,62 @@ def _build_status_panel(state: GuiState) -> None:
             _kv("DB writable:", str(h.get("db_writable", "—")))
             _kv("Budget:", h.get("budget_status", "—"))
 
+            # ── RECENT ACTOR EVENTS (compact widget) ──
+            _sep()
+            with ui.row().classes("w-full items-center gap-2"):
+                _section("RECENT ACTOR EVENTS")
+                ui.space()
+                ui.button(
+                    "View full log →",
+                    on_click=lambda: ui.navigate.to("/actor-log", new_tab=True),
+                ).props("dense flat").style(
+                    f"color:{C_AMBER};font-size:10px;font-family:{F_MONO};"
+                )
+
+            # Actor dot colors
+            _actor_colors = {
+                "beast": C_AMBER,
+                "sexton": "#4EAA7A",  # teal
+                "vigil": "#7C6AE8",   # purple
+            }
+
+            try:
+                events_r = await state.api_client.list_events(limit=5)
+                events_list = events_r.get("events", [])
+            except Exception:
+                events_list = []
+
+            if not events_list:
+                ui.label("No events recorded yet").style(
+                    f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};padding:4px 0;"
+                )
+            else:
+                for ev in events_list:
+                    actor = ev.get("actor", "?")
+                    ev_type = ev.get("event_type", "?")
+                    summary = ev.get("summary", "")
+                    ts_raw = ev.get("timestamp", "")
+                    # Format timestamp to HH:MM
+                    try:
+                        from datetime import datetime as _dt
+                        dt_obj = _dt.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                        ts_str = dt_obj.strftime("%H:%M:%S")
+                    except Exception:
+                        ts_str = ts_raw[:8] if ts_raw else "—"
+                    dot_c = _actor_colors.get(actor, C_MUTED)
+                    with ui.row().classes("w-full items-center gap-1").style("padding:1px 0;"):
+                        ui.html(f'<span style="font-size:8px;color:{dot_c};">●</span>')
+                        ui.label(f"{ts_str}").style(
+                            f"font-size:10px;font-family:{F_MONO};color:{C_MUTED};min-width:64px;"
+                        )
+                        ui.label(f"{actor.upper()}").style(
+                            f"font-size:10px;font-family:{F_MONO};color:{dot_c};min-width:52px;"
+                        )
+                        ui.label(f"· {ev_type} · {summary}").style(
+                            f"font-size:10px;color:{C_CREAM};"
+                            f"overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;"
+                        )
+
     refresh_btn.on("click", lambda: asyncio.create_task(_load()))
     asyncio.create_task(_load())
 
@@ -2225,6 +2281,253 @@ async def beast_pane_page() -> None:
 
         # Auto-refresh every 30 seconds
         ui.timer(30.0, lambda: asyncio.create_task(_refresh()))
+
+
+# ── ACTOR LOG POP-OUT PAGE ──────────────────────────────────────────
+
+
+@ui.page("/actor-log")
+async def actor_log_page() -> None:
+    """Standalone Actor Log — full-width, auto-refreshing every 15s.
+
+    Read-only observer surface showing what the actors are actually doing.
+    Filter controls for actor, event_type, and date range.
+    Each event card is expandable to show full payload.
+    """
+    state = get_state()
+    ui.page_title("AIP_Brain — Actor Log")
+
+    ui.add_head_html(
+        f"<style>"
+        f"body,.q-page,.q-layout{{background:{C_GROUND}!important;color:{C_MUTED}!important}}"
+        f".q-markdown,.q-markdown p,.q-markdown span,.q-markdown li,"
+        f".q-markdown strong,.q-markdown em{{color:{C_CREAM}!important}}"
+        f"</style>"
+    )
+
+    # Actor color map
+    _actor_colors = {
+        "beast": C_AMBER,
+        "sexton": "#4EAA7A",
+        "vigil": "#7C6AE8",
+    }
+
+    with (
+        ui.column()
+        .classes("w-full")
+        .style(
+            f"min-height:100vh;background:{C_GROUND};padding:24px 32px;gap:16px;"
+        )
+    ):
+        # Header
+        with ui.row().classes("w-full items-center gap-3"):
+            ui.label("ACTOR LOG").style(
+                f"font-size:16px;font-weight:700;letter-spacing:2px;color:{C_AMBER};"
+            )
+            ui.label("(read-only observer)").style(
+                f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};"
+            )
+            ui.space()
+            refresh_btn = ui.button(
+                "Refresh", icon="refresh"
+            ).props("dense flat").style(f"color:{C_MUTED};font-size:11px;")
+
+        # Filter controls
+        with ui.row().classes("w-full items-center gap-3").style(
+            f"background:{C_SURFACE};padding:8px 12px;"
+            f"border:0.5px solid {C_INK40};border-radius:{R_MD};"
+        ):
+            ui.label("FILTER").style(
+                f"font-size:9px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
+            )
+            actor_select = ui.select(
+                options=["all", "beast", "sexton", "vigil"],
+                value="all",
+                with_input=False,
+            ).props("dense outlined").style(
+                "min-width:100px;font-size:11px;"
+            )
+            ui.label("·").style(f"color:{C_INK60};")
+            type_input = ui.input(
+                placeholder="event_type prefix...",
+            ).props("outlined dense").style(
+                f"max-width:200px;font-size:11px;"
+                f"background:{C_RAISED};color:{C_CREAM};"
+            )
+            ui.label("·").style(f"color:{C_INK60};")
+            date_select = ui.select(
+                options=["all", "today", "last_7_days"],
+                value="all",
+                with_input=False,
+            ).props("dense outlined").style(
+                "min-width:120px;font-size:11px;"
+            )
+            apply_btn = ui.button("Apply").props("dense flat").style(btn_primary())
+
+        count_lbl = ui.label("").style(
+            f"font-size:10px;font-family:{F_MONO};color:{C_MUTED};"
+        )
+        content = ui.column().classes("w-full").style("gap:8px;")
+
+        async def _refresh() -> None:
+            content.clear()
+            count_lbl.text = "Loading..."
+            with content:
+                ui.label("Loading…").style(f"color:{C_MUTED};font-size:11px;")
+
+            # Build query params
+            actor_val = actor_select.value
+            type_val = type_input.value.strip() or None
+            limit = 100
+
+            try:
+                result = await state.api_client.list_events(
+                    limit=limit,
+                    actor=actor_val if actor_val != "all" else None,
+                    event_type=type_val,
+                )
+                events_list = result.get("events", [])
+            except Exception:
+                events_list = []
+
+            # Date filtering (client-side)
+            if date_select.value == "today":
+                import datetime as _dtm
+                today_str = _dtm.date.today().isoformat()
+                events_list = [
+                    e for e in events_list
+                    if e.get("timestamp", "").startswith(today_str)
+                ]
+            elif date_select.value == "last_7_days":
+                import datetime as _dtm
+                cutoff = (_dtm.date.today() - _dtm.timedelta(days=7)).isoformat()
+                events_list = [
+                    e for e in events_list
+                    if e.get("timestamp", "") >= cutoff
+                ]
+
+            count_lbl.text = f"{len(events_list)} event(s)"
+            content.clear()
+
+            if not events_list:
+                with content:
+                    ui.label("No events match the current filters.").style(
+                        f"color:{C_MUTED};font-size:12px;padding:16px;"
+                    )
+                return
+
+            for ev in events_list:
+                actor = ev.get("actor", "?")
+                ev_type = ev.get("event_type", "?")
+                summary = ev.get("summary", "")
+                ts_raw = ev.get("timestamp", "")
+                payload = ev.get("payload_preview", "")
+                artifact_id = ev.get("artifact_id", "")
+                from_state = ev.get("from_state")
+                to_state = ev.get("to_state")
+
+                # Format timestamp
+                try:
+                    import datetime as _dtx
+                    dt_obj = _dtx.datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                    ts_display = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    ts_display = ts_raw or "—"
+
+                dot_c = _actor_colors.get(actor, C_MUTED)
+
+                with content:
+                    with (
+                        ui.card()
+                        .classes("w-full")
+                        .style(
+                            f"background:{C_SURFACE};"
+                            f"border:0.5px solid {C_INK40};"
+                            f"border-radius:{R_LG};padding:0;"
+                        )
+                    ):
+                        # Card header
+                        with (
+                            ui.row()
+                            .classes("w-full items-center px-3 py-2 gap-2")
+                            .style(f"border-bottom:0.5px solid {C_INK40};")
+                        ):
+                            ui.html(f'<span style="font-size:10px;color:{dot_c};">●</span>')
+                            ui.label(f"{actor.upper()}").style(
+                                f"font-size:10px;font-weight:600;"
+                                f"font-family:{F_MONO};color:{dot_c};"
+                            )
+                            ui.label(f"· {ev_type}").style(
+                                f"font-size:10px;font-family:{F_MONO};color:{C_CREAM};"
+                            )
+                            ui.space()
+                            ui.label(ts_display).style(
+                                f"font-size:9px;font-family:{F_MONO};color:{C_MUTED};"
+                            )
+                            # Expand button
+                            exp_btn = ui.button("PAYLOAD ↓").props("dense flat").style(btn_ghost())
+
+                        # Summary row
+                        with ui.row().classes("w-full items-center px-3 py-1 gap-2"):
+                            ui.label(summary).style(
+                                f"font-size:11px;color:{C_CREAM};line-height:1.4;"
+                            )
+
+                        # State transition if present
+                        if from_state or to_state:
+                            with ui.row().classes("w-full items-center px-3 py-1 gap-1"):
+                                if from_state:
+                                    status_pill(from_state)
+                                if from_state and to_state:
+                                    ui.label("→").style(f"color:{C_INK60};font-size:10px;")
+                                if to_state:
+                                    status_pill(to_state)
+
+                        # Expandable payload section (hidden by default)
+                        payload_col = ui.column().classes("w-full px-3 py-2").style("display:none;")
+                        with payload_col:
+                            if payload:
+                                ui.label("PAYLOAD PREVIEW").style(
+                                    f"font-size:9px;font-weight:700;"
+                                    f"letter-spacing:1px;color:{C_MUTED};margin-bottom:2px;"
+                                )
+                                ui.label(payload).style(
+                                    f"font-size:10px;font-family:{F_MONO};"
+                                    f"color:{C_CREAM};line-height:1.4;"
+                                    f"background:{C_RAISED};padding:6px 8px;"
+                                    f"border-radius:{R_SM};word-break:break-all;"
+                                )
+                            if artifact_id and artifact_id != "system":
+                                ui.label(f"artifact: {artifact_id}").style(
+                                    f"font-size:9px;font-family:{F_MONO};color:{C_MUTED};"
+                                )
+
+                        expanded = [False]
+
+                        def _toggle(
+                            pc=payload_col,
+                            es=expanded,
+                            btn=exp_btn,
+                        ) -> None:
+                            es[0] = not es[0]
+                            if es[0]:
+                                pc.style("display:block;")
+                                btn.text = "COLLAPSE ↑"
+                            else:
+                                pc.style("display:none;")
+                                btn.text = "PAYLOAD ↓"
+
+                        exp_btn.on("click", _toggle)
+
+        def _apply_filter() -> None:
+            asyncio.create_task(_refresh())
+
+        apply_btn.on("click", _apply_filter)
+        refresh_btn.on("click", lambda: asyncio.create_task(_refresh()))
+        await _refresh()
+
+        # Auto-refresh every 15 seconds
+        ui.timer(15.0, lambda: asyncio.create_task(_refresh()))
 
 
 ui.run(title="AIP_Brain", port=8080, reload=True)
