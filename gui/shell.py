@@ -1248,6 +1248,45 @@ def _build_unified_chat_panel(
     # Track augment state (toggle drives dispatch path)
     augment_on: list[bool] = [state.current_mode == "augmented"]
 
+    # Chat mode picker (per AIP_UNIFIED_CHAT_SPEC §Chat Mode Picker)
+    _CHAT_MODES = ["Engineering", "Research", "Ideation", "Teaching"]
+    _MODE_MODIFIERS: dict[str, str] = {
+        "Engineering": (
+            "You are operating in Engineering/Synthesis mode.\n"
+            "Respond with precision over coverage. Flag assumptions explicitly.\n"
+            "When uncertain, say so and quantify the uncertainty if possible.\n"
+            "Suggest validation steps for claims that require empirical confirmation.\n"
+            "Do not flatter. Do not pad. Get to the substance."
+        ),
+        "Research": (
+            "You are operating in Research mode.\n"
+            "Prioritize source citation and epistemic traceability.\n"
+            "Distinguish: what is established, what is contested, what is speculative.\n"
+            "Report conflicting evidence when it exists. Do not resolve genuine uncertainty artificially.\n"
+            "Prefer precise claims over broad ones."
+        ),
+        "Ideation": (
+            "You are operating in Ideation mode.\n"
+            "Expand possibilities before narrowing. Defer judgment — generate first, evaluate later.\n"
+            "Surface unexpected connections across domains. Speculate freely but label speculation.\n"
+            "Volume of ideas matters more than precision here. Follow threads wherever they lead."
+        ),
+        "Teaching": (
+            "You are operating in Teaching mode.\n"
+            "The DEFINER is preparing material for others (students, community members, collaborators).\n"
+            "Structure for clarity and progressive disclosure.\n"
+            "Use concrete examples. Avoid jargon unless it will be explained.\n"
+            "Flag where simplification sacrifices precision."
+        ),
+    }
+    # Auto-detection keywords (per spec)
+    _MODE_KEYWORDS: dict[str, list[str]] = {
+        "Ideation": ["brainstorm", "ideate", "blue sky", "what if", "imagine", "riff on"],
+        "Research": ["what does the literature say", "find sources", "what's the evidence", "find evidence"],
+        "Teaching": ["explain for", "simplify", "how would i teach", "help me explain"],
+    }
+    current_chat_mode: list[str] = ["Engineering"]
+
     with (
         ui.row()
         .classes("w-full items-center px-4 py-2 gap-2")
@@ -1266,6 +1305,18 @@ def _build_unified_chat_panel(
         ).props("dense").style("color:{C_AMBER};")
         ui.label("AUGMENT").style(
             f"font-size:10px;color:{C_MUTED};font-weight:500;letter-spacing:0.5px;"
+        )
+        # Separator
+        ui.label("·").style(f"color:{C_INK60};font-size:12px;")
+        # Chat mode picker
+        mode_select = (
+            ui.select(
+                _CHAT_MODES,
+                value=current_chat_mode[0],
+                on_change=lambda e: _on_mode_change(e.value),
+            )
+            .props("dense")
+            .classes("min-w-[130px]")
         )
         ui.space()
         # Model selector: populated from enabled_models (library) when available,
@@ -1299,6 +1350,18 @@ def _build_unified_chat_panel(
                 state._model_library = models  # type: ignore[attr-defined]
         except Exception as exc:
             log.warning("model_library_load_failed: %s", exc)
+
+    def _on_mode_change(mode: str) -> None:
+        current_chat_mode[0] = mode
+
+    def _detect_mode(text: str) -> str | None:
+        """Scan text for auto-detection keywords. Returns mode name or None."""
+        lower = text.lower()
+        for mode_name, keywords in _MODE_KEYWORDS.items():
+            for kw in keywords:
+                if kw in lower:
+                    return mode_name
+        return None
 
     def _on_augment_toggle(val: bool) -> None:
         augment_on[0] = val
@@ -1365,6 +1428,17 @@ def _build_unified_chat_panel(
         prompt = fld.value.strip()
         if not prompt:
             return
+
+        # Auto-detect chat mode from keywords (per spec §Chat Mode Picker)
+        detected = _detect_mode(prompt)
+        if detected and detected != current_chat_mode[0]:
+            current_chat_mode[0] = detected
+            mode_select.value = detected
+            ui.notify(f"Switched to {detected} mode", color="info", timeout=3000)
+
+        # Get the mode modifier text for the current mode
+        mode_modifier = _MODE_MODIFIERS.get(current_chat_mode[0], "")
+
         _msg("user", prompt)
         fld.value = ""
         with msgs:
@@ -1387,6 +1461,7 @@ def _build_unified_chat_panel(
                     query=prompt,
                     project_name=state.current_project,
                     model_slot="synthesis",  # Always pass slot name, not model ID
+                    system_prompt_modifier=mode_modifier,
                 )
                 think.delete()
                 status = r.get("status", "")

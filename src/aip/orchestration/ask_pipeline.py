@@ -525,6 +525,7 @@ async def ask(
     save_artifact: bool = False,
     model_slot: str = "synthesis",
     session_id: str | None = None,
+    system_prompt_modifier: str = "",
 ) -> AskResult:
     """Execute a source-grounded ask query against the AIP knowledge substrate.
 
@@ -628,16 +629,23 @@ async def ask(
     model_errors: list[str] = []
 
     try:
+        base_system = (
+            "You are AIP, a source-grounded knowledge assistant. "
+            "Answer the user's question based ONLY on the provided sources. "
+            "Cite sources using [source: <source_id>] notation. "
+            "If the sources do not contain enough information, say so explicitly. "
+            "Do not fabricate information not present in the sources."
+        )
+        # Prepend chat mode modifier if provided (per AIP_UNIFIED_CHAT_SPEC)
+        system_content = (
+            f"{system_prompt_modifier}\n\n---\n\n{base_system}"
+            if system_prompt_modifier
+            else base_system
+        )
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "You are AIP, a source-grounded knowledge assistant. "
-                    "Answer the user's question based ONLY on the provided sources. "
-                    "Cite sources using [source: <source_id>] notation. "
-                    "If the sources do not contain enough information, say so explicitly. "
-                    "Do not fabricate information not present in the sources."
-                ),
+                "content": system_content,
             },
             {
                 "role": "user",

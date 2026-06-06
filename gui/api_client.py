@@ -566,6 +566,7 @@ class AipApiClient:
         source: str = "all",
         max_sources: int = 10,
         model_slot: str = "synthesis",
+        system_prompt_modifier: str = "",
     ) -> dict[str, Any]:
         """Submit a knowledge-augmented query via POST /api/v1/ask.
 
@@ -574,6 +575,9 @@ class AipApiClient:
         as required fields; this method maps the GUI's ``query`` param
         to the backend's ``question`` field and defaults project_name
         to "default" so callers don't need to know the schema.
+
+        The system_prompt_modifier is prepended to the synthesis system
+        prompt by the backend (per AIP_UNIFIED_CHAT_SPEC §Chat Mode Picker).
 
         Returns the raw AskResult dict: status, answer, sources (list of
         {source_id, source_type, title, score, content_snippet, domain,
@@ -587,6 +591,8 @@ class AipApiClient:
             "max_sources": max_sources,
             "model_slot": model_slot,
         }
+        if system_prompt_modifier:
+            payload["system_prompt_modifier"] = system_prompt_modifier
         resp = await client.post(
             f"{self.base_url}/api/v1/ask",
             json=payload,

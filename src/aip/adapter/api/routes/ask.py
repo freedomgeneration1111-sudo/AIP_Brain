@@ -36,6 +36,8 @@ async def ask_query(payload: dict, container: AipContainer = Depends(get_contain
       - max_sources (int, optional): Max sources to retrieve (default: 10)
       - save_artifact (bool, optional): Save answer as draft artifact (default: false)
       - model_slot (str, optional): Model slot to use (default: "synthesis")
+      - system_prompt_modifier (str, optional): Chat mode modifier text
+        prepended to the synthesis system prompt (per AIP_UNIFIED_CHAT_SPEC)
 
     Returns AskResult dict with status, answer, sources, and metadata.
     """
@@ -54,6 +56,7 @@ async def ask_query(payload: dict, container: AipContainer = Depends(get_contain
     max_sources = payload.get("max_sources", 10)
     save_artifact = payload.get("save_artifact", False)
     model_slot = payload.get("model_slot", "synthesis")
+    system_prompt_modifier = payload.get("system_prompt_modifier", "")
 
     # Validate required stores
     if container.lexical_store is None:
@@ -99,6 +102,7 @@ async def ask_query(payload: dict, container: AipContainer = Depends(get_contain
             max_sources=max_sources,
             save_artifact=save_artifact,
             model_slot=model_slot,
+            system_prompt_modifier=system_prompt_modifier,
         )
     except Exception as exc:
         logger.error("Ask pipeline failed: %s", exc, exc_info=True)
