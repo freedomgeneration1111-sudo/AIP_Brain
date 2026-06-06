@@ -596,28 +596,6 @@ async def lifespan(app: FastAPI):
     else:
         log.info("component_skipped", component="vigil", reason="missing_required_stores_or_model_provider")
 
-    # Sexton actor — requires config, model_resolver, trace_store, event_store
-    # Sexton is lightweight: only needs TraceStore + EventStore + optional ModelProvider
-    if container.event_store is not None:
-        try:
-            _sexton_mod = importlib.import_module("aip.orchestration.sexton.sexton")
-            _Sexton = _sexton_mod.Sexton
-            _SextonConfig = importlib.import_module("aip.foundation.schemas.evaluation").SextonConfig
-            sexton_config = _SextonConfig(
-                **{k: v for k, v in config.get("sexton", {}).items() if k in _SextonConfig.__dataclass_fields__},
-            )
-            container.sexton = _Sexton(
-                config=sexton_config,
-                model_resolver=container.model_provider,
-                trace_store=getattr(container, "trace_store", None) or container.event_store,
-                event_store=container.event_store,
-            )
-            log.info("component_initialized", component="sexton", required=False)
-        except Exception as exc:
-            log.warning("component_failed", component="sexton", degradation="no_failure_classification", error=str(exc))
-    else:
-        log.info("component_skipped", component="sexton", reason="missing_event_store")
-
     # Sexton maintenance actor (ADR-011) — full vigil cycle:
     # tagging, embedding, wiki, graph extraction, failure classification.
     # Requires: model_provider (sexton slot), corpus_turn_store, embedding_provider,
@@ -814,42 +792,6 @@ async def lifespan(app: FastAPI):
         vigil_task = asyncio.create_task(_vigil_scheduler(), name="vigil-scheduler")
         log.info("vigil_scheduler_created")
 
-    # --- Sexton background scheduler ---
-    sexton_task: asyncio.Task | None = None
-    if container.sexton is not None:
-
-        async def _sexton_scheduler():
-            """Background loop that runs sexton.run_classification_cycle() periodically.
-
-            Sexton classifies unclassified failures from the trace store.
-            Runs on a configurable interval (default: 300s = 5 minutes).
-            """
-            interval = container.sexton._config.classification_interval_seconds
-            if interval < 30:
-                interval = 300
-                log.warning("sexton_cadence_clamped", clamped_to=300)
-            log.info("sexton_scheduler_starting", interval_s=interval)
-            cycle_num = 0
-            while True:
-                cycle_num += 1
-                cycle_id = f"sexton-{new_correlation_id()}"
-                set_correlation_id(cycle_id)
-                try:
-                    log.info("sexton_cycle_start", cycle=cycle_num)
-                    await container.sexton.run_classification_cycle()
-                    log.info("sexton_cycle_complete", cycle=cycle_num)
-                except asyncio.CancelledError:
-                    log.info("sexton_scheduler_cancelled", cycle=cycle_num)
-                    raise
-                except Exception as exc:
-                    log.error("sexton_cycle_failed", cycle=cycle_num, error=str(exc), exc_info=True)
-                finally:
-                    set_correlation_id(None)
-                await asyncio.sleep(interval)
-
-        sexton_task = asyncio.create_task(_sexton_scheduler(), name="sexton-scheduler")
-        log.info("sexton_scheduler_created")
-
     # --- Sexton maintenance actor background scheduler (ADR-011) ---
     # Runs the full vigil cycle: tagging → embedding → wiki → graph → classification
     sexton_actor_task: asyncio.Task | None = None
@@ -949,8 +891,7 @@ async def lifespan(app: FastAPI):
         budget=container.budget_store is not None,
         vigil_store=container.vigil_store is not None,
         vigil_actor=container.vigil is not None,
-        sexton_actor=container.sexton is not None,
-        sexton_maintenance_actor=container.sexton_actor is not None,
+        sexton_actor=container.sexton_actor is not None,
         model=container.model_provider is not None,
         knowledge=container.knowledge_store is not None,
         beast=container.beast is not None,
@@ -965,7 +906,6 @@ async def lifespan(app: FastAPI):
     for task_name, task in [
         ("beast", beast_task),
         ("vigil", vigil_task),
-        ("sexton", sexton_task),
         ("sexton_actor", sexton_actor_task),
     ]:
         if task is not None:

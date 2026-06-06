@@ -9,7 +9,7 @@ Primary responsibilities (per ADR-011 vigil order):
   2. Embedding pass (max 50/cycle) — embed unembedded corpus turns
   3. Wiki generation (max 3 domains/cycle) — domain wiki articles
   4. Graph extraction — entity/relationship extraction from bridge-tagged turns
-  5. Failure classification — deterministic + LLM-assisted via existing Sexton
+  5. Failure classification — deterministic + LLM-assisted via internal _failure_classifier
 
 The maintenance methods were originally in Beast and have been moved here
 per ADR-011. Beast retains copies marked as deprecated for CLI compatibility.
@@ -26,6 +26,11 @@ Usage via AipContainer:
 
     For scheduled execution, call run_cycle() from a scheduler or background
     task. The default cadence is 300s per ADR-011.
+
+    For failure classification specifically (admin routes), the internal
+    _failure_classifier (lightweight Sexton) is accessible via:
+        fc = container.sexton_actor._failure_classifier
+        unclassified = await fc.count_unclassified()
 """
 
 from __future__ import annotations

@@ -42,7 +42,7 @@ async def health(container: AipContainer = Depends(get_container)):
     actors_status = {
         "beast": {"initialized": container.beast is not None},
         "vigil": {"initialized": container.vigil is not None},
-        "sexton": {"initialized": container.sexton is not None},
+        "sexton": {"initialized": container.sexton_actor is not None},
     }
 
     # Component availability — determine degraded status

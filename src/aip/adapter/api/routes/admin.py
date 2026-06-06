@@ -78,34 +78,38 @@ async def patch_admin_config(payload: dict, container: AipContainer = Depends(ge
 
 @router.get("/admin/sexton/classifications")
 async def get_sexton_classifications(container: AipContainer = Depends(get_container)):
-    # From Sexton actor (7.1)
-    if container.sexton:
-        try:
-            classifications = await container.sexton.classify_failures()
-            return {
-                "classifications": [
-                    {"failure_type": fc.failure_type, "trace_event_id": fc.trace_event_id, "confidence": fc.confidence}
-                    for fc in classifications
-                ],
-            }
-        except Exception:
-            logger.warning("Sexton classification failed", exc_info=True)
+    # From Sexton actor's failure classifier (ADR-011)
+    if container.sexton_actor is not None:
+        fc = getattr(container.sexton_actor, "_failure_classifier", None)
+        if fc:
+            try:
+                classifications = await fc.classify_failures()
+                return {
+                    "classifications": [
+                        {"failure_type": fc.failure_type, "trace_event_id": fc.trace_event_id, "confidence": fc.confidence}
+                        for fc in classifications
+                    ],
+                }
+            except Exception:
+                logger.warning("Sexton classification failed", exc_info=True)
     return {"classifications": []}
 
 
 @router.get("/admin/sexton/audit")
 async def get_sexton_audit(container: AipContainer = Depends(get_container)):
-    # Stale rule audit from 7.3
-    if container.sexton:
-        try:
-            classified = await container.sexton.classify_failures()
-            rules = container.sexton.derive_ace_rules(
-                [fc.__dict__ if hasattr(fc, "__dict__") else dict(fc) for fc in classified],
-            )
-            stale = container.sexton.audit_model_gen_assumption(rules)
-            return {"audits": stale}
-        except Exception:
-            logger.warning("Sexton audit failed", exc_info=True)
+    # Stale rule audit from Sexton actor's failure classifier (7.3)
+    if container.sexton_actor is not None:
+        fc = getattr(container.sexton_actor, "_failure_classifier", None)
+        if fc:
+            try:
+                classified = await fc.classify_failures()
+                rules = fc.derive_ace_rules(
+                    [fc.__dict__ if hasattr(fc, "__dict__") else dict(fc) for fc in classified],
+                )
+                stale = fc.audit_model_gen_assumption(rules)
+                return {"audits": stale}
+            except Exception:
+                logger.warning("Sexton audit failed", exc_info=True)
     return {"audits": []}
 
 

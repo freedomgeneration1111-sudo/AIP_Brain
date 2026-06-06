@@ -47,13 +47,15 @@ async def get_actors_status(container: AipContainer = Depends(get_container)):
             vigil_status["health_error"] = str(exc)
     actors["vigil"] = vigil_status
 
-    # --- Sexton ---
-    sexton_status: dict = {"initialized": container.sexton is not None, "unclassified_count": 0}
-    if container.sexton is not None:
+    # --- Sexton (ADR-011 maintenance actor) ---
+    sexton_status: dict = {"initialized": container.sexton_actor is not None, "unclassified_count": 0}
+    if container.sexton_actor is not None:
         try:
-            unclassified = await container.sexton.count_unclassified()
-            sexton_status["unclassified_count"] = unclassified
-            sexton_status["interval_seconds"] = container.sexton._config.classification_interval_seconds
+            fc = getattr(container.sexton_actor, "_failure_classifier", None)
+            if fc is not None:
+                unclassified = await fc.count_unclassified()
+                sexton_status["unclassified_count"] = unclassified
+            sexton_status["interval_seconds"] = container.sexton_actor._config.classification_interval_seconds
         except Exception as exc:
             sexton_status["error"] = str(exc)
     actors["sexton"] = sexton_status
@@ -109,19 +111,20 @@ async def get_actor_detail(actor_name: str, container: AipContainer = Depends(ge
             return {"actor": "vigil", "initialized": True, "error": str(exc)}
 
     elif actor_name == "sexton":
-        if container.sexton is None:
+        if container.sexton_actor is None:
             return {"actor": "sexton", "initialized": False}
         try:
-            unclassified = await container.sexton.count_unclassified()
+            fc = getattr(container.sexton_actor, "_failure_classifier", None)
+            unclassified = await fc.count_unclassified() if fc else 0
             return {
                 "actor": "sexton",
                 "initialized": True,
                 "unclassified_count": unclassified,
                 "config": {
-                    "classification_batch_size": container.sexton._config.classification_batch_size,
-                    "classification_interval_seconds": container.sexton._config.classification_interval_seconds,
-                    "audit_on_slot_change": container.sexton._config.audit_on_slot_change,
-                    "max_unclassified_before_alert": container.sexton._config.max_unclassified_before_alert,
+                    "classification_batch_size": container.sexton_actor._config.classification_batch_size,
+                    "classification_interval_seconds": container.sexton_actor._config.classification_interval_seconds,
+                    "audit_on_slot_change": container.sexton_actor._config.audit_on_slot_change,
+                    "max_unclassified_before_alert": container.sexton_actor._config.max_unclassified_before_alert,
                 },
             }
         except Exception as exc:
@@ -156,12 +159,13 @@ async def trigger_actor_cycle(actor_name: str, container: AipContainer = Depends
             return {"actor": "vigil", "triggered": False, "error": str(exc)}
 
     elif actor_name == "sexton":
-        if container.sexton is None:
+        if container.sexton_actor is None:
             return {"error": "Sexton not initialized"}
         try:
-            await container.sexton.run_classification_cycle()
-            unclassified = await container.sexton.count_unclassified()
-            return {"actor": "sexton", "triggered": True, "remaining_unclassified": unclassified}
+            summary = await container.sexton_actor.run_cycle()
+            fc = getattr(container.sexton_actor, "_failure_classifier", None)
+            unclassified = await fc.count_unclassified() if fc else 0
+            return {"actor": "sexton", "triggered": True, "remaining_unclassified": unclassified, "cycle_summary": summary}
         except Exception as exc:
             return {"actor": "sexton", "triggered": False, "error": str(exc)}
 
