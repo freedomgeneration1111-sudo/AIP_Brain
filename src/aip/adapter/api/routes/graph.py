@@ -7,11 +7,31 @@ GET /api/v1/graph/stats — returns node/edge counts by type.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+import logging
 
-from aip.adapter.api.dependencies import get_container
+from fastapi import APIRouter, Depends, Query
+
+from aip.adapter.api.dependencies import AipContainer, get_container
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _get_graph_store(container: AipContainer):
+    """Create a GraphStore using the container's db_path.
+
+    Falls back to get_default_db_path() if container config is unavailable.
+    """
+    from aip.adapter.graph_store import GraphStore
+    db_path = container.config.get("db_path", "")
+    if not db_path:
+        try:
+            from aip.cli._db_path import get_default_db_path
+            db_path = get_default_db_path()
+        except Exception:
+            db_path = "db/state.db"
+    return GraphStore(db_path)
 
 
 @router.get("/graph/data")
@@ -19,19 +39,14 @@ async def graph_data(
     min_confidence: float = Query(default=0.4, ge=0.0, le=1.0),
     domain: str | None = Query(default=None),
     entity_type: str | None = Query(default=None),
+    container: AipContainer = Depends(get_container),
 ):
     """Return nodes and edges for Cytoscape.js visualization.
 
     Filters: min_confidence (default 0.4), domain, entity_type.
     """
-    from aip.adapter.graph_store import GraphStore
-    from aip.adapter.api.dependencies import get_container
-    import fastapi
-
     try:
-        from aip.cli._db_path import get_default_db_path
-        db_path = get_default_db_path()
-        store = GraphStore(db_path)
+        store = _get_graph_store(container)
     except Exception as exc:
         return {"error": str(exc), "nodes": [], "edges": []}
 
@@ -78,31 +93,32 @@ async def graph_data(
 
 
 @router.get("/graph/neighbors/{node_id}")
-async def graph_neighbors(node_id: str, min_confidence: float = Query(default=0.4, ge=0.0, le=1.0)):
+async def graph_neighbors(
+    node_id: str,
+    min_confidence: float = Query(default=0.4, ge=0.0, le=1.0),
+    container: AipContainer = Depends(get_container),
+):
     """Return direct neighbors of a node."""
     try:
-        from aip.adapter.graph_store import GraphStore
-        from aip.cli._db_path import get_default_db_path
-        store = GraphStore(get_default_db_path())
+        store = _get_graph_store(container)
         neighbors = store.get_neighbors(node_id, min_confidence=min_confidence)
         return {
             "node_id": node_id,
-            "neighbors": [
+            "nodes": [
                 {"id": n.id, "canonical_name": n.canonical_name, "entity_type": n.entity_type}
                 for n in neighbors
             ],
+            "edges": [],
         }
     except Exception as exc:
-        return {"error": str(exc), "node_id": node_id, "neighbors": []}
+        return {"error": str(exc), "node_id": node_id, "nodes": [], "edges": []}
 
 
 @router.get("/graph/stats")
-async def graph_stats():
+async def graph_stats(container: AipContainer = Depends(get_container)):
     """Return graph statistics."""
     try:
-        from aip.adapter.graph_store import GraphStore
-        from aip.cli._db_path import get_default_db_path
-        store = GraphStore(get_default_db_path())
+        store = _get_graph_store(container)
         nodes = store.get_all_nodes()
         edges = store.get_all_edges()
 
@@ -124,4 +140,5 @@ async def graph_stats():
             "edges_by_relationship": edge_by_rel,
         }
     except Exception as exc:
+        logger.warning("graph_stats failed: %s", exc)
         return {"error": str(exc), "nodes": 0, "edges": 0}
