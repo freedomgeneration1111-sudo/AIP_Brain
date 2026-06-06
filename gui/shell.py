@@ -1047,27 +1047,60 @@ def _build_wiki_panel(state: GuiState) -> None:
 # ── GRAPH PANEL ──────────────────────────────────────────────────────
 
 def _build_graph_panel(state: GuiState) -> None:
-    """GRAPH tab — Cytoscape iframe + postMessage node-detail side panel."""
+    """GRAPH tab — Cytoscape iframe + postMessage node-detail side panel.
+
+    Shows the /graph-viz iframe when graph data exists. Falls back to
+    a placeholder message when the knowledge graph is empty (Phase 4).
+    """
 
     _selected_node: list[dict] = [{}]
 
     with ui.row().classes("w-full").style(
         f"flex:1;min-height:0;background:{C_GROUND};position:relative;"
     ):
-        # iframe — full area
+        # Graph area — iframe when data exists, placeholder when empty
         iframe_col = ui.column().classes("flex-1").style("min-height:0;")
-        with iframe_col:
-            # Use the backend base URL for the graph-viz iframe.
-            # The backend serves /graph-viz as a standalone HTML page.
-            _gv_base = state.api_client.base_url.rstrip("/")
-            _gv_url = f"{_gv_base}/graph-viz"
-            ui.html(
-                f'<iframe id="graph-iframe" '
-                f'src="{_gv_url}" '
-                f'style="width:100%;height:100%;min-height:560px;'
-                f'border:none;background:#141414;">'
-                f'</iframe>'
-            )
+
+        async def _load_graph() -> None:
+            iframe_col.clear()
+            try:
+                stats = await state.api_client.get_graph_stats()
+                node_count = stats.get("nodes", 0)
+                edge_count = stats.get("edges", 0)
+            except Exception:
+                node_count = 0
+                edge_count = 0
+
+            with iframe_col:
+                if node_count > 0:
+                    # Show Cytoscape iframe
+                    _gv_base = state.api_client.base_url.rstrip("/")
+                    _gv_url = f"{_gv_base}/graph-viz"
+                    ui.html(
+                        f'<iframe id="graph-iframe" '
+                        f'src="{_gv_url}" '
+                        f'style="width:100%;height:100%;min-height:560px;'
+                        f'border:none;background:#141414;">'
+                        f'</iframe>'
+                    )
+                else:
+                    # Placeholder — no graph data yet
+                    with ui.column().classes("w-full items-center justify-center").style(
+                        "padding:48px;flex:1;"
+                    ):
+                        ui.icon("hub", size="48px").style(f"color:{C_INK60};")
+                        ui.label("Knowledge graph visualization coming in Phase 4.").style(
+                            f"font-size:14px;color:{C_MUTED};margin-top:16px;"
+                        )
+                        ui.html(
+                            f'<span style="font-size:12px;color:{C_INK60};font-family:{F_MONO};">'
+                            f'Graph data: <b>{node_count}</b> entities, '
+                            f'<b>{edge_count}</b> edges available via '
+                            f'<code>/api/v1/graph</code>'
+                            f'</span>'
+                        ).style("margin-top:8px;")
+
+        asyncio.create_task(_load_graph())
 
         # Node detail side panel (hidden until a node is selected)
         detail_panel = ui.column().style(
