@@ -460,6 +460,12 @@ def _build_status_panel(state: GuiState) -> None:
             _kv("Edges:", str(graph_r.get("edges", "—")))
             _sep()
 
+            # Actor role labels per ADR-011
+            _actor_roles = {
+                "beast": "Active during augmented chat sessions",
+                "sexton": "Background maintenance (vigil cycle)",
+                "vigil": "Quality evaluation (hourly)",
+            }
             _section("ACTOR SLOTS")
             for sn in ["synthesis", "beast", "vigil", "sexton", "embedding"]:
                 s = slot_map.get(sn, {})
@@ -468,12 +474,14 @@ def _build_status_panel(state: GuiState) -> None:
                 dot_c = C_OK_FG if configured else C_MUTED
                 status = "READY" if configured else "UNCONFIGURED"
                 sc = C_OK_FG if configured else C_MUTED
+                role_label = _actor_roles.get(sn, "")
+                display_name = f"{sn}" if not role_label else f"{sn}  ({role_label})"
                 with ui.row().classes("w-full items-center gap-2").style("padding:1px 0;"):
                     ui.html(
                         f'<span style="font-size:10px;color:{dot_c};">'
                         f'{"●" if configured else "○"}</span>'
                     )
-                    ui.label(sn).style(
+                    ui.label(display_name).style(
                         f"font-size:11px;font-family:{F_MONO};color:{C_CREAM};min-width:90px;"
                     )
                     ui.label((model[:36] + "…") if len(model) > 36 else model).style(
