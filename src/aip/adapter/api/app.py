@@ -44,7 +44,27 @@ from starlette.responses import Response
 
 from aip.adapter.api import collaborators, performance, plugins
 from aip.adapter.api.dependencies import AipContainer
-from aip.adapter.api.routes import admin, actors, artifacts, ask, chat, corpus, ecs, graph, graph_viz, health, ingest, knowledge, memory, models, projects, review, sessions, sources, wiki
+from aip.adapter.api.routes import (
+    actors,
+    admin,
+    artifacts,
+    ask,
+    chat,
+    corpus,
+    ecs,
+    graph,
+    graph_viz,
+    health,
+    ingest,
+    knowledge,
+    memory,
+    models,
+    projects,
+    review,
+    sessions,
+    sources,
+    wiki,
+)
 from aip.config import validate_config
 from aip.foundation.schemas import BeastCadenceConfig, SurfaceConfig
 from aip.logging import configure_logging, get_logger, new_correlation_id, set_correlation_id
@@ -55,6 +75,7 @@ log = get_logger(__name__)
 # ------------------------------------------------------------------
 # TOML Config Loader
 # ------------------------------------------------------------------
+
 
 def _load_dotenv() -> None:
     """Load .env file from the project root if python-dotenv is available.
@@ -212,7 +233,9 @@ def _create_embedding_provider(config: dict) -> "EmbeddingProvider | None":
 
         base_url = embed_cfg.get("base_url", "https://api.openai.com")
         model = embed_cfg.get("model")
-        api_key = embed_cfg.get("api_key") or os.environ.get("AIP_EMBEDDING_API_KEY") or os.environ.get("AIP_OPENAI_API_KEY")
+        api_key = (
+            embed_cfg.get("api_key") or os.environ.get("AIP_EMBEDDING_API_KEY") or os.environ.get("AIP_OPENAI_API_KEY")
+        )
         dimensions = embed_cfg.get("dimensions")
 
         if model:
@@ -358,6 +381,7 @@ async def lifespan(app: FastAPI):
     # CorpusTurnStore — corpus turn FTS5 search for augmented chat (degrades to no corpus search)
     try:
         from aip.adapter.corpus_turn_store import CorpusTurnStore
+
         container.corpus_turn_store = CorpusTurnStore(db_path)
         await container.corpus_turn_store.initialize()
         log.info("component_initialized", component="corpus_turn_store", required=False)
@@ -491,9 +515,16 @@ async def lifespan(app: FastAPI):
                 budget_store=container.budget_store,
                 event_store=container.event_store,
             )
-            log.info("component_initialized", component="budget_manager", required=False, hard_stop=budget_cfg.budget_hard_stop)
+            log.info(
+                "component_initialized",
+                component="budget_manager",
+                required=False,
+                hard_stop=budget_cfg.budget_hard_stop,
+            )
         except Exception as exc:
-            log.warning("component_failed", component="budget_manager", degradation="no_budget_enforcement", error=str(exc))
+            log.warning(
+                "component_failed", component="budget_manager", degradation="no_budget_enforcement", error=str(exc)
+            )
 
     # --- Wire TraceStoreAdapter ---
     # Adapts QueryableEventStore to TraceStore protocol so that orchestration
@@ -502,10 +533,13 @@ async def lifespan(app: FastAPI):
     if container.event_store is not None:
         try:
             from aip.adapter.trace_store_adapter import TraceStoreAdapter
+
             container.trace_store = TraceStoreAdapter(container.event_store)
             log.info("component_initialized", component="trace_store", adapter="TraceStoreAdapter")
         except Exception as exc:
-            log.warning("component_failed", component="trace_store", degradation="trace_events_unavailable", error=str(exc))
+            log.warning(
+                "component_failed", component="trace_store", degradation="trace_events_unavailable", error=str(exc)
+            )
 
     # --- Wire orchestration components (lazy import to preserve layer discipline) ---
     # Beast actor — requires vector_store + embedding_provider at minimum
@@ -612,7 +646,9 @@ async def lifespan(app: FastAPI):
             )
             log.info("component_initialized", component="sexton_actor", required=False)
         except Exception as exc:
-            log.warning("component_failed", component="sexton_actor", degradation="no_background_maintenance", error=str(exc))
+            log.warning(
+                "component_failed", component="sexton_actor", degradation="no_background_maintenance", error=str(exc)
+            )
     else:
         log.info("component_skipped", component="sexton_actor", reason="missing_event_store")
 
@@ -690,7 +726,9 @@ async def lifespan(app: FastAPI):
             container.session_manager = _SessionManager(config=config)
             log.info("component_initialized", component="session_manager", required=False)
         except Exception as exc:
-            log.warning("component_failed", component="session_manager", degradation="no_trajectory_regulation", error=str(exc))
+            log.warning(
+                "component_failed", component="session_manager", degradation="no_trajectory_regulation", error=str(exc)
+            )
 
     app.state.container = container
     app.state.start_time = time.time()
@@ -870,6 +908,36 @@ async def lifespan(app: FastAPI):
 
         sexton_actor_task = asyncio.create_task(_sexton_actor_scheduler(), name="sexton-actor-scheduler")
         log.info("sexton_actor_scheduler_created")
+
+    # --- Startup immediate runs ---
+    # Fire Sexton and Vigil once immediately on startup (background tasks)
+    # so they process any backlog from the previous session without waiting
+    # for the first scheduled interval.
+    if container.sexton_actor is not None:
+
+        async def _sexton_startup_run():
+            try:
+                log.info("sexton_actor_startup_run_start")
+                await container.sexton_actor.run_cycle()
+                log.info("sexton_actor_startup_run_complete")
+            except Exception as exc:
+                log.warning("sexton_actor_startup_run_failed", error=str(exc))
+
+        asyncio.create_task(_sexton_startup_run(), name="sexton-actor-startup")
+        log.info("sexton_actor_startup_run_scheduled")
+
+    if container.vigil is not None:
+
+        async def _vigil_startup_run():
+            try:
+                log.info("vigil_startup_run_start")
+                await container.vigil.run()
+                log.info("vigil_startup_run_complete")
+            except Exception as exc:
+                log.warning("vigil_startup_run_failed", error=str(exc))
+
+        asyncio.create_task(_vigil_startup_run(), name="vigil-startup")
+        log.info("vigil_startup_run_scheduled")
 
     log.info(
         "startup_complete",
@@ -1061,14 +1129,17 @@ def create_app(config: dict | None = None) -> "FastAPI":
     # Mount NiceGUI shell interface
     import sys
     from pathlib import Path
+
     gui_path = Path(__file__).parent.parent.parent.parent / "gui"
     if str(gui_path) not in sys.path:
         sys.path.insert(0, str(gui_path))
 
     try:
         import shell
+
         app.mount("/", shell, name="gui")
     except ImportError:
+
         @app.get("/")
         async def root():
             return {"status": "ok", "service": "aip-surfaces"}
