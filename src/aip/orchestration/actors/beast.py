@@ -1,12 +1,16 @@
-"""Beast Actor — cadence-based corpus and entity maintenance.
+"""Beast Actor — active synthesis support for augmented chat (ADR-011).
 
-Beast — cadence / corpus / entity maintenance.
-Deterministic (no LLM in main paths). Uses injected Protocols only.
+Beast is the ACTIVE SYNTHESIS SUPPORT actor — it fires on-demand during
+augmented chat, NOT as a scheduled maintenance worker.
 
-Real health checks with connectivity probes, stale-vector detection via
-list_stale_vectors() + re-embedding via EmbeddingProvider, properly
-injected EntityStore, optional ProjectStore,
-and cadence run_cycle() for periodic scheduling.
+Primary responsibilities:
+  - Context advisory assembly for augmented chat sessions
+  - Lightweight heartbeat in its scheduled cycle (health + heartbeat only)
+  - Domain-aware summary generation on corpus change
+
+Maintenance operations (tagging, embedding, wiki, graph extraction) have
+moved to Sexton per ADR-011. The methods remain in Beast for CLI
+compatibility but are no longer called from run_cycle().
 
 Usage via AipContainer:
     Beast is wired during application lifespan (app.py). To use it:
@@ -15,14 +19,13 @@ Usage via AipContainer:
         if container.beast:
             health = await container.beast.run_health_check()
 
-    For periodic execution, call run_cycle() from a scheduler or background
-    task. It runs health check + corpus maintenance + entity maintenance in
-    sequence and returns a summary dict.
+    For scheduled execution, call run_cycle() from a scheduler or background
+    task. It now runs health check + heartbeat + context advisory only.
 
-    Alternatively, individual methods can be called independently:
-        await beast.run_health_check()
-        await beast.run_corpus_maintenance()
-        await beast.run_entity_maintenance()
+    Individual maintenance methods can still be called directly (e.g. from
+    CLI commands), but are deprecated in run_cycle() per ADR-011:
+        await beast._run_turn_tagging(limit=200)
+        await beast._run_embedding_pass(limit=200)
 """
 
 from __future__ import annotations
@@ -49,11 +52,13 @@ log = get_logger(__name__)
 
 
 class Beast:
-    """Beast maintenance actor.
+    """Beast — active synthesis support actor (ADR-011).
 
-    Performs real corpus maintenance (stale vector detection + re-embedding),
-    entity consistency checks, and honest health reporting across all
-    critical subsystems.
+    Fires on-demand during augmented chat for context advisory assembly.
+    Scheduled cycle runs a lightweight heartbeat only (health check +
+    heartbeat event). Maintenance operations (tagging, embedding, wiki,
+    graph extraction) have moved to Sexton per ADR-011; the methods
+    remain here for CLI compatibility.
 
     Constructor accepts optional stores (entity_store, canonical_store,
     project_store) for graceful operation when those components are not
@@ -446,13 +451,12 @@ class Beast:
     # ------------------------------------------------------------------
 
     async def run_cycle(self) -> dict:
-        """Execute a full Beast maintenance cycle.
+        """Execute a lightweight Beast heartbeat cycle (ADR-011).
 
-        Runs health check, corpus maintenance, and entity maintenance
-        in sequence. Intended to be called periodically by a scheduler
-        or background task.
+        Runs health check, heartbeat, and context advisory (if provider
+        available). Maintenance operations have moved to Sexton per ADR-011.
 
-        Returns a summary dict with results from each phase and timing.
+        Returns a summary dict with health, heartbeat, and advisory results.
 
         Example usage with asyncio:
             import asyncio
@@ -464,97 +468,35 @@ class Beast:
         cycle_start = time.monotonic()
 
         health = await self.run_health_check()
-        corpus = await self.run_corpus_maintenance()
-        entity = await self.run_entity_maintenance()
 
-        # Lightweight heartbeat (always) + conditional summaries (only on change)
+        # Lightweight heartbeat (always)
         heartbeat = await self._run_lightweight_heartbeat()
-        summary_stats = {}
+
+        # Context advisory — Beast's core on-demand function (ADR-011)
+        advisory_stats = {}
         if self._beast_provider is not None:
             try:
-                summary_stats = await self._run_conditional_domain_summaries()
+                advisory_stats = await self._run_conditional_domain_summaries()
             except Exception as exc:
-                log.error("conditional_summaries_failed", error=str(exc))
-                summary_stats = {"error": str(exc)}
+                log.error("context_advisory_failed", error=str(exc))
+                advisory_stats = {"error": str(exc)}
         else:
             log.info("beast: no LLM configured, heartbeat only")
-            summary_stats = {"note": "no_llm_heartbeat_only"}
-
-        # Turn tagging (new): batch LLM tagging of untagged turns using domain registry.
-        # Only if provider + store present. Cap 200/cycle. Background does untagged only;
-        # use `aip corpus tag --retag` for re-evaluation of already-tagged turns.
-        tagging_stats: dict = {}
-        if self._beast_provider is not None and getattr(self, "_corpus_turns", None) is not None:
-            try:
-                # Cheap probe: only invoke heavy LLM work if there is untagged work
-                probe = await self._corpus_turns.get_untagged_turns(limit=1)
-                if probe:
-                    tagging_stats = await self._run_turn_tagging(limit=200)
-                # (retag eligibility / last-tagged vs corpus_modified check can be added later;
-                # for now CLI --retag drives re-tagging explicitly)
-            except Exception as exc:
-                log.error("beast_turn_tagging_failed", error=str(exc))
-                tagging_stats = {"error": str(exc)}
-
-        # Embedding pass (new): embed unembedded corpus turns after tagging.
-        # Only if embedding provider + corpus_turns. Cap 200/cycle for background.
-        # CLI can pass larger limit.
-        embedding_stats: dict = {}
-        if getattr(self, "_embed", None) is not None and getattr(self, "_corpus_turns", None) is not None:
-            try:
-                # Probe for unembedded
-                unemb = 0
-                if hasattr(self._corpus_turns, "count_unembedded"):
-                    unemb = await self._corpus_turns.count_unembedded()
-                if unemb > 0:
-                    embedding_stats = await self._run_embedding_pass(limit=200)
-            except Exception as exc:
-                log.error("beast_embedding_failed", error=str(exc))
-                embedding_stats = {"error": str(exc)}
-
-        # Wiki generation: domain-level articles from tagged corpus turns.
-        # Cap 5 per background cycle. CLI --all bypasses cap.
-        wiki_stats: dict = {}
-        if (
-            self._beast_provider is not None
-            and getattr(self, "_corpus_turns", None) is not None
-            and self._artifacts is not None
-        ):
-            try:
-                wiki_stats = await self._run_wiki_generation(max_per_cycle=5)
-            except Exception as exc:
-                log.error("beast_wiki_generation_failed", error=str(exc))
-                wiki_stats = {"error": str(exc)}
-
-        # Graph extraction: entity/relationship extraction on high-importance turns.
-        # Cap 50 turns per background cycle. Requires beast_provider + corpus_turns.
-        graph_stats: dict = {}
-        if self._beast_provider is not None and getattr(self, "_corpus_turns", None) is not None:
-            try:
-                graph_stats = await self._run_graph_extraction(limit=50)
-            except Exception as exc:
-                log.error("beast_graph_extraction_failed", error=str(exc))
-                graph_stats = {"error": str(exc)}
+            advisory_stats = {"note": "no_llm_heartbeat_only"}
 
         elapsed = time.monotonic() - cycle_start
         self._last_cycle_time = time.time()
 
         summary = {
             "health_overall": health.get("overall", "unknown"),
-            "corpus": corpus,
-            "entity": entity,
             "heartbeat": heartbeat,
-            "summaries": summary_stats,
-            "tagging": tagging_stats,
-            "embedding": embedding_stats,
-            "wiki": wiki_stats,
-            "graph": graph_stats,
+            "context_advisory": advisory_stats,
             "cycle_elapsed_seconds": round(elapsed, 3),
             "last_cycle_time": self._last_cycle_time,
         }
 
         await self._emit_event(
-            event_type="beast_cycle_complete",
+            event_type="beast_heartbeat",
             artifact_id="system",
             metadata=summary,
         )
@@ -893,6 +835,9 @@ class Beast:
 
     async def _run_turn_tagging(self, limit: int = 200, retag: bool = False) -> dict:
         """LLM-powered batch tagging of CorpusTurn rows using the domain registry.
+
+        .. deprecated:: ADR-011
+            Moved to Sexton per ADR-011. Kept for CLI compatibility.
 
         - Loads registry ONCE per invocation (not per batch).
         - Processes in batches of exactly 8 turns per LLM call to beast_provider.
@@ -1241,6 +1186,9 @@ Example response structure:
     async def _run_embedding_pass(self, limit: int = 200, reembed: bool = False) -> dict:
         """Embed corpus turns' searchable_text into vector store, keyed by turn_id.
 
+        .. deprecated:: ADR-011
+            Moved to Sexton per ADR-011. Kept for CLI compatibility.
+
         Batch size 32 for efficiency (cheaper than chat).
         Truncates text to 8000 chars.
         Sets embedded=1 on success in corpus_turns.
@@ -1351,6 +1299,9 @@ Example response structure:
         max_per_cycle: int = 5,
     ) -> dict:
         """Generate domain wiki articles from tagged corpus turns.
+
+        .. deprecated:: ADR-011
+            Moved to Sexton per ADR-011. Kept for CLI compatibility.
 
         For each active domain: checks whether generation is needed
         (no wiki exists OR >200k new words since last wiki), then calls
@@ -1772,6 +1723,9 @@ CRITICAL CONSTRAINTS:
 
     async def _run_graph_extraction(self, limit: int = 50) -> dict:
         """Extract entities and relationships from high-importance corpus turns.
+
+        .. deprecated:: ADR-011
+            Moved to Sexton per ADR-011. Kept for CLI compatibility.
 
         Processes turns with importance > 0.7, tagging_version > 0, not yet
         graph-extracted. Creates/updates GraphNode and GraphEdge records.
