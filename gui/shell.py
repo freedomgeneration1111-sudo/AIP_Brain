@@ -159,6 +159,13 @@ class GuiState:
         self.chunks_indexed: int = 0
         self.current_project: str | None = None  # resolved from GET /api/v1/projects
         self.client = None
+        # Epistemic flags — shared between Settings and Chat panels
+        self.epistemic_flags: dict[str, bool] = {
+            "no_flattery": True,
+            "flag_uncertainty": True,
+            "suggest_validation": True,
+            "report_conflicts": True,
+        }
 
     async def ensure_session(self) -> str:
         if self.session_id is not None:
@@ -520,6 +527,156 @@ def _build_status_panel(state: GuiState) -> None:
 
     refresh_btn.on("click", lambda: asyncio.create_task(_load()))
     asyncio.create_task(_load())
+
+
+# ── SETTINGS PANEL ───────────────────────────────────────────────────
+
+
+def _build_settings_panel(state: GuiState) -> None:
+    """SETTINGS tab — DEFINER profile editor and epistemic flags."""
+    with (
+        ui.column()
+        .classes("w-full")
+        .style(f"flex:1;overflow-y:auto;background:{C_GROUND};padding:24px 32px;gap:24px;")
+    ):
+
+        # ── DEFINER PROFILE section ──
+        ui.label("DEFINER PROFILE").style(
+            f"font-size:13px;font-weight:700;letter-spacing:1px;color:{C_AMBER};"
+        )
+        ui.label(
+            "Edit the DEFINER profile injected into augmented chat system prompts. "
+            "Changes take effect on next request (5-min cache)."
+        ).style(f"font-size:11px;color:{C_MUTED};line-height:1.4;")
+
+        profile_textarea = ui.textarea(
+            value="Loading...",
+        ).props("outlined rows=12").classes("w-full").style(
+            f"font-size:12px;font-family:{F_MONO};"
+            f"background:{C_RAISED};color:{C_CREAM};"
+        )
+
+        save_profile_btn = ui.button("Save Profile").props("unelevated dense").style(
+            f"background:{C_AMBER};color:#000;font-weight:600;font-size:12px;"
+            f"padding:6px 16px;border-radius:4px;"
+        )
+
+        profile_status = ui.label("").style(
+            f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};"
+        )
+
+        async def _load_profile() -> None:
+            r = await state.api_client.get_definer_profile()
+            profile_textarea.value = r.get("content", "")
+            if r.get("missing"):
+                profile_status.set_text(
+                    f"File not found: {r.get('path', '?')} — Save to create it"
+                )
+                profile_status.style(f"color:{C_WARN_FG};")
+            else:
+                profile_status.set_text(f"Path: {r.get('path', '?')}")
+                profile_status.style(f"color:{C_MUTED};")
+
+        async def _save_profile() -> None:
+            content = profile_textarea.value
+            r = await state.api_client.save_definer_profile(content)
+            if r.get("ok"):
+                ui.notify(
+                    "Profile saved — takes effect on next request",
+                    color="positive",
+                    timeout=4000,
+                )
+                profile_status.set_text(f"Saved to: {r.get('path', '?')}")
+                profile_status.style(f"color:{C_OK_FG};")
+            else:
+                ui.notify(
+                    f"Save failed: {r.get('error', 'unknown error')}",
+                    color="negative",
+                    timeout=6000,
+                )
+                profile_status.set_text(f"Save failed: {r.get('error', '?')}")
+                profile_status.style(f"color:{C_ERR_FG};")
+
+        save_profile_btn.on("click", lambda: asyncio.create_task(_save_profile()))
+        asyncio.create_task(_load_profile())
+
+        ui.separator().style(f"background:{C_INK40};")
+
+        # ── EPISTEMIC FLAGS section ──
+        ui.label("EPISTEMIC FLAGS").style(
+            f"font-size:13px;font-weight:700;letter-spacing:1px;color:{C_AMBER};"
+        )
+        ui.label(
+            "Control which epistemic guardrails are active. Unchecking a flag "
+            "removes that sentence from Engineering mode; for other modes, "
+            "checking a flag adds the sentence."
+        ).style(f"font-size:11px;color:{C_MUTED};line-height:1.4;")
+
+        flag_no_flattery = ui.checkbox(
+            "No flattery — suppress sycophantic preambles",
+            value=True,
+            on_change=lambda e: _update_flag("no_flattery", e.value),
+        ).style(f"color:{C_CREAM};font-size:12px;")
+        flag_uncertainty = ui.checkbox(
+            "Flag uncertainty — require explicit confidence statements",
+            value=True,
+            on_change=lambda e: _update_flag("flag_uncertainty", e.value),
+        ).style(f"color:{C_CREAM};font-size:12px;")
+        flag_validation = ui.checkbox(
+            "Suggest validation — prompt model to note what needs empirical confirmation",
+            value=True,
+            on_change=lambda e: _update_flag("suggest_validation", e.value),
+        ).style(f"color:{C_CREAM};font-size:12px;")
+        flag_conflicts = ui.checkbox(
+            "Report conflicts — surface conflicting evidence rather than resolving artificially",
+            value=True,
+            on_change=lambda e: _update_flag("report_conflicts", e.value),
+        ).style(f"color:{C_CREAM};font-size:12px;")
+
+        def _update_flag(key: str, val: bool) -> None:
+            """Update live flag state in GuiState (UI IS the live state)."""
+            state.epistemic_flags[key] = val
+
+        flag_status = ui.label("").style(
+            f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};"
+        )
+
+        async def _load_flags() -> None:
+            r = await state.api_client.get_epistemic_flags()
+            flags = r.get("flags", {})
+            flag_no_flattery.value = flags.get("no_flattery", True)
+            flag_uncertainty.value = flags.get("flag_uncertainty", True)
+            flag_validation.value = flags.get("suggest_validation", True)
+            flag_conflicts.value = flags.get("report_conflicts", True)
+            # Sync live state
+            state.epistemic_flags.update(flags)
+            src = r.get("source", "defaults")
+            flag_status.set_text(f"Source: {src}")
+
+        async def _save_flags() -> None:
+            r = await state.api_client.save_epistemic_flags(
+                no_flattery=flag_no_flattery.value,
+                flag_uncertainty=flag_uncertainty.value,
+                suggest_validation=flag_validation.value,
+                report_conflicts=flag_conflicts.value,
+            )
+            if r.get("ok"):
+                ui.notify("Flags saved", color="positive", timeout=2000)
+                flag_status.set_text("Saved")
+                flag_status.style(f"color:{C_OK_FG};")
+            else:
+                ui.notify(
+                    f"Save failed: {r.get('error', '?')}",
+                    color="negative",
+                    timeout=4000,
+                )
+
+        save_flags_btn = ui.button("Save Flags").props("unelevated dense").style(
+            f"background:{C_AMBER};color:#000;font-weight:600;font-size:12px;"
+            f"padding:6px 16px;border-radius:4px;"
+        )
+        save_flags_btn.on("click", lambda: asyncio.create_task(_save_flags()))
+        asyncio.create_task(_load_flags())
 
 
 # ── REVIEW PANEL ─────────────────────────────────────────────────────
@@ -1260,6 +1417,7 @@ def _build_unified_chat_panel(
 
     # Beast pane state
     beast_visible: list[bool] = [True]
+    beast_scan_history: list[dict[str, Any]] = []  # max 10 scan results for pop-out
 
     # Main content area: flex row with conversation + Beast pane
     with ui.row().classes("w-full").style(f"flex:1;min-height:0;"):
@@ -1390,6 +1548,12 @@ def _build_unified_chat_panel(
                     f"font-size:10px;"
                     f"color:{C_OK_FG if status == 'APPROVED' else C_WARN_FG};"
                 )
+
+        # Append to scan history for Beast pop-out (max 10)
+        if not scan.get("error"):
+            beast_scan_history.append(scan)
+            if len(beast_scan_history) > 10:
+                beast_scan_history.pop(0)
 
     async def _beast_compare(query: str, responses: list[dict]) -> None:
         """Fire Beast cohort comparison and render in the Beast pane.
@@ -1836,6 +2000,7 @@ async def main_page() -> None:
                 ui.tab("corpus", label="CORPUS")
                 ui.tab("graph", label="GRAPH")
                 ui.tab("status", label="STATUS")
+                ui.tab("settings", label="SETTINGS")
 
             ui.space()
 
@@ -1859,6 +2024,8 @@ async def main_page() -> None:
             _build_graph_panel(state)
         with ui.tab_panel("status"):
             _build_status_panel(state)
+        with ui.tab_panel("settings"):
+            _build_settings_panel(state)
 
     # ── STATUS BAR ──────────────────────────────────────────────────
     with ui.footer().style(f"background:{C_GROUND};border-top:{BORDER};height:28px;padding:0 16px;"):

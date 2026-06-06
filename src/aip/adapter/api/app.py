@@ -66,6 +66,7 @@ from aip.adapter.api.routes import (
     projects,
     review,
     sessions,
+    settings,
     sources,
     wiki,
 )
@@ -1064,6 +1065,7 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(sources.router, prefix="/api/v1", tags=["sources"])
     app.include_router(corpus.router, prefix="/api/v1", tags=["corpus"])
     app.include_router(graph.router, prefix="/api/v1", tags=["graph"])
+    app.include_router(settings.router, prefix="/api/v1", tags=["settings"])
     app.include_router(graph_viz.router, tags=["graph"])
 
     # Additional routers

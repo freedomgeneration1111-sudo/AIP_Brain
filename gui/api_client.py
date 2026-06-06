@@ -1095,6 +1095,100 @@ class AipApiClient:
         resp.raise_for_status()
         return resp.json()
 
+    # ------------------------------------------------------------------
+    # Settings (DEFINER Profile + Epistemic Flags)
+    # ------------------------------------------------------------------
+
+    async def get_definer_profile(self) -> dict[str, Any]:
+        """Read the DEFINER profile via GET /api/v1/settings/definer-profile.
+
+        Returns {content: str, path: str, missing: bool}.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/settings/definer-profile",
+                timeout=5.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_definer_profile_failed: %s", exc)
+            return {"content": "", "path": "", "missing": True}
+
+    async def save_definer_profile(self, content: str) -> dict[str, Any]:
+        """Save the DEFINER profile via POST /api/v1/settings/definer-profile.
+
+        Returns {ok: bool, path: str} on success or {ok: False, error: str} on failure.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/settings/definer-profile",
+                json={"content": content},
+                timeout=5.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("save_definer_profile_failed: %s", exc)
+            return {"ok": False, "error": str(exc)}
+
+    async def get_epistemic_flags(self) -> dict[str, Any]:
+        """Read epistemic flags via GET /api/v1/settings/epistemic-flags.
+
+        Returns {flags: dict, source: str}.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/settings/epistemic-flags",
+                timeout=5.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_epistemic_flags_failed: %s", exc)
+            return {
+                "flags": {
+                    "no_flattery": True,
+                    "flag_uncertainty": True,
+                    "suggest_validation": True,
+                    "report_conflicts": True,
+                },
+                "source": "defaults",
+            }
+
+    async def save_epistemic_flags(
+        self,
+        *,
+        no_flattery: bool = True,
+        flag_uncertainty: bool = True,
+        suggest_validation: bool = True,
+        report_conflicts: bool = True,
+    ) -> dict[str, Any]:
+        """Save epistemic flags via POST /api/v1/settings/epistemic-flags.
+
+        Returns {ok: bool, flags: dict} on success.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/settings/epistemic-flags",
+                json={
+                    "no_flattery": no_flattery,
+                    "flag_uncertainty": flag_uncertainty,
+                    "suggest_validation": suggest_validation,
+                    "report_conflicts": report_conflicts,
+                },
+                timeout=5.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("save_epistemic_flags_failed: %s", exc)
+            return {"ok": False, "error": str(exc)}
+
 
 # Module-level singleton for the GUI to use
 _api_client: AipApiClient | None = None
