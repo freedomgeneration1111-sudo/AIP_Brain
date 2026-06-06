@@ -64,8 +64,8 @@ def _summarize_event(event_type: str, metadata: dict) -> str:
         written = metadata.get("wiki_written", 0)
         return f"wiki · written={written}"
     if event_type == "sexton_graph_extraction_complete":
-        entities = metadata.get("entities_extracted", 0)
-        edges = metadata.get("edges_extracted", 0)
+        entities = metadata.get("entities_created", 0)
+        edges = metadata.get("relationships_created", 0)
         return f"graph · entities={entities} edges={edges}"
     if event_type == "vigil_eval_complete":
         evaluated = metadata.get("evaluated", 0)
@@ -125,7 +125,7 @@ async def list_events(
         # event_store.query() filters by exact event_type match.
         # For prefix matching (e.g. "beast_" matches all beast events),
         # we fetch more and post-filter if actor is specified.
-        query_limit = limit * 3 if actor else limit
+        query_limit = min(limit * 20, 500) if actor else limit
         events = await container.event_store.query(
             artifact_id=None,
             event_type=event_type,
