@@ -190,10 +190,7 @@ class Beast:
 
         try:
             start = _time.monotonic()
-            result = await self._beast_provider.chat(
-                slot="beast",
-                messages=messages,
-            )
+            result = await self._beast_provider.call("beast", messages)
             elapsed = int((_time.monotonic() - start) * 1000)
             comparison_text = result.get("content", "") if isinstance(result, dict) else str(result)
             log.info(

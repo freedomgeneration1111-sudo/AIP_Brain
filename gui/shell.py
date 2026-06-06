@@ -1461,7 +1461,7 @@ def _build_unified_chat_panel(
 
         # ── LEFT: Conversation thread ──
         msgs = (
-            ui.column().classes("w-full px-4 py-2").style(
+            ui.column().classes("w-full px-4 py-2 aip-msgs").style(
                 f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:320px;"
             )
         )
@@ -1473,10 +1473,11 @@ def _build_unified_chat_panel(
                 + (" · API key set" if state.api_client.has_openrouter_api_key() else " · API key missing")
             ).style(f"color:{C_OK_FG if ok else C_WARN_FG};font-size:11px;padding:8px;")
 
-        # ── RIGHT: Beast pane (collapsible sidebar) ──
+        # ── RIGHT: Beast pane (collapsible sidebar, sticky) ──
         beast_col = ui.column().style(
             f"width:320px;min-width:0;background:{C_SURFACE};"
             f"border-left:.5px solid {C_INK40};overflow-y:auto;padding:0;"
+            f"position:sticky;top:0;height:100vh;"
         )
         with beast_col:
             # Beast pane header
@@ -1510,12 +1511,25 @@ def _build_unified_chat_panel(
     )
     beast_toggle_btn.set_visibility(False)
 
+    # Floating "scroll to input" button (always visible for v1)
+    ui.button(
+        icon="keyboard_arrow_down",
+        on_click=lambda: ui.run_javascript(
+            'document.querySelector(".aip-msgs").scrollTop = document.querySelector(".aip-msgs").scrollHeight'
+        ),
+    ).props("dense fab").style(
+        f"background:{C_AMBER};color:#0E0800;"
+        f"position:fixed;bottom:70px;right:24px;z-index:20;"
+        f"box-shadow:0 2px 8px rgba(0,0,0,0.5);"
+    ).tooltip("Scroll to latest")
+
     def _toggle_beast(show: bool) -> None:
         beast_visible[0] = show
         if show:
             beast_col.style(
                 f"width:320px;min-width:0;background:{C_SURFACE};"
                 f"border-left:.5px solid {C_INK40};overflow-y:auto;padding:0;"
+                f"position:sticky;top:0;height:100vh;"
             )
             beast_toggle_btn.set_visibility(False)
         else:
