@@ -37,53 +37,16 @@ The following are scaffold (real structure, placeholder dispatch):
 See ROADMAP.md for the full phased build plan.
 See STATUS.md for current test counts and known issues.
 
-## Quick Start — Dogfood Loop
+## Quick Start
 
-From a clean checkout, the following path works without source-code inspection:
+1. **Clone:** `git clone https://github.com/freedomgeneration1111-sudo/AIP_Brain`
+2. **Install:** `cd AIP_Brain && uv sync`
+3. **Configure:** `cp config/aip.config.toml.example config/aip.config.toml` — add your OpenRouter API key
+4. **Bootstrap:** `bash examples/seed_corpus/seed_bootstrap.sh`
+5. **Start:** `./scripts/start.sh`
+6. **Open:** [http://127.0.0.1:8080](http://127.0.0.1:8080)
 
-```bash
-# Install
-git clone https://github.com/freedomgeneration1111-sudo/AIP_Brain.git
-cd AIP_Brain
-uv sync
-
-# Initialize
-uv run aip init
-
-# Create a project
-uv run aip project create --name aip_loom --domain aip_loom
-
-# Ingest conversations
-uv run aip ingest directory examples/sample_threads --project aip_loom
-
-# Ask a question (works without model — shows NEEDS_CONFIGURATION + retrieved sources)
-uv run aip ask "What have we decided about artifact storage?" \
-  --project aip_loom \
-  --source all \
-  --show-context
-
-# With a model configured, save the answer as a reviewable artifact
-export AIP_SYNTHESIS_BASE_URL="https://api.openai.com/v1"
-export AIP_SYNTHESIS_MODEL="gpt-4o"
-export AIP_SYNTHESIS_API_KEY="sk-..."
-
-uv run aip ask "What have we decided about artifact storage?" \
-  --project aip_loom \
-  --source all \
-  --show-context \
-  --save-artifact
-
-# Review and approve
-uv run aip review list --project aip_loom
-uv run aip review show <artifact_id>
-uv run aip review sources <artifact_id>
-uv run aip review approve <artifact_id>
-
-# Export to markdown
-uv run aip export artifact <artifact_id> \
-  --format markdown \
-  --out ./exports/output.md
-```
+The bootstrap seeds AIP with its own self-knowledge (51 entities, 23 Q&A turns about AIP architecture). Augmented chat works immediately.
 
 **Full first-run guide:** [`DOGFOOD_READY.md`](DOGFOOD_READY.md)
 
