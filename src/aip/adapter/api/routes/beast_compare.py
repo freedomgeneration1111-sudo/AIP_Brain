@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timezone
 
 import aiosqlite
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from aip.adapter.api.dependencies import get_container
@@ -44,7 +44,7 @@ class CompareResponse(BaseModel):
 
 
 @router.post("/beast/compare")
-async def beast_compare(payload: CompareRequest) -> CompareResponse:
+async def beast_compare(request: Request, payload: CompareRequest) -> CompareResponse:
     """Generate a Beast comparison across multiple model responses.
 
     Calls Beast._run_cohort_comparison() which:
@@ -59,7 +59,7 @@ async def beast_compare(payload: CompareRequest) -> CompareResponse:
     if not payload.responses:
         raise HTTPException(status_code=400, detail="responses must be non-empty")
 
-    container = get_container()
+    container = get_container(request)
     beast = getattr(container, "beast", None)
     if beast is None:
         raise HTTPException(

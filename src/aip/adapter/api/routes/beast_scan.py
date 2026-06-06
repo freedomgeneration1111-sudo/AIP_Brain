@@ -14,7 +14,7 @@ import logging
 from typing import Any
 
 import aiosqlite
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -24,6 +24,7 @@ _STATE_DB = "db/state.db"
 
 @router.get("/beast/scan")
 async def beast_scan(
+    request: Request,
     query: str = Query(..., description="User message to scan against corpus"),
     limit: int = Query(5, ge=1, le=20, description="Max turns to return"),
 ) -> dict[str, Any]:
@@ -53,7 +54,7 @@ async def beast_scan(
     try:
         from aip.adapter.api.dependencies import get_container
 
-        container = get_container()
+        container = get_container(request)
     except Exception as exc:
         logger.warning("beast_scan: container unavailable: %s", exc)
         return {"error": f"container unavailable: {exc}"}

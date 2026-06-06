@@ -43,6 +43,7 @@ async def get_actors_status(container: AipContainer = Depends(get_container)):
             vigil_status["health"] = health
             vigil_status["interval_seconds"] = container.vigil.config.canonical_health_check_interval_seconds
             vigil_status["stale_threshold_days"] = container.vigil.config.stale_threshold_days
+            vigil_status["last_cycle_time"] = getattr(container.vigil, "_last_eval_time", None)
         except Exception as exc:
             vigil_status["health_error"] = str(exc)
     actors["vigil"] = vigil_status
@@ -56,6 +57,7 @@ async def get_actors_status(container: AipContainer = Depends(get_container)):
                 unclassified = await fc.count_unclassified()
                 sexton_status["unclassified_count"] = unclassified
             sexton_status["interval_seconds"] = container.sexton_actor._config.classification_interval_seconds
+            sexton_status["last_cycle_time"] = getattr(container.sexton_actor, "_last_cycle_time", None)
         except Exception as exc:
             sexton_status["error"] = str(exc)
     actors["sexton"] = sexton_status
@@ -99,6 +101,7 @@ async def get_actor_detail(actor_name: str, container: AipContainer = Depends(ge
                 "health": health,
                 "stale_canonicals_count": len(stale),
                 "entity_inconsistencies_count": len(inconsistencies),
+                "last_cycle_time": getattr(container.vigil, "_last_eval_time", None),
                 "config": {
                     "canonical_health_check_interval_seconds": container.vigil.config.canonical_health_check_interval_seconds,
                     "stale_threshold_days": container.vigil.config.stale_threshold_days,
@@ -120,6 +123,7 @@ async def get_actor_detail(actor_name: str, container: AipContainer = Depends(ge
                 "actor": "sexton",
                 "initialized": True,
                 "unclassified_count": unclassified,
+                "last_cycle_time": getattr(container.sexton_actor, "_last_cycle_time", None),
                 "config": {
                     "classification_batch_size": container.sexton_actor._config.classification_batch_size,
                     "classification_interval_seconds": container.sexton_actor._config.classification_interval_seconds,

@@ -24,7 +24,7 @@ from typing import Any
 
 import aiosqlite
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from aip.adapter.api.dependencies import get_container
@@ -191,7 +191,7 @@ async def _get_display_names(model_ids: list[str]) -> dict[str, str]:
 
 
 @router.post("/chat/cohort")
-async def cohort_dispatch(payload: CohortRequest) -> CohortResponse:
+async def cohort_dispatch(request: Request, payload: CohortRequest) -> CohortResponse:
     """Dispatch a query to multiple LLM models in parallel.
 
     If augmented=true, runs the retrieval pipeline ONCE to get shared
@@ -231,7 +231,7 @@ async def cohort_dispatch(payload: CohortRequest) -> CohortResponse:
     augmented_context: str = ""
     if payload.augmented:
         try:
-            container = get_container()
+            container = get_container(request)
             if container is not None and container.corpus_turn_store is not None:
                 hits = await container.corpus_turn_store.search(query=query, limit=5)
                 if hits:
@@ -288,7 +288,7 @@ async def cohort_dispatch(payload: CohortRequest) -> CohortResponse:
     # Per AIP_CORPUS_LIFECYCLE_SPEC §Cohort mode: metadata includes
     # {"cohort": true, "model_id": "...", "cohort_turn_index": N}
     try:
-        container = get_container()
+        container = get_container(request)
         corpus_turn_store = getattr(container, "corpus_turn_store", None)
         if corpus_turn_store is not None:
             from datetime import datetime, timezone
