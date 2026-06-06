@@ -1,0 +1,490 @@
+[
+  {
+    "uuid": "seed-001-what-is-aip",
+    "name": "What is AIP and why does it exist",
+    "created_at": "2026-06-05T00:00:00Z",
+    "updated_at": "2026-06-05T00:00:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-v02-000-00",
+        "sender": "human",
+        "content": "What is AIP?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-000-01",
+        "sender": "assistant",
+        "content": "AIP \u2014 AI Poiesis \u2014 is a local-first sovereign knowledge engine. It ingests your conversations across all AI platforms (Claude, ChatGPT, DeepSeek, Gemini, Grok), stores them as a searchable corpus of turns, and makes them retrievable as context for future synthesis. When you ask a question in AUGMENTED mode, AIP retrieves the most relevant turns from your own prior thinking and injects them as context before the synthesis model responds. The result is an AI that answers from your accumulated knowledge, not from generic training alone.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-000-02",
+        "sender": "human",
+        "content": "What problem does it solve?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-000-03",
+        "sender": "assistant",
+        "content": "The core problem: you do brilliant thinking in conversation with AI systems, and it disappears. Each session is stateless. You re-derive the same insights, repeat the same context, and lose compounding returns on your intellectual work. AIP solves this by treating every conversation turn as a permanent, searchable, retrievable artifact. Nothing is lost to recency. A turn from six months ago about NBCM relational time is as retrievable as yesterday's conversation \u2014 if it's relevant to your current query, it surfaces.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-000-04",
+        "sender": "human",
+        "content": "What does 'local-first' mean for AIP?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-000-05",
+        "sender": "assistant",
+        "content": "Local-first means your data never leaves your machine. The corpus lives in SQLite databases on your local filesystem. The vector store, the FTS5 index, the knowledge graph \u2014 all local. You route model calls through OpenRouter using your own API key, but no conversation content is sent to any third party for storage or training. You own your corpus completely. There is no AIP cloud service, no sync to external servers, no vendor lock-in on your data. If OpenRouter goes down, your corpus is still on your machine. This is the sovereignty principle: the DEFINER owns the data.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-000-06",
+        "sender": "human",
+        "content": "What is the DEFINER?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-000-07",
+        "sender": "assistant",
+        "content": "The DEFINER is you \u2014 the sovereign operator of your AIP instance. In AIP's architecture, no artifact reaches canonical status without explicit DEFINER approval. Beast can propose domain tags. Vigil can draft wiki articles. Sexton can classify failures. None of these become authoritative without the DEFINER reviewing and approving them. The DEFINER gate exists because LLMs make errors \u2014 domain misattribution, synthesis mistakes, outdated content. The DEFINER's judgment is the quality control layer that no amount of automated processing can replace. This is not a limitation; it is the design principle. AIP is a tool that amplifies expert human judgment, not a system that replaces it.",
+        "created_at": "2026-06-05T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "uuid": "seed-002-corpus-architecture",
+    "name": "Corpus architecture and turn ingestion",
+    "created_at": "2026-06-05T00:00:00Z",
+    "updated_at": "2026-06-05T00:00:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-v02-001-00",
+        "sender": "human",
+        "content": "What is a corpus turn?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-001-01",
+        "sender": "assistant",
+        "content": "A corpus turn is the atomic unit of the AIP knowledge substrate. It is one complete user+assistant exchange \u2014 the user message, the assistant response, and optionally the assistant's thinking text if available. Turns are stored in the corpus_turns table in state.db. Each turn carries metadata: source_model (which AI produced it), source_account, export_date, detected domain, importance score, bridge tags connecting it to other domains, and a tagging_version tracking which Beast version last analyzed it. Turns are never split into sub-chunks. The whole exchange is the unit.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-001-02",
+        "sender": "human",
+        "content": "Why turns instead of chunks?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-001-03",
+        "sender": "assistant",
+        "content": "Chunking was the original architecture (inherited from standard RAG patterns) but it was replaced by turn-level ingestion for several reasons. First, a turn has natural semantic boundaries \u2014 the user question and the assistant answer form a complete thought. Splitting a turn into sub-chunks loses the question-answer pairing that gives the content its meaning. Second, turns are the right unit for Beast tagging \u2014 Beast assigns a domain to the whole exchange, not to fragments. Third, turns are the right unit for source citation \u2014 when AIP surfaces a turn in augmented chat, you see who said what in full context, not a decontextualized fragment. ADR-001 documents this decision in detail.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-001-04",
+        "sender": "human",
+        "content": "How does hybrid retrieval work?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-001-05",
+        "sender": "assistant",
+        "content": "Hybrid retrieval combines FTS5 keyword search and vector similarity search, fusing their results using Reciprocal Rank Fusion (RRF). FTS5 (SQLite's full-text search) is excellent for proper nouns, project names, technical terms, and exact phrase matching. Vector search (ChromaDB) is excellent for semantic similarity \u2014 finding turns that are conceptually related even when they don't share keywords. RRF takes the ranked lists from both and produces a single fused ranking. The result is more robust than either alone: FTS5 catches the exact match that vector search misses; vector search catches the conceptually relevant turn that FTS5 misses because different words were used.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-001-06",
+        "sender": "human",
+        "content": "What does Beast do to corpus turns?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-001-07",
+        "sender": "assistant",
+        "content": "Beast is AIP's maintenance actor. It performs batch analysis of corpus turns in the background. For each turn, Beast assigns: a primary_domain (which of the 26+ registered domains this turn belongs to), a importance score (0.0-1.0, how significant this turn is for its domain), bridge tags (connections to other domains \u2014 a turn about NBCM that also discusses theology gets a bridge tag aip_methodology->theology_research), and a tagging_version. Beast runs on a 60-second cycle but only acts when there are untagged turns to process. Beast never auto-approves its own output \u2014 all Beast artifacts (domain proposals, wiki articles) require DEFINER review before becoming canonical.",
+        "created_at": "2026-06-05T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "uuid": "seed-003-actors",
+    "name": "Beast, Vigil, and Sexton actor roles",
+    "created_at": "2026-06-05T00:00:00Z",
+    "updated_at": "2026-06-05T00:00:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-v02-002-00",
+        "sender": "human",
+        "content": "What are the three actor roles in AIP?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-002-01",
+        "sender": "assistant",
+        "content": "AIP has three background actors: Beast, Vigil, and Sexton. Beast is the maintenance actor \u2014 it tags corpus turns, generates domain summaries, and will eventually generate wiki articles. It runs every 60 seconds and processes untagged turns in batches. Vigil is the evaluation actor \u2014 it monitors synthesis quality, checks that augmented responses properly cite their sources, and flags low-quality outputs for review. Vigil runs every hour. Sexton is the orchestration actor \u2014 it classifies failures, handles error recovery, and runs maintenance cycles every 5 minutes. All three actors use model slots that can be independently configured to different models.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-002-02",
+        "sender": "human",
+        "content": "What is a model slot?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-002-03",
+        "sender": "assistant",
+        "content": "A model slot is a named endpoint configuration for a specific actor role. AIP has five slots: synthesis (the model that answers your questions in chat), beast (the model Beast uses for turn tagging and domain analysis), vigil (the model Vigil uses for quality evaluation), sexton (the model Sexton uses for failure classification), and embedding (the model used to generate vector embeddings). Each slot independently specifies a base_url, model name, and API key. This means you can run synthesis on Claude via OpenRouter, Beast on a free Gemini model, and embedding on a local Ollama model simultaneously. Slot configuration is in config/aip.config.toml.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-002-04",
+        "sender": "human",
+        "content": "What does 'beast: no LLM configured, heartbeat only' mean?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-002-05",
+        "sender": "assistant",
+        "content": "It means Beast's model slot is not configured with a valid API key or model, so Beast cannot perform LLM-based tagging. It is still running \u2014 it sends a heartbeat every 60 seconds \u2014 but it is doing no actual work. To fix this, configure the beast slot in config/aip.config.toml with a valid base_url and model. Free OpenRouter models work well for Beast tagging: nvidia/nemotron-3-super-120b-a12b:free or google/gemma-4-31b-it:free are good choices. Beast tagging does not require frontier-model intelligence \u2014 a capable mid-tier model handles it well.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-002-06",
+        "sender": "human",
+        "content": "How do I run Beast tagging on my corpus?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-002-07",
+        "sender": "assistant",
+        "content": "First, ensure Beast's model slot is configured with a working model. Then run: uv run aip corpus tag --limit 100. This processes the oldest 100 untagged turns. Run it repeatedly until your corpus is fully tagged, or use a larger limit. Beast assigns domains based on the domain registry in docs/beast_domain_registry_v1.md. After tagging, check coverage with: uv run aip status. You should see the tagged count increasing. Fully tagged turns are retrievable by domain in augmented chat. Untagged turns are still retrieved by keyword and vector search, but domain-based filtering won't work until they're tagged.",
+        "created_at": "2026-06-05T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "uuid": "seed-004-domain-registry",
+    "name": "Domain registry and the hall model",
+    "created_at": "2026-06-05T00:00:00Z",
+    "updated_at": "2026-06-05T00:00:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-v02-003-00",
+        "sender": "human",
+        "content": "What is the Beast domain registry?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-003-01",
+        "sender": "assistant",
+        "content": "The Beast domain registry is the taxonomy Beast uses to classify corpus turns. It defines 26+ named domains organized into halls. Each domain has a name, description, keywords, and example turns to help Beast assign the right domain. The registry is stored in docs/beast_domain_registry_v1.md and is loaded by Beast on each tagging cycle. ADR-002 documents the registry architecture. The domains cover the DEFINER's actual work domains: aip (AI Poiesis methodology), nbcm (physics framework), theology_research, water_science, bonded_labor, fg_education (Freedom Generation), agriculture_tech, and many others.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-003-02",
+        "sender": "human",
+        "content": "What is the hall model for AIP domains?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-003-03",
+        "sender": "assistant",
+        "content": "The hall model is a metaphor for how AIP domains relate to each other. The aip domain is the hall \u2014 the central space that connects all other domains. Every other domain is a room off the hall. This reflects the reality that AIP as a methodology is present in work across all domains: when Moses does NBCM physics, he's using AIP methods. When he does theology research, he's using AIP methods. The aip domain doesn't compete with other domains for turns \u2014 it captures the methodology layer that runs through everything. ADR-005 documents the hall model decision, which replaced the earlier aip_methodology domain name.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-003-04",
+        "sender": "human",
+        "content": "What are bridge tags?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-003-05",
+        "sender": "assistant",
+        "content": "Bridge tags capture cross-domain connections within a single turn. A turn that primarily discusses NBCM physics but also draws on theological concepts gets tagged primary_domain: nbcm with a bridge tag nbcm->theology_research. This enables the knowledge graph to map intellectual connections across domains. Bridge tags are how AIP detects and surfaces non-obvious relationships \u2014 when you ask about NBCM, AIP can follow bridge connections to find relevant turns from theology or water science that shed light on the physics question. Bridge detection is one of AIP's most distinctive capabilities compared to standard RAG systems.",
+        "created_at": "2026-06-05T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "uuid": "seed-005-augmented-chat",
+    "name": "How augmented chat works",
+    "created_at": "2026-06-05T00:00:00Z",
+    "updated_at": "2026-06-05T00:00:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-v02-004-00",
+        "sender": "human",
+        "content": "What happens when I send a message in AUGMENTED mode?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-004-01",
+        "sender": "assistant",
+        "content": "In AUGMENTED mode, before calling the synthesis model, AIP runs a context assembly step. It embeds your query, searches corpus_turns using hybrid FTS5+vector retrieval, retrieves the top 8-10 most relevant turns regardless of when they occurred, pulls the wiki overview for the detected domain if one exists, and assembles these into a system prompt stack: DEFINER profile + wiki overview + retrieved turns + synthesis instruction. This assembled context is what the synthesis model actually receives. The model answers from your accumulated knowledge, not from generic training. The retrieved sources are shown below each response.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-004-02",
+        "sender": "human",
+        "content": "What is the context advisory?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-004-03",
+        "sender": "assistant",
+        "content": "The context advisory is the output of the context assembly step \u2014 the package of retrieved turns and domain overview that gets injected into the synthesis prompt. It is built by Beast's context advisory function in src/aip/orchestration/context_advisory.py. The advisory includes: the detected domain for the query, a domain overview summary (if Beast has generated one), and the top retrieved corpus turns with their scores. In the GUI, the context advisory is shown as a collapsible disclosure panel below each augmented response, so the DEFINER can see exactly what context the synthesis model received. ADR-003 documents the context advisory architecture.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-004-04",
+        "sender": "human",
+        "content": "What is the DEFINER profile?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-004-05",
+        "sender": "assistant",
+        "content": "The DEFINER profile is a short document describing the DEFINER's background, expertise, communication preferences, and current projects. It is injected at the top of every augmented synthesis prompt. Its purpose is to orient the synthesis model: who is asking this question, what domain expertise do they have, what level of technical depth is appropriate, what are their current intellectual projects. Without a DEFINER profile, the synthesis model treats every query as coming from an anonymous generic user. With a profile, it knows it's talking to a chemist-turned-AI-researcher who is working on a physics framework called NBCM and runs a school in Pakistan. The profile makes the synthesis model's responses qualitatively more useful.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-004-06",
+        "sender": "human",
+        "content": "What does NO_PROJECT_MEMORY mean?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-004-07",
+        "sender": "assistant",
+        "content": "NO_PROJECT_MEMORY means the ask pipeline searched the corpus and found no relevant turns for the query. This happens in two common situations: the corpus has not been ingested yet (empty corpus_turns table), or the corpus has turns but none are semantically or lexically similar to the query. To diagnose: check uv run aip status to see your corpus_turns count and tagged percentage. If the count is 0, you need to ingest conversations first using aip corpus ingest. If the count is non-zero but queries return nothing, try broader queries or check that your ingest completed successfully.",
+        "created_at": "2026-06-05T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "uuid": "seed-006-ecs-lifecycle",
+    "name": "ECS state machine and artifact lifecycle",
+    "created_at": "2026-06-05T00:00:00Z",
+    "updated_at": "2026-06-05T00:00:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-v02-005-00",
+        "sender": "human",
+        "content": "What is the ECS state machine?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-005-01",
+        "sender": "assistant",
+        "content": "ECS \u2014 the artifact lifecycle state machine \u2014 governs how all AIP artifacts move through their lifecycle. States are: SPECIFIED (artifact described but not yet generated), GENERATED (LLM has produced it, awaiting review), REVIEWED (DEFINER has examined it), APPROVED (canonical, usable in synthesis), SUPERSEDED (replaced by a newer version). Transitions are strictly unidirectional \u2014 no artifact can skip states or move backward. The critical constraint is the DEFINER gate: no artifact can move from REVIEWED to APPROVED without explicit human action. There is no auto-approve path. This prevents unreviewed LLM output from entering the canonical knowledge base.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-005-02",
+        "sender": "human",
+        "content": "What kinds of artifacts does AIP manage?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-005-03",
+        "sender": "assistant",
+        "content": "AIP manages several artifact types through the ECS lifecycle: corpus_turn (conversation exchanges ingested from AI platform exports), beast_wiki (domain wiki articles generated by Beast from corpus analysis), beast_domain_proposal (Beast's suggestion to add or modify a domain in the registry), ask_response (answers generated in augmented chat, stored for review and potential promotion), and synthesis_artifact (longer documents like research summaries or essays generated during synthesis sessions). Each artifact type has its own review queue in the GUI's REVIEW tab. The DEFINER reviews, approves, or rejects artifacts. Approved artifacts become canonical and can be injected as context in future synthesis.",
+        "created_at": "2026-06-05T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "uuid": "seed-007-aip-methodology",
+    "name": "AI Poiesis as a methodology",
+    "created_at": "2026-06-05T00:00:00Z",
+    "updated_at": "2026-06-05T00:00:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-v02-006-00",
+        "sender": "human",
+        "content": "What is AI Poiesis as a methodology?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-006-01",
+        "sender": "assistant",
+        "content": "AI Poiesis is expert-directed synthesis using AI ensembles under sovereign human authority. The core insight: AI models are instruments, not autonomous agents. A skilled domain expert \u2014 the DEFINER \u2014 directs an ensemble of AI models, validates outputs against domain knowledge, and synthesizes results into authoritative artifacts. The human brings: domain expertise that the model lacks, judgment about what is true versus plausible, and the ability to distinguish validated knowledge from hypothesis. The AI brings: synthesis speed, cross-domain retrieval, tireless attention to detail, and the ability to hold large contexts. Neither alone produces research-grade output. Together, under expert direction, they compress research timelines from years to weeks.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-006-02",
+        "sender": "human",
+        "content": "What is the multi-model ensemble practice?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-006-03",
+        "sender": "assistant",
+        "content": "Multi-model ensemble means running the same prompt through multiple frontier AI models simultaneously and synthesizing the results. Rather than trusting any single model's answer, the DEFINER reads responses from Claude, DeepSeek, GPT, Gemini, and Grok in parallel. Where models converge, confidence is high. Where they diverge, the disagreement reveals a genuine uncertainty worth investigating. The synthesis model reads all responses and produces an integrated analysis noting convergences, divergences, and what the DEFINER's corpus suggests the models are missing. AIP's COHORT tab automates this workflow \u2014 fan-out to up to 5 models simultaneously, individual responses shown, synthesis delivered. This is AI Poiesis formalized as a UI feature.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-006-04",
+        "sender": "human",
+        "content": "What is validation-first thinking in AI Poiesis?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-006-05",
+        "sender": "assistant",
+        "content": "Validation-first thinking means every AI-generated output is explicitly labeled by its epistemic status before use. Three categories: validated (confirmed by physical experiment, primary source, or expert consensus), hypothesis (AI-generated, plausible, requires validation), and speculation (extrapolation beyond available evidence). The DEFINER never presents AI-generated content as fact without validating it. This matters because AI models confabulate convincingly \u2014 a plausible-sounding synthesis of physics or policy can be factually wrong while being rhetorically compelling. Validation gates before capital commitment (time, money, reputation) are non-negotiable. AIP's ECS lifecycle enforces this: artifacts must be reviewed before becoming canonical.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-006-06",
+        "sender": "human",
+        "content": "What is the Forge Suite?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-006-07",
+        "sender": "assistant",
+        "content": "The Forge Suite is a stage-gated methodology for producing high-quality documents and software. It consists of four forges run in sequence: Idea Forge (broad ideation, no constraints, generate options), Architecture Forge (evaluate ideas, choose direction, define constraints), Spec Forge (write a precise specification that a builder can implement without ambiguity), and Code Forge (implement the spec, multi-model review, iterate to acceptance criteria). Each forge has explicit entry criteria, process, and exit criteria. The key principle is that no forge starts until the previous one's output is approved by the DEFINER. This prevents the common failure mode of building the wrong thing well. CodeForge specifically uses a multi-model review pipeline where multiple models review each other's code.",
+        "created_at": "2026-06-05T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "uuid": "seed-008-operational",
+    "name": "Operational workflow and maintenance",
+    "created_at": "2026-06-05T00:00:00Z",
+    "updated_at": "2026-06-05T00:00:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-v02-007-00",
+        "sender": "human",
+        "content": "What is the standard DEFINER maintenance routine?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-007-01",
+        "sender": "assistant",
+        "content": "The DEFINER maintenance routine has three cadences. Daily: check the REVIEW tab for pending artifacts (Beast domain proposals, wiki article drafts). Approve or reject each. Correct Beast misattributions by updating the domain registry. Weekly: run a Beast tagging pass on any new ingested turns (uv run aip corpus tag --limit 500). Check corpus stats in the STATUS tab \u2014 tagged percentage, domain distribution, new bridge tags. Monthly: review the ROADMAP.md and ADRs for any decisions that need updating based on how the system is actually being used. Create new ADRs for any architectural decisions made during the month. The ADR hygiene prompt (docs/adr_hygiene_prompt.md) documents the trigger line to use in development sessions.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-007-02",
+        "sender": "human",
+        "content": "How do I ingest a new conversation export from Claude?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-007-03",
+        "sender": "assistant",
+        "content": "Export your Claude conversations from claude.ai Settings > Data > Export. You'll receive a conversations.json file. Ingest it with: uv run aip corpus ingest path/to/conversations.json. The ingest command auto-detects the Claude export format, parses all conversations into corpus turns, and stores them in state.db. Ingestion is idempotent \u2014 running it twice on the same file won't create duplicates (turns are deduplicated by conversation_id + turn_index). After ingestion, run a Beast tagging pass to classify the new turns: uv run aip corpus tag --limit 500. The same workflow applies to ChatGPT, DeepSeek, and Gemini exports \u2014 aip corpus ingest auto-detects all supported formats.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-007-04",
+        "sender": "human",
+        "content": "What does the scripts/start.sh script do?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-007-05",
+        "sender": "assistant",
+        "content": "scripts/start.sh is the unified startup script that launches both the AIP backend and the GUI together. It starts the FastAPI backend (uvicorn on port 8000), waits 4 seconds for startup to complete, then launches the NiceGUI frontend (on port 8080). Both processes run in the background. The script prints the backend and GUI process IDs so you can kill them individually if needed. To start AIP: cd to your AIP_Brain directory and run ./scripts/start.sh. Then open http://127.0.0.1:8080 in your browser. To stop: pkill -f 'gui.shell'; pkill -f 'uvicorn'.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-007-06",
+        "sender": "human",
+        "content": "What is the worktree vs AIP_Brain distinction?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-007-07",
+        "sender": "assistant",
+        "content": "AIP_Brain at ~/AIP_Brain is the primary git repository \u2014 the authoritative source you push to GitHub. The Grok worktree at ~/.grok/worktrees/moses-aip-brain/aip-brain is a secondary checkout used when running Grok Build agents, which require their own working directory. Both point to the same GitHub remote. All code changes should be made in the worktree, pushed to GitHub, then pulled into ~/AIP_Brain to keep them in sync. Critical: never commit the db/ directory (which contains your personal corpus databases) to GitHub. The .gitignore excludes db/ for this reason. Your corpus is personal data \u2014 it belongs on your local machine, not in a public repository.",
+        "created_at": "2026-06-05T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "uuid": "seed-009-knowledge-graph",
+    "name": "Knowledge graph and wiki architecture",
+    "created_at": "2026-06-05T00:00:00Z",
+    "updated_at": "2026-06-05T00:00:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-v02-008-00",
+        "sender": "human",
+        "content": "What is the AIP knowledge graph?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-008-01",
+        "sender": "assistant",
+        "content": "The knowledge graph is AIP's Phase 2B compiled layer \u2014 sitting above the raw corpus turns and providing a structured map of entities, concepts, and their relationships. It is implemented as SQLite adjacency tables: entities (canonical names, types, domains), entity_aliases (co-reference resolution \u2014 Moses/Musa/the DEFINER all resolve to the same entity), and entity_edges (typed relationships between entities with strength scores and source turn IDs as evidence). The graph enables Personalized PageRank retrieval: given a query, identify entity nodes, run PPR across the graph, and surface related turns even when they don't share keywords. ADR-007 documents the graph architecture. The entity_aliases.md file in docs/ seeds the initial co-reference table.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-008-02",
+        "sender": "human",
+        "content": "What is the Beast wiki?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-008-03",
+        "sender": "assistant",
+        "content": "The Beast wiki is AIP's Phase 2A compiled knowledge layer. Beast generates wiki articles by synthesizing corpus turns within a domain into a structured, human-readable article. Articles follow the Karpathy LLM Wiki pattern: raw turns are the source material, the wiki is the compiled knowledge. A Beast wiki article for the nbcm domain synthesizes hundreds of corpus turns about NBCM physics into a structured overview that a human can read and an LLM can use as orientation context. Beast wiki articles are DEFINER-gated \u2014 Beast drafts them (status: GENERATED), the DEFINER reviews and approves them (status: APPROVED). Approved articles are injected into augmented chat context alongside retrieved turns. ADR-006 documents the wiki architecture.",
+        "created_at": "2026-06-05T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "uuid": "seed-010-adrs",
+    "name": "Architecture Decision Records and documentation hygiene",
+    "created_at": "2026-06-05T00:00:00Z",
+    "updated_at": "2026-06-05T00:00:00Z",
+    "chat_messages": [
+      {
+        "uuid": "seed-v02-009-00",
+        "sender": "human",
+        "content": "What is an Architecture Decision Record?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-009-01",
+        "sender": "assistant",
+        "content": "An Architecture Decision Record (ADR) is a short document that captures a significant architectural decision: what was decided, why, what alternatives were considered, and what the consequences are. AIP maintains ADRs in docs/decisions/. ADRs serve three purposes: they anchor Grok Build agents so they implement to intent rather than drifting; they preserve institutional memory across build sessions months apart; and they explain design philosophy to collaborators. The ADR template is at docs/decisions/ADR-000-template.md. When a new architectural decision is made \u2014 in conversation with Claude or during a build session \u2014 an ADR is written before any code changes. The commit references the ADR number.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-009-02",
+        "sender": "human",
+        "content": "What is the ADR hygiene trigger line?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-009-03",
+        "sender": "assistant",
+        "content": "The ADR hygiene trigger line is a short instruction added to the top of any Grok Build or Claude Code prompt that involves an architectural decision. It reads: 'HYGIENE: Before writing any code, read ROADMAP.md and docs/decisions/ to understand current architecture. After completing the build task, if this session introduced or confirmed any architectural decision, draft an ADR in docs/decisions/ using the next ADR number. Update ROADMAP.md status if any planned item is now complete. Commit hygiene changes separately from code changes.' The full hygiene guide is at docs/adr_hygiene_prompt.md. Without this trigger line, agents don't maintain documentation hygiene automatically.",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-009-04",
+        "sender": "human",
+        "content": "What ADRs currently exist in AIP?",
+        "created_at": "2026-06-05T00:00:00Z"
+      },
+      {
+        "uuid": "seed-v02-009-05",
+        "sender": "assistant",
+        "content": "AIP maintains ADRs 001 through 010 covering: ADR-001 turn-level corpus ingestion (why turns not chunks), ADR-002 Beast domain registry (domain taxonomy design), ADR-003 Beast context advisory (augmented chat architecture), ADR-004 multi-corpus architecture (personal vs research corpora), ADR-005 AIP hall model (domain naming convention), ADR-006 Beast wiki architecture (Karpathy pattern + DEFINER gate), ADR-007 knowledge graph architecture (SQLite adjacency + HippoRAG PPR), ADR-008 semantic session context (relevance-based context assembly, Thread Log), ADR-009 cohort synthesis (multi-model fan-out + integrated synthesis), ADR-010 browser extension ingest (deferred Phase 5). Each ADR is in docs/decisions/ with full context, alternatives considered, and consequences.",
+        "created_at": "2026-06-05T00:00:00Z"
+      }
+    ]
+  }
+]
