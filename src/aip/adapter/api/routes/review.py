@@ -6,7 +6,10 @@ GET /reviews (paginated ReviewQueueEntry), POST /reviews/{id}/approve
 
 from __future__ import annotations
 
+import json
 import logging
+
+import aiosqlite
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -15,6 +18,61 @@ from aip.foundation.schemas import SurfaceConfig, coerce_autonomy_level
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Path to state.db — matches all stores in the project
+_STATE_DB = "db/state.db"
+
+
+async def _query_beast_artifacts(state: str = "GENERATED") -> list[dict]:
+    """Query artifacts + ecs_state for beast:wiki / beast:proposal entries.
+
+    Joins the artifacts table with ecs_state to find beast-generated
+    artifacts (wiki proposals, etc.) that are in the given ECS state
+    and returns them as review-ready dicts.
+    """
+    items: list[dict] = []
+    try:
+        conn = await aiosqlite.connect(_STATE_DB)
+        conn.row_factory = aiosqlite.Row
+        try:
+            cursor = await conn.execute(
+                """
+                SELECT a.id, a.version, a.content, a.metadata_json, a.created_at,
+                       e.current_state, e.updated_at
+                FROM artifacts a
+                INNER JOIN ecs_state e ON a.id = e.artifact_id
+                WHERE e.current_state = ?
+                  AND (a.id LIKE 'beast:wiki:%' OR a.id LIKE 'beast:proposal:%')
+                ORDER BY e.updated_at DESC
+                """,
+                (state,),
+            )
+            rows = await cursor.fetchall()
+            for row in rows:
+                metadata = {}
+                raw_meta = row["metadata_json"]
+                if raw_meta:
+                    try:
+                        metadata = json.loads(raw_meta)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                items.append({
+                    "artifact_id": row["id"],
+                    "id": row["id"],
+                    "artifact_version": row["version"],
+                    "ecs_state": row["current_state"],
+                    "domain": metadata.get("domain", ""),
+                    "content": row["content"],
+                    "metadata": metadata,
+                    "artifact_type": "wiki" if row["id"].startswith("beast:wiki:") else "proposal",
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                })
+        finally:
+            await conn.close()
+    except Exception:
+        logger.warning("Failed to query beast artifacts from artifacts+ecs_state", exc_info=True)
+    return items
 
 
 @router.get("/reviews")
@@ -26,28 +84,44 @@ async def list_reviews(
     page_size: int = Query(20, ge=1),
     container: AipContainer = Depends(get_container),
 ):
-    """Return pending artifacts for review (GENERATED or REVIEWED)."""
-    # In full impl: query ArtifactStore + EcsStore + evaluation results, build ReviewQueueEntry list
-    # Placeholder; real aggregation uses the delivered stores.
+    """Return pending artifacts for review (GENERATED or REVIEWED).
+
+    Merges items from two sources:
+    1. ReviewQueueStore — explicitly enqueued review items
+    2. Beast artifacts — beast:wiki:* and beast:proposal:* entries from
+       artifacts table joined with ecs_state where current_state='GENERATED'
+    """
     cfg = SurfaceConfig(**container.config.get("surface", {})) if hasattr(container, "config") else SurfaceConfig()
     effective_page_size = min(page_size, cfg.review_page_size)
 
-    # Use ReviewQueueStore when available for real pending items
+    all_items: list[dict] = []
+    seen_ids: set[str] = set()
+
+    # Source 1: ReviewQueueStore — explicitly enqueued pending items
     if container.review_queue_store is not None:
         try:
-            items = await container.review_queue_store.list_pending(limit=effective_page_size)
-            return {"items": items, "page": page, "page_size": effective_page_size, "total": len(items)}
+            pending = await container.review_queue_store.list_pending(limit=effective_page_size)
+            for item in pending:
+                aid = item.get("artifact_id") or item.get("id", "")
+                if aid not in seen_ids:
+                    seen_ids.add(aid)
+                    all_items.append(item)
         except Exception:
             logger.warning("list_pending failed", exc_info=True)
-            pass  # Fall through to placeholder
 
-    # Placeholder — real impl would call container.artifact_store.list + ecs + evals
-    return {
-        "items": [],
-        "page": page,
-        "page_size": effective_page_size,
-        "total": 0,
-    }
+    # Source 2: Beast artifacts in GENERATED state (artifacts + ecs_state)
+    beast_items = await _query_beast_artifacts(state="GENERATED")
+    for item in beast_items:
+        aid = item.get("artifact_id") or item.get("id", "")
+        if aid not in seen_ids:
+            seen_ids.add(aid)
+            all_items.append(item)
+
+    # Apply pagination
+    start = (page - 1) * effective_page_size
+    page_items = all_items[start : start + effective_page_size]
+
+    return {"items": page_items, "page": page, "page_size": effective_page_size, "total": len(all_items)}
 
 
 @router.post("/reviews/{artifact_id}/approve")

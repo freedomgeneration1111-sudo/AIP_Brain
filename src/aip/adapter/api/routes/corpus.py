@@ -28,8 +28,8 @@ async def get_corpus_stats(container: AipContainer = Depends(get_container)):
 
     Returns:
       - total_turns: total number of turns in corpus_turns table
-      - tagged: turns with tagging_version > 0 (processed by Beast)
-      - untagged: turns with tagging_version == 0
+      - tagged: turns with primary_domain IS NOT NULL AND != "" (domain-assigned)
+      - untagged: turns without a primary_domain
       - embedded: turns with embedded == 1
       - domains: list of {name, count} for each primary_domain
     """
@@ -51,11 +51,11 @@ async def get_corpus_stats(container: AipContainer = Depends(get_container)):
         logger.warning("CorpusTurnStore total_turns failed: %s", exc)
 
     try:
-        # Tagged = tagging_version > 0
+        # Tagged = has a non-empty primary_domain (actually domain-assigned turns)
         conn = await cts._get_conn()
         try:
             cursor = await conn.execute(
-                "SELECT COUNT(*) as c FROM corpus_turns WHERE tagging_version > 0"
+                'SELECT COUNT(*) as c FROM corpus_turns WHERE primary_domain IS NOT NULL AND primary_domain != ""'
             )
             row = await cursor.fetchone()
             result["tagged"] = int(row["c"]) if row else 0
