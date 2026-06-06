@@ -563,6 +563,11 @@ async def lifespan(app: FastAPI):
                 event_store=container.event_store,
                 entity_store=container.entity_store,
                 canonical_store=container.canonical_store,
+                beast_provider=container.model_provider,
+                artifact_store=container.artifact_store,
+                ecs_store=container.ecs_store,
+                lexical_store=container.lexical_store,
+                corpus_turn_store=container.corpus_turn_store,
             )
             log.info("component_initialized", component="beast", required=False)
         except Exception as exc:
