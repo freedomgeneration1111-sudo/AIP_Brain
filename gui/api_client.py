@@ -165,6 +165,41 @@ class AipApiClient:
             return {"error": str(exc)}
 
     # ------------------------------------------------------------------
+    # Cohort Dispatch (multi-model parallel)
+    # ------------------------------------------------------------------
+
+    async def cohort_dispatch(
+        self,
+        query: str,
+        model_ids: list[str],
+        augmented: bool = False,
+        mode_modifier: str | None = None,
+    ) -> dict[str, Any]:
+        """Dispatch a query to multiple models in parallel via POST /api/v1/chat/cohort.
+
+        Returns the full cohort response dict with per-model responses.
+        """
+        client = self._get_http_client()
+        try:
+            body: dict[str, Any] = {
+                "query": query,
+                "model_ids": model_ids,
+                "augmented": augmented,
+            }
+            if mode_modifier:
+                body["system_prompt_modifier"] = mode_modifier
+            resp = await client.post(
+                f"{self.base_url}/api/v1/chat/cohort",
+                json=body,
+                timeout=120.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("cohort_dispatch_failed: %s", exc)
+            return {"error": str(exc), "responses": []}
+
+    # ------------------------------------------------------------------
     # Session Management
     # ------------------------------------------------------------------
 

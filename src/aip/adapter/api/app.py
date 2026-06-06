@@ -51,6 +51,7 @@ from aip.adapter.api.routes import (
     ask,
     beast_scan,
     chat,
+    chat_cohort,
     corpus,
     ecs,
     graph,
@@ -1042,6 +1043,7 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
     app.include_router(memory.router, prefix="/api/v1", tags=["memory"])
     app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
+    app.include_router(chat_cohort.router, prefix="/api/v1", tags=["chat-cohort"])
     app.include_router(models.router, prefix="/api/v1", tags=["models"])
     app.include_router(
         models_library.router, prefix="/api/v1", tags=["models_library"]
