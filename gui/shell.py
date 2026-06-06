@@ -166,6 +166,10 @@ class GuiState:
             "suggest_validation": True,
             "report_conflicts": True,
         }
+        # Beast scan history — shared with Beast pop-out page
+        self.beast_scan_history: list[dict[str, Any]] = []  # max 10
+        # Last beast comparison result
+        self.beast_last_comparison: dict[str, Any] = {}
 
     async def ensure_session(self) -> str:
         if self.session_id is not None:
@@ -1451,7 +1455,6 @@ def _build_unified_chat_panel(
 
     # Beast pane state
     beast_visible: list[bool] = [True]
-    beast_scan_history: list[dict[str, Any]] = []  # max 10 scan results for pop-out
 
     # Main content area: flex row with conversation + Beast pane
     with ui.row().classes("w-full").style(f"flex:1;min-height:0;"):
@@ -1484,10 +1487,13 @@ def _build_unified_chat_panel(
                     f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};"
                 )
                 ui.space()
-                # Pop-out stub (Phase 4)
-                ui.button(icon="open_in_new").props("dense flat").style(
+                # Pop-out button — opens standalone Beast pane in new tab
+                ui.button(
+                    icon="open_in_new",
+                    on_click=lambda: ui.navigate.to("/beast-pane", new_tab=True),
+                ).props("dense flat").style(
                     f"color:{C_INK60};font-size:10px;"
-                ).tooltip("Pop-out (Phase 4)")
+                ).tooltip("Open Beast pane in new tab")
                 # Collapse button
                 ui.button(icon="close", on_click=lambda: _toggle_beast(False)).props(
                     "dense flat"
@@ -1585,9 +1591,9 @@ def _build_unified_chat_panel(
 
         # Append to scan history for Beast pop-out (max 10)
         if not scan.get("error"):
-            beast_scan_history.append(scan)
-            if len(beast_scan_history) > 10:
-                beast_scan_history.pop(0)
+            state.beast_scan_history.append(scan)
+            if len(state.beast_scan_history) > 10:
+                state.beast_scan_history.pop(0)
 
     async def _beast_compare(query: str, responses: list[dict]) -> None:
         """Fire Beast cohort comparison and render in the Beast pane.
@@ -1620,6 +1626,11 @@ def _build_unified_chat_panel(
             ui.markdown(cmp["comparison_text"]).style(
                 f"font-size:11px;color:{C_CREAM};line-height:1.5;"
             )
+
+        # Store last comparison for Beast pop-out page
+        if cmp.get("comparison_text"):
+            cmp["timestamp"] = timestamp
+            state.beast_last_comparison = cmp
 
     with (
         ui.row()
@@ -2079,5 +2090,125 @@ async def main_page() -> None:
 
 # Register non-blocking backend health check on app startup
 app.on_startup(check_backend)
+
+
+# ── BEAST PANE POP-OUT PAGE ───────────────────────────────────────────
+
+
+@ui.page("/beast-pane")
+async def beast_pane_page() -> None:
+    """Standalone Beast pane — full-width, auto-refreshing every 30s.
+
+    Opened via the [↗] pop-out button in the Beast pane sidebar.
+    Shows scan history and last cohort comparison.
+    Per AIP-G-02: shows real data only — never fake on failure.
+    """
+    state = get_state()
+    ui.page_title("AIP_Brain — Beast Pane")
+
+    ui.add_head_html(
+        f"<style>"
+        f"body,.q-page,.q-layout{{background:{C_GROUND}!important;color:{C_MUTED}!important}}"
+        f".q-markdown,.q-markdown p,.q-markdown span,.q-markdown li,"
+        f".q-markdown strong,.q-markdown em{{color:{C_CREAM}!important}}"
+        f"</style>"
+    )
+
+    with (
+        ui.column()
+        .classes("w-full")
+        .style(
+            f"min-height:100vh;background:{C_GROUND};padding:24px 32px;gap:20px;"
+        )
+    ):
+        # Header
+        with ui.row().classes("w-full items-center gap-3"):
+            ui.label("BEAST PANE").style(
+                f"font-size:16px;font-weight:700;letter-spacing:2px;color:{C_AMBER};"
+            )
+            ui.label("(standalone)").style(
+                f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};"
+            )
+            ui.space()
+            refresh_btn = ui.button(
+                "Refresh", icon="refresh"
+            ).props("dense flat").style(f"color:{C_MUTED};font-size:11px;")
+
+        content = ui.column().classes("w-full").style("gap:16px;")
+
+        async def _refresh() -> None:
+            content.clear()
+            with content:
+                # Last cohort comparison
+                cmp = state.beast_last_comparison
+                if cmp and cmp.get("comparison_text"):
+                    ts = cmp.get("timestamp", "?")
+                    ui.label(f"LAST COHORT COMPARISON · {ts}").style(
+                        "font-size:11px;font-weight:700;letter-spacing:1px;"
+                        "color:#7C6AE8;margin-bottom:4px;"
+                    )
+                    ui.markdown(cmp["comparison_text"]).style(
+                        f"font-size:13px;color:{C_CREAM};line-height:1.5;"
+                        f"background:{C_SURFACE};padding:12px 16px;"
+                        f"border:0.5px solid {C_INK40};border-radius:{R_LG};"
+                    )
+                else:
+                    ui.label("No cohort comparison yet").style(
+                        f"font-size:12px;color:{C_MUTED};font-family:{F_MONO};"
+                    )
+
+                ui.separator().style(f"background:{C_INK40};margin:8px 0;")
+
+                # Scan history
+                history = state.beast_scan_history
+                if history:
+                    ui.label(f"SCAN HISTORY ({len(history)})").style(
+                        f"font-size:11px;font-weight:700;letter-spacing:1px;"
+                        f"color:{C_AMBER};margin-bottom:4px;"
+                    )
+                    for scan in reversed(history):
+                        domain = scan.get("domain", "—")
+                        confidence = scan.get("confidence", 0)
+                        with (
+                            ui.card()
+                            .classes("w-full")
+                            .style(
+                                f"background:{C_SURFACE};"
+                                f"border:0.5px solid {C_INK40};"
+                                f"border-radius:{R_LG};padding:12px 16px;"
+                            )
+                        ):
+                            ui.label(f"Domain: {domain}").style(
+                                f"font-size:12px;font-weight:600;color:{C_AMBER};"
+                            )
+                            ui.label(f"Confidence: {confidence}").style(
+                                f"font-size:10px;color:{C_MUTED};"
+                                f"font-family:{F_MONO};"
+                            )
+                            # Top turns
+                            turns = scan.get("top_turns", [])
+                            if turns:
+                                ui.label("TOP TURNS").style(
+                                    f"font-size:9px;font-weight:700;"
+                                    f"letter-spacing:1px;color:{C_MUTED};"
+                                )
+                                for t in turns[:5]:
+                                    snippet = t.get("snippet", "")[:80]
+                                    d = t.get("domain", "?")
+                                    ui.label(f"· [{d}] {snippet}").style(
+                                        f"font-size:10px;color:{C_CREAM};"
+                                        f"line-height:1.3;"
+                                    )
+                else:
+                    ui.label("No scan history yet — send a message to start").style(
+                        f"font-size:12px;color:{C_MUTED};font-family:{F_MONO};"
+                    )
+
+        refresh_btn.on("click", lambda: asyncio.create_task(_refresh()))
+        await _refresh()
+
+        # Auto-refresh every 30 seconds
+        ui.timer(30.0, lambda: asyncio.create_task(_refresh()))
+
 
 ui.run(title="AIP_Brain", port=8080, reload=True)
