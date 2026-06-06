@@ -46,6 +46,52 @@ from aip.logging import get_logger
 log = get_logger(__name__)
 
 
+def _extract_json_array(text: str) -> list:
+    """Robustly extract a JSON array from an LLM response.
+
+    Free models (e.g. Gemma) often return conversational text or
+    markdown-wrapped JSON instead of raw JSON. This function:
+      1. Strips markdown code fences (```json ... ```)
+      2. Finds the first '[' and last ']' to extract a JSON array
+      3. Falls back to returning [] on any failure
+    """
+    if not text or not text.strip():
+        return []
+
+    s = text.strip()
+
+    # Strip markdown code fences
+    if s.startswith("```"):
+        # Remove opening fence (```json or ```)
+        first_newline = s.find("\n")
+        if first_newline != -1:
+            s = s[first_newline + 1:]
+        # Remove closing fence
+        if s.rstrip().endswith("```"):
+            s = s.rstrip()[:-3].rstrip()
+
+    # Try direct parse first
+    try:
+        parsed = json.loads(s)
+        if isinstance(parsed, list):
+            return parsed
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Fallback: find the first '[' and last ']' and try to parse that substring
+    start = s.find("[")
+    end = s.rfind("]")
+    if start != -1 and end > start:
+        try:
+            parsed = json.loads(s[start:end + 1])
+            if isinstance(parsed, list):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    return []
+
+
 class Sexton:
     """Sexton — background maintenance actor (ADR-011).
 
@@ -372,9 +418,7 @@ Example response structure:
             try:
                 llm_result = await self._sexton_provider.call("sexton", messages)
                 content = (llm_result or {}).get("content", "").strip()
-                parsed = json.loads(content) if content else []
-                if not isinstance(parsed, list):
-                    raise ValueError("response not a JSON array")
+                parsed = _extract_json_array(content)
             except Exception as exc:
                 log.warning("sexton_tagging_batch_parse_failed", batch=batch_idx, turn_ids=[getattr(t, "turn_id", "?") for t in batch], error=str(exc))
                 for t in batch:
@@ -1174,9 +1218,7 @@ Output format:
             try:
                 result = await self._sexton_provider.call("sexton", messages)
                 content = (result or {}).get("content") or ""
-                parsed = json.loads(content.strip()) if content.strip() else []
-                if not isinstance(parsed, list):
-                    parsed = []
+                parsed = _extract_json_array(content.strip())
             except Exception as exc:
                 log.warning("sexton_graph_extraction_parse_failed", turn_id=turn_id, error=str(exc))
                 graph_store.log_turn_extracted(turn_id, 0, 0)
