@@ -1440,15 +1440,18 @@ def _build_chat_panel(
         with msgs:
             with ui.row().classes("w-full"):
                 lbl = (model or "Assistant") if role == "assistant" else "You"
-                ui.markdown(f"**{lbl}**" + (f"  ({lat}ms)" if lat else "")).style(
-                    f"color:{C_MUTED};font-size:11px;"
+                ui.html(
+                    f'<span style="color:{C_MUTED};font-size:11px;font-weight:600;">'
+                    f'{lbl}'
+                    f'{f"  ({lat}ms)" if lat else ""}'
+                    f'</span>'
                 )
             with ui.row().classes("w-full"):
                 ui.markdown(text).style(
                     f"background:{C_SURFACE if role == 'assistant' else C_RAISED};"
                     f"border:0.5px solid {C_INK40};border-radius:{R_LG};"
                     f"padding:8px 10px;max-width:80%;font-size:13px;color:{C_CREAM};"
-                )
+                ).classes("aip-msg-bubble")
 
     def _sys(text: str) -> None:
         with msgs:
@@ -1525,7 +1528,7 @@ def _build_chat_panel(
                             title = src.get("title", "")
                             snippet = src.get("content_snippet", "")
                             score = src.get("score", 0)
-                            with ui.row().classes("w-full").style(
+                            with ui.row().classes("w-full aip-source-card").style(
                                 f"background:{C_SURFACE};border:0.5px solid {C_INK40};"
                                 f"border-radius:{R_SM};padding:6px 10px;margin:2px 0;"
                                 f"max-width:85%;"
@@ -1542,7 +1545,7 @@ def _build_chat_panel(
                                         hdr_parts.append(f"score:{score:.2f}")
                                     ui.label(" ".join(hdr_parts)).style(
                                         f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};"
-                                    )
+                                    ).classes("aip-domain-chip")
                                     if snippet:
                                         ui.label(snippet[:200] + ("..." if len(snippet) > 200 else "")).style(
                                             f"font-size:11px;color:{C_MUTED};line-height:1.4;"
@@ -1611,12 +1614,37 @@ async def main_page() -> None:
     state.client = context.client
 
     ui.add_head_html(
-        f"<style>body,.q-page,.q-layout{{background:{C_GROUND}!important}}"
+        f"<style>"
+        # ── Global: force minimum text contrast on dark backgrounds ──
+        f"body,.q-page,.q-layout{{background:{C_GROUND}!important;color:{C_MUTED}!important}}"
+        # Tab bar
         f".q-tab{{padding:14px 16px;font-size:13px;font-weight:500;color:{C_MUTED};border-bottom:2px solid transparent;}}"
         f".q-tab--active{{color:{C_CREAM};border-bottom:2px solid {C_AMBER};}}"
         f".q-tabs{{border-bottom:0.5px solid {C_INK40};}}"
         f".q-tab__label{{font-size:13px;font-weight:500;font-family:{F_SANS}}}"
-        f".q-tabs__arrow{{color:{C_INK60}}}</style>"
+        f".q-tabs__arrow{{color:{C_INK60}}}"
+        # ── Markdown content: cream text on dark backgrounds ──
+        f".q-markdown,.q-markdown p,.q-markdown span,.q-markdown li,.q-markdown strong,"
+        f".q-markdown em,.q-markdown h1,.q-markdown h2,.q-markdown h3,.q-markdown h4,"
+        f".q-markdown h5,.q-markdown h6{{color:{C_CREAM}!important}}"
+        f".q-markdown code,.q-markdown pre{{color:{C_AMBER}!important;background:{C_RAISED}!important}}"
+        # ── Tables: minimum C_INK60 text on dark backgrounds ──
+        f"table,table td,table th{{color:{C_MUTED}!important}}"
+        # ── Input/select/textarea: visible text ──
+        f".q-field__native,.q-field__input,.q-field__label,.q-field__control,"
+        f"input,textarea,select,.q-input,.q-textarea,.q-select{{color:{C_CREAM}!important}}"
+        f".q-placeholder{{color:{C_INK60}!important}}"
+        # ── Cards and panels: inherit muted text ──
+        f".q-card,.q-card-section,.q-panel{{color:{C_MUTED}}}"
+        # ── Buttons: ensure ghost buttons visible ──
+        f".q-btn{{color:{C_MUTED}}}"
+        # ── Chat message bubbles: cream text ──
+        f".aip-msg-bubble,.aip-msg-bubble p,.aip-msg-bubble span,"
+        f".aip-msg-bubble strong,.aip-msg-bubble em,.aip-msg-bubble li{{color:{C_CREAM}!important}}"
+        # ── Source citations in augmented responses ──
+        f".aip-source-card,.aip-source-card *{{color:{C_MUTED}!important}}"
+        f".aip-source-card .aip-domain-chip{{color:{C_AMBER}!important}}"
+        f"</style>"
     )
 
     # Non-blocking: render shell immediately, defer API key prompt + backend load
