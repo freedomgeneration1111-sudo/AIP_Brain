@@ -732,24 +732,16 @@ def _build_corpus_panel(state: GuiState) -> None:
         stats_row.clear()
         content.clear()
 
-        results = await asyncio.gather(
-            state.api_client.get_corpus_stats(),
-            state.api_client.list_sources(),
-            return_exceptions=True,
-        )
-        corpus_stats = results[0] if not isinstance(results[0], Exception) else {}
-        sources_r = results[1] if not isinstance(results[1], Exception) else {}
-        sources = (
-            sources_r.get("items", []) if isinstance(sources_r, dict)
-            else sources_r if isinstance(sources_r, list)
-            else []
-        )
+        corpus_stats = await state.api_client.get_corpus_stats()
+        if isinstance(corpus_stats, Exception):
+            corpus_stats = {}
 
         total_turns = corpus_stats.get("total_turns", 0) if isinstance(corpus_stats, dict) else 0
         tagged = corpus_stats.get("tagged", 0) if isinstance(corpus_stats, dict) else 0
         untagged = corpus_stats.get("untagged", 0) if isinstance(corpus_stats, dict) else 0
         embedded = corpus_stats.get("embedded", 0) if isinstance(corpus_stats, dict) else 0
         domains = corpus_stats.get("domains", []) if isinstance(corpus_stats, dict) else []
+        top_turns = corpus_stats.get("top_turns", []) if isinstance(corpus_stats, dict) else []
 
         def _stat(label: str, val: str) -> None:
             with ui.row().classes("items-baseline gap-1").style(
@@ -778,7 +770,7 @@ def _build_corpus_panel(state: GuiState) -> None:
         by_domain: dict[str, int] = {d["name"]: d["count"] for d in domains if isinstance(d, dict)}
 
         with content:
-            if not domains and not sources:
+            if not domains and not top_turns:
                 ui.label("No corpus turns indexed yet. Run: aip ingest file <path>").style(
                     f"color:{C_MUTED};font-size:12px;padding:16px;"
                 )
@@ -791,13 +783,14 @@ def _build_corpus_panel(state: GuiState) -> None:
             )
             with ui.element("table").classes("w-full").style(
                 f"border-collapse:collapse;font-family:{F_MONO};font-size:11px;"
+                f"color:{C_MUTED};"
             ):
                 with ui.element("thead"):
                     with ui.element("tr").style(f"color:{C_MUTED};border-bottom:0.5px solid {C_INK40};"):
                         for col in ["Domain", "Turns"]:
                             ui.element("th").style(
-                                "text-align:left;padding:3px 8px;font-weight:500;"
-                                "font-size:10px;letter-spacing:.5px;"
+                                f"text-align:left;padding:3px 8px;font-weight:500;"
+                                f"font-size:10px;letter-spacing:.5px;color:{C_MUTED};"
                             ).text = col
                 with ui.element("tbody"):
                     for domain_name, count in sorted(by_domain.items(), key=lambda x: -x[1]):
@@ -814,34 +807,35 @@ def _build_corpus_panel(state: GuiState) -> None:
 
             ui.separator().style(f"background:{C_INK40};margin:12px 0;")
 
-            # Source cards
-            ui.label("SOURCES").style(
+            # Top turns by importance
+            ui.label("TOP TURNS BY IMPORTANCE").style(
                 f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
                 "margin-bottom:4px;"
             )
-            for src in sources[:50]:
+            for turn in top_turns[:10]:
+                domain = turn.get("primary_domain", "—")
+                source_model = turn.get("source_model", "—")
+                user_text = turn.get("user_text", "")
+                importance = turn.get("importance", 0)
+                preview = (user_text[:100] + "…") if len(user_text) > 100 else user_text
                 with ui.card().classes("w-full").style(
                     f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
                     f"border-radius:{R_MD};padding:8px 12px;margin-bottom:4px;"
                 ):
                     with ui.row().classes("w-full items-center gap-2"):
-                        d = src.get("domain", "—")
-                        ui.label(f"[{d}]").style(
+                        ui.label(f"[{domain}]").style(
                             f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};"
                         )
-                        ui.label(src.get("source_type", "—")).style(
+                        ui.label(source_model).style(
                             f"font-size:10px;background:{C_INK40};color:{C_MUTED};"
                             "padding:1px 5px;border-radius:3px;"
                         )
                         ui.space()
-                        sid = src.get("source_id", "")
-                        uid_short = (sid[:24] + "…") if len(sid) > 24 else sid
-                        ui.label(uid_short).style(
-                            f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};"
+                        ui.label(f"importance: {importance:.2f}").style(
+                            f"font-size:10px;color:{C_INK60};font-family:{F_MONO};"
                         )
-                    title = src.get("title", "")
-                    if title:
-                        ui.label(title).style(
+                    if preview:
+                        ui.label(preview).style(
                             f"font-size:12px;color:{C_CREAM};margin-top:2px;"
                         )
 

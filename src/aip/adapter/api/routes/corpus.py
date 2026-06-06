@@ -32,6 +32,7 @@ async def get_corpus_stats(container: AipContainer = Depends(get_container)):
       - untagged: turns without a primary_domain
       - embedded: turns with embedded == 1
       - domains: list of {name, count} for each primary_domain
+      - top_turns: top 10 turns by importance score
     """
     result: dict[str, Any] = {
         "total_turns": 0,
@@ -39,6 +40,7 @@ async def get_corpus_stats(container: AipContainer = Depends(get_container)):
         "untagged": 0,
         "embedded": 0,
         "domains": [],
+        "top_turns": [],
     }
 
     cts = getattr(container, "corpus_turn_store", None)
@@ -75,10 +77,15 @@ async def get_corpus_stats(container: AipContainer = Depends(get_container)):
     try:
         domain_counts = await cts.count_by_domain()
         result["domains"] = [
-            {"name": name or "(unclassified)", "count": count}
+            {"name": name, "count": count}
             for name, count in domain_counts.items()
         ]
     except Exception as exc:
         logger.warning("CorpusTurnStore domain counts failed: %s", exc)
+
+    try:
+        result["top_turns"] = await cts.top_turns_by_importance(limit=10)
+    except Exception as exc:
+        logger.warning("CorpusTurnStore top_turns_by_importance failed: %s", exc)
 
     return result

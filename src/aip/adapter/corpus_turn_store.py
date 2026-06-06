@@ -524,19 +524,24 @@ class CorpusTurnStore:
             self._conn = None
 
     async def count_by_domain(self) -> dict[str, int]:
-        """Count of turns per primary_domain (descending by count)."""
+        """Count of turns per primary_domain (descending by count).
+
+        Only includes rows where primary_domain IS NOT NULL AND != ''.
+        Untagged turns (no domain) are excluded — see untagged count instead.
+        """
         conn = await self._get_conn()
         try:
             cursor = await conn.execute(
                 """
                 SELECT primary_domain, COUNT(*) as c
                 FROM corpus_turns
+                WHERE primary_domain IS NOT NULL AND primary_domain != ""
                 GROUP BY primary_domain
                 ORDER BY c DESC
                 """
             )
             rows = await cursor.fetchall()
-            return {row["primary_domain"] or "": int(row["c"]) for row in rows}
+            return {row["primary_domain"]: int(row["c"]) for row in rows}
         finally:
             await conn.close()
             self._conn = None
@@ -566,6 +571,39 @@ class CorpusTurnStore:
             cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns")
             row = await cursor.fetchone()
             return int(row["c"]) if row else 0
+        finally:
+            await conn.close()
+            self._conn = None
+
+    async def top_turns_by_importance(self, limit: int = 10) -> list[dict]:
+        """Return top corpus turns ranked by importance score.
+
+        Each dict has: turn_id, user_text, primary_domain, source_model, importance.
+        Only includes turns with a non-empty primary_domain.
+        """
+        conn = await self._get_conn()
+        try:
+            cursor = await conn.execute(
+                """
+                SELECT turn_id, user_text, primary_domain, source_model, importance
+                FROM corpus_turns
+                WHERE primary_domain IS NOT NULL AND primary_domain != ""
+                ORDER BY importance DESC NULLS LAST
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "turn_id": row["turn_id"],
+                    "user_text": row["user_text"] or "",
+                    "primary_domain": row["primary_domain"],
+                    "source_model": row["source_model"] or "",
+                    "importance": float(row["importance"] or 0),
+                }
+                for row in rows
+            ]
         finally:
             await conn.close()
             self._conn = None
