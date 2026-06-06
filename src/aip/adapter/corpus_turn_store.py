@@ -29,7 +29,7 @@ from typing import Any
 
 import aiosqlite
 
-from aip.foundation.schemas.corpus_turn import CorpusTurn, make_turn_id
+from aip.foundation.schemas.corpus_turn import CorpusTurn
 
 
 class CorpusTurnStore:
@@ -301,9 +301,7 @@ class CorpusTurnStore:
             # We don't store _created_at on the dataclass; use SELECT or just
             # always INSERT OR REPLACE with now for created on first write.
             # To preserve original created_at on re-writes, we do a check.
-            cursor = await conn.execute(
-                "SELECT created_at FROM corpus_turns WHERE turn_id = ?", (turn.turn_id,)
-            )
+            cursor = await conn.execute("SELECT created_at FROM corpus_turns WHERE turn_id = ?", (turn.turn_id,))
             row = await cursor.fetchone()
             if row and row["created_at"]:
                 created_at = row["created_at"]
@@ -344,7 +342,7 @@ class CorpusTurnStore:
                     int(turn.tagging_version or 0),
                     turn.searchable_text or "",
                     int(turn.word_count or 0),
-                    int(getattr(turn, 'embedded', 0) or 0),
+                    int(getattr(turn, "embedded", 0) or 0),
                     created_at,
                     now,
                 ),
@@ -358,9 +356,7 @@ class CorpusTurnStore:
         """Return CorpusTurn or None (not KeyError — turns are optional)."""
         conn = await self._get_conn()
         try:
-            cursor = await conn.execute(
-                "SELECT * FROM corpus_turns WHERE turn_id = ?", (turn_id,)
-            )
+            cursor = await conn.execute("SELECT * FROM corpus_turns WHERE turn_id = ?", (turn_id,))
             row = await cursor.fetchone()
             if row is None:
                 return None
@@ -501,9 +497,7 @@ class CorpusTurnStore:
             await conn.close()
             self._conn = None
 
-    async def get_turns_for_retagging(
-        self, max_tagging_version: int, limit: int = 20
-    ) -> list[CorpusTurn]:
+    async def get_turns_for_retagging(self, max_tagging_version: int, limit: int = 20) -> list[CorpusTurn]:
         """Already-tagged turns eligible for re-evaluation (tagging_version <= max)."""
         conn = await self._get_conn()
         try:
@@ -565,15 +559,19 @@ class CorpusTurnStore:
             self._conn = None
 
     async def total_turns(self) -> int:
-        """Total number of turns in the corpus."""
-        conn = await self._get_conn()
+        """Total number of turns in the corpus.
+
+        Uses a dedicated per-call connection to avoid interfering with
+        concurrent operations on the shared self._conn.
+        """
+        conn = await aiosqlite.connect(self._db_path)
+        conn.row_factory = sqlite3.Row
         try:
             cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns")
             row = await cursor.fetchone()
             return int(row["c"]) if row else 0
         finally:
             await conn.close()
-            self._conn = None
 
     async def top_turns_by_importance(self, limit: int = 10) -> list[dict]:
         """Return top corpus turns ranked by importance score.

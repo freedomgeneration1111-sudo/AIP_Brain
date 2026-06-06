@@ -923,7 +923,7 @@ async def lifespan(app: FastAPI):
             except Exception as exc:
                 log.warning("sexton_actor_startup_run_failed", error=str(exc))
 
-        asyncio.create_task(_sexton_startup_run(), name="sexton-actor-startup")
+        _sexton_startup_task = asyncio.create_task(_sexton_startup_run(), name="sexton-actor-startup")
         log.info("sexton_actor_startup_run_scheduled")
 
     if container.vigil is not None:
@@ -936,7 +936,7 @@ async def lifespan(app: FastAPI):
             except Exception as exc:
                 log.warning("vigil_startup_run_failed", error=str(exc))
 
-        asyncio.create_task(_vigil_startup_run(), name="vigil-startup")
+        _vigil_startup_task = asyncio.create_task(_vigil_startup_run(), name="vigil-startup")
         log.info("vigil_startup_run_scheduled")
 
     log.info(

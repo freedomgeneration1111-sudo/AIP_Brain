@@ -28,7 +28,6 @@ Cadence: Hourly — evaluates last N synthesis responses since previous run.
 
 from __future__ import annotations
 
-import logging
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -41,8 +40,9 @@ from aip.foundation.protocols import (
     VigilStore,
 )
 from aip.foundation.schemas import ModelSlotConfig, VigilConfig
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class Vigil:
@@ -303,7 +303,7 @@ class Vigil:
                     )
 
         except Exception as exc:
-            logger.error("Error during model slot change re-evaluation: %s", exc)
+            logger.error("vigil_slot_change_reeval_error", error=str(exc))
             result["error"] = str(exc)
 
         return result
