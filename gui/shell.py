@@ -13,95 +13,106 @@ from pathlib import Path
 from typing import Any
 
 from nicegui import app, context, ui
-from gui.api_client import get_api_client, AipApiClient
+
+from gui.api_client import AipApiClient, get_api_client
 
 log = logging.getLogger("gui.shell")
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
 
 # ── AIP DESIGN TOKENS  (aip_design_reference.html §2) ────────────────
 # Ground layers
-C_GROUND   = '#0E0E0F'   # page/shell background
-C_SURFACE  = '#1A1D1F'   # cards, panels
-C_RAISED   = '#242829'   # hover states, inputs
+C_GROUND = "#0E0E0F"  # page/shell background
+C_SURFACE = "#1A1D1F"  # cards, panels
+C_RAISED = "#242829"  # hover states, inputs
 # Structural ink (slate-teal family)
-C_INK40    = '#2A3540'   # borders, edges, lines
-C_INK60    = '#3D5566'   # labels, inactive text, secondary
-C_MUTED    = '#8FA8B8'   # body text secondary, placeholder
-C_CREAM    = '#F2EDE4'   # primary text on dark
+C_INK40 = "#2A3540"  # borders, edges, lines
+C_INK60 = "#3D5566"  # labels, inactive text, secondary
+C_MUTED = "#8FA8B8"  # body text secondary, placeholder
+C_CREAM = "#F2EDE4"  # primary text on dark
 # Activation (amber — use ONLY for: active tab, primary CTA, corpus node)
-C_AMBER    = '#B8935A'   # primary amber
-C_AMBER_P  = '#8C6E3A'   # pressed/hover state
+C_AMBER = "#B8935A"  # primary amber
+C_AMBER_P = "#8C6E3A"  # pressed/hover state
 # Semantic states
-C_OK_BG    = '#1E3A2F'   # confirmed/approved background
-C_OK_FG    = '#4EAA7A'   # confirmed/approved text
-C_ERR_BG   = '#3A1E1E'   # danger background
-C_ERR_FG   = '#E07070'   # danger text
-C_WARN_BG  = '#2A2A1A'   # caution/pending background
-C_WARN_FG  = '#C8A84E'   # caution/pending text
+C_OK_BG = "#1E3A2F"  # confirmed/approved background
+C_OK_FG = "#4EAA7A"  # confirmed/approved text
+C_ERR_BG = "#3A1E1E"  # danger background
+C_ERR_FG = "#E07070"  # danger text
+C_WARN_BG = "#2A2A1A"  # caution/pending background
+C_WARN_FG = "#C8A84E"  # caution/pending text
 # Typography
-F_SERIF    = "Georgia, 'Times New Roman', serif"
-F_SANS     = "'Helvetica Neue', Helvetica, Arial, sans-serif"
-F_MONO     = "'Courier New', monospace"
+F_SERIF = "Georgia, 'Times New Roman', serif"
+F_SANS = "'Helvetica Neue', Helvetica, Arial, sans-serif"
+F_MONO = "'Courier New', monospace"
 # Spacing (px values as strings for style() calls)
-SP_XS = '4px';  SP_SM = '8px';  SP_MD = '16px';  SP_LG = '32px'
+SP_XS = "4px"
+SP_SM = "8px"
+SP_MD = "16px"
+SP_LG = "32px"
 # Border
-BORDER = f'0.5px solid {C_INK40}'
+BORDER = f"0.5px solid {C_INK40}"
 # Radius
-R_SM = '4px';  R_MD = '6px';  R_LG = '8px'
+R_SM = "4px"
+R_MD = "6px"
+R_LG = "8px"
 # Stat tile background
-C_STAT_BG  = '#141618'
-C_STAT_BD  = '#1E2428'
+C_STAT_BG = "#141618"
+C_STAT_BD = "#1E2428"
 # Status pill colors (per aip_design_reference.html §4.4)
 _PILL_STYLES = {
-    'GENERATED': (C_AMBER, C_AMBER_P, '#1A1200'),
-    'APPROVED':  (C_OK_FG, '#1E4030', '#0E1F17'),
-    'REJECTED':  (C_ERR_FG, C_ERR_BG, '#1A0000'),
-    'IDLE':      (C_MUTED, C_INK40, 'transparent'),
-    'ACTIVE':    (C_AMBER, C_AMBER_P, '#1A0E00'),
-    'READY':     (C_OK_FG, '#1E4030', '#0E1F17'),
-    'UNCONFIGURED': (C_MUTED, C_INK40, 'transparent'),
+    "GENERATED": (C_AMBER, C_AMBER_P, "#1A1200"),
+    "APPROVED": (C_OK_FG, "#1E4030", "#0E1F17"),
+    "REJECTED": (C_ERR_FG, C_ERR_BG, "#1A0000"),
+    "IDLE": (C_MUTED, C_INK40, "transparent"),
+    "ACTIVE": (C_AMBER, C_AMBER_P, "#1A0E00"),
+    "READY": (C_OK_FG, "#1E4030", "#0E1F17"),
+    "UNCONFIGURED": (C_MUTED, C_INK40, "transparent"),
 }
 
 
 # ── BUTTON STYLE HELPERS  (aip_design_reference.html §4.5) ──────────
 def btn_primary() -> str:
-    return (f'background:{C_AMBER}; color:#0E0800; border:0.5px solid {C_AMBER}; '
-            f'padding:6px 14px; border-radius:{R_SM}; font-size:11px; font-weight:500;')
+    return (
+        f"background:{C_AMBER}; color:#0E0800; border:0.5px solid {C_AMBER}; "
+        f"padding:6px 14px; border-radius:{R_SM}; font-size:11px; font-weight:500;"
+    )
 
 
 def btn_secondary() -> str:
-    return (f'background:transparent; color:{C_MUTED}; border:0.5px solid {C_INK40}; '
-            f'padding:6px 14px; border-radius:{R_SM}; font-size:11px; font-weight:500;')
+    return (
+        f"background:transparent; color:{C_MUTED}; border:0.5px solid {C_INK40}; "
+        f"padding:6px 14px; border-radius:{R_SM}; font-size:11px; font-weight:500;"
+    )
 
 
 def btn_ghost() -> str:
-    return (f'background:transparent; color:{C_INK60}; border:0.5px solid {C_STAT_BD}; '
-            f'padding:6px 14px; border-radius:{R_SM}; font-size:10px;')
+    return (
+        f"background:transparent; color:{C_INK60}; border:0.5px solid {C_STAT_BD}; "
+        f"padding:6px 14px; border-radius:{R_SM}; font-size:10px;"
+    )
 
 
 # ── STATUS PILL HELPER  (aip_design_reference.html §4.4) ────────────
 def status_pill(status: str) -> None:
     """Render an inline status pill with correct semantic colors."""
-    fg, border_c, bg = _PILL_STYLES.get(
-        status.upper(), (C_MUTED, C_INK40, 'transparent')
-    )
+    fg, border_c, bg = _PILL_STYLES.get(status.upper(), (C_MUTED, C_INK40, "transparent"))
     ui.label(status).style(
-        f'display:inline-flex; align-items:center; font-size:10px; '
-        f'letter-spacing:.5px; padding:3px 8px; border-radius:{R_SM}; '
-        f'border:0.5px solid {border_c}; color:{fg}; background:{bg}; '
-        f'flex-shrink:0;'
+        f"display:inline-flex; align-items:center; font-size:10px; "
+        f"letter-spacing:.5px; padding:3px 8px; border-radius:{R_SM}; "
+        f"border:0.5px solid {border_c}; color:{fg}; background:{bg}; "
+        f"flex-shrink:0;"
     )
 
 
 # ── AIP CORPUS MARK  (aip_design_reference.html §1 — canonical 24×24) ──
 _AIP_MARK = (
     '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">'
-    '<!-- Orthogonal edges -->'
+    "<!-- Orthogonal edges -->"
     '<line x1="4" y1="4"  x2="12" y2="4"  stroke="#2A3540" stroke-width="1"/>'
     '<line x1="12" y1="4" x2="20" y2="4"  stroke="#2A3540" stroke-width="1"/>'
     '<line x1="4" y1="12" x2="12" y2="12" stroke="#2A3540" stroke-width="1"/>'
@@ -114,7 +125,7 @@ _AIP_MARK = (
     '<line x1="12" y1="12" x2="12" y2="20" stroke="#2A3540" stroke-width="1"/>'
     '<line x1="20" y1="4"  x2="20" y2="12" stroke="#2A3540" stroke-width="1"/>'
     '<line x1="20" y1="12" x2="20" y2="20" stroke="#2A3540" stroke-width="1"/>'
-    '<!-- 8 peripheral nodes (slate-teal) -->'
+    "<!-- 8 peripheral nodes (slate-teal) -->"
     '<circle cx="4"  cy="4"  r="1.5" fill="#3D5566"/>'
     '<circle cx="12" cy="4"  r="1.5" fill="#3D5566"/>'
     '<circle cx="20" cy="4"  r="1.5" fill="#3D5566"/>'
@@ -123,12 +134,13 @@ _AIP_MARK = (
     '<circle cx="4"  cy="20" r="1.5" fill="#3D5566"/>'
     '<circle cx="12" cy="20" r="1.5" fill="#3D5566"/>'
     '<circle cx="20" cy="20" r="1.5" fill="#3D5566"/>'
-    '<!-- Center corpus node (amber, weighted 2× the peripheral nodes) -->'
+    "<!-- Center corpus node (amber, weighted 2× the peripheral nodes) -->"
     '<circle cx="12" cy="12" r="3"   fill="#B8935A"/>'
-    '</svg>'
+    "</svg>"
 )
 
 # ── STATE ─────────────────────────────────────────────────────────────
+
 
 class GuiState:
     """Module-level session state — one instance, persists across tab switches."""
@@ -253,6 +265,7 @@ def set_role_model(slot: str, model: str) -> None:
 
 # ── BACKEND & MODEL HELPERS ───────────────────────────────────────────
 
+
 async def check_backend_health(state: GuiState) -> str:
     try:
         h = await asyncio.wait_for(state.api_client.check_health(), timeout=4.0)
@@ -273,6 +286,7 @@ async def check_backend() -> None:
     Retries up to 10 times with 3-second intervals.
     """
     import httpx
+
     state = get_state()
     for _ in range(10):
         try:
@@ -305,10 +319,7 @@ def build_model_options(slots: list) -> list[str]:
     sel = get_selected_models()
     # Include persisted slot model assignments so they appear even before backend connects
     persisted = [m for m in _role_models.values() if m and not m.startswith("<")]
-    backend = [
-        s.get("model", "") for s in slots
-        if s.get("model") and not s.get("model", "").startswith("<")
-    ]
+    backend = [s.get("model", "") for s in slots if s.get("model") and not s.get("model", "").startswith("<")]
     opts = list(dict.fromkeys(sel + persisted + backend + ["google/gemma-3-4b-it"]))
     return [m for m in opts if m] or ["(no models — open Settings)"]
 
@@ -323,9 +334,7 @@ def on_chat_model_changed(model_id: str) -> None:
         _save_sel(_selected_models)
     state.reset_session()
     asyncio.create_task(
-        state.api_client.update_slot_model(
-            "synthesis", model_id, api_key=state.api_client.get_openrouter_api_key()
-        )
+        state.api_client.update_slot_model("synthesis", model_id, api_key=state.api_client.get_openrouter_api_key())
     )
     ui.notify(f"Chat model → {model_id}", color="info")
 
@@ -337,6 +346,7 @@ async def refresh_budget_status(label, state: GuiState) -> None:
             consumed = b.get("consumed_tokens", 0)
             limit = b.get("limit", 0)
             fraction = b.get("fraction_used", 0)
+
             def _u():
                 if limit:
                     label.text = f"budget: {consumed}/{limit} ({fraction:.0%})"
@@ -344,8 +354,10 @@ async def refresh_budget_status(label, state: GuiState) -> None:
                         label.style(f"color:{C_ERR_FG};font-size:10px;font-family:{F_MONO};")
                 elif b.get("budget_manager") is False:
                     label.text = "budget: n/a"
+
             if state.client:
-                with state.client: _u()
+                with state.client:
+                    _u()
             else:
                 _u()
         except Exception:
@@ -366,24 +378,21 @@ async def _show_api_key_prompt() -> str | None:
 
 # ── STATUS PANEL ─────────────────────────────────────────────────────
 
+
 def _build_status_panel(state: GuiState) -> None:
     """STATUS tab — health, actors, slots, wiki/corpus stats."""
     import datetime as _dt
 
-    with ui.row().classes("w-full items-center px-4 py-2 gap-2").style(
-        f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};"
+    with (
+        ui.row()
+        .classes("w-full items-center px-4 py-2 gap-2")
+        .style(f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};")
     ):
-        ui.label("SYSTEM STATUS").style(
-            f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};"
-        )
+        ui.label("SYSTEM STATUS").style(f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};")
         ui.space()
-        refresh_btn = ui.button("Refresh", icon="refresh").props("dense flat").style(
-            f"color:{C_MUTED};font-size:11px;"
-        )
+        refresh_btn = ui.button("Refresh", icon="refresh").props("dense flat").style(f"color:{C_MUTED};font-size:11px;")
 
-    content = ui.column().classes("w-full px-4 py-3").style(
-        f"flex:1;overflow-y:auto;background:{C_GROUND};gap:0;"
-    )
+    content = ui.column().classes("w-full px-4 py-3").style(f"flex:1;overflow-y:auto;background:{C_GROUND};gap:0;")
 
     def _section(title: str) -> None:
         ui.label(title).style(
@@ -393,12 +402,8 @@ def _build_status_panel(state: GuiState) -> None:
 
     def _kv(label: str, val: str, vc: str = "") -> None:
         with ui.row().classes("w-full items-baseline").style("padding:1px 0;"):
-            ui.label(label).style(
-                f"font-size:11px;font-family:{F_MONO};color:{C_MUTED};min-width:240px;"
-            )
-            ui.label(val).style(
-                f"font-size:11px;font-family:{F_MONO};color:{vc or C_CREAM};"
-            )
+            ui.label(label).style(f"font-size:11px;font-family:{F_MONO};color:{C_MUTED};min-width:240px;")
+            ui.label(val).style(f"font-size:11px;font-family:{F_MONO};color:{vc or C_CREAM};")
 
     def _sep() -> None:
         ui.separator().style(f"background:{C_INK40};margin:4px 0;")
@@ -417,12 +422,12 @@ def _build_status_panel(state: GuiState) -> None:
             state.api_client.get_corpus_stats(),
             return_exceptions=True,
         )
-        health     = results[0] if not isinstance(results[0], Exception) else {}
-        actors_r   = results[1] if not isinstance(results[1], Exception) else {}
+        health = results[0] if not isinstance(results[0], Exception) else {}
+        actors_r = results[1] if not isinstance(results[1], Exception) else {}
         slots_list = results[2] if not isinstance(results[2], Exception) else []
-        know_r     = results[3] if not isinstance(results[3], Exception) else {}
-        graph_r    = results[4] if not isinstance(results[4], Exception) else {}
-        corpus_r   = results[5] if not isinstance(results[5], Exception) else {}
+        know_r = results[3] if not isinstance(results[3], Exception) else {}
+        graph_r = results[4] if not isinstance(results[4], Exception) else {}
+        corpus_r = results[5] if not isinstance(results[5], Exception) else {}
 
         items = know_r.get("items", []) if isinstance(know_r, dict) else []
         approved = sum(1 for k in items if k.get("state") == "APPROVED")
@@ -437,7 +442,7 @@ def _build_status_panel(state: GuiState) -> None:
         tagged = corpus_r.get("tagged", 0) if isinstance(corpus_r, dict) else 0
         untagged = corpus_r.get("untagged", 0) if isinstance(corpus_r, dict) else 0
         embedded = corpus_r.get("embedded", 0) if isinstance(corpus_r, dict) else 0
-        pct = f"  ({100*tagged/total_turns:.1f}%)" if total_turns > 0 else ""
+        pct = f"  ({100 * tagged / total_turns:.1f}%)" if total_turns > 0 else ""
 
         content.clear()
         with content:
@@ -450,8 +455,7 @@ def _build_status_panel(state: GuiState) -> None:
 
             _section("WIKI")
             _kv("APPROVED articles:", str(approved))
-            _kv("GENERATED (pending):", str(generated),
-                vc=C_WARN_FG if generated > 0 else C_CREAM)
+            _kv("GENERATED (pending):", str(generated), vc=C_WARN_FG if generated > 0 else C_CREAM)
             _kv("Domains with wiki:", str(domains_with_wiki))
             _sep()
 
@@ -467,8 +471,10 @@ def _build_status_panel(state: GuiState) -> None:
                 "vigil": "Quality evaluation (hourly)",
             }
             _section("ACTOR SLOTS")
+            # "vigil" is displayed but the model slot is named "evaluation" in ModelSlotResolver
+            _slot_key = {"vigil": "evaluation"}
             for sn in ["synthesis", "beast", "vigil", "sexton", "embedding"]:
-                s = slot_map.get(sn, {})
+                s = slot_map.get(_slot_key.get(sn, sn), {})
                 model = s.get("model") or "[not configured]"
                 configured = model and not model.startswith("<") and model != "[not configured]"
                 dot_c = C_OK_FG if configured else C_MUTED
@@ -477,19 +483,12 @@ def _build_status_panel(state: GuiState) -> None:
                 role_label = _actor_roles.get(sn, "")
                 display_name = f"{sn}" if not role_label else f"{sn}  ({role_label})"
                 with ui.row().classes("w-full items-center gap-2").style("padding:1px 0;"):
-                    ui.html(
-                        f'<span style="font-size:10px;color:{dot_c};">'
-                        f'{"●" if configured else "○"}</span>'
-                    )
-                    ui.label(display_name).style(
-                        f"font-size:11px;font-family:{F_MONO};color:{C_CREAM};min-width:90px;"
-                    )
+                    ui.html(f'<span style="font-size:10px;color:{dot_c};">{"●" if configured else "○"}</span>')
+                    ui.label(display_name).style(f"font-size:11px;font-family:{F_MONO};color:{C_CREAM};min-width:90px;")
                     ui.label((model[:36] + "…") if len(model) > 36 else model).style(
                         f"font-size:11px;font-family:{F_MONO};color:{C_MUTED};flex:1;"
                     )
-                    ui.label(status).style(
-                        f"font-size:10px;font-family:{F_MONO};color:{sc};"
-                    )
+                    ui.label(status).style(f"font-size:10px;font-family:{F_MONO};color:{sc};")
             _sep()
 
             _section("RECENT ACTOR ACTIVITY")
@@ -525,30 +524,31 @@ def _build_status_panel(state: GuiState) -> None:
 
 # ── REVIEW PANEL ─────────────────────────────────────────────────────
 
+
 def _build_review_panel(state: GuiState) -> None:
     """REVIEW tab — beast_wiki artifacts in GENERATED state, approve/reject."""
 
-    with ui.row().classes("w-full items-center px-4 py-2 gap-2").style(
-        f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};"
+    with (
+        ui.row()
+        .classes("w-full items-center px-4 py-2 gap-2")
+        .style(f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};")
     ):
-        ui.label("REVIEW").style(
-            f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};"
-        )
+        ui.label("REVIEW").style(f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};")
         count_lbl = ui.label("").style(
             f"font-size:10px;background:#1A1200;color:{C_AMBER};"
             f"padding:1px 6px;border-radius:3px;font-family:{F_MONO};"
             f"border:0.5px solid {C_AMBER_P};"
         )
         ui.space()
-        approve_all_btn = ui.button("APPROVE ALL", icon="done_all").props("dense flat").style(
-            f"color:{C_OK_FG};font-size:11px;"
+        approve_all_btn = (
+            ui.button("APPROVE ALL", icon="done_all").props("dense flat").style(f"color:{C_OK_FG};font-size:11px;")
         )
-        refresh_btn = ui.button("Refresh", icon="refresh").props("dense flat").style(
-            f"color:{C_MUTED};font-size:11px;"
-        )
+        refresh_btn = ui.button("Refresh", icon="refresh").props("dense flat").style(f"color:{C_MUTED};font-size:11px;")
 
-    content = ui.column().classes("w-full px-4 py-3 gap-3").style(
-        f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:0;"
+    content = (
+        ui.column()
+        .classes("w-full px-4 py-3 gap-3")
+        .style(f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:0;")
     )
 
     async def _approve_all() -> None:
@@ -564,9 +564,7 @@ def _build_review_panel(state: GuiState) -> None:
         content.clear()
         count_lbl.text = ""
         with content:
-            ui.label("Loading…").style(
-                f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};"
-            )
+            ui.label("Loading…").style(f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};")
 
         reviews, knowledge = await asyncio.gather(
             state.api_client.list_pending_reviews(),
@@ -574,11 +572,7 @@ def _build_review_panel(state: GuiState) -> None:
             return_exceptions=True,
         )
         review_items = reviews if isinstance(reviews, list) else []
-        know_items = (
-            knowledge.get("items", [])
-            if isinstance(knowledge, dict)
-            else []
-        )
+        know_items = knowledge.get("items", []) if isinstance(knowledge, dict) else []
 
         # Merge: reviews queue + knowledge with GENERATED state
         seen_ids: set[str] = set()
@@ -590,32 +584,30 @@ def _build_review_panel(state: GuiState) -> None:
         for k in know_items:
             kid = k.get("knowledge_id") or k.get("id", "")
             if kid not in seen_ids:
-                cards.append({
-                    "id": kid,
-                    "source": "knowledge",
-                    "domain": k.get("domain", ""),
-                    "state": k.get("state", ""),
-                    "content": k.get("content", ""),
-                    "artifact_type": "wiki",
-                    **k,
-                })
+                cards.append(
+                    {
+                        "id": kid,
+                        "source": "knowledge",
+                        "domain": k.get("domain", ""),
+                        "state": k.get("state", ""),
+                        "content": k.get("content", ""),
+                        "artifact_type": "wiki",
+                        **k,
+                    }
+                )
 
         count_lbl.text = f"{len(cards)} pending" if cards else ""
 
         content.clear()
         if not cards:
             with content:
-                ui.label("No items pending review.").style(
-                    f"color:{C_MUTED};font-size:12px;padding:24px;"
-                )
+                ui.label("No items pending review.").style(f"color:{C_MUTED};font-size:12px;padding:24px;")
             return
 
         for card in cards:
             _render_review_card(content, card, state, _load)
 
-    def _render_review_card(
-        parent, card: dict, state: GuiState, reload_fn
-    ) -> None:
+    def _render_review_card(parent, card: dict, state: GuiState, reload_fn) -> None:
         artifact_id = card.get("id", "")
         domain = card.get("domain", "—")
         artifact_type = card.get("artifact_type", card.get("type", "artifact"))
@@ -625,33 +617,29 @@ def _build_review_panel(state: GuiState) -> None:
         expanded_state: list[bool] = [False]
 
         with parent:
-            with ui.card().classes("w-full").style(
-                f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
-                f"border-radius:{R_LG};padding:0;"
+            with (
+                ui.card()
+                .classes("w-full")
+                .style(f"background:{C_SURFACE};border:0.5px solid {C_RAISED};border-radius:{R_LG};padding:0;")
             ):
                 # Header bar
-                with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(
-                    f"border-bottom:0.5px solid {C_INK40};"
+                with (
+                    ui.row()
+                    .classes("w-full items-center px-3 py-2 gap-2")
+                    .style(f"border-bottom:0.5px solid {C_INK40};")
                 ):
-                    ui.label(f"[{domain.upper()}]").style(
-                        f"font-size:10px;font-family:{F_MONO};color:{C_AMBER};"
-                    )
+                    ui.label(f"[{domain.upper()}]").style(f"font-size:10px;font-family:{F_MONO};color:{C_AMBER};")
                     uid_short = artifact_id[:20] + "…" if len(artifact_id) > 20 else artifact_id
-                    ui.label(uid_short).style(
-                        f"font-size:10px;font-family:{F_MONO};color:{C_MUTED};"
-                    )
+                    ui.label(uid_short).style(f"font-size:10px;font-family:{F_MONO};color:{C_MUTED};")
                     ui.space()
                     ui.label(artifact_type).style(
-                        f"font-size:9px;background:{C_INK40};color:{C_MUTED};"
-                        "padding:1px 5px;border-radius:3px;"
+                        f"font-size:9px;background:{C_INK40};color:{C_MUTED};padding:1px 5px;border-radius:3px;"
                     )
 
                 # Preview content
                 preview_col = ui.column().classes("w-full px-3 py-2")
                 with preview_col:
-                    ui.label(preview or "(empty)").style(
-                        f"font-size:12px;color:{C_CREAM};line-height:1.5;"
-                    )
+                    ui.label(preview or "(empty)").style(f"font-size:12px;color:{C_CREAM};line-height:1.5;")
 
                 # Expanded content (hidden by default)
                 full_col = ui.column().classes("w-full px-3 py-2").style("display:none;")
@@ -661,19 +649,13 @@ def _build_review_panel(state: GuiState) -> None:
                     )
 
                 # Action bar
-                with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(
-                    f"border-top:0.5px solid {C_INK40};"
+                with (
+                    ui.row().classes("w-full items-center px-3 py-2 gap-2").style(f"border-top:0.5px solid {C_INK40};")
                 ):
-                    approve_btn = ui.button("APPROVE").style(
-                        btn_primary()
-                    ).props("dense flat")
-                    reject_btn = ui.button("REJECT").style(
-                        btn_secondary()
-                    ).props("dense flat")
+                    approve_btn = ui.button("APPROVE").style(btn_primary()).props("dense flat")
+                    reject_btn = ui.button("REJECT").style(btn_secondary()).props("dense flat")
                     ui.space()
-                    expand_btn = ui.button("EXPAND ↓").props("dense flat").style(
-                        btn_ghost()
-                    )
+                    expand_btn = ui.button("EXPAND ↓").props("dense flat").style(btn_ghost())
 
                 async def _approve(aid: str = artifact_id) -> None:
                     try:
@@ -713,27 +695,30 @@ def _build_review_panel(state: GuiState) -> None:
 
 # ── CORPUS PANEL ─────────────────────────────────────────────────────
 
+
 def _build_corpus_panel(state: GuiState) -> None:
     """CORPUS tab — stats bar, domain distribution, source browser."""
 
-    with ui.row().classes("w-full items-center px-4 py-2 gap-2").style(
-        f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};"
+    with (
+        ui.row()
+        .classes("w-full items-center px-4 py-2 gap-2")
+        .style(f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};")
     ):
-        ui.label("CORPUS").style(
-            f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};"
-        )
+        ui.label("CORPUS").style(f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};")
         ui.space()
-        refresh_btn = ui.button("Refresh", icon="refresh").props("dense flat").style(
-            f"color:{C_MUTED};font-size:11px;"
-        )
+        refresh_btn = ui.button("Refresh", icon="refresh").props("dense flat").style(f"color:{C_MUTED};font-size:11px;")
 
     # Stats bar
-    stats_row = ui.row().classes("w-full items-center px-4 py-2 gap-4").style(
-        f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};"
+    stats_row = (
+        ui.row()
+        .classes("w-full items-center px-4 py-2 gap-4")
+        .style(f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};")
     )
 
-    content = ui.column().classes("w-full px-4 py-2 gap-3").style(
-        f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:0;"
+    content = (
+        ui.column()
+        .classes("w-full px-4 py-2 gap-3")
+        .style(f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:0;")
     )
 
     async def _load() -> None:
@@ -752,18 +737,13 @@ def _build_corpus_panel(state: GuiState) -> None:
         top_turns = corpus_stats.get("top_turns", []) if isinstance(corpus_stats, dict) else []
 
         def _stat(label: str, val: str) -> None:
-            with ui.row().classes("items-baseline gap-1").style(
-                f"background:{C_STAT_BG};border:0.5px solid {C_STAT_BD};"
-                f"border-radius:{R_MD};padding:6px 10px;"
+            with (
+                ui.row()
+                .classes("items-baseline gap-1")
+                .style(f"background:{C_STAT_BG};border:0.5px solid {C_STAT_BD};border-radius:{R_MD};padding:6px 10px;")
             ):
-                ui.label(val).style(
-                    f"font-size:18px;font-weight:500;color:{C_CREAM};"
-                    f"letter-spacing:-0.5px;"
-                )
-                ui.label(label).style(
-                    f"font-size:9px;letter-spacing:1.5px;color:{C_MUTED};"
-                    f"text-transform:uppercase;"
-                )
+                ui.label(val).style(f"font-size:18px;font-weight:500;color:{C_CREAM};letter-spacing:-0.5px;")
+                ui.label(label).style(f"font-size:9px;letter-spacing:1.5px;color:{C_MUTED};text-transform:uppercase;")
 
         with stats_row:
             _stat("turns", f"{total_turns:,}")
@@ -786,12 +766,12 @@ def _build_corpus_panel(state: GuiState) -> None:
 
             # Domain distribution table
             ui.label("DOMAIN DISTRIBUTION").style(
-                f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
-                "margin-bottom:4px;"
+                f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};margin-bottom:4px;"
             )
-            with ui.element("table").classes("w-full").style(
-                f"border-collapse:collapse;font-family:{F_MONO};font-size:11px;"
-                f"color:{C_MUTED};"
+            with (
+                ui.element("table")
+                .classes("w-full")
+                .style(f"border-collapse:collapse;font-family:{F_MONO};font-size:11px;color:{C_MUTED};")
             ):
                 with ui.element("thead"):
                     with ui.element("tr").style(f"color:{C_MUTED};border-bottom:0.5px solid {C_INK40};"):
@@ -802,23 +782,15 @@ def _build_corpus_panel(state: GuiState) -> None:
                             ).text = col
                 with ui.element("tbody"):
                     for domain_name, count in sorted(by_domain.items(), key=lambda x: -x[1]):
-                        with ui.element("tr").style(
-                            f"border-bottom:.5px solid {C_INK40};"
-                            "cursor:pointer;"
-                        ):
-                            ui.element("td").style(
-                                f"padding:3px 8px;color:{C_AMBER};"
-                            ).text = domain_name
-                            ui.element("td").style(
-                                f"padding:3px 8px;color:{C_CREAM};"
-                            ).text = f"{count:,}"
+                        with ui.element("tr").style(f"border-bottom:.5px solid {C_INK40};cursor:pointer;"):
+                            ui.element("td").style(f"padding:3px 8px;color:{C_AMBER};").text = domain_name
+                            ui.element("td").style(f"padding:3px 8px;color:{C_CREAM};").text = f"{count:,}"
 
             ui.separator().style(f"background:{C_INK40};margin:12px 0;")
 
             # Top turns by importance
             ui.label("TOP TURNS BY IMPORTANCE").style(
-                f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
-                "margin-bottom:4px;"
+                f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};margin-bottom:4px;"
             )
             for turn in top_turns[:10]:
                 domain = turn.get("primary_domain", "—")
@@ -826,26 +798,25 @@ def _build_corpus_panel(state: GuiState) -> None:
                 user_text = turn.get("user_text", "")
                 importance = turn.get("importance", 0)
                 preview = (user_text[:100] + "…") if len(user_text) > 100 else user_text
-                with ui.card().classes("w-full").style(
-                    f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
-                    f"border-radius:{R_MD};padding:8px 12px;margin-bottom:4px;"
+                with (
+                    ui.card()
+                    .classes("w-full")
+                    .style(
+                        f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
+                        f"border-radius:{R_MD};padding:8px 12px;margin-bottom:4px;"
+                    )
                 ):
                     with ui.row().classes("w-full items-center gap-2"):
-                        ui.label(f"[{domain}]").style(
-                            f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};"
-                        )
+                        ui.label(f"[{domain}]").style(f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};")
                         ui.label(source_model).style(
-                            f"font-size:10px;background:{C_INK40};color:{C_MUTED};"
-                            "padding:1px 5px;border-radius:3px;"
+                            f"font-size:10px;background:{C_INK40};color:{C_MUTED};padding:1px 5px;border-radius:3px;"
                         )
                         ui.space()
                         ui.label(f"importance: {importance:.2f}").style(
                             f"font-size:10px;color:{C_INK60};font-family:{F_MONO};"
                         )
                     if preview:
-                        ui.label(preview).style(
-                            f"font-size:12px;color:{C_CREAM};margin-top:2px;"
-                        )
+                        ui.label(preview).style(f"font-size:12px;color:{C_CREAM};margin-top:2px;")
 
     refresh_btn.on("click", lambda: asyncio.create_task(_load()))
     asyncio.create_task(_load())
@@ -853,42 +824,37 @@ def _build_corpus_panel(state: GuiState) -> None:
 
 # ── WIKI PANEL ───────────────────────────────────────────────────────
 
+
 def _build_wiki_panel(state: GuiState) -> None:
     """WIKI tab — two-pane domain navigator + article reader."""
 
-    with ui.row().classes("w-full").style(
-        f"flex:1;min-height:0;background:{C_GROUND};"
-    ):
+    with ui.row().classes("w-full").style(f"flex:1;min-height:0;background:{C_GROUND};"):
         # ── LEFT PANE — domain navigator ──
         with ui.column().style(
             f"width:260px;min-width:260px;background:{C_SURFACE};"
             f"border-right:0.5px solid {C_INK40};overflow-y:auto;padding:8px 0;"
         ):
             with ui.row().classes("w-full items-center px-3 py-2 gap-2"):
-                ui.label("DOMAINS").style(
-                    f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
-                )
+                ui.label("DOMAINS").style(f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};")
                 ui.space()
-                refresh_btn = ui.button(icon="refresh").props("dense flat round").style(
-                    f"color:{C_MUTED};"
-                )
+                refresh_btn = ui.button(icon="refresh").props("dense flat round").style(f"color:{C_MUTED};")
 
-            search_inp = ui.input(placeholder="search…").props("dense borderless").style(
-                f"font-size:11px;color:{C_CREAM};background:{C_RAISED};"
-                f"border:.5px solid {C_INK40};border-radius:3px;"
-                "padding:2px 8px;margin:0 8px;width:calc(100% - 16px);"
+            search_inp = (
+                ui.input(placeholder="search…")
+                .props("dense borderless")
+                .style(
+                    f"font-size:11px;color:{C_CREAM};background:{C_RAISED};"
+                    f"border:.5px solid {C_INK40};border-radius:3px;"
+                    "padding:2px 8px;margin:0 8px;width:calc(100% - 16px);"
+                )
             )
 
             domain_list = ui.column().classes("w-full").style("padding:4px 0;")
 
         # ── RIGHT PANE — article reader ──
-        reader = ui.column().classes("flex-1 px-5 py-4").style(
-            f"overflow-y:auto;background:{C_GROUND};min-height:0;"
-        )
+        reader = ui.column().classes("flex-1 px-5 py-4").style(f"overflow-y:auto;background:{C_GROUND};min-height:0;")
         with reader:
-            ui.label("Select a domain to view articles.").style(
-                f"color:{C_MUTED};font-size:12px;"
-            )
+            ui.label("Select a domain to view articles.").style(f"color:{C_MUTED};font-size:12px;")
 
     # State: all knowledge items, current domain filter
     _all_items: list[dict] = []
@@ -913,17 +879,21 @@ def _build_wiki_panel(state: GuiState) -> None:
             bg = C_RAISED if active else "transparent"
 
             with domain_list:
-                with ui.row().classes("w-full items-center px-3 py-2 gap-1").style(
-                    f"cursor:pointer;background:{bg};"
-                    f"border-left:2px solid {'#B8935A' if active else 'transparent'};"
-                ).on("click", lambda d=domain: _show_domain(d)):
+                with (
+                    ui.row()
+                    .classes("w-full items-center px-3 py-2 gap-1")
+                    .style(
+                        f"cursor:pointer;background:{bg};"
+                        f"border-left:2px solid {'#B8935A' if active else 'transparent'};"
+                    )
+                    .on("click", lambda d=domain: _show_domain(d))
+                ):
                     ui.label(domain).style(
                         f"font-size:11px;color:{C_AMBER if active else C_CREAM};"
                         "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                     )
                     ui.label(badge + " " + count_text).style(
-                        f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};"
-                        "white-space:nowrap;"
+                        f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};white-space:nowrap;"
                     )
 
     def _show_domain(domain: str) -> None:
@@ -933,14 +903,11 @@ def _build_wiki_panel(state: GuiState) -> None:
         domain_items = [i for i in _all_items if i.get("domain") == domain]
         if not domain_items:
             with reader:
-                ui.label(f"No articles for {domain}.").style(
-                    f"color:{C_MUTED};font-size:12px;"
-                )
+                ui.label(f"No articles for {domain}.").style(f"color:{C_MUTED};font-size:12px;")
             return
         with reader:
             ui.label(domain).style(
-                f"font-family:{F_SERIF};font-size:20px;font-weight:700;"
-                f"color:{C_CREAM};margin-bottom:4px;"
+                f"font-family:{F_SERIF};font-size:20px;font-weight:700;color:{C_CREAM};margin-bottom:4px;"
             )
             for item in domain_items:
                 _render_article_card(item)
@@ -955,13 +922,15 @@ def _build_wiki_panel(state: GuiState) -> None:
 
         expanded_state: list[bool] = [False]
 
-        with ui.card().classes("w-full").style(
-            f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
-            f"border-radius:{R_LG};padding:0;margin-bottom:12px;"
+        with (
+            ui.card()
+            .classes("w-full")
+            .style(
+                f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
+                f"border-radius:{R_LG};padding:0;margin-bottom:12px;"
+            )
         ):
-            with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(
-                f"border-bottom:.5px solid {C_INK40};"
-            ):
+            with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(f"border-bottom:.5px solid {C_INK40};"):
                 st_color = C_OK_FG if st == "APPROVED" else C_WARN_FG
                 ui.label(st or "—").style(
                     f"font-size:9px;background:{C_OK_BG if st == 'APPROVED' else C_WARN_BG};"
@@ -969,38 +938,25 @@ def _build_wiki_panel(state: GuiState) -> None:
                     "font-family:{F_MONO};font-weight:700;"
                 )
                 uid_short = (kid[:24] + "…") if len(kid) > 24 else kid
-                ui.label(uid_short).style(
-                    f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};"
-                )
+                ui.label(uid_short).style(f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};")
                 ui.space()
-                ui.label(f"{word_count} words").style(
-                    f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};"
-                )
+                ui.label(f"{word_count} words").style(f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};")
 
             preview_col = ui.column().classes("w-full px-3 py-2")
             with preview_col:
                 preview = (content_text[:300] + "…") if len(content_text) > 300 else content_text
-                ui.label(preview or "(empty)").style(
-                    f"font-size:12px;color:{C_CREAM};line-height:1.5;"
-                )
+                ui.label(preview or "(empty)").style(f"font-size:12px;color:{C_CREAM};line-height:1.5;")
 
             full_col = ui.column().classes("w-full px-3 py-2").style("display:none;")
             with full_col:
-                ui.markdown(content_text or "(no content)").style(
-                    f"font-size:13px;color:{C_CREAM};line-height:1.7;"
-                )
+                ui.markdown(content_text or "(no content)").style(f"font-size:13px;color:{C_CREAM};line-height:1.7;")
 
-            with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(
-                f"border-top:.5px solid {C_INK40};"
-            ):
-                ui.label(
-                    f"generated: {created}"
-                    + (f"  ·  approved: {approved_at}" if st == "APPROVED" else "")
-                ).style(f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};")
-                ui.space()
-                expand_btn = ui.button("EXPAND ↓").props("dense flat").style(
-                    btn_ghost()
+            with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(f"border-top:.5px solid {C_INK40};"):
+                ui.label(f"generated: {created}" + (f"  ·  approved: {approved_at}" if st == "APPROVED" else "")).style(
+                    f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};"
                 )
+                ui.space()
+                expand_btn = ui.button("EXPAND ↓").props("dense flat").style(btn_ghost())
 
             def _toggle(fc=full_col, pc=preview_col, es=expanded_state, btn=expand_btn) -> None:
                 es[0] = not es[0]
@@ -1022,9 +978,7 @@ def _build_wiki_panel(state: GuiState) -> None:
         _current_domain[0] = ""
 
         with domain_list:
-            ui.label("Loading…").style(
-                f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};padding:8px;"
-            )
+            ui.label("Loading…").style(f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};padding:8px;")
 
         result = await state.api_client.list_wiki_articles()
         if isinstance(result, dict):
@@ -1033,13 +987,9 @@ def _build_wiki_panel(state: GuiState) -> None:
         _render_domain_list()
         with reader:
             if _all_items:
-                ui.label("Select a domain.").style(
-                    f"color:{C_MUTED};font-size:12px;"
-                )
+                ui.label("Select a domain.").style(f"color:{C_MUTED};font-size:12px;")
             else:
-                ui.label("No wiki articles yet.").style(
-                    f"color:{C_MUTED};font-size:12px;"
-                )
+                ui.label("No wiki articles yet.").style(f"color:{C_MUTED};font-size:12px;")
 
     search_inp.on("keyup", lambda e: _render_domain_list(search_inp.value))
     refresh_btn.on("click", lambda: asyncio.create_task(_load()))
@@ -1047,6 +997,7 @@ def _build_wiki_panel(state: GuiState) -> None:
 
 
 # ── GRAPH PANEL ──────────────────────────────────────────────────────
+
 
 def _build_graph_panel(state: GuiState) -> None:
     """GRAPH tab — Cytoscape iframe + postMessage node-detail side panel.
@@ -1057,9 +1008,7 @@ def _build_graph_panel(state: GuiState) -> None:
 
     _selected_node: list[dict] = [{}]
 
-    with ui.row().classes("w-full").style(
-        f"flex:1;min-height:0;background:{C_GROUND};position:relative;"
-    ):
+    with ui.row().classes("w-full").style(f"flex:1;min-height:0;background:{C_GROUND};position:relative;"):
         # Graph area — iframe when data exists, placeholder when empty
         iframe_col = ui.column().classes("flex-1").style("min-height:0;")
 
@@ -1081,25 +1030,23 @@ def _build_graph_panel(state: GuiState) -> None:
                     ui.html(
                         f'<iframe id="graph-iframe" '
                         f'src="{_gv_url}" '
-                        f'style="width:100%;height:100%;min-height:560px;'
+                        f'style="width:100%;height:640px;'
                         f'border:none;background:#141414;">'
-                        f'</iframe>'
+                        f"</iframe>"
                     )
                 else:
                     # Placeholder — no graph data yet
-                    with ui.column().classes("w-full items-center justify-center").style(
-                        "padding:48px;flex:1;"
-                    ):
+                    with ui.column().classes("w-full items-center justify-center").style("padding:48px;flex:1;"):
                         ui.icon("hub", size="48px").style(f"color:{C_INK60};")
                         ui.label("Knowledge graph visualization coming in Phase 4.").style(
                             f"font-size:14px;color:{C_MUTED};margin-top:16px;"
                         )
                         ui.html(
                             f'<span style="font-size:12px;color:{C_INK60};font-family:{F_MONO};">'
-                            f'Graph data: <b>{node_count}</b> entities, '
-                            f'<b>{edge_count}</b> edges available via '
-                            f'<code>/api/v1/graph</code>'
-                            f'</span>'
+                            f"Graph data: <b>{node_count}</b> entities, "
+                            f"<b>{edge_count}</b> edges available via "
+                            f"<code>/api/v1/graph</code>"
+                            f"</span>"
                         ).style("margin-top:8px;")
 
         asyncio.create_task(_load_graph())
@@ -1111,8 +1058,8 @@ def _build_graph_panel(state: GuiState) -> None:
             "padding:0;"
         )
 
-    detail_content = ui.column().classes("px-4 py-3 gap-2").style(
-        f"min-width:280px;background:{C_SURFACE};overflow-y:auto;"
+    detail_content = (
+        ui.column().classes("px-4 py-3 gap-2").style(f"min-width:280px;background:{C_SURFACE};overflow-y:auto;")
     )
     detail_panel.move(detail_panel)  # no-op; content added below
 
@@ -1123,8 +1070,7 @@ def _build_graph_panel(state: GuiState) -> None:
             data = {"error": str(exc)}
 
         detail_panel.style(
-            f"width:300px;overflow:visible;background:{C_SURFACE};"
-            f"border-left:0.5px solid {C_INK40};padding:0;"
+            f"width:300px;overflow:visible;background:{C_SURFACE};border-left:0.5px solid {C_INK40};padding:0;"
         )
         detail_content.clear()
         detail_content.move(detail_panel)
@@ -1134,14 +1080,10 @@ def _build_graph_panel(state: GuiState) -> None:
                 ui.label("NODE DETAIL").style(
                     f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};flex:1;"
                 )
-                ui.button(icon="close").props("dense flat round").style(
-                    f"color:{C_MUTED};"
-                ).on("click", _close_detail)
+                ui.button(icon="close").props("dense flat round").style(f"color:{C_MUTED};").on("click", _close_detail)
 
             if data.get("error"):
-                ui.label(f"Error: {data['error']}").style(
-                    f"color:{C_ERR_FG};font-size:11px;"
-                )
+                ui.label(f"Error: {data['error']}").style(f"color:{C_ERR_FG};font-size:11px;")
                 return
 
             # Node info from neighbors response
@@ -1158,12 +1100,8 @@ def _build_graph_panel(state: GuiState) -> None:
 
             def _field(k: str, v: str) -> None:
                 with ui.row().classes("w-full items-baseline gap-2"):
-                    ui.label(k + ":").style(
-                        f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};min-width:80px;"
-                    )
-                    ui.label(v).style(
-                        f"font-size:11px;color:{C_CREAM};font-family:{F_MONO};"
-                    )
+                    ui.label(k + ":").style(f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};min-width:80px;")
+                    ui.label(v).style(f"font-size:11px;color:{C_CREAM};font-family:{F_MONO};")
 
             _field("ID", node_id)
             _field("Type", sel.get("entity_type", "—"))
@@ -1181,8 +1119,7 @@ def _build_graph_panel(state: GuiState) -> None:
                         label = nb.get("label") or nb.get("id", "")
                         nb_id = nb.get("id", "")
                         ui.button(label).props("dense").style(
-                            f"background:{C_RAISED};color:{C_AMBER};"
-                            "font-size:10px;padding:2px 6px;border-radius:3px;"
+                            f"background:{C_RAISED};color:{C_AMBER};font-size:10px;padding:2px 6px;border-radius:3px;"
                         ).on("click", lambda nid=nb_id: _navigate_node(nid))
 
     def _navigate_node(node_id: str) -> None:
@@ -1203,19 +1140,20 @@ def _build_graph_panel(state: GuiState) -> None:
             }
         });
     """)
-    ui.on("graph_node_selected", lambda e: asyncio.create_task(
-        _show_node(e.args.get("node_id", "") if hasattr(e, "args") else "")
-    ))
+    ui.on(
+        "graph_node_selected",
+        lambda e: asyncio.create_task(_show_node(e.args.get("node_id", "") if hasattr(e, "args") else "")),
+    )
 
 
 # ── COHORT PANEL ─────────────────────────────────────────────────────
 
 _COHORT_MODELS = [
-    {"id": "anthropic/claude-sonnet-4-6",       "label": "Claude Sonnet 4.6",    "price": "$1.50/1M",  "tag": "claude"},
-    {"id": "deepseek/deepseek-r1",               "label": "DeepSeek R1",           "price": "$0.55/1M",  "tag": "deepseek"},
-    {"id": "openai/gpt-4o-mini",                 "label": "GPT-4o Mini",           "price": "$0.15/1M",  "tag": "openai"},
-    {"id": "google/gemini-2.0-flash-001",        "label": "Gemini 2.0 Flash",      "price": "$0.10/1M",  "tag": "gemini"},
-    {"id": "x-ai/grok-3-mini",                   "label": "Grok 3 Mini",           "price": "$0.30/1M",  "tag": "grok"},
+    {"id": "anthropic/claude-sonnet-4-6", "label": "Claude Sonnet 4.6", "price": "$1.50/1M", "tag": "claude"},
+    {"id": "deepseek/deepseek-r1", "label": "DeepSeek R1", "price": "$0.55/1M", "tag": "deepseek"},
+    {"id": "openai/gpt-4o-mini", "label": "GPT-4o Mini", "price": "$0.15/1M", "tag": "openai"},
+    {"id": "google/gemini-2.0-flash-001", "label": "Gemini 2.0 Flash", "price": "$0.10/1M", "tag": "gemini"},
+    {"id": "x-ai/grok-3-mini", "label": "Grok 3 Mini", "price": "$0.30/1M", "tag": "grok"},
 ]
 
 _COHORT_SYNTH_OPTS = [
@@ -1230,37 +1168,38 @@ _MOCK_COHORT_RESULT = {
         {
             "model": "anthropic/claude-sonnet-4-6",
             "content": "The NBCM (Null-Boundary Constraint Manifold) framework posits that "
-                       "physical laws emerge from boundary conditions on null hypersurfaces...",
+            "physical laws emerge from boundary conditions on null hypersurfaces...",
         },
         {
             "model": "deepseek/deepseek-r1",
             "content": "NBCM is a theoretical physics framework developed by Moses Jorgensen "
-                       "proposing that spacetime structure arises from constraints at null boundaries...",
+            "proposing that spacetime structure arises from constraints at null boundaries...",
         },
     ],
     "synthesis": "Both models agree that NBCM is a framework relating null boundary conditions "
-                 "to physical law, with emphasis on the exclusion zone connection.",
+    "to physical law, with emphasis on the exclusion zone connection.",
 }
 
 
 def _build_cohort_panel(state: GuiState) -> None:
     """COHORT tab — multi-model synthesis scaffold (Phase 3); backend stubbed."""
 
-    with ui.column().classes("w-full px-5 py-4 gap-3").style(
-        f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:0;max-width:860px;"
+    with (
+        ui.column()
+        .classes("w-full px-5 py-4 gap-3")
+        .style(f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:0;max-width:860px;")
     ):
-        ui.label("COHORT SYNTHESIS").style(
-            f"font-family:{F_SERIF};font-size:18px;font-weight:700;color:{C_CREAM};"
-        )
+        ui.label("COHORT SYNTHESIS").style(f"font-family:{F_SERIF};font-size:18px;font-weight:700;color:{C_CREAM};")
         ui.label("Ask a question across multiple models simultaneously.").style(
             f"font-size:12px;color:{C_MUTED};margin-top:-8px;"
         )
 
         # Question input
-        question_inp = ui.textarea(placeholder="Enter your question for the cohort…").props(
-            "outlined dense rows=3"
-        ).classes("w-full").style(
-            f"background:{C_SURFACE};color:{C_CREAM};font-size:13px;"
+        question_inp = (
+            ui.textarea(placeholder="Enter your question for the cohort…")
+            .props("outlined dense rows=3")
+            .classes("w-full")
+            .style(f"background:{C_SURFACE};color:{C_CREAM};font-size:13px;")
         )
 
         # Model selector
@@ -1272,37 +1211,40 @@ def _build_cohort_panel(state: GuiState) -> None:
 
         with ui.column().classes("gap-1"):
             for m in _COHORT_MODELS:
-                with ui.row().classes("items-center gap-3").style(
-                    f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
-                    f"border-radius:{R_LG};padding:6px 10px;"
+                with (
+                    ui.row()
+                    .classes("items-center gap-3")
+                    .style(
+                        f"background:{C_SURFACE};border:0.5px solid {C_RAISED};border-radius:{R_LG};padding:6px 10px;"
+                    )
                 ):
-                    cb = ui.checkbox(
-                        value=m["id"] in selected_models,
-                    ).props("dense").style(f"color:{C_AMBER};")
+                    cb = (
+                        ui.checkbox(
+                            value=m["id"] in selected_models,
+                        )
+                        .props("dense")
+                        .style(f"color:{C_AMBER};")
+                    )
                     checkboxes[m["id"]] = cb
-                    ui.label(m["label"]).style(
-                        f"font-size:12px;color:{C_CREAM};min-width:160px;"
-                    )
-                    ui.label(m["price"]).style(
-                        f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};min-width:80px;"
-                    )
-                    ui.label(f"[{m['tag']}]").style(
-                        f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};"
-                    )
+                    ui.label(m["label"]).style(f"font-size:12px;color:{C_CREAM};min-width:160px;")
+                    ui.label(m["price"]).style(f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};min-width:80px;")
+                    ui.label(f"[{m['tag']}]").style(f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};")
 
         # Synthesis model + estimated cost
         with ui.row().classes("w-full items-center gap-4"):
             ui.label("Synthesis model:").style(f"font-size:12px;color:{C_MUTED};")
-            synth_select = ui.select(_COHORT_SYNTH_OPTS, value=_COHORT_SYNTH_OPTS[0]).props(
-                "dense outlined"
-            ).classes("min-w-[260px]")
-            cost_lbl = ui.label("Estimated cost: ~$0.03").style(
-                f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};"
+            synth_select = (
+                ui.select(_COHORT_SYNTH_OPTS, value=_COHORT_SYNTH_OPTS[0])
+                .props("dense outlined")
+                .classes("min-w-[260px]")
             )
+            cost_lbl = ui.label("Estimated cost: ~$0.03").style(f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};")
 
         # ASK button
-        ask_btn = ui.button("ASK COHORT").props("flat").style(
-            btn_primary() + "font-size:12px;font-weight:700;letter-spacing:.5px;padding:8px 24px;"
+        ask_btn = (
+            ui.button("ASK COHORT")
+            .props("flat")
+            .style(btn_primary() + "font-size:12px;font-weight:700;letter-spacing:.5px;padding:8px 24px;")
         )
 
         ui.separator().style(f"background:{C_INK40};margin:4px 0;")
@@ -1328,9 +1270,7 @@ def _build_cohort_panel(state: GuiState) -> None:
             def _clear_and_show_loading() -> None:
                 results_col.clear()
                 with results_col:
-                    ui.label("Querying cohort…").style(
-                        f"color:{C_MUTED};font-size:12px;font-family:{F_MONO};"
-                    )
+                    ui.label("Querying cohort…").style(f"color:{C_MUTED};font-size:12px;font-family:{F_MONO};")
 
             if state.client:
                 with state.client:
@@ -1350,13 +1290,16 @@ def _build_cohort_panel(state: GuiState) -> None:
                         f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
                     )
                     for resp in result.get("responses", []):
-                        with ui.card().classes("w-full").style(
-                            f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
-                            f"border-radius:{R_LG};padding:10px 14px;"
+                        with (
+                            ui.card()
+                            .classes("w-full")
+                            .style(
+                                f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
+                                f"border-radius:{R_LG};padding:10px 14px;"
+                            )
                         ):
                             ui.label(resp.get("model", "")).style(
-                                f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};"
-                                "margin-bottom:4px;"
+                                f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};margin-bottom:4px;"
                             )
                             ui.markdown(resp.get("content", "")).style(
                                 f"font-size:12px;color:{C_CREAM};line-height:1.6;"
@@ -1367,13 +1310,15 @@ def _build_cohort_panel(state: GuiState) -> None:
                         ui.label("SYNTHESIS").style(
                             f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
                         )
-                        with ui.card().classes("w-full").style(
-                            f"background:{C_RAISED};border:0.5px solid {C_AMBER};"
-                            f"border-radius:{R_LG};padding:10px 14px;"
-                        ):
-                            ui.markdown(result["synthesis"]).style(
-                                f"font-size:13px;color:{C_CREAM};line-height:1.6;"
+                        with (
+                            ui.card()
+                            .classes("w-full")
+                            .style(
+                                f"background:{C_RAISED};border:0.5px solid {C_AMBER};"
+                                f"border-radius:{R_LG};padding:10px 14px;"
                             )
+                        ):
+                            ui.markdown(result["synthesis"]).style(f"font-size:13px;color:{C_CREAM};line-height:1.6;")
 
                     ui.label("[Phase 3: wire POST /api/v1/cohort/synthesize]").style(
                         f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};margin-top:4px;"
@@ -1390,6 +1335,7 @@ def _build_cohort_panel(state: GuiState) -> None:
 
 # ── CHAT PANEL ────────────────────────────────────────────────────────
 
+
 def _build_chat_panel(
     mode: str,
     state: GuiState,
@@ -1399,12 +1345,13 @@ def _build_chat_panel(
     """Build chat panel. Send uses direct OpenRouter in 0B; WebSocket wired in 0C."""
     is_aug = mode == "augmented"
 
-    with ui.row().classes("w-full items-center px-4 py-2 gap-2").style(
-        f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};"
+    with (
+        ui.row()
+        .classes("w-full items-center px-4 py-2 gap-2")
+        .style(f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};")
     ):
         ui.label("AUGMENTED" if is_aug else "CHAT").style(
-            f"font-size:11px;font-weight:600;letter-spacing:1px;"
-            f"color:{C_CREAM};"
+            f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_CREAM};"
         )
         if is_aug:
             ui.label("INGESTED DATA").style(
@@ -1415,12 +1362,12 @@ def _build_chat_panel(
         cur = get_role_model("synthesis")
         if not cur or cur not in opts:
             cur = opts[0] if opts else ""
-        ui.select(opts, value=cur, on_change=lambda e: on_chat_model_changed(e.value)).props(
-            "dense"
-        ).classes("min-w-[200px]")
+        ui.select(opts, value=cur, on_change=lambda e: on_chat_model_changed(e.value)).props("dense").classes(
+            "min-w-[200px]"
+        )
 
-    msgs = ui.column().classes("w-full px-4 py-2").style(
-        f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:320px;"
+    msgs = (
+        ui.column().classes("w-full px-4 py-2").style(f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:320px;")
     )
     with msgs:
         ok = state.backend_reachable and state.api_client.has_openrouter_api_key()
@@ -1430,13 +1377,13 @@ def _build_chat_panel(
             + (" · API key set" if state.api_client.has_openrouter_api_key() else " · API key missing")
         ).style(f"color:{C_OK_FG if ok else C_WARN_FG};font-size:11px;padding:8px;")
 
-    with ui.row().classes("w-full items-center px-4 py-2 gap-2").style(
-        f"border-top:.5px solid {C_INK40};background:{C_SURFACE};"
+    with (
+        ui.row()
+        .classes("w-full items-center px-4 py-2 gap-2")
+        .style(f"border-top:.5px solid {C_INK40};background:{C_SURFACE};")
     ):
         fld = ui.input(placeholder="Ask anything...").props("outlined dense").classes("flex-grow")
-        btn = ui.button("SEND").props("flat").style(
-            btn_primary()
-        )
+        btn = ui.button("SEND").props("flat").style(btn_primary())
 
     def _msg(role: str, text: str, model: str | None = None, lat: int | None = None) -> None:
         with msgs:
@@ -1444,9 +1391,9 @@ def _build_chat_panel(
                 lbl = (model or "Assistant") if role == "assistant" else "You"
                 ui.html(
                     f'<span style="color:{C_MUTED};font-size:11px;font-weight:600;">'
-                    f'{lbl}'
-                    f'{f"  ({lat}ms)" if lat else ""}'
-                    f'</span>'
+                    f"{lbl}"
+                    f"{f'  ({lat}ms)' if lat else ''}"
+                    f"</span>"
                 )
             with ui.row().classes("w-full"):
                 ui.markdown(text).style(
@@ -1458,9 +1405,7 @@ def _build_chat_panel(
     def _sys(text: str) -> None:
         with msgs:
             with ui.row().classes("w-full justify-center"):
-                ui.label(text).style(
-                    f"color:{C_MUTED};font-size:10px;font-family:{F_MONO};padding:2px 0;"
-                )
+                ui.label(text).style(f"color:{C_MUTED};font-size:10px;font-family:{F_MONO};padding:2px 0;")
 
     async def _send() -> None:
         prompt = fld.value.strip()
@@ -1476,9 +1421,7 @@ def _build_chat_panel(
             # Check that we have a valid project before asking
             if not state.current_project:
                 think.delete()
-                _sys(
-                    "No project found. Run: aip project create --name default"
-                )
+                _sys("No project found. Run: aip project create --name default")
                 ui.notify(
                     "No project found. Run: aip project create --name default",
                     color="warning",
@@ -1530,10 +1473,14 @@ def _build_chat_panel(
                             title = src.get("title", "")
                             snippet = src.get("content_snippet", "")
                             score = src.get("score", 0)
-                            with ui.row().classes("w-full aip-source-card").style(
-                                f"background:{C_SURFACE};border:0.5px solid {C_INK40};"
-                                f"border-radius:{R_SM};padding:6px 10px;margin:2px 0;"
-                                f"max-width:85%;"
+                            with (
+                                ui.row()
+                                .classes("w-full aip-source-card")
+                                .style(
+                                    f"background:{C_SURFACE};border:0.5px solid {C_INK40};"
+                                    f"border-radius:{R_SM};padding:6px 10px;margin:2px 0;"
+                                    f"max-width:85%;"
+                                )
                             ):
                                 with ui.column().classes("w-full").style("gap:2px;"):
                                     hdr_parts = []
@@ -1608,6 +1555,7 @@ def _build_chat_panel(
 
 
 # ── SHELL PAGE ────────────────────────────────────────────────────────
+
 
 @ui.page("/")
 async def main_page() -> None:
@@ -1737,8 +1685,7 @@ async def main_page() -> None:
 
     # ── TOPBAR ──────────────────────────────────────────────────────
     with ui.header().style(
-        f"background:{C_GROUND};border-bottom:0.5px solid {C_INK40};"
-        "padding:0 12px;min-height:40px;"
+        f"background:{C_GROUND};border-bottom:0.5px solid {C_INK40};padding:0 12px;min-height:40px;"
     ):
         with ui.row().classes("items-center w-full gap-1").style("height:40px"):
             ui.html(_AIP_MARK)
@@ -1747,35 +1694,31 @@ async def main_page() -> None:
                 f"color:{C_CREAM};letter-spacing:-0.5px;margin-right:10px;"
             )
 
-            tabs = ui.tabs(value="chat", on_change=lambda e: _on_tab(e.value)).props(
-                "dense no-caps align=left"
-            ).style(f"color:{C_MUTED};")
+            tabs = (
+                ui.tabs(value="chat", on_change=lambda e: _on_tab(e.value))
+                .props("dense no-caps align=left")
+                .style(f"color:{C_MUTED};")
+            )
             with tabs:
-                ui.tab("chat",      label="CHAT")
+                ui.tab("chat", label="CHAT")
                 ui.tab("augmented", label="AUGMENTED")
-                ui.tab("cohort",    label="COHORT")
-                ui.tab("review",    label="REVIEW")
-                ui.tab("wiki",      label="WIKI")
-                ui.tab("corpus",    label="CORPUS")
-                ui.tab("graph",     label="GRAPH")
-                ui.tab("status",    label="STATUS")
+                ui.tab("cohort", label="COHORT")
+                ui.tab("review", label="REVIEW")
+                ui.tab("wiki", label="WIKI")
+                ui.tab("corpus", label="CORPUS")
+                ui.tab("graph", label="GRAPH")
+                ui.tab("status", label="STATUS")
 
             ui.space()
 
             key_set = state.api_client.has_openrouter_api_key()
-            ui.icon("vpn_key", size="xs").style(
-                f"color:{'#4EAA7A' if key_set else '#E07070'};cursor:pointer;"
-            ).on("click", lambda: asyncio.create_task(_show_api_key_prompt())).tooltip(
-                "API key set" if key_set else "API key missing — click to set"
-            )
-            ui.icon("settings", size="xs").style(
-                f"color:{C_MUTED};cursor:pointer;"
-            ).tooltip("Model catalog — stage 0C")
+            ui.icon("vpn_key", size="xs").style(f"color:{'#4EAA7A' if key_set else '#E07070'};cursor:pointer;").on(
+                "click", lambda: asyncio.create_task(_show_api_key_prompt())
+            ).tooltip("API key set" if key_set else "API key missing — click to set")
+            ui.icon("settings", size="xs").style(f"color:{C_MUTED};cursor:pointer;").tooltip("Model catalog — stage 0C")
 
     # ── CONTENT PANELS ──────────────────────────────────────────────
-    with ui.tab_panels(tabs, value="chat").classes("w-full").style(
-        f"flex:1;background:{C_GROUND};min-height:0;"
-    ):
+    with ui.tab_panels(tabs, value="chat").classes("w-full").style(f"flex:1;background:{C_GROUND};min-height:0;"):
         with ui.tab_panel("chat"):
             _build_chat_panel("normal", state, slots, opts)
         with ui.tab_panel("augmented"):
@@ -1794,22 +1737,15 @@ async def main_page() -> None:
             _build_status_panel(state)
 
     # ── STATUS BAR ──────────────────────────────────────────────────
-    with ui.footer().style(
-        f"background:{C_GROUND};border-top:{BORDER};"
-        "height:28px;padding:0 16px;"
-    ):
+    with ui.footer().style(f"background:{C_GROUND};border-top:{BORDER};height:28px;padding:0 16px;"):
         with ui.row().classes("w-full items-center gap-3").style("height:28px"):
             status_dot = ui.html(
                 f'<span style="display:inline-block;width:6px;height:6px;'
                 f'border-radius:50%;background:{C_INK60};"></span>'
             )
-            budget_lbl = ui.label(backend_status).style(
-                f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};"
-            )
+            budget_lbl = ui.label(backend_status).style(f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};")
             ui.space()
-            ui.label("aip_brain · AIP v0.1").style(
-                f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};"
-            )
+            ui.label("aip_brain · AIP v0.1").style(f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};")
 
     asyncio.create_task(refresh_budget_status(budget_lbl, state))
 
