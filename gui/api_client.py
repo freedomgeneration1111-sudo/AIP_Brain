@@ -124,6 +124,27 @@ class AipApiClient:
         data = resp.json()
         return data.get("slots", [])
 
+    async def list_model_library(self, enabled_only: bool = True) -> list[dict[str, Any]]:
+        """Fetch model library from GET /api/v1/models/library.
+
+        Returns a list of model dicts from the enabled_models table.
+        If enabled_only=True, filters to models where enabled=1.
+        Each dict has: model_id, display_name, provider, cost_input/output_per_million,
+        context_length, supports_vision, supports_tools, enabled, etc.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(f"{self.base_url}/api/v1/models/library", timeout=5.0)
+            resp.raise_for_status()
+            data = resp.json()
+            items = data.get("items", [])
+            if enabled_only:
+                return [m for m in items if m.get("enabled") == 1]
+            return items
+        except Exception as exc:
+            log.warning("model_library_fetch_failed: %s", exc)
+            return []
+
     # ------------------------------------------------------------------
     # Session Management
     # ------------------------------------------------------------------

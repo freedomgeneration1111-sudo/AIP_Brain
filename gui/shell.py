@@ -1268,12 +1268,37 @@ def _build_unified_chat_panel(
             f"font-size:10px;color:{C_MUTED};font-weight:500;letter-spacing:0.5px;"
         )
         ui.space()
+        # Model selector: populated from enabled_models (library) when available,
+        # falls back to static slot-based options.
         cur = get_role_model("synthesis")
         if not cur or cur not in opts:
             cur = opts[0] if opts else ""
-        ui.select(opts, value=cur, on_change=lambda e: on_chat_model_changed(e.value)).props("dense").classes(
-            "min-w-[200px]"
+        model_select = (
+            ui.select(opts, value=cur, on_change=lambda e: on_chat_model_changed(e.value))
+            .props("dense")
+            .classes("min-w-[200px]")
         )
+
+    async def _load_model_library() -> None:
+        """Load models from /api/v1/models/library and update selector."""
+        try:
+            models = await state.api_client.list_model_library(enabled_only=True)
+            if models:
+                # Build {model_id: display_label} mapping
+                lib_opts = {
+                    m["model_id"]: f"{m.get('display_name', m['model_id'])}  [{m.get('provider', '?')}]"
+                    for m in models
+                }
+                # Merge with existing opts (library takes priority)
+                combined = dict.fromkeys(list(lib_opts.keys()) + opts)
+                model_select.options = list(combined.keys())
+                # Use model_id as value; prefer current selection if still valid
+                if cur not in model_select.options and model_select.options:
+                    model_select.value = model_select.options[0]
+                # Store library for display names
+                state._model_library = models  # type: ignore[attr-defined]
+        except Exception as exc:
+            log.warning("model_library_load_failed: %s", exc)
 
     def _on_augment_toggle(val: bool) -> None:
         augment_on[0] = val
@@ -1481,6 +1506,9 @@ def _build_unified_chat_panel(
 
     fld.on("keydown.enter", lambda: asyncio.create_task(_send_ctx()))
     btn.on("click", lambda: asyncio.create_task(_send_ctx()))
+
+    # Load model library in background (non-blocking)
+    asyncio.create_task(_load_model_library())
 
 
 # ── SHELL PAGE ────────────────────────────────────────────────────────
