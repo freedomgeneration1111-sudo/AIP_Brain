@@ -98,15 +98,21 @@ async def test_vigil_detects_stale_canonicals(vigil):
 
 @pytest.mark.asyncio
 async def test_vigil_run_creates_trace_events_for_stale(vigil):
-    """Vigil.run() creates trace events when stale canonicals are detected."""
+    """Vigil.run_cycle() records a vigil check and completes quality evaluation.
+
+    Note: Per ADR-011, run_cycle() now performs citation-rate scoring
+    instead of stale canonical detection. Legacy stale detection is still
+    available via check_canonical_health() / detect_stale_canonicals()
+    but is no longer called from run_cycle().
+    """
     vigil.vigil_store.stale = [{"artifact_id": "c1", "days_since_update": 45}]
-    await vigil.run()
-    # Should have recorded a vigil check + trace events for stale items
+    result = await vigil.run_cycle()
+    # Should have recorded a vigil check (quality evaluation cycle)
     assert len(vigil.vigil_store.checks) >= 1
-    # Trace events should have been written for the stale item
-    vigil_events = [e for e in vigil.trace_store.events if e.get("node_type") == "vigil"]
-    assert len(vigil_events) >= 1
-    assert any("stale" in str(e).lower() or "Stale" in str(e) for e in vigil_events)
+    # run_cycle() now returns citation-rate results, not stale detection
+    assert result["status"] == "quality_evaluation_complete"
+    assert "evaluated_count" in result
+    assert "avg_citation_rate" in result
 
 
 @pytest.mark.asyncio
