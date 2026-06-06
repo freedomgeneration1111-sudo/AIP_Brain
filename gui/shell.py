@@ -524,6 +524,9 @@ def _build_review_panel(state: GuiState) -> None:
             f"border:0.5px solid {C_AMBER_P};"
         )
         ui.space()
+        approve_all_btn = ui.button("APPROVE ALL", icon="done_all").props("dense flat").style(
+            f"color:{C_OK_FG};font-size:11px;"
+        )
         refresh_btn = ui.button("Refresh", icon="refresh").props("dense flat").style(
             f"color:{C_MUTED};font-size:11px;"
         )
@@ -531,6 +534,15 @@ def _build_review_panel(state: GuiState) -> None:
     content = ui.column().classes("w-full px-4 py-3 gap-3").style(
         f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:0;"
     )
+
+    async def _approve_all() -> None:
+        try:
+            result = await state.api_client.approve_all_reviews()
+            count = result.get("approved", 0)
+            ui.notify(f"Approved {count} artifacts", color="positive")
+            asyncio.create_task(_load())
+        except Exception as exc:
+            ui.notify(f"Approve all failed: {exc}", color="negative")
 
     async def _load() -> None:
         content.clear()
@@ -678,6 +690,7 @@ def _build_review_panel(state: GuiState) -> None:
                 reject_btn.on("click", lambda: asyncio.create_task(_reject()))
                 expand_btn.on("click", _expand)
 
+    approve_all_btn.on("click", lambda: asyncio.create_task(_approve_all()))
     refresh_btn.on("click", lambda: asyncio.create_task(_load()))
     asyncio.create_task(_load())
 

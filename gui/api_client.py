@@ -923,6 +923,13 @@ class AipApiClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def approve_all_reviews(self) -> dict[str, Any]:
+        """Bulk approve all pending beast artifacts via POST /api/v1/reviews/approve-all."""
+        client = self._get_http_client()
+        resp = await client.post(f"{self.base_url}/api/v1/reviews/approve-all")
+        resp.raise_for_status()
+        return resp.json()
+
     async def trigger_backfill(self, domain: str | None = None, limit: int = 500, batch_size: int = 50, dry_run: bool = False) -> dict[str, Any]:
         """Trigger backfill via POST /api/v1/admin/embeddings/backfill (now non-blocking)."""
         client = self._get_http_client()
