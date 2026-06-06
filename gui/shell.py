@@ -1043,191 +1043,32 @@ def _build_graph_panel(state: GuiState) -> None:
         ).style("margin-top:-12px;")
 
 
-# ── COHORT PANEL ─────────────────────────────────────────────────────
+# ── COHORT PALETTE ────────────────────────────────────────────────────
 
-_COHORT_MODELS = [
-    {"id": "anthropic/claude-sonnet-4-6", "label": "Claude Sonnet 4.6", "price": "$1.50/1M", "tag": "claude"},
-    {"id": "deepseek/deepseek-r1", "label": "DeepSeek R1", "price": "$0.55/1M", "tag": "deepseek"},
-    {"id": "openai/gpt-4o-mini", "label": "GPT-4o Mini", "price": "$0.15/1M", "tag": "openai"},
-    {"id": "google/gemini-2.0-flash-001", "label": "Gemini 2.0 Flash", "price": "$0.10/1M", "tag": "gemini"},
-    {"id": "x-ai/grok-3-mini", "label": "Grok 3 Mini", "price": "$0.30/1M", "tag": "grok"},
-]
-
-_COHORT_SYNTH_OPTS = [
-    "anthropic/claude-sonnet-4-6",
-    "deepseek/deepseek-r1",
-    "google/gemini-2.0-flash-001",
-]
-
-_MOCK_COHORT_RESULT = {
-    "question": "(mock) What is the NBCM framework?",
-    "responses": [
-        {
-            "model": "anthropic/claude-sonnet-4-6",
-            "content": "The NBCM (Null-Boundary Constraint Manifold) framework posits that "
-            "physical laws emerge from boundary conditions on null hypersurfaces...",
-        },
-        {
-            "model": "deepseek/deepseek-r1",
-            "content": "NBCM is a theoretical physics framework developed by Moses Jorgensen "
-            "proposing that spacetime structure arises from constraints at null boundaries...",
-        },
-    ],
-    "synthesis": "Both models agree that NBCM is a framework relating null boundary conditions "
-    "to physical law, with emphasis on the exclusion zone connection.",
+_COHORT_PALETTE: dict[str, str] = {
+    "claude": "#C8956A",
+    "deepseek": "#5B8DEF",
+    "openai": "#6DCB5A",
+    "gemini": "#7C6AE8",
+    "grok": "#E87040",
+    # Fallback for models not in known tags
+    "default": "#B8935A",
 }
 
 
-def _build_cohort_panel(state: GuiState) -> None:
-    """COHORT tab — multi-model synthesis scaffold (Phase 3); backend stubbed."""
+def _model_accent_color(model_id: str) -> str:
+    """Return a per-model accent color based on the model_id's tag.
 
-    with (
-        ui.column()
-        .classes("w-full px-5 py-4 gap-3")
-        .style(f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:0;max-width:860px;")
-    ):
-        ui.label("COHORT SYNTHESIS").style(f"font-family:{F_SERIF};font-size:18px;font-weight:700;color:{C_CREAM};")
-        ui.label("Ask a question across multiple models simultaneously.").style(
-            f"font-size:12px;color:{C_MUTED};margin-top:-8px;"
-        )
-
-        # Question input
-        question_inp = (
-            ui.textarea(placeholder="Enter your question for the cohort…")
-            .props("outlined dense rows=3")
-            .classes("w-full")
-            .style(f"background:{C_SURFACE};color:{C_CREAM};font-size:13px;")
-        )
-
-        # Model selector
-        ui.label("SELECT MODELS  (up to 5)").style(
-            f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
-        )
-        selected_models: set[str] = {"anthropic/claude-sonnet-4-6", "deepseek/deepseek-r1"}
-        checkboxes: dict[str, Any] = {}
-
-        with ui.column().classes("gap-1"):
-            for m in _COHORT_MODELS:
-                with (
-                    ui.row()
-                    .classes("items-center gap-3")
-                    .style(
-                        f"background:{C_SURFACE};border:0.5px solid {C_RAISED};border-radius:{R_LG};padding:6px 10px;"
-                    )
-                ):
-                    cb = (
-                        ui.checkbox(
-                            value=m["id"] in selected_models,
-                        )
-                        .props("dense")
-                        .style(f"color:{C_AMBER};")
-                    )
-                    checkboxes[m["id"]] = cb
-                    ui.label(m["label"]).style(f"font-size:12px;color:{C_CREAM};min-width:160px;")
-                    ui.label(m["price"]).style(f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};min-width:80px;")
-                    ui.label(f"[{m['tag']}]").style(f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};")
-
-        # Synthesis model + estimated cost
-        with ui.row().classes("w-full items-center gap-4"):
-            ui.label("Synthesis model:").style(f"font-size:12px;color:{C_MUTED};")
-            synth_select = (
-                ui.select(_COHORT_SYNTH_OPTS, value=_COHORT_SYNTH_OPTS[0])
-                .props("dense outlined")
-                .classes("min-w-[260px]")
-            )
-            cost_lbl = ui.label("Estimated cost: ~$0.03").style(f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};")
-
-        # ASK button
-        ask_btn = (
-            ui.button("ASK COHORT")
-            .props("flat")
-            .style(btn_primary() + "font-size:12px;font-weight:700;letter-spacing:.5px;padding:8px 24px;")
-        )
-
-        ui.separator().style(f"background:{C_INK40};margin:4px 0;")
-
-        # Results area
-        results_col = ui.column().classes("w-full gap-3")
-
-        async def _ask() -> None:
-            question = question_inp.value.strip()
-            if not question:
-                ui.notify("Enter a question first.", color="warning")
-                return
-
-            chosen = [mid for mid, cb in checkboxes.items() if cb.value]
-            if not chosen:
-                ui.notify("Select at least one model.", color="warning")
-                return
-            if len(chosen) > 5:
-                ui.notify("Maximum 5 models.", color="warning")
-                return
-
-            # Clear previous responses and synthesis before showing new results
-            def _clear_and_show_loading() -> None:
-                results_col.clear()
-                with results_col:
-                    ui.label("Querying cohort…").style(f"color:{C_MUTED};font-size:12px;font-family:{F_MONO};")
-
-            if state.client:
-                with state.client:
-                    _clear_and_show_loading()
-            else:
-                _clear_and_show_loading()
-
-            # Stub — returns mock result; wire POST /api/v1/cohort/synthesize in Phase 3
-            await asyncio.sleep(0.5)
-            result = _MOCK_COHORT_RESULT.copy()
-            result["question"] = question
-
-            def _render_results() -> None:
-                results_col.clear()
-                with results_col:
-                    ui.label("INDIVIDUAL RESPONSES").style(
-                        f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
-                    )
-                    for resp in result.get("responses", []):
-                        with (
-                            ui.card()
-                            .classes("w-full")
-                            .style(
-                                f"background:{C_SURFACE};border:0.5px solid {C_RAISED};"
-                                f"border-radius:{R_LG};padding:10px 14px;"
-                            )
-                        ):
-                            ui.label(resp.get("model", "")).style(
-                                f"font-size:10px;color:{C_AMBER};font-family:{F_MONO};margin-bottom:4px;"
-                            )
-                            ui.markdown(resp.get("content", "")).style(
-                                f"font-size:12px;color:{C_CREAM};line-height:1.6;"
-                            )
-
-                    if result.get("synthesis"):
-                        ui.separator().style(f"background:{C_INK40};margin:8px 0;")
-                        ui.label("SYNTHESIS").style(
-                            f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};"
-                        )
-                        with (
-                            ui.card()
-                            .classes("w-full")
-                            .style(
-                                f"background:{C_RAISED};border:0.5px solid {C_AMBER};"
-                                f"border-radius:{R_LG};padding:10px 14px;"
-                            )
-                        ):
-                            ui.markdown(result["synthesis"]).style(f"font-size:13px;color:{C_CREAM};line-height:1.6;")
-
-                    ui.label("[Phase 3: wire POST /api/v1/cohort/synthesize]").style(
-                        f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};margin-top:4px;"
-                    )
-
-            if state.client:
-                with state.client:
-                    _render_results()
-            else:
-                _render_results()
-
-        ask_btn.on("click", lambda: asyncio.create_task(_ask()))
+    Checks known provider tags in _COHORT_PALETTE; falls back to
+    'default' (C_AMBER) if no tag matches.
+    """
+    mid_lower = model_id.lower()
+    for tag, color in _COHORT_PALETTE.items():
+        if tag == "default":
+            continue
+        if tag in mid_lower:
+            return color
+    return _COHORT_PALETTE["default"]
 
 
 # ── UNIFIED CHAT PANEL ──────────────────────────────────────────────────
@@ -1243,7 +1084,7 @@ def _build_unified_chat_panel(
     Per AIP_UNIFIED_CHAT_SPEC §Mode Logic:
       - augment OFF + 1 model = BARE (direct LLM call)
       - augment ON + 1 model = AUGMENTED (backend retrieval + synthesis)
-    COHORT mode (multi-model) is Phase 3.
+      - >1 model selected = COHORT (parallel dispatch to all selected models)
     """
     # Track augment state (toggle drives dispatch path)
     augment_on: list[bool] = [state.current_mode == "augmented"]
@@ -1319,15 +1160,18 @@ def _build_unified_chat_panel(
             .classes("min-w-[130px]")
         )
         ui.space()
-        # Model selector: populated from enabled_models (library) when available,
-        # falls back to static slot-based options.
+        # Model selector: multi-select from enabled_models (library) when available,
+        # falls back to static slot-based options. Multiple selection triggers COHORT mode.
         cur = get_role_model("synthesis")
         if not cur or cur not in opts:
             cur = opts[0] if opts else ""
+        # Track selected models for cohort dispatch
+        selected_model_ids: list[list[str]] = [[cur]]
         model_select = (
-            ui.select(opts, value=cur, on_change=lambda e: on_chat_model_changed(e.value))
-            .props("dense")
-            .classes("min-w-[200px]")
+            ui.select(opts, value=[cur], multiple=True, on_change=lambda e: _on_model_select(e.value))
+            .props("dense use-chips")
+            .classes("min-w-[260px]")
+            .style("max-width:500px;")
         )
 
     async def _load_model_library() -> None:
@@ -1335,21 +1179,63 @@ def _build_unified_chat_panel(
         try:
             models = await state.api_client.list_model_library(enabled_only=True)
             if models:
-                # Build {model_id: display_label} mapping
-                lib_opts = {
-                    m["model_id"]: f"{m.get('display_name', m['model_id'])}  [{m.get('provider', '?')}]"
-                    for m in models
-                }
                 # Merge with existing opts (library takes priority)
-                combined = dict.fromkeys(list(lib_opts.keys()) + opts)
+                combined = dict.fromkeys([m["model_id"] for m in models] + opts)
                 model_select.options = list(combined.keys())
-                # Use model_id as value; prefer current selection if still valid
-                if cur not in model_select.options and model_select.options:
-                    model_select.value = model_select.options[0]
+                # For multi-select: keep current selection if still valid
+                current = selected_model_ids[0]
+                valid = [m for m in current if m in model_select.options]
+                if not valid and model_select.options:
+                    valid = [model_select.options[0]]
+                selected_model_ids[0] = valid
+                model_select.value = valid
                 # Store library for display names
                 state._model_library = models  # type: ignore[attr-defined]
         except Exception as exc:
             log.warning("model_library_load_failed: %s", exc)
+
+    def _on_model_select(selected: list[str]) -> None:
+        """Handle model selection change (multi-select)."""
+        if not selected:
+            # Don't allow empty selection — keep at least one
+            selected = selected_model_ids[0] or [opts[0]] if opts else []
+            if selected:
+                model_select.value = selected
+        # Cap at 5 models
+        if len(selected) > 5:
+            selected = selected[:5]
+            model_select.value = selected
+            ui.notify("Maximum 5 models per cohort", color="warning", timeout=3000)
+        selected_model_ids[0] = selected
+        # Update primary synthesis slot
+        if selected:
+            set_role_model("synthesis", selected[0])
+        _update_mode_chip()
+
+    def _update_mode_chip() -> None:
+        """Update mode status chip based on model count and augment toggle."""
+        n = len(selected_model_ids[0])
+        if n > 1:
+            mode_chip.text = f"COHORT \u00b7 {n} models"
+            mode_chip.style(
+                f"font-size:9px;font-weight:700;letter-spacing:1px;"
+                f"padding:2px 8px;border-radius:3px;"
+                f"background:#7C6AE8;color:{C_CREAM};"
+            )
+        elif augment_on[0]:
+            mode_chip.text = "AUGMENTED"
+            mode_chip.style(
+                f"font-size:9px;font-weight:700;letter-spacing:1px;"
+                f"padding:2px 8px;border-radius:3px;"
+                f"background:{C_AMBER};color:{C_GROUND};"
+            )
+        else:
+            mode_chip.text = "BARE"
+            mode_chip.style(
+                f"font-size:9px;font-weight:700;letter-spacing:1px;"
+                f"padding:2px 8px;border-radius:3px;"
+                f"background:{C_INK40};color:{C_CREAM};"
+            )
 
     def _on_mode_change(mode: str) -> None:
         current_chat_mode[0] = mode
@@ -1366,21 +1252,10 @@ def _build_unified_chat_panel(
     def _on_augment_toggle(val: bool) -> None:
         augment_on[0] = val
         if val:
-            mode_chip.text = "AUGMENTED"
-            mode_chip.style(
-                f"font-size:9px;font-weight:700;letter-spacing:1px;"
-                f"padding:2px 8px;border-radius:3px;"
-                f"background:{C_AMBER};color:{C_GROUND};"
-            )
             state.current_mode = "augmented"
         else:
-            mode_chip.text = "BARE"
-            mode_chip.style(
-                f"font-size:9px;font-weight:700;letter-spacing:1px;"
-                f"padding:2px 8px;border-radius:3px;"
-                f"background:{C_INK40};color:{C_CREAM};"
-            )
             state.current_mode = "normal"
+        _update_mode_chip()
         state.reset_session()
 
     # Beast pane state
@@ -1561,12 +1436,73 @@ def _build_unified_chat_panel(
         # Get the mode modifier text for the current mode
         mode_modifier = _MODE_MODIFIERS.get(current_chat_mode[0], "")
 
+        # Determine dispatch path based on model count
+        active_models = selected_model_ids[0]
+        is_cohort = len(active_models) > 1
+
         _msg("user", prompt)
         fld.value = ""
         with msgs:
-            think = ui.label("Thinking...").style(f"color:{C_MUTED};font-size:12px;")
+            think = ui.label(
+                f"Waiting for {len(active_models)} model(s)..."
+                if is_cohort
+                else "Thinking..."
+            ).style(f"color:{C_MUTED};font-size:12px;")
 
-        if augment_on[0]:
+        if is_cohort:
+            # ── COHORT MODE: parallel dispatch to all selected models ──
+            try:
+                r = await state.api_client.cohort_dispatch(
+                    query=prompt,
+                    model_ids=active_models,
+                    augmented=augment_on[0],
+                    mode_modifier=mode_modifier,
+                )
+                think.delete()
+                if r.get("error"):
+                    _sys(f"cohort error: {r.get('error', '?')}")
+                    ui.notify(f"Cohort dispatch failed: {r.get('error', '?')}", color="negative")
+                    return
+                responses = r.get("responses", [])
+                if not responses:
+                    _sys("cohort returned no responses")
+                    return
+                # Render per-model response cards with distinct left-border colors
+                with msgs:
+                    for resp in responses:
+                        mid = resp.get("model_id", "?")
+                        accent = _model_accent_color(mid)
+                        dname = resp.get("display_name", mid)
+                        with ui.row().classes("w-full"):
+                            ui.html(
+                                f'<span style="color:{accent};font-size:11px;'
+                                f'font-weight:600;">{dname}</span>'
+                            )
+                        with (
+                            ui.row()
+                            .classes("w-full")
+                        ):
+                            text = resp.get("response_text") or resp.get("error", "(no response)")
+                            ui.markdown(text).style(
+                                f"background:{C_SURFACE};"
+                                f"border:0.5px solid {C_INK40};"
+                                f"border-left:3px solid {accent};"
+                                f"border-radius:{R_LG};"
+                                f"padding:8px 10px;max-width:80%;"
+                                f"font-size:13px;color:{C_CREAM};"
+                            ).classes("aip-msg-bubble")
+                        lat = resp.get("elapsed_ms", 0)
+                        if lat:
+                            _sys(f"{dname}: {lat}ms")
+                # Fire Beast corpus scan (non-blocking, AFTER response)
+                if beast_visible[0]:
+                    asyncio.create_task(_beast_scan(prompt))
+            except Exception as exc:
+                think.delete()
+                _sys(f"cohort failed: {exc}")
+                ui.notify(f"Cohort dispatch failed: {exc}", color="negative")
+
+        elif augment_on[0]:
             # ── AUGMENTED MODE: POST to /api/v1/ask via backend ──
             # Check that we have a valid project before asking
             if not state.current_project:
@@ -1657,7 +1593,7 @@ def _build_unified_chat_panel(
                 _sys(f"augmented ask failed: {exc}")
                 ui.notify(f"Augmented ask failed: {exc}", color="negative")
         else:
-            # ── CHAT MODE: direct OpenRouter (existing path) ──
+            # ── BARE MODE: direct OpenRouter (existing path) ──
             model = get_role_model("synthesis")
             if not model or model.startswith("("):
                 sel = get_selected_models()
@@ -1855,7 +1791,6 @@ async def main_page() -> None:
             )
             with tabs:
                 ui.tab("chat", label="CHAT")
-                ui.tab("cohort", label="COHORT")
                 ui.tab("review", label="REVIEW")
                 ui.tab("wiki", label="WIKI")
                 ui.tab("corpus", label="CORPUS")
@@ -1874,8 +1809,6 @@ async def main_page() -> None:
     with ui.tab_panels(tabs, value="chat").classes("w-full").style(f"flex:1;background:{C_GROUND};min-height:0;"):
         with ui.tab_panel("chat"):
             _build_unified_chat_panel(state, slots, opts)
-        with ui.tab_panel("cohort"):
-            _build_cohort_panel(state)
         with ui.tab_panel("review"):
             _build_review_panel(state)
         with ui.tab_panel("wiki"):
