@@ -637,6 +637,23 @@ class AipApiClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def list_wiki_articles(
+        self,
+        *,
+        state: str | None = None,
+        domain: str | None = None,
+    ) -> dict[str, Any]:
+        """List wiki articles from artifacts + ecs_state via GET /api/v1/wiki/articles."""
+        client = self._get_http_client()
+        params: dict[str, str] = {}
+        if state:
+            params["state"] = state
+        if domain:
+            params["domain"] = domain
+        resp = await client.get(f"{self.base_url}/api/v1/wiki/articles", params=params)
+        resp.raise_for_status()
+        return resp.json()
+
     async def get_knowledge(self, knowledge_id: str) -> dict[str, Any]:
         """Get a specific knowledge item via GET /api/v1/knowledge/{id}."""
         client = self._get_http_client()

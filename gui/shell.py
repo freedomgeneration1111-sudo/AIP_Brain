@@ -412,7 +412,7 @@ def _build_status_panel(state: GuiState) -> None:
             state.api_client.check_health(),
             state.api_client.get_actors_status(),
             state.api_client.list_model_slots(),
-            state.api_client.list_knowledge(),
+            state.api_client.list_wiki_articles(),
             state.api_client.get_graph_stats(),
             return_exceptions=True,
         )
@@ -1016,7 +1016,7 @@ def _build_wiki_panel(state: GuiState) -> None:
                 f"color:{C_MUTED};font-size:11px;font-family:{F_MONO};padding:8px;"
             )
 
-        result = await state.api_client.list_knowledge()
+        result = await state.api_client.list_wiki_articles()
         if isinstance(result, dict):
             _all_items.extend(result.get("items", []))
 
@@ -1027,7 +1027,7 @@ def _build_wiki_panel(state: GuiState) -> None:
                     f"color:{C_MUTED};font-size:12px;"
                 )
             else:
-                ui.label("No knowledge articles yet.").style(
+                ui.label("No wiki articles yet.").style(
                     f"color:{C_MUTED};font-size:12px;"
                 )
 
