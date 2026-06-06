@@ -1000,150 +1000,47 @@ def _build_wiki_panel(state: GuiState) -> None:
 
 
 def _build_graph_panel(state: GuiState) -> None:
-    """GRAPH tab — Cytoscape iframe + postMessage node-detail side panel.
+    """GRAPH tab — launches the standalone Cytoscape graph-viz in a new browser tab.
 
-    Shows the /graph-viz iframe when graph data exists. Falls back to
-    a placeholder message when the knowledge graph is empty (Phase 4).
+    The /graph-viz page renders perfectly as a standalone page. NiceGUI iframe
+    embedding collapses due to flex container height resolution. Simplest correct
+    fix: open in new tab. Node detail panel retained for future direct integration.
     """
+    _gv_url = f"{state.api_client.base_url.rstrip('/')}/graph-viz"
 
-    _selected_node: list[dict] = [{}]
+    with (
+        ui.column()
+        .classes("w-full items-center justify-center")
+        .style(f"flex:1;background:{C_GROUND};gap:24px;padding:48px;")
+    ):
+        ui.icon("hub", size="64px").style(f"color:{C_AMBER};")
+        ui.label("AIP Knowledge Graph").style(f"font-family:{F_SERIF};font-size:22px;font-weight:700;color:{C_CREAM};")
 
-    with ui.row().classes("w-full").style(f"flex:1;min-height:0;background:{C_GROUND};position:relative;"):
-        # Graph area — iframe when data exists, placeholder when empty
-        iframe_col = ui.column().classes("flex-1").style("min-height:0;")
-
-        async def _load_graph() -> None:
-            iframe_col.clear()
+        async def _load_stats() -> None:
             try:
                 stats = await state.api_client.get_graph_stats()
                 node_count = stats.get("nodes", 0)
                 edge_count = stats.get("edges", 0)
+                nodes_by_type = stats.get("nodes_by_type", {})
+                type_summary = "  ·  ".join(f"{v} {k}" for k, v in nodes_by_type.items())
+                stat_label.set_text(f"{node_count} entities  ·  {edge_count} edges  ·  {type_summary}")
             except Exception:
-                node_count = 0
-                edge_count = 0
+                stat_label.set_text("Graph data unavailable")
 
-            with iframe_col:
-                if node_count > 0:
-                    # Show Cytoscape iframe
-                    _gv_base = state.api_client.base_url.rstrip("/")
-                    _gv_url = f"{_gv_base}/graph-viz"
-                    ui.html(
-                        f'<iframe id="graph-iframe" '
-                        f'src="{_gv_url}" '
-                        f'style="width:100%;height:640px;'
-                        f'border:none;background:#141414;">'
-                        f"</iframe>"
-                    )
-                else:
-                    # Placeholder — no graph data yet
-                    with ui.column().classes("w-full items-center justify-center").style("padding:48px;flex:1;"):
-                        ui.icon("hub", size="48px").style(f"color:{C_INK60};")
-                        ui.label("Knowledge graph visualization coming in Phase 4.").style(
-                            f"font-size:14px;color:{C_MUTED};margin-top:16px;"
-                        )
-                        ui.html(
-                            f'<span style="font-size:12px;color:{C_INK60};font-family:{F_MONO};">'
-                            f"Graph data: <b>{node_count}</b> entities, "
-                            f"<b>{edge_count}</b> edges available via "
-                            f"<code>/api/v1/graph</code>"
-                            f"</span>"
-                        ).style("margin-top:8px;")
+        stat_label = ui.label("Loading…").style(f"font-size:12px;color:{C_MUTED};font-family:{F_MONO};")
+        asyncio.create_task(_load_stats())
 
-        asyncio.create_task(_load_graph())
-
-        # Node detail side panel (hidden until a node is selected)
-        detail_panel = ui.column().style(
-            f"width:0;overflow:hidden;background:{C_SURFACE};"
-            f"border-left:0.5px solid {C_INK40};transition:width .2s;"
-            "padding:0;"
+        ui.button(
+            "Open Graph Visualization",
+            icon="open_in_new",
+            on_click=lambda: ui.navigate.to(_gv_url, new_tab=True),
+        ).props("unelevated").style(
+            f"background:{C_AMBER};color:#000;font-weight:600;font-size:13px;padding:10px 28px;border-radius:6px;"
         )
 
-    detail_content = (
-        ui.column().classes("px-4 py-3 gap-2").style(f"min-width:280px;background:{C_SURFACE};overflow-y:auto;")
-    )
-    detail_panel.move(detail_panel)  # no-op; content added below
-
-    async def _show_node(node_id: str) -> None:
-        try:
-            data = await state.api_client.get_graph_node(node_id)
-        except Exception as exc:
-            data = {"error": str(exc)}
-
-        detail_panel.style(
-            f"width:300px;overflow:visible;background:{C_SURFACE};border-left:0.5px solid {C_INK40};padding:0;"
-        )
-        detail_content.clear()
-        detail_content.move(detail_panel)
-
-        with detail_content:
-            with ui.row().classes("w-full items-center gap-2"):
-                ui.label("NODE DETAIL").style(
-                    f"font-size:10px;font-weight:700;letter-spacing:2px;color:{C_MUTED};flex:1;"
-                )
-                ui.button(icon="close").props("dense flat round").style(f"color:{C_MUTED};").on("click", _close_detail)
-
-            if data.get("error"):
-                ui.label(f"Error: {data['error']}").style(f"color:{C_ERR_FG};font-size:11px;")
-                return
-
-            # Node info from neighbors response
-            nodes = data.get("nodes", [])
-            edges = data.get("edges", [])
-            # Find the selected node itself
-            sel = next((n for n in nodes if n.get("id") == node_id), {})
-            if not sel and nodes:
-                sel = nodes[0]
-
-            ui.label(sel.get("label") or node_id).style(
-                f"font-family:{F_SERIF};font-size:15px;font-weight:700;color:{C_CREAM};"
-            )
-
-            def _field(k: str, v: str) -> None:
-                with ui.row().classes("w-full items-baseline gap-2"):
-                    ui.label(k + ":").style(f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};min-width:80px;")
-                    ui.label(v).style(f"font-size:11px;color:{C_CREAM};font-family:{F_MONO};")
-
-            _field("ID", node_id)
-            _field("Type", sel.get("entity_type", "—"))
-            _field("Domain", sel.get("domain", "—"))
-            _field("Connections", str(len(edges)))
-
-            if nodes:
-                ui.separator().style(f"background:{C_INK40};margin:6px 0;")
-                ui.label("NEIGHBOR NODES").style(
-                    f"font-size:10px;font-weight:700;letter-spacing:1.5px;color:{C_MUTED};"
-                )
-                neighbors = [n for n in nodes if n.get("id") != node_id]
-                with ui.row().classes("flex-wrap gap-1"):
-                    for nb in neighbors[:12]:
-                        label = nb.get("label") or nb.get("id", "")
-                        nb_id = nb.get("id", "")
-                        ui.button(label).props("dense").style(
-                            f"background:{C_RAISED};color:{C_AMBER};font-size:10px;padding:2px 6px;border-radius:3px;"
-                        ).on("click", lambda nid=nb_id: _navigate_node(nid))
-
-    def _navigate_node(node_id: str) -> None:
-        ui.run_javascript(
-            f"document.getElementById('graph-iframe').contentWindow"
-            f".postMessage({{type:'navigate_node', node_id:'{node_id}'}}, '*');"
-        )
-        asyncio.create_task(_show_node(node_id))
-
-    def _close_detail() -> None:
-        detail_panel.style("width:0;overflow:hidden;")
-
-    # postMessage bridge — listen for node_selected from the iframe
-    ui.run_javascript("""
-        window.addEventListener('message', function(evt) {
-            if (evt.data && evt.data.type === 'node_selected') {
-                emitEvent('graph_node_selected', {node_id: evt.data.node_id});
-            }
-        });
-    """)
-    ui.on(
-        "graph_node_selected",
-        lambda e: asyncio.create_task(_show_node(e.args.get("node_id", "") if hasattr(e, "args") else "")),
-    )
+        ui.label("Opens in a new tab · Cytoscape.js · filterable by domain, type, confidence").style(
+            f"font-size:11px;color:{C_INK60};font-family:{F_MONO};"
+        ).style("margin-top:-12px;")
 
 
 # ── COHORT PANEL ─────────────────────────────────────────────────────
