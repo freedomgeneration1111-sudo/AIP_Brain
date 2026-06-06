@@ -48,6 +48,9 @@ daily_token_limit = 10000000
 budget_warning_threshold = 0.80
 budget_hard_stop = true
 
+# Beast handles context advisory only (ADR-011).
+# Sexton handles background maintenance (tagging, embedding, wiki, graph, failure classification).
+# Beast's run_cycle() is a lightweight heartbeat; heavy work was moved to Sexton.
 [beast]
 corpus_reindex_interval_seconds = 3600    # 1 hour
 entity_maintenance_interval_seconds = 1800  # 30 minutes
