@@ -1222,6 +1222,40 @@ class AipApiClient:
             log.warning("byok_add_model_failed: %s", exc)
             return {"ok": False, "error": str(exc)}
 
+    # ------------------------------------------------------------------
+    # Events (Actor Activity Feed)
+    # ------------------------------------------------------------------
+
+    async def list_events(
+        self,
+        limit: int = 50,
+        actor: str | None = None,
+        event_type: str | None = None,
+    ) -> dict[str, Any]:
+        """List recent actor events via GET /api/v1/events.
+
+        Returns {events: list, total: int}. Each event has:
+        id, actor, event_type, artifact_id, summary, timestamp,
+        payload_preview, from_state, to_state.
+        """
+        client = self._get_http_client()
+        try:
+            params: dict[str, Any] = {"limit": limit}
+            if actor:
+                params["actor"] = actor
+            if event_type:
+                params["event_type"] = event_type
+            resp = await client.get(
+                f"{self.base_url}/api/v1/events",
+                params=params,
+                timeout=5.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("list_events_failed: %s", exc)
+            return {"events": [], "total": 0}
+
 
 # Module-level singleton for the GUI to use
 _api_client: AipApiClient | None = None
