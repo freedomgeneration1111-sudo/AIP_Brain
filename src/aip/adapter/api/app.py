@@ -584,6 +584,38 @@ async def lifespan(app: FastAPI):
     else:
         log.info("component_skipped", component="sexton", reason="missing_event_store")
 
+    # Sexton maintenance actor (ADR-011) — full vigil cycle:
+    # tagging, embedding, wiki, graph extraction, failure classification.
+    # Requires: model_provider (sexton slot), corpus_turn_store, embedding_provider,
+    # vector_store, artifact_store, ecs_store, event_store, trace_store.
+    # Gracefully degrades: if any required store is missing, the actor is None
+    # and individual operations skip when their dependencies are absent.
+    if container.event_store is not None:
+        try:
+            _sexton_actor_mod = importlib.import_module("aip.orchestration.actors.sexton")
+            _SextonActor = _sexton_actor_mod.Sexton
+            _SextonActorConfig = importlib.import_module("aip.foundation.schemas.evaluation").SextonConfig
+            sexton_actor_config = _SextonActorConfig(
+                **{k: v for k, v in config.get("sexton", {}).items() if k in _SextonActorConfig.__dataclass_fields__},
+            )
+            container.sexton_actor = _SextonActor(
+                sexton_provider=container.model_provider,
+                corpus_turn_store=getattr(container, "corpus_turn_store", None),
+                embedding_provider=container.embedding_provider,
+                vector_store=container.vector_store,
+                artifact_store=container.artifact_store,
+                ecs_store=container.ecs_store,
+                event_store=container.event_store,
+                trace_store=getattr(container, "trace_store", None) or container.event_store,
+                lexical_store=getattr(container, "lexical_store", None),
+                config=sexton_actor_config,
+            )
+            log.info("component_initialized", component="sexton_actor", required=False)
+        except Exception as exc:
+            log.warning("component_failed", component="sexton_actor", degradation="no_background_maintenance", error=str(exc))
+    else:
+        log.info("component_skipped", component="sexton_actor", reason="missing_event_store")
+
     # PerformanceProfiler — optional, only wired when profiling_enabled=True
     try:
         _perf_mod = importlib.import_module("aip.orchestration.perf")
@@ -780,6 +812,65 @@ async def lifespan(app: FastAPI):
         sexton_task = asyncio.create_task(_sexton_scheduler(), name="sexton-scheduler")
         log.info("sexton_scheduler_created")
 
+    # --- Sexton maintenance actor background scheduler (ADR-011) ---
+    # Runs the full vigil cycle: tagging → embedding → wiki → graph → classification
+    sexton_actor_task: asyncio.Task | None = None
+    if container.sexton_actor is not None:
+
+        async def _sexton_actor_scheduler():
+            """Background loop that runs sexton_actor.run_cycle() periodically.
+
+            Sexton maintenance actor performs the ADR-011 vigil cycle:
+            1. Turn tagging (max 200/cycle)
+            2. Embedding pass (max 50/cycle)
+            3. Wiki generation (max 3 domains/cycle)
+            4. Graph extraction (if bridge-tagged turns exist)
+            5. Failure classification
+
+            Runs on a 300s cadence per ADR-011.
+            """
+            interval = 300  # ADR-011: vigil cycle every 300s
+            # Allow config override via sexton.classification_interval_seconds
+            try:
+                cfg_interval = container.sexton_actor._config.classification_interval_seconds
+                if cfg_interval >= 60:
+                    interval = cfg_interval
+            except Exception:
+                pass
+            if interval < 60:
+                interval = 300
+                log.warning("sexton_actor_cadence_clamped", clamped_to=300)
+            log.info("sexton_actor_scheduler_starting", interval_s=interval)
+            cycle_num = 0
+            while True:
+                cycle_num += 1
+                cycle_id = f"sexton-actor-{new_correlation_id()}"
+                set_correlation_id(cycle_id)
+                try:
+                    log.info("sexton_actor_cycle_start", cycle=cycle_num)
+                    summary = await container.sexton_actor.run_cycle()
+                    log.info(
+                        "sexton_actor_cycle_complete",
+                        cycle=cycle_num,
+                        tagging=summary.get("tagging", {}).get("turns_tagged", 0),
+                        embedding=summary.get("embedding", {}).get("embedded", 0),
+                        wiki=summary.get("wiki", {}).get("domains_generated", 0),
+                        graph_entities=summary.get("graph", {}).get("entities_created", 0),
+                        classification=summary.get("classification", {}).get("classified", 0),
+                        elapsed_s=summary.get("cycle_elapsed_seconds", 0),
+                    )
+                except asyncio.CancelledError:
+                    log.info("sexton_actor_scheduler_cancelled", cycle=cycle_num)
+                    raise
+                except Exception as exc:
+                    log.error("sexton_actor_cycle_failed", cycle=cycle_num, error=str(exc), exc_info=True)
+                finally:
+                    set_correlation_id(None)
+                await asyncio.sleep(interval)
+
+        sexton_actor_task = asyncio.create_task(_sexton_actor_scheduler(), name="sexton-actor-scheduler")
+        log.info("sexton_actor_scheduler_created")
+
     log.info(
         "startup_complete",
         required_initialized=5,
@@ -791,6 +882,7 @@ async def lifespan(app: FastAPI):
         vigil_store=container.vigil_store is not None,
         vigil_actor=container.vigil is not None,
         sexton_actor=container.sexton is not None,
+        sexton_maintenance_actor=container.sexton_actor is not None,
         model=container.model_provider is not None,
         knowledge=container.knowledge_store is not None,
         beast=container.beast is not None,
@@ -806,6 +898,7 @@ async def lifespan(app: FastAPI):
         ("beast", beast_task),
         ("vigil", vigil_task),
         ("sexton", sexton_task),
+        ("sexton_actor", sexton_actor_task),
     ]:
         if task is not None:
             log.info(f"{task_name}_scheduler_cancelling")

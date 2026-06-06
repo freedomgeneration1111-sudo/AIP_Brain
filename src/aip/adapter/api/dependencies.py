@@ -69,6 +69,7 @@ class AipContainer:
         self.budget_manager: Any = None
         self.adaptive_router: Any = None
         self.sexton: Any = None
+        self.sexton_actor: Any = None  # ADR-011 full maintenance worker (actors.sexton.Sexton)
         self.beast: Any = None
         self.vigil: Any = None
         self.ace_playbook: Any = None
