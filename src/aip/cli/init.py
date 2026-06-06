@@ -258,7 +258,7 @@ def _write_db_path_to_config(config_path: Path, db_path: str) -> None:
     # Add [database] section with db_path
     if "[database]" not in content:
         with open(config_path, "a") as f:
-            f.write(f"\n\n[database]\ndb_path = \"{db_path}\"\n")
+            f.write(f'\n\n[database]\ndb_path = "{db_path}"\n')
     else:
         # Insert db_path after [database] line
         lines = content.splitlines()
@@ -345,9 +345,28 @@ def init(force: bool) -> None:
         (db_dir / name).touch(exist_ok=True)
     click.echo(f"Initialized: {', '.join(other_dbs)} (schemas created on first use)")
 
+    # 3b. Create default project so list_projects() is never empty on first run.
+    # Uses sqlite3 directly (no aiosqlite) — consistent with the rest of init.
+    # INSERT OR IGNORE is idempotent: safe to re-run aip init on an existing DB.
+    try:
+        import sqlite3 as _sqlite3
+
+        _conn = _sqlite3.connect(str(state_db))
+        _conn.execute(
+            """
+            INSERT OR IGNORE INTO projects (project_id, name, status, domain, created_at, updated_at)
+            VALUES ('default', 'Default', 'active', '', datetime('now'), datetime('now'))
+            """
+        )
+        _conn.commit()
+        _conn.close()
+        click.echo("Default project created (project_id='default', name='Default')")
+    except Exception as e:
+        click.echo(f"Default project creation skipped: {e}")
+
     # 4. Write db_path to config so ALL CLI commands use the same datastore
     _write_db_path_to_config(config_path, "db/state.db")
-    click.echo(f"Database path written to config: db/state.db")
+    click.echo("Database path written to config: db/state.db")
 
     # 5. Ollama validation
     ollama_ok = _check_ollama()
@@ -375,11 +394,11 @@ def init(force: bool) -> None:
     click.echo("\n=== Init complete ===")
     click.echo(f"Profile: {profile}")
     click.echo(f"Config: {config_path}")
-    click.echo(f"Main database: db/state.db")
-    click.echo(f"Lexical index: db/lexical.db")
+    click.echo("Main database: db/state.db")
+    click.echo("Lexical index: db/lexical.db")
     click.echo(f"Databases: {db_dir}/")
     click.echo("\nNext steps:")
     click.echo("  1. Run `aip status` to inspect current state.")
     click.echo("  2. Run `aip project create --name <name> --domain <domain>` to create a project.")
     click.echo("  3. Run `aip ingest directory <path> --domain <domain>` to import conversations.")
-    click.echo("  4. Run `aip ask \"<question>\" --project <name>` to query your knowledge.")
+    click.echo('  4. Run `aip ask "<question>" --project <name>` to query your knowledge.')
