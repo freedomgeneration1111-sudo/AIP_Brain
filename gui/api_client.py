@@ -1189,6 +1189,39 @@ class AipApiClient:
             log.warning("save_epistemic_flags_failed: %s", exc)
             return {"ok": False, "error": str(exc)}
 
+    # ------------------------------------------------------------------
+    # BYOK (Bring Your Own Key) Model Management
+    # ------------------------------------------------------------------
+
+    async def byok_add_model(
+        self,
+        model_id: str,
+        display_name: str,
+        base_url: str,
+        api_key: str,
+    ) -> dict[str, Any]:
+        """Add a BYOK custom model via POST /api/v1/models/library/custom.
+
+        Returns {ok: bool, model_id: str, already_existed: bool} on success.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/models/library/custom",
+                json={
+                    "model_id": model_id,
+                    "display_name": display_name,
+                    "base_url": base_url,
+                    "api_key": api_key,
+                },
+                timeout=5.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("byok_add_model_failed: %s", exc)
+            return {"ok": False, "error": str(exc)}
+
 
 # Module-level singleton for the GUI to use
 _api_client: AipApiClient | None = None

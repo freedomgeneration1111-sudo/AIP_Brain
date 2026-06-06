@@ -4,6 +4,7 @@ Provides endpoints for the unified chat surface's model selector:
   - GET  /models/library          — list all models in enabled_models
   - POST /models/library/fetch    — fetch from OpenRouter + upsert cache
   - PATCH /models/library/{model_id} — toggle enabled flag
+  - POST /models/library/custom   — add BYOK (Bring Your Own Key) model
 
 Per AIP-G-09: the OpenRouter fetch is the ONLY outbound call, and it is
 explicitly user-triggered (never on startup).
@@ -29,6 +30,15 @@ class ToggleEnabledRequest(BaseModel):
     """Request body for PATCH /models/library/{model_id}."""
 
     enabled: int  # 0 or 1
+
+
+class ByokAddRequest(BaseModel):
+    """Request body for POST /models/library/custom (BYOK)."""
+
+    model_id: str
+    display_name: str
+    base_url: str
+    api_key: str
 
 
 @router.get("/models/library")
@@ -248,6 +258,70 @@ async def toggle_model_enabled(
         "display_name": updated["display_name"],
         "provider": updated["provider"],
         "enabled": updated["enabled"],
+    }
+
+
+@router.post("/models/library/custom")
+async def add_byok_model(body: ByokAddRequest) -> dict:
+    """Add a BYOK (Bring Your Own Key) custom model to the library.
+
+    Inserts into enabled_models with is_custom=1, enabled=1,
+    provider='custom'. Uses INSERT OR IGNORE so existing rows
+    are never overwritten.
+
+    Returns {ok: true, model_id: str, already_existed: bool}.
+    """
+    # Validate all four fields are non-empty
+    for field_name, field_value in [
+        ("model_id", body.model_id),
+        ("display_name", body.display_name),
+        ("base_url", body.base_url),
+        ("api_key", body.api_key),
+    ]:
+        if not field_value or not field_value.strip():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Field '{field_name}' is required and cannot be empty",
+            )
+
+    now = datetime.now(timezone.utc).isoformat()
+    already_existed = False
+
+    try:
+        conn = await aiosqlite.connect(_STATE_DB)
+        try:
+            cursor = await conn.execute(
+                """
+                INSERT OR IGNORE INTO enabled_models
+                    (model_id, display_name, provider,
+                     enabled, is_custom, custom_base_url,
+                     custom_api_key, last_fetched)
+                VALUES (?, ?, 'custom', 1, 1, ?, ?, ?)
+                """,
+                (
+                    body.model_id.strip(),
+                    body.display_name.strip(),
+                    body.base_url.strip(),
+                    body.api_key.strip(),
+                    now,
+                ),
+            )
+            if cursor.rowcount == 0:
+                already_existed = True
+            await conn.commit()
+        finally:
+            await conn.close()
+    except Exception as exc:
+        logger.error("Failed to add BYOK model: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database insert failed: {exc}",
+        ) from exc
+
+    return {
+        "ok": True,
+        "model_id": body.model_id.strip(),
+        "already_existed": already_existed,
     }
 
 

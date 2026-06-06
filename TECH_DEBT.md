@@ -1,7 +1,7 @@
 # AIP Technical Debt Register
 
 **Owner:** B. Moses Jorgensen  
-**Last Updated:** 2026-06-06
+**Last Updated:** 2026-06-07
 
 Each entry records a deliberate deferral — what was skipped, why, and what triggers remediation.
 
@@ -228,3 +228,73 @@ Verify in `~/AIP_Brain` (fresh seed):
 - ROADMAP Phase 3.2 — Sexton status
 
 ---
+
+## DEBT-007 — Hardcoded `_STATE_DB` Path in Route Files
+
+**Status:** Active — low priority  
+**Phase:** Unified Chat (Phase 1–4)  
+**Filed:** 2026-06-07
+
+**What was deferred:**  
+`models_library.py` and `beast_scan.py` use a hardcoded `_STATE_DB = "db/state.db"`
+module constant instead of resolving the database path from `container.db_path`. This
+means the database path is duplicated — once in the container/DI system and again as a
+string literal in these route modules. If the database were moved or the path were
+configured differently, these routes would silently open the wrong (or non-existent) file.
+
+**Why deferred:**  
+Safe for single-user local deployment where the working directory is always the project
+root and `db/state.db` is the canonical location. The container injection pattern would
+require adding `db_path` as a FastAPI dependency (similar to how other routes use
+`container` from `dependencies.py`), which is an architectural change beyond the scope
+of the hygiene pass.
+
+**Remediation trigger:**  
+Multi-instance deployment or configurable database paths. Replace `_STATE_DB` with a
+FastAPI dependency that reads `container.db_path` from the application state.
+
+**Related work:**  
+- `src/aip/adapter/api/routes/models_library.py` — `_STATE_DB = "db/state.db"`
+- `src/aip/adapter/api/routes/beast_scan.py` — `_STATE_DB = "db/state.db"`
+- `src/aip/adapter/api/dependencies.py` — `container` dependency injection
+
+---
+
+## DEBT-008 — GuiState Module-Level Singleton Leaks Across Browser Tabs
+
+**Status:** Active — low priority  
+**Phase:** Unified Chat (Phase 4 — Beast pane)  
+**Filed:** 2026-06-07
+
+**What was deferred:**  
+`GuiState` in `gui/shell.py` is a module-level singleton. Fields like `beast_scan_history`
+and `beast_last_comparison` are shared across all browser tabs connected to the same
+NiceGUI process. If two browser tabs are open, both see the same scan history and
+comparison results — data from one tab's Beast scan "leaks" into the other tab.
+
+**Why deferred:**  
+Acceptable for single-user local deployment (the intended use case). Only one person
+uses the AIP Brain at a time, so cross-tab leakage is at most confusing, not harmful.
+The fix requires per-client state management (NiceGUI `app.storage.user` or a
+session-keyed dict), which is a significant architectural change to the state model.
+
+**Remediation trigger:**  
+Multi-user deployment or explicit user request for tab isolation. Implement per-client
+state using NiceGUI's `app.storage.user` dict, replacing the module-level `GuiState`
+singleton with a factory that returns a state object scoped to the current user/session.
+
+**Related work:**  
+- `gui/shell.py` — `GuiState` class and module-level `_gui_state` singleton
+- NiceGUI `app.storage.user` — per-client storage API
+- AIP_UNIFIED_CHAT_SPEC §Beast Pane — `beast_scan_history` (max 10 items)
+
+---
+
+## BYOK Endpoint — Settings UI Not Yet Wired
+
+**Note:** BYOK endpoint built (H-3) — Settings UI not yet wired.
+
+The `POST /api/v1/models/library/custom` endpoint and `api_client.byok_add_model()` method
+are functional and tested, but the Settings tab does not yet expose a BYOK form. The UI
+for adding custom models (model_id, display_name, base_url, api_key inputs + submit button)
+should be added to the Settings/Admin tab in a future session.
