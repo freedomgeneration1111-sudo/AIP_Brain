@@ -2055,7 +2055,9 @@ async def main_page() -> None:
             ui.icon("vpn_key", size="xs").style(f"color:{'#4EAA7A' if key_set else '#E07070'};cursor:pointer;").on(
                 "click", lambda: asyncio.create_task(_show_api_key_prompt())
             ).tooltip("API key set" if key_set else "API key missing — click to set")
-            ui.icon("settings", size="xs").style(f"color:{C_MUTED};cursor:pointer;").tooltip("Model catalog — stage 0C")
+            ui.icon("settings", size="xs").style(f"color:{C_MUTED};cursor:pointer;").on(
+                "click", lambda: tabs.set_value("settings")
+            ).tooltip("Settings")
 
     # ── CONTENT PANELS ──────────────────────────────────────────────
     with ui.tab_panels(tabs, value="chat").classes("w-full").style(f"flex:1;background:{C_GROUND};min-height:0;"):
