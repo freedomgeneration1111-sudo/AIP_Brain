@@ -1383,16 +1383,138 @@ def _build_unified_chat_panel(
             state.current_mode = "normal"
         state.reset_session()
 
-    msgs = (
-        ui.column().classes("w-full px-4 py-2").style(f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:320px;")
+    # Beast pane state
+    beast_visible: list[bool] = [True]
+
+    # Main content area: flex row with conversation + Beast pane
+    with ui.row().classes("w-full").style(f"flex:1;min-height:0;"):
+
+        # ── LEFT: Conversation thread ──
+        msgs = (
+            ui.column().classes("w-full px-4 py-2").style(
+                f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:320px;"
+            )
+        )
+        with msgs:
+            ok = state.backend_reachable and state.api_client.has_openrouter_api_key()
+            ui.label(
+                ("Connected" if state.backend_reachable else "Offline")
+                + f" · {len(slots)} slot(s)"
+                + (" · API key set" if state.api_client.has_openrouter_api_key() else " · API key missing")
+            ).style(f"color:{C_OK_FG if ok else C_WARN_FG};font-size:11px;padding:8px;")
+
+        # ── RIGHT: Beast pane (collapsible sidebar) ──
+        beast_col = ui.column().style(
+            f"width:320px;min-width:0;background:{C_SURFACE};"
+            f"border-left:.5px solid {C_INK40};overflow-y:auto;padding:0;"
+        )
+        with beast_col:
+            # Beast pane header
+            with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(
+                f"border-bottom:.5px solid {C_INK40};background:{C_RAISED};"
+            ):
+                ui.label("BEAST").style(
+                    f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};"
+                )
+                ui.space()
+                # Pop-out stub (Phase 4)
+                ui.button(icon="open_in_new").props("dense flat").style(
+                    f"color:{C_INK60};font-size:10px;"
+                ).tooltip("Pop-out (Phase 4)")
+                # Collapse button
+                ui.button(icon="close", on_click=lambda: _toggle_beast(False)).props(
+                    "dense flat"
+                ).style(f"color:{C_INK60};font-size:10px;")
+
+            beast_content = ui.column().classes("w-full px-3 py-2").style("gap:4px;")
+
+    # Toggle button (shown when Beast pane is collapsed)
+    beast_toggle_btn = ui.button(
+        icon="visibility",
+        on_click=lambda: _toggle_beast(True),
+    ).props("dense flat").style(
+        f"color:{C_AMBER};position:absolute;right:12px;top:60px;z-index:10;"
     )
-    with msgs:
-        ok = state.backend_reachable and state.api_client.has_openrouter_api_key()
-        ui.label(
-            ("Connected" if state.backend_reachable else "Offline")
-            + f" · {len(slots)} slot(s)"
-            + (" · API key set" if state.api_client.has_openrouter_api_key() else " · API key missing")
-        ).style(f"color:{C_OK_FG if ok else C_WARN_FG};font-size:11px;padding:8px;")
+    beast_toggle_btn.set_visibility(False)
+
+    def _toggle_beast(show: bool) -> None:
+        beast_visible[0] = show
+        if show:
+            beast_col.style(
+                f"width:320px;min-width:0;background:{C_SURFACE};"
+                f"border-left:.5px solid {C_INK40};overflow-y:auto;padding:0;"
+            )
+            beast_toggle_btn.set_visibility(False)
+        else:
+            beast_col.style("width:0;min-width:0;padding:0;overflow:hidden;border:none;")
+            beast_toggle_btn.set_visibility(True)
+
+    async def _beast_scan(query: str) -> None:
+        """Fire Beast scan and render results in the pane (AIP-G-02)."""
+        with beast_content:
+            ui.label("Scanning corpus...").style(
+                f"color:{C_MUTED};font-size:10px;font-family:{F_MONO};"
+            )
+        scan = await state.api_client.beast_scan(query=query)
+        beast_content.clear()
+        with beast_content:
+            if scan.get("error"):
+                ui.label("corpus unavailable").style(
+                    f"color:{C_ERR_FG};font-size:10px;font-family:{F_MONO};"
+                )
+                return
+            domain = scan.get("domain")
+            confidence = scan.get("confidence", 0)
+            if domain:
+                ui.label(f"Domain: {domain}").style(
+                    f"font-size:11px;font-weight:600;color:{C_AMBER};"
+                )
+                ui.label(f"Confidence: {confidence}").style(
+                    f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};"
+                )
+            # Top turns
+            turns = scan.get("top_turns", [])
+            if turns:
+                ui.label("TOP TURNS").style(
+                    f"font-size:9px;font-weight:700;letter-spacing:1px;"
+                    f"color:{C_MUTED};margin-top:4px;"
+                )
+                for t in turns[:5]:
+                    with ui.row().classes("w-full").style("gap:2px;"):
+                        ui.label(f"· [{t.get('domain', '?')}]").style(
+                            f"font-size:9px;color:{C_AMBER};font-family:{F_MONO};"
+                        )
+                    snippet = t.get("snippet", "")[:80]
+                    if snippet:
+                        ui.label(snippet + "...").style(
+                            f"font-size:10px;color:{C_MUTED};line-height:1.3;"
+                        )
+            # Domain neighbors
+            neighbors = scan.get("neighbors", [])
+            if neighbors:
+                ui.label("DOMAIN NEIGHBORS").style(
+                    f"font-size:9px;font-weight:700;letter-spacing:1px;"
+                    f"color:{C_MUTED};margin-top:4px;"
+                )
+                for n in neighbors[:5]:
+                    ui.label(
+                        f"{n.get('source')} → {n.get('target')}"
+                    ).style(
+                        f"font-size:10px;color:{C_CREAM};font-family:{F_MONO};"
+                    )
+            # Wiki coverage
+            wiki = scan.get("wiki_coverage")
+            if wiki:
+                ui.label("WIKI").style(
+                    f"font-size:9px;font-weight:700;letter-spacing:1px;"
+                    f"color:{C_MUTED};margin-top:4px;"
+                )
+                status = wiki.get("status", "?")
+                wc = wiki.get("word_count", 0)
+                ui.label(f"{domain}: {status} ({wc}w)").style(
+                    f"font-size:10px;"
+                    f"color:{C_OK_FG if status == 'APPROVED' else C_WARN_FG};"
+                )
 
     with (
         ui.row()
@@ -1561,6 +1683,9 @@ def _build_unified_chat_panel(
                     _msg("assistant", r.get("content", ""), model=r.get("model", model), lat=r.get("latency_ms"))
                     if r.get("tokens_used", 0):
                         _sys(f"tokens: {r['tokens_used']}")
+                    # Fire Beast corpus scan (non-blocking, AFTER response)
+                    if beast_visible[0]:
+                        asyncio.create_task(_beast_scan(prompt))
             except Exception as exc:
                 think.delete()
                 _sys(f"failed: {exc}")

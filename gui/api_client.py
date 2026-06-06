@@ -145,6 +145,25 @@ class AipApiClient:
             log.warning("model_library_fetch_failed: %s", exc)
             return []
 
+    async def beast_scan(self, query: str, limit: int = 5) -> dict[str, Any]:
+        """Fire Beast corpus scan via GET /api/v1/beast/scan.
+
+        Per AIP_UNIFIED_CHAT_SPEC §Beast Pane: non-blocking, fires AFTER
+        the chat response in bare mode. Returns scan results or error dict.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/beast/scan",
+                params={"query": query, "limit": limit},
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("beast_scan_failed: %s", exc)
+            return {"error": str(exc)}
+
     # ------------------------------------------------------------------
     # Session Management
     # ------------------------------------------------------------------
