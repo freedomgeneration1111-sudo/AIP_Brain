@@ -497,6 +497,13 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                             session=session_id,
                         )
 
+                        # Capture turn_index BEFORE increment (0-based: first turn = 0)
+                        # so corpus_turns turn_index matches the existing CLI ingest convention
+                        turn_index = 0
+                        _pre_meta = get_session_meta(session_id)
+                        if _pre_meta:
+                            turn_index = _pre_meta.get("turn_count", 0)
+
                         # Increment turn counter
                         increment_turn_count(session_id, _container)
 
@@ -528,9 +535,10 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                             ),
                             "latency_ms": result.get("latency_ms", 0),
                             "cost_usd": result.get("cost_usd", 0.0),
-                            "auto_save": auto_save_enabled
-                            and _container.artifact_store is not None
-                            and _container.lexical_store is not None,
+                            "auto_save": auto_save_enabled and (
+                                (_container.artifact_store is not None and _container.lexical_store is not None)
+                                or _container.corpus_turn_store is not None
+                            ),
                             "sources": response_sources,  # Empty in normal mode, populated in augmented mode
                             "mode": session_mode,  # Echo the mode so GUI knows how the response was generated
                         }
@@ -589,12 +597,11 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
 
                         # Auto-save ingestion: after a successful chat turn,
                         # trigger background ingestion if auto_save is enabled
-                        # and the required stores (artifact_store, lexical_store) are available.
-                        if (
-                            auto_save_enabled
-                            and _container.artifact_store is not None
-                            and _container.lexical_store is not None
-                        ):
+                        # and at least one storage path is available (legacy pipeline
+                        # or corpus_turn_store for Sexton tagging).
+                        _has_legacy_stores = _container.artifact_store is not None and _container.lexical_store is not None
+                        _has_corpus_store = _container.corpus_turn_store is not None
+                        if auto_save_enabled and (_has_legacy_stores or _has_corpus_store):
                             try:
                                 from aip.adapter.api.routes.ingest import auto_save_chat_turn
 
@@ -606,6 +613,8 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                         assistant_response=response_content,
                                         container=_container,
                                         domain=domain,
+                                        turn_index=turn_index,
+                                        model_used=model_used,
                                     ),
                                     name=f"auto-save-{session_id}",
                                 )

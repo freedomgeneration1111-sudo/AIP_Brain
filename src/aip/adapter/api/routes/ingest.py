@@ -181,6 +181,8 @@ async def auto_save_chat_turn(
     assistant_response: str,
     container: AipContainer,
     domain: str = "chat",
+    turn_index: int = 0,
+    model_used: str = "",
 ) -> IngestionResult | None:
     """Auto-save a completed chat turn through the ingestion pipeline.
 
@@ -188,8 +190,9 @@ async def auto_save_chat_turn(
     after a successful model response. It:
     1. Builds an ImportedConversation from the turn pair
     2. Calls ingest_conversation() to chunk, index, and embed
-    3. Updates the session's ingestion status
-    4. Returns the IngestionResult (or None on failure)
+    3. Writes a CorpusTurn to corpus_turns (so Sexton can tag/embed it)
+    4. Updates the session's ingestion status
+    5. Returns the IngestionResult (or None on failure)
 
     This function is non-blocking from the caller's perspective — errors
     are logged but don't propagate to the chat handler.
@@ -199,52 +202,95 @@ async def auto_save_chat_turn(
     # Update status to ingesting
     update_ingestion_status(session_id, "ingesting", container=container)
 
+    _legacy_result: IngestionResult | None = None
+
     try:
-        from aip.orchestration.ingestion.pipeline import ingest_conversation
+        # --- Legacy ingestion path (artifacts + lexical + vector) ---
+        # Only runs if both artifact_store and lexical_store are available.
+        if container.artifact_store is not None and container.lexical_store is not None:
+            from aip.orchestration.ingestion.pipeline import ingest_conversation
 
-        conversation = ImportedConversation(
-            conversation_id=session_id,
-            title=f"Chat Session {session_id}",
-            turns=[
-                ConversationTurn(
-                    role="user",
-                    content=user_message,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                ),
-                ConversationTurn(
-                    role="assistant",
-                    content=assistant_response,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                ),
-            ],
-            source_format="plaintext",
-            source_file=f"api:auto-save:{session_id}",
-            imported_at=datetime.now(timezone.utc).isoformat(),
-            metadata={
-                "domain": domain,
-                "source": "auto-save",
-                "session_id": session_id,
-            },
-        )
+            conversation = ImportedConversation(
+                conversation_id=session_id,
+                title=f"Chat Session {session_id}",
+                turns=[
+                    ConversationTurn(
+                        role="user",
+                        content=user_message,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                    ),
+                    ConversationTurn(
+                        role="assistant",
+                        content=assistant_response,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                    ),
+                ],
+                source_format="plaintext",
+                source_file=f"api:auto-save:{session_id}",
+                imported_at=datetime.now(timezone.utc).isoformat(),
+                metadata={
+                    "domain": domain,
+                    "source": "auto-save",
+                    "session_id": session_id,
+                },
+            )
 
-        result = await ingest_conversation(
-            conversation=conversation,
-            artifact_store=container.artifact_store,
-            lexical_store=container.lexical_store,
-            vector_store=container.vector_store,
-            embedding_provider=container.embedding_provider,
-            event_store=container.event_store,
-        )
+            _legacy_result = await ingest_conversation(
+                conversation=conversation,
+                artifact_store=container.artifact_store,
+                lexical_store=container.lexical_store,
+                vector_store=container.vector_store,
+                embedding_provider=container.embedding_provider,
+                event_store=container.event_store,
+            )
+
+        # --- Corpus turns write (so Sexton can tag/embed/wiki/graph it) ---
+        # This fixes the two-pipeline problem: previously, auto-save only wrote
+        # to the artifacts table via ingest_conversation(), so Sexton's
+        # get_untagged_turns() never saw live chat turns.
+        if container.corpus_turn_store is not None:
+            try:
+                from aip.foundation.schemas.corpus_turn import CorpusTurn, make_turn_id
+
+                now = datetime.now(timezone.utc)
+                turn_id = make_turn_id(session_id, turn_index)
+
+                corpus_turn = CorpusTurn(
+                    turn_id=turn_id,
+                    conversation_id=session_id,
+                    conversation_name=f"Chat Session {session_id[:8]}",
+                    turn_index=turn_index,
+                    source_model=model_used or "chat",
+                    source_account="auto-save",
+                    export_date=now.strftime("%Y-%m-%d"),
+                    user_text=user_message,
+                    assistant_text=assistant_response,
+                    turn_timestamp=now.isoformat(),
+                )
+
+                await container.corpus_turn_store.write_turn(corpus_turn)
+            except Exception as corpus_exc:
+                # Non-critical — Sexton tagging is best-effort
+                import logging
+                logging.getLogger(__name__).warning(
+                    "auto_save_corpus_turn_failed",
+                    session_id=session_id,
+                    turn_index=turn_index,
+                    error=str(corpus_exc),
+                )
 
         # Update session with ingestion results
         from aip.adapter.api.routes.sessions import get_session_meta
 
-        meta = get_session_meta(session_id)
-        current_chunks = (meta or {}).get("chunks_indexed", 0)
-        new_total = current_chunks + result.chunk_count
-        update_ingestion_status(session_id, "idle", chunks_indexed=new_total, container=container)
+        if _legacy_result is not None:
+            meta = get_session_meta(session_id)
+            current_chunks = (meta or {}).get("chunks_indexed", 0)
+            new_total = current_chunks + _legacy_result.chunk_count
+            update_ingestion_status(session_id, "idle", chunks_indexed=new_total, container=container)
+        else:
+            update_ingestion_status(session_id, "idle", container=container)
 
-        return result
+        return _legacy_result
 
     except Exception as exc:
         # Log but don't propagate — auto-save is non-critical
