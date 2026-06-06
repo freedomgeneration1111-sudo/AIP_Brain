@@ -199,6 +199,35 @@ class AipApiClient:
             log.warning("cohort_dispatch_failed: %s", exc)
             return {"error": str(exc), "responses": []}
 
+    async def beast_compare(
+        self,
+        query: str,
+        responses: list[dict[str, str]],
+        session_id: str = "",
+        turn_index: int = 0,
+    ) -> dict[str, Any]:
+        """Trigger Beast cohort comparison via POST /api/v1/beast/compare.
+
+        Returns {comparison_text, comparison_id} on success.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/beast/compare",
+                json={
+                    "query": query,
+                    "responses": responses,
+                    "session_id": session_id,
+                    "turn_index": turn_index,
+                },
+                timeout=120.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("beast_compare_failed: %s", exc)
+            return {"error": str(exc), "comparison_text": ""}
+
     # ------------------------------------------------------------------
     # Session Management
     # ------------------------------------------------------------------

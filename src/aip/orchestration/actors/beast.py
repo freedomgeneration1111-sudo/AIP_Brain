@@ -132,6 +132,81 @@ class Beast:
         return system_prompt
 
     # ------------------------------------------------------------------
+    # Cohort Comparison (Phase 3 — AIP_UNIFIED_CHAT_SPEC §Beast Comparison)
+    # ------------------------------------------------------------------
+
+    async def _run_cohort_comparison(
+        self,
+        query: str,
+        responses: list[dict[str, str]],
+    ) -> str:
+        """Run Beast cohort comparison across multiple model responses.
+
+        Per AIP_UNIFIED_CHAT_SPEC §Beast Comparison:
+          - Soul.md is prepended to the comparison system prompt
+          - All model responses are formatted as:
+              "Model: {model_id}\\n{response_text}\\n\\n---\\n\\n"
+          - Returns comparison_text (the LLM's synthesis)
+          - Per AIP-G-01: comparison is GENERATED, not auto-approved
+
+        Args:
+            query: The original user query
+            responses: List of {model_id, response_text} dicts
+
+        Returns:
+            Comparison text from the Beast LLM, or an error message.
+        """
+        import time as _time
+
+        comparison_system_prompt = (
+            "You are Beast, the AIP_Brain's synthesis engine. "
+            "Your task is to compare responses from multiple AI models "
+            "to the same query and produce a concise, honest comparison.\n\n"
+            "Guidelines:\n"
+            "- Identify areas of agreement and disagreement\n"
+            "- Flag any factual claims that conflict between models\n"
+            "- Note which model(s) provide more depth or accuracy\n"
+            "- Do NOT simply average or blend responses — give a genuine comparison\n"
+            "- If all models agree, say so explicitly rather than inventing disagreement\n"
+            "- Be concise but thorough\n"
+        )
+
+        # Format the model responses section
+        responses_section = ""
+        for resp in responses:
+            mid = resp.get("model_id", "?")
+            text = resp.get("response_text", "(no response)")
+            responses_section += f"Model: {mid}\n{text}\n\n---\n\n"
+
+        messages = [
+            {"role": "system", "content": self._prepend_soul(comparison_system_prompt)},
+            {"role": "user", "content": f"Query: {query}\n\n{responses_section}\nCompare the above model responses."},
+        ]
+
+        # Use beast_provider if available, otherwise fall back gracefully
+        if self._beast_provider is None:
+            log.warning("beast_comparison_no_provider: no beast_provider configured")
+            return "Beast comparison unavailable: no model provider configured for Beast slot."
+
+        try:
+            start = _time.monotonic()
+            result = await self._beast_provider.chat(
+                slot="beast",
+                messages=messages,
+            )
+            elapsed = int((_time.monotonic() - start) * 1000)
+            comparison_text = result.get("content", "") if isinstance(result, dict) else str(result)
+            log.info(
+                "beast_comparison_complete: elapsed=%dms models=%d",
+                elapsed,
+                len(responses),
+            )
+            return comparison_text
+        except Exception as exc:
+            log.error("beast_comparison_failed: %s", exc)
+            return f"Beast comparison failed: {exc}"
+
+    # ------------------------------------------------------------------
     # Health Check
     # ------------------------------------------------------------------
 

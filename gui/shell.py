@@ -1391,6 +1391,38 @@ def _build_unified_chat_panel(
                     f"color:{C_OK_FG if status == 'APPROVED' else C_WARN_FG};"
                 )
 
+    async def _beast_compare(query: str, responses: list[dict]) -> None:
+        """Fire Beast cohort comparison and render in the Beast pane.
+
+        Per spec: non-blocking, fires AFTER all model cards are rendered.
+        Never delays rendering.
+        """
+        from datetime import datetime
+
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        with beast_content:
+            ui.label("Comparing responses...").style(
+                f"color:{C_MUTED};font-size:10px;font-family:{F_MONO};"
+            )
+        cmp = await state.api_client.beast_compare(
+            query=query,
+            responses=responses,
+        )
+        beast_content.clear()
+        with beast_content:
+            if cmp.get("error") or not cmp.get("comparison_text"):
+                ui.label("comparison unavailable").style(
+                    f"color:{C_ERR_FG};font-size:10px;font-family:{F_MONO};"
+                )
+                return
+            ui.label(f"COHORT COMPARISON \u00b7 {timestamp}").style(
+                "font-size:9px;font-weight:700;letter-spacing:1px;"
+                "color:#7C6AE8;margin-bottom:2px;"
+            )
+            ui.markdown(cmp["comparison_text"]).style(
+                f"font-size:11px;color:{C_CREAM};line-height:1.5;"
+            )
+
     with (
         ui.row()
         .classes("w-full items-center px-4 py-2 gap-2")
@@ -1494,9 +1526,17 @@ def _build_unified_chat_panel(
                         lat = resp.get("elapsed_ms", 0)
                         if lat:
                             _sys(f"{dname}: {lat}ms")
-                # Fire Beast corpus scan (non-blocking, AFTER response)
+                # Fire Beast corpus scan + cohort comparison (non-blocking, AFTER response)
                 if beast_visible[0]:
                     asyncio.create_task(_beast_scan(prompt))
+                    # Build comparison payload from successful responses
+                    cmp_responses = [
+                        {"model_id": r.get("model_id", "?"), "response_text": r.get("response_text", "")}
+                        for r in responses
+                        if r.get("response_text")
+                    ]
+                    if len(cmp_responses) > 1:
+                        asyncio.create_task(_beast_compare(prompt, cmp_responses))
             except Exception as exc:
                 think.delete()
                 _sys(f"cohort failed: {exc}")

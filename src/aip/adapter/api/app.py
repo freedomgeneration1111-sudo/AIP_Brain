@@ -49,6 +49,7 @@ from aip.adapter.api.routes import (
     admin,
     artifacts,
     ask,
+    beast_compare,
     beast_scan,
     chat,
     chat_cohort,
@@ -1053,6 +1054,9 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(ask.router, prefix="/api/v1", tags=["ask"])
     app.include_router(
         beast_scan.router, prefix="/api/v1", tags=["beast"]
+    )
+    app.include_router(
+        beast_compare.router, prefix="/api/v1", tags=["beast"]
     )
     app.include_router(knowledge.router, prefix="/api/v1", tags=["knowledge"])
     app.include_router(wiki.router, prefix="/api/v1", tags=["wiki"])
