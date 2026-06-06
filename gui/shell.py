@@ -1230,31 +1230,43 @@ def _build_cohort_panel(state: GuiState) -> None:
         ask_btn.on("click", lambda: asyncio.create_task(_ask()))
 
 
-# ── CHAT PANEL ────────────────────────────────────────────────────────
+# ── UNIFIED CHAT PANEL ──────────────────────────────────────────────────
 
 
-def _build_chat_panel(
-    mode: str,
+def _build_unified_chat_panel(
     state: GuiState,
     slots: list,
     opts: list[str],
 ) -> None:
-    """Build chat panel. Send uses direct OpenRouter in 0B; WebSocket wired in 0C."""
-    is_aug = mode == "augmented"
+    """Unified chat panel — augment toggle determines BARE vs AUGMENTED mode.
+
+    Per AIP_UNIFIED_CHAT_SPEC §Mode Logic:
+      - augment OFF + 1 model = BARE (direct LLM call)
+      - augment ON + 1 model = AUGMENTED (backend retrieval + synthesis)
+    COHORT mode (multi-model) is Phase 3.
+    """
+    # Track augment state (toggle drives dispatch path)
+    augment_on: list[bool] = [state.current_mode == "augmented"]
 
     with (
         ui.row()
         .classes("w-full items-center px-4 py-2 gap-2")
         .style(f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};")
     ):
-        ui.label("AUGMENTED" if is_aug else "CHAT").style(
-            f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_CREAM};"
+        # Mode status chip
+        mode_chip = ui.label("BARE").style(
+            f"font-size:9px;font-weight:700;letter-spacing:1px;"
+            f"padding:2px 8px;border-radius:3px;"
+            f"background:{C_INK40};color:{C_CREAM};"
         )
-        if is_aug:
-            ui.label("INGESTED DATA").style(
-                f"font-size:9px;background:{C_AMBER};color:{C_GROUND};"
-                "padding:1px 6px;border-radius:3px;font-weight:700;"
-            )
+        # Augment toggle
+        ui.switch(
+            value=augment_on[0],
+            on_change=lambda e: _on_augment_toggle(e.value),
+        ).props("dense").style("color:{C_AMBER};")
+        ui.label("AUGMENT").style(
+            f"font-size:10px;color:{C_MUTED};font-weight:500;letter-spacing:0.5px;"
+        )
         ui.space()
         cur = get_role_model("synthesis")
         if not cur or cur not in opts:
@@ -1262,6 +1274,26 @@ def _build_chat_panel(
         ui.select(opts, value=cur, on_change=lambda e: on_chat_model_changed(e.value)).props("dense").classes(
             "min-w-[200px]"
         )
+
+    def _on_augment_toggle(val: bool) -> None:
+        augment_on[0] = val
+        if val:
+            mode_chip.text = "AUGMENTED"
+            mode_chip.style(
+                f"font-size:9px;font-weight:700;letter-spacing:1px;"
+                f"padding:2px 8px;border-radius:3px;"
+                f"background:{C_AMBER};color:{C_GROUND};"
+            )
+            state.current_mode = "augmented"
+        else:
+            mode_chip.text = "BARE"
+            mode_chip.style(
+                f"font-size:9px;font-weight:700;letter-spacing:1px;"
+                f"padding:2px 8px;border-radius:3px;"
+                f"background:{C_INK40};color:{C_CREAM};"
+            )
+            state.current_mode = "normal"
+        state.reset_session()
 
     msgs = (
         ui.column().classes("w-full px-4 py-2").style(f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:320px;")
@@ -1313,7 +1345,7 @@ def _build_chat_panel(
         with msgs:
             think = ui.label("Thinking...").style(f"color:{C_MUTED};font-size:12px;")
 
-        if is_aug:
+        if augment_on[0]:
             # ── AUGMENTED MODE: POST to /api/v1/ask via backend ──
             # Check that we have a valid project before asking
             if not state.current_project:
@@ -1573,10 +1605,7 @@ async def main_page() -> None:
     asyncio.create_task(_deferred_backend_load())
 
     def _on_tab(name: str) -> None:
-        if name == "augmented" and state.current_mode != "augmented":
-            state.current_mode = "augmented"
-            state.reset_session()
-        elif name == "chat" and state.current_mode != "normal":
+        if name == "chat" and state.current_mode != "normal":
             state.current_mode = "normal"
             state.reset_session()
 
@@ -1598,7 +1627,6 @@ async def main_page() -> None:
             )
             with tabs:
                 ui.tab("chat", label="CHAT")
-                ui.tab("augmented", label="AUGMENTED")
                 ui.tab("cohort", label="COHORT")
                 ui.tab("review", label="REVIEW")
                 ui.tab("wiki", label="WIKI")
@@ -1617,9 +1645,7 @@ async def main_page() -> None:
     # ── CONTENT PANELS ──────────────────────────────────────────────
     with ui.tab_panels(tabs, value="chat").classes("w-full").style(f"flex:1;background:{C_GROUND};min-height:0;"):
         with ui.tab_panel("chat"):
-            _build_chat_panel("normal", state, slots, opts)
-        with ui.tab_panel("augmented"):
-            _build_chat_panel("augmented", state, slots, opts)
+            _build_unified_chat_panel(state, slots, opts)
         with ui.tab_panel("cohort"):
             _build_cohort_panel(state)
         with ui.tab_panel("review"):
