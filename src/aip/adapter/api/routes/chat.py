@@ -606,6 +606,14 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                 from aip.adapter.api.routes.ingest import auto_save_chat_turn
 
                                 domain = (session_meta or {}).get("domain", "chat")
+                                # Collect source_turn_ids from augmented retrieval for Vigil
+                                _source_turn_ids: list[str] = []
+                                if session_mode == "augmented" and response_sources:
+                                    _source_turn_ids = [
+                                        s.get("turn_id", "")
+                                        for s in (source_dicts or [])
+                                        if s.get("turn_id")
+                                    ]
                                 asyncio.create_task(
                                     auto_save_chat_turn(
                                         session_id=session_id,
@@ -615,6 +623,8 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                         domain=domain,
                                         turn_index=turn_index,
                                         model_used=model_used,
+                                        augmented=(session_mode == "augmented"),
+                                        source_turn_ids=_source_turn_ids or None,
                                     ),
                                     name=f"auto-save-{session_id}",
                                 )

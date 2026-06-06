@@ -183,6 +183,8 @@ async def auto_save_chat_turn(
     domain: str = "chat",
     turn_index: int = 0,
     model_used: str = "",
+    augmented: bool = False,
+    source_turn_ids: list[str] | None = None,
 ) -> IngestionResult | None:
     """Auto-save a completed chat turn through the ingestion pipeline.
 
@@ -194,8 +196,9 @@ async def auto_save_chat_turn(
     4. Updates the session's ingestion status
     5. Returns the IngestionResult (or None on failure)
 
-    This function is non-blocking from the caller's perspective — errors
-    are logged but don't propagate to the chat handler.
+    When augmented=True, the turn is marked as an augmented chat response
+    in metadata_json so Vigil can evaluate citation quality. source_turn_ids
+    lists the corpus turn IDs that were retrieved as context.
     """
     from aip.adapter.api.routes.sessions import update_ingestion_status
 
@@ -250,22 +253,32 @@ async def auto_save_chat_turn(
         # get_untagged_turns() never saw live chat turns.
         if container.corpus_turn_store is not None:
             try:
+                import json as _json
                 from aip.foundation.schemas.corpus_turn import CorpusTurn, make_turn_id
 
                 now = datetime.now(timezone.utc)
                 turn_id = make_turn_id(session_id, turn_index)
+
+                # Build metadata_json for Vigil: augmented flag + source_turn_ids
+                metadata: dict = {}
+                if augmented:
+                    metadata["augmented"] = True
+                    if source_turn_ids:
+                        metadata["source_turn_ids"] = source_turn_ids
+                    # source_model="aip_chat" identifies augmented turns for Vigil queries
 
                 corpus_turn = CorpusTurn(
                     turn_id=turn_id,
                     conversation_id=session_id,
                     conversation_name=f"Chat Session {session_id[:8]}",
                     turn_index=turn_index,
-                    source_model=model_used or "chat",
+                    source_model="aip_chat" if augmented else (model_used or "chat"),
                     source_account="auto-save",
                     export_date=now.strftime("%Y-%m-%d"),
                     user_text=user_message,
                     assistant_text=assistant_response,
                     turn_timestamp=now.isoformat(),
+                    metadata_json=_json.dumps(metadata) if metadata else "{}",
                 )
 
                 await container.corpus_turn_store.write_turn(corpus_turn)

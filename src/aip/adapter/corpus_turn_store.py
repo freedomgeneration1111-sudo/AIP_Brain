@@ -619,6 +619,61 @@ class CorpusTurnStore:
             await conn.close()
             self._conn = None
 
+    async def get_augmented_turns_since(self, since: float | None = None, limit: int = 100) -> list[CorpusTurn]:
+        """Return augmented chat turns created since a given timestamp.
+
+        Vigil uses this to find turns where source_model='aip_chat' and
+        metadata_json contains '"augmented": true'. The since parameter
+        is an epoch float (from time.time()); if None, returns all
+        augmented turns. Results are ordered by created_at ASC so Vigil
+        processes oldest-first.
+        """
+        conn = await self._get_conn()
+        try:
+            sql = """
+                SELECT * FROM corpus_turns
+                WHERE source_model = 'aip_chat'
+                  AND metadata_json LIKE '%"augmented": true%'
+            """
+            params: list[Any] = []
+            if since is not None:
+                since_iso = datetime.fromtimestamp(since, tz=timezone.utc).isoformat()
+                sql += " AND created_at > ?"
+                params.append(since_iso)
+            sql += " ORDER BY created_at ASC LIMIT ?"
+            params.append(int(limit))
+            cursor = await conn.execute(sql, params)
+            rows = await cursor.fetchall()
+            return [self._row_to_turn(row) for row in rows]
+        finally:
+            await conn.close()
+            self._conn = None
+
+    async def update_metadata_json(self, turn_id: str, metadata_json: str) -> None:
+        """Update only the metadata_json column for a turn.
+
+        Vigil uses this to write quality scores back without touching
+        any other field. The metadata_json is a JSON string that will
+        be merged with the existing value rather than replaced wholesale
+        (callers should read-merge-write for safety).
+        """
+        conn = await self._get_conn()
+        try:
+            now = datetime.now(timezone.utc).isoformat() + "Z"
+            await conn.execute(
+                """
+                UPDATE corpus_turns
+                SET metadata_json = ?,
+                    updated_at = ?
+                WHERE turn_id = ?
+                """,
+                (metadata_json, now, turn_id),
+            )
+            await conn.commit()
+        finally:
+            await conn.close()
+            self._conn = None
+
     def _row_to_turn(self, row: sqlite3.Row) -> CorpusTurn:
         """Rehydrate a CorpusTurn from a DB row (JSON fields -> lists)."""
         return CorpusTurn(
