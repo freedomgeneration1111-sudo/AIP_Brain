@@ -144,6 +144,20 @@ def _init_state_db(db_path: Path) -> bool:
                 custom_api_key TEXT,
                 last_fetched TEXT
             );
+
+            -- Beast cohort comparisons (Phase 3 — AIP_UNIFIED_CHAT_SPEC §Beast Comparison)
+            CREATE TABLE IF NOT EXISTS beast_comparisons (
+                comparison_id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                turn_index INTEGER NOT NULL,
+                query TEXT NOT NULL,
+                model_responses JSON NOT NULL,
+                comparison_text TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_beast_comparisons_session
+            ON beast_comparisons(session_id, created_at DESC);
         """)
         conn.commit()
         conn.close()

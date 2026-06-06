@@ -15,6 +15,7 @@ Per AIP_UNIFIED_CHAT_SPEC §Cohort:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
@@ -25,6 +26,8 @@ import aiosqlite
 import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+
+from aip.adapter.api.dependencies import get_container
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -228,8 +231,6 @@ async def cohort_dispatch(payload: CohortRequest) -> CohortResponse:
     augmented_context: str = ""
     if payload.augmented:
         try:
-            from aip.adapter.api.dependencies import get_container
-
             container = get_container()
             if container is not None and container.corpus_turn_store is not None:
                 hits = await container.corpus_turn_store.search(query=query, limit=5)
@@ -268,8 +269,9 @@ async def cohort_dispatch(payload: CohortRequest) -> CohortResponse:
 
     # Enrich with display names from DB
     display_names = await _get_display_names(payload.model_ids)
+    session_id = str(uuid.uuid4())
     response_items: list[CohortResponseItem] = []
-    for r in results:
+    for i, r in enumerate(results):
         mid = r["model_id"]
         display = display_names.get(mid) or r.get("display_name", mid)
         response_items.append(
@@ -282,8 +284,53 @@ async def cohort_dispatch(payload: CohortRequest) -> CohortResponse:
             )
         )
 
+    # Write each model's response as a separate CorpusTurn
+    # Per AIP_CORPUS_LIFECYCLE_SPEC §Cohort mode: metadata includes
+    # {"cohort": true, "model_id": "...", "cohort_turn_index": N}
+    try:
+        container = get_container()
+        corpus_turn_store = getattr(container, "corpus_turn_store", None)
+        if corpus_turn_store is not None:
+            from datetime import datetime, timezone
+
+            from aip.foundation.schemas.corpus_turn import CorpusTurn
+
+            now_iso = datetime.now(timezone.utc).isoformat() + "Z"
+            for i, item in enumerate(response_items):
+                if not item.response_text:
+                    continue
+                turn = CorpusTurn(
+                    turn_id=f"cohort:{session_id}:{i}",
+                    conversation_id=session_id,
+                    conversation_name=f"cohort-{session_id[:8]}",
+                    turn_index=i,
+                    source_model=item.model_id,
+                    source_account="definer",
+                    export_date=now_iso,
+                    user_text=query,
+                    assistant_text=item.response_text,
+                    turn_timestamp=now_iso,
+                    thinking_text="",
+                    domains=[],
+                    primary_domain="",
+                    tags=[],
+                    importance=0.0,
+                    bridges=[],
+                    beast_confidence=0.0,
+                    tagging_version=0,
+                    searchable_text=f"{query} {item.response_text}",
+                    word_count=len(item.response_text.split()),
+                )
+                # Attach cohort metadata
+                turn.metadata_json = json.dumps(  # type: ignore[attr-defined]
+                    {"cohort": True, "model_id": item.model_id, "cohort_turn_index": i}
+                )
+                await corpus_turn_store.write_turn(turn)
+    except Exception as exc:
+        logger.warning("cohort_corpus_write_failed: %s", exc)
+
     return CohortResponse(
         responses=response_items,
-        session_id=str(uuid.uuid4()),
+        session_id=session_id,
         turn_index=0,
     )
