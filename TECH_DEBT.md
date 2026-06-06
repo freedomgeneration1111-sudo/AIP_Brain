@@ -1,7 +1,7 @@
 # AIP Technical Debt Register
 
 **Owner:** B. Moses Jorgensen  
-**Last Updated:** 2026-06-05
+**Last Updated:** 2026-06-06
 
 Each entry records a deliberate deferral — what was skipped, why, and what triggers remediation.
 
@@ -84,5 +84,147 @@ returns hardcoded True, other tools return `ok=True`. No real operation is dispa
 **Remediation trigger:**  
 Phase 5 multi-user deployment. Requires real stdio/SSE MCP transport + dispatching to live
 search/approval/config services.
+
+---
+
+## DEBT-004 — GraphStore Connection Churn
+
+**Status:** Active — low priority  
+**Phase:** 2B Knowledge Graph  
+**Filed:** 2026-06-06
+
+**What was deferred:**  
+`adapter/graph_store.py` opens and closes a new `sqlite3.connect()` on every method call
+(upsert_node, upsert_edge, get_neighbors, get_all_nodes, etc.). For the current graph size
+(28-36 nodes, 5-17 edges) this is not a performance problem, but it is architecturally inconsistent
+with the rest of the adapter layer which uses connection pools or persistent async connections
+(aiosqlite via SqliteConcurrencyManager).
+
+**Why deferred:**  
+The graph is read-heavy and small. Per-call connection overhead is microseconds at this scale.
+DEBT-005 (aiosqlite conversion) is the correct fix and subsumes this one — both will be resolved
+together in BUG-004.
+
+**Remediation trigger:**  
+Resolved as part of BUG-004 (GraphStore aiosqlite conversion). No separate action needed.
+
+**Related work:**  
+- `src/aip/adapter/graph_store.py` — docstring explicitly notes "Synchronous (no aiosqlite)"
+- DEBT-005 below — the aiosqlite conversion resolves connection churn as a side effect
+- BUG-004 in STATUS.md bug registry
+
+---
+
+## DEBT-005 — GraphStore Protocol Missing + Synchronous sqlite3
+
+**Status:** Active — blocks BUG-004  
+**Phase:** 2B Knowledge Graph  
+**Filed:** 2026-06-06
+
+**What was deferred:**  
+Two related gaps:
+
+1. **No `GraphStore` Protocol in `foundation/protocols/storage.py`.** All other stores in the
+   adapter layer (VectorStore, LexicalStore, CanonicalStore, ArtifactStore, etc.) have Protocol
+   declarations for dependency injection and structural typing. GraphStore was added in Phase 2B
+   without a Protocol, making it un-swappable and invisible to the DI system.
+
+2. **`adapter/graph_store.py` uses synchronous `sqlite3`** rather than `aiosqlite`. All other
+   async-path SQLite stores use aiosqlite. The graph store's docstring acknowledges this explicitly:
+   "Synchronous (no aiosqlite)". This works today because graph routes call the store in sync
+   context, but it introduces a blocking call risk in the async FastAPI event loop as graph
+   operations grow.
+
+**Why deferred:**  
+The graph was delivered as a working Phase 2B MVP. Adding the Protocol and converting to aiosqlite
+are correctness/architecture improvements, not urgent fixes. The blocking risk is low at current
+graph size. The work was captured as BUG-004 for the next bug-fix pass.
+
+**Remediation steps (BUG-004):**  
+1. Add `GraphStore` Protocol to `src/aip/foundation/protocols/storage.py` with methods:
+   `upsert_node`, `upsert_edge`, `get_node`, `get_neighbors`, `get_all_nodes`, `get_all_edges`,
+   `get_stats`, `delete_node`, `delete_edge`, `initialize`.
+2. Convert `src/aip/adapter/graph_store.py` from `sqlite3` to `aiosqlite` (all methods become
+   `async`, connection opened once in `initialize()` and reused).
+3. Add `container.graph_store` field to `AipContainer` and instantiate in app.py lifespan.
+4. Update `src/aip/adapter/api/routes/graph.py` and `routes/chat.py` to use
+   `container.graph_store` instead of constructing `GraphStore` inline.
+5. Update `__all__` in `foundation/protocols/storage.py` to include `GraphStore`.
+
+**Related work:**  
+- `src/aip/adapter/graph_store.py` — current synchronous implementation
+- `src/aip/foundation/protocols/storage.py` — all other store Protocols defined here
+- `src/aip/adapter/api/routes/graph.py` — currently constructs GraphStore inline
+- `src/aip/adapter/api/routes/chat.py` — also constructs GraphStore inline (see also DEBT-002, BUG-002)
+- DEBT-004 above — aiosqlite conversion resolves connection churn
+
+---
+
+## DEBT-006 — `actors/sexton.py` Not Wired into app.py (CRITICAL)
+
+**Status:** Active — BUG-003, must fix before dogfood  
+**Phase:** 3 Actor Intelligence  
+**Filed:** 2026-06-06
+
+**What was deferred:**  
+ADR-011 (2026-06-06) drove a code refactor that built a full-maintenance Sexton actor at
+`src/aip/orchestration/actors/sexton.py` (1,341 lines, 5 operations: tagging, embedding,
+wiki generation, graph extraction, failure classification). This was committed in `7fe15a2`.
+
+However, `app.py` was NOT updated to wire the new actor. The lifespan still:
+- Imports `orchestration/sexton/sexton.py` (the old failure-classifier-only Sexton, ~220 lines)
+- Instantiates it into `container.sexton`
+- Calls `run_classification_cycle()` every 300s
+
+The new `actors/sexton.py::Sexton.run_cycle()` is never called. As a result:
+- **Automatic corpus tagging is not running** (2,649 untagged turns not being processed)
+- **Automatic embedding is not running**
+- **Automatic wiki generation is not running**
+- **Automatic graph extraction is not running**
+- Only failure classification runs (the old Sexton)
+
+**Why deferred:**  
+The refactor was done in incremental commits focused on the code. The app.py wiring update
+was identified as a separate task and captured here. It was not a silent omission — the
+docstring in `actors/sexton.py` explicitly references the wiring gap.
+
+**Additional finding:** The `actors/sexton.py` docstring references `container.sexton_actor`
+as the field name, but `AipContainer` defines the field as `container.sexton`. The wiring
+fix must use `container.sexton` (the actual field) and call `run_cycle()` (not
+`run_classification_cycle()`).
+
+**Remediation steps (BUG-003):**  
+In `src/aip/adapter/api/app.py`, replace the Sexton instantiation block (lines ~565-585)
+and scheduler block (lines ~747-781) as follows:
+
+1. **Instantiation** — import `actors/sexton.Sexton` instead of `sexton/sexton.Sexton`;
+   pass the full store set: `sexton_provider` (model slot resolver), `corpus_turn_store`,
+   `embedding_provider`, `vector_store`, `artifact_store`, `ecs_store`, `event_store`,
+   `trace_store`, `lexical_store`, `config` (SextonConfig from toml).
+
+2. **Scheduler** — change `await container.sexton.run_classification_cycle()` to
+   `await container.sexton.run_cycle()`. The `run_cycle()` method internally delegates
+   to `_run_failure_classification()` which itself instantiates and calls the old
+   `sexton/sexton.py` Sexton — so classification is preserved.
+
+3. **Interval** — `run_cycle()` reads `SextonConfig.classification_interval_seconds`
+   (same field, same default 300s). No config change needed.
+
+4. **Docstring fix** — update `actors/sexton.py` docstring to reference
+   `container.sexton` (not `container.sexton_actor`).
+
+**Testing:**  
+Verify in `~/AIP_Brain` (fresh seed):
+- `aip status` shows tagging progress after 5 minutes
+- Sexton logs show `sexton_vigil_start` and `sexton_vigil_complete` events
+- `actors_route` returns Sexton as active with `run_cycle` callable
+
+**Related work:**  
+- `src/aip/orchestration/actors/sexton.py` — the full-maintenance Sexton (built, unwired)
+- `src/aip/orchestration/sexton/sexton.py` — the old failure-classifier Sexton (currently wired)
+- `src/aip/adapter/api/app.py` — the wiring location
+- `src/aip/adapter/api/dependencies.py` — `container.sexton` field (Any type)
+- ADR-011 — the architectural decision that drove the refactor
+- ROADMAP Phase 3.2 — Sexton status
 
 ---

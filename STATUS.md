@@ -1,8 +1,8 @@
 # AIP Status
 
 **Version:** 0.1.0-alpha
-**Architecture Revision:** 5.2
-**Last Updated:** 2026-06-05
+**Architecture Revision:** 5.3
+**Last Updated:** 2026-06-06
 
 ## Production Safety Status
 
@@ -41,6 +41,21 @@ Production configuration is **enforced programmatically**. Unsafe configs fail a
 - **Docker:** Laptop and production profiles with programmatic config validation
 - **Lint:** ruff format + ruff check (E, F, W, I) — all passing, blocking in CI
 
+## Actor Status (post ADR-011 refactor)
+
+ADR-011 (2026-06-06) redefined actor role boundaries. The code refactor is committed
+(`3d4bd44` through `0c289a9`). One wiring gap remains open — see DEBT-006.
+
+| Actor | Role (ADR-011) | Code State | Wired in app.py | Notes |
+|-------|---------------|------------|-----------------|-------|
+| Beast | Active synthesis support — context advisory, on-demand wiki draft | ✅ Refactored | ✅ Scheduled (heartbeat only) | Maintenance ops removed per ADR-011 |
+| Sexton | Background maintenance — tagging, embedding, wiki, graph, classification | ✅ Built (actors/sexton.py, 1,341 lines, all 5 ops) | ❌ **NOT WIRED** — app.py still calls old sexton/sexton.py::run_classification_cycle() | **DEBT-006** — tagging, embedding, wiki, graph are NOT running |
+| Vigil | Quality evaluation — synthesis citation quality, profile amendments | ✅ Refactored | ✅ Scheduled (hourly) | Maintenance ops removed per ADR-011 |
+
+**DEBT-006 impact:** Automatic corpus tagging, embedding, wiki generation, and graph extraction are
+not running. Only failure classification (old Sexton) fires every 300s. The new full-maintenance
+`actors/sexton.py` is dead code until wired.
+
 ## Runtime Gap Closure (P9)
 
 The following runtime gaps have been addressed. No known gap returns fake success from core runtime paths.
@@ -56,7 +71,9 @@ The following runtime gaps have been addressed. No known gap returns fake succes
 | G. Vigil model-slot re-evaluation | Fixed | on_model_slot_change marks affected canonicals for re-evaluation, writes trace events, respects batch size | test_vigil_model_slot_re_evaluation.py | Conservative: all canonicals marked as affected |
 | H. Sexton intervention derivation | Fixed | Deterministic rules for A-F + 7 special conditions; unknown returns None | test_sexton_intervention_derivation.py | Complex multi-signal derivation deferred |
 
-## Corpus Status (as of 2026-06-05)
+## Corpus Status (as of 2026-06-06)
+
+### Worktree (`~/.grok/worktrees/moses-aip-brain/aip-brain`)
 
 | Source Account | Turns | Tagged | Notes |
 |----------------|-------|--------|-------|
@@ -67,11 +84,16 @@ The following runtime gaps have been addressed. No known gap returns fake succes
 
 Beast domain registry: v1.1 — 28 domains, 17 connectors
 Vector store: 50 vectors (from embed --limit 50) — embedding pipeline Phase 1.4
-Knowledge graph: 28 nodes, 5 edges (bridge seed) — Phase 2B COMPLETE
+Knowledge graph: **36 nodes, 17 edges** — worktree (post full bridge seed run)
+
+### Seed Repo (`~/AIP_Brain`)
+
+Knowledge graph: **28 nodes, 5 edges** — fresh seed corpus only
   - 6 DOMAIN nodes, 7 PROJECT, 6 PERSON, 6 CONCEPT, 3 MANUSCRIPT
   - Bridge edges: 5 | Extracted edges: 0 (Beast extraction needs active API key)
   - Visualization: /graph-viz (Cytoscape.js, dark-mode, filterable)
   - aip_methodology orphan node present (pre-rename artifact — see TECH_DEBT.md#DEBT-001)
+
 Unclassified turns: 267 (parse failures + low-confidence — pending retag)
 Residual aip_methodology turns: 5 (pending cleanup retag)
 Embedded turns: 50
@@ -145,7 +167,7 @@ conversations. The project eats its own dog food: architecture decisions, design
 discussions, and meeting transcripts are ingested into `db/state.db` and queried
 via `aip ask` to ground future design work in prior decisions.
 
-## Wiki Articles Status (as of 2026-06-05)
+## Wiki Articles Status (as of 2026-06-06)
 
 | Domain | Status | Words |
 |--------|--------|-------|
@@ -156,14 +178,15 @@ via `aip ask` to ground future design work in prior decisions.
 | All others (22) | NO WIKI — no tagged turns yet | — |
 
 Beast generates wikis from tagged turns only. 2,649 turns are still untagged.
-After corpus retag completes, remaining domain wikis will generate in Beast cycles.
+After corpus retag completes (blocked on DEBT-006 fix), remaining domain wikis will
+generate in Sexton vigil cycles.
 
-## Knowledge Graph Status (as of 2026-06-05)
+## Knowledge Graph Status (as of 2026-06-06)
 
 | Component | Status | Notes |
 |-----------|--------|-------|
 | graph_nodes / graph_edges tables | COMPLETE | state.db, synchronous GraphStore |
-| Bridge seed (`--build-from-bridges`) | COMPLETE | 28 nodes, 5 edges |
+| Bridge seed (`--build-from-bridges`) | COMPLETE | 28 nodes, 5 edges (seed) / 36 nodes, 17 edges (worktree) |
 | Entity alias registry | COMPLETE | 22 entries from entity_aliases.md |
 | Beast extraction (`--extract`) | COMPLETE (infra) | Requires active Beast LLM API key |
 | PPR retrieval | COMPLETE (infra) | GraphRetriever with networkx pagerank |
@@ -171,10 +194,15 @@ After corpus retag completes, remaining domain wikis will generate in Beast cycl
 | Cytoscape.js visualization | COMPLETE | /graph-viz standalone dark-mode page |
 | Chat augmentation | COMPLETE | Domain neighbor injection in augmented chat |
 
-## Next Priorities
+## Next Priorities — Bug Registry
 
-1. Complete Beast corpus retag (2,649 untagged turns still pending — will grow graph substantially)
-2. Wiki UI: markdown editor, article browser, filterable by domain/review status
-3. Wiki versioning (ECS supersession when article regenerated)
-4. Graph node merge after corpus retag: `aip corpus graph --merge-nodes aip_methodology aip`
-   (see TECH_DEBT.md#DEBT-001)
+Active bugs to fix, in order. Each gets one commit.
+
+| # | Bug | File | Fix |
+|---|-----|------|-----|
+| BUG-001 | Project lost on restart: `aip init` creates no default project — `list_projects()` returns empty → GUI shows `NO_PROJECT_MEMORY` | `src/aip/cli/init.py` | After DB init, instantiate `SqliteProjectStore` and call `create_project("default", "Default")` |
+| BUG-002 | `chat.py` uses `get_default_db_path()` for GraphStore instead of `container.config.get("db_path")` — path mismatch if config differs | `src/aip/adapter/api/routes/chat.py` | Replace `get_default_db_path()` with `container.config.get("db_path", ...)` pattern from `graph.py` commit `f269407` |
+| BUG-003 | `actors/sexton.py` never instantiated — app.py still wires old `sexton/sexton.py::run_classification_cycle()` — tagging, embedding, wiki, graph NOT running | `src/aip/adapter/api/app.py` | Instantiate `actors/sexton.Sexton` with all required stores; schedule `run_cycle()` every 300s — see TECH_DEBT.md#DEBT-006 |
+| BUG-004 | `GraphStore` has no Protocol in `storage.py`; `adapter/graph_store.py` uses synchronous `sqlite3` — blocks async routes | `src/aip/foundation/protocols/storage.py`, `src/aip/adapter/graph_store.py` | Add `GraphStore` Protocol; convert `graph_store.py` to `aiosqlite`; inject via container — see TECH_DEBT.md#DEBT-005 |
+
+**Test strategy:** Bugs 1-3 on `~/AIP_Brain` (fresh seed) first. When confirmed working, pull to worktree.

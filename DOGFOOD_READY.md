@@ -1,5 +1,5 @@
 ---
-## ⚠️ Read This First — Current Dogfood State (2026-06-04)
+## ⚠️ Read This First — Current Dogfood State (2026-06-06)
 
 The dogfood guide below describes the foundational ingest→ask→review→export
 loop. This still works. However AIP has grown significantly since that guide
@@ -22,10 +22,10 @@ uv run aip corpus ingest /path/to/conversations.json \
   --source-account claude_export_$(date +%Y_%m)
 ```
 
-### Step 2 — Tag your corpus with Beast
+### Step 2 — Tag your corpus with Sexton
 ```bash
 uv run aip corpus tag --limit 500
-# For a large corpus this takes time — Beast calls LLM for each batch of 8 turns
+# For a large corpus this takes time — Sexton calls LLM for each batch of 8 turns
 # Run with --retag after updating docs/beast_domain_registry_v1.md
 ```
 
@@ -37,13 +37,17 @@ uv run aip status
 
 ### Step 4 — Start the server and use augmented chat
 ```bash
-uv run aip serve
-# Open http://localhost:8000
+./scripts/start.sh
+# Opens backend on http://127.0.0.1:8000
+# Opens GUI on http://127.0.0.1:8080
 # Switch to AUGMENTED tab for Beast-context-enhanced responses
 ```
 
-### Step 5 — Review Beast's domain proposals
-Any domains Beast couldn't classify appear in the review queue:
+Note: `uv run aip serve` does not exist. Always use `./scripts/start.sh` to
+start both the FastAPI backend and the NiceGUI shell together.
+
+### Step 5 — Review Sexton's domain proposals
+Any domains Sexton couldn't classify appear in the review queue:
 ```bash
 uv run aip review list
 ```
@@ -68,8 +72,8 @@ reading source code or guessing database paths.
 ## 1. Install
 
 ```bash
-git clone https://github.com/freedomgeneration1111-sudo/aip.git
-cd aip
+git clone https://github.com/freedomgeneration1111-sudo/AIP_Brain.git
+cd AIP_Brain
 uv sync
 ```
 
@@ -179,7 +183,7 @@ The output will include:
 ### Environment Variables
 
 | Variable | Purpose |
-|----------|---------|
+|----------|---------| 
 | `AIP_SYNTHESIS_BASE_URL` | API endpoint for the synthesis slot |
 | `AIP_SYNTHESIS_MODEL` | Model name for synthesis |
 | `AIP_SYNTHESIS_API_KEY` | API key (if required) |
@@ -354,3 +358,12 @@ Both work:
 If both are specified, `--project` takes precedence and resolves the domain
 from the project store. If the project has domain `aip_loom` and you pass
 `--domain other`, a warning is shown and the project's domain is used.
+
+### Server Won't Start / `aip serve` Not Found
+
+`uv run aip serve` does not exist. Use:
+```bash
+./scripts/start.sh
+```
+
+This starts both the FastAPI backend (port 8000) and the NiceGUI shell (port 8080).

@@ -57,13 +57,7 @@ the roadmap, update both documents.
 ### 1.2 Source Parsers
 - ✅ Claude export parser (conversations.json, handles all content block types)
 - ✅ 2,691 turns ingested from claude_export_june_2026
-- ✅ 52 turns from claude_export_2024_2025 ingested
 - ✅ 1,743 turns with extended thinking blocks preserved
-- ✅ Seed corpus Q&A (32 turns, examples/seed_corpus/)
-- ✅ DEFINER profile v1.0 drafted (examples/seed_corpus/definer_profile_v1.md)
-- ✅ 52 turns ingested from claude_export_2024_2025
-- ✅ Seed corpus Q&A (32 turns, examples/seed_corpus/)
-- ✅ DEFINER profile v1.0 drafted (examples/seed_corpus/definer_profile_v1.md)
 - 🔲 ChatGPT export parser (tree-structure conversation format)
 - 🔲 DeepSeek export parser
 - 🔲 GLM export parser
@@ -82,19 +76,15 @@ the roadmap, update both documents.
 - ✅ aip corpus tag CLI (--limit, --retag)
 - ✅ 2,681 turns tagged (tagging_version > 0)
 - ✅ Registry v1.0: 26 domains, 13 connectors
-- ✅ Registry v1.1 (aip hall model, ancient_archaeology, agi_philosophy)
-- 🔲 Entity alias table (docs/entity_aliases.md) for co-reference resolution
-- 🔲 Entity alias table (docs/entity_aliases.md) for co-reference resolution
+- ⏳ Registry v1.1: aip hall model, ancient_archaeology, agi_philosophy
 - 🔲 Registry v1.2: (future — based on Beast proposals and dogfood observations)
 
 ### 1.4 Embedding Pipeline
-- ✅ Embed corpus_turns.searchable_text using embedding slot
-- ✅ Store vectors keyed by turn_id in vector store
-- ✅ Hybrid FTS5+vector scoring in _search_sources
-- ✅ Background embedding pass in Beast cycle (embed after tagging)
+- 🔲 Embed corpus_turns.searchable_text using embedding slot
+- 🔲 Store vectors keyed by turn_id in vector store
+- 🔲 Hybrid FTS5+vector scoring in _search_sources
+- 🔲 Background embedding pass in Beast cycle (embed after tagging)
 - 🔲 Re-embedding pass when embedding model changes
-- ✅ DEFINER profile injection in augmented chat (profile prepended to system prompt)
-- ✅ DEFINER profile injection in augmented chat (tiered, ~600 tokens)
 
 ### 1.5 Multi-Corpus Architecture
 - 🔲 Corpus registry in config (named corpora with db_path)
@@ -106,85 +96,31 @@ the roadmap, update both documents.
 
 ---
 
-## PHASE 2A — Beast Wiki
-*Concept-level knowledge base, human-browsable and LLM-injectable.*
-*Status: IN PROGRESS — wiki generation + CLI + augmented chat injection complete*
-*Reference: ADR-006-wiki-architecture.md*
+## PHASE 2 — Knowledge Synthesis
+*Beast-generated wiki, knowledge graph, and cross-corpus intelligence.*
+*Status: NOT STARTED*
 
-### Design Principles
-- Beast-generated, DEFINER-approved — never auto-canonical
-- Scope: domain-level first (28 articles), expanding to concept-level
-  (NBCM alone may reach 100 articles, brick kiln 50+)
-- Dual purpose: human browsing to reconnect with thinking +
-  LLM orientation context injected into augmented chat
-- Publication pipeline: approved wiki articles are the spine of
-  manuscripts (Architecture of Mercy, NBCM paper, bonded labor doc)
-- Trigger: event-driven. Beast wiki pass when cumulative new tokens
-  processed in a domain exceeds ~1M tokens since last generation.
-  Not timer-driven.
+### 2.1 Beast Wiki Generation
+- 🔲 Domain article generation (300-500 words per active domain)
+- 🔲 Wiki articles as GENERATED artifacts → DEFINER review → APPROVED
+- 🔲 BeastContextPreparer reads approved wiki as domain overview
+- 🔲 Wiki update triggered by corpus_modified events (not on timer)
+- 🔲 Wiki versioning (new article supersedes old on regeneration)
 
-### 2A.1 Wiki Generation
-- ✅ Beast wiki article generation (domain-level first, 28 articles)
-- ✅ Article structure: Overview / Key Concepts / Cross-Domain
-     Connections / Current State / Evolution / Key Turns / Open Questions
-- ✅ Overview section (3-5 sentences) injected into augmented chat
-- ✅ Wiki articles as GENERATED → DEFINER review → APPROVED
-- ✅ Word-threshold trigger per domain (~200k words since last wiki)
-- 🔲 Wiki versioning (ECS: new article supersedes old)
+### 2.2 Knowledge Graph
+- 🔲 Entity extraction from corpus_turns (people, concepts, projects, places)
+- 🔲 Relationship inference (who worked on what, what connects to what)
+- 🔲 Graph store (SQLite adjacency list or dedicated graph db)
+- 🔲 Graph-aware retrieval (follow relationships during augmented chat)
+- 🔲 Graph visualization in UI
+- SEE: ADR-005-knowledge-graph-design.md (to be written)
 
-### 2A.2 Wiki UI
-- 🔲 Built-in markdown editor in GUI
-- 🔲 DEFINER injects <comment> tags at convenience
-- 🔲 Reviewed/unreviewed indicator per article
-- 🔲 Article list view filterable by domain and review status
-- 🔲 Publication export: approved articles exportable as manuscript sections
-
-### 2A.3 DEFINER Profile System
-- ✅ Tiered profile injection in augmented chat (~600 tokens)
-- 🔲 DEFINER direct edit via UI markdown editor (immediate effect)
-- 🔲 Vigil metacognition cycle: proposes amendments as GENERATED artifacts
-- 🔲 Beast pattern detection: flags emerging corpus patterns not in profile
-
-## PHASE 2B — Knowledge Graph
-*Entity graph as interactive mind map for cross-domain synthesis.*
-*Status: COMPLETE — SQLite graph tables + bridge seed + Beast extraction + PPR retrieval + Cytoscape.js viz*
-*Reference: ADR-007-knowledge-graph-architecture.md*
-*Last Updated: 2026-06-05*
-
-### Design Principles
-- Mind map for complex work — interactive, filterable, thought-provoking
-- Beast discovers entities independently (not seeded from profile)
-- Cross-domain connections are primary value — bridge tags are most
-  important edges
-- HippoRAG-inspired: Personalized PageRank (PPR) on schemaless KG
-  for associative multi-hop retrieval in single traversal step
-- Entity alias table resolves co-reference and terminology evolution
-- Confidence tiers: >0.7 displayed, 0.4-0.7 on request, <0.4 stored
-- Storage: SQLite adjacency tables — adequate to 50,000+ nodes
-- Bridge tags from corpus_turns.bridges are the first graph edges
-  (no LLM extraction needed for initial build)
-
-### 2B.1 Graph Storage
-- ✅ graph_nodes, graph_edges, graph_extraction_log tables in state.db
-- ✅ Entity types: PERSON, PROJECT, CONCEPT, PLACE, ORGANIZATION, MANUSCRIPT, DOMAIN
-- ✅ Relationship types: WORKS_ON, CONNECTS, LOCATED_IN, FUNDED_BY, AUTHORED, RELATES_TO
-- ✅ docs/entity_aliases.md (canonical co-reference resolution via EntityAliasRegistry)
-
-### 2B.2 Graph Construction
-- ✅ Phase 1: Bridge tags as seed edges (`aip corpus graph --build-from-bridges`)
-- ✅ Phase 2: Beast entity extraction on high-importance turns (`aip corpus graph --extract`)
-- ✅ PPR retrieval: networkx nx.pagerank() with personalization (GraphRetriever)
-- ✅ Domain neighbor lookup in augmented chat (1-hop, synchronous, non-blocking)
-- 🔲 Full PPR in augmented chat (Phase 3 — blocked on query entity extraction latency, see TECH_DEBT.md#DEBT-002)
-- 🔲 Similarity edges after embedding pipeline (Phase 3)
-- 🔲 Incremental updates triggered by corpus_modified events (Phase 3)
-
-### 2B.3 Graph UI
-- ✅ /graph-viz standalone Cytoscape.js page (dark-mode, filterable by domain/type/confidence)
-- ✅ Node detail panel (click node to see entity info)
-- ✅ `/api/v1/graph/data`, `/api/v1/graph/neighbors/{id}`, `/api/v1/graph/stats` endpoints
-- 🔲 Full NiceGUI sidebar panel integration (Phase 4)
-- 🔲 Turn detail view from graph node (link from entity to corpus turns)
+### 2.3 Domain Export Packages
+- 🔲 Export mechanism: filter corpus by domain → standalone package
+- 🔲 Package format: db + wiki + graph + embeddings as archive
+- 🔲 Versioned packages (v1.0, v2.0 as corpus grows)
+- 🔲 Package recipient model (share without exposing personal corpus)
+- SEE: ADR-004-multi-corpus-architecture.md
 
 ---
 
@@ -281,12 +217,6 @@ the roadmap, update both documents.
 - 🔄 Other platform exports (GPT, DeepSeek, GLM, Gemini, xAI) as parsers are built
 - 🔄 STATUS.md kept current after each build session
 - 🔄 ADRs written for each significant architectural decision
-- 🔄 Wiki article review and approval (Beast generates, DEFINER approves)
-- 🔄 Entity alias table maintenance (evolving terminology resolution)
-- 🔄 Graph health report review (orphan nodes, co-reference proposals)
-- 🔄 Wiki article review and approval
-- 🔄 Entity alias table maintenance
-- 🔄 Graph health report review
 
 ---
 
@@ -296,6 +226,3 @@ the roadmap, update both documents.
 |------------|---------------------------------------------|---------|
 | 2026-06-04 | Initial roadmap created from repo audit     | Claude + Moses |
 | 2026-06-04 | Phase 1 corpus work reflected               | Claude + Moses |
-| 2026-06-04 | Phase 2A wiki + Phase 2B graph added from research | Claude + Moses |
-| 2026-06-04 | Phase 2A wiki + Phase 2B graph + HippoRAG adoption | Claude + Moses |
-| 2026-06-05 | Phase 2B complete: graph tables, bridge seed, Beast extraction, PPR, Cytoscape.js | Claude + Moses |
