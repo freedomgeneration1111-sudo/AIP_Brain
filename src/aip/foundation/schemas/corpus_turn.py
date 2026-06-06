@@ -86,6 +86,12 @@ class CorpusTurn:
     embedded: int = 0
     # 0 = not embedded, 1 = has vector in vector store (for embedding pipeline)
 
+    metadata_json: str = "{}"
+    # Arbitrary JSON metadata for Vigil provenance tracking and future extensions.
+    # Stored as a TEXT column in SQLite (default '{}'). Vigil can write
+    # quality scores, review decisions, and classification provenance here
+    # without schema changes.
+
     # Computed fields — populated at ingestion time
     searchable_text: str = ""
     # user_text + "\n\n" + assistant_text + (thinking if present)

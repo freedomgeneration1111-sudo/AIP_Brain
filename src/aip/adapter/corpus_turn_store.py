@@ -114,6 +114,12 @@ class CorpusTurnStore:
             except sqlite3.OperationalError:
                 pass  # column exists
 
+            # Migration: add metadata_json column for Vigil provenance (idempotent)
+            try:
+                conn.execute("ALTER TABLE corpus_turns ADD COLUMN metadata_json TEXT DEFAULT '{}'")
+            except sqlite3.OperationalError:
+                pass  # column exists
+
             # FTS5 virtual table (content='corpus_turns' for external content)
             conn.execute("""
                 CREATE VIRTUAL TABLE IF NOT EXISTS corpus_turns_fts USING fts5(
@@ -230,6 +236,12 @@ class CorpusTurnStore:
             except sqlite3.OperationalError:
                 pass  # column exists
 
+            # Migration: add metadata_json column for Vigil provenance (idempotent)
+            try:
+                await conn.execute("ALTER TABLE corpus_turns ADD COLUMN metadata_json TEXT DEFAULT '{}'")
+            except sqlite3.OperationalError:
+                pass  # column exists
+
             await conn.execute("""
                 CREATE VIRTUAL TABLE IF NOT EXISTS corpus_turns_fts USING fts5(
                     turn_id UNINDEXED,
@@ -317,9 +329,9 @@ class CorpusTurnStore:
                     domains, primary_domain, tags, importance, bridges,
                     beast_confidence, tagging_version,
                     searchable_text, word_count,
-                    embedded,
+                    embedded, metadata_json,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     turn.turn_id,
@@ -343,6 +355,7 @@ class CorpusTurnStore:
                     turn.searchable_text or "",
                     int(turn.word_count or 0),
                     int(getattr(turn, "embedded", 0) or 0),
+                    getattr(turn, "metadata_json", "{}") or "{}",
                     created_at,
                     now,
                 ),
@@ -628,6 +641,7 @@ class CorpusTurnStore:
             beast_confidence=float(row["beast_confidence"] or 0.0),
             tagging_version=int(row["tagging_version"] or 0),
             embedded=int(row["embedded"] or 0) if "embedded" in row.keys() else 0,
+            metadata_json=row["metadata_json"] if "metadata_json" in row.keys() else "{}",
             searchable_text=row["searchable_text"] or "",
             word_count=int(row["word_count"] or 0),
         )
