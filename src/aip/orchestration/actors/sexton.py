@@ -30,6 +30,7 @@ Usage via AipContainer:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from datetime import datetime, timezone
@@ -508,6 +509,10 @@ Example response structure:
                     log.warning("sexton_update_tags_failed", turn_id=tid, error=str(exc))
                     failed += 1
 
+            # Rate-limit: pause between sequential LLM calls to stay under
+            # free-model per-minute token limits (429 prevention)
+            await asyncio.sleep(5)
+
         # Write proposals as GENERATED artifacts
         proposals_filed = 0
         ts = datetime.now(timezone.utc).isoformat()
@@ -769,6 +774,10 @@ Example response structure:
                 log.info("sexton_wiki_generated", domain=domain_id, word_count=wc, artifact=aid)
             else:
                 errors += 1
+
+            # Rate-limit: pause between sequential LLM calls to stay under
+            # free-model per-minute token limits (429 prevention)
+            await asyncio.sleep(5)
 
         await self._emit_event(
             event_type="sexton_wiki_cycle_complete",
@@ -1304,6 +1313,10 @@ Output format:
             total_processed += 1
             total_entities += entities_this_turn
             total_relationships += rels_this_turn
+
+            # Rate-limit: pause between sequential LLM calls to stay under
+            # free-model per-minute token limits (429 prevention)
+            await asyncio.sleep(5)
 
         log.info(
             "sexton_graph_extraction_complete",
