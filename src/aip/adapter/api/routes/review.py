@@ -21,18 +21,50 @@ from aip.foundation.schemas import SurfaceConfig
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Path to state.db — matches all stores in the project
-_STATE_DB = "db/state.db"
+# Resolved lazily from container config so that test environments
+# and deployments with non-default db_path work correctly.
+_STATE_DB: str | None = None
 
 
-async def _get_db() -> aiosqlite.Connection:
-    """Get an aiosqlite connection to state.db with Row factory."""
-    conn = await aiosqlite.connect(_STATE_DB)
+def _resolve_state_db(container: AipContainer) -> str:
+    """Resolve the state.db path from the container config.
+
+    Resolution order:
+      1. Module-level override (set by tests or explicit config)
+      2. config["database"]["db_path"] (TOML [database] section)
+      3. config["db_path"] (lifespan-injected shortcut)
+      4. Fallback: "db/state.db"
+    """
+    global _STATE_DB
+    if _STATE_DB is not None:
+        return _STATE_DB
+    cfg = getattr(container, "config", {}) or {}
+    db_path = (
+        cfg.get("database", {}).get("db_path")
+        or cfg.get("db_path")
+        or "db/state.db"
+    )
+    return db_path
+
+
+def _set_state_db(path: str | None) -> None:
+    """Override the state DB path (for tests or explicit config)."""
+    global _STATE_DB
+    _STATE_DB = path
+
+
+async def _get_db(db_path: str) -> aiosqlite.Connection:
+    """Get an aiosqlite connection to state.db with Row factory.
+
+    Raises sqlite3.OperationalError if the database file cannot be opened.
+    Callers should catch this and return an appropriate HTTP response.
+    """
+    conn = await aiosqlite.connect(db_path)
     conn.row_factory = aiosqlite.Row
     return conn
 
 
-async def _query_beast_artifacts(state: str = "GENERATED") -> list[dict]:
+async def _query_beast_artifacts(state: str = "GENERATED", db_path: str = "db/state.db") -> list[dict]:
     """Query artifacts + ecs_state for beast:wiki / beast:proposal entries.
 
     Joins the artifacts table with ecs_state to find beast-generated
@@ -41,7 +73,7 @@ async def _query_beast_artifacts(state: str = "GENERATED") -> list[dict]:
     """
     items: list[dict] = []
     try:
-        conn = await _get_db()
+        conn = await _get_db(db_path)
         try:
             cursor = await conn.execute(
                 """
@@ -83,18 +115,19 @@ async def _query_beast_artifacts(state: str = "GENERATED") -> list[dict]:
     return items
 
 
-async def _update_ecs_state(artifact_id: str, new_state: str) -> bool:
+async def _update_ecs_state(artifact_id: str, new_state: str, db_path: str = "db/state.db") -> bool:
     """Directly update ecs_state.current_state for an artifact.
 
     This bypasses the GuardrailedEcsStore and AutonomyGate which may
     not be properly configured for beast_wiki artifacts. Updates the
     ecs_state table directly and records the transition.
 
-    Returns True if the row was updated, False if artifact_id not found.
+    Returns True if the row was updated, False if artifact_id not found
+    or database is unavailable.
     """
     now = datetime.now(timezone.utc).isoformat()
     try:
-        conn = await _get_db()
+        conn = await _get_db(db_path)
         try:
             # Check current state
             cursor = await conn.execute(
@@ -170,7 +203,8 @@ async def list_reviews(
             logger.warning("list_pending failed", exc_info=True)
 
     # Source 2: Beast artifacts in GENERATED state (artifacts + ecs_state)
-    beast_items = await _query_beast_artifacts(state="GENERATED")
+    db_path = _resolve_state_db(container)
+    beast_items = await _query_beast_artifacts(state="GENERATED", db_path=db_path)
     for item in beast_items:
         aid = item.get("artifact_id") or item.get("id", "")
         if aid not in seen_ids:
@@ -200,13 +234,16 @@ async def approve_artifact(
     The two-step transition is collapsed into a single APPROVED update
     for the DEFINER-driven review flow.
     """
+    # Resolve DB path from container config
+    db_path = _resolve_state_db(container)
+
     # For beast artifacts, use direct ecs_state update
     is_beast = artifact_id.startswith("beast:wiki:") or artifact_id.startswith("beast:proposal:")
 
     if is_beast:
-        updated = await _update_ecs_state(artifact_id, "APPROVED")
+        updated = await _update_ecs_state(artifact_id, "APPROVED", db_path=db_path)
         if not updated:
-            raise HTTPException(404, f"Artifact {artifact_id!r} not found in ecs_state")
+            raise HTTPException(503, f"Database unavailable or artifact {artifact_id!r} not found in ecs_state")
         return {"artifact_id": artifact_id, "new_state": "APPROVED"}
 
     # For non-beast artifacts, try the original pipeline
@@ -224,14 +261,14 @@ async def approve_artifact(
         except Exception as exc:
             # Fallback: direct DB update
             logger.warning("ECS store transition failed, falling back to direct update: %s", exc)
-            updated = await _update_ecs_state(artifact_id, "APPROVED")
+            updated = await _update_ecs_state(artifact_id, "APPROVED", db_path=db_path)
             if not updated:
-                raise HTTPException(500, f"Could not approve artifact {artifact_id}: {exc}") from exc
+                raise HTTPException(503, f"Service unavailable or artifact {artifact_id!r} not found: {exc}") from exc
     else:
         # No ECS store — direct DB update
-        updated = await _update_ecs_state(artifact_id, "APPROVED")
+        updated = await _update_ecs_state(artifact_id, "APPROVED", db_path=db_path)
         if not updated:
-            raise HTTPException(404, f"Artifact {artifact_id!r} not found in ecs_state")
+            raise HTTPException(503, f"Database unavailable or artifact {artifact_id!r} not found in ecs_state")
 
     if container.canonical_store is not None and container.artifact_store is not None:
         try:
@@ -274,7 +311,7 @@ async def approve_all_artifacts(
     approved_ids: list[str] = []
 
     try:
-        conn = await _get_db()
+        conn = await _get_db("db/state.db")  # approve-all uses default path
         try:
             # Find all beast artifacts in GENERATED state
             cursor = await conn.execute(
@@ -333,12 +370,13 @@ async def reject_artifact(
     For beast_wiki artifacts, directly updates ecs_state.
     For non-beast artifacts, attempts ECS store transition.
     """
+    db_path = _resolve_state_db(container)
     is_beast = artifact_id.startswith("beast:wiki:") or artifact_id.startswith("beast:proposal:")
 
     if is_beast:
-        updated = await _update_ecs_state(artifact_id, "FAILED")
+        updated = await _update_ecs_state(artifact_id, "FAILED", db_path=db_path)
         if not updated:
-            raise HTTPException(404, f"Artifact {artifact_id!r} not found in ecs_state")
+            raise HTTPException(503, f"Database unavailable or artifact {artifact_id!r} not found in ecs_state")
         return {"artifact_id": artifact_id, "new_state": "FAILED"}
 
     # For non-beast artifacts, try the original pipeline
@@ -352,13 +390,13 @@ async def reject_artifact(
         except Exception as exc:
             # Fallback: direct DB update
             logger.warning("ECS store reject failed, falling back to direct update: %s", exc)
-            updated = await _update_ecs_state(artifact_id, "FAILED")
+            updated = await _update_ecs_state(artifact_id, "FAILED", db_path=db_path)
             if not updated:
-                raise HTTPException(500, f"Could not reject artifact {artifact_id}: {exc}") from exc
+                raise HTTPException(503, f"Service unavailable or artifact {artifact_id!r} not found: {exc}") from exc
     else:
-        updated = await _update_ecs_state(artifact_id, "FAILED")
+        updated = await _update_ecs_state(artifact_id, "FAILED", db_path=db_path)
         if not updated:
-            raise HTTPException(404, f"Artifact {artifact_id!r} not found in ecs_state")
+            raise HTTPException(503, f"Database unavailable or artifact {artifact_id!r} not found in ecs_state")
 
     # Record the event (advisory)
     if container.event_store is not None:

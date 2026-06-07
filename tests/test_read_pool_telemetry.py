@@ -634,3 +634,128 @@ class TestAskLikeWorkloadBenchmark:
         assert seq_fallback_rate == 0.0
 
         await store.close()
+
+
+# ---------------------------------------------------------------------------
+# Configurable pool size tests
+# ---------------------------------------------------------------------------
+
+
+class TestConfigurablePoolSize:
+    """Tests for read pool size configuration via config dict."""
+
+    @pytest.mark.asyncio
+    async def test_default_pool_size_without_config(self, tmp_db):
+        """Without config, pool_size should default to 3."""
+        store = GraphStore(tmp_db)
+        await store.initialize()
+        health = store.read_pool_health()
+        assert health["pool_size"] == 3
+        await store.close()
+
+    @pytest.mark.asyncio
+    async def test_global_pool_size_from_config(self, tmp_db):
+        """Global [read_pool] pool_size should override default."""
+        config = {"read_pool": {"pool_size": 5}}
+        store = GraphStore(tmp_db, config=config)
+        await store.initialize()
+        health = store.read_pool_health()
+        assert health["pool_size"] == 5
+        await store.close()
+
+    @pytest.mark.asyncio
+    async def test_per_store_pool_size_override(self, tmp_db):
+        """Per-store override should take precedence over global default."""
+        config = {
+            "read_pool": {
+                "pool_size": 7,
+                "stores": {
+                    "graph_store": {"pool_size": 2},
+                },
+            },
+        }
+        store = GraphStore(tmp_db, config=config)
+        await store.initialize()
+        health = store.read_pool_health()
+        assert health["pool_size"] == 2
+        await store.close()
+
+    @pytest.mark.asyncio
+    async def test_pool_size_clamped_to_min_1(self, tmp_db):
+        """Pool size below 1 should be clamped to 1."""
+        config = {"read_pool": {"pool_size": 0}}
+        store = GraphStore(tmp_db, config=config)
+        await store.initialize()
+        health = store.read_pool_health()
+        assert health["pool_size"] == 1
+        await store.close()
+
+    @pytest.mark.asyncio
+    async def test_pool_size_clamped_to_max_20(self, tmp_db):
+        """Pool size above 20 should be clamped to 20."""
+        config = {"read_pool": {"pool_size": 50}}
+        store = GraphStore(tmp_db, config=config)
+        await store.initialize()
+        health = store.read_pool_health()
+        assert health["pool_size"] == 20
+        await store.close()
+
+    @pytest.mark.asyncio
+    async def test_configurable_pool_reduces_exhaustion(self, tmp_db):
+        """Larger pool should reduce exhaustion rate under concurrent load."""
+        # Small pool (1) — high concurrency will cause many fallbacks
+        config_small = {"read_pool": {"pool_size": 1}}
+        store_small = GraphStore(tmp_db, config=config_small)
+        await store_small.initialize()
+        for i in range(20):
+            node = GraphNode(
+                id=f"conf_node_{i}",
+                entity_type="CONCEPT",
+                canonical_name=f"ConfConcept_{i}",
+                domain="bench",
+                confidence=0.9,
+            )
+            await store_small.upsert_node(node)
+        # Warm up
+        _ = await store_small.node_count()
+        tasks = [store_small.get_node(f"conf_node_{i % 20}") for i in range(10)]
+        await asyncio.gather(*tasks)
+        health_small = store_small.read_pool_health()
+        await store_small.close()
+
+        # Larger pool (7) — same workload should have fewer fallbacks
+        config_large = {"read_pool": {"pool_size": 7}}
+        store_large = GraphStore(tmp_db, config=config_large)
+        await store_large.initialize()
+        # Warm up
+        _ = await store_large.node_count()
+        tasks = [store_large.get_node(f"conf_node_{i % 20}") for i in range(10)]
+        await asyncio.gather(*tasks)
+        health_large = store_large.read_pool_health()
+        await store_large.close()
+
+        # Larger pool should have lower exhaustion rate
+        assert health_large["exhaustion_rate"] <= health_small["exhaustion_rate"]
+
+    def test_resolve_pool_size_function(self):
+        """resolve_pool_size should return correct values for various configs."""
+        from aip.adapter.read_pool import resolve_pool_size
+
+        # No config → default
+        assert resolve_pool_size("graph_store", None) == 3
+        assert resolve_pool_size("graph_store", {}) == 3
+
+        # Global override
+        assert resolve_pool_size("graph_store", {"read_pool": {"pool_size": 5}}) == 5
+
+        # Per-store override
+        assert resolve_pool_size(
+            "graph_store",
+            {"read_pool": {"pool_size": 7, "stores": {"graph_store": {"pool_size": 2}}}},
+        ) == 2
+
+        # Different store uses global default
+        assert resolve_pool_size(
+            "lexical_store",
+            {"read_pool": {"pool_size": 7, "stores": {"graph_store": {"pool_size": 2}}}},
+        ) == 7

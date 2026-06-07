@@ -110,6 +110,15 @@ class Sexton:
         self._config = config or SextonConfig()
         self._last_cycle_time: float | None = None
 
+        # LLM batching telemetry — accumulates across cycles
+        self._batch_telemetry = {
+            "total_batch_extractions": 0,   # number of batch-mode LLM calls
+            "total_per_turn_extractions": 0, # number of per-turn LLM calls
+            "total_turns_via_batch": 0,      # turns processed in batch mode
+            "total_turns_via_per_turn": 0,   # turns processed in per-turn mode
+            "total_estimated_tokens_saved": 0, # approximate tokens saved by batching
+        }
+
         # Import existing Sexton for failure classification delegation
         self._failure_classifier: Any = None
         if trace_store is not None:
@@ -174,6 +183,7 @@ class Sexton:
             "wiki": wiki_result,
             "graph": graph_result,
             "classification": classification_result,
+            "batch_telemetry": dict(self._batch_telemetry),
             "cycle_elapsed_seconds": round(elapsed, 3),
             "last_cycle_time": self._last_cycle_time,
         }
@@ -1290,6 +1300,8 @@ Output format:
                 total_processed += 1
                 total_entities += ents
                 total_relationships += rels
+                self._batch_telemetry["total_per_turn_extractions"] += 1
+                self._batch_telemetry["total_turns_via_per_turn"] += 1
 
                 # Rate-limit: pause between sequential LLM calls
                 await asyncio.sleep(5)
@@ -1356,6 +1368,8 @@ Output format:
                         total_processed += 1
                         total_entities += ents
                         total_relationships += rels
+                        self._batch_telemetry["total_per_turn_extractions"] += 1
+                        self._batch_telemetry["total_turns_via_per_turn"] += 1
                     # Rate-limit after fallback processing
                     await asyncio.sleep(5)
                     continue
@@ -1385,10 +1399,13 @@ Output format:
                         total_processed += 1
                         total_entities += ents
                         total_relationships += rels
+                        self._batch_telemetry["total_per_turn_extractions"] += 1
+                        self._batch_telemetry["total_turns_via_per_turn"] += 1
                     await asyncio.sleep(5)
                     continue
 
                 # Process each turn's items
+                batch_turns_count = 0
                 for turn in batch:
                     tid = turn["turn_id"]
                     primary_domain = turn.get("primary_domain", "")
@@ -1396,8 +1413,18 @@ Output format:
                         tid, primary_domain, items_by_turn.get(tid, [])
                     )
                     total_processed += 1
+                    batch_turns_count += 1
                     total_entities += ents
                     total_relationships += rels
+
+                # Update batch telemetry
+                self._batch_telemetry["total_batch_extractions"] += 1
+                self._batch_telemetry["total_turns_via_batch"] += batch_turns_count
+                # Estimate token savings: each per-turn call has ~800 tokens of
+                # system prompt overhead. Batching N turns into 1 call saves
+                # (N-1) * 800 prompt tokens.
+                tokens_saved = max(0, (batch_turns_count - 1)) * 800
+                self._batch_telemetry["total_estimated_tokens_saved"] += tokens_saved
 
                 # Rate-limit: pause between batches (not between individual turns)
                 await asyncio.sleep(5)
@@ -1427,6 +1454,9 @@ Output format:
             "turns_processed": total_processed,
             "entities_created": total_entities,
             "relationships_created": total_relationships,
+            "batch_mode": batch_enabled,
+            "batch_size": batch_size,
+            "batch_telemetry": dict(self._batch_telemetry),
         }
 
     # ------------------------------------------------------------------

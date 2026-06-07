@@ -87,6 +87,7 @@ async def _create_sqlite_vss(vector_cfg: dict, embedding_provider: Any = None) -
             dimensions=dimensions,
             embedding_provider=embedding_provider,
             runtime_mode=runtime_mode,
+            config=vector_cfg,
         )
         await store.initialize()
 

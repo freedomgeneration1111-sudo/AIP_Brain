@@ -200,15 +200,14 @@ async def test_ingest_and_ask_share_same_store(tmp_aip_env, sample_markdown_file
     assert results[0].lexical_indexed, "Content not indexed into lexical store"
 
     # Ask — must find the same content in the same lexical store
-    from aip.orchestration.ask_pipeline import create_ask_stores, _search_sources
+    from aip.orchestration.ask_pipeline import create_ask_stores, _search_sources_with_trace
 
     ask_stores = await create_ask_stores(db_path)
     try:
-        sources = await _search_sources(
+        sources, _trace, _ctx = await _search_sources_with_trace(
             query="artifact storage",
-            project_domain="test_project",
+            stores=ask_stores,
             source_filter="all",
-            lexical_store=ask_stores.lexical_store,
         )
         assert len(sources) > 0, "Ask pipeline found no sources from ingested content"
     finally:
@@ -228,15 +227,14 @@ async def test_ask_retrieves_after_restart(tmp_aip_env, sample_markdown_file):
     await _setup_project_and_ingest(db_path, sample_markdown_file)
 
     # Simulate restart by creating entirely new store instances
-    from aip.orchestration.ask_pipeline import create_ask_stores, _search_sources
+    from aip.orchestration.ask_pipeline import create_ask_stores, _search_sources_with_trace
 
     ask_stores = await create_ask_stores(db_path)
     try:
-        sources = await _search_sources(
+        sources, _trace, _ctx = await _search_sources_with_trace(
             query="artifact storage",
-            project_domain="test_project",
+            stores=ask_stores,
             source_filter="all",
-            lexical_store=ask_stores.lexical_store,
         )
         assert len(sources) > 0, "No sources found after simulated restart"
     finally:

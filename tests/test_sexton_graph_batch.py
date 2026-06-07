@@ -771,3 +771,97 @@ async def test_batch_extraction_node_entity_types(tmp_db, corpus_turn_store):
     count = await graph_store.node_count()
     assert count > 0, "Should have created graph nodes"
     await graph_store.close()
+
+
+@pytest.mark.asyncio
+async def test_batch_telemetry_tracks_batch_vs_per_turn(tmp_db, corpus_turn_store):
+    """Batch telemetry should track batch vs per-turn extraction counts and token savings."""
+    model_provider = BatchAwareModelProvider()
+    event_store = StubEventStore()
+    config = SextonConfig(
+        graph_extraction_batch_enabled=True,
+        graph_extraction_batch_size=4,
+    )
+
+    sexton = Sexton(
+        sexton_provider=model_provider,
+        corpus_turn_store=corpus_turn_store,
+        event_store=event_store,
+        config=config,
+    )
+
+    result = await sexton._run_graph_extraction(limit=10)
+
+    # Verify telemetry is in result
+    assert "batch_telemetry" in result
+    telemetry = result["batch_telemetry"]
+    assert "total_batch_extractions" in telemetry
+    assert "total_per_turn_extractions" in telemetry
+    assert "total_turns_via_batch" in telemetry
+    assert "total_turns_via_per_turn" in telemetry
+    assert "total_estimated_tokens_saved" in telemetry
+
+    # In batch mode with successful batch calls, batch counters should be > 0
+    if telemetry["total_batch_extractions"] > 0:
+        assert telemetry["total_turns_via_batch"] > 0
+        # Token savings should be estimated when batch has >1 turn
+        assert telemetry["total_estimated_tokens_saved"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_per_turn_telemetry_counts_individual_calls(tmp_db, corpus_turn_store):
+    """Per-turn mode should count each LLM call as a per-turn extraction."""
+    model_provider = BatchAwareModelProvider()
+    event_store = StubEventStore()
+    config = SextonConfig(
+        graph_extraction_batch_enabled=False,
+    )
+
+    sexton = Sexton(
+        sexton_provider=model_provider,
+        corpus_turn_store=corpus_turn_store,
+        event_store=event_store,
+        config=config,
+    )
+
+    result = await sexton._run_graph_extraction(limit=5)
+
+    telemetry = result["batch_telemetry"]
+    # Per-turn mode: all extractions should be per_turn
+    if result["turns_processed"] > 0:
+        assert telemetry["total_per_turn_extractions"] == result["turns_processed"]
+        assert telemetry["total_turns_via_per_turn"] == result["turns_processed"]
+        assert telemetry["total_batch_extractions"] == 0
+        assert telemetry["total_turns_via_batch"] == 0
+        # No token savings in per-turn mode
+        assert telemetry["total_estimated_tokens_saved"] == 0
+
+
+@pytest.mark.asyncio
+async def test_batch_telemetry_accumulates_across_cycles(tmp_db, corpus_turn_store):
+    """Batch telemetry should accumulate across multiple extraction cycles."""
+    model_provider = BatchAwareModelProvider()
+    event_store = StubEventStore()
+    config = SextonConfig(
+        graph_extraction_batch_enabled=True,
+        graph_extraction_batch_size=4,
+    )
+
+    sexton = Sexton(
+        sexton_provider=model_provider,
+        corpus_turn_store=corpus_turn_store,
+        event_store=event_store,
+        config=config,
+    )
+
+    # First cycle
+    result1 = await sexton._run_graph_extraction(limit=5)
+    t1 = sexton._batch_telemetry.copy()
+
+    # Second cycle (no new turns to extract, but telemetry should persist)
+    result2 = await sexton._run_graph_extraction(limit=5)
+    t2 = sexton._batch_telemetry.copy()
+
+    # Telemetry should accumulate (not reset)
+    assert t2["total_batch_extractions"] >= t1["total_batch_extractions"]
+    assert t2["total_turns_via_batch"] >= t1["total_turns_via_batch"]

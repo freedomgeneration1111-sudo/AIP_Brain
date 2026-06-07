@@ -264,3 +264,121 @@ async def test_slot_change_triggers_sexton_audit():
     new_config = ModelSlotConfig(slot_name="synthesis", provider="new", model="new-model")
 
     await vigil.on_model_slot_change("synthesis", old_config, new_config)
+
+
+# ---------------------------------------------------------------------------
+# Quality evaluation tests (ADR-011: citation + grounding + hedging)
+# ---------------------------------------------------------------------------
+
+
+class TestVigilSourceGrounding:
+    """Tests for the source grounding quality check."""
+
+    def test_grounding_rate_1_when_no_numeric_claims(self):
+        """When the response has no numeric claims, grounding_rate should be 1.0."""
+        result = Vigil._check_source_grounding(
+            response_text="This is a simple response with no numbers.",
+            source_text="Source text with no numbers either.",
+        )
+        assert result["grounding_rate"] == 1.0
+        assert result["total_claims"] == 0
+
+    def test_grounding_rate_high_when_numbers_in_source(self):
+        """When response numbers appear in source, grounding_rate should be high."""
+        result = Vigil._check_source_grounding(
+            response_text="Revenue grew 45% to reach $3.2 million in Q4.",
+            source_text="Revenue grew 45% to reach $3.2 million in Q4.",
+        )
+        assert result["grounding_rate"] >= 0.5
+
+    def test_grounding_rate_low_when_numbers_not_in_source(self):
+        """When response numbers are fabricated, grounding_rate should be low."""
+        result = Vigil._check_source_grounding(
+            response_text="The population is 8.7 billion with a 2.3% growth rate.",
+            source_text="The world population data was not provided.",
+        )
+        assert result["grounding_rate"] < 0.5
+        assert len(result["ungrounded_claims"]) > 0
+
+    def test_empty_response_returns_perfect_grounding(self):
+        """Empty response should have grounding_rate 1.0."""
+        result = Vigil._check_source_grounding(
+            response_text="",
+            source_text="Some source text.",
+        )
+        assert result["grounding_rate"] == 1.0
+
+    def test_trivial_numbers_not_counted(self):
+        """Trivial numbers like 0, 1, 2 should not affect grounding rate."""
+        result = Vigil._check_source_grounding(
+            response_text="There are 2 options and 1 result.",
+            source_text="Completely different text.",
+        )
+        # 0, 1, 2 are filtered out, so no nontrivial claims
+        assert result["grounding_rate"] == 1.0
+
+
+class TestVigilHedgingDetection:
+    """Tests for the hedging / uncertainty detection check."""
+
+    def test_detects_common_hedging_phrases(self):
+        """Should detect common hedging phrases."""
+        vigil = Vigil(
+            config=VigilConfig(),
+            vigil_store=FakeVigilStore(),
+            canonical_store=FakeCanonicalStore(),
+            entity_store=FakeEntityStore(),
+            model_provider=FakeModelProvider(),
+            trace_store=FakeTraceStore(),
+        )
+        assert vigil._detect_hedging("I think the answer is 42.")
+        assert vigil._detect_hedging("I'm not sure but maybe we should try this.")
+        assert vigil._detect_hedging("It might be possible to configure this.")
+
+    def test_no_hedging_in_authoritative_response(self):
+        """Authoritative statements should not trigger hedging detection."""
+        vigil = Vigil(
+            config=VigilConfig(),
+            vigil_store=FakeVigilStore(),
+            canonical_store=FakeCanonicalStore(),
+            entity_store=FakeEntityStore(),
+            model_provider=FakeModelProvider(),
+            trace_store=FakeTraceStore(),
+        )
+        assert not vigil._detect_hedging("The configuration file uses TOML format.")
+        assert not vigil._detect_hedging("Revenue grew 45% in Q4.")
+
+    def test_empty_text_no_hedging(self):
+        """Empty text should not trigger hedging detection."""
+        vigil = Vigil(
+            config=VigilConfig(),
+            vigil_store=FakeVigilStore(),
+            canonical_store=FakeCanonicalStore(),
+            entity_store=FakeEntityStore(),
+            model_provider=FakeModelProvider(),
+            trace_store=FakeTraceStore(),
+        )
+        assert not vigil._detect_hedging("")
+
+
+class TestVigilQualityEvaluation:
+    """Tests for the integrated quality evaluation cycle."""
+
+    @pytest.mark.asyncio
+    async def test_run_cycle_includes_grounding_and_hedging(self, vigil):
+        """run_cycle() should return grounding and hedging metrics in its result."""
+        result = await vigil.run_cycle()
+        assert "avg_grounding_rate" in result
+        assert "hedging_detected_count" in result
+        assert "grounding_threshold" in result
+        assert result["status"] == "quality_evaluation_complete"
+
+    @pytest.mark.asyncio
+    async def test_find_cited_turns_with_source_pattern(self):
+        """_find_cited_turns should detect [source: id] patterns."""
+        result = Vigil._find_cited_turns(
+            source_turn_ids=["abc123", "def456"],
+            response_text="Based on [source: abc123], the answer is clear.",
+        )
+        assert "abc123" in result
+        assert "def456" not in result

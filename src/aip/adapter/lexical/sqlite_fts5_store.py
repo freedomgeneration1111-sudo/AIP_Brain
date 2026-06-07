@@ -46,11 +46,13 @@ class SqliteFts5LexicalStore(LexicalStore, StoreHealthMixin, ReadPoolMixin):
     Uses a persistent aiosqlite connection per instance with error recovery.
     """
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str, config: dict | None = None) -> None:
         self._db_path = db_path
         self._conn: aiosqlite.Connection | None = None
         self._tables_ready = False
-        self._init_read_pool()
+        self._read_pool_config = config
+        from aip.adapter.read_pool import resolve_pool_size
+        self._init_read_pool(pool_size=resolve_pool_size("lexical_store", config))
 
     async def _get_conn(self) -> aiosqlite.Connection:
         """Return a persistent connection, creating one if needed.

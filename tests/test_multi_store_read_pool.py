@@ -123,7 +123,7 @@ def _aggregate_read_pool_summary(
 
     Takes the same store_health dict that the health endpoint builds
     (store_name -> connection_health dict) and returns the
-    read_pool_summary dict.
+    read_pool_summary dict with recommendation propagation.
     """
     summary = {
         "pool_stores": [],
@@ -132,6 +132,7 @@ def _aggregate_read_pool_summary(
         "total_exhaustions": 0,
         "aggregate_exhaustion_rate": 0.0,
         "stores_with_high_exhaustion": [],
+        "recommendation": "",
     }
     for store_name, health_data in store_health.items():
         pool_data = health_data.get("read_pool")
@@ -151,6 +152,37 @@ def _aggregate_read_pool_summary(
     summary["aggregate_exhaustion_rate"] = (
         round(summary["total_exhaustions"] / total_co, 4) if total_co > 0 else 0.0
     )
+
+    # Generate top-level recommendation when pool exhaustion is high
+    high_exhaustion_stores = summary["stores_with_high_exhaustion"]
+    if high_exhaustion_stores:
+        store_names = [s["store"] for s in high_exhaustion_stores]
+        if len(high_exhaustion_stores) == 1:
+            s = high_exhaustion_stores[0]
+            if s["exhaustion_rate"] > 0.6:
+                summary["recommendation"] = (
+                    f"Critical: {s['store']} exhaustion_rate={s['exhaustion_rate']:.2%}. "
+                    f"Double pool_size from {s['pool_size']} to {s['pool_size'] * 2} and investigate read patterns."
+                )
+            else:
+                summary["recommendation"] = (
+                    f"High: {s['store']} exhaustion_rate={s['exhaustion_rate']:.2%}. "
+                    f"Consider increasing pool_size from {s['pool_size']} to {s['pool_size'] + 2}."
+                )
+        else:
+            critical = [s for s in high_exhaustion_stores if s["exhaustion_rate"] > 0.6]
+            if critical:
+                summary["recommendation"] = (
+                    f"Critical: {len(critical)} store(s) ({', '.join(s['store'] for s in critical)}) "
+                    f"have exhaustion_rate > 60%. Double their pool_size values and investigate. "
+                    f"Also check: {', '.join(store_names)}."
+                )
+            else:
+                summary["recommendation"] = (
+                    f"High: {len(high_exhaustion_stores)} store(s) ({', '.join(store_names)}) "
+                    f"have exhaustion_rate > 30%. Consider increasing pool_size in [read_pool] config."
+                )
+
     return summary
 
 
@@ -452,3 +484,108 @@ class TestHealthEndpointReadPoolSummary:
         assert summary["stores_with_high_exhaustion"][0]["exhaustion_rate"] > 0.3
 
         await store.close()
+
+
+class TestReadPoolRecommendationPropagation:
+    """Tests for top-level recommendation in read_pool_summary when exhaustion is high."""
+
+    @pytest.mark.asyncio
+    async def test_no_recommendation_when_healthy(self, graph_store):
+        """When all stores have low exhaustion, recommendation should be empty."""
+        # Just a few sequential checkouts — no exhaustion
+        for _ in range(3):
+            conn = await graph_store._checkout_read_conn()
+            graph_store._return_read_conn(conn)
+
+        store_health = {"graph_store": graph_store.connection_health()}
+        summary = _aggregate_read_pool_summary(store_health)
+
+        assert summary["recommendation"] == ""
+
+    @pytest.mark.asyncio
+    async def test_single_store_high_exhaustion_recommendation(self, tmp_dir):
+        """A single store with exhaustion > 0.3 should produce a 'High' recommendation."""
+        db_path = os.path.join(tmp_dir, "high_exhaust.db")
+        store = GraphStore(db_path)
+        await store.initialize()
+
+        # Exhaust pool + fallbacks
+        conns = []
+        for _ in range(3):
+            conns.append(await store._checkout_read_conn())
+        for _ in range(3):
+            fb = await store._checkout_read_conn()
+            store._return_read_conn(fb)
+        for conn in conns:
+            store._return_read_conn(conn)
+
+        store_health = {"graph_store": store.connection_health()}
+        summary = _aggregate_read_pool_summary(store_health)
+
+        assert summary["recommendation"] != ""
+        assert "graph_store" in summary["recommendation"]
+        # Rate is 3/6 = 0.5, which is high (not critical)
+        assert "High" in summary["recommendation"] or "increase" in summary["recommendation"].lower()
+
+        await store.close()
+
+    @pytest.mark.asyncio
+    async def test_single_store_critical_exhaustion_recommendation(self, tmp_dir):
+        """A single store with exhaustion > 0.6 should produce a 'Critical' recommendation."""
+        db_path = os.path.join(tmp_dir, "critical_exhaust.db")
+        store = GraphStore(db_path)
+        await store.initialize()
+
+        # Exhaust pool + many fallbacks to drive rate > 0.6
+        conns = []
+        for _ in range(3):
+            conns.append(await store._checkout_read_conn())
+        for _ in range(6):
+            fb = await store._checkout_read_conn()
+            store._return_read_conn(fb)
+        for conn in conns:
+            store._return_read_conn(conn)
+
+        store_health = {"graph_store": store.connection_health()}
+        summary = _aggregate_read_pool_summary(store_health)
+
+        assert "Critical" in summary["recommendation"]
+        assert "Double" in summary["recommendation"]
+
+        await store.close()
+
+    @pytest.mark.asyncio
+    async def test_multiple_stores_high_exhaustion_recommendation(self, tmp_dir):
+        """Multiple stores with high exhaustion should produce a multi-store recommendation."""
+        db_path = os.path.join(tmp_dir, "multi_exhaust.db")
+        store1 = GraphStore(db_path)
+        await store1.initialize()
+
+        # Exhaust first store
+        conns1 = []
+        for _ in range(3):
+            conns1.append(await store1._checkout_read_conn())
+        for _ in range(3):
+            fb = await store1._checkout_read_conn()
+            store1._return_read_conn(fb)
+        for conn in conns1:
+            store1._return_read_conn(conn)
+
+        # Build synthetic store_health with multiple stores
+        health1 = store1.connection_health()
+        # Simulate a second store with high exhaustion
+        health2 = dict(health1)
+        health2["read_pool"] = dict(health1.get("read_pool", {}))
+
+        store_health = {
+            "graph_store": health1,
+            "lexical_store": health2,
+        }
+        summary = _aggregate_read_pool_summary(store_health)
+
+        assert len(summary["stores_with_high_exhaustion"]) == 2
+        assert "2 store(s)" in summary["recommendation"]
+        assert "graph_store" in summary["recommendation"]
+        assert "lexical_store" in summary["recommendation"]
+
+        await store1.close()

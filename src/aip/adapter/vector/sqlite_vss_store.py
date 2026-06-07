@@ -86,6 +86,7 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
         dimensions: int = 768,
         embedding_provider: EmbeddingProvider | None = None,
         runtime_mode: RuntimeMode = RuntimeMode.DEVELOPMENT,
+        config: dict | None = None,
     ) -> None:
         self._db_path = db_path
         self._dimensions = dimensions
@@ -94,7 +95,9 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
         self._vss_available = False
         self._tables_ready = False
         self._conn: aiosqlite.Connection | None = None
-        self._init_read_pool()
+        self._read_pool_config = config
+        from aip.adapter.read_pool import resolve_pool_size
+        self._init_read_pool(pool_size=resolve_pool_size("vector_store", config))
 
     # ------------------------------------------------------------------
     # Async initialization

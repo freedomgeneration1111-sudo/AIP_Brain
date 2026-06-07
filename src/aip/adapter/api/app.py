@@ -376,7 +376,7 @@ async def lifespan(app: FastAPI):
         _ls_mod = importlib.import_module("aip.adapter.lexical.sqlite_fts5_store")
         _SqliteFts5LexicalStore = _ls_mod.SqliteFts5LexicalStore
         lexical_db = os.path.join(os.path.dirname(db_path), "lexical.db")
-        container.lexical_store = _SqliteFts5LexicalStore(lexical_db)
+        container.lexical_store = _SqliteFts5LexicalStore(lexical_db, config=config)
         await container.lexical_store.initialize()
         log.info("component_initialized", component="lexical_store", required=False)
     except Exception as exc:
@@ -386,7 +386,7 @@ async def lifespan(app: FastAPI):
     try:
         from aip.adapter.corpus_turn_store import CorpusTurnStore
 
-        container.corpus_turn_store = CorpusTurnStore(db_path)
+        container.corpus_turn_store = CorpusTurnStore(db_path, config=config)
         await container.corpus_turn_store.initialize()
         log.info("component_initialized", component="corpus_turn_store", required=False)
     except Exception as exc:
@@ -582,7 +582,7 @@ async def lifespan(app: FastAPI):
     try:
         from aip.adapter.graph_store import GraphStore
 
-        container.graph_store = GraphStore(db_path)
+        container.graph_store = GraphStore(db_path, config=config)
         await container.graph_store.initialize()
         log.info("component_initialized", component="graph_store", required=False)
     except Exception as exc:

@@ -65,6 +65,14 @@ async def health(container: AipContainer = Depends(get_container)):
         "sexton": {"initialized": container.sexton_actor is not None},
     }
 
+    # Sexton batch telemetry (if available)
+    sexton_batch_telemetry = {}
+    if container.sexton_actor is not None and hasattr(container.sexton_actor, "_batch_telemetry"):
+        try:
+            sexton_batch_telemetry = dict(container.sexton_actor._batch_telemetry)
+        except Exception:
+            sexton_batch_telemetry = {}
+
     # Component availability — determine degraded status
     critical_available = all([
         container.entity_store is not None,
@@ -153,6 +161,7 @@ async def health(container: AipContainer = Depends(get_container)):
         "total_exhaustions": 0,
         "aggregate_exhaustion_rate": 0.0,
         "stores_with_high_exhaustion": [],
+        "recommendation": "",
     }
     for store_name, health_data in store_health.items():
         pool_data = health_data.get("read_pool")
@@ -174,6 +183,36 @@ async def health(container: AipContainer = Depends(get_container)):
         round(read_pool_summary["total_exhaustions"] / total_co, 4) if total_co > 0 else 0.0
     )
 
+    # Generate top-level recommendation when pool exhaustion is high
+    high_exhaustion_stores = read_pool_summary["stores_with_high_exhaustion"]
+    if high_exhaustion_stores:
+        store_names = [s["store"] for s in high_exhaustion_stores]
+        if len(high_exhaustion_stores) == 1:
+            s = high_exhaustion_stores[0]
+            if s["exhaustion_rate"] > 0.6:
+                read_pool_summary["recommendation"] = (
+                    f"Critical: {s['store']} exhaustion_rate={s['exhaustion_rate']:.2%}. "
+                    f"Double pool_size from {s['pool_size']} to {s['pool_size'] * 2} and investigate read patterns."
+                )
+            else:
+                read_pool_summary["recommendation"] = (
+                    f"High: {s['store']} exhaustion_rate={s['exhaustion_rate']:.2%}. "
+                    f"Consider increasing pool_size from {s['pool_size']} to {s['pool_size'] + 2}."
+                )
+        else:
+            critical = [s for s in high_exhaustion_stores if s["exhaustion_rate"] > 0.6]
+            if critical:
+                read_pool_summary["recommendation"] = (
+                    f"Critical: {len(critical)} store(s) ({', '.join(s['store'] for s in critical)}) "
+                    f"have exhaustion_rate > 60%. Double their pool_size values and investigate. "
+                    f"Also check: {', '.join(store_names)}."
+                )
+            else:
+                read_pool_summary["recommendation"] = (
+                    f"High: {len(high_exhaustion_stores)} store(s) ({', '.join(store_names)}) "
+                    f"have exhaustion_rate > 30%. Consider increasing pool_size in [read_pool] config."
+                )
+
     return {
         "status": status,
         "uptime_seconds": uptime_seconds,
@@ -189,4 +228,5 @@ async def health(container: AipContainer = Depends(get_container)):
         "db_writable": db_writable,
         "store_health": store_health,
         "read_pool_summary": read_pool_summary,
+        "sexton_batch_telemetry": sexton_batch_telemetry,
     }

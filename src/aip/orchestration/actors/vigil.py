@@ -78,6 +78,15 @@ class Vigil:
     # Citation threshold below which a turn is flagged for DEFINER review
     _CITATION_THRESHOLD = 0.3
 
+    # Contradiction / grounding thresholds
+    _HEDGING_PHRASES = frozenset({
+        "i'm not sure but", "i think", "i believe", "it might be",
+        "possibly", "perhaps", "it could be", "i'm guessing",
+        "i'm not certain", "not entirely sure", "it seems like",
+        "i would guess", "my guess is", "i assume",
+    })
+    _GROUNDING_THRESHOLD = 0.5  # Flag if < 50% of numeric claims are grounded
+
     def __init__(
         self,
         config: VigilConfig,
@@ -131,6 +140,8 @@ class Vigil:
         evaluated_count = 0
         flagged_count = 0
         citation_rates: list[float] = []
+        grounding_rates: list[float] = []
+        hedging_detected_count = 0
 
         # --- Step 1: Read augmented turns since last eval ---
         if self._corpus_turns is not None:
@@ -161,6 +172,25 @@ class Vigil:
 
                     citation_rate = len(cited_ids) / len(source_turn_ids)
                     citation_rates.append(citation_rate)
+
+                    # --- Quality Check 2: Source grounding ---
+                    # Extract numeric claims from the response and check if
+                    # they appear in the source text.  Numeric claims are
+                    # numbers, percentages, and dates that should be grounded.
+                    source_text = (turn.user_text or "") + " " + (turn.assistant_text or "")
+                    grounding_result = self._check_source_grounding(
+                        response_text=turn.assistant_text or "",
+                        source_text=source_text,
+                    )
+                    grounding_rates.append(grounding_result["grounding_rate"])
+
+                    # --- Quality Check 3: Hedging / uncertainty detection ---
+                    # Detect hedging phrases that suggest the response is
+                    # uncertain when it should be authoritative (based on sources).
+                    hedging_found = self._detect_hedging(turn.assistant_text or "")
+                    if hedging_found and len(source_turn_ids) > 0:
+                        hedging_detected_count += 1
+
                     evaluated_count += 1
 
                     # --- Step 3: Write score to metadata_json ---
@@ -169,20 +199,35 @@ class Vigil:
                     updated_meta["vigil_evaluated_at"] = datetime.now(timezone.utc).isoformat()
                     updated_meta["vigil_cited_ids"] = cited_ids
                     updated_meta["vigil_source_count"] = len(source_turn_ids)
+                    updated_meta["vigil_grounding_rate"] = grounding_result["grounding_rate"]
+                    updated_meta["vigil_ungrounded_claims"] = grounding_result["ungrounded_claims"]
+                    updated_meta["vigil_hedging_detected"] = hedging_found
 
                     await self._corpus_turns.update_metadata_json(
                         turn_id=turn.turn_id,
                         metadata_json=json.dumps(updated_meta),
                     )
 
-                    # --- Step 4: Flag low-citation turns for DEFINER review ---
+                    # --- Step 4: Flag low-quality turns for DEFINER review ---
+                    flag_reasons = []
                     if citation_rate < self._CITATION_THRESHOLD:
+                        flag_reasons.append("low_citation_rate")
+                    if grounding_result["grounding_rate"] < self._GROUNDING_THRESHOLD:
+                        flag_reasons.append("poor_source_grounding")
+                    if hedging_found and len(source_turn_ids) > 0:
+                        flag_reasons.append("unwarranted_hedging")
+
+                    if flag_reasons:
                         flagged_count += 1
                         await self._write_flagged_artifact(
                             turn=turn,
                             citation_rate=citation_rate,
                             cited_ids=cited_ids,
                             source_turn_ids=source_turn_ids,
+                            grounding_rate=grounding_result["grounding_rate"],
+                            ungrounded_claims=grounding_result["ungrounded_claims"],
+                            hedging_detected=hedging_found,
+                            flag_reasons=flag_reasons,
                         )
 
                 except Exception as exc:
@@ -197,6 +242,11 @@ class Vigil:
             round(sum(citation_rates) / len(citation_rates), 3)
             if citation_rates
             else 0.0
+        )
+        avg_grounding_rate = (
+            round(sum(grounding_rates) / len(grounding_rates), 3)
+            if grounding_rates
+            else 1.0
         )
 
         # Record the vigil check (legacy compatibility)
@@ -219,6 +269,8 @@ class Vigil:
                         "evaluated_count": evaluated_count,
                         "flagged_count": flagged_count,
                         "avg_citation_rate": avg_citation_rate,
+                        "avg_grounding_rate": avg_grounding_rate,
+                        "hedging_detected_count": hedging_detected_count,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 )
@@ -233,7 +285,10 @@ class Vigil:
             "evaluated_count": evaluated_count,
             "flagged_count": flagged_count,
             "avg_citation_rate": avg_citation_rate,
+            "avg_grounding_rate": avg_grounding_rate,
+            "hedging_detected_count": hedging_detected_count,
             "citation_threshold": self._CITATION_THRESHOLD,
+            "grounding_threshold": self._GROUNDING_THRESHOLD,
             "cycle_elapsed_seconds": round(elapsed, 3),
             "last_eval_time": self._last_eval_time,
         }
@@ -244,8 +299,69 @@ class Vigil:
             evaluated=evaluated_count,
             flagged=flagged_count,
             avg_citation_rate=avg_citation_rate,
+            avg_grounding_rate=avg_grounding_rate,
+            hedging_detected=hedging_detected_count,
         )
         return result
+
+    @staticmethod
+    def _check_source_grounding(response_text: str, source_text: str) -> dict:
+        """Check whether numeric claims in the response are grounded in the source text.
+
+        Extracts numbers (integers, decimals, percentages) from the response
+        and checks whether they appear in the source text.  Returns a dict
+        with grounding_rate (grounded / total_claims) and a list of
+        ungrounded claims.
+
+        This is a heuristic check — it does not understand semantics, but it
+        catches common fabrication patterns like invented statistics or dates.
+        """
+        if not response_text:
+            return {"grounding_rate": 1.0, "total_claims": 0, "grounded_claims": 0, "ungrounded_claims": []}
+
+        # Extract numeric claims: numbers with optional decimal and percent sign
+        import re as _re
+        numeric_pattern = _re.compile(r'\b\d+(?:\.\d+)?%?\b')
+        response_numbers = numeric_pattern.findall(response_text)
+
+        if not response_numbers:
+            return {"grounding_rate": 1.0, "total_claims": 0, "grounded_claims": 0, "ungrounded_claims": []}
+
+        # Filter out trivial numbers (0, 1, 2) that appear everywhere
+        nontrivial = [n for n in response_numbers if n not in ("0", "1", "2", "0%", "1%", "2%")]
+
+        if not nontrivial:
+            return {"grounding_rate": 1.0, "total_claims": len(response_numbers), "grounded_claims": len(response_numbers), "ungrounded_claims": []}
+
+        source_lower = source_text.lower()
+        grounded = []
+        ungrounded = []
+        for num in nontrivial:
+            if num in source_lower or num.rstrip("%") in source_lower:
+                grounded.append(num)
+            else:
+                ungrounded.append(num)
+
+        total = len(nontrivial)
+        rate = len(grounded) / total if total > 0 else 1.0
+        return {
+            "grounding_rate": round(rate, 3),
+            "total_claims": total,
+            "grounded_claims": len(grounded),
+            "ungrounded_claims": ungrounded[:10],  # Cap at 10 to avoid bloat
+        }
+
+    def _detect_hedging(self, response_text: str) -> bool:
+        """Detect hedging language in the response.
+
+        Returns True if any hedging phrase is found.  Hedging is
+        concerning when sources are available because it suggests the
+        model is uncertain despite having authoritative source material.
+        """
+        if not response_text:
+            return False
+        text_lower = response_text.lower()
+        return any(phrase in text_lower for phrase in self._HEDGING_PHRASES)
 
     @staticmethod
     def _find_cited_turns(source_turn_ids: list[str], response_text: str) -> list[str]:
@@ -298,11 +414,16 @@ class Vigil:
         citation_rate: float,
         cited_ids: list[str],
         source_turn_ids: list[str],
+        grounding_rate: float = 1.0,
+        ungrounded_claims: list[str] | None = None,
+        hedging_detected: bool = False,
+        flag_reasons: list[str] | None = None,
     ) -> None:
-        """Write a GENERATED artifact flagging a low-citation turn for DEFINER review.
+        """Write a GENERATED artifact flagging a low-quality turn for DEFINER review.
 
-        The artifact includes the turn's metadata and citation analysis so the
-        DEFINER can review whether the response properly cited its sources.
+        The artifact includes the turn's metadata and quality analysis so the
+        DEFINER can review whether the response properly cited its sources,
+        whether claims are grounded, and whether hedging is warranted.
         """
         if self._artifacts is None:
             return
@@ -310,11 +431,16 @@ class Vigil:
         try:
             artifact_id = f"vigil-flag-{turn.turn_id}"
             content = json.dumps({
-                "flag_type": "low_citation_rate",
+                "flag_type": "quality_evaluation",
+                "flag_reasons": flag_reasons or ["low_citation_rate"],
                 "turn_id": turn.turn_id,
                 "conversation_id": turn.conversation_id,
                 "citation_rate": round(citation_rate, 3),
-                "threshold": self._CITATION_THRESHOLD,
+                "citation_threshold": self._CITATION_THRESHOLD,
+                "grounding_rate": round(grounding_rate, 3),
+                "grounding_threshold": self._GROUNDING_THRESHOLD,
+                "ungrounded_claims": ungrounded_claims or [],
+                "hedging_detected": hedging_detected,
                 "source_count": len(source_turn_ids),
                 "cited_count": len(cited_ids),
                 "cited_ids": cited_ids,
@@ -325,9 +451,12 @@ class Vigil:
 
             metadata = {
                 "artifact_type": "vigil_flag",
-                "flag_type": "low_citation_rate",
+                "flag_type": "quality_evaluation",
+                "flag_reasons": flag_reasons or ["low_citation_rate"],
                 "turn_id": turn.turn_id,
                 "citation_rate": round(citation_rate, 3),
+                "grounding_rate": round(grounding_rate, 3),
+                "hedging_detected": hedging_detected,
                 "generated_by": "vigil",
             }
 
@@ -340,11 +469,12 @@ class Vigil:
             # Transition to GENERATED state for DEFINER review
             if self._ecs is not None:
                 try:
+                    reasons_str = ", ".join(flag_reasons or ["low_citation_rate"])
                     await self._ecs.transition(
                         artifact_id=artifact_id,
                         to_state="GENERATED",
                         actor="vigil",
-                        detail=f"Low citation rate: {citation_rate:.1%} (< {self._CITATION_THRESHOLD:.0%} threshold)",
+                        detail=f"Quality evaluation: {reasons_str} (citation_rate={citation_rate:.1%}, grounding_rate={grounding_rate:.1%})",
                     )
                 except Exception:
                     pass

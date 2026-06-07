@@ -79,6 +79,49 @@ _DEFAULT_POOL_SIZE = 3
 _LATENCY_WINDOW = 20
 
 
+
+def resolve_pool_size(store_name: str, config: dict | None = None) -> int:
+    """Resolve the read pool size for a given store from config.
+
+    Resolution order:
+      1. Per-store override: ``[read_pool.stores.<store_name>]`` pool_size
+      2. Global default: ``[read_pool]`` pool_size
+      3. Module default: 3
+
+    Parameters
+    ----------
+    store_name:
+        Identifier for the store (e.g. "lexical_store", "vector_store",
+        "graph_store", "corpus_turn_store").  Used to look up per-store
+        overrides in ``[read_pool.stores.<store_name>]``.
+    config:
+        Full TOML config dict.  If None, the module default is used.
+
+    Returns
+    -------
+    int
+        The resolved pool size, clamped to [1, 20].
+    """
+    if config is None:
+        return _DEFAULT_POOL_SIZE
+
+    read_pool_cfg = config.get("read_pool", {})
+
+    # Per-store override
+    stores_cfg = read_pool_cfg.get("stores", {})
+    store_cfg = stores_cfg.get(store_name, {})
+    if isinstance(store_cfg, dict) and "pool_size" in store_cfg:
+        size = int(store_cfg["pool_size"])
+        return max(1, min(20, size))
+
+    # Global default
+    if "pool_size" in read_pool_cfg:
+        size = int(read_pool_cfg["pool_size"])
+        return max(1, min(20, size))
+
+    return _DEFAULT_POOL_SIZE
+
+
 class ReadPoolHealth(TypedDict):
     """Structured type for read pool telemetry metrics.
 

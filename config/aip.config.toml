@@ -218,6 +218,21 @@ memory_limit_mb = 4096
 [database]
 db_path = "db/state.db"
 
+# Read connection pool configuration for SQLite stores in WAL mode.
+# Pool size determines how many concurrent read-only connections each store
+# maintains.  Default is 3 (adequate for single-process with moderate concurrency).
+# Increase to 5-7 when serving multiple concurrent ask requests.
+# Per-store overrides take precedence over the global default.
+[read_pool]
+pool_size = 3                    # global default for all pool-enabled stores
+
+[read_pool.stores]
+# Per-store overrides (uncomment and adjust as needed):
+# lexical_store = { pool_size = 5 }
+# vector_store = { pool_size = 5 }
+# graph_store = { pool_size = 3 }
+# corpus_turn_store = { pool_size = 4 }
+
 
 [vector_backend]
 provider = "pgvector"
