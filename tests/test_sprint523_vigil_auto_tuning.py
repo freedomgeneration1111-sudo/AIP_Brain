@@ -183,10 +183,10 @@ class TestLLMFaithfulnessEvaluation:
         return vigil, model_provider, corpus_turns, artifacts
 
     @pytest.mark.asyncio
-    async def test_llm_faithfulness_disabled_by_default(self):
-        """LLM faithfulness is disabled by default (behind config flag)."""
+    async def test_llm_faithfulness_enabled_by_default(self):
+        """LLM faithfulness is enabled by default (graduated Sprint 5.24)."""
         config = VigilConfig()
-        assert config.llm_faithfulness_enabled is False
+        assert config.llm_faithfulness_enabled is True
         assert config.llm_faithfulness_model_slot == "evaluation"
 
     @pytest.mark.asyncio
@@ -471,10 +471,10 @@ class TestBatchTelemetryVisibility:
 class TestBatchSizeAutoTuning:
     """Tests for graph extraction batch size auto-tuning."""
 
-    def test_auto_tune_disabled_by_default(self):
-        """Auto-tuning is disabled by default in SextonConfig."""
+    def test_auto_tune_enabled_by_default(self):
+        """Auto-tuning is enabled by default in SextonConfig (graduated Sprint 5.24)."""
         config = SextonConfig()
-        assert config.graph_extraction_batch_auto_tune_enabled is False
+        assert config.graph_extraction_batch_auto_tune_enabled is True
 
     def test_auto_tune_decreases_on_high_failure_rate(self):
         """Auto-tune decreases batch size when failure rate is high."""

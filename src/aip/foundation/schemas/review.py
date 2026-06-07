@@ -91,7 +91,11 @@ class VigilConfig:
     max_re_evaluate_batch_size: int = 50
     entity_consistency_check: bool = True
     # LLM-powered faithfulness evaluation (Phase 3.3 of ADR-011 Vigil roadmap)
-    llm_faithfulness_enabled: bool = False  # Behind config flag — opt-in
+    # Graduated to default-on in Sprint 5.24 after validation in Sprint 5.23.
+    # Graceful fallback: when the evaluation model slot is unavailable or
+    # returns errors, Vigil falls back to pure-Python heuristic checks
+    # (citation rate, numeric grounding, hedging detection) without degradation.
+    llm_faithfulness_enabled: bool = True  # Default-on since Sprint 5.24
     llm_faithfulness_model_slot: str = "evaluation"
     llm_faithfulness_sample_size: int = 10  # Max turns per cycle for LLM eval
 

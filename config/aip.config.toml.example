@@ -30,6 +30,18 @@ classification_batch_size = 50
 classification_interval_seconds = 300
 audit_on_slot_change = true
 max_unclassified_before_alert = 10
+# Graph extraction batching (graduated Sprint 5.21).
+graph_extraction_batch_enabled = true
+graph_extraction_batch_size = 2  # Conservative default; increase to 4-6 for larger corpora
+# Batch size auto-tuning (graduated to default-on Sprint 5.24).
+# Dynamically adjusts batch_size based on parse failure rate.
+# Decreases on high failures, increases when consistently successful.
+graph_extraction_batch_auto_tune_enabled = true
+graph_extraction_batch_size_min = 1
+graph_extraction_batch_size_max = 8
+graph_extraction_auto_tune_window = 5  # Number of batches to consider
+graph_extraction_auto_tune_decrease_threshold = 0.3  # Failure rate above → decrease
+graph_extraction_auto_tune_increase_threshold = 0.1  # Failure rate below → increase
 
 [ace_playbook]
 db_path = "db/ace_playbook.db"
@@ -161,6 +173,13 @@ stale_threshold_days = 30
 re_evaluate_on_slot_change = true
 max_re_evaluate_batch_size = 50
 entity_consistency_check = true
+# LLM-powered faithfulness evaluation (graduated to default-on Sprint 5.24).
+# Uses the "evaluation" model slot to check whether responses accurately
+# reflect retrieved sources. Graceful fallback to pure-Python heuristic
+# checks (citation rate, numeric grounding, hedging) when model unavailable.
+llm_faithfulness_enabled = true
+llm_faithfulness_model_slot = "evaluation"
+llm_faithfulness_sample_size = 10  # Max turns per cycle for LLM evaluation
 
 [auth]
 auth_enabled = false
@@ -194,6 +213,22 @@ memory_limit_mb = 4096
 
 [database]
 db_path = "db/state.db"
+
+# Read pool sizing for SQLite WAL mode stores (lexical, vector, graph, corpus_turn).
+# Pool auto-sizing can automatically increase pool_size when exhaustion_rate
+# is sustained high, with safeguards (max cap, logged changes, rollback).
+[read_pool]
+pool_size = 3  # Default pool size for all stores
+auto_apply_enabled = true  # Sprint 5.24: auto-apply pool size increases (with safeguards)
+auto_apply_consecutive_threshold = 5  # Observations of high exhaustion before auto-applying
+auto_apply_max_increase = 4  # Maximum total connections that can be auto-added above configured
+auto_apply_max_pool = 12  # Absolute maximum pool size (safeguard cap)
+
+# Per-store overrides (uncomment and adjust as needed)
+# [read_pool.stores.graph_store]
+# pool_size = 5
+# [read_pool.stores.vector_store]
+# pool_size = 4
 
 [vector_backend]
 provider = "pgvector"

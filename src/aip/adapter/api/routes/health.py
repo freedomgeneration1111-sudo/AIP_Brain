@@ -173,12 +173,15 @@ async def health(container: AipContainer = Depends(get_container)):
         "auto_size_suggestions": [],  # Sprint 5.23: auto-sizing suggestions
     }
 
-    # Read pool auto-sizer (Sprint 5.23)
+    # Read pool auto-sizer (Sprint 5.23 → Sprint 5.24 auto-apply)
     auto_sizer = getattr(container, "_read_pool_auto_sizer", None)
     if auto_sizer is None:
         from aip.adapter.read_pool import ReadPoolAutoSizer
         auto_sizer = ReadPoolAutoSizer()
         container._read_pool_auto_sizer = auto_sizer  # type: ignore[attr-defined]
+
+    # Build a mapping of store_name -> store instance for auto-apply
+    pool_stores: dict[str, Any] = {}
     for store_name, health_data in store_health.items():
         pool_data = health_data.get("read_pool")
         if isinstance(pool_data, dict):
@@ -194,9 +197,13 @@ async def health(container: AipContainer = Depends(get_container)):
                     "exhaustion_rate": rate,
                     "pool_size": pool_data.get("pool_size", 0),
                 })
-            # Observe for auto-sizing (Sprint 5.23)
+            # Collect the actual store instance for auto-apply
+            store_instance = getattr(container, store_name, None)
+            if store_instance is not None and hasattr(store_instance, "_read_pool_size"):
+                pool_stores[store_name] = store_instance
+            # Observe for auto-sizing (Sprint 5.24: pass store for auto-apply)
             try:
-                auto_sizer.observe(store_name, pool_data)
+                auto_sizer.observe(store_name, pool_data, store=pool_stores.get(store_name))
             except Exception:
                 pass
     total_co = read_pool_summary["total_checkouts"]
@@ -269,6 +276,85 @@ async def health(container: AipContainer = Depends(get_container)):
     else:
         batch_telemetry_summary["summary"] = "No batch telemetry data yet."
 
+    # Sprint 5.24: Auto-tuning status — dedicated section for operator visibility
+    # into all auto-tuning features: read pool, batch size, Vigil LLM evaluation.
+    auto_tuning_status: dict[str, Any] = {
+        "read_pool_auto_sizing": auto_sizer.get_status(),
+        "graph_batch_auto_tune": {
+            "enabled": False,
+            "current_batch_size": 0,
+            "configured_batch_size": 0,
+            "recent_adjustments": [],
+        },
+        "vigil_llm_evaluation": {
+            "enabled": False,
+            "model_slot": "evaluation",
+            "recent_faithfulness_scores": [],
+            "total_evaluations": 0,
+            "total_hallucinations": 0,
+        },
+    }
+
+    # Graph batch auto-tune status from Sexton actor
+    if container.sexton_actor is not None:
+        try:
+            sexton_config = getattr(container.sexton_actor, "_config", None)
+            if sexton_config is not None:
+                auto_tuning_status["graph_batch_auto_tune"]["enabled"] = (
+                    sexton_config.graph_extraction_batch_auto_tune_enabled
+                )
+                auto_tuning_status["graph_batch_auto_tune"]["configured_batch_size"] = (
+                    sexton_config.graph_extraction_batch_size
+                )
+            auto_tuning_status["graph_batch_auto_tune"]["current_batch_size"] = (
+                getattr(container.sexton_actor, "_current_batch_size", 0)
+            )
+            adjustments = getattr(container.sexton_actor, "_auto_tune_adjustments", [])
+            auto_tuning_status["graph_batch_auto_tune"]["recent_adjustments"] = (
+                adjustments[-5:] if adjustments else []
+            )
+        except Exception:
+            pass
+
+    # Vigil LLM evaluation status
+    if container.vigil is not None:
+        try:
+            vigil_config = getattr(container.vigil, "config", None)
+            if vigil_config is not None:
+                auto_tuning_status["vigil_llm_evaluation"]["enabled"] = (
+                    vigil_config.llm_faithfulness_enabled
+                )
+                auto_tuning_status["vigil_llm_evaluation"]["model_slot"] = (
+                    vigil_config.llm_faithfulness_model_slot
+                )
+            vigil_telem = getattr(container.vigil, "_llm_faithfulness_telemetry", {})
+            auto_tuning_status["vigil_llm_evaluation"]["total_evaluations"] = (
+                vigil_telem.get("total_llm_evaluations", 0)
+            )
+            auto_tuning_status["vigil_llm_evaluation"]["total_hallucinations"] = (
+                vigil_telem.get("total_hallucinations_detected", 0)
+            )
+            auto_tuning_status["vigil_llm_evaluation"]["avg_faithfulness_score"] = (
+                vigil_telem.get("avg_llm_faithfulness_score", 0.0)
+            )
+            auto_tuning_status["vigil_llm_evaluation"]["recent_faithfulness_scores"] = (
+                [e.get("faithfulness_score", 0.0) for e in vigil_telem.get("last_llm_evaluations", [])[-5:]]
+            )
+            # Sprint 5.24: Vigil cycle report history
+            cycle_history = getattr(container.vigil, "_cycle_report_history", [])
+            auto_tuning_status["vigil_llm_evaluation"]["cycle_report_count"] = len(cycle_history)
+            if cycle_history:
+                latest = cycle_history[-1]
+                auto_tuning_status["vigil_llm_evaluation"]["latest_cycle"] = {
+                    "avg_citation_rate": latest.get("avg_citation_rate", 0.0),
+                    "avg_grounding_rate": latest.get("avg_grounding_rate", 0.0),
+                    "avg_llm_faithfulness": latest.get("avg_llm_faithfulness", 0.0),
+                    "evaluated_count": latest.get("evaluated_count", 0),
+                    "flagged_count": latest.get("flagged_count", 0),
+                }
+        except Exception:
+            pass
+
     return {
         "status": status,
         "uptime_seconds": uptime_seconds,
@@ -287,4 +373,5 @@ async def health(container: AipContainer = Depends(get_container)):
         "sexton_batch_telemetry": sexton_batch_telemetry,
         "batch_telemetry_summary": batch_telemetry_summary,
         "vigil_llm_telemetry": vigil_llm_telemetry,
+        "auto_tuning_status": auto_tuning_status,
     }

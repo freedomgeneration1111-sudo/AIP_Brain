@@ -29,12 +29,12 @@ Phase C (Sprint 5.21): Pure Python citation-rate scoring — no LLM needed.
   - Writes vigil_score to metadata_json
   - Flags low-citation turns via GENERATED artifact for DEFINER review
 
-Phase 3.3 (Sprint 5.23): LLM-powered faithfulness evaluation.
+Phase 3.3 (Sprint 5.23, graduated Sprint 5.24): LLM-powered faithfulness evaluation.
   - Uses the "evaluation" model slot to check whether the response
     accurately reflects retrieved sources without hallucination or
     unsupported claims.
-  - Behind config flag `llm_faithfulness_enabled` (default: False).
-  - Graceful fallback to pure-Python checks when disabled or unavailable.
+  - Enabled by default since Sprint 5.24 (`llm_faithfulness_enabled=True`).
+  - Graceful fallback to pure-Python checks when model unavailable.
   - Only evaluates a bounded sample per cycle (llm_faithfulness_sample_size).
 """
 
@@ -70,14 +70,15 @@ class Vigil:
     Phase C: Pure-Python citation-rate scoring (always runs):
       citation_rate = (source_turn_ids found in response text) / (total source_turn_ids)
 
-    Phase 3.3 (Sprint 5.23): LLM-powered faithfulness checking:
-      When llm_faithfulness_enabled is True, uses the evaluation model
-      slot to ask: "Does the response accurately reflect the retrieved
-      sources without hallucination or unsupported claims?"
+    Phase 3.3 (Sprint 5.23, graduated Sprint 5.24): LLM-powered faithfulness checking:
+      When llm_faithfulness_enabled is True (now the default), uses the
+      evaluation model slot to ask: "Does the response accurately reflect
+      the retrieved sources without hallucination or unsupported claims?"
       This runs AFTER the pure-Python checks, on a bounded sample of
       turns that were flagged (or borderline). The LLM result is stored
       in the turn's metadata and can override or refine the pure-Python
-      flagging decision.
+      flagging decision. Graceful fallback: if the model is unavailable
+      or returns errors, the pure-Python evaluation is preserved intact.
 
     A turn is considered "cited" if any form of its turn_id appears
     in the assistant_text — matching patterns like [source: abc123],
@@ -162,6 +163,10 @@ Be strict: if a specific number, date, or factual claim appears in the response 
             "avg_llm_faithfulness_score": 0.0,
             "last_llm_evaluations": [],  # Last N evaluation summaries
         }
+
+        # Sprint 5.24: Per-cycle quality report history for trend tracking.
+        # Stores the last 10 cycle summaries for trend computation.
+        self._cycle_report_history: list[dict] = []
 
     # ------------------------------------------------------------------
     # ADR-011 Quality Evaluation Cycle
@@ -378,8 +383,28 @@ Be strict: if a specific number, date, or factual claim appears in the response 
             except Exception:
                 pass
 
+        # --- Step 6: Per-cycle quality report artifact (Sprint 5.24) ---
         elapsed = time.monotonic() - cycle_start
         self._last_eval_time = time.time()
+
+        trend_indicators = self._compute_trend_indicators(
+            avg_citation_rate=avg_citation_rate,
+            avg_grounding_rate=avg_grounding_rate,
+            avg_llm_faithfulness=avg_llm_faithfulness,
+        )
+
+        await self._write_cycle_quality_report(
+            evaluated_count=evaluated_count,
+            flagged_count=flagged_count,
+            avg_citation_rate=avg_citation_rate,
+            avg_grounding_rate=avg_grounding_rate,
+            hedging_detected_count=hedging_detected_count,
+            llm_eval_count=llm_eval_count,
+            llm_hallucinations=llm_hallucinations,
+            avg_llm_faithfulness=avg_llm_faithfulness,
+            trend_indicators=trend_indicators,
+            cycle_elapsed=elapsed,
+        )
 
         result = {
             "status": "quality_evaluation_complete",
@@ -398,6 +423,8 @@ Be strict: if a specific number, date, or factual claim appears in the response 
             "llm_hallucinations_detected": llm_hallucinations,
             "avg_llm_faithfulness_score": avg_llm_faithfulness,
             "llm_faithfulness_telemetry": dict(self._llm_faithfulness_telemetry),
+            # Sprint 5.24: trend indicators
+            "trend_indicators": trend_indicators,
         }
 
         logger.info(
@@ -801,6 +828,202 @@ Be strict: if a specific number, date, or factual claim appears in the response 
             logger.warning(
                 "vigil_flag_artifact_failed",
                 turn_id=turn.turn_id,
+                error=str(exc),
+            )
+
+    # ------------------------------------------------------------------
+    # Per-Cycle Quality Report (Sprint 5.24)
+    # ------------------------------------------------------------------
+
+    def _compute_trend_indicators(
+        self,
+        avg_citation_rate: float,
+        avg_grounding_rate: float,
+        avg_llm_faithfulness: float,
+    ) -> dict:
+        """Compute trend indicators by comparing current metrics with previous cycles.
+
+        Compares the current cycle's aggregate metrics against the previous
+        cycle to detect improvement, degradation, or stability.  Trend
+        indicators use a simple directional comparison: if the current value
+        is more than 5% above/below the previous value, it is trending
+        up/down; otherwise it is stable.
+
+        Returns a dict with per-metric trend indicators.
+        """
+        if not self._cycle_report_history:
+            # First cycle -- no trend data yet
+            return {
+                "citation_rate_trend": "baseline",
+                "grounding_rate_trend": "baseline",
+                "llm_faithfulness_trend": "baseline",
+                "previous_cycle": None,
+            }
+
+        prev = self._cycle_report_history[-1]
+        prev_citation = prev.get("avg_citation_rate", 0.0)
+        prev_grounding = prev.get("avg_grounding_rate", 0.0)
+        prev_faithfulness = prev.get("avg_llm_faithfulness", 0.0)
+
+        def _trend(current: float, previous: float) -> str:
+            if previous == 0.0 and current == 0.0:
+                return "stable"
+            if previous == 0.0:
+                return "new_data"
+            delta = (current - previous) / previous
+            if delta > 0.05:
+                return "improving"
+            elif delta < -0.05:
+                return "degrading"
+            return "stable"
+
+        return {
+            "citation_rate_trend": _trend(avg_citation_rate, prev_citation),
+            "grounding_rate_trend": _trend(avg_grounding_rate, prev_grounding),
+            "llm_faithfulness_trend": _trend(avg_llm_faithfulness, prev_faithfulness),
+            "previous_cycle": {
+                "avg_citation_rate": prev_citation,
+                "avg_grounding_rate": prev_grounding,
+                "avg_llm_faithfulness": prev_faithfulness,
+                "evaluated_count": prev.get("evaluated_count", 0),
+                "flagged_count": prev.get("flagged_count", 0),
+            },
+        }
+
+    async def _write_cycle_quality_report(
+        self,
+        evaluated_count: int,
+        flagged_count: int,
+        avg_citation_rate: float,
+        avg_grounding_rate: float,
+        hedging_detected_count: int,
+        llm_eval_count: int,
+        llm_hallucinations: int,
+        avg_llm_faithfulness: float,
+        trend_indicators: dict,
+        cycle_elapsed: float,
+    ) -> None:
+        """Generate a single summary artifact per run_cycle() that aggregates
+        quality metrics across all evaluated turns.
+
+        Sprint 5.24: Instead of only per-turn flagged artifacts, this produces
+        a per-cycle quality report that gives operators a single document to
+        review for overall system quality.  Includes aggregate scores for
+        citation rate, grounding, hedging, and LLM faithfulness, plus trend
+        indicators comparing with the previous cycle.
+
+        The artifact is written as a GENERATED artifact for DEFINER review
+        only when there are quality concerns (flagged turns, degrading trends,
+        or low aggregate scores).  For healthy cycles, the report is recorded
+        in history but no artifact is written.
+        """
+        now_iso = datetime.now(timezone.utc).isoformat()
+        cycle_ts = now_iso.replace(":", "").replace("-", "").replace(".", "")[:15]
+
+        # Build the report data
+        report = {
+            "report_type": "vigil_cycle_quality_report",
+            "cycle_timestamp": now_iso,
+            "summary": {
+                "evaluated_count": evaluated_count,
+                "flagged_count": flagged_count,
+                "flag_rate": round(flagged_count / evaluated_count, 3) if evaluated_count > 0 else 0.0,
+                "cycle_elapsed_seconds": round(cycle_elapsed, 3),
+            },
+            "aggregate_scores": {
+                "avg_citation_rate": avg_citation_rate,
+                "avg_grounding_rate": avg_grounding_rate,
+                "avg_llm_faithfulness": avg_llm_faithfulness,
+                "hedging_detected_count": hedging_detected_count,
+                "llm_eval_count": llm_eval_count,
+                "llm_hallucinations_detected": llm_hallucinations,
+            },
+            "thresholds": {
+                "citation_threshold": self._CITATION_THRESHOLD,
+                "grounding_threshold": self._GROUNDING_THRESHOLD,
+            },
+            "trend_indicators": trend_indicators,
+            "llm_faithfulness_enabled": self.config.llm_faithfulness_enabled,
+            "llm_faithfulness_telemetry_summary": {
+                "total_evaluations": self._llm_faithfulness_telemetry["total_llm_evaluations"],
+                "total_failures": self._llm_faithfulness_telemetry["total_llm_evaluations_failed"],
+                "total_hallucinations": self._llm_faithfulness_telemetry["total_hallucinations_detected"],
+                "avg_score": self._llm_faithfulness_telemetry["avg_llm_faithfulness_score"],
+            },
+        }
+
+        # Record in history (keep last 10 cycles)
+        self._cycle_report_history.append({
+            "avg_citation_rate": avg_citation_rate,
+            "avg_grounding_rate": avg_grounding_rate,
+            "avg_llm_faithfulness": avg_llm_faithfulness,
+            "evaluated_count": evaluated_count,
+            "flagged_count": flagged_count,
+            "timestamp": now_iso,
+        })
+        if len(self._cycle_report_history) > 10:
+            self._cycle_report_history = self._cycle_report_history[-10:]
+
+        # Only write an artifact if there are quality concerns
+        has_concerns = (
+            flagged_count > 0
+            or avg_citation_rate < self._CITATION_THRESHOLD
+            or avg_grounding_rate < self._GROUNDING_THRESHOLD
+            or any(
+                v in ("degrading",)
+                for v in trend_indicators.values()
+                if isinstance(v, str)
+            )
+        )
+
+        if not has_concerns or self._artifacts is None:
+            return
+
+        try:
+            artifact_id = f"vigil-report-{cycle_ts}"
+            content = json.dumps(report, indent=2)
+            metadata = {
+                "artifact_type": "vigil_cycle_report",
+                "report_type": "vigil_cycle_quality_report",
+                "generated_by": "vigil",
+                "evaluated_count": evaluated_count,
+                "flagged_count": flagged_count,
+                "avg_citation_rate": avg_citation_rate,
+                "avg_grounding_rate": avg_grounding_rate,
+                "avg_llm_faithfulness": avg_llm_faithfulness,
+                "generated_at": now_iso,
+            }
+
+            await self._artifacts.write(
+                id=artifact_id,
+                content=content,
+                metadata=metadata,
+            )
+
+            # Transition to GENERATED state for DEFINER review
+            if self._ecs is not None:
+                try:
+                    concerns = []
+                    if flagged_count > 0:
+                        concerns.append(f"{flagged_count} flagged turn(s)")
+                    if avg_citation_rate < self._CITATION_THRESHOLD:
+                        concerns.append(f"low avg citation rate ({avg_citation_rate:.1%})")
+                    if avg_grounding_rate < self._GROUNDING_THRESHOLD:
+                        concerns.append(f"low avg grounding rate ({avg_grounding_rate:.1%})")
+                    detail = f"Vigil cycle quality report: {', '.join(concerns)}"
+
+                    await self._ecs.transition(
+                        artifact_id=artifact_id,
+                        to_state="GENERATED",
+                        actor="vigil",
+                        detail=detail,
+                    )
+                except Exception:
+                    pass
+
+        except Exception as exc:
+            logger.warning(
+                "vigil_cycle_report_failed",
                 error=str(exc),
             )
 

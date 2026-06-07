@@ -20,15 +20,15 @@ Telemetry:
 - Checkout latency: rolling average of time spent in _checkout_read_conn().
 
 Interpreting exhaustion_rate:
-- 0.0–0.1: Healthy. Pool is adequately sized for current load.
+- 0.0-0.1: Healthy. Pool is adequately sized for current load.
   Most checkouts are served from pool connections. No action needed.
-- 0.1–0.3: Moderate. Pool handles most traffic but falls back
+- 0.1-0.3: Moderate. Pool handles most traffic but falls back
   occasionally under bursts. Acceptable for most workloads. Consider
   increasing pool_size if latency-sensitive reads are falling back.
-- 0.3–0.6: High. A significant fraction of reads hit the write
+- 0.3-0.6: High. A significant fraction of reads hit the write
   connection, which serializes through the single writer. This
   increases read latency and can block writes. **Increase pool_size
-  by 1–2 connections** (e.g. from 3 to 5) and re-observe.
+  by 1-2 connections** (e.g. from 3 to 5) and re-observe.
 - >0.6: Critical. The pool is severely undersized. Most reads
   bypass the pool entirely, defeating its purpose. **Double the
   pool_size** and investigate whether read patterns have changed
@@ -38,11 +38,11 @@ When to increase pool_size:
 - If exhaustion_rate is consistently >0.3 on a store.
 - If avg_checkout_latency_ms is high (>50ms) due to stale-connection
   recreation (which adds ~10ms per stale conn).
-- If concurrent ask workloads are increasing (each ask touches 3–4
-  stores, so 5 concurrent asks = ~15–20 simultaneous pool checkouts).
+- If concurrent ask workloads are increasing (each ask touches 3-4
+  stores, so 5 concurrent asks = ~15-20 simultaneous pool checkouts).
 
 Note: Increasing pool_size increases memory usage (~1MB per SQLite
-connection) and file descriptors. For a single-process app, 5–7 pool
+connection) and file descriptors. For a single-process app, 5-7 pool
 connections per store is usually the practical maximum.
 
 Usage::
@@ -70,7 +70,7 @@ import aiosqlite
 
 log = logging.getLogger(__name__)
 
-# Default pool size — 3 is a good balance for a single-process async app:
+# Default pool size -- 3 is a good balance for a single-process async app:
 # - 2 readers for parallel ask requests
 # - 1 spare so a slow read doesn't immediately fall back to the write conn
 _DEFAULT_POOL_SIZE = 3
@@ -205,7 +205,7 @@ class ReadPoolMixin:
             )
         except Exception as exc:
             log.warning(
-                "read_pool_init_failed store=%s error=%s — will fall back to write conn",
+                "read_pool_init_failed store=%s error=%s -- will fall back to write conn",
                 self.__class__.__name__, exc,
             )
             # Clean up any partially created connections
@@ -231,7 +231,7 @@ class ReadPoolMixin:
                     self._record_checkout(t0, fallback=False)
                     return conn
                 except Exception:
-                    # Connection is stale — recreate it
+                    # Connection is stale -- recreate it
                     try:
                         await conn.close()
                     except Exception:
@@ -245,10 +245,10 @@ class ReadPoolMixin:
                     self._record_checkout(t0, fallback=False)
                     return new_conn
 
-        # All pool connections in use — fall back to write connection
+        # All pool connections in use -- fall back to write connection
         self._pool_exhaustion_count += 1
         log.debug(
-            "read_pool_exhausted store=%s — falling back to write conn",
+            "read_pool_exhausted store=%s -- falling back to write conn",
             self.__class__.__name__,
         )
         self._record_checkout(t0, fallback=True)
@@ -264,7 +264,7 @@ class ReadPoolMixin:
             if pool_conn is conn:
                 self._read_pool_available[i] = True
                 return
-        # Not a pool connection (was a write-conn fallback) — no action needed
+        # Not a pool connection (was a write-conn fallback) -- no action needed
 
     def _record_checkout(self, t0: float, fallback: bool) -> None:
         """Record checkout telemetry."""
@@ -286,10 +286,10 @@ class ReadPoolMixin:
         Includes utilization indicators:
         - exhaustion_rate: fraction of checkouts that hit pool exhaustion.
           Interpretation:
-            0.0–0.1  Healthy — pool is adequately sized.
-            0.1–0.3  Moderate — occasional fallbacks, usually fine.
-            0.3–0.6  High — increase pool_size by 1–2 connections.
-            >0.6     Critical — double pool_size and investigate.
+            0.0-0.1  Healthy -- pool is adequately sized.
+            0.1-0.3  Moderate -- occasional fallbacks, usually fine.
+            0.3-0.6  High -- increase pool_size by 1-2 connections.
+            >0.6     Critical -- double pool_size and investigate.
         - p95_checkout_latency_ms: 95th percentile of recent checkout
           latencies, useful for spotting tail latency from stale connections.
         - recommendation: when exhaustion_rate > 0.3, suggests increasing
@@ -350,7 +350,7 @@ class ReadPoolMixin:
 
 
 # ---------------------------------------------------------------------------
-# Read Pool Auto-Sizing (Sprint 5.23)
+# Read Pool Auto-Sizing (Sprint 5.23 -> Sprint 5.24 auto-apply)
 # ---------------------------------------------------------------------------
 
 # How many consecutive high-exhaustion observations before suggesting
@@ -358,19 +358,84 @@ class ReadPoolMixin:
 # suggestions.
 _AUTO_SIZE_CONSECUTIVE_THRESHOLD = 3
 
-# Maximum suggested pool size — conservative upper bound for a
+# Sprint 5.24: How many consecutive observations required for auto-apply.
+# Higher than suggestion threshold to ensure sustained pressure before
+# automatically resizing.
+_AUTO_APPLY_CONSECUTIVE_THRESHOLD = 5
+
+# Maximum suggested pool size -- conservative upper bound for a
 # single-process app with SQLite WAL mode.
 _AUTO_SIZE_MAX_POOL = 10
+
+# Auto-apply safeguards (Sprint 5.24)
+_AUTO_APPLY_MAX_INCREASE = 4   # Max additional connections auto-applied above configured
+_AUTO_APPLY_MAX_POOL = 12      # Absolute maximum pool size (hard cap)
+
+
+class PoolSizeAdjustment:
+    """A record of an auto-applied pool size change.
+
+    Sprint 5.24 introduces auto-apply mode where the auto-sizer can
+    automatically resize pools when exhaustion is sustained, instead of
+    only generating suggestions.  All auto-applied changes are recorded
+    here for observability and rollback.
+
+    Attributes
+    ----------
+    store_name:
+        The store identifier (e.g. "graph_store").
+    configured_pool_size:
+        The pool size from config (the "original" value).
+    previous_pool_size:
+        The pool size before this adjustment.
+    new_pool_size:
+        The pool size after this adjustment.
+    exhaustion_rate:
+        The exhaustion rate that triggered the adjustment.
+    reason:
+        Human-readable explanation.
+    applied_at:
+        ISO 8601 timestamp of when the adjustment was applied.
+    """
+
+    def __init__(
+        self,
+        store_name: str,
+        configured_pool_size: int,
+        previous_pool_size: int,
+        new_pool_size: int,
+        exhaustion_rate: float,
+        reason: str,
+    ) -> None:
+        self.store_name = store_name
+        self.configured_pool_size = configured_pool_size
+        self.previous_pool_size = previous_pool_size
+        self.new_pool_size = new_pool_size
+        self.exhaustion_rate = exhaustion_rate
+        self.reason = reason
+        self.applied_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    def to_dict(self) -> dict:
+        return {
+            "store_name": self.store_name,
+            "configured_pool_size": self.configured_pool_size,
+            "previous_pool_size": self.previous_pool_size,
+            "new_pool_size": self.new_pool_size,
+            "exhaustion_rate": round(self.exhaustion_rate, 4),
+            "reason": self.reason,
+            "applied_at": self.applied_at,
+        }
 
 
 class PoolSizeSuggestion:
     """A single pool-size suggestion for a store.
 
     Generated by ``ReadPoolAutoSizer`` when a store's exhaustion rate
-    has been consistently high over multiple observations.  This is a
-    *suggestion only* — it is logged and exposed via the health
-    endpoint but NOT automatically applied.  Operators must update
-    ``aip.config.toml`` or the environment to apply the change.
+    has been consistently high over multiple observations.
+
+    Sprint 5.24: When auto_apply_enabled is True and the consecutive
+    threshold is met, the suggestion is also auto-applied to the store
+    (subject to safeguards: max increase cap, max pool cap).
 
     Attributes
     ----------
@@ -386,6 +451,8 @@ class PoolSizeSuggestion:
         Human-readable explanation.
     created_at:
         ISO 8601 timestamp of when the suggestion was generated.
+    auto_applied:
+        Whether the suggestion was auto-applied (Sprint 5.24).
     """
 
     def __init__(
@@ -395,6 +462,7 @@ class PoolSizeSuggestion:
         suggested_pool_size: int,
         exhaustion_rate: float,
         reason: str,
+        auto_applied: bool = False,
     ) -> None:
         self.store_name = store_name
         self.current_pool_size = current_pool_size
@@ -402,6 +470,7 @@ class PoolSizeSuggestion:
         self.exhaustion_rate = exhaustion_rate
         self.reason = reason
         self.created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        self.auto_applied = auto_applied
 
     def to_dict(self) -> dict:
         return {
@@ -411,45 +480,101 @@ class PoolSizeSuggestion:
             "exhaustion_rate": round(self.exhaustion_rate, 4),
             "reason": self.reason,
             "created_at": self.created_at,
+            "auto_applied": self.auto_applied,
         }
 
 
 class ReadPoolAutoSizer:
-    """Monitors read pool exhaustion and generates pool-size suggestions.
+    """Monitors read pool exhaustion and generates/applies pool-size changes.
 
-    This is a lightweight observer that does NOT automatically resize
-    pools.  It tracks exhaustion_rate per store over time and emits
-    suggestions (via logging and the health endpoint) when the rate
-    stays consistently high.
+    Sprint 5.23: Suggestion-only mode. Tracks exhaustion_rate per store
+    and emits suggestions when sustained high exhaustion is detected.
+
+    Sprint 5.24: Auto-apply mode (default on). When ``auto_apply_enabled``
+    is True and exhaustion stays high for ``auto_apply_consecutive_threshold``
+    (default 5) observations, the pool size is automatically increased on
+    the store. Safeguards:
+    - ``auto_apply_max_increase``: Max additional connections above the
+      configured pool_size (default 4).
+    - ``auto_apply_max_pool``: Absolute maximum pool size (default 12).
+    - All changes are logged and recorded in ``adjustment_history``.
+    - ``rollback()`` can restore the configured pool size.
 
     Usage::
 
-        auto_sizer = ReadPoolAutoSizer()
+        auto_sizer = ReadPoolAutoSizer(auto_apply_enabled=True)
         # Call after each health check or cycle
-        auto_sizer.observe("graph_store", pool_health)
+        auto_sizer.observe("graph_store", pool_health, store=store_instance)
         # Get current suggestions
         suggestions = auto_sizer.get_suggestions()
+        # Get auto-apply status
+        status = auto_sizer.get_status()
+        # Rollback if needed
+        auto_sizer.rollback("graph_store", store=store_instance)
     """
 
-    def __init__(self, consecutive_threshold: int = _AUTO_SIZE_CONSECUTIVE_THRESHOLD) -> None:
+    def __init__(
+        self,
+        consecutive_threshold: int = _AUTO_SIZE_CONSECUTIVE_THRESHOLD,
+        auto_apply_enabled: bool = True,
+        auto_apply_consecutive_threshold: int = _AUTO_APPLY_CONSECUTIVE_THRESHOLD,
+        auto_apply_max_increase: int = _AUTO_APPLY_MAX_INCREASE,
+        auto_apply_max_pool: int = _AUTO_APPLY_MAX_POOL,
+    ) -> None:
         self._consecutive_threshold = consecutive_threshold
+        self.auto_apply_enabled = auto_apply_enabled
+        self._auto_apply_consecutive_threshold = auto_apply_consecutive_threshold
+        self._auto_apply_max_increase = auto_apply_max_increase
+        self._auto_apply_max_pool = auto_apply_max_pool
+
         # store_name -> list of recent exhaustion_rate observations
         self._observations: dict[str, list[float]] = {}
         # store_name -> current pool size (from last observation)
         self._current_pool_sizes: dict[str, int] = {}
+        # store_name -> configured pool size (from first observation)
+        self._configured_pool_sizes: dict[str, int] = {}
+        # store_name -> total auto-applied increase above configured
+        self._auto_applied_increase: dict[str, int] = {}
         # Active suggestions
         self._suggestions: list[PoolSizeSuggestion] = []
+        # Auto-apply adjustment history (last 20 per store)
+        self._adjustment_history: list[PoolSizeAdjustment] = []
 
-    def observe(self, store_name: str, pool_health: ReadPoolHealth) -> PoolSizeSuggestion | None:
+    def observe(
+        self,
+        store_name: str,
+        pool_health: ReadPoolHealth,
+        store: ReadPoolMixin | None = None,
+    ) -> PoolSizeSuggestion | None:
         """Record a pool health observation and check for sustained high exhaustion.
 
         Call this periodically (e.g., on each health check or Sexton cycle)
-        with the current pool health for each store.
+        with the current pool health for each store.  When auto_apply_enabled
+        is True and a store is provided, the pool will be resized if
+        exhaustion is sustained beyond the auto-apply threshold.
 
-        Returns a PoolSizeSuggestion if one was generated, or None.
+        Parameters
+        ----------
+        store_name:
+            Identifier for the store being observed.
+        pool_health:
+            The current read pool health metrics.
+        store:
+            The actual ReadPoolMixin store instance (needed for auto-apply).
+            If None, only suggestions are generated (no auto-apply).
+
+        Returns
+        -------
+        PoolSizeSuggestion or None
+            A suggestion if one was generated or auto-applied, else None.
         """
         exhaustion_rate = pool_health.get("exhaustion_rate", 0.0)
         pool_size = pool_health.get("pool_size", 3)
+
+        # Record the configured pool size on first observation
+        if store_name not in self._configured_pool_sizes:
+            self._configured_pool_sizes[store_name] = pool_size
+            self._auto_applied_increase[store_name] = 0
 
         self._current_pool_sizes[store_name] = pool_size
 
@@ -457,17 +582,19 @@ class ReadPoolAutoSizer:
         if store_name not in self._observations:
             self._observations[store_name] = []
         self._observations[store_name].append(exhaustion_rate)
-        # Keep only the last 10 observations
-        if len(self._observations[store_name]) > 10:
-            self._observations[store_name] = self._observations[store_name][-10:]
+        # Keep only the last 15 observations
+        if len(self._observations[store_name]) > 15:
+            self._observations[store_name] = self._observations[store_name][-15:]
 
         # Check for sustained high exhaustion
         obs = self._observations[store_name]
+        suggestion = None
+
         if len(obs) >= self._consecutive_threshold:
             # Check if the last N observations are all above 0.3
             recent = obs[-self._consecutive_threshold:]
             if all(rate > 0.3 for rate in recent):
-                # Sustained high exhaustion — generate a suggestion
+                # Sustained high exhaustion -- generate a suggestion
                 avg_rate = sum(recent) / len(recent)
                 suggested_size = self._compute_suggested_size(pool_size, avg_rate)
 
@@ -501,7 +628,23 @@ class ReadPoolAutoSizer:
                         exhaustion_rate=round(avg_rate, 4),
                     )
 
-                    return suggestion
+        # Auto-apply check (Sprint 5.24)
+        if (
+            self.auto_apply_enabled
+            and store is not None
+            and len(obs) >= self._auto_apply_consecutive_threshold
+        ):
+            apply_recent = obs[-self._auto_apply_consecutive_threshold:]
+            if all(rate > 0.3 for rate in apply_recent):
+                avg_rate = sum(apply_recent) / len(apply_recent)
+                applied = self._auto_apply_pool_size(
+                    store_name=store_name,
+                    store=store,
+                    exhaustion_rate=avg_rate,
+                )
+                if applied is not None and suggestion is not None:
+                    # Mark the suggestion as auto-applied
+                    suggestion.auto_applied = True
 
         # If exhaustion has recovered, clear the suggestion for this store
         if exhaustion_rate <= 0.3:
@@ -516,7 +659,124 @@ class ReadPoolAutoSizer:
                     note="exhaustion_rate recovered to <= 0.3",
                 )
 
-        return None
+        return suggestion
+
+    def _auto_apply_pool_size(
+        self,
+        store_name: str,
+        store: ReadPoolMixin,
+        exhaustion_rate: float,
+    ) -> PoolSizeAdjustment | None:
+        """Auto-apply a pool size increase when exhaustion is sustained.
+
+        Safeguards:
+        - Never exceed auto_apply_max_pool (absolute cap).
+        - Never increase by more than auto_apply_max_increase above
+          the configured pool_size.
+        - All changes are logged and recorded.
+
+        Returns a PoolSizeAdjustment if applied, or None.
+        """
+        current_size = store._read_pool_size
+        configured_size = self._configured_pool_sizes.get(store_name, current_size)
+        already_increased = self._auto_applied_increase.get(store_name, 0)
+
+        # Compute target size based on exhaustion severity
+        if exhaustion_rate > 0.6:
+            # Critical: more aggressive increase
+            target = current_size + 2
+        else:
+            # High but not critical: conservative +1
+            target = current_size + 1
+
+        # Enforce safeguards
+        # 1. Absolute cap
+        target = min(target, self._auto_apply_max_pool)
+
+        # 2. Max increase above configured
+        max_allowed = configured_size + self._auto_apply_max_increase
+        target = min(target, max_allowed)
+
+        # 3. Don't apply if no actual change
+        if target <= current_size:
+            return None
+
+        # Apply the change
+        old_size = current_size
+        store._read_pool_size = target
+        self._auto_applied_increase[store_name] = target - configured_size
+        self._current_pool_sizes[store_name] = target
+
+        adjustment = PoolSizeAdjustment(
+            store_name=store_name,
+            configured_pool_size=configured_size,
+            previous_pool_size=old_size,
+            new_pool_size=target,
+            exhaustion_rate=exhaustion_rate,
+            reason=(
+                f"Auto-applied pool_size increase from {old_size} to {target} "
+                f"(configured={configured_size}, exhaustion_rate={exhaustion_rate:.2%}). "
+                f"Sustained high exhaustion for {self._auto_apply_consecutive_threshold}+ observations."
+            ),
+        )
+        self._adjustment_history.append(adjustment)
+        # Keep only last 20 adjustments
+        if len(self._adjustment_history) > 20:
+            self._adjustment_history = self._adjustment_history[-20:]
+
+        log.info(
+            "read_pool_auto_apply",
+            store=store_name,
+            from_size=old_size,
+            to_size=target,
+            configured_size=configured_size,
+            exhaustion_rate=round(exhaustion_rate, 4),
+        )
+
+        return adjustment
+
+    def rollback(self, store_name: str, store: ReadPoolMixin) -> bool:
+        """Rollback auto-applied pool size changes for a store.
+
+        Restores the pool size to its configured value. The pool will
+        be re-created with the correct number of connections on the
+        next checkout cycle.
+
+        Returns True if a rollback was performed, False if the store
+        was already at its configured size.
+        """
+        configured_size = self._configured_pool_sizes.get(store_name)
+        if configured_size is None:
+            return False
+
+        current_size = store._read_pool_size
+        if current_size <= configured_size:
+            return False
+
+        old_size = current_size
+        store._read_pool_size = configured_size
+        self._auto_applied_increase[store_name] = 0
+        self._current_pool_sizes[store_name] = configured_size
+
+        adjustment = PoolSizeAdjustment(
+            store_name=store_name,
+            configured_pool_size=configured_size,
+            previous_pool_size=old_size,
+            new_pool_size=configured_size,
+            exhaustion_rate=0.0,
+            reason=f"Rollback: restored pool_size from {old_size} to configured value {configured_size}.",
+        )
+        self._adjustment_history.append(adjustment)
+        if len(self._adjustment_history) > 20:
+            self._adjustment_history = self._adjustment_history[-20:]
+
+        log.info(
+            "read_pool_auto_rollback",
+            store=store_name,
+            from_size=old_size,
+            to_size=configured_size,
+        )
+        return True
 
     @staticmethod
     def _compute_suggested_size(current_size: int, exhaustion_rate: float) -> int:
@@ -541,6 +801,54 @@ class ReadPoolAutoSizer:
         Suitable for inclusion in the /health endpoint response.
         """
         return [s.to_dict() for s in self._suggestions]
+
+    def get_adjustment_history(self, store_name: str | None = None) -> list[dict]:
+        """Return adjustment history, optionally filtered by store.
+
+        Parameters
+        ----------
+        store_name:
+            If provided, return only adjustments for this store.
+            Otherwise, return all adjustments.
+        """
+        if store_name is not None:
+            return [a.to_dict() for a in self._adjustment_history if a.store_name == store_name]
+        return [a.to_dict() for a in self._adjustment_history]
+
+    def get_status(self) -> dict:
+        """Return auto-sizing status for all observed stores.
+
+        Suitable for inclusion in the /health endpoint response.
+        Shows current vs. configured pool sizes, auto-applied increases,
+        and recent adjustment history.
+        """
+        stores_status = {}
+        for store_name in self._current_pool_sizes:
+            configured = self._configured_pool_sizes.get(store_name, self._current_pool_sizes[store_name])
+            current = self._current_pool_sizes[store_name]
+            increase = self._auto_applied_increase.get(store_name, 0)
+            obs = self._observations.get(store_name, [])
+            recent_rate = obs[-1] if obs else 0.0
+
+            stores_status[store_name] = {
+                "configured_pool_size": configured,
+                "current_pool_size": current,
+                "auto_applied_increase": increase,
+                "recent_exhaustion_rate": round(recent_rate, 4),
+                "observations_count": len(obs),
+                "adjustments": len([
+                    a for a in self._adjustment_history if a.store_name == store_name
+                ]),
+            }
+
+        return {
+            "auto_apply_enabled": self.auto_apply_enabled,
+            "auto_apply_consecutive_threshold": self._auto_apply_consecutive_threshold,
+            "auto_apply_max_increase": self._auto_apply_max_increase,
+            "auto_apply_max_pool": self._auto_apply_max_pool,
+            "stores": stores_status,
+            "recent_adjustments": [a.to_dict() for a in self._adjustment_history[-5:]],
+        }
 
     def clear_suggestion(self, store_name: str) -> None:
         """Manually clear a suggestion for a store (e.g., after operator acts on it)."""
