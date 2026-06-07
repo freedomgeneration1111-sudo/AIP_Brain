@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from dataclasses import asdict
@@ -168,6 +169,28 @@ def corpus_turn_to_hit(turn: Any, rank: int, channel: RetrievalChannel = Retriev
 # ---------------------------------------------------------------------------
 
 
+def _sanitize_fts_query(query: str) -> str:
+    """Robust FTS5 sanitization (same spirit as ask_pipeline)."""
+    # Remove FTS5 special characters
+    cleaned = re.sub(r'[?!.*+\-^(){}|~"\\]', " ", query)
+    tokens = cleaned.split()
+    stop_words = {"a", "an", "the", "is", "are", "was", "were", "be", "been",
+                  "being", "have", "has", "had", "do", "does", "did", "will",
+                  "would", "could", "should", "may", "might", "shall", "can",
+                  "of", "in", "to", "for", "with", "on", "at", "by", "from",
+                  "it", "its", "we", "our", "you", "your", "this", "that",
+                  "what", "which", "who", "whom", "how", "when", "where", "why",
+                  "about", "there", "here", "these", "those", "been", "some",
+                  "very", "also", "just", "than", "then", "so", "if", "or",
+                  "not", "no", "but", "and", "up", "out", "into", "over"}
+    meaningful = [t for t in tokens if len(t) >= 2 and t.lower() not in stop_words]
+    if not meaningful:
+        meaningful = [t for t in tokens if len(t) >= 1 and t.lower() not in stop_words]
+    if not meaningful:
+        return query
+    return " AND ".join(meaningful)
+
+
 async def run_fts5_baseline(
     query: str,
     corpus_store: CorpusTurnStore,
@@ -178,11 +201,7 @@ async def run_fts5_baseline(
     This simulates what _search_sources does via CorpusTurnStore.search().
     No vector search, no graph, no wiki — pure FTS5 BM25.
     """
-    # Sanitize query for FTS5 (basic: remove special chars)
-    sanitized = query
-    for ch in ['"', "'", "(", ")", ":", "*", "^", "+", "-", "|"]:
-        sanitized = sanitized.replace(ch, " ")
-    sanitized = " ".join(sanitized.split())  # collapse whitespace
+    sanitized = _sanitize_fts_query(query)
 
     if not sanitized.strip():
         return []
