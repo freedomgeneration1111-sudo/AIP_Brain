@@ -19,13 +19,13 @@ class GraphRetriever:
     """PPR-based graph retrieval over the knowledge graph.
 
     graph_store: injected GraphStore instance (any object with
-    get_all_nodes(), get_all_edges(), get_neighbors() methods).
+    async get_all_nodes(), get_all_edges(), get_neighbors() methods).
     """
 
     def __init__(self, graph_store: Any) -> None:
         self._store = graph_store
 
-    def expand_query_via_graph(
+    async def expand_query_via_graph(
         self,
         seed_entities: list[str],
         max_hops: int = 2,
@@ -42,8 +42,8 @@ class GraphRetriever:
         except ImportError:
             return []
 
-        nodes = self._store.get_all_nodes(min_confidence=min_confidence)
-        edges = self._store.get_all_edges(min_confidence=min_confidence)
+        nodes = await self._store.get_all_nodes(min_confidence=min_confidence)
+        edges = await self._store.get_all_edges(min_confidence=min_confidence)
 
         if not nodes:
             return []
@@ -83,14 +83,14 @@ class GraphRetriever:
                 results.append(label)
         return results
 
-    def get_domain_neighbors(self, domain: str) -> list[str]:
+    async def get_domain_neighbors(self, domain: str) -> list[str]:
         """Return domains directly connected to given domain via bridge edges.
 
         Used for lightweight domain context expansion in augmented chat.
         No PPR — direct adjacency only for speed.
         """
         try:
-            neighbors = self._store.get_neighbors(domain, min_confidence=0.4)
+            neighbors = await self._store.get_neighbors(domain, min_confidence=0.4)
             return [n.canonical_name for n in neighbors if n.id != domain]
         except Exception:
             return []

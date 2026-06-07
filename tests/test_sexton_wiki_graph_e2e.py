@@ -832,12 +832,15 @@ async def test_sexton_graph_extraction_writes_extraction_log(tmp_db):
 
     # Verify graph_extraction_log was written
     graph_store = GraphStore(tmp_db)
-    assert graph_store.is_turn_extracted("extraction_log_test_turn_1"), \
+    await graph_store.initialize()
+    assert await graph_store.is_turn_extracted("extraction_log_test_turn_1"), \
         "Turn should be logged in graph_extraction_log after extraction"
 
     # Verify nodes were created
-    assert graph_store.node_count() >= 1, \
-        f"Expected at least 1 graph node, got {graph_store.node_count()}"
+    node_count = await graph_store.node_count()
+    assert node_count >= 1, \
+        f"Expected at least 1 graph node, got {node_count}"
+    await graph_store.close()
 
 
 @pytest.mark.asyncio
@@ -899,7 +902,9 @@ async def test_sexton_graph_extraction_log_prevents_reduplication(tmp_db):
 
     # Verify graph_extraction_log has the entry
     graph_store = GraphStore(tmp_db)
-    assert graph_store.is_turn_extracted("dedup_test_turn_1")
+    await graph_store.initialize()
+    assert await graph_store.is_turn_extracted("dedup_test_turn_1")
+    await graph_store.close()
 
 
 @pytest.mark.asyncio

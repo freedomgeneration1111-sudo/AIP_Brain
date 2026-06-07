@@ -1,7 +1,6 @@
 """Retrieval Quality Evaluation Harness — data-driven quality evaluation.
 
-Sprint 5.9: Foundation for systematic retrieval quality evaluation.  Runs
-a set of golden queries against the retrieval pipeline and computes
+Runs a set of golden queries against the retrieval pipeline and computes
 standard IR metrics:
 
 - **Recall@k**: Fraction of relevant documents retrieved in top-k.
@@ -199,7 +198,7 @@ class QueryEvalResult:
         retrieved_ids: List of retrieved document IDs (for debugging).
         elapsed_ms: Retrieval elapsed time in milliseconds.
         channel_contributions: Mapping of channel name → hit count for this query.
-            Sprint 5.10: Populated from RetrievalTrace.channel_contributions.
+            Populated from RetrievalTrace.channel_contributions.
     """
 
     query: str
@@ -228,7 +227,7 @@ class EvalResult:
         per_query_results: Individual results for each query.
         config_snapshot: Configuration used for the evaluation.
         channel_contribution_summary: Aggregated channel contributions across
-            all queries (channel → total hit count).  Sprint 5.10.
+            all queries (channel → total hit count).
         eval_harness_version: Version identifier for the harness.
     """
 
@@ -279,9 +278,6 @@ class EvalResult:
 
     def format_human_summary(self) -> str:
         """Format a human-readable summary of the evaluation results.
-
-        Sprint 5.10: Provides a structured, readable summary suitable for
-        console output or CI logs, including per-channel contribution data.
 
         Returns:
             Multi-line string with the evaluation summary.
@@ -405,7 +401,7 @@ def load_golden_queries(path: str | None = None) -> list[GoldenQuery]:
 def create_default_golden_queries(path: str) -> None:
     """Create a default golden queries file with sample queries.
 
-    Sprint 5.11: Expanded from 5 to 20 queries with coverage for:
+    Includes 20 queries with coverage for:
     - Multi-hop queries (cross-channel references)
     - Entity-heavy queries (many named entities)
     - Procedural queries (how-to, steps, guides)
@@ -606,7 +602,7 @@ class RetrievalEvalHarness:
             golden_queries: List of GoldenQuery instances to evaluate.
             retriever_fn: Async callable that accepts a query string and
                 returns ``(list[RetrievalHit], trace)``.  The trace is
-                used for channel contribution tracking (Sprint 5.10).
+                used for channel contribution tracking.
 
         Returns:
             EvalResult with aggregated and per-query metrics.
@@ -638,7 +634,7 @@ class RetrievalEvalHarness:
             mrr = compute_mrr(retrieved_ids, gq.relevant_ids)
             entity_cov = compute_entity_coverage(hits, gq.expected_entities)
 
-            # Sprint 5.10: Extract channel contributions from trace
+            # Extract channel contributions from trace
             ch_contrib: dict[str, int] = {}
             if trace is not None and hasattr(trace, "channel_contributions"):
                 ch_contrib = dict(trace.channel_contributions)
@@ -704,7 +700,7 @@ class RetrievalEvalHarness:
 
 
 # ---------------------------------------------------------------------------
-# Regression protection (Sprint 5.10)
+# Regression protection
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -771,11 +767,10 @@ def compare_against_baseline(
 ) -> RegressionCheckResult:
     """Compare current evaluation results against a saved baseline.
 
-    Sprint 5.10: Provides regression protection by comparing key metrics
-    (mean Recall@k, mean MRR, mean Entity Coverage) against a previously
-    saved baseline.  If a metric drops below the baseline by more than
-    ``warn_threshold``, a warning is issued.  If it drops by more than
-    ``fail_threshold``, the check fails.
+    Compares key metrics (mean Recall@k, mean MRR, mean Entity Coverage)
+    against a previously saved baseline.  If a metric drops below the
+    baseline by more than ``warn_threshold``, a warning is issued.  If it
+    drops by more than ``fail_threshold``, the check fails.
 
     This is intended to be run as part of CI or as a pre-merge check
     to catch quality regressions early.
@@ -843,14 +838,13 @@ def compare_against_baseline(
 
 
 # ---------------------------------------------------------------------------
-# A/B Evaluation Comparison (Sprint 5.12)
+# A/B Evaluation Comparison
 # ---------------------------------------------------------------------------
 
 @dataclass
 class ABComparisonResult:
     """Result of comparing two evaluation runs (config A vs config B).
 
-    Sprint 5.12: Provides A/B comparison for evaluating retrieval changes.
     Compares two EvalResult instances side-by-side, computing delta metrics
     and identifying queries where one configuration significantly outperforms
     the other.
@@ -959,8 +953,8 @@ def compare_eval_results(
 ) -> ABComparisonResult:
     """Compare two EvalResult instances and produce an A/B comparison.
 
-    Sprint 5.12: Compares metrics from two evaluation runs, computing deltas
-    and identifying which configuration performs better overall.  This is the
+    Compares metrics from two evaluation runs, computing deltas and
+    identifying which configuration performs better overall.  This is the
     core logic behind the ``aip eval retrieval-ab`` CLI command.
 
     Args:

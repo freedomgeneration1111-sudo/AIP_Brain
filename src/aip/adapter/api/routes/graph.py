@@ -18,11 +18,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _get_graph_store(container: AipContainer):
-    """Create a GraphStore using the container's db_path.
+async def _get_graph_store(container: AipContainer):
+    """Return the container's GraphStore, or create one lazily.
 
-    Falls back to get_default_db_path() if container config is unavailable.
+    The GraphStore is initialized during app lifespan. Falls back to
+    creating and initializing one from the container's db_path if the
+    container attribute is not set (e.g. during testing or partial startup).
     """
+    store = getattr(container, "graph_store", None)
+    if store is not None:
+        return store
     from aip.adapter.graph_store import GraphStore
     db_path = container.config.get("db_path", "")
     if not db_path:
@@ -31,7 +36,9 @@ def _get_graph_store(container: AipContainer):
             db_path = get_default_db_path()
         except Exception:
             db_path = "db/state.db"
-    return GraphStore(db_path)
+    store = GraphStore(db_path)
+    await store.initialize()
+    return store
 
 
 @router.get("/graph/data")
@@ -46,12 +53,12 @@ async def graph_data(
     Filters: min_confidence (default 0.4), domain, entity_type.
     """
     try:
-        store = _get_graph_store(container)
+        store = await _get_graph_store(container)
     except Exception as exc:
         return {"error": str(exc), "nodes": [], "edges": []}
 
-    nodes = store.get_all_nodes(min_confidence=min_confidence)
-    edges = store.get_all_edges(min_confidence=min_confidence)
+    nodes = await store.get_all_nodes(min_confidence=min_confidence)
+    edges = await store.get_all_edges(min_confidence=min_confidence)
 
     if domain:
         domain_node_ids = {n.id for n in nodes if n.domain == domain or n.id == domain}
@@ -100,8 +107,8 @@ async def graph_neighbors(
 ):
     """Return direct neighbors of a node."""
     try:
-        store = _get_graph_store(container)
-        neighbors = store.get_neighbors(node_id, min_confidence=min_confidence)
+        store = await _get_graph_store(container)
+        neighbors = await store.get_neighbors(node_id, min_confidence=min_confidence)
         return {
             "node_id": node_id,
             "nodes": [
@@ -118,9 +125,9 @@ async def graph_neighbors(
 async def graph_stats(container: AipContainer = Depends(get_container)):
     """Return graph statistics."""
     try:
-        store = _get_graph_store(container)
-        nodes = store.get_all_nodes()
-        edges = store.get_all_edges()
+        store = await _get_graph_store(container)
+        nodes = await store.get_all_nodes()
+        edges = await store.get_all_edges()
 
         by_type: dict[str, int] = {}
         by_source: dict[str, int] = {}

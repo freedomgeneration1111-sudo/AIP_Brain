@@ -303,6 +303,7 @@ def _register_retriever_channels(
                         _db_path = os.environ.get("AIP_DB_PATH", "db/state.db")
                     from aip.adapter.graph_store import GraphStore
                     _graph_store = GraphStore(_db_path)
+                    await _graph_store.initialize()
 
                 retriever = GraphRetriever(_graph_store)
                 extractor = EntityExtractor(
@@ -340,7 +341,7 @@ def _register_retriever_channels(
                 if not seed_entities:
                     return []
 
-                expanded = retriever.expand_query_via_graph(
+                expanded = await retriever.expand_query_via_graph(
                     seed_entities=seed_entities,
                     max_hops=2,
                     top_k=10,
@@ -783,6 +784,7 @@ async def create_ask_stores(db_path: str) -> AskStores:
     try:
         from aip.adapter.graph_store import GraphStore
         graph_store = GraphStore(db_path)
+        await graph_store.initialize()
     except Exception as exc:
         logger.info("GraphStore not available for ask pipeline: %s", exc)
 

@@ -6,6 +6,7 @@ graceful degradation with clear "not configured" indicators.
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 from pathlib import Path
 
@@ -111,7 +112,6 @@ def status() -> None:
             db_total_rows += total
             if total > 0:
                 click.echo(f"db/{name}: {info['tables']} tables, {total} rows — {description}")
-                # Show row counts per table for state.db
                 if name == "state.db" and info.get("row_counts"):
                     for table, count in info["row_counts"].items():
                         click.echo(f"    {table}: {count} rows")
@@ -278,7 +278,6 @@ def status() -> None:
                 except Exception:
                     pass
 
-                # Count beast_wiki artifacts
                 total_wiki = conn_w.execute(
                     "SELECT COUNT(*) FROM artifacts WHERE metadata_json LIKE '%\"artifact_type\": \"beast_wiki\"%'"
                 ).fetchone()[0] or 0
@@ -331,9 +330,13 @@ def status() -> None:
         from aip.cli._db_path import get_default_db_path as _gdp
         _kg_path = _gdp()
         if Path(_kg_path).exists():
-            _kg_store = GraphStore(_kg_path)
-            _kg_nodes = _kg_store.get_all_nodes()
-            _kg_edges = _kg_store.get_all_edges()
+            async def _kg_status():
+                _kg_store = GraphStore(_kg_path)
+                _kg_nodes = await _kg_store.get_all_nodes()
+                _kg_edges = await _kg_store.get_all_edges()
+                await _kg_store.close()
+                return _kg_nodes, _kg_edges
+            _kg_nodes, _kg_edges = asyncio.run(_kg_status())
             _by_source: dict[str, int] = {}
             _domain_nodes: set[str] = set()
             for _n in _kg_nodes:

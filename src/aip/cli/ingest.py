@@ -126,7 +126,6 @@ def _run_ingest_file(path: str, source_format: str, domain: str, project: str | 
         total_chunks = sum(r.chunk_count for r in results)
         total_turns = sum(r.turn_count for r in results)
         click.echo(f"\nImported {len(results)} conversation(s): {total_turns} turns, {total_chunks} chunks indexed.")
-        # Show the domain that was indexed into
         effective_domain = domain if project is None else _resolve_domain_sync(domain, project, db_path)
         click.echo(f"Indexed into domain: {effective_domain}")
     except FileNotFoundError as exc:
@@ -204,7 +203,6 @@ def _run_ingest_directory(
         f"\nImported {len(all_results)} conversation(s) "
         f"from {len(files)} file(s): {total_turns} turns, {total_chunks} chunks."
     )
-    # Show the domain that was indexed into
     effective_domain = domain if project is None else _resolve_domain_sync(domain, project, db_path)
     click.echo(f"Indexed into domain: {effective_domain}")
 
@@ -234,7 +232,6 @@ async def _ingest_file_async(path: str, source_format: str, domain: str, project
 
     ensure_db_dir(db_path)
 
-    # Resolve domain from project if --project is given
     effective_domain = _resolve_domain(domain, project, db_path)
 
     stores = await _pipeline.create_ingestion_stores(db_path)

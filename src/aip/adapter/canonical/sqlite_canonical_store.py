@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 import aiosqlite
 
+from aip.adapter.store_health import StoreHealthMixin
 from aip.foundation.protocols import CanonicalStore
 
 # ---------------------------------------------------------------------------
@@ -39,7 +40,7 @@ _DDL_IDX_CANONICAL_DOMAIN = """
 """
 
 
-class SqliteCanonicalStore(CanonicalStore):
+class SqliteCanonicalStore(CanonicalStore, StoreHealthMixin):
     """SQLite-backed CanonicalStore.
 
     Stores only DEFINER-approved canonical artifacts (distinct from versioned generated artifacts).
@@ -61,6 +62,7 @@ class SqliteCanonicalStore(CanonicalStore):
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
             await self._conn.execute("PRAGMA journal_mode=WAL")
+            self._health_track_connect()
             if not self._tables_ready:
                 await self._create_tables(self._conn)
                 self._tables_ready = True
@@ -104,6 +106,7 @@ class SqliteCanonicalStore(CanonicalStore):
             except Exception:
                 pass
             self._conn = None
+            self._health_track_reset()
 
     async def read_canonical(self, artifact_id: str) -> dict | None:
         conn = await self._get_conn()

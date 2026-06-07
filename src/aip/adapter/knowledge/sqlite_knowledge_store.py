@@ -21,6 +21,7 @@ from typing import Any
 
 import aiosqlite
 
+from aip.adapter.store_health import StoreHealthMixin
 from aip.foundation.protocols import (
     EmbeddingProvider,
     KnowledgeStore,
@@ -61,7 +62,7 @@ _DDL_COMPILED_KNOWLEDGE_PROVENANCE = """
 """
 
 
-class SqliteKnowledgeStore(KnowledgeStore):
+class SqliteKnowledgeStore(KnowledgeStore, StoreHealthMixin):
     """SQLite-backed KnowledgeStore.
 
     Stores compiled knowledge artifacts (distinct from canonical artifacts —
@@ -103,6 +104,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
             await self._conn.execute("PRAGMA journal_mode=WAL")
+            self._health_track_connect()
             if not self._tables_ready:
                 await self._create_tables(self._conn)
                 self._tables_ready = True
@@ -146,6 +148,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
             except Exception:
                 pass
             self._conn = None
+            self._health_track_reset()
 
     async def _generate_embedding(self, text: str) -> list[float] | None:
         """Generate a real embedding via the injected EmbeddingProvider.

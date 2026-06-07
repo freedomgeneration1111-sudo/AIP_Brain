@@ -677,24 +677,26 @@ def corpus_graph_cmd(
 
     if stats:
         try:
-            store = GraphStore(resolved_db_path)
-            h = store.health_check()
-            click.echo("knowledge_graph:")
-            click.echo(f"  nodes: {h.get('nodes', 0)}")
-            click.echo(f"  edges: {h.get('edges', 0)}")
-            # By type
-            nodes = store.get_all_nodes()
-            edges = store.get_all_edges()
-            by_type: dict[str, int] = {}
-            by_src: dict[str, int] = {}
-            for n in nodes:
-                by_type[n.entity_type] = by_type.get(n.entity_type, 0) + 1
-                by_src[n.source] = by_src.get(n.source, 0) + 1
-            for k, v in sorted(by_type.items()):
-                click.echo(f"  {k}: {v}")
-            click.echo(f"  by_source: {by_src}")
-            bridge_edges = sum(1 for e in edges if e.bridge_tag is not None)
-            click.echo(f"  bridge_edges: {bridge_edges}")
+            async def _stats():
+                store = GraphStore(resolved_db_path)
+                h = await store.health_check()
+                click.echo("knowledge_graph:")
+                click.echo(f"  nodes: {h.get('nodes', 0)}")
+                click.echo(f"  edges: {h.get('edges', 0)}")
+                nodes = await store.get_all_nodes()
+                edges = await store.get_all_edges()
+                by_type: dict[str, int] = {}
+                by_src: dict[str, int] = {}
+                for n in nodes:
+                    by_type[n.entity_type] = by_type.get(n.entity_type, 0) + 1
+                    by_src[n.source] = by_src.get(n.source, 0) + 1
+                for k, v in sorted(by_type.items()):
+                    click.echo(f"  {k}: {v}")
+                click.echo(f"  by_source: {by_src}")
+                bridge_edges = sum(1 for e in edges if e.bridge_tag is not None)
+                click.echo(f"  bridge_edges: {bridge_edges}")
+                await store.close()
+            asyncio.run(_stats())
         except Exception as exc:
             click.echo(f"Error: {exc}", err=True)
             sys.exit(1)
@@ -702,14 +704,17 @@ def corpus_graph_cmd(
 
     if neighbors_node is not None:
         try:
-            store = GraphStore(resolved_db_path)
-            neighbors = store.get_neighbors(neighbors_node, min_confidence=0.0)
-            if not neighbors:
-                click.echo(f"No neighbors found for '{neighbors_node}' (node may not exist or have no edges).")
-            else:
-                click.echo(f"Neighbors of '{neighbors_node}':")
-                for n in neighbors:
-                    click.echo(f"  {n.entity_type:12s} {n.canonical_name} (confidence: {n.confidence:.2f})")
+            async def _neighbors():
+                store = GraphStore(resolved_db_path)
+                neighbors = await store.get_neighbors(neighbors_node, min_confidence=0.0)
+                if not neighbors:
+                    click.echo(f"No neighbors found for '{neighbors_node}' (node may not exist or have no edges).")
+                else:
+                    click.echo(f"Neighbors of '{neighbors_node}':")
+                    for n in neighbors:
+                        click.echo(f"  {n.entity_type:12s} {n.canonical_name} (confidence: {n.confidence:.2f})")
+                await store.close()
+            asyncio.run(_neighbors())
         except Exception as exc:
             click.echo(f"Error: {exc}", err=True)
             sys.exit(1)
@@ -728,127 +733,132 @@ def _run_build_from_bridges(db_path: str) -> None:
     from aip.adapter.graph_store import GraphStore, GraphNode, GraphEdge
     from aip.adapter.entity_alias_loader import EntityAliasRegistry
 
-    store = GraphStore(db_path)
+    async def _build():
+        store = GraphStore(db_path)
+        await store.initialize()
 
-    # Load entity alias registry
-    alias_path = "docs/entity_aliases.md"
-    registry = EntityAliasRegistry(alias_path)
-    click.echo(f"Loading entity aliases... {len(registry)} entries")
+        # Load entity alias registry
+        alias_path = "docs/entity_aliases.md"
+        registry = EntityAliasRegistry(alias_path)
+        click.echo(f"Loading entity aliases... {len(registry)} entries")
 
-    # Seed nodes from alias registry
-    alias_nodes = 0
-    for cn in registry.all_canonical_names():
-        entry = registry.get_entry(cn)
-        if entry is None:
-            continue
-        node_id = cn.lower().replace(" ", "_")
-        node = GraphNode(
-            id=node_id,
-            entity_type=entry.entity_type,
-            canonical_name=cn,
-            domain=entry.domain or None,
-            confidence=1.0,
-            source="manual",
-            aliases=entry.aliases,
-        )
-        store.upsert_node(node)
-        alias_nodes += 1
-
-    click.echo(f"Processing bridge tags from corpus...")
-
-    # Read all bridge-tagged turns
-    conn = sqlite3.connect(db_path)
-    try:
-        rows = conn.execute(
-            "SELECT turn_id, bridges FROM corpus_turns WHERE bridges != '[]'"
-        ).fetchall()
-    finally:
-        conn.close()
-
-    click.echo(f"Found {len(rows)} turns with bridge tags")
-
-    # Collect bridge evidence: bridge_tag -> list of turn_ids
-    bridge_evidence: dict[str, list[str]] = {}
-    for turn_id, bridges_json in rows:
-        try:
-            bridges = json.loads(bridges_json or "[]")
-        except Exception:
-            continue
-        for tag in bridges:
-            tag = tag.strip()
-            if "->" not in tag:
+        # Seed nodes from alias registry
+        alias_nodes = 0
+        for cn in registry.all_canonical_names():
+            entry = registry.get_entry(cn)
+            if entry is None:
                 continue
-            if tag not in bridge_evidence:
-                bridge_evidence[tag] = []
-            bridge_evidence[tag].append(turn_id)
+            node_id = cn.lower().replace(" ", "_")
+            node = GraphNode(
+                id=node_id,
+                entity_type=entry.entity_type,
+                canonical_name=cn,
+                domain=entry.domain or None,
+                confidence=1.0,
+                source="manual",
+                aliases=entry.aliases,
+            )
+            await store.upsert_node(node)
+            alias_nodes += 1
 
-    # Build domain nodes and edges from bridge tags
-    domain_nodes_created = 0
-    bridge_edges_created = 0
+        click.echo(f"Processing bridge tags from corpus...")
 
-    for bridge_tag, turn_ids in bridge_evidence.items():
-        parts = bridge_tag.split("->", 1)
-        if len(parts) != 2:
-            continue
-        domain_a = parts[0].strip()
-        domain_b = parts[1].strip()
-
-        for dom in (domain_a, domain_b):
-            # Create domain node if it doesn't exist
-            existing = store.get_node(dom)
-            if existing is None:
-                node = GraphNode(
-                    id=dom,
-                    entity_type="DOMAIN",
-                    canonical_name=dom,
-                    domain=dom,
-                    confidence=1.0,
-                    source="bridge",
-                )
-                store.upsert_node(node)
-                domain_nodes_created += 1
-
-        # Create or update the bridge edge (weight = number of turns)
-        edge_id = f"{domain_a}__CONNECTS__{domain_b}"
-        existing_edge = None
+        # Read all bridge-tagged turns
+        conn = sqlite3.connect(db_path)
         try:
-            # Check if edge exists to accumulate evidence
-            all_edges = store.get_all_edges()
-            for e in all_edges:
-                if e.id == edge_id:
-                    existing_edge = e
-                    break
-        except Exception:
-            pass
+            rows = conn.execute(
+                "SELECT turn_id, bridges FROM corpus_turns WHERE bridges != '[]'"
+            ).fetchall()
+        finally:
+            conn.close()
 
-        all_evidence = list({*turn_ids, *(existing_edge.evidence_turn_ids if existing_edge else [])})
-        edge = GraphEdge(
-            id=edge_id,
-            source_id=domain_a,
-            target_id=domain_b,
-            relationship_type="CONNECTS",
-            bridge_tag=bridge_tag,
-            confidence=1.0,
-            evidence_turn_ids=all_evidence,
-            weight=float(len(all_evidence)),
-        )
-        store.upsert_edge(edge)
-        bridge_edges_created += 1
+        click.echo(f"Found {len(rows)} turns with bridge tags")
 
-    total_nodes = store.node_count()
-    total_edges = store.edge_count()
+        # Collect bridge evidence: bridge_tag -> list of turn_ids
+        bridge_evidence: dict[str, list[str]] = {}
+        for turn_id, bridges_json in rows:
+            try:
+                bridges = json.loads(bridges_json or "[]")
+            except Exception:
+                continue
+            for tag in bridges:
+                tag = tag.strip()
+                if "->" not in tag:
+                    continue
+                if tag not in bridge_evidence:
+                    bridge_evidence[tag] = []
+                bridge_evidence[tag].append(turn_id)
 
-    click.echo(f"Created {domain_nodes_created} domain nodes from bridge tags")
-    click.echo(f"Created/updated {bridge_edges_created} bridge edges")
-    click.echo(f"Entity alias nodes: {alias_nodes} nodes seeded from entity_aliases.md")
-    click.echo(f"Built seed graph: {total_nodes} nodes, {total_edges} edges")
+        # Build domain nodes and edges from bridge tags
+        domain_nodes_created = 0
+        bridge_edges_created = 0
 
-    if any("aip_methodology" in tag for tag in bridge_evidence.keys()):
-        click.echo("")
-        click.echo("Note: aip_methodology bridge nodes are pre-rename artifacts.")
-        click.echo("  Run 'aip corpus graph --merge-nodes aip_methodology aip'")
-        click.echo("  after full corpus retag to consolidate.")
-        click.echo("  (--merge-nodes is planned future work — see TECH_DEBT.md)")
+        for bridge_tag, turn_ids in bridge_evidence.items():
+            parts = bridge_tag.split("->", 1)
+            if len(parts) != 2:
+                continue
+            domain_a = parts[0].strip()
+            domain_b = parts[1].strip()
+
+            for dom in (domain_a, domain_b):
+                # Create domain node if it doesn't exist
+                existing = await store.get_node(dom)
+                if existing is None:
+                    node = GraphNode(
+                        id=dom,
+                        entity_type="DOMAIN",
+                        canonical_name=dom,
+                        domain=dom,
+                        confidence=1.0,
+                        source="bridge",
+                    )
+                    await store.upsert_node(node)
+                    domain_nodes_created += 1
+
+            # Create or update the bridge edge (weight = number of turns)
+            edge_id = f"{domain_a}__CONNECTS__{domain_b}"
+            existing_edge = None
+            try:
+                # Check if edge exists to accumulate evidence
+                all_edges = await store.get_all_edges()
+                for e in all_edges:
+                    if e.id == edge_id:
+                        existing_edge = e
+                        break
+            except Exception:
+                pass
+
+            all_evidence = list({*turn_ids, *(existing_edge.evidence_turn_ids if existing_edge else [])})
+            edge = GraphEdge(
+                id=edge_id,
+                source_id=domain_a,
+                target_id=domain_b,
+                relationship_type="CONNECTS",
+                bridge_tag=bridge_tag,
+                confidence=1.0,
+                evidence_turn_ids=all_evidence,
+                weight=float(len(all_evidence)),
+            )
+            await store.upsert_edge(edge)
+            bridge_edges_created += 1
+
+        total_nodes = await store.node_count()
+        total_edges = await store.edge_count()
+
+        click.echo(f"Created {domain_nodes_created} domain nodes from bridge tags")
+        click.echo(f"Created/updated {bridge_edges_created} bridge edges")
+        click.echo(f"Entity alias nodes: {alias_nodes} nodes seeded from entity_aliases.md")
+        click.echo(f"Built seed graph: {total_nodes} nodes, {total_edges} edges")
+
+        if any("aip_methodology" in tag for tag in bridge_evidence.keys()):
+            click.echo("")
+            click.echo("Note: aip_methodology bridge nodes are pre-rename artifacts.")
+            click.echo("  Run 'aip corpus graph --merge-nodes aip_methodology aip'")
+            click.echo("  after full corpus retag to consolidate.")
+
+        await store.close()
+
+    asyncio.run(_build())
 
 
 def _run_graph_extract(db_path: str, limit: int) -> None:

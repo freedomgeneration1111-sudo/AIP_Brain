@@ -17,6 +17,8 @@ from typing import Any
 
 import aiosqlite
 
+from aip.adapter.read_pool import ReadPoolMixin
+from aip.adapter.store_health import StoreHealthMixin
 from aip.foundation.schemas.corpus_turn import CorpusTurn
 
 # ---------------------------------------------------------------------------
@@ -112,7 +114,7 @@ _DDL_TRIGGER_UPDATE = """
 """
 
 
-class CorpusTurnStore:
+class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
     """SQLite-backed store for CorpusTurn objects with FTS5 search.
 
     All turns live in the main state.db alongside artifacts/events.
@@ -124,6 +126,7 @@ class CorpusTurnStore:
         self._db_path = db_path
         self._conn: aiosqlite.Connection | None = None
         self._tables_ready = False
+        self._init_read_pool()
 
     async def _get_conn(self) -> aiosqlite.Connection:
         """Return a persistent connection, creating one if needed.
@@ -135,6 +138,7 @@ class CorpusTurnStore:
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
             await self._conn.execute("PRAGMA journal_mode=WAL")
+            self._health_track_connect()
             if not self._tables_ready:
                 await self._create_tables(self._conn)
                 self._tables_ready = True
@@ -175,7 +179,8 @@ class CorpusTurnStore:
             await conn.close()
 
     async def close(self) -> None:
-        """Close the persistent connection."""
+        """Close the persistent connection and read pool."""
+        await self._close_read_pool()
         if self._conn is not None:
             try:
                 await self._conn.close()
@@ -191,6 +196,7 @@ class CorpusTurnStore:
             except Exception:
                 pass
             self._conn = None
+            self._health_track_reset()
 
     async def write_turn(self, turn: CorpusTurn) -> None:
         """Insert or replace a turn. Sets timestamps. Serializes lists as JSON."""
@@ -249,7 +255,7 @@ class CorpusTurnStore:
 
     async def get_turn(self, turn_id: str) -> CorpusTurn | None:
         """Return CorpusTurn or None (not KeyError — turns are optional)."""
-        conn = await self._get_conn()
+        conn = await self._checkout_read_conn()
         try:
             cursor = await conn.execute("SELECT * FROM corpus_turns WHERE turn_id = ?", (turn_id,))
             row = await cursor.fetchone()
@@ -259,6 +265,8 @@ class CorpusTurnStore:
         except Exception:
             await self._reset_conn()
             raise
+        finally:
+            self._return_read_conn(conn)
 
     async def update_beast_tags(
         self,
@@ -326,7 +334,7 @@ class CorpusTurnStore:
         limit: int = 10,
     ) -> list[CorpusTurn]:
         """FTS5 search with optional filters. Returns [] on no results."""
-        conn = await self._get_conn()
+        conn = await self._checkout_read_conn()
         try:
             sql = """
                 SELECT t.*
@@ -355,6 +363,8 @@ class CorpusTurnStore:
         except Exception:
             await self._reset_conn()
             raise
+        finally:
+            self._return_read_conn(conn)
 
     async def get_untagged_turns(self, limit: int = 50) -> list[CorpusTurn]:
         """Turns with tagging_version == 0 (never tagged by Beast)."""
@@ -452,7 +462,7 @@ class CorpusTurnStore:
 
     async def total_turns(self) -> int:
         """Total number of turns in the corpus."""
-        conn = await self._get_conn()
+        conn = await self._checkout_read_conn()
         try:
             cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns")
             row = await cursor.fetchone()
@@ -460,6 +470,8 @@ class CorpusTurnStore:
         except Exception:
             await self._reset_conn()
             raise
+        finally:
+            self._return_read_conn(conn)
 
     async def top_turns_by_importance(self, limit: int = 10) -> list[dict]:
         """Top corpus turns ranked by importance score."""

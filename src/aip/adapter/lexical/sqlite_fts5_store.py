@@ -14,6 +14,8 @@ from typing import Any
 
 import aiosqlite
 
+from aip.adapter.read_pool import ReadPoolMixin
+from aip.adapter.store_health import StoreHealthMixin
 from aip.foundation.protocols import LexicalStore
 from aip.foundation.schemas import Chunk
 
@@ -37,7 +39,7 @@ _DDL_FTS_INDEX = """
 """
 
 
-class SqliteFts5LexicalStore(LexicalStore):
+class SqliteFts5LexicalStore(LexicalStore, StoreHealthMixin, ReadPoolMixin):
     """SQLite + FTS5 implementation of LexicalStore.
 
     Maintains a regular documents table + FTS5 virtual index.
@@ -48,6 +50,7 @@ class SqliteFts5LexicalStore(LexicalStore):
         self._db_path = db_path
         self._conn: aiosqlite.Connection | None = None
         self._tables_ready = False
+        self._init_read_pool()
 
     async def _get_conn(self) -> aiosqlite.Connection:
         """Return a persistent connection, creating one if needed.
@@ -59,6 +62,7 @@ class SqliteFts5LexicalStore(LexicalStore):
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
             await self._conn.execute("PRAGMA journal_mode=WAL")
+            self._health_track_connect()
             if not self._tables_ready:
                 await self._create_tables(self._conn)
                 self._tables_ready = True
@@ -86,7 +90,8 @@ class SqliteFts5LexicalStore(LexicalStore):
             await conn.close()
 
     async def close(self) -> None:
-        """Close the persistent connection."""
+        """Close the persistent connection and read pool."""
+        await self._close_read_pool()
         if self._conn is not None:
             try:
                 await self._conn.close()
@@ -102,6 +107,7 @@ class SqliteFts5LexicalStore(LexicalStore):
             except Exception:
                 pass
             self._conn = None
+            self._health_track_reset()
 
     async def index_document(self, doc_id: str, content: str, domain: str, metadata: dict) -> None:
         conn = await self._get_conn()
@@ -132,7 +138,7 @@ class SqliteFts5LexicalStore(LexicalStore):
             raise
 
     async def search(self, query: str, domain: str | None = None, limit: int = 10) -> list[Chunk]:
-        conn = await self._get_conn()
+        conn = await self._checkout_read_conn()
         try:
             sql = """
                 SELECT d.doc_id, d.content, d.domain, d.metadata, f.rank
@@ -165,6 +171,8 @@ class SqliteFts5LexicalStore(LexicalStore):
         except Exception:
             await self._reset_conn()
             raise
+        finally:
+            self._return_read_conn(conn)
 
     async def delete_document(self, doc_id: str) -> None:
         conn = await self._get_conn()

@@ -190,7 +190,7 @@ def extract_noun_phrases(query: str, min_length: int = 3) -> list[str]:
 # Graph fuzzy matching
 # ---------------------------------------------------------------------------
 
-def fuzzy_match_graph_entities(
+async def fuzzy_match_graph_entities(
     candidates: list[str],
     graph_store: Any,
     threshold: float = 0.6,
@@ -206,7 +206,7 @@ def fuzzy_match_graph_entities(
     Args:
         candidates: List of candidate entity strings from noun-phrase
             extraction or other heuristics.
-        graph_store: A GraphStore instance with ``search_nodes()`` and
+        graph_store: A GraphStore instance with async ``search_nodes()`` and
             ``get_all_nodes()`` methods.
         threshold: Minimum similarity (0-1).  Since we use substring
             matching, this acts as a minimum overlap ratio.
@@ -228,7 +228,7 @@ def fuzzy_match_graph_entities(
         # First try the graph's built-in search (substring match on
         # canonical_name)
         try:
-            search_results = graph_store.search_nodes(
+            search_results = await graph_store.search_nodes(
                 query=candidate, limit=5,
             )
         except Exception:
@@ -298,7 +298,7 @@ class EntityExtractor:
     def config(self) -> EntityExtractorConfig:
         return self._config
 
-    def extract(self, query: str, graph_store: Any | None = None) -> list[str]:
+    async def extract(self, query: str, graph_store: Any | None = None) -> list[str]:
         """Extract entities from a query using the configured strategy.
 
         Args:
@@ -321,7 +321,7 @@ class EntityExtractor:
         elif strategy == "graph_fuzzy":
             # Use noun phrases as candidates, but only return graph matches
             if store is not None:
-                candidates = fuzzy_match_graph_entities(
+                candidates = await fuzzy_match_graph_entities(
                     noun_phrases, store,
                     threshold=cfg.fuzzy_match_threshold,
                     max_matches=cfg.max_candidates,
@@ -332,7 +332,7 @@ class EntityExtractor:
             # Start with noun phrases, augment with graph fuzzy matches
             candidates = list(noun_phrases)
             if cfg.use_graph_fuzzy and store is not None:
-                graph_matches = fuzzy_match_graph_entities(
+                graph_matches = await fuzzy_match_graph_entities(
                     noun_phrases + [w for w in query.split() if len(w) >= cfg.min_entity_length],
                     store,
                     threshold=cfg.fuzzy_match_threshold,
@@ -376,8 +376,8 @@ class EntityExtractor:
                 logger.debug("LLM primary entity extraction failed, falling back: %s", exc)
             # LLM failed — fall through to local extraction
 
-        # Start with the synchronous (local) extraction
-        candidates = self.extract(query, graph_store=graph_store)
+        # Start with the local extraction (now async)
+        candidates = await self.extract(query, graph_store=graph_store)
 
         # Determine if LLM fallback should be triggered
         should_use_llm = (

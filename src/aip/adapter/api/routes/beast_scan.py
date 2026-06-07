@@ -112,7 +112,7 @@ async def beast_scan(
         try:
             # Convert domain to node_id format (lowercase, underscored)
             node_id = result["domain"].lower().replace(" ", "_")
-            neighbors = graph_store.get_neighbors(node_id)
+            neighbors = await graph_store.get_neighbors(node_id)
             for n in neighbors[:10]:
                 result["neighbors"].append(
                     {

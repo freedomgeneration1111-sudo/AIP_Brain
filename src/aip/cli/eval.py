@@ -1,14 +1,13 @@
 """AIP eval CLI — retrieval quality evaluation commands.
 
-Sprint 5.10: Provides ``aip eval retrieval`` command that runs the
+Provides ``aip eval retrieval`` command that runs the
 ``RetrievalEvalHarness`` against golden queries and outputs structured
 results (JSON + human-readable summary).
 
-Sprint 5.12: Adds ``aip eval retrieval-ab`` subcommand for A/B comparison
-of two evaluation configurations with delta metrics and winner determination.
-
-Sprint 5.12: Adds ``aip eval budget-tune`` subcommand for adaptive
-per-channel budget tuning based on channel contribution data.
+Also provides ``aip eval retrieval-ab`` for A/B comparison of two
+evaluation configurations with delta metrics and winner determination,
+and ``aip eval budget-tune`` for adaptive per-channel budget tuning
+based on channel contribution data.
 
 Usage::
 
@@ -303,9 +302,9 @@ def retrieval_ab_eval(
 ) -> None:
     """Compare two evaluation runs (A/B test) with delta metrics.
 
-    Sprint 5.12: Loads two previously saved evaluation results and produces
-    a comparison report with delta metrics for Recall, Precision, MRR, and
-    Entity Coverage.  Also shows channel contribution deltas and per-query
+    Loads two previously saved evaluation results and produces a comparison
+    report with delta metrics for Recall, Precision, MRR, and Entity
+    Coverage.  Also shows channel contribution deltas and per-query
     highlights.
 
     To use this command, first run two evaluations with different configs:

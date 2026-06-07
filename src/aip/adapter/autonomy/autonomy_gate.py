@@ -17,6 +17,7 @@ from typing import Any
 
 import aiosqlite
 
+from aip.adapter.store_health import StoreHealthMixin
 from aip.foundation.protocols import AutonomyGate
 from aip.foundation.schemas import AutonomyEscalation, AutonomyLevel, coerce_autonomy_level
 
@@ -40,7 +41,7 @@ _DDL_AUTONOMY_ESCALATIONS = """
 """
 
 
-class AutonomyGateImpl(AutonomyGate):
+class AutonomyGateImpl(AutonomyGate, StoreHealthMixin):
     """SQLite-backed AutonomyGate.
 
     Enforces the hierarchy: none < read < write < admin.
@@ -70,6 +71,7 @@ class AutonomyGateImpl(AutonomyGate):
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
             await self._conn.execute("PRAGMA journal_mode=WAL")
+            self._health_track_connect()
             if not self._tables_ready:
                 await self._create_tables(self._conn)
                 self._tables_ready = True
@@ -112,6 +114,7 @@ class AutonomyGateImpl(AutonomyGate):
             except Exception:
                 pass
             self._conn = None
+            self._health_track_reset()
 
     def _level_rank(self, level: AutonomyLevel | str) -> int:
         order = {"none": 0, "read": 1, "write": 2, "admin": 3}

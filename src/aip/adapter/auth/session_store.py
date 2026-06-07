@@ -14,27 +14,44 @@ from datetime import datetime, timedelta, timezone
 import aiosqlite
 import bcrypt
 
+from aip.adapter.store_health import StoreHealthMixin
 from aip.foundation.protocols import AuthStore
 from aip.foundation.schemas import AuthConfig
 
 logger = logging.getLogger(__name__)
 
 
-class SqliteSessionStore(AuthStore):
+class SqliteSessionStore(AuthStore, StoreHealthMixin):
     """SQLite implementation of AuthStore Protocol."""
 
     def __init__(self, db_path: str, config: AuthConfig) -> None:
         self._db_path = db_path
         self._config = config
         self._conn: aiosqlite.Connection | None = None
+        self._tables_ready = False
 
     async def _get_conn(self) -> aiosqlite.Connection:
         if self._conn is None:
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
+            await self._conn.execute("PRAGMA journal_mode=WAL")
+            self._health_track_connect()
+            if not self._tables_ready:
+                await self._ensure_tables()
+                self._tables_ready = True
         return self._conn
 
+    async def _reset_conn(self) -> None:
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+            self._health_track_reset()
+
     async def _ensure_tables(self) -> None:
+        """Create auth tables (sessions, api_keys, users)."""
         conn = await aiosqlite.connect(self._db_path)
         try:
             await conn.execute("""
@@ -72,7 +89,11 @@ class SqliteSessionStore(AuthStore):
             await conn.close()
 
     async def initialize(self) -> None:
+        """Idempotent table creation."""
+        if self._tables_ready:
+            return
         await self._ensure_tables()
+        self._tables_ready = True
 
     async def close(self) -> None:
         if self._conn is not None:
@@ -91,9 +112,9 @@ class SqliteSessionStore(AuthStore):
             )
             await conn.commit()
             return token
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def validate_session(self, session_token: str) -> dict | None:
         conn = await self._get_conn()
@@ -109,18 +130,18 @@ class SqliteSessionStore(AuthStore):
             if expires < datetime.now(timezone.utc):
                 return None
             return {"identity": row["identity"], "role": row["role"]}
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def revoke_session(self, session_token: str) -> None:
         conn = await self._get_conn()
         try:
             await conn.execute("DELETE FROM sessions WHERE session_token = ?", (session_token,))
             await conn.commit()
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def create_api_key(self, identity: str, role: str, key_name: str) -> str:
         conn = await self._get_conn()
@@ -133,10 +154,10 @@ class SqliteSessionStore(AuthStore):
                 (key_name, identity, role, key_hash, now),
             )
             await conn.commit()
-            return raw_key  # One-time display
-        finally:
-            await conn.close()
-            self._conn = None
+            return raw_key
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def validate_api_key(self, api_key: str) -> dict | None:
         conn = await self._get_conn()
@@ -145,7 +166,6 @@ class SqliteSessionStore(AuthStore):
             rows = await cursor.fetchall()
             for row in rows:
                 if bcrypt.checkpw(api_key.encode(), row["key_hash"].encode()):
-                    # Update last_used_at (best effort)
                     await conn.execute(
                         "UPDATE api_keys SET last_used_at = ? "
                         "WHERE key_name = (SELECT key_name FROM api_keys WHERE key_hash = ? LIMIT 1)",
@@ -154,18 +174,18 @@ class SqliteSessionStore(AuthStore):
                     await conn.commit()
                     return {"identity": row["identity"], "role": row["role"]}
             return None
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def revoke_api_key(self, key_name: str) -> None:
         conn = await self._get_conn()
         try:
             await conn.execute("UPDATE api_keys SET revoked = 1 WHERE key_name = ?", (key_name,))
             await conn.commit()
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def list_api_keys(self) -> list[dict]:
         conn = await self._get_conn()
@@ -176,9 +196,9 @@ class SqliteSessionStore(AuthStore):
             )
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     # --- AuthStore Protocol methods ---
 

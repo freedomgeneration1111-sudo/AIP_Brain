@@ -578,6 +578,21 @@ async def lifespan(app: FastAPI):
             error=str(exc),
         )
 
+    # GraphStore — knowledge graph nodes and edges (degrades to no graph retrieval)
+    try:
+        from aip.adapter.graph_store import GraphStore
+
+        container.graph_store = GraphStore(db_path)
+        await container.graph_store.initialize()
+        log.info("component_initialized", component="graph_store", required=False)
+    except Exception as exc:
+        log.warning(
+            "component_failed",
+            component="graph_store",
+            degradation="no_graph_retrieval",
+            error=str(exc),
+        )
+
     # --- Wire orchestration components (lazy import to preserve layer discipline) ---
     # Beast actor — requires vector_store + embedding_provider at minimum
     if container.vector_store is not None and container.embedding_provider is not None:
@@ -953,6 +968,7 @@ async def lifespan(app: FastAPI):
         ("review_queue_store", container.review_queue_store),
         ("session_store", container.session_store),
         ("corpus_turn_store", getattr(container, "corpus_turn_store", None)),
+        ("graph_store", getattr(container, "graph_store", None)),
     ]:
         if store and hasattr(store, "close"):
             try:

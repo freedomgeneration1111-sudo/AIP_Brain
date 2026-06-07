@@ -40,27 +40,30 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-def _get_graph_neighbors(domain: str, container: Any = None) -> list[str]:
-    """Return domain neighbors from the knowledge graph. Synchronous, fast.
+async def _get_graph_neighbors(domain: str, container: Any = None) -> list[str]:
+    """Return domain neighbors from the knowledge graph.
 
-    Uses container.config db_path when available (same pattern as graph.py
-    commit f269407). Falls back to get_default_db_path() for CLI contexts.
+    Uses the container's graph_store when available. Falls back to
+    creating one from db_path for CLI contexts.
     """
     try:
-        from aip.adapter.graph_store import GraphStore
+        store = getattr(container, "graph_store", None) if container is not None else None
+        if store is None:
+            from aip.adapter.graph_store import GraphStore
 
-        db_path = ""
-        if container is not None:
-            db_path = getattr(container, "config", {}).get("db_path", "") or ""
-        if not db_path:
-            try:
-                from aip.cli._db_path import get_default_db_path
+            db_path = ""
+            if container is not None:
+                db_path = getattr(container, "config", {}).get("db_path", "") or ""
+            if not db_path:
+                try:
+                    from aip.cli._db_path import get_default_db_path
 
-                db_path = get_default_db_path()
-            except Exception:
-                db_path = "db/state.db"
-        store = GraphStore(db_path)
-        neighbors = store.get_neighbors(domain, min_confidence=0.4)
+                    db_path = get_default_db_path()
+                except Exception:
+                    db_path = "db/state.db"
+            store = GraphStore(db_path)
+            await store.initialize()
+        neighbors = await store.get_neighbors(domain, min_confidence=0.4)
         return [n.canonical_name for n in neighbors if n.id != domain]
     except Exception:
         return []
@@ -346,7 +349,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                     # === 3. GRAPH CONNECTIONS INJECTION ===
                                     try:
                                         if query_domain:
-                                            graph_neighbors = _get_graph_neighbors(query_domain, container=_container)
+                                            graph_neighbors = await _get_graph_neighbors(query_domain, container=_container)
                                             if graph_neighbors:
                                                 neighbors_str = ", ".join(graph_neighbors[:5])
                                                 messages.append(

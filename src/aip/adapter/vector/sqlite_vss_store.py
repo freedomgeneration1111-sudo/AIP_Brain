@@ -20,6 +20,8 @@ from typing import Any
 
 import aiosqlite
 
+from aip.adapter.read_pool import ReadPoolMixin
+from aip.adapter.store_health import StoreHealthMixin
 from aip.foundation.protocols import EmbeddingProvider, VectorStore
 from aip.foundation.schemas import Chunk
 
@@ -70,7 +72,7 @@ class RuntimeMode(enum.Enum):
     STRICT = "strict"
 
 
-class SqliteVssVectorStore(VectorStore):
+class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
     """VectorStore backed by sqlite_vss extension with brute-force fallback.
 
     Uses a persistent aiosqlite connection per instance.  Falls back to
@@ -92,6 +94,7 @@ class SqliteVssVectorStore(VectorStore):
         self._vss_available = False
         self._tables_ready = False
         self._conn: aiosqlite.Connection | None = None
+        self._init_read_pool()
 
     # ------------------------------------------------------------------
     # Async initialization
@@ -190,6 +193,7 @@ class SqliteVssVectorStore(VectorStore):
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
             await self._conn.execute("PRAGMA journal_mode=WAL")
+            self._health_track_connect()
             if not self._tables_ready:
                 await self._create_tables(self._conn)
                 self._tables_ready = True
@@ -242,7 +246,7 @@ class SqliteVssVectorStore(VectorStore):
     ) -> list[Chunk]:
         if not self._vss_available:
             return await self._brute_force_retrieve(query_vector, domain, top_k)
-        conn = await self._get_conn()
+        conn = await self._checkout_read_conn()
         try:
             emb_str = json.dumps(query_vector)
             domain_filter = ""
@@ -279,6 +283,8 @@ class SqliteVssVectorStore(VectorStore):
         except Exception:
             await self._reset_conn()
             raise
+        finally:
+            self._return_read_conn(conn)
 
     async def _brute_force_retrieve(
         self,
@@ -394,7 +400,7 @@ class SqliteVssVectorStore(VectorStore):
             raise
 
     async def count(self, domain: str | None = None) -> int:
-        conn = await self._get_conn()
+        conn = await self._checkout_read_conn()
         try:
             if domain:
                 cursor = await conn.execute("SELECT COUNT(*) FROM vector_metadata WHERE domain = ?", (domain,))
@@ -405,6 +411,8 @@ class SqliteVssVectorStore(VectorStore):
         except Exception:
             await self._reset_conn()
             raise
+        finally:
+            self._return_read_conn(conn)
 
     async def store(self, chunk: Chunk) -> str:
         """Store a Chunk, generating a real embedding via EmbeddingProvider."""
@@ -550,7 +558,7 @@ class SqliteVssVectorStore(VectorStore):
 
     async def get_by_id(self, chunk_id: str) -> Chunk | None:
         """Retrieve a chunk by its ID directly (no vector similarity)."""
-        conn = await self._get_conn()
+        conn = await self._checkout_read_conn()
         try:
             cursor = await conn.execute(
                 "SELECT id, content, domain, metadata_json FROM vector_metadata WHERE id = ?",
@@ -570,6 +578,8 @@ class SqliteVssVectorStore(VectorStore):
         except Exception:
             await self._reset_conn()
             raise
+        finally:
+            self._return_read_conn(conn)
 
     async def _reset_conn(self) -> None:
         """Reset the persistent connection (called on errors)."""
@@ -579,9 +589,11 @@ class SqliteVssVectorStore(VectorStore):
             except Exception:
                 pass
             self._conn = None
+            self._health_track_reset()
 
     async def close(self) -> None:
-        """Close the persistent connection."""
+        """Close the persistent connection and read pool."""
+        await self._close_read_pool()
         if self._conn is not None:
             try:
                 await self._conn.close()

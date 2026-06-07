@@ -165,7 +165,6 @@ def _print_result(result, show_context: bool, project_name: str = "") -> None:
         for i, src in enumerate(result.sources, 1):
             click.echo(f"  {i}. {src.title} (score={src.score:.4f}, type={src.source_type})")
 
-    # Show context if requested
     if show_context and result.sources:
         from aip.orchestration.ask_pipeline import format_context_display
 

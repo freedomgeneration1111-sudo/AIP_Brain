@@ -15,6 +15,8 @@ import json
 import os
 import tempfile
 
+import pytest
+
 from aip.foundation.schemas.retrieval import RetrievalHit, RetrievalTrace
 from aip.orchestration.retrieval_orchestrator import (
     OrchestratorConfig,
@@ -75,18 +77,19 @@ class TestNounPhraseExtraction:
 class TestGraphFuzzyMatching:
     """Verify fuzzy_match_graph_entities matches against the knowledge graph."""
 
-    def test_match_against_graph_entities(self):
+    @pytest.mark.asyncio
+    async def test_match_against_graph_entities(self):
         from aip.orchestration.entity_extractor import fuzzy_match_graph_entities
 
         class FakeGraphStore:
-            def search_nodes(self, query, limit=20):
+            async def search_nodes(self, query, limit=20):
                 if "knowledge" in query.lower():
                     return [_FakeNode("kg_1", "Knowledge Graph")]
                 if "aip" in query.lower():
                     return [_FakeNode("aip_1", "AIP Brain")]
                 return []
 
-        result = fuzzy_match_graph_entities(
+        result = await fuzzy_match_graph_entities(
             ["Knowledge Graph", "AIP"],
             FakeGraphStore(),
             threshold=0.3,  # Lower threshold so "AIP" matches "AIP Brain"
@@ -94,22 +97,25 @@ class TestGraphFuzzyMatching:
         assert "Knowledge Graph" in result
         assert "AIP Brain" in result
 
-    def test_empty_candidates_returns_empty(self):
+    @pytest.mark.asyncio
+    async def test_empty_candidates_returns_empty(self):
         from aip.orchestration.entity_extractor import fuzzy_match_graph_entities
-        assert fuzzy_match_graph_entities([], None) == []
+        assert await fuzzy_match_graph_entities([], None) == []
 
-    def test_none_graph_store_returns_empty(self):
+    @pytest.mark.asyncio
+    async def test_none_graph_store_returns_empty(self):
         from aip.orchestration.entity_extractor import fuzzy_match_graph_entities
-        assert fuzzy_match_graph_entities(["test"], None) == []
+        assert await fuzzy_match_graph_entities(["test"], None) == []
 
-    def test_alias_matching(self):
+    @pytest.mark.asyncio
+    async def test_alias_matching(self):
         from aip.orchestration.entity_extractor import fuzzy_match_graph_entities
 
         class FakeGraphStoreWithAliases:
-            def search_nodes(self, query, limit=20):
+            async def search_nodes(self, query, limit=20):
                 return [_FakeNode("kg_1", "Knowledge Graph", aliases=["KG", "KGraph"])]
 
-        result = fuzzy_match_graph_entities(
+        result = await fuzzy_match_graph_entities(
             ["KG"],
             FakeGraphStoreWithAliases(),
             threshold=0.4,
@@ -128,18 +134,20 @@ class _FakeNode:
 class TestEntityExtractor:
     """Verify the main EntityExtractor class with different strategies."""
 
-    def test_noun_phrase_strategy(self):
+    @pytest.mark.asyncio
+    async def test_noun_phrase_strategy(self):
         from aip.orchestration.entity_extractor import EntityExtractor, EntityExtractorConfig
         ext = EntityExtractor(config=EntityExtractorConfig(strategy="noun_phrase"))
-        result = ext.extract("How does Knowledge Graph connect to AIP?")
+        result = await ext.extract("How does Knowledge Graph connect to AIP?")
         assert "Knowledge Graph" in result
         assert "AIP" in result
 
-    def test_hybrid_strategy_with_graph_store(self):
+    @pytest.mark.asyncio
+    async def test_hybrid_strategy_with_graph_store(self):
         from aip.orchestration.entity_extractor import EntityExtractor, EntityExtractorConfig
 
         class FakeStore:
-            def search_nodes(self, query, limit=20):
+            async def search_nodes(self, query, limit=20):
                 if "knowledge" in query.lower():
                     return [_FakeNode("kg_1", "Knowledge Graph")]
                 return []
@@ -148,14 +156,15 @@ class TestEntityExtractor:
             config=EntityExtractorConfig(strategy="hybrid", use_graph_fuzzy=True),
             graph_store=FakeStore(),
         )
-        result = ext.extract("How does Knowledge Graph connect to AIP?")
+        result = await ext.extract("How does Knowledge Graph connect to AIP?")
         assert "Knowledge Graph" in result
 
-    def test_graph_fuzzy_strategy(self):
+    @pytest.mark.asyncio
+    async def test_graph_fuzzy_strategy(self):
         from aip.orchestration.entity_extractor import EntityExtractor, EntityExtractorConfig
 
         class FakeStore:
-            def search_nodes(self, query, limit=20):
+            async def search_nodes(self, query, limit=20):
                 if "knowledge" in query.lower():
                     return [_FakeNode("kg_1", "Knowledge Graph")]
                 return []
@@ -164,24 +173,25 @@ class TestEntityExtractor:
             config=EntityExtractorConfig(strategy="graph_fuzzy"),
             graph_store=FakeStore(),
         )
-        result = ext.extract("Knowledge Graph")
+        result = await ext.extract("Knowledge Graph")
         assert "Knowledge Graph" in result
 
-    def test_max_candidates_limit(self):
+    @pytest.mark.asyncio
+    async def test_max_candidates_limit(self):
         from aip.orchestration.entity_extractor import EntityExtractor, EntityExtractorConfig
         ext = EntityExtractor(config=EntityExtractorConfig(max_candidates=2))
-        result = ext.extract("Alpha Beta Gamma Delta Epsilon")
+        result = await ext.extract("Alpha Beta Gamma Delta Epsilon")
         assert len(result) <= 2
 
-    def test_extract_async_without_llm(self):
+    @pytest.mark.asyncio
+    async def test_extract_async_without_llm(self):
         from aip.orchestration.entity_extractor import EntityExtractor, EntityExtractorConfig
         ext = EntityExtractor(config=EntityExtractorConfig(strategy="noun_phrase"))
-        result = asyncio.get_event_loop().run_until_complete(
-            ext.extract_async("How does Knowledge Graph work?")
-        )
+        result = await ext.extract_async("How does Knowledge Graph work?")
         assert "Knowledge Graph" in result
 
-    def test_extract_async_with_llm_fallback(self):
+    @pytest.mark.asyncio
+    async def test_extract_async_with_llm_fallback(self):
         from aip.orchestration.entity_extractor import EntityExtractor, EntityExtractorConfig
 
         async def fake_llm(query):
@@ -194,16 +204,15 @@ class TestEntityExtractor:
             ),
             llm_fn=fake_llm,
         )
-        result = asyncio.get_event_loop().run_until_complete(
-            ext.extract_async("simple query with no caps")
-        )
+        result = await ext.extract_async("simple query with no caps")
         # LLM fallback should have been called since noun_phrase found nothing
         assert "CustomEntity1" in result
 
-    def test_unknown_strategy_falls_back(self):
+    @pytest.mark.asyncio
+    async def test_unknown_strategy_falls_back(self):
         from aip.orchestration.entity_extractor import EntityExtractor, EntityExtractorConfig
         ext = EntityExtractor(config=EntityExtractorConfig(strategy="nonexistent"))
-        result = ext.extract("Knowledge Graph test")
+        result = await ext.extract("Knowledge Graph test")
         # Should fall back to noun_phrase extraction
         assert isinstance(result, list)
 

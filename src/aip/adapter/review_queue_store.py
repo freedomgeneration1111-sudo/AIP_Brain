@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 
 import aiosqlite
 
+from aip.adapter.store_health import StoreHealthMixin
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -58,7 +60,7 @@ _DDL_IDX_REVIEW_QUEUE_ARTIFACT = """
 """
 
 
-class ReviewQueueStore:
+class ReviewQueueStore(StoreHealthMixin):
     """Persistent review queue for MANUAL mode definer gate.
 
     Stores pending review items that require explicit DEFINER approval.
@@ -83,6 +85,7 @@ class ReviewQueueStore:
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = aiosqlite.Row
             await self._conn.execute("PRAGMA journal_mode=WAL")
+            self._health_track_connect()
             if not self._tables_ready:
                 await self._create_tables(self._conn)
                 self._tables_ready = True
@@ -127,6 +130,7 @@ class ReviewQueueStore:
             except Exception:
                 pass
             self._conn = None
+            self._health_track_reset()
 
     async def enqueue(
         self,

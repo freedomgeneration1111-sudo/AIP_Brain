@@ -16,6 +16,7 @@ import sqlite3
 
 import aiosqlite
 
+from aip.adapter.store_health import StoreHealthMixin
 from aip.foundation.protocols import BudgetStore
 from aip.foundation.schemas import BudgetScope
 
@@ -41,7 +42,7 @@ _DDL_IDX_BUDGET_SCOPE = """
 """
 
 
-class SqliteBudgetStore(BudgetStore):
+class SqliteBudgetStore(BudgetStore, StoreHealthMixin):
     """SQLite implementation of BudgetStore Protocol.
 
     Uses state.db for persistence. Budget ledger is append-only
@@ -65,6 +66,7 @@ class SqliteBudgetStore(BudgetStore):
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
             await self._conn.execute("PRAGMA journal_mode=WAL")
+            self._health_track_connect()
             if not self._tables_ready:
                 await self._create_tables(self._conn)
                 self._tables_ready = True
@@ -108,6 +110,7 @@ class SqliteBudgetStore(BudgetStore):
             except Exception:
                 pass
             self._conn = None
+            self._health_track_reset()
 
     async def get_budget(self, scope: BudgetScope, scope_id: str) -> dict:
         conn = await self._get_conn()

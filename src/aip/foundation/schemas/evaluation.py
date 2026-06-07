@@ -84,6 +84,10 @@ class SextonConfig:
     audit_on_slot_change: bool = True
     max_unclassified_before_alert: int = 10
 
+    # Graph extraction batching (off by default — conservative)
+    graph_extraction_batch_enabled: bool = False
+    graph_extraction_batch_size: int = 1  # 1 = per-turn (current behavior)
+
 
 @dataclass
 class AcePlaybookEntry:

@@ -1,21 +1,40 @@
 """Health endpoint (public, no AutonomyGate).
 
-Phase 5 hardening:
-- Computes real uptime from container._app_start_time
-- Returns "degraded" when optional components are missing
-- Includes budget status and component availability summary
-- Checks database write connectivity for critical stores
+Computes real uptime from container._app_start_time, returns "degraded"
+when optional components are missing, includes budget status and
+component availability summary, and checks database write connectivity
+for critical stores.
 """
 
 import logging
 import time
+from typing import Any, TypedDict
 
 from fastapi import APIRouter, Depends
 
 from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.adapter.store_health import ConnectionHealth
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+class HealthEndpointResponse(TypedDict):
+    """Structured type for the /health endpoint response."""
+
+    status: str
+    uptime_seconds: int
+    ci_mode: bool
+    critical_components: bool
+    optional_components: dict[str, bool]
+    optional_available: int
+    optional_total: int
+    vector_backend: str
+    model_slots: list[Any]
+    actors: dict[str, dict[str, bool]]
+    budget_status: str
+    db_writable: bool
+    store_health: dict[str, ConnectionHealth | dict[str, str]]
 
 
 @router.get("/health")
@@ -68,6 +87,7 @@ async def health(container: AipContainer = Depends(get_container)):
         "ecs_store": container.ecs_store is not None,
         "review_queue_store": container.review_queue_store is not None,
         "trace_store": container.trace_store is not None,
+        "graph_store": getattr(container, "graph_store", None) is not None,
     }
     optional_count = sum(optional_components.values())
     optional_total = len(optional_components)
@@ -114,6 +134,8 @@ async def health(container: AipContainer = Depends(get_container)):
         "entity_store", "event_store", "artifact_store", "ecs_store",
         "canonical_store", "budget_store", "project_store", "session_store",
         "review_queue_store", "vigil_store", "corpus_turn_store", "lexical_store",
+        "graph_store", "vector_store", "knowledge_store", "autonomy_gate",
+        "auth_session_store",
     ):
         store = getattr(container, store_name, None)
         if store is not None and hasattr(store, "connection_health"):

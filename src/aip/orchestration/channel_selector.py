@@ -1,23 +1,13 @@
 """ChannelSelector — rule-based adaptive channel selection for RetrievalOrchestrator.
 
-Sprint 5.9: Provides lightweight, rule-based logic to auto-enable relevant
+Provides lightweight, rule-based logic to auto-enable relevant
 retrieval channels based on query characteristics.  This is intentionally
 simple and overridable via explicit ``OrchestratorConfig`` settings.
 
-Sprint 5.11: Data-driven tuning of selector rules and thresholds based on
-contribution analysis from real queries.  Key changes:
-
-- Entity threshold lowered from 1 to 0 — even a single entity mention is a
-  strong Graph signal (contribution data showed Graph has high precision).
-- Wiki queries now also auto-enable Graph — definitional queries about
-  concepts often benefit from graph entity expansion.
-- Procedural queries now also auto-enable Graph — how-to queries about
-  tools/protocols benefit from entity-linked context.
-- Cross-domain signals added — queries spanning multiple concepts
-  (e.g., "AIP and Knowledge Graph") get all channels enabled.
-- Default per-channel budgets tuned: FTS/corpus capped at 15, Graph/Wiki
-  given higher per-channel limits to prevent dominant FTS from drowning
-  out high-precision graph hits.
+Data-driven tuning has lowered the entity threshold (any entity mention
+is a strong Graph signal), added Graph auto-enablement for Wiki and
+Procedural queries, and introduced cross-domain signal detection for
+queries spanning multiple concepts (e.g., "AIP and Knowledge Graph").
 
 Rules:
   - **Entity signals** (capitalised words, proper nouns) → enable Graph channel.
@@ -128,9 +118,6 @@ _SENTENCE_STARTERS = frozenset({
 class QueryAnalysis:
     """Result of analysing a query for channel selection signals.
 
-    Sprint 5.11: Added ``has_cross_domain_signals`` for detecting
-    relationship-heavy queries that benefit from Graph expansion.
-
     Attributes:
         has_entity_signals: Whether the query contains strong entity mentions.
         has_procedural_signals: Whether the query asks for procedural/how-to info.
@@ -193,7 +180,7 @@ def analyze_query(query: str) -> QueryAnalysis:
         analysis.has_wiki_signals = True
         analysis.matched_patterns.append(f"wiki={wiki_match.group()}")
 
-    # Cross-domain signals (Sprint 5.11)
+    # Cross-domain signals
     cross_match = _CROSS_DOMAIN_PATTERNS.search(query)
     if cross_match and analysis.entity_count >= 2:
         analysis.has_cross_domain_signals = True
@@ -243,22 +230,6 @@ class ChannelSelector:
     models, just regex-based pattern matching.  This keeps it fast, testable,
     and predictable.
 
-    Sprint 5.11: Data-driven tuning adjustments:
-
-    - ``entity_threshold`` default lowered from 1 to 0.  Contribution data
-      shows that even a single entity mention produces high-precision Graph
-      hits that improve Recall.  The old threshold of 1 required at least
-      one entity; the new default of 0 means *any* entity signal enables
-      Graph.
-    - Wiki queries now also enable Graph (``enable_graph_on_wiki``).
-      Definitional queries about concepts ("What is X?") often reference
-      named entities that benefit from graph expansion.
-    - Procedural queries now also enable Graph (``enable_graph_on_procedural``).
-      How-to queries about tools and protocols benefit from entity-linked
-      context (e.g., "configure Knowledge Graph" → Graph finds KG entities).
-    - Cross-domain queries (multiple entities + relationship words) now
-      enable all channels for maximum coverage.
-
     Usage::
 
         selector = ChannelSelector()
@@ -288,14 +259,10 @@ class ChannelSelector:
     ) -> None:
         """Initialise the channel selector with rule configuration.
 
-        Sprint 5.11: Added ``enable_graph_on_wiki``, ``enable_graph_on_procedural``,
-        and ``enable_all_on_cross_domain`` parameters for data-driven tuning.
-
         Args:
             entity_threshold: Minimum number of entity terms to trigger
-                Graph channel enablement.  Sprint 5.11: Default lowered
-                from 1 to 0 because contribution data showed even a single
-                entity produces high-precision Graph hits.
+                Graph channel enablement.  Default is 0 — any entity
+                signal enables Graph.
             enable_graph_on_entity: Whether to enable Graph on entity signals.
             enable_procedural_on_howto: Whether to enable Procedural on
                 how-to signals.
@@ -306,15 +273,13 @@ class ChannelSelector:
             enable_graph_on_wiki: Whether to also enable Graph when Wiki
                 signals are detected.  Definitional queries about concepts
                 often mention named entities that benefit from graph
-                expansion.  Sprint 5.11 addition.
+                expansion.
             enable_graph_on_procedural: Whether to also enable Graph when
                 Procedural signals are detected.  How-to queries about
                 tools/protocols benefit from entity-linked context.
-                Sprint 5.11 addition.
             enable_all_on_cross_domain: Whether to enable all channels
                 when cross-domain signals are detected (multiple entities
                 + relationship words like "vs", "and", "between").
-                Sprint 5.11 addition.
         """
         self._entity_threshold = entity_threshold
         self._enable_graph_on_entity = enable_graph_on_entity
@@ -328,9 +293,6 @@ class ChannelSelector:
     def select(self, query: str) -> ChannelSelectionResult:
         """Analyze a query and suggest channel enablement.
 
-        Sprint 5.11: Enhanced with data-driven rules — Wiki/procedural
-        queries also enable Graph; cross-domain queries enable all channels.
-
         Args:
             query: The user's query string.
 
@@ -342,7 +304,6 @@ class ChannelSelector:
         auto_enabled: list[str] = []
 
         # Entity signals → Graph channel
-        # Sprint 5.11: threshold default is now 0, so any entity triggers Graph
         if (
             self._enable_graph_on_entity
             and analysis.has_entity_signals
@@ -355,7 +316,7 @@ class ChannelSelector:
         if self._enable_procedural_on_howto and analysis.has_procedural_signals:
             result.enable_procedural = True
             auto_enabled.append("procedural")
-            # Sprint 5.11: Procedural queries also benefit from Graph
+            # Procedural queries also benefit from Graph
             # (e.g., "configure Knowledge Graph" → Graph finds KG entities)
             if self._enable_graph_on_procedural:
                 result.enable_graph = True
@@ -366,7 +327,7 @@ class ChannelSelector:
         if self._enable_wiki_on_definitional and analysis.has_wiki_signals:
             result.enable_wiki = True
             auto_enabled.append("wiki")
-            # Sprint 5.11: Wiki/definitional queries also benefit from Graph
+            # Wiki/definitional queries also benefit from Graph
             # (e.g., "What is AIP?" → Graph finds AIP entity and connections)
             if self._enable_graph_on_wiki:
                 result.enable_graph = True
@@ -380,7 +341,7 @@ class ChannelSelector:
             result.enable_vector = True
             # Don't add to auto_enabled since it's already default-on
 
-        # Sprint 5.11: Cross-domain signals → enable all channels
+        # Cross-domain signals → enable all channels
         # Queries with multiple entities and relationship words ("and",
         # "vs", "between") benefit from all channels — FTS for exact
         # matches, Vector for semantic, Graph for relationships.

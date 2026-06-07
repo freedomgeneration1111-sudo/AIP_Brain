@@ -225,7 +225,7 @@ class TraceStoreAdapter:
             return []
 
     # ------------------------------------------------------------------
-    # Sprint 5.7: Retrieval analytics / dashboard methods
+    # Retrieval analytics / dashboard methods
     # ------------------------------------------------------------------
 
     async def get_dashboard_summary(self, limit: int = 500) -> dict[str, Any]:
@@ -331,7 +331,7 @@ class TraceStoreAdapter:
 
         retry_count = sum(1 for r in rounds if r > 0)
 
-        # Sprint 5.11: Aggregate channel contributions from trace metadata
+        # Aggregate channel contributions from trace metadata
         channel_contribution_summary: dict[str, int] = {}
         for meta in ask_events:
             cc_raw = meta.get("retrieval_channel_contributions", "{}")
@@ -345,7 +345,7 @@ class TraceStoreAdapter:
             except (json.JSONDecodeError, TypeError, ValueError):
                 pass
 
-        # Sprint 5.11: Aggregate LLM entity extraction observability
+        # Aggregate LLM entity extraction observability
         llm_ext_calls = 0
         llm_ext_success = 0
         llm_ext_failed = 0

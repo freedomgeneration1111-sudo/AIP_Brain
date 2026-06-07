@@ -263,7 +263,6 @@ def _write_db_path_to_config(config_path: Path, db_path: str) -> None:
     """
     content = config_path.read_text() if config_path.exists() else ""
 
-    # Check if [database] section already has db_path
     in_database_section = False
     for line in content.splitlines():
         stripped = line.strip()
@@ -273,12 +272,10 @@ def _write_db_path_to_config(config_path: Path, db_path: str) -> None:
         if in_database_section and stripped.startswith("db_path"):
             return  # Already configured in [database], don't overwrite
 
-    # Add [database] section with db_path
     if "[database]" not in content:
         with open(config_path, "a") as f:
             f.write(f'\n\n[database]\ndb_path = "{db_path}"\n')
     else:
-        # Insert db_path after [database] line
         lines = content.splitlines()
         new_lines = []
         for line in lines:

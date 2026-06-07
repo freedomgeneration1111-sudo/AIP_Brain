@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 
 import aiosqlite
 
+from aip.adapter.store_health import StoreHealthMixin
 from aip.foundation.protocols import ProjectStore
 
 # ---------------------------------------------------------------------------
@@ -33,7 +34,7 @@ _DDL_PROJECTS = """
 """
 
 
-class SqliteProjectStore(ProjectStore):
+class SqliteProjectStore(ProjectStore, StoreHealthMixin):
     """SQLite-backed ProjectStore.
 
     Stores project metadata (id, name, status, domain, timestamps).
@@ -56,6 +57,7 @@ class SqliteProjectStore(ProjectStore):
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
             await self._conn.execute("PRAGMA journal_mode=WAL")
+            self._health_track_connect()
             if not self._tables_ready:
                 await self._create_tables(self._conn)
                 self._tables_ready = True
@@ -98,6 +100,7 @@ class SqliteProjectStore(ProjectStore):
             except Exception:
                 pass
             self._conn = None
+            self._health_track_reset()
 
     async def list_projects(self, status: str | None = None) -> list[dict]:
         """List projects, optionally filtered by status.

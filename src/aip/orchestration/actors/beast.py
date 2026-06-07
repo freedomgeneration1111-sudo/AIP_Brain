@@ -289,7 +289,6 @@ class Beast:
             if not pid:
                 continue
             try:
-                # Step 1: Detect stale vectors via the VectorStore protocol
                 stale_vectors = await self._vector.list_stale_vectors(
                     threshold_days=threshold_days,
                     domain=pid,
@@ -297,7 +296,6 @@ class Beast:
                 )
                 stale_found += len(stale_vectors)
 
-                # Step 2: Re-embed and upsert each stale vector
                 reembedded_count, failed_count = await self._reembed_stale_vectors(stale_vectors, pid)
                 reembedded += reembedded_count
                 failed += failed_count
@@ -314,7 +312,6 @@ class Beast:
             "errors": errors,
         }
 
-        # Emit maintenance event
         await self._emit_event(
             event_type="beast_corpus_maintenance",
             artifact_id="system",
@@ -470,7 +467,6 @@ class Beast:
             "consistency_errors": consistency_errors,
         }
 
-        # Emit stale entity events for downstream consumers
         if stale_entities:
             await self._emit_event(
                 event_type="beast_entity_stale_detected",
@@ -592,7 +588,6 @@ class Beast:
                 except Exception:
                     pass
 
-            # Write heartbeat event (lightweight)
             await self._emit_event(
                 event_type="beast_heartbeat",
                 artifact_id="system",
@@ -854,7 +849,6 @@ class Beast:
             processed.append(dom)
             log.info("beast_summary_generated", domain=dom, artifact=aid, calls=llm_calls)
 
-        # Emit cycle stats
         await self._emit_event(
             event_type="beast_cycle_complete",
             artifact_id="system",
@@ -890,7 +884,7 @@ class Beast:
         if self._corpus_turns is None or self._beast_provider is None:
             return {"skipped": "missing_provider_or_corpus_turn_store"}
 
-        # Load registry once (authoritative; Beast never invents domains)
+        # Registry is authoritative — Beast never invents domains
         try:
             from .domain_registry import load_registry
             registry = load_registry("docs/beast_domain_registry_v1.md")
@@ -1144,7 +1138,7 @@ Example response structure:
                     log.warning("beast_update_tags_failed", turn_id=tid, error=str(exc))
                     failed += 1
 
-        # Write proposals as GENERATED artifacts (follow artifact_store + ecs pattern exactly)
+        # Write proposals as GENERATED artifacts
         proposals_filed = 0
         ts = datetime.now(timezone.utc).isoformat()
         short_ts = ts.replace(":", "").replace("-", "")[:15]
@@ -1188,7 +1182,7 @@ Example response structure:
 
         avg_imp = (importance_sum / importance_count) if importance_count > 0 else 0.0
 
-        # Emit tagging complete event (used by status / review)
+        # Emit tagging complete event
         await self._emit_event(
             event_type="beast_tagging_complete",
             artifact_id="system",
@@ -1784,9 +1778,8 @@ CRITICAL CONSTRAINTS:
             return {"skipped": "import_error", "error": str(exc)}
 
         graph_store = GraphStore(db_path)
+        await graph_store.initialize()
         registry = EntityAliasRegistry("docs/entity_aliases.md")
-
-        # Build compact alias list for prompt
         alias_lines = []
         for cn in registry.all_canonical_names()[:40]:
             entry = registry.get_entry(cn)
@@ -1796,7 +1789,7 @@ CRITICAL CONSTRAINTS:
         alias_registry_compact = "\n".join(alias_lines)
 
         # Get unextracted high-importance turns
-        turns = graph_store.get_unextracted_high_importance_turns(db_path, min_importance=0.7, limit=limit)
+        turns = await graph_store.get_unextracted_high_importance_turns(min_importance=0.7, limit=limit)
 
         if not turns:
             return {"turns_processed": 0, "entities_created": 0, "relationships_created": 0, "note": "nothing_to_extract"}
@@ -1881,7 +1874,7 @@ Output format:
                     parsed = []
             except Exception as exc:
                 log.warning("beast_graph_extraction_parse_failed", turn_id=turn_id, error=str(exc))
-                graph_store.log_turn_extracted(turn_id, 0, 0)
+                await graph_store.log_turn_extracted(turn_id, 0, 0)
                 total_processed += 1
                 continue
 
@@ -1906,7 +1899,7 @@ Output format:
                     if confidence < 0.5:
                         continue
 
-                    existing = graph_store.get_node(node_id)
+                    existing = await graph_store.get_node(node_id)
                     if existing is None:
                         domain_hint = registry.get_domain(resolved) or primary_domain or None
                         et = registry.get_entity_type(resolved) or entity_type
@@ -1918,7 +1911,7 @@ Output format:
                             confidence=confidence,
                             source="beast_extraction",
                         )
-                        graph_store.upsert_node(node)
+                        await graph_store.upsert_node(node)
                         entities_this_turn += 1
 
                 elif "relationship_type" in item:
@@ -1937,8 +1930,8 @@ Output format:
 
                     # Ensure both nodes exist
                     for nid, nname in ((src_id, src_resolved), (tgt_id, tgt_resolved)):
-                        if graph_store.get_node(nid) is None:
-                            graph_store.upsert_node(GraphNode(
+                        if await graph_store.get_node(nid) is None:
+                            await graph_store.upsert_node(GraphNode(
                                 id=nid,
                                 entity_type="CONCEPT",
                                 canonical_name=nname,
@@ -1957,10 +1950,10 @@ Output format:
                         evidence_turn_ids=[turn_id],
                         weight=1.0,
                     )
-                    graph_store.upsert_edge(edge)
+                    await graph_store.upsert_edge(edge)
                     rels_this_turn += 1
 
-            graph_store.log_turn_extracted(turn_id, entities_this_turn, rels_this_turn)
+            await graph_store.log_turn_extracted(turn_id, entities_this_turn, rels_this_turn)
             total_processed += 1
             total_entities += entities_this_turn
             total_relationships += rels_this_turn
