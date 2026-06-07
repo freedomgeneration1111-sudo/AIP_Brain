@@ -171,8 +171,8 @@ def corpus_turn_to_hit(turn: Any, rank: int, channel: RetrievalChannel = Retriev
 
 def _sanitize_fts_query(query: str) -> str:
     """Robust FTS5 sanitization (same spirit as ask_pipeline)."""
-    # Remove FTS5 special characters
-    cleaned = re.sub(r'[?!.*+\-^(){}|~"\\]', " ", query)
+    # Remove FTS5 special characters (including single quote for possessives like AIP's)
+    cleaned = re.sub(r"""[?!.*+\-^(){}|~'"\\]""", " ", query)
     tokens = cleaned.split()
     stop_words = {"a", "an", "the", "is", "are", "was", "were", "be", "been",
                   "being", "have", "has", "had", "do", "does", "did", "will",
