@@ -62,6 +62,7 @@ from aip.adapter.api.routes import (
     models,
     models_library,
     projects,
+    retrieval_dashboard,
     review,
     sessions,
     sources,
@@ -1064,6 +1065,8 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(collaborators.router, prefix="/api/v1", tags=["collaborators"])
     app.include_router(plugins.router, prefix="/api/v1", tags=["plugins"])
     app.include_router(performance.router, prefix="/api/v1", tags=["performance"])
+    # Sprint 5.7: Retrieval dashboard — lightweight observability
+    app.include_router(retrieval_dashboard.router, tags=["retrieval"])
 
     # Web UI static (HTMX dashboard)
     import pathlib
