@@ -331,6 +331,39 @@ class TraceStoreAdapter:
 
         retry_count = sum(1 for r in rounds if r > 0)
 
+        # Sprint 5.11: Aggregate channel contributions from trace metadata
+        channel_contribution_summary: dict[str, int] = {}
+        for meta in ask_events:
+            cc_raw = meta.get("retrieval_channel_contributions", "{}")
+            try:
+                cc = json.loads(cc_raw) if isinstance(cc_raw, str) else cc_raw
+                if isinstance(cc, dict):
+                    for ch, count in cc.items():
+                        channel_contribution_summary[ch] = (
+                            channel_contribution_summary.get(ch, 0) + int(count)
+                        )
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+
+        # Sprint 5.11: Aggregate LLM entity extraction observability
+        llm_ext_calls = 0
+        llm_ext_success = 0
+        llm_ext_failed = 0
+        llm_ext_total_ms = 0.0
+        for meta in ask_events:
+            llm_status = meta.get("retrieval_llm_entity_extraction_status", "not_used")
+            llm_ms = meta.get("retrieval_llm_entity_extraction_ms", 0)
+            if llm_status != "not_used":
+                llm_ext_calls += 1
+                try:
+                    llm_ext_total_ms += float(llm_ms)
+                except (ValueError, TypeError):
+                    pass
+                if llm_status == "success":
+                    llm_ext_success += 1
+                elif llm_status == "failed":
+                    llm_ext_failed += 1
+
         return {
             "total_ask_queries": len(ask_events),
             "avg_retrieval_ms": round(avg_ms, 2),
@@ -343,4 +376,11 @@ class TraceStoreAdapter:
             "avg_hits_after_fusion": round(sum(hits_after) / len(hits_after), 1) if hits_after else 0,
             "avg_hits_after_gate": round(sum(hits_gate) / len(hits_gate), 1) if hits_gate else 0,
             "quality_gate_verdicts": verdict_counts,
+            "channel_contribution_summary": channel_contribution_summary,
+            "llm_entity_extraction": {
+                "total_calls": llm_ext_calls,
+                "success_count": llm_ext_success,
+                "failed_count": llm_ext_failed,
+                "avg_ms": round(llm_ext_total_ms / llm_ext_calls, 1) if llm_ext_calls > 0 else 0.0,
+            },
         }

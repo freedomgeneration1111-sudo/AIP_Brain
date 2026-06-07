@@ -10,6 +10,12 @@ latency trends, and a dedicated recent-traces endpoint.  Added
 ``GET /api/v1/retrieval/traces`` for individual trace inspection and
 ``GET /api/v1/retrieval/channels`` for per-channel health.
 
+Sprint 5.11: Added evaluation metrics, channel contribution summaries,
+and LLM entity extraction observability to the dashboard.  New endpoint
+``GET /api/v1/retrieval/quality`` for evaluation trend data.  Existing
+endpoints now include channel_contributions and llm_entity_extraction
+fields in trace data.
+
 Layer: adapter (API route).  May import foundation and orchestration
 via the DI container.
 """
@@ -18,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -43,6 +50,10 @@ async def retrieval_dashboard(container: AipContainer = Depends(get_container)):
     - **Recent traces**: last 10 retrieval traces with key metrics
     - **Top failing queries**: queries with the worst quality-gate outcomes
     - **Latency trend**: avg latency over the last 5 time buckets
+    - **Channel contributions** (Sprint 5.11): which channels contributed
+      hits that survived fusion and quality gate
+    - **LLM entity extraction** (Sprint 5.11): summary of LLM fallback
+      usage, timing, and success rate
 
     Returns 200 with the summary dict, or a minimal placeholder if
     the trace store is not available.
@@ -58,6 +69,8 @@ async def retrieval_dashboard(container: AipContainer = Depends(get_container)):
             "recent_traces": [],
             "top_failing_queries": [],
             "latency_trend": [],
+            "channel_contribution_summary": {},
+            "llm_entity_extraction": {},
         }
 
     if not hasattr(trace_store, "get_dashboard_summary"):
@@ -70,6 +83,8 @@ async def retrieval_dashboard(container: AipContainer = Depends(get_container)):
             "recent_traces": [],
             "top_failing_queries": [],
             "latency_trend": [],
+            "channel_contribution_summary": {},
+            "llm_entity_extraction": {},
         }
 
     try:
@@ -84,6 +99,8 @@ async def retrieval_dashboard(container: AipContainer = Depends(get_container)):
             "recent_traces": [],
             "top_failing_queries": [],
             "latency_trend": [],
+            "channel_contribution_summary": {},
+            "llm_entity_extraction": {},
         }
 
     # Build enhanced response
@@ -129,6 +146,12 @@ async def retrieval_dashboard(container: AipContainer = Depends(get_container)):
         }
     ]
 
+    # Sprint 5.11: Channel contribution summary from recent traces
+    result["channel_contribution_summary"] = await _compute_channel_contribution_summary(container)
+
+    # Sprint 5.11: LLM entity extraction observability summary
+    result["llm_entity_extraction"] = await _compute_llm_extraction_summary(container)
+
     return result
 
 
@@ -140,8 +163,9 @@ async def retrieval_traces(
     """Return recent retrieval traces with detailed per-channel timing.
 
     Each trace includes the query, channels dispatched, per-channel
-    elapsed time, total elapsed time, hit counts, and the quality-gate
-    verdict.  Useful for debugging slow or failing retrieval.
+    elapsed time, total elapsed time, hit counts, the quality-gate
+    verdict, and (Sprint 5.11) channel contributions and LLM entity
+    extraction observability data.
     """
     traces = await _get_recent_traces(container, limit=limit)
     return {"status": "ok", "traces": traces, "count": len(traces)}
@@ -152,7 +176,8 @@ async def retrieval_channels(container: AipContainer = Depends(get_container)):
     """Return per-channel health and performance metrics.
 
     Lists all known retrieval channels with their dispatch counts,
-    average latency, and hit-rate statistics.
+    average latency, hit-rate statistics, and (Sprint 5.11) contribution
+    percentages based on recent trace data.
     """
     trace_store = container.trace_store
 
@@ -166,11 +191,19 @@ async def retrieval_channels(container: AipContainer = Depends(get_container)):
         return {"status": "error", "channels": []}
 
     channel_usage = summary.get("channel_usage", {})
+
+    # Sprint 5.11: Get contribution data for richer channel health
+    contribution_summary = await _compute_channel_contribution_summary(container)
+
+    total_contrib = sum(contribution_summary.values()) or 1
     channels = []
     for ch_name, dispatch_count in sorted(channel_usage.items(), key=lambda x: -x[1]):
+        contrib = contribution_summary.get(ch_name, 0)
         channels.append({
             "name": ch_name,
             "dispatch_count": dispatch_count,
+            "contribution_count": contrib,
+            "contribution_pct": round(contrib / total_contrib * 100, 1),
             "status": "active",
         })
 
@@ -208,6 +241,54 @@ async def retrieval_stats(container: AipContainer = Depends(get_container)):
     return {"status": "limited", "channels": {}}
 
 
+@router.get("/quality")
+async def retrieval_quality(container: AipContainer = Depends(get_container)):
+    """Return evaluation quality metrics and trends.
+
+    Sprint 5.11: Exposes the latest evaluation results and channel
+    contribution data so that retrieval quality trends can be monitored
+    through the dashboard API without running the CLI eval command.
+
+    Returns:
+        - Latest eval metrics (if an eval has been run)
+        - Channel contribution summary from live traces
+        - LLM entity extraction observability summary
+        - Per-channel budget configuration snapshot
+    """
+    # Gather data from multiple sources
+    result: dict[str, Any] = {
+        "status": "ok",
+        "latest_eval": None,
+        "channel_contribution_summary": {},
+        "llm_entity_extraction": {},
+        "channel_budgets": {},
+    }
+
+    # Try to load the latest eval result from eval_results/ directory
+    result["latest_eval"] = _load_latest_eval_result()
+
+    # Channel contribution summary from recent traces
+    result["channel_contribution_summary"] = await _compute_channel_contribution_summary(container)
+
+    # LLM entity extraction summary
+    result["llm_entity_extraction"] = await _compute_llm_extraction_summary(container)
+
+    # Channel budget configuration snapshot
+    from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
+    config = OrchestratorConfig()
+    result["channel_budgets"] = {
+        "fts": config.fts_max_hits,
+        "vector": config.vector_max_hits,
+        "graph": config.graph_max_hits,
+        "wiki": config.wiki_max_hits,
+        "procedural": config.procedural_max_hits,
+        "corpus": config.corpus_max_hits,
+        "global_max_hits_per_channel": config.max_hits_per_channel,
+    }
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers for enhanced dashboard data
 # ---------------------------------------------------------------------------
@@ -220,6 +301,9 @@ async def _get_recent_traces(
 
     Returns a list of trace dicts with query, timing, channel, and
     verdict information extracted from the event metadata.
+
+    Sprint 5.11: Added channel_contributions and llm_entity_extraction
+    fields to trace output.
     """
     if container.event_store is None:
         return []
@@ -259,6 +343,24 @@ async def _get_recent_traces(
         except (json.JSONDecodeError, TypeError):
             per_channel_ms = {}
 
+        # Sprint 5.11: Extract channel contributions
+        channel_contributions_raw = metadata.get("retrieval_channel_contributions", "{}")
+        try:
+            channel_contributions = (
+                json.loads(channel_contributions_raw)
+                if isinstance(channel_contributions_raw, str)
+                else channel_contributions_raw
+            )
+        except (json.JSONDecodeError, TypeError):
+            channel_contributions = {}
+
+        # Sprint 5.11: Extract LLM entity extraction data
+        llm_entity_extraction = {
+            "ms": metadata.get("retrieval_llm_entity_extraction_ms", 0),
+            "status": metadata.get("retrieval_llm_entity_extraction_status", "not_used"),
+            "entity_count": metadata.get("retrieval_llm_entity_count", 0),
+        }
+
         traces.append({
             "session_id": getattr(ev, "actor", "") or metadata.get("session_id", ""),
             "query": metadata.get("prompt", "")[:100],
@@ -270,6 +372,8 @@ async def _get_recent_traces(
             "hits_after_gate": metadata.get("retrieval_hits_after_gate", 0),
             "verdict": metadata.get("retrieval_verdict", "UNKNOWN"),
             "round": metadata.get("retrieval_round", 0),
+            "channel_contributions": channel_contributions,
+            "llm_entity_extraction": llm_entity_extraction,
             "timestamp": getattr(ev, "timestamp", ""),
         })
 
@@ -297,3 +401,116 @@ async def _get_top_failing_queries(
         key=lambda t: (0 if t.get("verdict") == "NO_RESULTS" else 1, -t.get("total_elapsed_ms", 0)),
     )
     return failing[:limit]
+
+
+async def _compute_channel_contribution_summary(
+    container: AipContainer, limit: int = 100
+) -> dict[str, int]:
+    """Compute aggregated channel contribution counts from recent traces.
+
+    Sprint 5.11: Aggregates the channel_contributions field across
+    recent traces to show which channels are actually contributing
+    hits to the final result set (after RRF + quality gate).
+    """
+    traces = await _get_recent_traces(container, limit=limit)
+    summary: dict[str, int] = {}
+    for trace in traces:
+        contributions = trace.get("channel_contributions", {})
+        if isinstance(contributions, dict):
+            for ch, count in contributions.items():
+                summary[ch] = summary.get(ch, 0) + count
+    return summary
+
+
+async def _compute_llm_extraction_summary(
+    container: AipContainer, limit: int = 100
+) -> dict[str, Any]:
+    """Compute LLM entity extraction observability summary from recent traces.
+
+    Sprint 5.11: Aggregates LLM entity extraction timing and success
+    rates across recent traces so operators can monitor cost vs. benefit.
+    """
+    traces = await _get_recent_traces(container, limit=limit)
+
+    total_calls = 0
+    success_count = 0
+    failed_count = 0
+    not_used_count = 0
+    total_ms = 0.0
+    total_entities = 0
+
+    for trace in traces:
+        llm_data = trace.get("llm_entity_extraction", {})
+        if not isinstance(llm_data, dict):
+            continue
+
+        status = llm_data.get("status", "not_used")
+        ms = float(llm_data.get("ms", 0))
+        entities = int(llm_data.get("entity_count", 0))
+
+        if status == "not_used":
+            not_used_count += 1
+        elif status == "success":
+            total_calls += 1
+            success_count += 1
+            total_ms += ms
+            total_entities += entities
+        elif status == "failed":
+            total_calls += 1
+            failed_count += 1
+            total_ms += ms
+
+    return {
+        "total_calls": total_calls,
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "not_used_count": not_used_count,
+        "success_rate": round(success_count / total_calls, 3) if total_calls > 0 else 0.0,
+        "avg_ms": round(total_ms / total_calls, 1) if total_calls > 0 else 0.0,
+        "avg_entities_per_call": round(total_entities / success_count, 1) if success_count > 0 else 0.0,
+        "total_entities_extracted": total_entities,
+    }
+
+
+def _load_latest_eval_result() -> dict[str, Any] | None:
+    """Load the most recent evaluation result from the eval_results directory.
+
+    Sprint 5.11: Scans the default eval_results/ directory for the most
+    recent timestamped eval JSON file and returns its contents.  Returns
+    None if no eval results exist.
+    """
+    eval_dir = os.environ.get("AIP_EVAL_DIR", "eval_results")
+    if not os.path.isdir(eval_dir):
+        return None
+
+    try:
+        eval_files = [
+            f for f in os.listdir(eval_dir)
+            if f.startswith("eval_") and f.endswith(".json")
+        ]
+    except OSError:
+        return None
+
+    if not eval_files:
+        return None
+
+    # Sort by filename (which includes timestamp) — last is most recent
+    eval_files.sort(reverse=True)
+    latest_path = os.path.join(eval_dir, eval_files[0])
+
+    try:
+        with open(latest_path) as f:
+            data = json.load(f)
+        # Include only key metrics, not full per-query results
+        return {
+            "timestamp": data.get("timestamp", ""),
+            "total_queries": data.get("total_queries", 0),
+            "mean_recall_at_k": data.get("mean_recall_at_k", 0),
+            "mean_precision_at_k": data.get("mean_precision_at_k", 0),
+            "mean_mrr": data.get("mean_mrr", 0),
+            "mean_entity_coverage": data.get("mean_entity_coverage", 0),
+            "channel_contribution_summary": data.get("channel_contribution_summary", {}),
+            "eval_harness_version": data.get("eval_harness_version", ""),
+        }
+    except (json.JSONDecodeError, OSError):
+        return None

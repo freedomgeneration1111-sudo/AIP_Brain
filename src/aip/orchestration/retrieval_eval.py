@@ -241,7 +241,7 @@ class EvalResult:
     per_query_results: list[QueryEvalResult] = field(default_factory=list)
     config_snapshot: dict = field(default_factory=dict)
     channel_contribution_summary: dict[str, int] = field(default_factory=dict)
-    eval_harness_version: str = "5.10"
+    eval_harness_version: str = "5.11"
 
     def to_dict(self) -> dict:
         """Serialize to a JSON-friendly dict."""
@@ -405,6 +405,14 @@ def load_golden_queries(path: str | None = None) -> list[GoldenQuery]:
 def create_default_golden_queries(path: str) -> None:
     """Create a default golden queries file with sample queries.
 
+    Sprint 5.11: Expanded from 5 to 20 queries with coverage for:
+    - Multi-hop queries (cross-channel references)
+    - Entity-heavy queries (many named entities)
+    - Procedural queries (how-to, steps, guides)
+    - Cross-domain queries (multiple entities, relationships)
+    - Queries with typos/variations
+    - Cases where the Graph channel should dominate
+
     This is useful for bootstrapping the evaluation harness in a new
     project or CI environment.
     """
@@ -443,6 +451,111 @@ def create_default_golden_queries(path: str) -> None:
             "expected_entities": ["SmartContextPacker"],
             "domain": "retrieval",
             "tags": ["definitional", "retrieval"],
+        },
+        {
+            "query": "How does the Knowledge Graph connect to the retrieval pipeline?",
+            "relevant_ids": ["doc:kg_config", "doc:retrieval_pipeline", "doc:graph_retrieval"],
+            "expected_entities": ["Knowledge Graph", "RetrievalOrchestrator"],
+            "domain": "architecture",
+            "tags": ["cross-domain", "graph", "retrieval"],
+        },
+        {
+            "query": "What are the differences between FTS and Vector search?",
+            "relevant_ids": ["doc:fts_search", "doc:vector_search", "doc:retrieval_pipeline"],
+            "expected_entities": ["FTS", "Vector"],
+            "domain": "retrieval",
+            "tags": ["cross-domain", "definitional", "retrieval"],
+        },
+        {
+            "query": "Deploy AIP in a production environment",
+            "relevant_ids": ["doc:deployment_guide", "doc:production_config"],
+            "expected_entities": ["AIP"],
+            "domain": "deployment",
+            "tags": ["procedural", "deployment"],
+        },
+        {
+            "query": "Guide to setting up the wiki channel",
+            "relevant_ids": ["doc:wiki_setup", "doc:wiki_channel"],
+            "expected_entities": [],
+            "domain": "configuration",
+            "tags": ["procedural", "wiki"],
+        },
+        {
+            "query": "How does PersonalizedPageRank expand queries in the Graph channel?",
+            "relevant_ids": ["doc:graph_retrieval", "doc:ppr_expansion"],
+            "expected_entities": ["PersonalizedPageRank", "Graph"],
+            "domain": "architecture",
+            "tags": ["definitional", "graph", "entity-heavy"],
+        },
+        {
+            "query": "What is RRF fusion and why does it matter?",
+            "relevant_ids": ["doc:rrf_fusion", "doc:retrieval_pipeline"],
+            "expected_entities": ["RRF"],
+            "domain": "retrieval",
+            "tags": ["definitional", "retrieval"],
+        },
+        {
+            "query": "Configure the procedural guide channel for how-to articles",
+            "relevant_ids": ["doc:procedural_config", "doc:procedural_channel"],
+            "expected_entities": [],
+            "domain": "configuration",
+            "tags": ["procedural", "configuration"],
+        },
+        {
+            "query": "How do I use EntityExtractor with LLM fallback?",
+            "relevant_ids": ["doc:entity_extractor", "doc:llm_entity_extraction"],
+            "expected_entities": ["EntityExtractor"],
+            "domain": "configuration",
+            "tags": ["procedural", "entity-heavy", "llm"],
+        },
+        {
+            "query": "Explain the quality gate in the retrieval orchestrator",
+            "relevant_ids": ["doc:quality_gate", "doc:retrieval_pipeline"],
+            "expected_entities": [],
+            "domain": "architecture",
+            "tags": ["definitional", "retrieval"],
+        },
+        {
+            "query": "What is the OrchestratorCache and when is it invalidated?",
+            "relevant_ids": ["doc:orchestrator_cache", "doc:retrieval_pipeline"],
+            "expected_entities": ["OrchestratorCache"],
+            "domain": "architecture",
+            "tags": ["definitional", "entity-heavy"],
+        },
+        {
+            "query": "Ingest multiple conversation files at once",
+            "relevant_ids": ["doc:ingest_batch", "doc:ingestion_pipeline"],
+            "expected_entities": [],
+            "domain": "ingestion",
+            "tags": ["procedural", "ingestion"],
+        },
+        {
+            "query": "how to setup aip",
+            "relevant_ids": ["doc:aip_overview", "doc:deployment_guide"],
+            "expected_entities": ["AIP"],
+            "domain": "configuration",
+            "tags": ["procedural", "typo-variation"],
+        },
+        {
+            "query": "retrival pipeline explaination",
+            "relevant_ids": ["doc:retrieval_pipeline", "doc:rrf_fusion"],
+            "expected_entities": [],
+            "domain": "retrieval",
+            "tags": ["definitional", "typo-variation"],
+        },
+        {
+            "query": "Walk through the SmartContextPacker budget algorithm",
+            "relevant_ids": ["doc:smart_context_packer", "doc:budget_packing"],
+            "expected_entities": ["SmartContextPacker"],
+            "domain": "retrieval",
+            "tags": ["procedural", "entity-heavy"],
+        },
+        {
+            "query": "Describe how Sexton processes ingested conversations",
+            "relevant_ids": ["doc:sexton_pipeline", "doc:ingestion_pipeline"],
+            "expected_entities": ["Sexton"],
+            "domain": "architecture",
+            "tags": ["definitional", "entity-heavy"],
         },
     ]
 

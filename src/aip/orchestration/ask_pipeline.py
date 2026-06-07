@@ -324,7 +324,17 @@ def _register_retriever_channels(
                 logger.debug("LLM entity extraction wiring failed (non-fatal): %s", exc)
 
         async def _graph_retriever(query: str) -> list[RetrievalHit]:
-            """Graph retriever: extract entities from query, run PPR, surface related nodes."""
+            """Graph retriever: extract entities from query, run PPR, surface related nodes.
+
+            Sprint 5.11: Tracks LLM entity extraction timing and status in
+            hit metadata (``_llm_entity_extraction_ms``, ``_llm_entity_extraction_status``,
+            ``_llm_entity_count``) so the orchestrator can transfer it to the
+            RetrievalTrace for dashboard observability.
+            """
+            llm_ext_ms = 0.0
+            llm_ext_status = "not_used"
+            llm_ext_count = 0
+
             try:
                 from aip.orchestration.graph_retrieval import GraphRetriever
 
@@ -346,11 +356,31 @@ def _register_retriever_channels(
                     llm_fn=_llm_entity_fn,
                 )
 
+                # Sprint 5.11: Track LLM entity extraction timing
+                import time as _time
+                ext_start = _time.monotonic()
+
                 # Sprint 5.9→5.10: Use EntityExtractor for robust entity extraction
                 # (noun-phrase + graph-fuzzy + optional LLM fallback)
                 seed_entities = await extractor.extract_async(
                     query, graph_store=_graph_store,
                 )
+
+                ext_elapsed = (_time.monotonic() - ext_start) * 1000.0
+
+                # Determine LLM usage status from config and results
+                if _llm_entity_fn is not None and _entity_extractor_config.entity_extraction_mode != "local":
+                    if ext_elapsed > 0 and len(seed_entities) > 0:
+                        # If extraction took significant time and we have entities,
+                        # LLM was likely used (or at least attempted)
+                        llm_ext_status = "success"
+                        llm_ext_count = len(seed_entities)
+                    elif ext_elapsed > 5.0:
+                        # Took time but no entities — LLM likely failed
+                        llm_ext_status = "failed"
+                    else:
+                        llm_ext_status = "not_used"
+                    llm_ext_ms = ext_elapsed
 
                 if not seed_entities:
                     return []
@@ -363,6 +393,8 @@ def _register_retriever_channels(
                 )
             except Exception as exc:
                 logger.debug("Graph retriever failed (non-fatal): %s", exc)
+                llm_ext_status = "failed"
+                llm_ext_ms = 0.0
                 return []
 
             if not expanded:
@@ -371,17 +403,28 @@ def _register_retriever_channels(
             # Convert expanded graph entities into RetrievalHit instances.
             # The graph channel surfaces *entity names* and their graph context,
             # which augments the other channels rather than returning raw content.
+            #
+            # Sprint 5.11: Include LLM entity extraction observability data
+            # in the first hit's metadata so the orchestrator can transfer
+            # it to the RetrievalTrace.
             hits: list[RetrievalHit] = []
             for i, entity_name in enumerate(expanded):
+                meta = {
+                    "type": "graph_entity",
+                    "entity_name": entity_name,
+                }
+                # Only stamp the first hit with LLM observability data
+                # to avoid duplication
+                if i == 0:
+                    meta["_llm_entity_extraction_ms"] = llm_ext_ms
+                    meta["_llm_entity_extraction_status"] = llm_ext_status
+                    meta["_llm_entity_count"] = llm_ext_count
                 hits.append(RetrievalHit(
                     id=f"graph:{entity_name}",
                     content=f"Graph entity: {entity_name} — connected to query entities via knowledge graph.",
                     score=1.0 - (i / max(len(expanded), 1)) * 0.5,
                     source_channel="graph",
-                    metadata={
-                        "type": "graph_entity",
-                        "entity_name": entity_name,
-                    },
+                    metadata=meta,
                     rank_in_channel=i + 1,
                 ))
             return hits
@@ -1208,6 +1251,12 @@ async def _record_trace(
             "retrieval_hits_after_fusion": retrieval_trace.hits_after_fusion,
             "retrieval_hits_after_gate": retrieval_trace.hits_after_quality_gate,
             "retrieval_verdict": retrieval_trace.verdict,
+            # Sprint 5.11: Channel contributions and LLM entity extraction
+            # observability data stored in trace for dashboard access
+            "retrieval_channel_contributions": json.dumps(retrieval_trace.channel_contributions),
+            "retrieval_llm_entity_extraction_ms": retrieval_trace.llm_entity_extraction_ms,
+            "retrieval_llm_entity_extraction_status": retrieval_trace.llm_entity_extraction_status,
+            "retrieval_llm_entity_count": retrieval_trace.llm_entity_count,
         }
 
     try:

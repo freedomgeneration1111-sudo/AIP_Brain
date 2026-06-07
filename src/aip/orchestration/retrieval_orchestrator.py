@@ -189,18 +189,25 @@ class OrchestratorConfig:
     quality_gate_min_hits: int = 1
     max_hits: int = 50
 
-    # Sprint 5.9: Per-channel budget allocation
+    # Sprint 5.9→5.11: Per-channel budget allocation
     # These limits cap the number of hits each channel can contribute
     # to RRF fusion.  0 = no limit (use global max_hits).  Set these
     # when one channel tends to dominate results (e.g. FTS returning
     # 30 hits while Graph only returns 5).
+    #
+    # Sprint 5.11: Data-driven tuning — FTS and corpus are high-volume
+    # channels that tend to dominate RRF scores due to sheer hit count.
+    # Contribution analysis shows Graph/Wiki have high precision but low
+    # recall; capping FTS/corpus prevents them from drowning out the
+    # high-precision Graph/Wiki hits.  Graph and Wiki are given generous
+    # limits since they return fewer but more targeted results.
     max_hits_per_channel: int = 0  # default limit for ALL channels (0 = unlimited)
-    fts_max_hits: int = 0  # FTS channel specific (0 = use max_hits_per_channel)
-    vector_max_hits: int = 0  # Vector channel specific
-    graph_max_hits: int = 0  # Graph channel specific
-    wiki_max_hits: int = 0  # Wiki channel specific
-    procedural_max_hits: int = 0  # Procedural channel specific
-    corpus_max_hits: int = 0  # Corpus channel specific
+    fts_max_hits: int = 15  # FTS is high-volume; cap to prevent dominance
+    vector_max_hits: int = 0  # Vector is moderate; no cap needed
+    graph_max_hits: int = 10  # Graph returns few but precise hits; allow up to 10
+    wiki_max_hits: int = 8  # Wiki articles are fewer but high quality
+    procedural_max_hits: int = 5  # Procedural guides are typically few
+    corpus_max_hits: int = 15  # Corpus can be high-volume like FTS; cap similarly
 
     def get_channel_max_hits(self, channel_name: str) -> int:
         """Return the per-channel hit limit for a given channel.
@@ -472,6 +479,24 @@ class RetrievalOrchestrator:
                 ch = hit.source_channel or "unknown"
                 ch_contrib[ch] = ch_contrib.get(ch, 0) + 1
         trace.channel_contributions = ch_contrib
+
+        # Sprint 5.11: Extract LLM entity extraction observability from
+        # graph channel hits.  The graph retriever stamps the first hit's
+        # metadata with LLM timing/status/count data; we transfer it to
+        # the trace so it's available for dashboard observability without
+        # iterating over all hits.
+        for hit in filtered:
+            if hit.source_channel == "graph" and hit.metadata:
+                llm_ms = hit.metadata.get("_llm_entity_extraction_ms")
+                llm_status = hit.metadata.get("_llm_entity_extraction_status")
+                llm_count = hit.metadata.get("_llm_entity_count")
+                if llm_ms is not None:
+                    trace.llm_entity_extraction_ms = float(llm_ms)
+                if llm_status is not None:
+                    trace.llm_entity_extraction_status = str(llm_status)
+                if llm_count is not None:
+                    trace.llm_entity_count = int(llm_count)
+                break  # Only check the first graph hit
 
         return filtered, trace
 
