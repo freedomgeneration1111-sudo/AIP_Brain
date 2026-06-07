@@ -2,7 +2,8 @@
 
 **Version:** 0.1.0-alpha
 **Architecture Revision:** 5.3
-**Last Updated:** 2026-06-06
+**Last Updated:** 2026-06-07
+**Companion Docs:** docs/AIP_PROJECT_STATUS.md (full project state), docs/retrieval/AIP_RETRIEVAL_BUILD_MEMO.md (authoritative build plan)
 
 ## Production Safety Status
 
@@ -34,12 +35,35 @@ Production configuration is **enforced programmatically**. Unsafe configs fail a
 
 ## Module Status
 
-- **Tests:** 1002 passing, 23 skipped (sqlite_vss extension + pre-existing governance), 2 pre-existing failures
+- **Tests:** 10 failed (pre-existing), 994 passed, 23 skipped
 - **Architecture:** Three-layer (foundation → orchestration → adapter)
 - **Default DB path:** `db/state.db` (SQLite, laptop profile)
 - **Scaffolding:** ~5-8% overall (MCP dispatch, adaptive router, ScriptNode sandbox)
 - **Docker:** Laptop and production profiles with programmatic config validation
 - **Lint:** ruff format + ruff check (E, F, W, I) — all passing, blocking in CI
+- **Lint baseline:** 0 new errors introduced across all unified chat + retrieval work
+
+## Unified Chat Spec — Completion Status
+
+Phases 1-4 of `AIP_UNIFIED_CHAT_SPEC.md` are **COMPLETE**.
+
+| Phase | Description | Status | Key Commits |
+|-------|-------------|--------|-------------|
+| Phase 1 | Beast soul + model library | DONE | 4 commits |
+| Phase 2 | Unified chat panel, model dropdown, mode picker, Beast pane | DONE | 4 commits |
+| Phase 3 | Cohort dispatch, response cards, Beast comparison, DB table | DONE | 4 commits |
+| Phase 4 | DEFINER profile edit, epistemic flags, Beast pop-out | DONE | — |
+
+### Hygiene + Bug Fix Commits
+
+| Label | Description | Status |
+|-------|-------------|--------|
+| H-1 | Actor status display fixes (Vigil/Sexton last_cycle_time) | DONE |
+| H-2 | Vigil logger fix + Sexton graph extraction JSON parse | DONE |
+| H-3 | Chat turn → corpus_turns wiring | DONE |
+| Bug fixes | Beast .call() fix, sticky Beast pane, jump-to-input FAB | DONE |
+| Actor Log | Event endpoint + compact widget + /actor-log page | DONE |
+| One-line fixes | Events actor filter multiplier + graph extraction field names | DONE |
 
 ## Actor Status (post ADR-011 refactor)
 
@@ -48,13 +72,39 @@ ADR-011 (2026-06-06) redefined actor role boundaries. The code refactor is commi
 
 | Actor | Role (ADR-011) | Code State | Wired in app.py | Notes |
 |-------|---------------|------------|-----------------|-------|
-| Beast | Active synthesis support — context advisory, on-demand wiki draft | ✅ Refactored | ✅ Scheduled (heartbeat only) | Maintenance ops removed per ADR-011 |
-| Sexton | Background maintenance — tagging, embedding, wiki, graph, classification | ✅ Built (actors/sexton.py, 1,341 lines, all 5 ops) | ❌ **NOT WIRED** — app.py still calls old sexton/sexton.py::run_classification_cycle() | **DEBT-006** — tagging, embedding, wiki, graph are NOT running |
-| Vigil | Quality evaluation — synthesis citation quality, profile amendments | ✅ Refactored | ✅ Scheduled (hourly) | Maintenance ops removed per ADR-011 |
+| Beast | Active synthesis support — context advisory, on-demand wiki draft, cohort comparison | Built + wired | Scheduled (heartbeat only) | Uses `.call()` (not `.chat()`) on ModelSlotResolver |
+| Sexton | Background maintenance — tagging, embedding, wiki, graph, classification | Built (actors/sexton.py, 1,341 lines, all 5 ops) | NOT WIRED — app.py still calls old sexton/sexton.py::run_classification_cycle() | **DEBT-006** — tagging, embedding, wiki, graph are NOT running |
+| Vigil | Quality evaluation — synthesis citation quality, profile amendments | Built + wired | Scheduled (hourly) | `_last_eval_time` exposed for status display |
 
 **DEBT-006 impact:** Automatic corpus tagging, embedding, wiki generation, and graph extraction are
 not running. Only failure classification (old Sexton) fires every 300s. The new full-maintenance
 `actors/sexton.py` is dead code until wired.
+
+## Retrieval Architecture — Build Plan
+
+**Authoritative document:** `docs/retrieval/AIP_RETRIEVAL_BUILD_MEMO.md`
+
+The retrieval system is being rebuilt from first principles as a unified substrate rather than
+the current 4 divergent search paths. The build proceeds in 7 phases:
+
+| Phase | Name | Status | Key Deliverables |
+|-------|------|--------|-----------------|
+| 0 | Measurement and Trace | NOT STARTED | Golden tests, trace instrumentation, baselines |
+| 1 | Protocol Substrate | NOT STARTED | Retriever protocol, RetrievalHit, ContextBudget, RRF, FTS+Vector wrapped |
+| 2 | Entity-Turn Index + Coverage | NOT STARTED | entity_turn_index, mention scan, hub leash, edge densification |
+| 3 | GraphRetriever | NOT STARTED | EntitySeedSelector, PPR, direct mentions, hub control, RRF integration |
+| 4 | Wiki/Background Retriever | NOT STARTED | WikiRetriever, domain selection, budgeted injection |
+| 5 | Context Packer + Quality | NOT STARTED | Diversity, source caps, evidence status, answer modes |
+| 6 | Later Intelligence | NOT STARTED | Query rewriting, procedural retriever, consolidation, adaptation |
+
+### Current Retrieval Stack (pre-retrieval-architecture)
+
+- `corpus_turns_fts` in `state.db` (auto-synced via triggers)
+- `fts_index` in `lexical.db` (manually synced)
+- `SqliteVssVectorStore` (768-dim, nomic-embed-text)
+- `GraphStore` (853 entities, 430 edges) — decorative in retrieval, not structural
+- `_search_sources()` has 4 divergent code paths with inconsistent scoring
+- L2 retrieval module (`orchestration/retrieval.py`) exists but is never called
 
 ## Runtime Gap Closure (P9)
 
@@ -194,9 +244,14 @@ generate in Sexton vigil cycles.
 | Cytoscape.js visualization | COMPLETE | /graph-viz standalone dark-mode page |
 | Chat augmentation | COMPLETE | Domain neighbor injection in augmented chat |
 
-## Next Priorities — Bug Registry
+## Next Priorities
 
-Active bugs to fix, in order. Each gets one commit.
+1. **Retrieval Build Phase 0** — Golden tests, trace instrumentation, baseline measurements (see `docs/retrieval/AIP_RETRIEVAL_BUILD_MEMO.md`)
+2. **BUG-003** — Wire new Sexton actor (DEBT-006 fix — tagging, embedding, wiki, graph extraction not running)
+3. **BUG-001** — Project lost on restart
+4. **BUG-002** — chat.py uses wrong db_path for GraphStore
+
+### Bug Registry
 
 | # | Bug | File | Fix |
 |---|-----|------|-----|

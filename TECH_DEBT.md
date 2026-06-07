@@ -44,8 +44,8 @@ After full corpus retag (2,649 currently untagged turns), re-run `aip corpus gra
 
 ## DEBT-002 — Full PPR Expansion in Augmented Chat (Phase 3 Deferral)
 
-**Status:** Deferred  
-**Phase:** 2B Knowledge Graph → Phase 3  
+**Status:** Deferred → Retrieval Phase 3  
+**Phase:** 2B Knowledge Graph → Retrieval Phase 3  
 **Filed:** 2026-06-05
 
 **What was deferred:**  
@@ -61,20 +61,21 @@ the chat response path" applies. Domain neighbor lookup is synchronous and sub-m
 Full PPR is valuable but the entity extraction step is the blocker.
 
 **Remediation trigger:**  
-Phase 3: Wire query entity extraction as a background pre-fetch (fire-and-forget before the
-synthesis call, cache results by session). If the graph has >500 nodes and the extraction
-pipeline can complete in <200ms, promote to full PPR path.
+Retrieval Phase 3 (GraphRetriever): Wire EntitySeedSelector + PPR as a retriever under the
+Retriever protocol. The protocol's degraded flag handles fallback. If graph retrieval is slow,
+the RetrievalOrchestrator can proceed with FTS+vector results and let graph arrive async.
 
 **Related work:**  
 - `src/aip/orchestration/graph_retrieval.py` — `GraphRetriever.expand_query_via_graph()` is ready
 - `src/aip/adapter/api/routes/chat.py` — `_get_graph_neighbors()` (current 1-hop implementation)
+- `docs/retrieval/AIP_RETRIEVAL_BUILD_MEMO.md` §8 (GraphRetriever two-zone strategy)
 
 ---
 
 ## DEBT-003 — MCP Tool Dispatch (Scaffold)
 
 **Status:** Deferred  
-**Phase:** 0 (scaffolded), Phase 5 (full implementation)  
+**Phase:** 0 (scaffolded), Phase 6 (full implementation)  
 **Filed:** 2026-06-04 (pre-existing)
 
 **What was deferred:**  
@@ -82,7 +83,7 @@ MCP tool dispatch returns scaffold responses: `aip_search` returns empty, `aip_a
 returns hardcoded True, other tools return `ok=True`. No real operation is dispatched.
 
 **Remediation trigger:**  
-Phase 5 multi-user deployment. Requires real stdio/SSE MCP transport + dispatching to live
+Phase 6 multi-user deployment. Requires real stdio/SSE MCP transport + dispatching to live
 search/approval/config services.
 
 ---
@@ -225,7 +226,7 @@ Verify in `~/AIP_Brain` (fresh seed):
 - `src/aip/adapter/api/app.py` — the wiring location
 - `src/aip/adapter/api/dependencies.py` — `container.sexton` field (Any type)
 - ADR-011 — the architectural decision that drove the refactor
-- ROADMAP Phase 3.2 — Sexton status
+- ROADMAP Phase 3.3 — Sexton status
 
 ---
 
@@ -286,15 +287,100 @@ singleton with a factory that returns a state object scoped to the current user/
 **Related work:**  
 - `gui/shell.py` — `GuiState` class and module-level `_gui_state` singleton
 - NiceGUI `app.storage.user` — per-client storage API
-- AIP_UNIFIED_CHAT_SPEC §Beast Pane — `beast_scan_history` (max 10 items)
+- AIP_UNIFIED_CHAT_SPEC Beast Pane — `beast_scan_history` (max 10 items)
 
 ---
 
-## BYOK Endpoint — Settings UI Not Yet Wired
+## DEBT-009 — Four Divergent Retrieval Code Paths in `_search_sources()`
 
-**Note:** BYOK endpoint built (H-3) — Settings UI not yet wired.
+**Status:** Active — blocks Retrieval Phase 1  
+**Phase:** Retrieval Architecture  
+**Filed:** 2026-06-07
 
+**What was deferred:**  
+The current `_search_sources()` method in `ask_pipeline.py` has 4 code paths with
+inconsistent scoring: FTS5 (corpus_turns_fts), FTS5 (lexical.db fts_index), vector
+similarity (SqliteVssVectorStore), and graph neighbor injection. Each path has its own
+scoring formula, its own result format, and no unified fusion. The L2 retrieval module
+(`orchestration/retrieval.py`) with RerankWeights (semantic 0.60, recency 0.15, authority
+0.15, frequency 0.10) is never called.
+
+Additionally, there are two separate FTS5 indexes (`corpus_turns_fts` in state.db,
+auto-synced via triggers; `fts_index` in lexical.db, manually synced) that can drift
+out of consistency.
+
+**Why deferred:**  
+The retrieval works well enough for current dogfood use with FTS5 + vector hybrid.
+Unifying under the Retriever protocol is a major refactoring that should be done
+methodically as Retrieval Phase 1, not as an ad-hoc fix.
+
+**Remediation steps (Retrieval Phase 1):**  
+1. Create Retriever(Protocol) with `retrieve(query, budget, trace) → RetrievalList`
+2. Create RetrievalHit dataclass as the unified shape for all retriever outputs
+3. Wrap existing FTS5 and vector search as FTSRetriever and VectorRetriever conforming to protocol
+4. Create RRF fusion service that merges RetrievalList outputs
+5. Replace `_search_sources()` with RetrievalOrchestrator that dispatches to enabled retrievers
+6. Consolidate dual FTS5 indexes under unified search_index (source_type discriminator)
+
+**Related work:**  
+- `docs/retrieval/AIP_RETRIEVAL_BUILD_MEMO.md` — authoritative plan (§1, §3, §4)
+- `src/aip/orchestration/ask_pipeline.py` — `_search_sources()` current implementation
+- `src/aip/orchestration/retrieval.py` — L2 RerankWeights (unused)
+- `src/aip/adapter/api/routes/chat.py` — `_get_graph_neighbors()` (1-hop)
+
+---
+
+## DEBT-010 — 0.7 Importance Coverage Bias in Graph Extraction
+
+**Status:** Active — blocks Retrieval Phase 2  
+**Phase:** Retrieval Architecture  
+**Filed:** 2026-06-07
+
+**What was deferred:**  
+Sexton's graph extraction only runs on turns with importance >= 0.7. This means everyday-
+but-crucial entities (like Komal — high mention frequency, low graph connectivity) have
+many mentions but weak graph edges. The entity_turn_index will be incomplete for these
+entities if we rely on graph extraction alone.
+
+**Why deferred:**  
+The 0.7 threshold was set conservatively to avoid extracting spurious relationships from
+low-importance turns. Lowering it globally would increase noise. The correct fix is
+targeted edge densification (Retrieval Phase 2), not a blanket threshold change.
+
+**Remediation steps (Retrieval Phase 2):**  
+1. Add mention scan as an entity_turn_index population path (source = 'mention_scan')
+2. Implement targeted edge densification: lower threshold to 0.5 for turns containing
+   known high-value entities, then golden-set domains, then multi-mention turns
+3. Add `sexton.graph_extraction_min_importance` config (default 0.7, dogfood 0.5)
+4. Run staged backfill in priority order
+
+**Related work:**  
+- `docs/retrieval/AIP_RETRIEVAL_BUILD_MEMO.md` §7 (Coverage Fix A and B)
+- `src/aip/orchestration/actors/sexton.py` — graph extraction with importance filter
+- AIP_PROJECT_STATUS.md — known issues section
+
+---
+
+## DEBT-011 — BYOK Endpoint — Settings UI Not Yet Wired
+
+**Status:** Active — low priority  
+**Phase:** Unified Chat (Phase 4)  
+**Filed:** 2026-06-07
+
+**What was deferred:**  
 The `POST /api/v1/models/library/custom` endpoint and `api_client.byok_add_model()` method
 are functional and tested, but the Settings tab does not yet expose a BYOK form. The UI
 for adding custom models (model_id, display_name, base_url, api_key inputs + submit button)
 should be added to the Settings/Admin tab in a future session.
+
+**Why deferred:**  
+The API is complete and the model library fetch from OpenRouter works. The BYOK form is a
+UI convenience, not a functional gap — custom models can be added via API calls.
+
+**Remediation trigger:**  
+User request or next Settings tab improvement session.
+
+**Related work:**  
+- `src/aip/adapter/api/routes/models_library.py` — POST /models/library/custom
+- `gui/api_client.py` — `byok_add_model()` method
+- `gui/shell.py` — Settings tab (target location for BYOK form)

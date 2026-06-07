@@ -6,6 +6,56 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [Unreleased] — 2026-06-07
+
+### Unified Chat Spec — Phases 1-4
+
+#### Added
+- **Beast soul.md** (`data/beast_soul.md`): Beast personality and epistemic stance, prepended to all 4 LLM call sites (domain summaries, turn tagging, wiki generation, graph extraction). Graceful fallback per AIP-G-02.
+- **Enabled models table** in `_init_state_db()`: Reads config/enabled_models.json with INSERT OR IGNORE.
+- **Model library CRUD** (`routes/models_library.py`): GET /models/library, POST /models/library/fetch (OpenRouter), PATCH /models/library/{model_id}, POST /models/library/custom (BYOK).
+- **Unified chat panel**: Single surface replacing CHAT/AUGMENTED tabs. Augment toggle + mode status chip (BARE/AUGMENTED).
+- **Model selector**: Multi-select (max 5) loading from enabled_models. Falls back to static opts.
+- **Chat mode picker**: Engineering/Research/Ideation/Teaching with auto-detection keywords. System prompt modifier prepended to synthesis prompt.
+- **Beast scan** (`routes/beast_scan.py`): GET /beast/scan endpoint. Fires AFTER BARE response (non-blocking per AIP-G-02).
+- **Beast pane**: 320px collapsible sidebar with scan results. Collapse/pop-out buttons. Sticky positioning.
+- **Cohort dispatch** (`routes/chat_cohort.py`): POST /chat/cohort with parallel asyncio.gather, per-model error isolation, shared augmented context.
+- **Cohort response cards**: Per-model cards with left-border accent colors from _COHORT_PALETTE.
+- **Beast comparison** (`routes/beast_compare.py`): POST /beast/compare, GET /beast/comparison/{session_id}. Soul.md prepended to comparison prompt.
+- **Beast comparisons table** in _init_state_db(). Corpus turn writing for cohort model responses.
+- **Chat mode modifier**: system_prompt_modifier parameter through full stack (shell → api_client → ask → pipeline).
+- **DEFINER profile edit**: Editable textarea in Settings panel.
+- **Epistemic flags**: No flattery, flag uncertainty, suggest validation, report conflicts — stored in config.
+- **Beast pop-out**: Opens Beast pane as standalone page in new tab.
+- **Jump-to-input FAB**: Amber floating button, fixed position, scrolls .aip-msgs to bottom.
+
+### Actor Log Feature
+
+#### Added
+- **Events endpoint** (`routes/events.py`): GET /api/v1/events with limit, actor, event_type query params. Queries container.event_store.query().
+- **Actor log widget**: Compact "RECENT ACTOR EVENTS" in STATUS tab with last 5 events, color-coded dots (beast=amber, sexton=teal, vigil=purple).
+- **Standalone /actor-log page**: Filter bar (actor type, event type), event cards with expandable payloads, 15s auto-refresh.
+- **list_events()** in api_client.py.
+
+### Hygiene and Bug Fixes
+
+#### Fixed
+- **H-1**: Actor status display — Vigil uses _last_eval_time, Sexton uses _last_cycle_time for last_cycle_time in status dicts. Added sexton_actor to /actors/status.
+- **H-2**: Vigil logger — structlog get_logger replaces stdlib logging.getLogger (which doesn't accept kwargs like 'status'). Graph extraction — JSON extraction wrapper for model responses.
+- **H-3**: Chat turn → corpus_turns wiring — auto_save_chat_turn() now builds CorpusTurn and calls upsert_turn() after ingest. Added corpus_turn_store parameter to ingest_conversation().
+- **Beast .call() fix**: self._beast_provider.chat() → self._beast_provider.call(). ModelSlotResolver has no .chat() method.
+- **Events actor filter**: Changed limit * 3 to min(limit * 20, 500) for post-filtering.
+- **Graph extraction field names**: entities_extracted/edges_extracted → entities_created/relationships_created.
+
+### Retrieval Architecture Planning
+
+#### Added
+- **Retrieval review synthesis** (`docs/retrieval/RETRIEVAL_REVIEW_SYNTHESIS.md`): Four-AI ensemble review of GraphRAG plan. Key lesson: code-grounded reviews disagreed with memo-grounded reviews.
+- **Retrieval build memo** (`docs/retrieval/AIP_RETRIEVAL_BUILD_MEMO.md`): Authoritative 23-section plan covering Retriever protocol, golden tests, entity-turn index, mention scan, GraphRetriever, PPR, RRF fusion, wiki retrieval, context budget, and 6-phase build order.
+- **Project status doc** (`docs/AIP_PROJECT_STATUS.md`): Canonical state document for thread onboarding with architecture overview, phase tracker, file inventory, and invariants.
+
+---
+
 ## [Unreleased] — 2026-06-02
 
 ### Phase 9 — Real OpenRouter Embedding + Backfill
