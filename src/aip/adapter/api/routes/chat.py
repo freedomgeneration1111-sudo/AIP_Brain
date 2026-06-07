@@ -247,8 +247,8 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                             # Order: DEFINER (done) → Wiki → Graph → Sources → Synthesis instruction
                             try:
                                 from aip.orchestration.ask_pipeline import (
-                                    _assemble_context,
-                                    _search_sources,
+                                    AskStores,
+                                    _search_sources_with_trace,
                                 )
 
                                 # Resolve domain from session or project
@@ -284,16 +284,25 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                             domain=domain,
                                         )
 
-                                # --- Fallback: legacy lexical/vector store ---
+                                # --- Fallback: orchestrator pipeline (Sprint 5.8) ---
                                 source_refs: list = []
+                                packed_ctx = None
                                 if not corpus_turns_used and _container.lexical_store is not None:
-                                    source_refs = await _search_sources(
-                                        query=content,
-                                        project_domain=domain,
-                                        source_filter="all",
+                                    _ask_stores = AskStores(
+                                        artifact_store=_container.artifact_store,
                                         lexical_store=_container.lexical_store,
                                         vector_store=_container.vector_store,
+                                        event_store=_container.event_store,
+                                        project_store=_container.project_store,
+                                        ecs_store=_container.ecs_store,
                                         embedding_provider=_container.embedding_provider,
+                                        corpus_turn_store=_container.corpus_turn_store,
+                                        graph_store=getattr(_container, "graph_store", None),
+                                    )
+                                    source_refs, _ret_trace, packed_ctx = await _search_sources_with_trace(
+                                        query=content,
+                                        stores=_ask_stores,
+                                        source_filter="all",
                                         max_sources=10,
                                     )
 
@@ -369,7 +378,8 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                             for s in source_dicts
                                         ]
                                     else:
-                                        context = _assemble_context(source_refs, max_sources=10)
+                                        # Sprint 5.8: use SmartContextPacker output
+                                        context = packed_ctx.context_text if packed_ctx else "No relevant sources found."
                                         response_sources = [
                                             {
                                                 "source_id": s.source_id,

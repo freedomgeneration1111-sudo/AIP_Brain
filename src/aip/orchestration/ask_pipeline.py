@@ -3,21 +3,23 @@
 Orchestrates the ask work loop:
 1. Resolve project by name
 2. Search project memory using multi-channel RetrievalOrchestrator
-   (FTS + Vector + Graph + Wiki + Procedural) with parallel dispatch
+   (FTS + Vector + Graph + Wiki + Procedural + Corpus) with parallel dispatch
 3. Assemble context via SmartContextPacker (budget-aware, extractive summary)
 4. Dispatch to model through the existing ModelProvider/ModelSlotResolver
 5. Generate a source-grounded answer with provenance references
 6. Optionally save the answer as a draft artifact with ECS lifecycle
 7. Record the full session trace (including RetrievalTrace) in EventStore
 
-Sprint 5.6: Multi-channel retrieval, RRF fusion, quality gating, retry on
-NEEDS_MORE_CONTEXT, SmartContextPacker with extractive summarization.
+Sprint 5.8: Removed deprecated ``_search_sources()`` and ``_assemble_context()``.
+All retrieval now goes through ``RetrievalOrchestrator`` + ``SmartContextPacker``.
+Graph, Wiki, and Procedural channels are now wired as first-class retriever
+channels in the orchestrator with full RRF fusion support.
 
-Sprint 5.7: Parallel dispatch (``asyncio.gather``), orchestrator instance
-reuse via ``OrchestratorCache``, deprecated ``_assemble_context()`` in
-favour of ``SmartContextPacker``.  Legacy ``_search_sources()`` is preserved
-for backward compatibility but the primary path is now
-``_search_sources_with_trace()``.
+Sprint 5.9: EntityExtractor replaces simple capitalized-word extraction
+in the Graph channel with configurable noun-phrase + graph-fuzzy matching.
+ChannelSelector provides rule-based adaptive channel selection (auto-enabled
+when ``auto_channel_selection=True``).  Per-channel budget allocation is
+supported via ``OrchestratorConfig`` and ``PackerConfig``.
 
 Uses existing AIP primitives — no parallel storage system.
 The primary search backend is LexicalStore (persistent FTS5) to ensure
@@ -45,7 +47,7 @@ from aip.foundation.protocols import (
     VectorStore,
 )
 from aip.foundation.schemas.ask import AskResult, AskSource, SourceReference
-from aip.foundation.schemas.retrieval import Chunk, RetrievalHit, RetrievalTrace
+from aip.foundation.schemas.retrieval import RetrievalHit, RetrievalTrace
 from aip.orchestration.retrieval_orchestrator import (
     OrchestratorCache,
     OrchestratorConfig,
@@ -64,98 +66,6 @@ logger = logging.getLogger(__name__)
 _orchestrator_cache: OrchestratorCache = get_orchestrator_cache()
 
 
-# ---------------------------------------------------------------------------
-# Source filtering
-# ---------------------------------------------------------------------------
-
-
-def _source_type_matches(chunk: Chunk, source_filter: AskSource) -> bool:
-    """Check if a chunk's source type matches the requested filter.
-
-    Ingested conversation chunks have metadata.type == "conversation_chunk".
-    Other indexed content (compiled knowledge, generated artifacts) are
-    considered "artifacts" for the purpose of source filtering.
-    """
-    meta = chunk.metadata or {}
-    chunk_type = meta.get("type", "")
-
-    if source_filter == "all":
-        return True
-    elif source_filter == "ingested":
-        return chunk_type == "conversation_chunk"
-    elif source_filter == "artifacts":
-        return chunk_type != "conversation_chunk"
-    return True
-
-
-def _chunk_to_source_ref(chunk: Chunk) -> SourceReference:
-    """Convert a retrieval Chunk to a SourceReference with provenance."""
-    meta = chunk.metadata or {}
-    chunk_type = meta.get("type", "unknown")
-    conv_id = meta.get("conversation_id", "")
-    source_format = meta.get("source_format", "")
-    domain = chunk.domain or meta.get("domain", "")
-
-    # Build a human-readable title
-    if chunk_type == "conversation_chunk" and conv_id:
-        title = f"conversation:{conv_id}"
-    else:
-        title = chunk.id
-
-    content = chunk.content or ""
-    snippet = content[:200].replace("\n", " ") if content else ""
-
-    return SourceReference(
-        source_id=chunk.id,
-        source_type=chunk_type,
-        title=title,
-        score=chunk.score,
-        content_snippet=snippet,
-        domain=domain,
-        metadata={
-            "conversation_id": conv_id,
-            "source_format": source_format,
-        },
-    )
-
-
-# ---------------------------------------------------------------------------
-# Context assembly
-# ---------------------------------------------------------------------------
-
-
-def _assemble_context(sources: list[SourceReference], max_sources: int = 10) -> str:
-    """Build a context string from source references for model input.
-
-    .. deprecated:: Sprint 5.7
-        Use ``SmartContextPacker.pack()`` instead.  This function operates
-        on the legacy ``SourceReference`` type and truncates content
-        unconditionally at 200 chars.  The new packer uses
-        ``RetrievalHit`` with full content and extractive summarization.
-
-        This function is retained for backward compatibility and will be
-        removed in a future sprint.
-
-    Each source is formatted with its ID and content snippet so the model
-    can reference specific sources in its answer. Sources are truncated
-    and ordered by score (descending).
-    """
-    if not sources:
-        return "No relevant sources found in project memory."
-
-    # Sort by score descending, take top max_sources
-    ranked = sorted(sources, key=lambda s: s.score, reverse=True)[:max_sources]
-
-    parts: list[str] = []
-    for i, src in enumerate(ranked, 1):
-        parts.append(
-            f"[Source {i}: {src.source_id} (score={src.score:.2f}, type={src.source_type})]\n"
-            f"{src.content_snippet}"
-        )
-
-    return "\n\n".join(parts)
-
-
 def _format_source_citations(sources: list[SourceReference]) -> list[str]:
     """Generate inline source citation strings for the answer.
 
@@ -170,6 +80,25 @@ def _format_source_citations(sources: list[SourceReference]) -> list[str]:
         else:
             citations.append(f"[source: {src.source_id}]")
     return citations
+
+
+def _hit_type_matches(hit: RetrievalHit, source_filter: AskSource) -> bool:
+    """Check if a RetrievalHit's source type matches the requested filter.
+
+    Ingested conversation chunks have metadata.type == "conversation_chunk".
+    Other indexed content (compiled knowledge, generated artifacts, wiki
+    articles, procedural guides) are considered "artifacts" for filtering.
+    """
+    meta = hit.metadata or {}
+    hit_type = meta.get("type", "")
+
+    if source_filter == "all":
+        return True
+    elif source_filter == "ingested":
+        return hit_type == "conversation_chunk"
+    elif source_filter == "artifacts":
+        return hit_type != "conversation_chunk"
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -244,153 +173,8 @@ def _sanitize_fts_query(query: str) -> str:
     return " AND ".join(meaningful)
 
 
-async def _search_sources(
-    query: str,
-    project_domain: str | None,
-    source_filter: AskSource,
-    lexical_store: LexicalStore,
-    vector_store: VectorStore | None = None,
-    embedding_provider: EmbeddingProvider | None = None,
-    max_sources: int = 10,
-    config: dict | None = None,
-    corpus_turn_store: Any = None,
-) -> list[SourceReference]:
-    """Search for relevant sources using existing retrieval infrastructure.
-
-    Primary search: CorpusTurnStore (FTS5 on corpus_turns) — the canonical
-    corpus of ingested turns. Corpus is project-agnostic: no domain/project
-    filter is applied so all turns are searched regardless of project.
-
-    Supplementary: LexicalStore (FTS5 on fts_documents) — always available,
-    also searched without domain filter to catch artifacts and indexed content.
-
-    Supplementary: VectorStore — when embedding provider is configured.
-
-    For corpus turn vectors (turn_id keys after embedding pipeline), performs
-    hybrid scoring: 0.4 * lexical + 0.6 * vector (configurable via [retrieval]).
-    Legacy chunk retrieval continues to work unchanged (graceful: if no vectors
-    or no overlap, falls back to FTS5 + original vector scores).
-    """
-    all_chunks: list[Chunk] = []
-
-    # Sanitize query for FTS5 MATCH syntax (remove special characters)
-    fts_query = _sanitize_fts_query(query)
-
-    # Corpus turn search (project-agnostic — no domain filter)
-    # The corpus_turns table has no project_id column; corpus is global.
-    # Results come back ordered by FTS5 BM25 rank (most relevant first).
-    if corpus_turn_store is not None:
-        try:
-            corpus_turns = await corpus_turn_store.search(
-                query=fts_query,
-                primary_domain=None,  # no domain filter — search ALL turns
-                limit=max_sources * 3,
-            )
-            for i, turn in enumerate(corpus_turns):
-                # CorpusTurnStore.search() returns results ordered by FTS5 BM25 rank.
-                # Use position-based score to preserve relevance ordering (1.0 → ~0.5)
-                # plus an importance boost so Beast-tagged high-importance turns rank higher.
-                position_score = 1.0 - (i / max(len(corpus_turns), 1)) * 0.5
-                importance_boost = float(turn.importance or 0.0) * 0.3
-                chunk = Chunk(
-                    id=turn.turn_id,
-                    content=turn.searchable_text or "",
-                    score=position_score + importance_boost,
-                    metadata={
-                        "type": "conversation_chunk",
-                        "conversation_id": turn.conversation_id,
-                        "source_format": "corpus_turn",
-                        "domain": turn.primary_domain or "",
-                        "importance": float(turn.importance or 0.0),
-                    },
-                    domain=turn.primary_domain or "",
-                )
-                all_chunks.append(chunk)
-        except Exception as exc:
-            logger.warning("CorpusTurnStore search failed: %s", exc)
-
-    # Lexical search (persistent, always available — no domain filter)
-    # Corpus is project-agnostic, so we search all domains.
-    lexical_results = []
-    try:
-        lexical_hits = await lexical_store.search(
-            fts_query, domain=None, limit=max_sources * 3
-        )
-        all_chunks.extend(lexical_hits)
-        lexical_results = [(h.id, h.score) for h in lexical_hits]
-    except Exception as exc:
-        logger.warning("Lexical search failed: %s", exc)
-
-    # Vector search (supplementary, when available — no domain filter)
-    vector_results = []
-    if vector_store is not None and embedding_provider is not None:
-        try:
-            query_vec = await embedding_provider.embed(query)
-            if query_vec and len(query_vec) > 0:
-                vec_hits = await vector_store.retrieve(
-                    query_vec, domain=None, top_k=max_sources * 2
-                )
-                all_chunks.extend(vec_hits)
-                vector_results = [(h.id, h.score) for h in vec_hits]
-        except Exception as exc:
-            logger.debug("Vector search failed (non-fatal): %s", exc)
-
-    # Hybrid scoring if we have both and overlap on ids (for corpus turns with turn_id keys)
-    # Normalize and combine only for overlapping ids; legacy paths unchanged.
-    if lexical_results and vector_results:
-        # Get weights from config or default per spec
-        if config is None:
-            config = {}
-        ret_cfg = config.get("retrieval", {}) if isinstance(config, dict) else {}
-        lex_w = float(ret_cfg.get("lexical_weight", 0.4))
-        vec_w = float(ret_cfg.get("vector_weight", 0.6))
-
-        # Normalize scores per source to 0-1 (rough, using max)
-        def _norm(pairs):
-            if not pairs:
-                return {}
-            scores = [s for _, s in pairs]
-            mx = max(scores) or 1.0
-            return {iid: min(1.0, s / mx) for iid, s in pairs}
-
-        lex_norm = _norm(lexical_results)
-        vec_norm = _norm(vector_results)
-
-        # Merge
-        combined = {}
-        for iid, ln in lex_norm.items():
-            vn = vec_norm.get(iid, 0.0)
-            combined[iid] = lex_w * ln + vec_w * vn
-        for iid, vn in vec_norm.items():
-            if iid not in combined:
-                combined[iid] = vec_w * vn
-
-        # Re-score the chunks we have
-        for chunk in all_chunks:
-            if chunk.id in combined:
-                chunk.score = combined[chunk.id]
-
-    # Filter by source type
-    filtered = [c for c in all_chunks if _source_type_matches(c, source_filter)]
-
-    # Deduplicate by chunk ID (or turn_id for corpus)
-    seen_ids: set[str] = set()
-    unique: list[Chunk] = []
-    for chunk in filtered:
-        if chunk.id not in seen_ids:
-            seen_ids.add(chunk.id)
-            unique.append(chunk)
-
-    # Sort by score descending and limit
-    unique.sort(key=lambda c: c.score, reverse=True)
-    unique = unique[:max_sources]
-
-    # Convert to SourceReference
-    return [_chunk_to_source_ref(c) for c in unique]
-
-
 # ---------------------------------------------------------------------------
-# Multi-channel retrieval via RetrievalOrchestrator (Sprint 5.6 / 5.7)
+# Multi-channel retrieval via RetrievalOrchestrator (Sprint 5.6 / 5.7 / 5.8)
 # ---------------------------------------------------------------------------
 
 
@@ -404,6 +188,10 @@ def _register_retriever_channels(
     Only registers channels for stores that are actually available.
     This is called once per orchestrator instance (via OrchestratorCache)
     rather than on every ask call.
+
+    Sprint 5.8: Added Graph, Wiki, and Procedural channel registrations.
+    All six channels now participate in the orchestrator's parallel
+    dispatch and RRF fusion when enabled via OrchestratorConfig.
 
     Args:
         orchestrator: The orchestrator to register channels on.
@@ -503,6 +291,245 @@ def _register_retriever_channels(
             return hits
         orchestrator.register_channel("corpus", _corpus_retriever)
 
+    # Graph channel (Sprint 5.8→5.9→5.10) — PPR-based graph retrieval
+    # Uses GraphRetriever from orchestration/graph_retrieval.py to expand
+    # the query via knowledge graph entities and return related content.
+    # Sprint 5.9: EntityExtractor replaces simple capitalized-word extraction
+    # with configurable noun-phrase + graph-fuzzy matching.
+    # Sprint 5.10: LLM entity extraction integrated via create_llm_entity_fn()
+    # when a ModelProvider is available.  Controlled by
+    # entity_extraction_mode config ("local" | "hybrid_llm" | "llm_primary").
+    # Toggleable via OrchestratorConfig.enable_graph.
+    if not orchestrator.is_registered("graph"):
+        from aip.orchestration.entity_extractor import EntityExtractor, EntityExtractorConfig
+
+        _entity_extractor_config = EntityExtractorConfig(
+            strategy="hybrid",
+            use_graph_fuzzy=True,
+        )
+
+        # Sprint 5.10: Wire LLM entity extraction if a ModelProvider is available
+        _llm_entity_fn = None
+        if stores.model_provider is not None:
+            try:
+                from aip.orchestration.entity_extractor import create_llm_entity_fn
+                _llm_entity_fn = create_llm_entity_fn(
+                    model_provider=stores.model_provider,
+                    slot_name=_entity_extractor_config.llm_entity_extraction_model,
+                    fallback_slot="synthesis",
+                )
+                # Enable hybrid_llm mode when model provider is available
+                _entity_extractor_config.entity_extraction_mode = "hybrid_llm"
+            except Exception as exc:
+                logger.debug("LLM entity extraction wiring failed (non-fatal): %s", exc)
+
+        async def _graph_retriever(query: str) -> list[RetrievalHit]:
+            """Graph retriever: extract entities from query, run PPR, surface related nodes."""
+            try:
+                from aip.orchestration.graph_retrieval import GraphRetriever
+
+                _graph_store = getattr(stores, "graph_store", None)
+                if _graph_store is None:
+                    # Try to create a GraphStore from the stores' db_path
+                    _db_path = getattr(stores, "_db_path", None)
+                    if _db_path is None:
+                        # Attempt default path
+                        import os
+                        _db_path = os.environ.get("AIP_DB_PATH", "db/state.db")
+                    from aip.adapter.graph_store import GraphStore
+                    _graph_store = GraphStore(_db_path)
+
+                retriever = GraphRetriever(_graph_store)
+                extractor = EntityExtractor(
+                    config=_entity_extractor_config,
+                    graph_store=_graph_store,
+                    llm_fn=_llm_entity_fn,
+                )
+
+                # Sprint 5.9→5.10: Use EntityExtractor for robust entity extraction
+                # (noun-phrase + graph-fuzzy + optional LLM fallback)
+                seed_entities = await extractor.extract_async(
+                    query, graph_store=_graph_store,
+                )
+
+                if not seed_entities:
+                    return []
+
+                expanded = retriever.expand_query_via_graph(
+                    seed_entities=seed_entities,
+                    max_hops=2,
+                    top_k=10,
+                    min_confidence=0.4,
+                )
+            except Exception as exc:
+                logger.debug("Graph retriever failed (non-fatal): %s", exc)
+                return []
+
+            if not expanded:
+                return []
+
+            # Convert expanded graph entities into RetrievalHit instances.
+            # The graph channel surfaces *entity names* and their graph context,
+            # which augments the other channels rather than returning raw content.
+            hits: list[RetrievalHit] = []
+            for i, entity_name in enumerate(expanded):
+                hits.append(RetrievalHit(
+                    id=f"graph:{entity_name}",
+                    content=f"Graph entity: {entity_name} — connected to query entities via knowledge graph.",
+                    score=1.0 - (i / max(len(expanded), 1)) * 0.5,
+                    source_channel="graph",
+                    metadata={
+                        "type": "graph_entity",
+                        "entity_name": entity_name,
+                    },
+                    rank_in_channel=i + 1,
+                ))
+            return hits
+        orchestrator.register_channel("graph", _graph_retriever)
+
+    # Wiki channel (Sprint 5.8) — retrieve approved wiki articles
+    # Searches APPROVED beast_wiki artifacts that match the query domain.
+    # Toggleable via OrchestratorConfig.enable_wiki.
+    if not orchestrator.is_registered("wiki"):
+        async def _wiki_retriever(query: str) -> list[RetrievalHit]:
+            """Wiki retriever: find approved wiki articles relevant to the query."""
+            try:
+                if stores.artifact_store is None or stores.ecs_store is None:
+                    return []
+
+                arts = await stores.artifact_store.list_artifacts_by_metadata(
+                    key="artifact_type", value="beast_wiki", limit=50,
+                )
+            except Exception as exc:
+                logger.debug("Wiki retriever failed (non-fatal): %s", exc)
+                return []
+
+            if not arts:
+                return []
+
+            # Score articles by query term overlap with content/metadata
+            query_terms = set(query.lower().split())
+            scored_arts: list[tuple[float, dict]] = []
+            for art in arts:
+                art_id = art.get("id", "")
+                if not art_id:
+                    continue
+                # Check ECS state — prefer APPROVED, accept GENERATED
+                try:
+                    state = await stores.ecs_store.current_state(art_id)
+                except Exception:
+                    state = None
+                if state not in ("APPROVED", "GENERATED"):
+                    continue
+
+                # Score by term overlap
+                content = (art.get("content", "") or "").lower()
+                meta = art.get("metadata", {}) or {}
+                domain = meta.get("domain", "")
+                overview = meta.get("overview_text", "").lower()
+
+                overlap = sum(1 for t in query_terms if t in content or t in overview)
+                domain_match = 1.0 if any(t in domain.lower() for t in query_terms) else 0.0
+                score = overlap * 0.3 + domain_match * 0.7
+                state_bonus = 0.1 if state == "APPROVED" else 0.0
+
+                if score + state_bonus > 0:
+                    scored_arts.append((score + state_bonus, art))
+
+            scored_arts.sort(key=lambda x: x[0], reverse=True)
+
+            hits: list[RetrievalHit] = []
+            for i, (score, art) in enumerate(scored_arts[:10]):
+                art_id = art.get("id", "")
+                content = art.get("content", "") or ""
+                meta = art.get("metadata", {}) or {}
+                hits.append(RetrievalHit(
+                    id=f"wiki:{art_id}",
+                    content=content[:2000],  # cap content length
+                    score=score,
+                    source_channel="wiki",
+                    domain=meta.get("domain", ""),
+                    metadata={
+                        "type": "wiki_article",
+                        "artifact_id": art_id,
+                        "domain": meta.get("domain", ""),
+                        "overview_text": meta.get("overview_text", "")[:500],
+                    },
+                    rank_in_channel=i + 1,
+                ))
+            return hits
+        orchestrator.register_channel("wiki", _wiki_retriever)
+
+    # Procedural channel (Sprint 5.8) — retrieve procedural/how-to guides
+    # Searches for artifacts of type "procedural_guide" or content with
+    # step-by-step instructions relevant to the query.
+    # Toggleable via OrchestratorConfig.enable_procedural.
+    if not orchestrator.is_registered("procedural"):
+        async def _procedural_retriever(query: str) -> list[RetrievalHit]:
+            """Procedural retriever: find how-to guides and step-by-step procedures."""
+            try:
+                if stores.artifact_store is None:
+                    return []
+
+                # Search for procedural artifacts
+                procs = await stores.artifact_store.list_artifacts_by_metadata(
+                    key="artifact_type", value="procedural_guide", limit=20,
+                )
+                # Also search compiled_knowledge which may contain procedural content
+                compiled = await stores.artifact_store.list_artifacts_by_metadata(
+                    key="artifact_type", value="compiled_knowledge", limit=20,
+                )
+                all_arts = procs + compiled
+            except Exception as exc:
+                logger.debug("Procedural retriever failed (non-fatal): %s", exc)
+                return []
+
+            if not all_arts:
+                return []
+
+            query_terms = set(query.lower().split())
+            procedural_keywords = {"step", "steps", "how to", "procedure", "guide",
+                                   "instructions", "process", "method", "tutorial"}
+            hits: list[RetrievalHit] = []
+
+            for art in all_arts:
+                content = (art.get("content", "") or "").lower()
+                meta = art.get("metadata", {}) or {}
+                art_id = art.get("id", "")
+
+                # Check if content has procedural signals
+                has_procedural = any(kw in content for kw in procedural_keywords)
+                if not has_procedural and meta.get("artifact_type") != "procedural_guide":
+                    continue
+
+                # Score by query term overlap + procedural relevance
+                overlap = sum(1 for t in query_terms if t in content)
+                proc_boost = 0.3 if has_procedural else 0.0
+                score = overlap * 0.2 + proc_boost
+
+                if score > 0:
+                    hits.append(RetrievalHit(
+                        id=f"proc:{art_id}",
+                        content=(art.get("content", "") or "")[:2000],
+                        score=score,
+                        source_channel="procedural",
+                        domain=meta.get("domain", ""),
+                        metadata={
+                            "type": "procedural_guide",
+                            "artifact_id": art_id,
+                            "domain": meta.get("domain", ""),
+                        },
+                        rank_in_channel=0,  # assigned later by orchestrator
+                    ))
+
+            # Sort and assign ranks
+            hits.sort(key=lambda h: h.score, reverse=True)
+            for i, hit in enumerate(hits[:10]):
+                hit.rank_in_channel = i + 1
+
+            return hits[:10]
+        orchestrator.register_channel("procedural", _procedural_retriever)
+
 
 def _retrieval_hit_to_source_ref(hit: RetrievalHit) -> SourceReference:
     """Convert a RetrievalHit to a SourceReference for backward compatibility.
@@ -551,12 +578,19 @@ async def _search_sources_with_trace(
     enable_graph: bool = False,
     enable_wiki: bool = False,
     enable_procedural: bool = False,
+    auto_channel_selection: bool = True,
 ) -> tuple[list[SourceReference], RetrievalTrace | None, PackedContext | None]:
     """Search for sources using the multi-channel RetrievalOrchestrator.
 
     This is the **primary** retrieval path as of Sprint 5.7.  It uses
     ``RetrievalOrchestrator`` with parallel dispatch and RRF fusion,
     followed by ``SmartContextPacker`` for budget-aware context assembly.
+
+    Sprint 5.9: Added ``auto_channel_selection`` parameter.  When True
+    (default), the ``ChannelSelector`` analyzes the query and auto-enables
+    relevant channels (Graph, Wiki, Procedural) based on query signals.
+    Explicit per-call ``enable_*`` parameters always take precedence over
+    the auto-selector.
 
     The orchestrator instance is cached via ``OrchestratorCache`` so that
     retriever channels are only registered once (not on every call).
@@ -573,6 +607,9 @@ async def _search_sources_with_trace(
         enable_graph: Whether to dispatch the graph channel.
         enable_wiki: Whether to dispatch the wiki channel.
         enable_procedural: Whether to dispatch the procedural channel.
+        auto_channel_selection: Whether to auto-enable channels based on
+            query analysis (Sprint 5.9).  Explicit enable_* params always
+            override the auto-selector.
 
     Returns:
         Tuple of (source_references, retrieval_trace, packed_context).
@@ -598,6 +635,18 @@ async def _search_sources_with_trace(
         max_hits=max_sources * 3,
     )
 
+    # Sprint 5.9: Adaptive channel selection — auto-enable channels based
+    # on query characteristics.  The auto-selector only *enables* channels
+    # (never disables).  If the caller wants full control, they set
+    # auto_channel_selection=False and specify each channel manually.
+    if auto_channel_selection:
+        try:
+            from aip.orchestration.channel_selector import ChannelSelector
+            _channel_selector = ChannelSelector()
+            orch_config = _channel_selector.apply_to_config(query, orch_config)
+        except Exception as exc:
+            logger.debug("Channel selector failed (non-fatal): %s", exc)
+
     try:
         hits, trace = await orchestrator.retrieve(
             query=query,
@@ -605,32 +654,12 @@ async def _search_sources_with_trace(
             session_id=session_id,
         )
     except Exception as exc:
-        logger.warning("Orchestrator retrieval failed, falling back to legacy: %s", exc)
-        # Fallback to legacy path — this should never happen in production
-        # but provides a safety net during migration.
-        sources = await _search_sources(
-            query=query,
-            project_domain=None,
-            source_filter=source_filter,
-            lexical_store=stores.lexical_store,
-            vector_store=stores.vector_store,
-            embedding_provider=stores.embedding_provider,
-            max_sources=max_sources,
-            config=config,
-            corpus_turn_store=stores.corpus_turn_store,
-        )
-        return sources, None, None
+        logger.error("Orchestrator retrieval failed: %s", exc)
+        return [], None, None
 
     # Filter by source type
     if source_filter != "all":
-        filtered_hits = []
-        for hit in hits:
-            hit_type = hit.metadata.get("type", "")
-            if source_filter == "ingested" and hit_type == "conversation_chunk":
-                filtered_hits.append(hit)
-            elif source_filter == "artifacts" and hit_type != "conversation_chunk":
-                filtered_hits.append(hit)
-        hits = filtered_hits
+        hits = [h for h in hits if _hit_type_matches(h, source_filter)]
 
     # Limit to max_sources
     hits = hits[:max_sources]
@@ -660,6 +689,10 @@ class AskStores:
 
     Uses the SAME persistent stores as the ingestion pipeline to ensure
     that ``aip ask`` reads from the same data that ``aip ingest`` wrote.
+
+    Sprint 5.8: Added ``graph_store`` attribute for the Graph retriever
+    channel.  When provided, the graph channel uses it directly instead
+    of creating a new GraphStore on each retrieval call.
     """
 
     def __init__(
@@ -673,6 +706,7 @@ class AskStores:
         model_provider: ModelProvider | None = None,
         embedding_provider: EmbeddingProvider | None = None,
         corpus_turn_store: Any = None,
+        graph_store: Any = None,
     ) -> None:
         self.artifact_store = artifact_store
         self.lexical_store = lexical_store
@@ -683,6 +717,7 @@ class AskStores:
         self.model_provider = model_provider
         self.embedding_provider = embedding_provider
         self.corpus_turn_store = corpus_turn_store
+        self.graph_store = graph_store
 
     async def close(self) -> None:
         """Close all stores that have a close method."""
@@ -771,6 +806,14 @@ async def create_ask_stores(db_path: str) -> AskStores:
     except Exception as exc:
         logger.info("CorpusTurnStore not available for ask pipeline: %s", exc)
 
+    # GraphStore — SQLite-backed knowledge graph for graph retrieval channel
+    graph_store = None
+    try:
+        from aip.adapter.graph_store import GraphStore
+        graph_store = GraphStore(db_path)
+    except Exception as exc:
+        logger.info("GraphStore not available for ask pipeline: %s", exc)
+
     return AskStores(
         artifact_store=artifact_store,
         lexical_store=lexical_store,
@@ -781,6 +824,7 @@ async def create_ask_stores(db_path: str) -> AskStores:
         model_provider=model_provider,
         embedding_provider=embedding_provider,
         corpus_turn_store=corpus_turn_store,
+        graph_store=graph_store,
     )
 
 
@@ -911,12 +955,10 @@ async def ask(
             model_slot=model_slot,
         )
 
-    # Step 4: Assemble context (primary: SmartContextPacker; legacy fallback)
-    if packed_context is not None:
-        context = packed_context.context_text
-    else:
-        # Fallback: legacy _assemble_context (deprecated in Sprint 5.7)
-        context = _assemble_context(sources, max_sources)
+    # Step 4: Assemble context via SmartContextPacker
+    # Sprint 5.8: SmartContextPacker is the only context assembly path.
+    # packed_context is always set by _search_sources_with_trace().
+    context = packed_context.context_text if packed_context else "No relevant sources found in project memory."
 
     # Step 5: Dispatch to model
     model_provider_name = ""

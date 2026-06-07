@@ -14,8 +14,8 @@ objects.  The packer operates on ``RetrievalHit`` instances produced by
    source ID, channel, and score so the model can cite accurately.
 
 Sprint 5.7: This is now the **only active** context assembly path.
-The legacy ``_assemble_context()`` in ``ask_pipeline.py`` is deprecated
-and marked for removal in a future sprint.
+The legacy ``_assemble_context()`` in ``ask_pipeline.py`` was removed
+in Sprint 5.8.
 
 Layer: orchestration.  May import foundation, stdlib.  May NOT import
 adapter directly.
@@ -52,6 +52,11 @@ class PackerConfig:
             keep the best half of sentences.
         include_metadata: Whether to prepend provenance headers to each
             hit's content in the packed context.
+        max_hits_per_channel: Sprint 5.9 — cap the number of hits that any
+            single channel can contribute to the packed context.  0 = no
+            limit.  This works in concert with the orchestrator-level
+            ``OrchestratorConfig.max_hits_per_channel`` but applies at the
+            *packing* stage (after fusion), not before.
     """
 
     max_context_tokens: int = 4000
@@ -59,6 +64,7 @@ class PackerConfig:
     min_hits: int = 3
     extractive_summary_ratio: float = 0.5
     include_metadata: bool = True
+    max_hits_per_channel: int = 0  # Sprint 5.9: 0 = no per-channel limit
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +228,21 @@ class SmartContextPacker:
         max_chars = self._config.max_context_tokens * 4  # rough 1 token ≈ 4 chars
         max_hits = self._config.max_hits
         min_hits = self._config.min_hits
+        per_channel_limit = self._config.max_hits_per_channel
+
+        # Sprint 5.9: Enforce per-channel hit limits before packing.
+        # This ensures no single channel dominates the context even after
+        # RRF fusion.  Hits are already sorted by rrf_score (descending).
+        if per_channel_limit > 0:
+            channel_counts: dict[str, int] = {}
+            filtered_hits: list[RetrievalHit] = []
+            for hit in hits:
+                ch = hit.source_channel or "unknown"
+                current_count = channel_counts.get(ch, 0)
+                if current_count < per_channel_limit:
+                    filtered_hits.append(hit)
+                    channel_counts[ch] = current_count + 1
+            hits = filtered_hits
 
         parts: list[str] = []
         total_chars = 0

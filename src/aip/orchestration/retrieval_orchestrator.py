@@ -7,6 +7,12 @@ on NEEDS_MORE_CONTEXT.
 Sprint 5.7: Parallel dispatch via ``asyncio.gather()``, orchestrator instance
 reuse/caching, and correct per-channel trace timing under concurrency.
 
+Sprint 5.9: Per-channel budget allocation via ``OrchestratorConfig`` fields
+(``max_hits_per_channel``, ``fts_max_hits``, etc.).  Limits are enforced
+**before** RRF fusion to prevent a single channel from dominating results.
+``get_channel_max_hits()`` provides resolution logic: channel-specific →
+global default → 0 (unlimited).
+
 Architecture
 ------------
 Each *retriever channel* is registered as an async callable that accepts a
@@ -160,6 +166,11 @@ class OrchestratorConfig:
     registered channel regardless of the per-channel flags.  This is
     convenient for testing or when all channels should always run.
 
+    Sprint 5.9: Per-channel budget allocation via ``max_hits_per_channel``
+    and specific ``<channel>_max_hits`` fields.  These limits are enforced
+    **before** RRF fusion so that no single channel can dominate results.
+    A value of 0 means "no limit" (use the global ``max_hits``).
+
     Per-call overrides: the orchestrator will skip channels that are
     disabled or have no registered retriever.
     """
@@ -177,6 +188,49 @@ class OrchestratorConfig:
     quality_gate_min_rrf: float = 0.01
     quality_gate_min_hits: int = 1
     max_hits: int = 50
+
+    # Sprint 5.9: Per-channel budget allocation
+    # These limits cap the number of hits each channel can contribute
+    # to RRF fusion.  0 = no limit (use global max_hits).  Set these
+    # when one channel tends to dominate results (e.g. FTS returning
+    # 30 hits while Graph only returns 5).
+    max_hits_per_channel: int = 0  # default limit for ALL channels (0 = unlimited)
+    fts_max_hits: int = 0  # FTS channel specific (0 = use max_hits_per_channel)
+    vector_max_hits: int = 0  # Vector channel specific
+    graph_max_hits: int = 0  # Graph channel specific
+    wiki_max_hits: int = 0  # Wiki channel specific
+    procedural_max_hits: int = 0  # Procedural channel specific
+    corpus_max_hits: int = 0  # Corpus channel specific
+
+    def get_channel_max_hits(self, channel_name: str) -> int:
+        """Return the per-channel hit limit for a given channel.
+
+        Resolution order:
+        1. Channel-specific field (e.g. ``fts_max_hits``) if > 0.
+        2. ``max_hits_per_channel`` (global default) if > 0.
+        3. 0 (no limit — global ``max_hits`` applies after fusion).
+
+        Args:
+            channel_name: The channel name (e.g. "fts", "vector").
+
+        Returns:
+            Maximum hits this channel should contribute, or 0 for unlimited.
+        """
+        # Channel-specific overrides
+        specific_map = {
+            "fts": self.fts_max_hits,
+            "vector": self.vector_max_hits,
+            "graph": self.graph_max_hits,
+            "wiki": self.wiki_max_hits,
+            "procedural": self.procedural_max_hits,
+            "corpus": self.corpus_max_hits,
+        }
+        specific = specific_map.get(channel_name, 0)
+        if specific > 0:
+            return specific
+        if self.max_hits_per_channel > 0:
+            return self.max_hits_per_channel
+        return 0  # no limit
 
 
 class RetrievalOrchestrator:
@@ -374,6 +428,20 @@ class RetrievalOrchestrator:
             channel_results[name] = hits
             trace.per_channel_elapsed_ms[name] = elapsed_ms
 
+        # -- Per-channel budget enforcement (Sprint 5.9) --------------------
+        # Trim each channel's hit list to its configured max_hits limit
+        # BEFORE RRF fusion.  This prevents a single dominant channel from
+        # overwhelming the fused results.
+        for ch_name in list(channel_results.keys()):
+            ch_limit = config.get_channel_max_hits(ch_name)
+            if ch_limit > 0 and len(channel_results[ch_name]) > ch_limit:
+                channel_results[ch_name] = channel_results[ch_name][:ch_limit]
+
+        # Sprint 5.10: Record per-channel raw hit counts before fusion
+        trace.per_channel_hit_counts = {
+            ch_name: len(hits) for ch_name, hits in channel_results.items()
+        }
+
         trace.total_elapsed_ms = (time.monotonic() - round_start) * 1000.0
         trace.hits_before_fusion = sum(len(h) for h in channel_results.values())
 
@@ -389,6 +457,21 @@ class RetrievalOrchestrator:
         )
         trace.hits_after_quality_gate = len(filtered)
         trace.verdict = verdict
+
+        # Sprint 5.10: Record channel contribution counts for hits that
+        # survived RRF fusion + quality gate.  This tells us which channels
+        # actually contributed to the final result set.
+        ch_contrib: dict[str, int] = {}
+        for hit in filtered:
+            # A hit may have come from multiple channels (dedup in RRF)
+            channels_for_hit = hit.metadata.get("source_channels", [])
+            if channels_for_hit:
+                for ch in channels_for_hit:
+                    ch_contrib[ch] = ch_contrib.get(ch, 0) + 1
+            else:
+                ch = hit.source_channel or "unknown"
+                ch_contrib[ch] = ch_contrib.get(ch, 0) + 1
+        trace.channel_contributions = ch_contrib
 
         return filtered, trace
 

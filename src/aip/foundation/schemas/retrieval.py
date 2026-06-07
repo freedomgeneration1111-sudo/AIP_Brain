@@ -81,6 +81,11 @@ class RetrievalTrace:
     that TraceStore analytics and the dashboard endpoint can report on
     retrieval performance without re-running queries.
 
+    Sprint 5.10: Added ``channel_contributions`` field that records which
+    channels actually contributed hits that survived RRF fusion and the
+    quality gate.  This data is valuable for tuning ``ChannelSelector``
+    rules, per-channel budgets, and understanding channel effectiveness.
+
     Attributes:
         session_id: Correlation ID for the ask session.
         query: The original user query (or expanded query text).
@@ -92,6 +97,12 @@ class RetrievalTrace:
         hits_after_fusion: Total hits after RRF fusion + dedup.
         hits_after_quality_gate: Hits remaining after quality gate.
         verdict: ``"OK"`` | ``"NEEDS_MORE_CONTEXT"`` | ``"NO_RESULTS"``.
+        channel_contributions: Mapping of channel name → count of hits from
+            that channel that survived RRF fusion and the quality gate.
+            Only populated when hits are available after the quality gate.
+        per_channel_hit_counts: Mapping of channel name → total hits
+            returned by that channel before budget enforcement.  Useful
+            for understanding channel yield.
     """
 
     session_id: str = ""
@@ -104,6 +115,9 @@ class RetrievalTrace:
     hits_after_fusion: int = 0
     hits_after_quality_gate: int = 0
     verdict: str = "OK"
+    # Sprint 5.10: Channel contribution tracking
+    channel_contributions: dict[str, int] = field(default_factory=dict)
+    per_channel_hit_counts: dict[str, int] = field(default_factory=dict)
 
 
 __all__ = [

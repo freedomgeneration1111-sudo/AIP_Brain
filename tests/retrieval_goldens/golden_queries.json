@@ -1,0 +1,37 @@
+[
+  {
+    "query": "What is AIP?",
+    "relevant_ids": ["doc:aip_overview", "doc:aip_architecture"],
+    "expected_entities": ["AIP"],
+    "domain": "aip",
+    "tags": ["definitional", "core"]
+  },
+  {
+    "query": "How do I configure the Knowledge Graph?",
+    "relevant_ids": ["doc:kg_config", "doc:graph_setup"],
+    "expected_entities": ["Knowledge Graph"],
+    "domain": "configuration",
+    "tags": ["procedural", "graph"]
+  },
+  {
+    "query": "Explain the retrieval pipeline",
+    "relevant_ids": ["doc:retrieval_pipeline", "doc:rrf_fusion"],
+    "expected_entities": ["RetrievalOrchestrator", "RRF"],
+    "domain": "architecture",
+    "tags": ["definitional", "retrieval"]
+  },
+  {
+    "query": "Steps to ingest a conversation file",
+    "relevant_ids": ["doc:ingest_file", "doc:ingestion_pipeline"],
+    "expected_entities": [],
+    "domain": "ingestion",
+    "tags": ["procedural", "ingestion"]
+  },
+  {
+    "query": "What is SmartContextPacker and how does it work?",
+    "relevant_ids": ["doc:smart_context_packer", "doc:budget_packing"],
+    "expected_entities": ["SmartContextPacker"],
+    "domain": "retrieval",
+    "tags": ["definitional", "retrieval"]
+  }
+]

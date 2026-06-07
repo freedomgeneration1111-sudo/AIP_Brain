@@ -13,6 +13,7 @@ import click
 from aip.cli import ask as ask_cmd
 from aip.cli import config as config_cmd
 from aip.cli import corpus as corpus_cmd
+from aip.cli import eval as eval_cmd
 from aip.cli import export as export_cmd
 from aip.cli import history as history_cmd
 from aip.cli import ingest as ingest_cmd
@@ -42,6 +43,7 @@ def cli() -> None:
       aip review    Review, approve, reject generated artifacts
       aip history   Browse stored conversation turns (ingest + chat auto-save)
       aip corpus    Manage turn-level corpus (new atomic CorpusTurn unit)
+      aip eval      Run retrieval quality evaluation
       aip export    Export artifacts to markdown
     """
     pass
@@ -85,6 +87,7 @@ cli.add_command(ask_cmd.ask_cmd)
 cli.add_command(review_cmd.review)
 cli.add_command(history_cmd.history)
 cli.add_command(corpus_cmd.corpus)
+cli.add_command(eval_cmd.eval_cmd)
 cli.add_command(export_cmd.export)
 cli.add_command(validate)
 

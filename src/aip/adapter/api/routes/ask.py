@@ -88,6 +88,7 @@ async def ask_query(payload: dict, container: AipContainer = Depends(get_contain
         model_provider=container.model_provider,
         embedding_provider=container.embedding_provider,
         corpus_turn_store=container.corpus_turn_store,
+        graph_store=getattr(container, "graph_store", None),
     )
 
     # Import and call the ask pipeline
@@ -162,22 +163,29 @@ async def ask_retrieve_only(payload: dict, container: AipContainer = Depends(get
     if container.lexical_store is None:
         raise HTTPException(status_code=503, detail="Lexical store not available")
 
-    from aip.orchestration.ask_pipeline import _search_sources, _sanitize_fts_query
+    from aip.orchestration.ask_pipeline import _search_sources_with_trace, _sanitize_fts_query
 
     # Corpus is project-agnostic: do not filter by domain/project.
     # project_domain is kept for future use but does not limit retrieval.
     project_domain = None
 
+    # Use the orchestrator pipeline for retrieval (Sprint 5.8)
     try:
-        sources = await _search_sources(
+        sources, _trace, _packed = await _search_sources_with_trace(
             query=question,
-            project_domain=None,  # project-agnostic: search ALL corpus turns
+            stores=AskStores(
+                artifact_store=container.artifact_store,
+                lexical_store=container.lexical_store,
+                vector_store=container.vector_store,
+                event_store=container.event_store,
+                project_store=container.project_store,
+                ecs_store=container.ecs_store,
+                embedding_provider=container.embedding_provider,
+                corpus_turn_store=container.corpus_turn_store,
+                graph_store=getattr(container, "graph_store", None),
+            ),
             source_filter=source,
-            lexical_store=container.lexical_store,
-            vector_store=container.vector_store,
-            embedding_provider=container.embedding_provider,
             max_sources=max_sources,
-            corpus_turn_store=container.corpus_turn_store,
         )
     except Exception as exc:
         logger.error("Source retrieval failed: %s", exc, exc_info=True)

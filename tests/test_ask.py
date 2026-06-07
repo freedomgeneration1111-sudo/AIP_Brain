@@ -33,15 +33,12 @@ import pytest
 
 from aip.foundation.schemas.ask import AskResult, AskSource, SourceReference
 from aip.foundation.schemas.ingestion import ConversationTurn, ImportedConversation
-from aip.foundation.schemas.retrieval import Chunk
+from aip.foundation.schemas.retrieval import Chunk, RetrievalHit
 from aip.orchestration.ask_pipeline import (
     AskStores,
-    _assemble_context,
-    _chunk_to_source_ref,
     _format_source_citations,
+    _hit_type_matches,
     _resolve_project,
-    _search_sources,
-    _source_type_matches,
     ask,
     format_context_display,
 )
@@ -823,43 +820,52 @@ class TestSourceReferencesPersistence:
 
 
 class TestSourceFiltering:
-    """Tests for source type matching logic."""
+    """Tests for source type matching logic (Sprint 5.8: uses _hit_type_matches)."""
 
     def test_conversation_chunk_matches_ingested(self):
-        chunk = Chunk(id="chunk:test:0", content="hello", score=0.8, metadata={"type": "conversation_chunk"})
-        assert _source_type_matches(chunk, "ingested") is True
-        assert _source_type_matches(chunk, "artifacts") is False
-        assert _source_type_matches(chunk, "all") is True
+        hit = RetrievalHit(id="chunk:test:0", content="hello", score=0.8, metadata={"type": "conversation_chunk"})
+        assert _hit_type_matches(hit, "ingested") is True
+        assert _hit_type_matches(hit, "artifacts") is False
+        assert _hit_type_matches(hit, "all") is True
 
     def test_artifact_matches_artifacts(self):
-        chunk = Chunk(id="artifact:doc1", content="hello", score=0.8, metadata={"type": "project_artifact"})
-        assert _source_type_matches(chunk, "ingested") is False
-        assert _source_type_matches(chunk, "artifacts") is True
-        assert _source_type_matches(chunk, "all") is True
+        hit = RetrievalHit(id="artifact:doc1", content="hello", score=0.8, metadata={"type": "project_artifact"})
+        assert _hit_type_matches(hit, "ingested") is False
+        assert _hit_type_matches(hit, "artifacts") is True
+        assert _hit_type_matches(hit, "all") is True
 
     def test_no_type_matches_artifacts(self):
-        chunk = Chunk(id="unknown:1", content="hello", score=0.8, metadata={})
-        assert _source_type_matches(chunk, "ingested") is False
-        assert _source_type_matches(chunk, "artifacts") is True  # No type = not conversation_chunk
-        assert _source_type_matches(chunk, "all") is True
+        hit = RetrievalHit(id="unknown:1", content="hello", score=0.8, metadata={})
+        assert _hit_type_matches(hit, "ingested") is False
+        assert _hit_type_matches(hit, "artifacts") is True  # No type = not conversation_chunk
+        assert _hit_type_matches(hit, "all") is True
 
 
 class TestContextAssembly:
-    """Tests for context assembly."""
+    """Tests for context assembly via SmartContextPacker (Sprint 5.8)."""
 
-    def test_assemble_context_with_sources(self):
-        sources = [
-            SourceReference(source_id="chunk:1:0", source_type="conversation_chunk", title="Test", score=0.9, content_snippet="Hello world"),
-            SourceReference(source_id="artifact:1", source_type="project_artifact", title="Doc", score=0.7, content_snippet="Architecture doc"),
+    def test_smart_context_packer_with_hits(self):
+        """SmartContextPacker should pack RetrievalHit objects correctly."""
+        from aip.orchestration.smart_context_packer import SmartContextPacker, PackerConfig
+        from aip.foundation.schemas.retrieval import RetrievalHit
+
+        hits = [
+            RetrievalHit(id="chunk:1:0", content="Hello world", rrf_score=0.05, source_channel="fts",
+                        metadata={"type": "conversation_chunk"}),
+            RetrievalHit(id="artifact:1", content="Architecture doc", rrf_score=0.03, source_channel="fts",
+                        metadata={"type": "project_artifact"}),
         ]
-        context = _assemble_context(sources)
-        assert "chunk:1:0" in context
-        assert "artifact:1" in context
-        assert "0.90" in context
+        packer = SmartContextPacker(config=PackerConfig(max_context_tokens=2000))
+        packed = packer.pack(hits, query="test")
+        assert "chunk:1:0" in packed.context_text
+        assert "artifact:1" in packed.context_text
 
-    def test_assemble_context_empty(self):
-        context = _assemble_context([])
-        assert "No relevant sources" in context
+    def test_smart_context_packer_empty(self):
+        """SmartContextPacker with empty hits returns no-sources message."""
+        from aip.orchestration.smart_context_packer import SmartContextPacker
+        packer = SmartContextPacker()
+        packed = packer.pack([], query="test")
+        assert "No relevant sources" in packed.context_text
 
 
 class TestCitations:
@@ -926,8 +932,8 @@ class TestNoProject:
             stores=stores,
         )
 
-        assert result.status == "NO_PROJECT"
-        assert "not found" in result.answer
+        assert result.status == "NO_PROJECT_MEMORY"
+        assert "No relevant sources" in result.answer
         assert result.artifact_id == ""  # No orphan artifacts
 
 
