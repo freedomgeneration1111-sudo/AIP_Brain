@@ -2,6 +2,10 @@
 
 Configuration flag switches between "pgvector" and "sqlite_vss".
 Adapter may import foundation but not orchestration.
+
+Sprint 5.13: Calls async initialize() on SqliteVssVectorStore after
+construction so tables and VSS extension are ready before the store
+is returned to callers.
 """
 
 from __future__ import annotations
@@ -54,7 +58,6 @@ async def create_vector_store(config: Any, embedding_provider: Any = None) -> Ve
             return store
         except Exception as e:
             logger.warning(f"pgvector unavailable ({e}), falling back to sqlite_vss")
-            # Graceful degradation
             return await _create_sqlite_vss(vector_cfg, embedding_provider)
 
     return await _create_sqlite_vss(vector_cfg, embedding_provider)
@@ -63,12 +66,11 @@ async def create_vector_store(config: Any, embedding_provider: Any = None) -> Ve
 async def _create_sqlite_vss(vector_cfg: dict, embedding_provider: Any = None) -> VectorStore:
     """Create SqliteVssVectorStore as default or fallback.
 
-    If sqlite_vss is not available, returns an InMemoryVectorStore
-    as a last-resort fallback (graceful degradation).
+    Sprint 5.13: Calls ``initialize()`` on the store before returning it
+    so that VSS detection and table creation are complete.
 
-    When ``embedding_provider`` is provided, it is passed to the
-    SqliteVssVectorStore constructor so that the ``store()`` compat
-    method can generate real embeddings.
+    If sqlite_vss creation/initialization fails entirely, falls back
+    to InMemoryVectorStore as a last resort.
     """
     try:
         from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
@@ -80,6 +82,9 @@ async def _create_sqlite_vss(vector_cfg: dict, embedding_provider: Any = None) -
             dimensions=dimensions,
             embedding_provider=embedding_provider,
         )
+        # Sprint 5.13: must call initialize() before using the store
+        await store.initialize()
+
         if store._vss_available:
             if embedding_provider is not None:
                 logger.info("VectorStore: sqlite_vss backend initialized with EmbeddingProvider")
@@ -88,13 +93,12 @@ async def _create_sqlite_vss(vector_cfg: dict, embedding_provider: Any = None) -
                     "VectorStore: sqlite_vss backend initialized (no EmbeddingProvider — "
                     "store() will use metadata-only fallback)",
                 )
-            return store
         else:
             logger.warning(
                 "sqlite_vss extension not available, using persistent sqlite metadata + "
                 "brute-force search (embeddings stored in embedding_json column for persistence)"
             )
-            return store  # still return for persistent storage of vectors/metadata
+        return store
     except Exception as e:
         logger.warning(f"sqlite_vss store creation failed ({e}), falling back to in-memory store")
 

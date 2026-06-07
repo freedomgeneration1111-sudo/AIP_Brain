@@ -1,30 +1,15 @@
 """Source-grounded ask pipeline — retrieve, assemble, dispatch, persist.
 
-Orchestrates the ask work loop:
-1. Resolve project by name
-2. Search project memory using multi-channel RetrievalOrchestrator
-   (FTS + Vector + Graph + Wiki + Procedural + Corpus) with parallel dispatch
-3. Assemble context via SmartContextPacker (budget-aware, extractive summary)
-4. Dispatch to model through the existing ModelProvider/ModelSlotResolver
-5. Generate a source-grounded answer with provenance references
-6. Optionally save the answer as a draft artifact with ECS lifecycle
-7. Record the full session trace (including RetrievalTrace) in EventStore
+Contract: resolve project → multi-channel retrieval (FTS + Vector + Graph +
+Wiki + Procedural + Corpus via RetrievalOrchestrator with RRF fusion) →
+SmartContextPacker for budget-aware context assembly → model dispatch →
+source-grounded answer with provenance references → optional ECS artifact
+save → session trace recording.
 
-Sprint 5.8: Removed deprecated ``_search_sources()`` and ``_assemble_context()``.
-All retrieval now goes through ``RetrievalOrchestrator`` + ``SmartContextPacker``.
-Graph, Wiki, and Procedural channels are now wired as first-class retriever
-channels in the orchestrator with full RRF fusion support.
-
-Sprint 5.9: EntityExtractor replaces simple capitalized-word extraction
-in the Graph channel with configurable noun-phrase + graph-fuzzy matching.
-ChannelSelector provides rule-based adaptive channel selection (auto-enabled
-when ``auto_channel_selection=True``).  Per-channel budget allocation is
-supported via ``OrchestratorConfig`` and ``PackerConfig``.
-
-Uses existing AIP primitives — no parallel storage system.
-The primary search backend is LexicalStore (persistent FTS5) to ensure
-that content ingested via ``aip ingest`` survives process restarts.
-VectorStore is used as a supplementary semantic search when available.
+Search backends: LexicalStore (persistent FTS5, primary) + VectorStore
+(semantic, supplementary). EntityExtractor supports noun-phrase + graph-fuzzy
++ optional LLM entity extraction. ChannelSelector auto-enables channels
+based on query signals. Per-channel budgets via OrchestratorConfig.
 """
 
 from __future__ import annotations
@@ -62,7 +47,7 @@ from aip.orchestration.smart_context_packer import (
 
 logger = logging.getLogger(__name__)
 
-# Module-level cache singleton (Sprint 5.7)
+# Module-level orchestrator cache (singleton per process)
 _orchestrator_cache: OrchestratorCache = get_orchestrator_cache()
 
 
@@ -174,7 +159,7 @@ def _sanitize_fts_query(query: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Multi-channel retrieval via RetrievalOrchestrator (Sprint 5.6 / 5.7 / 5.8)
+# Multi-channel retrieval via RetrievalOrchestrator
 # ---------------------------------------------------------------------------
 
 
@@ -186,17 +171,8 @@ def _register_retriever_channels(
     """Register all available retriever channels on an orchestrator.
 
     Only registers channels for stores that are actually available.
-    This is called once per orchestrator instance (via OrchestratorCache)
-    rather than on every ask call.
-
-    Sprint 5.8: Added Graph, Wiki, and Procedural channel registrations.
-    All six channels now participate in the orchestrator's parallel
-    dispatch and RRF fusion when enabled via OrchestratorConfig.
-
-    Args:
-        orchestrator: The orchestrator to register channels on.
-        stores: The ask stores containing the search backends.
-        config: Optional config dict for channel-specific settings.
+    Called once per orchestrator instance (via OrchestratorCache).
+    Channels: fts, vector, corpus, graph, wiki, procedural.
     """
     # FTS channel — always available (LexicalStore)
     if not orchestrator.is_registered("fts"):
@@ -291,15 +267,7 @@ def _register_retriever_channels(
             return hits
         orchestrator.register_channel("corpus", _corpus_retriever)
 
-    # Graph channel (Sprint 5.8→5.9→5.10) — PPR-based graph retrieval
-    # Uses GraphRetriever from orchestration/graph_retrieval.py to expand
-    # the query via knowledge graph entities and return related content.
-    # Sprint 5.9: EntityExtractor replaces simple capitalized-word extraction
-    # with configurable noun-phrase + graph-fuzzy matching.
-    # Sprint 5.10: LLM entity extraction integrated via create_llm_entity_fn()
-    # when a ModelProvider is available.  Controlled by
-    # entity_extraction_mode config ("local" | "hybrid_llm" | "llm_primary").
-    # Toggleable via OrchestratorConfig.enable_graph.
+    # Graph channel — PPR-based graph retrieval with EntityExtractor
     if not orchestrator.is_registered("graph"):
         from aip.orchestration.entity_extractor import EntityExtractor, EntityExtractorConfig
 
@@ -308,7 +276,7 @@ def _register_retriever_channels(
             use_graph_fuzzy=True,
         )
 
-        # Sprint 5.10: Wire LLM entity extraction if a ModelProvider is available
+        # Wire LLM entity extraction if ModelProvider available
         _llm_entity_fn = None
         if stores.model_provider is not None:
             try:
@@ -430,9 +398,7 @@ def _register_retriever_channels(
             return hits
         orchestrator.register_channel("graph", _graph_retriever)
 
-    # Wiki channel (Sprint 5.8) — retrieve approved wiki articles
-    # Searches APPROVED beast_wiki artifacts that match the query domain.
-    # Toggleable via OrchestratorConfig.enable_wiki.
+    # Wiki channel — retrieve approved wiki articles
     if not orchestrator.is_registered("wiki"):
         async def _wiki_retriever(query: str) -> list[RetrievalHit]:
             """Wiki retriever: find approved wiki articles relevant to the query."""
@@ -503,10 +469,7 @@ def _register_retriever_channels(
             return hits
         orchestrator.register_channel("wiki", _wiki_retriever)
 
-    # Procedural channel (Sprint 5.8) — retrieve procedural/how-to guides
-    # Searches for artifacts of type "procedural_guide" or content with
-    # step-by-step instructions relevant to the query.
-    # Toggleable via OrchestratorConfig.enable_procedural.
+    # Procedural channel — retrieve how-to guides
     if not orchestrator.is_registered("procedural"):
         async def _procedural_retriever(query: str) -> list[RetrievalHit]:
             """Procedural retriever: find how-to guides and step-by-step procedures."""
@@ -625,39 +588,17 @@ async def _search_sources_with_trace(
 ) -> tuple[list[SourceReference], RetrievalTrace | None, PackedContext | None]:
     """Search for sources using the multi-channel RetrievalOrchestrator.
 
-    This is the **primary** retrieval path as of Sprint 5.7.  It uses
-    ``RetrievalOrchestrator`` with parallel dispatch and RRF fusion,
-    followed by ``SmartContextPacker`` for budget-aware context assembly.
+    Primary retrieval path: RetrievalOrchestrator with parallel dispatch
+    and RRF fusion, followed by SmartContextPacker for budget-aware
+    context assembly.  When ``auto_channel_selection`` is True (default),
+    ChannelSelector auto-enables relevant channels based on query signals;
+    explicit ``enable_*`` parameters always take precedence.
 
-    Sprint 5.9: Added ``auto_channel_selection`` parameter.  When True
-    (default), the ``ChannelSelector`` analyzes the query and auto-enables
-    relevant channels (Graph, Wiki, Procedural) based on query signals.
-    Explicit per-call ``enable_*`` parameters always take precedence over
-    the auto-selector.
-
-    The orchestrator instance is cached via ``OrchestratorCache`` so that
-    retriever channels are only registered once (not on every call).
-
-    Args:
-        query: The user's question.
-        stores: The ask stores containing search backends.
-        source_filter: Filter by source type ("all" | "ingested" | "artifacts").
-        max_sources: Maximum number of sources to return.
-        session_id: Correlation ID for tracing.
-        config: Optional config dict for channel-specific settings.
-        enable_fts: Whether to dispatch the FTS channel.
-        enable_vector: Whether to dispatch the vector channel.
-        enable_graph: Whether to dispatch the graph channel.
-        enable_wiki: Whether to dispatch the wiki channel.
-        enable_procedural: Whether to dispatch the procedural channel.
-        auto_channel_selection: Whether to auto-enable channels based on
-            query analysis (Sprint 5.9).  Explicit enable_* params always
-            override the auto-selector.
+    The orchestrator instance is cached via OrchestratorCache so channels
+    are registered only once.
 
     Returns:
         Tuple of (source_references, retrieval_trace, packed_context).
-        The retrieval_trace may be None if the orchestrator path fails
-        (in which case this function falls back to the legacy path).
     """
     # Build a fingerprint of the store identities for cache keying
     store_key = id(stores.lexical_store) ^ id(stores.vector_store) ^ id(stores.corpus_turn_store)
@@ -678,10 +619,8 @@ async def _search_sources_with_trace(
         max_hits=max_sources * 3,
     )
 
-    # Sprint 5.9: Adaptive channel selection — auto-enable channels based
-    # on query characteristics.  The auto-selector only *enables* channels
-    # (never disables).  If the caller wants full control, they set
-    # auto_channel_selection=False and specify each channel manually.
+    # Adaptive channel selection: auto-enable channels based on query signals.
+    # Only enables (never disables). Set auto_channel_selection=False for manual control.
     if auto_channel_selection:
         try:
             from aip.orchestration.channel_selector import ChannelSelector
@@ -707,7 +646,7 @@ async def _search_sources_with_trace(
     # Limit to max_sources
     hits = hits[:max_sources]
 
-    # Pack context via SmartContextPacker (primary path as of Sprint 5.7)
+    # Pack context via SmartContextPacker
     packer_config = PackerConfig(
         max_context_tokens=4000,
         max_hits=max_sources,
@@ -723,19 +662,15 @@ async def _search_sources_with_trace(
 
 
 # ---------------------------------------------------------------------------
-# Store creation (same persistent stores as ingestion)
+# Store creation
 # ---------------------------------------------------------------------------
 
 
 class AskStores:
     """Container for the stores needed by the ask pipeline.
 
-    Uses the SAME persistent stores as the ingestion pipeline to ensure
-    that ``aip ask`` reads from the same data that ``aip ingest`` wrote.
-
-    Sprint 5.8: Added ``graph_store`` attribute for the Graph retriever
-    channel.  When provided, the graph channel uses it directly instead
-    of creating a new GraphStore on each retrieval call.
+    Shares the same persistent stores as the ingestion pipeline so that
+    ``aip ask`` reads from the same data that ``aip ingest`` wrote.
     """
 
     def __init__(
@@ -784,12 +719,9 @@ class AskStores:
 async def create_ask_stores(db_path: str) -> AskStores:
     """Factory: create and initialize all stores needed for the ask pipeline.
 
-    Uses the SAME database paths as ``create_ingestion_stores()`` to ensure
-    that ask reads from the same persistent stores that ingest writes to.
-
-    LexicalStore (FTS5) is the primary search backend because it is
-    persistent. VectorStore is in-memory by default but provides
-    supplementary semantic search when an embedding provider is available.
+    Uses the same database paths as ``create_ingestion_stores()`` so that
+    ask reads from the same persistent stores that ingest writes to.
+    All stores (including VectorStore) are SQLite-backed and persistent.
     """
     import os
 
@@ -799,7 +731,7 @@ async def create_ask_stores(db_path: str) -> AskStores:
     from aip.adapter.lexical.sqlite_fts5_store import SqliteFts5LexicalStore
     from aip.adapter.model_slot_resolver import ModelSlotResolver
     from aip.adapter.project.sqlite_project_store import SqliteProjectStore
-    from aip.adapter.vector._in_memory import InMemoryVectorStore
+    from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
 
     # Same paths as create_ingestion_stores()
     artifact_store = VersionedArtifactStore(db_path)
@@ -808,8 +740,6 @@ async def create_ask_stores(db_path: str) -> AskStores:
     lexical_db = os.path.join(os.path.dirname(db_path), "lexical.db")
     lexical_store = SqliteFts5LexicalStore(lexical_db)
     await lexical_store.initialize()
-
-    vector_store = InMemoryVectorStore()
 
     event_store = QueryableEventStore(db_path)
     await event_store.initialize()
@@ -829,8 +759,8 @@ async def create_ask_stores(db_path: str) -> AskStores:
     except Exception as exc:
         logger.info("No model provider configured: %s", exc)
 
-    # Embedding provider — use centralized creation from [models.embedding] slot (or legacy [embedding])
-    # This removes the bypass/stale direct creation, so CLI `aip ask` and tests respect UI-selected embedding model.
+    # Embedding provider — created BEFORE vector store so it can be passed
+    # for real embedding generation in store().
     embedding_provider = None
     try:
         config = _load_config()
@@ -839,6 +769,18 @@ async def create_ask_stores(db_path: str) -> AskStores:
             embedding_provider = _create_embedding_provider(config)
     except Exception:
         pass  # graceful: no embedding provider — lexical-only search
+
+    # Sprint 5.13: Use persistent SqliteVssVectorStore instead of InMemoryVectorStore
+    # so that vectors survive process restarts.  The VSS extension may not be
+    # available, in which case the store degrades to brute-force search over
+    # the embedding_json column — but data is still persistent.
+    vector_db = os.path.join(os.path.dirname(db_path), "vectors.db")
+    vector_store = SqliteVssVectorStore(
+        db_path=vector_db,
+        dimensions=768,
+        embedding_provider=embedding_provider,
+    )
+    await vector_store.initialize()
 
     # CorpusTurnStore — the canonical corpus of ingested turns (project-agnostic)
     corpus_turn_store = None

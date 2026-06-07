@@ -1,17 +1,11 @@
 """Ingestion pipeline — parse, persist, chunk, index.
 
-Orchestrates the full ingestion flow:
-1. Parse source file into ImportedConversation(s)
-2. Store raw conversation as an artifact (provenance in metadata)
-3. Chunk conversation content
-4. Index chunks into LexicalStore (FTS5)
-5. Index chunks into VectorStore (when EmbeddingProvider available)
-6. Record ingestion event in EventStore
-7. Return IngestionResult
+Contract: parse source file → store conversation artifact → chunk →
+index in LexicalStore (FTS5) → index in VectorStore (when available) →
+record ingestion event → return IngestionResult.
 
-Uses existing AIP primitives — no parallel storage system.
-Imported conversations enter as APPROVED artifacts (they are
-already human-authored content) and are immediately indexed.
+Imported conversations enter as APPROVED artifacts and are immediately
+indexed. All stores are persistent (SqliteVssVectorStore, not InMemory).
 """
 
 from __future__ import annotations
@@ -109,7 +103,7 @@ async def ingest_conversation(
     lexical_indexed = False
     errors: list[str] = []
 
-    # Step 1: Persist raw conversation as artifact with provenance metadata
+    # Persist conversation artifact
     artifact_metadata = {
         "artifact_type": "conversation",
         "source_format": conversation.source_format,
@@ -147,11 +141,11 @@ async def ingest_conversation(
         errors.append(f"Artifact store write failed: {exc}")
         logger.warning("Failed to write artifact '%s': %s", artifact_id, exc)
 
-    # Step 2: Chunk the conversation
+    # Chunk
     chunks = chunk_conversation(conversation)
     logger.info("Chunked conversation '%s' into %d chunks", conversation.conversation_id, len(chunks))
 
-    # Step 3: Index chunks into LexicalStore (FTS5)
+    # FTS5 indexing
     for chunk_id, chunk_text in chunks:
         try:
             await lexical_store.index_document(
@@ -176,10 +170,7 @@ async def ingest_conversation(
         # Some chunks may have succeeded even if some failed
         lexical_indexed = len(errors) < len(chunks)
 
-    # Step 4: Index chunks into VectorStore (when available)
-    # Auto-resolve embedding_provider from current slot config if not provided,
-    # so new ingest (chat auto-save, CLI with stores, etc.) always uses the
-    # UI-selected embedding model by default. No manual backfill needed for fresh data.
+    # Vector indexing (auto-resolves embedding_provider from config if not provided)
     if embedding_provider is None:
         try:
             from aip.adapter.api.app import _load_toml_config, _create_embedding_provider
@@ -224,7 +215,7 @@ async def ingest_conversation(
                 conversation.conversation_id,
             )
 
-    # Step 5: Record ingestion event
+    # Record event
     if event_store is not None:
         try:
             await event_store.write_event(
@@ -300,17 +291,13 @@ class IngestionStores:
 async def create_ingestion_stores(db_path: str) -> IngestionStores:
     """Factory: create and initialize all stores needed for ingestion.
 
-    Encapsulates adapter-layer imports so that CLI and other
-    orchestration callers do not import concrete adapters directly.
-
-    Now also creates embedding_provider using the centralized logic from
-    [models.embedding] slot (preferred) or legacy [embedding] so that
-    `aip ingest` respects the UI-selected embedding model instead of hardcoding None.
+    All stores (including VectorStore) are SQLite-backed and persistent.
+    Embedding provider auto-resolved from [models.embedding] config slot.
     """
     from aip.adapter.artifact_store_versioned import VersionedArtifactStore
     from aip.adapter.event_store_queryable import QueryableEventStore
     from aip.adapter.lexical.sqlite_fts5_store import SqliteFts5LexicalStore
-    from aip.adapter.vector._in_memory import InMemoryVectorStore
+    from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
 
     artifact_store = VersionedArtifactStore(db_path)
     await artifact_store.initialize()
@@ -318,8 +305,6 @@ async def create_ingestion_stores(db_path: str) -> IngestionStores:
     lexical_db = os.path.join(os.path.dirname(db_path), "lexical.db")
     lexical_store = SqliteFts5LexicalStore(lexical_db)
     await lexical_store.initialize()
-
-    vector_store = InMemoryVectorStore()
 
     event_store = QueryableEventStore(db_path)
     await event_store.initialize()
@@ -332,6 +317,16 @@ async def create_ingestion_stores(db_path: str) -> IngestionStores:
         if config:
             embedding_provider = _create_embedding_provider(config)
     except Exception:
-        pass  # graceful fallback to no embedding (e.g. no config, import issues) — vectors will be metadata-only
+        pass  # graceful fallback to no embedding — vectors will be metadata-only
+
+    # Sprint 5.13: Use persistent SqliteVssVectorStore instead of InMemoryVectorStore
+    # so that vectors ingested via `aip ingest` survive process restarts.
+    vector_db = os.path.join(os.path.dirname(db_path), "vectors.db")
+    vector_store = SqliteVssVectorStore(
+        db_path=vector_db,
+        dimensions=768,
+        embedding_provider=embedding_provider,
+    )
+    await vector_store.initialize()
 
     return IngestionStores(artifact_store, lexical_store, vector_store, event_store, embedding_provider)

@@ -1,9 +1,12 @@
 """SQLite FTS5 implementation of LexicalStore Protocol.
 
-LexicalStore Protocol.
 Adapter imports only foundation (schemas + protocols).
 Local, deterministic, laptop-viable (no external services).
 Uses aiosqlite for async-safe database access.
+
+Sprint 5.13: Removed blocking sqlite3.connect() from __init__.
+All table creation and I/O now goes through async initialize() and
+_get_conn(). The constructor is lightweight (stores path only).
 """
 
 from __future__ import annotations
@@ -18,75 +21,73 @@ import aiosqlite
 from aip.foundation.protocols import LexicalStore
 from aip.foundation.schemas import Chunk
 
+# Single source of truth for DDL statements
+_DDL_FTS_DOCUMENTS = """
+    CREATE TABLE IF NOT EXISTS fts_documents (
+        doc_id TEXT PRIMARY KEY,
+        content TEXT NOT NULL,
+        domain TEXT NOT NULL,
+        metadata TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+"""
+
+_DDL_FTS_INDEX = """
+    CREATE VIRTUAL TABLE IF NOT EXISTS fts_index
+    USING fts5(content, domain, metadata, tokenize=unicode61)
+"""
+
 
 class SqliteFts5LexicalStore(LexicalStore):
     """SQLite + FTS5 implementation of LexicalStore.
 
     Maintains a regular documents table + FTS5 virtual index.
     Tokenizer defaults to unicode61 (configurable via [lexical] in future).
-    All methods are deterministic for CI (uses provided db_path, usually :memory: or temp file in tests).
     Uses aiosqlite for async-compatible database access.
+
+    Sprint 5.13: Constructor is lightweight — stores path only.
+    Call ``initialize()`` (async) to create tables before first use.
     """
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
         self._conn: aiosqlite.Connection | None = None
-        self._ensure_tables_sync()
-
-    def _ensure_tables_sync(self) -> None:
-        """Synchronous table creation during init (runs once at startup)."""
-        conn = sqlite3.connect(self._db_path)
-        try:
-            # Regular documents table (source of truth + metadata)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS fts_documents (
-                    doc_id TEXT PRIMARY KEY,
-                    content TEXT NOT NULL,
-                    domain TEXT NOT NULL,
-                    metadata TEXT NOT NULL,  -- JSON
-                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-                )
-            """)
-            # FTS5 virtual table (search index)
-            conn.execute("""
-                CREATE VIRTUAL TABLE IF NOT EXISTS fts_index
-                USING fts5(content, domain, metadata, tokenize=unicode61)
-            """)
-            conn.commit()
-        finally:
-            conn.close()
+        self._tables_ready = False
 
     async def _get_conn(self) -> aiosqlite.Connection:
+        """Return a reusable connection, creating one if needed.
+
+        Lazily ensures tables on first connection so that callers
+        who bypass ``initialize()`` (e.g. tests) still get a working schema.
+        """
         if self._conn is None:
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
+            if not self._tables_ready:
+                await self._create_tables(self._conn)
+                self._tables_ready = True
         return self._conn
 
-    async def _ensure_tables(self) -> None:
-        conn = await aiosqlite.connect(self._db_path)
-        try:
-            # Regular documents table (source of truth + metadata)
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS fts_documents (
-                    doc_id TEXT PRIMARY KEY,
-                    content TEXT NOT NULL,
-                    domain TEXT NOT NULL,
-                    metadata TEXT NOT NULL,  -- JSON
-                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-                )
-            """)
-            # FTS5 virtual table (search index)
-            await conn.execute("""
-                CREATE VIRTUAL TABLE IF NOT EXISTS fts_index
-                USING fts5(content, domain, metadata, tokenize=unicode61)
-            """)
-            await conn.commit()
-        finally:
-            await conn.close()
+    async def _create_tables(self, conn: aiosqlite.Connection) -> None:
+        """Create FTS documents and index tables on the given connection."""
+        await conn.execute(_DDL_FTS_DOCUMENTS)
+        await conn.execute(_DDL_FTS_INDEX)
+        await conn.commit()
 
     async def initialize(self) -> None:
-        """Idempotent table creation (called by lifespan / DI container)."""
-        await self._ensure_tables()
+        """Idempotent table creation (called by lifespan / DI container).
+
+        Uses a short-lived connection to create tables, then discards it.
+        Subsequent operations use the persistent connection from _get_conn().
+        """
+        if self._tables_ready:
+            return
+        conn = await aiosqlite.connect(self._db_path)
+        try:
+            await self._create_tables(conn)
+            self._tables_ready = True
+        finally:
+            await conn.close()
 
     async def close(self) -> None:
         if self._conn is not None:
@@ -99,7 +100,6 @@ class SqliteFts5LexicalStore(LexicalStore):
             meta_json = json.dumps(metadata or {})
             now = datetime.now(timezone.utc).isoformat() + "Z"
 
-            # Upsert into documents table
             await conn.execute(
                 """
                 INSERT OR REPLACE INTO fts_documents (doc_id, content, domain, metadata, created_at)
@@ -108,7 +108,6 @@ class SqliteFts5LexicalStore(LexicalStore):
                 (doc_id, content, domain, meta_json, now),
             )
 
-            # Update FTS index (delete old + insert new for idempotency)
             await conn.execute(
                 "DELETE FROM fts_index WHERE rowid = (SELECT rowid FROM fts_documents WHERE doc_id = ?)",
                 (doc_id,),
@@ -120,6 +119,7 @@ class SqliteFts5LexicalStore(LexicalStore):
             )
             await conn.commit()
         finally:
+            # Close connection after each write to avoid holding locks
             await conn.close()
             self._conn = None
 
@@ -161,12 +161,10 @@ class SqliteFts5LexicalStore(LexicalStore):
     async def delete_document(self, doc_id: str) -> None:
         conn = await self._get_conn()
         try:
-            # Delete from FTS5 virtual table index first
             await conn.execute(
                 "DELETE FROM fts_index WHERE rowid = (SELECT rowid FROM fts_documents WHERE doc_id = ?)",
                 (doc_id,),
             )
-            # Then delete from the documents table
             await conn.execute("DELETE FROM fts_documents WHERE doc_id = ?", (doc_id,))
             await conn.commit()
         finally:
