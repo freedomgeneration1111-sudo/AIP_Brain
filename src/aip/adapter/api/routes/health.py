@@ -73,6 +73,14 @@ async def health(container: AipContainer = Depends(get_container)):
         except Exception:
             sexton_batch_telemetry = {}
 
+    # Vigil LLM faithfulness telemetry (Sprint 5.23)
+    vigil_llm_telemetry = {}
+    if container.vigil is not None and hasattr(container.vigil, "_llm_faithfulness_telemetry"):
+        try:
+            vigil_llm_telemetry = dict(container.vigil._llm_faithfulness_telemetry)
+        except Exception:
+            vigil_llm_telemetry = {}
+
     # Component availability — determine degraded status
     critical_available = all([
         container.entity_store is not None,
@@ -162,7 +170,15 @@ async def health(container: AipContainer = Depends(get_container)):
         "aggregate_exhaustion_rate": 0.0,
         "stores_with_high_exhaustion": [],
         "recommendation": "",
+        "auto_size_suggestions": [],  # Sprint 5.23: auto-sizing suggestions
     }
+
+    # Read pool auto-sizer (Sprint 5.23)
+    auto_sizer = getattr(container, "_read_pool_auto_sizer", None)
+    if auto_sizer is None:
+        from aip.adapter.read_pool import ReadPoolAutoSizer
+        auto_sizer = ReadPoolAutoSizer()
+        container._read_pool_auto_sizer = auto_sizer  # type: ignore[attr-defined]
     for store_name, health_data in store_health.items():
         pool_data = health_data.get("read_pool")
         if isinstance(pool_data, dict):
@@ -178,6 +194,11 @@ async def health(container: AipContainer = Depends(get_container)):
                     "exhaustion_rate": rate,
                     "pool_size": pool_data.get("pool_size", 0),
                 })
+            # Observe for auto-sizing (Sprint 5.23)
+            try:
+                auto_sizer.observe(store_name, pool_data)
+            except Exception:
+                pass
     total_co = read_pool_summary["total_checkouts"]
     read_pool_summary["aggregate_exhaustion_rate"] = (
         round(read_pool_summary["total_exhaustions"] / total_co, 4) if total_co > 0 else 0.0
@@ -213,6 +234,41 @@ async def health(container: AipContainer = Depends(get_container)):
                     f"have exhaustion_rate > 30%. Consider increasing pool_size in [read_pool] config."
                 )
 
+    # Add auto-sizing suggestions to read_pool_summary (Sprint 5.23)
+    try:
+        read_pool_summary["auto_size_suggestions"] = auto_sizer.get_suggestions()
+    except Exception:
+        read_pool_summary["auto_size_suggestions"] = []
+
+    # Batch telemetry summary (Sprint 5.23) — dedicated section for operator visibility
+    batch_telemetry_summary: dict[str, Any] = {
+        "batch_extractions": sexton_batch_telemetry.get("total_batch_extractions", 0),
+        "per_turn_extractions": sexton_batch_telemetry.get("total_per_turn_extractions", 0),
+        "turns_via_batch": sexton_batch_telemetry.get("total_turns_via_batch", 0),
+        "turns_via_per_turn": sexton_batch_telemetry.get("total_turns_via_per_turn", 0),
+        "estimated_tokens_saved": sexton_batch_telemetry.get("total_estimated_tokens_saved", 0),
+        "batch_efficiency_ratio": 0.0,
+        "summary": "",
+    }
+    total_extractions = (
+        batch_telemetry_summary["batch_extractions"]
+        + batch_telemetry_summary["per_turn_extractions"]
+    )
+    if total_extractions > 0:
+        batch_telemetry_summary["batch_efficiency_ratio"] = round(
+            batch_telemetry_summary["batch_extractions"] / total_extractions, 3
+        )
+        batch_telemetry_summary["summary"] = (
+            f"Batch mode: {batch_telemetry_summary['batch_extractions']} calls "
+            f"({batch_telemetry_summary['turns_via_batch']} turns), "
+            f"Per-turn mode: {batch_telemetry_summary['per_turn_extractions']} calls "
+            f"({batch_telemetry_summary['turns_via_per_turn']} turns). "
+            f"Estimated tokens saved: {batch_telemetry_summary['estimated_tokens_saved']:,}. "
+            f"Batch efficiency: {batch_telemetry_summary['batch_efficiency_ratio']:.1%}."
+        )
+    else:
+        batch_telemetry_summary["summary"] = "No batch telemetry data yet."
+
     return {
         "status": status,
         "uptime_seconds": uptime_seconds,
@@ -229,4 +285,6 @@ async def health(container: AipContainer = Depends(get_container)):
         "store_health": store_health,
         "read_pool_summary": read_pool_summary,
         "sexton_batch_telemetry": sexton_batch_telemetry,
+        "batch_telemetry_summary": batch_telemetry_summary,
+        "vigil_llm_telemetry": vigil_llm_telemetry,
     }

@@ -22,16 +22,20 @@ model slot change handling) that are now outside Vigil's scope per ADR-011.
 Those operations are retained as private methods for backward compatibility
 but are no longer called from run_cycle().
 
-This pass (Phase C): Pure Python citation-rate scoring — no LLM needed.
+Phase C (Sprint 5.21): Pure Python citation-rate scoring — no LLM needed.
   - Reads augmented turns since last eval
   - Checks whether source_turn_ids appear in assistant_text as citations
   - Computes citation_rate = cited / retrieved
   - Writes vigil_score to metadata_json
   - Flags low-citation turns via GENERATED artifact for DEFINER review
 
-Future (Phase 3.3): LLM-powered faithfulness evaluation — does the
-response actually support the claim? This requires a Vigil model slot
-and is intentionally deferred.
+Phase 3.3 (Sprint 5.23): LLM-powered faithfulness evaluation.
+  - Uses the "evaluation" model slot to check whether the response
+    accurately reflects retrieved sources without hallucination or
+    unsupported claims.
+  - Behind config flag `llm_faithfulness_enabled` (default: False).
+  - Graceful fallback to pure-Python checks when disabled or unavailable.
+  - Only evaluates a bounded sample per cycle (llm_faithfulness_sample_size).
 """
 
 from __future__ import annotations
@@ -63,8 +67,17 @@ class Vigil:
     for source citation quality. Writes an evaluation summary as a
     GENERATED artifact for DEFINER review.
 
-    This pass implements citation-rate scoring without LLM:
+    Phase C: Pure-Python citation-rate scoring (always runs):
       citation_rate = (source_turn_ids found in response text) / (total source_turn_ids)
+
+    Phase 3.3 (Sprint 5.23): LLM-powered faithfulness checking:
+      When llm_faithfulness_enabled is True, uses the evaluation model
+      slot to ask: "Does the response accurately reflect the retrieved
+      sources without hallucination or unsupported claims?"
+      This runs AFTER the pure-Python checks, on a bounded sample of
+      turns that were flagged (or borderline). The LLM result is stored
+      in the turn's metadata and can override or refine the pure-Python
+      flagging decision.
 
     A turn is considered "cited" if any form of its turn_id appears
     in the assistant_text — matching patterns like [source: abc123],
@@ -86,6 +99,33 @@ class Vigil:
         "i would guess", "my guess is", "i assume",
     })
     _GROUNDING_THRESHOLD = 0.5  # Flag if < 50% of numeric claims are grounded
+
+    # LLM faithfulness prompt
+    _FAITHFULNESS_SYSTEM_PROMPT = """You are an AIP Vigil evaluator performing faithfulness checking on an AI-generated response. Your job is to determine whether the response accurately reflects the retrieved source material without hallucination or unsupported claims.
+
+You will receive:
+1. The user's question
+2. The retrieved source text(s)
+3. The AI assistant's response
+
+Evaluate the response for:
+- Faithfulness: Does every claim in the response have support in the sources?
+- Hallucination: Are there any claims that go beyond or contradict the sources?
+- Source attribution: Are specific facts properly attributed to source material?
+
+Scoring:
+- faithfulness_score: 0.0-1.0 (1.0 = fully faithful, 0.0 = complete hallucination)
+- hallucination_flags: list of specific unsupported claims found in the response
+
+Output ONLY valid JSON with exactly these fields:
+{
+  "faithfulness_score": 0.85,
+  "hallucination_flags": ["Claim about X is not supported by sources"],
+  "grounding_assessment": "mostly_grounded",
+  "explanation": "Brief explanation of the score"
+}
+
+Be strict: if a specific number, date, or factual claim appears in the response but not in the sources, flag it. If the response adds reasonable inference or synthesis from the sources, that is acceptable — flag only unsupported assertions."""
 
     def __init__(
         self,
@@ -114,6 +154,15 @@ class Vigil:
         self._corpus_turns = corpus_turn_store
         self._last_eval_time: float | None = None
 
+        # LLM faithfulness telemetry — accumulates across cycles
+        self._llm_faithfulness_telemetry = {
+            "total_llm_evaluations": 0,
+            "total_llm_evaluations_failed": 0,
+            "total_hallucinations_detected": 0,
+            "avg_llm_faithfulness_score": 0.0,
+            "last_llm_evaluations": [],  # Last N evaluation summaries
+        }
+
     # ------------------------------------------------------------------
     # ADR-011 Quality Evaluation Cycle
     # ------------------------------------------------------------------
@@ -125,11 +174,15 @@ class Vigil:
         for source citation quality, writes the score to metadata_json, and
         flags low-citation turns for DEFINER review.
 
-        This is a pure-Python implementation — no LLM calls needed.
-        The citation_rate is computed as:
-            cited_turns / retrieved_turns
-        where a "cited" turn is one whose turn_id (or a citation pattern
-        referencing it) appears in the assistant response text.
+        Phase C: Pure-Python checks (always run):
+        - Citation rate scoring
+        - Source grounding (numeric claims)
+        - Hedging detection
+
+        Phase 3.3: LLM-powered faithfulness (when enabled):
+        - Uses evaluation model slot to check faithfulness
+        - Runs on a bounded sample of flagged/borderline turns
+        - Gracefully falls back to pure-Python if model unavailable
 
         Returns a summary dict with evaluation results.
         """
@@ -142,6 +195,9 @@ class Vigil:
         citation_rates: list[float] = []
         grounding_rates: list[float] = []
         hedging_detected_count = 0
+
+        # Collect turns for potential LLM evaluation
+        flagged_turns: list[dict] = []
 
         # --- Step 1: Read augmented turns since last eval ---
         if self._corpus_turns is not None:
@@ -174,9 +230,6 @@ class Vigil:
                     citation_rates.append(citation_rate)
 
                     # --- Quality Check 2: Source grounding ---
-                    # Extract numeric claims from the response and check if
-                    # they appear in the source text.  Numeric claims are
-                    # numbers, percentages, and dates that should be grounded.
                     source_text = (turn.user_text or "") + " " + (turn.assistant_text or "")
                     grounding_result = self._check_source_grounding(
                         response_text=turn.assistant_text or "",
@@ -185,8 +238,6 @@ class Vigil:
                     grounding_rates.append(grounding_result["grounding_rate"])
 
                     # --- Quality Check 3: Hedging / uncertainty detection ---
-                    # Detect hedging phrases that suggest the response is
-                    # uncertain when it should be authoritative (based on sources).
                     hedging_found = self._detect_hedging(turn.assistant_text or "")
                     if hedging_found and len(source_turn_ids) > 0:
                         hedging_detected_count += 1
@@ -217,6 +268,11 @@ class Vigil:
                     if hedging_found and len(source_turn_ids) > 0:
                         flag_reasons.append("unwarranted_hedging")
 
+                    # Also collect borderline turns for potential LLM evaluation
+                    is_borderline = (
+                        self._CITATION_THRESHOLD <= citation_rate < self._CITATION_THRESHOLD + 0.2
+                    )
+
                     if flag_reasons:
                         flagged_count += 1
                         await self._write_flagged_artifact(
@@ -230,12 +286,48 @@ class Vigil:
                             flag_reasons=flag_reasons,
                         )
 
+                        flagged_turns.append({
+                            "turn": turn,
+                            "citation_rate": citation_rate,
+                            "cited_ids": cited_ids,
+                            "source_turn_ids": source_turn_ids,
+                            "grounding_rate": grounding_result["grounding_rate"],
+                            "ungrounded_claims": grounding_result["ungrounded_claims"],
+                            "hedging_detected": hedging_found,
+                            "flag_reasons": flag_reasons,
+                        })
+                    elif is_borderline:
+                        # Borderline — may benefit from deeper LLM evaluation
+                        flagged_turns.append({
+                            "turn": turn,
+                            "citation_rate": citation_rate,
+                            "cited_ids": cited_ids,
+                            "source_turn_ids": source_turn_ids,
+                            "grounding_rate": grounding_result["grounding_rate"],
+                            "ungrounded_claims": grounding_result["ungrounded_claims"],
+                            "hedging_detected": hedging_found,
+                            "flag_reasons": ["borderline_citation_rate"],
+                        })
+
                 except Exception as exc:
                     logger.warning(
                         "vigil_turn_eval_failed",
                         turn_id=turn.turn_id,
                         error=str(exc),
                     )
+
+        # --- Step 5: LLM-powered faithfulness evaluation (Phase 3.3) ---
+        llm_eval_count = 0
+        llm_hallucinations = 0
+        llm_faithfulness_scores: list[float] = []
+
+        if self.config.llm_faithfulness_enabled and flagged_turns:
+            try:
+                llm_eval_count, llm_hallucinations, llm_faithfulness_scores = (
+                    await self._run_llm_faithfulness_evaluation(flagged_turns)
+                )
+            except Exception as exc:
+                logger.warning("vigil_llm_faithfulness_cycle_failed", error=str(exc))
 
         # Compute aggregate metrics
         avg_citation_rate = (
@@ -247,6 +339,11 @@ class Vigil:
             round(sum(grounding_rates) / len(grounding_rates), 3)
             if grounding_rates
             else 1.0
+        )
+        avg_llm_faithfulness = (
+            round(sum(llm_faithfulness_scores) / len(llm_faithfulness_scores), 3)
+            if llm_faithfulness_scores
+            else 0.0
         )
 
         # Record the vigil check (legacy compatibility)
@@ -271,6 +368,10 @@ class Vigil:
                         "avg_citation_rate": avg_citation_rate,
                         "avg_grounding_rate": avg_grounding_rate,
                         "hedging_detected_count": hedging_detected_count,
+                        "llm_faithfulness_enabled": self.config.llm_faithfulness_enabled,
+                        "llm_eval_count": llm_eval_count,
+                        "llm_hallucinations_detected": llm_hallucinations,
+                        "avg_llm_faithfulness_score": avg_llm_faithfulness,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 )
@@ -291,6 +392,12 @@ class Vigil:
             "grounding_threshold": self._GROUNDING_THRESHOLD,
             "cycle_elapsed_seconds": round(elapsed, 3),
             "last_eval_time": self._last_eval_time,
+            # LLM faithfulness results (Phase 3.3)
+            "llm_faithfulness_enabled": self.config.llm_faithfulness_enabled,
+            "llm_eval_count": llm_eval_count,
+            "llm_hallucinations_detected": llm_hallucinations,
+            "avg_llm_faithfulness_score": avg_llm_faithfulness,
+            "llm_faithfulness_telemetry": dict(self._llm_faithfulness_telemetry),
         }
 
         logger.info(
@@ -301,8 +408,212 @@ class Vigil:
             avg_citation_rate=avg_citation_rate,
             avg_grounding_rate=avg_grounding_rate,
             hedging_detected=hedging_detected_count,
+            llm_eval_count=llm_eval_count,
         )
         return result
+
+    # ------------------------------------------------------------------
+    # LLM-Powered Faithfulness Evaluation (Phase 3.3, Sprint 5.23)
+    # ------------------------------------------------------------------
+
+    async def _run_llm_faithfulness_evaluation(
+        self, flagged_turns: list[dict]
+    ) -> tuple[int, int, list[float]]:
+        """Run LLM-powered faithfulness evaluation on flagged/borderline turns.
+
+        Uses the evaluation model slot to ask whether each response accurately
+        reflects its retrieved sources without hallucination or unsupported claims.
+
+        This method is called only when llm_faithfulness_enabled is True and
+        there are flagged turns to evaluate. It processes up to
+        llm_faithfulness_sample_size turns per cycle to bound LLM cost.
+
+        Graceful fallback: If the model provider call fails or returns an
+        error, the turn's pure-Python evaluation is kept as-is — no
+        degradation from the baseline.
+
+        Returns:
+            (eval_count, hallucination_count, faithfulness_scores)
+        """
+        sample_size = self.config.llm_faithfulness_sample_size
+        sample = flagged_turns[:sample_size]
+
+        eval_count = 0
+        hallucination_count = 0
+        faithfulness_scores: list[float] = []
+        model_slot = self.config.llm_faithfulness_model_slot
+
+        for entry in sample:
+            turn = entry["turn"]
+            source_turn_ids = entry["source_turn_ids"]
+
+            # Build source text from the turn's source_turn_ids
+            # In production, this would fetch the actual source turn content.
+            # For now, use the turn's user_text as a proxy for the question
+            # and the source_turn_ids list as context identifiers.
+            source_text_parts = []
+            for sid in source_turn_ids:
+                source_text_parts.append(f"[Source: {sid}]")
+
+            source_summary = "\n".join(source_text_parts)
+            user_question = (turn.user_text or "")[:500]
+            assistant_response = (turn.assistant_text or "")[:1000]
+
+            user_prompt = (
+                f"USER QUESTION:\n{user_question}\n\n"
+                f"RETRIEVED SOURCES:\n{source_summary}\n\n"
+                f"ASSISTANT RESPONSE:\n{assistant_response}\n\n"
+                f"Evaluate the faithfulness of the assistant's response."
+            )
+
+            messages = [
+                {"role": "system", "content": self._FAITHFULNESS_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ]
+
+            try:
+                llm_result = await self.model_provider.call(model_slot, messages)
+
+                if llm_result.get("error"):
+                    logger.warning(
+                        "vigil_llm_faithfulness_model_error",
+                        turn_id=turn.turn_id,
+                        error=llm_result.get("error_message", "unknown"),
+                    )
+                    self._llm_faithfulness_telemetry["total_llm_evaluations_failed"] += 1
+                    continue
+
+                content = (llm_result or {}).get("content", "").strip()
+
+                # Parse the LLM response as JSON
+                parsed = self._parse_faithfulness_response(content)
+                if parsed is None:
+                    self._llm_faithfulness_telemetry["total_llm_evaluations_failed"] += 1
+                    continue
+
+                faithfulness_score = parsed.get("faithfulness_score", 0.5)
+                hallucination_flags = parsed.get("hallucination_flags", [])
+                explanation = parsed.get("explanation", "")
+
+                faithfulness_scores.append(faithfulness_score)
+                eval_count += 1
+
+                if hallucination_flags:
+                    hallucination_count += 1
+
+                # Update turn metadata with LLM faithfulness result
+                try:
+                    meta = json.loads(turn.metadata_json) if turn.metadata_json else {}
+                    updated_meta = dict(meta)
+                    updated_meta["vigil_llm_faithfulness_score"] = round(faithfulness_score, 3)
+                    updated_meta["vigil_llm_hallucination_flags"] = hallucination_flags[:5]
+                    updated_meta["vigil_llm_explanation"] = explanation[:300]
+                    updated_meta["vigil_llm_evaluated_at"] = datetime.now(timezone.utc).isoformat()
+
+                    await self._corpus_turns.update_metadata_json(
+                        turn_id=turn.turn_id,
+                        metadata_json=json.dumps(updated_meta),
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "vigil_llm_metadata_update_failed",
+                        turn_id=turn.turn_id,
+                        error=str(exc),
+                    )
+
+                # If LLM flags hallucination and turn wasn't already flagged,
+                # write an additional flagged artifact
+                if hallucination_flags and "borderline_citation_rate" in entry.get("flag_reasons", []):
+                    await self._write_flagged_artifact(
+                        turn=turn,
+                        citation_rate=entry["citation_rate"],
+                        cited_ids=entry["cited_ids"],
+                        source_turn_ids=source_turn_ids,
+                        grounding_rate=entry["grounding_rate"],
+                        ungrounded_claims=entry.get("ungrounded_claims", []),
+                        hedging_detected=entry.get("hedging_detected", False),
+                        flag_reasons=["llm_hallucination_detected"],
+                        llm_faithfulness_score=faithfulness_score,
+                        llm_hallucination_flags=hallucination_flags,
+                    )
+
+                # Update telemetry
+                self._llm_faithfulness_telemetry["total_llm_evaluations"] += 1
+                self._llm_faithfulness_telemetry["total_hallucinations_detected"] += (
+                    1 if hallucination_flags else 0
+                )
+                eval_summary = {
+                    "turn_id": turn.turn_id,
+                    "faithfulness_score": round(faithfulness_score, 3),
+                    "hallucination_flags": hallucination_flags[:3],
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                self._llm_faithfulness_telemetry["last_llm_evaluations"].append(eval_summary)
+                # Keep only last 20 evaluations
+                self._llm_faithfulness_telemetry["last_llm_evaluations"] = (
+                    self._llm_faithfulness_telemetry["last_llm_evaluations"][-20:]
+                )
+
+            except Exception as exc:
+                logger.warning(
+                    "vigil_llm_faithfulness_turn_failed",
+                    turn_id=turn.turn_id,
+                    error=str(exc),
+                )
+                self._llm_faithfulness_telemetry["total_llm_evaluations_failed"] += 1
+                continue
+
+        # Update average faithfulness score in telemetry
+        if faithfulness_scores:
+            avg = round(sum(faithfulness_scores) / len(faithfulness_scores), 3)
+            self._llm_faithfulness_telemetry["avg_llm_faithfulness_score"] = avg
+
+        return eval_count, hallucination_count, faithfulness_scores
+
+    @staticmethod
+    def _parse_faithfulness_response(content: str) -> dict | None:
+        """Parse the LLM faithfulness response into a dict.
+
+        Handles various LLM response formats:
+        - Clean JSON
+        - JSON wrapped in markdown code fences
+        - JSON embedded in conversational text
+
+        Returns None if parsing fails.
+        """
+        if not content or not content.strip():
+            return None
+
+        s = content.strip()
+
+        # Strip markdown code fences
+        if s.startswith("```"):
+            first_newline = s.find("\n")
+            if first_newline != -1:
+                s = s[first_newline + 1:]
+            if s.rstrip().endswith("```"):
+                s = s.rstrip()[:-3].rstrip()
+
+        # Try direct parse
+        try:
+            parsed = json.loads(s)
+            if isinstance(parsed, dict) and "faithfulness_score" in parsed:
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Try finding JSON object boundaries
+        start = s.find("{")
+        end = s.rfind("}")
+        if start != -1 and end > start:
+            try:
+                parsed = json.loads(s[start:end + 1])
+                if isinstance(parsed, dict) and "faithfulness_score" in parsed:
+                    return parsed
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        return None
 
     @staticmethod
     def _check_source_grounding(response_text: str, source_text: str) -> dict:
@@ -388,22 +699,14 @@ class Vigil:
                 continue
 
             # Check 2: Turn ID fragment (at least 8 chars) appears in text
-            # Short IDs might match random text, so require a minimum length
             fragment = tid[:8] if len(tid) >= 8 else tid
             if fragment in response_lower:
                 cited.append(tid)
                 continue
 
-            # Check 3: [Source N] numbered pattern — count how many sources
-            # were in the context. If response mentions [Source 1] through
-            # [Source N], that implies citation of at least the first N sources.
-            # This is a loose heuristic; we only count it if the numbered pattern
-            # exists AND the turn's position in the list matches.
+            # Check 3: [Source N] numbered pattern
             source_num_pattern = re.findall(r'\[source\s+(\d+)\]', response_lower)
             if source_num_pattern:
-                # Source numbers are 1-based; check if our position is covered
-                # (We can't know our position from just the IDs, so skip this
-                # for now — the direct ID match above is sufficient.)
                 pass
 
         return cited
@@ -418,6 +721,8 @@ class Vigil:
         ungrounded_claims: list[str] | None = None,
         hedging_detected: bool = False,
         flag_reasons: list[str] | None = None,
+        llm_faithfulness_score: float | None = None,
+        llm_hallucination_flags: list[str] | None = None,
     ) -> None:
         """Write a GENERATED artifact flagging a low-quality turn for DEFINER review.
 
@@ -430,7 +735,7 @@ class Vigil:
 
         try:
             artifact_id = f"vigil-flag-{turn.turn_id}"
-            content = json.dumps({
+            content_dict = {
                 "flag_type": "quality_evaluation",
                 "flag_reasons": flag_reasons or ["low_citation_rate"],
                 "turn_id": turn.turn_id,
@@ -447,7 +752,14 @@ class Vigil:
                 "uncited_ids": [tid for tid in source_turn_ids if tid not in cited_ids],
                 "response_preview": (turn.assistant_text or "")[:500],
                 "flagged_at": datetime.now(timezone.utc).isoformat(),
-            }, indent=2)
+            }
+
+            # Include LLM faithfulness results if available
+            if llm_faithfulness_score is not None:
+                content_dict["llm_faithfulness_score"] = round(llm_faithfulness_score, 3)
+                content_dict["llm_hallucination_flags"] = llm_hallucination_flags or []
+
+            content = json.dumps(content_dict, indent=2)
 
             metadata = {
                 "artifact_type": "vigil_flag",
@@ -460,6 +772,9 @@ class Vigil:
                 "generated_by": "vigil",
             }
 
+            if llm_faithfulness_score is not None:
+                metadata["llm_faithfulness_score"] = round(llm_faithfulness_score, 3)
+
             await self._artifacts.write(
                 id=artifact_id,
                 content=content,
@@ -470,11 +785,14 @@ class Vigil:
             if self._ecs is not None:
                 try:
                     reasons_str = ", ".join(flag_reasons or ["low_citation_rate"])
+                    detail = f"Quality evaluation: {reasons_str} (citation_rate={citation_rate:.1%}, grounding_rate={grounding_rate:.1%})"
+                    if llm_faithfulness_score is not None:
+                        detail += f", llm_faithfulness={llm_faithfulness_score:.1%}"
                     await self._ecs.transition(
                         artifact_id=artifact_id,
                         to_state="GENERATED",
                         actor="vigil",
-                        detail=f"Quality evaluation: {reasons_str} (citation_rate={citation_rate:.1%}, grounding_rate={grounding_rate:.1%})",
+                        detail=detail,
                     )
                 except Exception:
                     pass

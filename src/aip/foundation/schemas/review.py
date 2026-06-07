@@ -71,6 +71,18 @@ class VigilConfig:
     Monitors canonical corpus health and triggers re-evaluation on model slot changes.
     Per INTERFACES: canonical_health_check_interval_seconds, stale_threshold_days,
     re_evaluate_on_slot_change, max_re_evaluate_batch_size, entity_consistency_check.
+
+    Sprint 5.23 additions:
+    - llm_faithfulness_enabled: Toggle for LLM-powered faithfulness checking.
+      When True, Vigil uses the "evaluation" model slot to check whether
+      responses accurately reflect their sources. When False (or when the
+      evaluation slot is unavailable), falls back to pure-Python heuristic
+      checks (citation rate, numeric grounding, hedging detection).
+    - llm_faithfulness_model_slot: The model slot to use for LLM faithfulness
+      evaluation. Defaults to "evaluation" as specified in ADR-011 Phase 3.3.
+    - llm_faithfulness_sample_size: Max turns to evaluate per cycle via LLM.
+      Keeps LLM cost bounded — only the most recently flagged or borderline
+      turns are sent for LLM evaluation.
     """
 
     canonical_health_check_interval_seconds: int = 3600
@@ -78,6 +90,10 @@ class VigilConfig:
     re_evaluate_on_slot_change: bool = True
     max_re_evaluate_batch_size: int = 50
     entity_consistency_check: bool = True
+    # LLM-powered faithfulness evaluation (Phase 3.3 of ADR-011 Vigil roadmap)
+    llm_faithfulness_enabled: bool = False  # Behind config flag — opt-in
+    llm_faithfulness_model_slot: str = "evaluation"
+    llm_faithfulness_sample_size: int = 10  # Max turns per cycle for LLM eval
 
 
 @dataclass

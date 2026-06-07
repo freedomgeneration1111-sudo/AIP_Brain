@@ -119,6 +119,12 @@ class Sexton:
             "total_estimated_tokens_saved": 0, # approximate tokens saved by batching
         }
 
+        # Sprint 5.23: Batch size auto-tuning state
+        # Tracks parse success/failure rate for recent batches
+        self._batch_parse_results: list[bool] = []  # True=success, False=failure
+        self._current_batch_size: int = self._config.graph_extraction_batch_size
+        self._auto_tune_adjustments: list[dict] = []  # History of auto-tune adjustments
+
         # Import existing Sexton for failure classification delegation
         self._failure_classifier: Any = None
         if trace_store is not None:
@@ -1038,9 +1044,10 @@ CRITICAL CONSTRAINTS:
         # Determine batch vs per-turn mode
         batch_enabled = (
             self._config.graph_extraction_batch_enabled
-            and self._config.graph_extraction_batch_size > 1
+            and self._current_batch_size > 1
         )
-        batch_size = self._config.graph_extraction_batch_size if batch_enabled else 1
+        # Use the (potentially auto-tuned) current batch size
+        batch_size = self._current_batch_size if batch_enabled else 1
 
         if batch_enabled:
             log.info(
@@ -1362,6 +1369,8 @@ Output format:
                         turn_ids=[t["turn_id"] for t in batch],
                         error=str(exc),
                     )
+                    # Track batch parse failure for auto-tuning (Sprint 5.23)
+                    self._batch_parse_results.append(False)
                     # Fallback: process each turn individually
                     for turn in batch:
                         ents, rels = await _extract_single_turn(turn)
@@ -1386,6 +1395,9 @@ Output format:
                     if tid and tid in batch_turn_ids:
                         has_turn_id_mapping = True
                         items_by_turn[tid].append(item)
+
+                # Track batch parse success for auto-tuning (Sprint 5.23)
+                self._batch_parse_results.append(True)
 
                 if not has_turn_id_mapping:
                     # Batch response didn't include turn_id — fall back to per-turn
@@ -1438,6 +1450,9 @@ Output format:
             batch_size=batch_size if batch_enabled else 1,
         )
 
+        # Sprint 5.23: Auto-tune batch size based on parse success rate
+        auto_tune_result = self._auto_tune_batch_size()
+
         await self._emit_event(
             event_type="sexton_graph_extraction_complete",
             artifact_id="system",
@@ -1457,7 +1472,108 @@ Output format:
             "batch_mode": batch_enabled,
             "batch_size": batch_size,
             "batch_telemetry": dict(self._batch_telemetry),
+            "auto_tune": auto_tune_result,
         }
+
+    # ------------------------------------------------------------------
+    # Batch size auto-tuning (Sprint 5.23)
+    # ------------------------------------------------------------------
+
+    def _auto_tune_batch_size(self) -> dict:
+        """Adjust batch_size based on parse success/failure rate.
+
+        Conservative auto-tuning logic:
+        - Computes failure rate over the last N batch results
+        - If failure rate > decrease_threshold (0.3): reduce batch_size by 1
+        - If failure rate < increase_threshold (0.1): increase batch_size by 1
+        - Always stays within [batch_size_min, batch_size_max] bounds
+        - Only runs when graph_extraction_batch_auto_tune_enabled is True
+
+        Returns a dict with the auto-tune decision and current state.
+        """
+        result = {
+            "enabled": self._config.graph_extraction_batch_auto_tune_enabled,
+            "previous_batch_size": self._current_batch_size,
+            "new_batch_size": self._current_batch_size,
+            "failure_rate": 0.0,
+            "action": "none",
+            "window_size": 0,
+        }
+
+        if not self._config.graph_extraction_batch_auto_tune_enabled:
+            return result
+
+        window = self._config.graph_extraction_auto_tune_window
+        recent = self._batch_parse_results[-window:] if self._batch_parse_results else []
+        result["window_size"] = len(recent)
+
+        if not recent:
+            return result
+
+        # Compute failure rate
+        failures = sum(1 for success in recent if not success)
+        failure_rate = failures / len(recent)
+        result["failure_rate"] = round(failure_rate, 3)
+
+        old_size = self._current_batch_size
+        min_size = self._config.graph_extraction_batch_size_min
+        max_size = self._config.graph_extraction_batch_size_max
+
+        if failure_rate > self._config.graph_extraction_auto_tune_decrease_threshold:
+            # High failure rate — decrease batch size
+            new_size = max(min_size, old_size - 1)
+            if new_size < old_size:
+                self._current_batch_size = new_size
+                result["new_batch_size"] = new_size
+                result["action"] = "decreased"
+                adjustment = {
+                    "action": "decreased",
+                    "from": old_size,
+                    "to": new_size,
+                    "failure_rate": round(failure_rate, 3),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                self._auto_tune_adjustments.append(adjustment)
+                log.info(
+                    "sexton_batch_auto_tune_decreased",
+                    from_size=old_size,
+                    to_size=new_size,
+                    failure_rate=round(failure_rate, 3),
+                )
+
+        elif failure_rate < self._config.graph_extraction_auto_tune_increase_threshold:
+            # Low failure rate — can increase batch size
+            new_size = min(max_size, old_size + 1)
+            if new_size > old_size:
+                self._current_batch_size = new_size
+                result["new_batch_size"] = new_size
+                result["action"] = "increased"
+                adjustment = {
+                    "action": "increased",
+                    "from": old_size,
+                    "to": new_size,
+                    "failure_rate": round(failure_rate, 3),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                self._auto_tune_adjustments.append(adjustment)
+                log.info(
+                    "sexton_batch_auto_tune_increased",
+                    from_size=old_size,
+                    to_size=new_size,
+                    failure_rate=round(failure_rate, 3),
+                )
+        else:
+            result["action"] = "no_change"
+
+        # Trim parse results history to prevent unbounded growth
+        if len(self._batch_parse_results) > 50:
+            self._batch_parse_results = self._batch_parse_results[-50:]
+
+        # Trim adjustment history
+        if len(self._auto_tune_adjustments) > 20:
+            self._auto_tune_adjustments = self._auto_tune_adjustments[-20:]
+
+        return result
 
     # ------------------------------------------------------------------
     # Failure classification — delegates to existing Sexton
