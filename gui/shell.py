@@ -1230,49 +1230,291 @@ def _build_cohort_panel(state: GuiState) -> None:
         ask_btn.on("click", lambda: asyncio.create_task(_ask()))
 
 
-# ── CHAT PANEL ────────────────────────────────────────────────────────
+# ── UNIFIED CHAT PANEL ──────────────────────────────────────────────────
 
 
-def _build_chat_panel(
-    mode: str,
+def _build_unified_chat_panel(
     state: GuiState,
     slots: list,
     opts: list[str],
 ) -> None:
-    """Build chat panel. Send uses direct OpenRouter in 0B; WebSocket wired in 0C."""
-    is_aug = mode == "augmented"
+    """Unified chat panel — augment toggle determines BARE vs AUGMENTED mode.
+
+    Per AIP_UNIFIED_CHAT_SPEC §Mode Logic:
+      - augment OFF + 1 model = BARE (direct LLM call)
+      - augment ON + 1 model = AUGMENTED (backend retrieval + synthesis)
+    COHORT mode (multi-model) is Phase 3.
+    """
+    # Track augment state (toggle drives dispatch path)
+    augment_on: list[bool] = [state.current_mode == "augmented"]
+
+    # Chat mode picker (per AIP_UNIFIED_CHAT_SPEC §Chat Mode Picker)
+    _CHAT_MODES = ["Engineering", "Research", "Ideation", "Teaching"]
+    _MODE_MODIFIERS: dict[str, str] = {
+        "Engineering": (
+            "You are operating in Engineering/Synthesis mode.\n"
+            "Respond with precision over coverage. Flag assumptions explicitly.\n"
+            "When uncertain, say so and quantify the uncertainty if possible.\n"
+            "Suggest validation steps for claims that require empirical confirmation.\n"
+            "Do not flatter. Do not pad. Get to the substance."
+        ),
+        "Research": (
+            "You are operating in Research mode.\n"
+            "Prioritize source citation and epistemic traceability.\n"
+            "Distinguish: what is established, what is contested, what is speculative.\n"
+            "Report conflicting evidence when it exists. Do not resolve genuine uncertainty artificially.\n"
+            "Prefer precise claims over broad ones."
+        ),
+        "Ideation": (
+            "You are operating in Ideation mode.\n"
+            "Expand possibilities before narrowing. Defer judgment — generate first, evaluate later.\n"
+            "Surface unexpected connections across domains. Speculate freely but label speculation.\n"
+            "Volume of ideas matters more than precision here. Follow threads wherever they lead."
+        ),
+        "Teaching": (
+            "You are operating in Teaching mode.\n"
+            "The DEFINER is preparing material for others (students, community members, collaborators).\n"
+            "Structure for clarity and progressive disclosure.\n"
+            "Use concrete examples. Avoid jargon unless it will be explained.\n"
+            "Flag where simplification sacrifices precision."
+        ),
+    }
+    # Auto-detection keywords (per spec)
+    _MODE_KEYWORDS: dict[str, list[str]] = {
+        "Ideation": ["brainstorm", "ideate", "blue sky", "what if", "imagine", "riff on"],
+        "Research": ["what does the literature say", "find sources", "what's the evidence", "find evidence"],
+        "Teaching": ["explain for", "simplify", "how would i teach", "help me explain"],
+    }
+    current_chat_mode: list[str] = ["Engineering"]
 
     with (
         ui.row()
         .classes("w-full items-center px-4 py-2 gap-2")
         .style(f"background:{C_SURFACE};border-bottom:.5px solid {C_INK40};")
     ):
-        ui.label("AUGMENTED" if is_aug else "CHAT").style(
-            f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_CREAM};"
+        # Mode status chip
+        mode_chip = ui.label("BARE").style(
+            f"font-size:9px;font-weight:700;letter-spacing:1px;"
+            f"padding:2px 8px;border-radius:3px;"
+            f"background:{C_INK40};color:{C_CREAM};"
         )
-        if is_aug:
-            ui.label("INGESTED DATA").style(
-                f"font-size:9px;background:{C_AMBER};color:{C_GROUND};"
-                "padding:1px 6px;border-radius:3px;font-weight:700;"
+        # Augment toggle
+        ui.switch(
+            value=augment_on[0],
+            on_change=lambda e: _on_augment_toggle(e.value),
+        ).props("dense").style("color:{C_AMBER};")
+        ui.label("AUGMENT").style(
+            f"font-size:10px;color:{C_MUTED};font-weight:500;letter-spacing:0.5px;"
+        )
+        # Separator
+        ui.label("·").style(f"color:{C_INK60};font-size:12px;")
+        # Chat mode picker
+        mode_select = (
+            ui.select(
+                _CHAT_MODES,
+                value=current_chat_mode[0],
+                on_change=lambda e: _on_mode_change(e.value),
             )
+            .props("dense")
+            .classes("min-w-[130px]")
+        )
         ui.space()
+        # Model selector: populated from enabled_models (library) when available,
+        # falls back to static slot-based options.
         cur = get_role_model("synthesis")
         if not cur or cur not in opts:
             cur = opts[0] if opts else ""
-        ui.select(opts, value=cur, on_change=lambda e: on_chat_model_changed(e.value)).props("dense").classes(
-            "min-w-[200px]"
+        model_select = (
+            ui.select(opts, value=cur, on_change=lambda e: on_chat_model_changed(e.value))
+            .props("dense")
+            .classes("min-w-[200px]")
         )
 
-    msgs = (
-        ui.column().classes("w-full px-4 py-2").style(f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:320px;")
+    async def _load_model_library() -> None:
+        """Load models from /api/v1/models/library and update selector."""
+        try:
+            models = await state.api_client.list_model_library(enabled_only=True)
+            if models:
+                # Build {model_id: display_label} mapping
+                lib_opts = {
+                    m["model_id"]: f"{m.get('display_name', m['model_id'])}  [{m.get('provider', '?')}]"
+                    for m in models
+                }
+                # Merge with existing opts (library takes priority)
+                combined = dict.fromkeys(list(lib_opts.keys()) + opts)
+                model_select.options = list(combined.keys())
+                # Use model_id as value; prefer current selection if still valid
+                if cur not in model_select.options and model_select.options:
+                    model_select.value = model_select.options[0]
+                # Store library for display names
+                state._model_library = models  # type: ignore[attr-defined]
+        except Exception as exc:
+            log.warning("model_library_load_failed: %s", exc)
+
+    def _on_mode_change(mode: str) -> None:
+        current_chat_mode[0] = mode
+
+    def _detect_mode(text: str) -> str | None:
+        """Scan text for auto-detection keywords. Returns mode name or None."""
+        lower = text.lower()
+        for mode_name, keywords in _MODE_KEYWORDS.items():
+            for kw in keywords:
+                if kw in lower:
+                    return mode_name
+        return None
+
+    def _on_augment_toggle(val: bool) -> None:
+        augment_on[0] = val
+        if val:
+            mode_chip.text = "AUGMENTED"
+            mode_chip.style(
+                f"font-size:9px;font-weight:700;letter-spacing:1px;"
+                f"padding:2px 8px;border-radius:3px;"
+                f"background:{C_AMBER};color:{C_GROUND};"
+            )
+            state.current_mode = "augmented"
+        else:
+            mode_chip.text = "BARE"
+            mode_chip.style(
+                f"font-size:9px;font-weight:700;letter-spacing:1px;"
+                f"padding:2px 8px;border-radius:3px;"
+                f"background:{C_INK40};color:{C_CREAM};"
+            )
+            state.current_mode = "normal"
+        state.reset_session()
+
+    # Beast pane state
+    beast_visible: list[bool] = [True]
+
+    # Main content area: flex row with conversation + Beast pane
+    with ui.row().classes("w-full").style(f"flex:1;min-height:0;"):
+
+        # ── LEFT: Conversation thread ──
+        msgs = (
+            ui.column().classes("w-full px-4 py-2").style(
+                f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:320px;"
+            )
+        )
+        with msgs:
+            ok = state.backend_reachable and state.api_client.has_openrouter_api_key()
+            ui.label(
+                ("Connected" if state.backend_reachable else "Offline")
+                + f" · {len(slots)} slot(s)"
+                + (" · API key set" if state.api_client.has_openrouter_api_key() else " · API key missing")
+            ).style(f"color:{C_OK_FG if ok else C_WARN_FG};font-size:11px;padding:8px;")
+
+        # ── RIGHT: Beast pane (collapsible sidebar) ──
+        beast_col = ui.column().style(
+            f"width:320px;min-width:0;background:{C_SURFACE};"
+            f"border-left:.5px solid {C_INK40};overflow-y:auto;padding:0;"
+        )
+        with beast_col:
+            # Beast pane header
+            with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(
+                f"border-bottom:.5px solid {C_INK40};background:{C_RAISED};"
+            ):
+                ui.label("BEAST").style(
+                    f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};"
+                )
+                ui.space()
+                # Pop-out stub (Phase 4)
+                ui.button(icon="open_in_new").props("dense flat").style(
+                    f"color:{C_INK60};font-size:10px;"
+                ).tooltip("Pop-out (Phase 4)")
+                # Collapse button
+                ui.button(icon="close", on_click=lambda: _toggle_beast(False)).props(
+                    "dense flat"
+                ).style(f"color:{C_INK60};font-size:10px;")
+
+            beast_content = ui.column().classes("w-full px-3 py-2").style("gap:4px;")
+
+    # Toggle button (shown when Beast pane is collapsed)
+    beast_toggle_btn = ui.button(
+        icon="visibility",
+        on_click=lambda: _toggle_beast(True),
+    ).props("dense flat").style(
+        f"color:{C_AMBER};position:absolute;right:12px;top:60px;z-index:10;"
     )
-    with msgs:
-        ok = state.backend_reachable and state.api_client.has_openrouter_api_key()
-        ui.label(
-            ("Connected" if state.backend_reachable else "Offline")
-            + f" · {len(slots)} slot(s)"
-            + (" · API key set" if state.api_client.has_openrouter_api_key() else " · API key missing")
-        ).style(f"color:{C_OK_FG if ok else C_WARN_FG};font-size:11px;padding:8px;")
+    beast_toggle_btn.set_visibility(False)
+
+    def _toggle_beast(show: bool) -> None:
+        beast_visible[0] = show
+        if show:
+            beast_col.style(
+                f"width:320px;min-width:0;background:{C_SURFACE};"
+                f"border-left:.5px solid {C_INK40};overflow-y:auto;padding:0;"
+            )
+            beast_toggle_btn.set_visibility(False)
+        else:
+            beast_col.style("width:0;min-width:0;padding:0;overflow:hidden;border:none;")
+            beast_toggle_btn.set_visibility(True)
+
+    async def _beast_scan(query: str) -> None:
+        """Fire Beast scan and render results in the pane (AIP-G-02)."""
+        with beast_content:
+            ui.label("Scanning corpus...").style(
+                f"color:{C_MUTED};font-size:10px;font-family:{F_MONO};"
+            )
+        scan = await state.api_client.beast_scan(query=query)
+        beast_content.clear()
+        with beast_content:
+            if scan.get("error"):
+                ui.label("corpus unavailable").style(
+                    f"color:{C_ERR_FG};font-size:10px;font-family:{F_MONO};"
+                )
+                return
+            domain = scan.get("domain")
+            confidence = scan.get("confidence", 0)
+            if domain:
+                ui.label(f"Domain: {domain}").style(
+                    f"font-size:11px;font-weight:600;color:{C_AMBER};"
+                )
+                ui.label(f"Confidence: {confidence}").style(
+                    f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};"
+                )
+            # Top turns
+            turns = scan.get("top_turns", [])
+            if turns:
+                ui.label("TOP TURNS").style(
+                    f"font-size:9px;font-weight:700;letter-spacing:1px;"
+                    f"color:{C_MUTED};margin-top:4px;"
+                )
+                for t in turns[:5]:
+                    with ui.row().classes("w-full").style("gap:2px;"):
+                        ui.label(f"· [{t.get('domain', '?')}]").style(
+                            f"font-size:9px;color:{C_AMBER};font-family:{F_MONO};"
+                        )
+                    snippet = t.get("snippet", "")[:80]
+                    if snippet:
+                        ui.label(snippet + "...").style(
+                            f"font-size:10px;color:{C_MUTED};line-height:1.3;"
+                        )
+            # Domain neighbors
+            neighbors = scan.get("neighbors", [])
+            if neighbors:
+                ui.label("DOMAIN NEIGHBORS").style(
+                    f"font-size:9px;font-weight:700;letter-spacing:1px;"
+                    f"color:{C_MUTED};margin-top:4px;"
+                )
+                for n in neighbors[:5]:
+                    ui.label(
+                        f"{n.get('source')} → {n.get('target')}"
+                    ).style(
+                        f"font-size:10px;color:{C_CREAM};font-family:{F_MONO};"
+                    )
+            # Wiki coverage
+            wiki = scan.get("wiki_coverage")
+            if wiki:
+                ui.label("WIKI").style(
+                    f"font-size:9px;font-weight:700;letter-spacing:1px;"
+                    f"color:{C_MUTED};margin-top:4px;"
+                )
+                status = wiki.get("status", "?")
+                wc = wiki.get("word_count", 0)
+                ui.label(f"{domain}: {status} ({wc}w)").style(
+                    f"font-size:10px;"
+                    f"color:{C_OK_FG if status == 'APPROVED' else C_WARN_FG};"
+                )
 
     with (
         ui.row()
@@ -1308,12 +1550,23 @@ def _build_chat_panel(
         prompt = fld.value.strip()
         if not prompt:
             return
+
+        # Auto-detect chat mode from keywords (per spec §Chat Mode Picker)
+        detected = _detect_mode(prompt)
+        if detected and detected != current_chat_mode[0]:
+            current_chat_mode[0] = detected
+            mode_select.value = detected
+            ui.notify(f"Switched to {detected} mode", color="info", timeout=3000)
+
+        # Get the mode modifier text for the current mode
+        mode_modifier = _MODE_MODIFIERS.get(current_chat_mode[0], "")
+
         _msg("user", prompt)
         fld.value = ""
         with msgs:
             think = ui.label("Thinking...").style(f"color:{C_MUTED};font-size:12px;")
 
-        if is_aug:
+        if augment_on[0]:
             # ── AUGMENTED MODE: POST to /api/v1/ask via backend ──
             # Check that we have a valid project before asking
             if not state.current_project:
@@ -1330,6 +1583,7 @@ def _build_chat_panel(
                     query=prompt,
                     project_name=state.current_project,
                     model_slot="synthesis",  # Always pass slot name, not model ID
+                    system_prompt_modifier=mode_modifier,
                 )
                 think.delete()
                 status = r.get("status", "")
@@ -1429,6 +1683,9 @@ def _build_chat_panel(
                     _msg("assistant", r.get("content", ""), model=r.get("model", model), lat=r.get("latency_ms"))
                     if r.get("tokens_used", 0):
                         _sys(f"tokens: {r['tokens_used']}")
+                    # Fire Beast corpus scan (non-blocking, AFTER response)
+                    if beast_visible[0]:
+                        asyncio.create_task(_beast_scan(prompt))
             except Exception as exc:
                 think.delete()
                 _sys(f"failed: {exc}")
@@ -1449,6 +1706,9 @@ def _build_chat_panel(
 
     fld.on("keydown.enter", lambda: asyncio.create_task(_send_ctx()))
     btn.on("click", lambda: asyncio.create_task(_send_ctx()))
+
+    # Load model library in background (non-blocking)
+    asyncio.create_task(_load_model_library())
 
 
 # ── SHELL PAGE ────────────────────────────────────────────────────────
@@ -1573,10 +1833,7 @@ async def main_page() -> None:
     asyncio.create_task(_deferred_backend_load())
 
     def _on_tab(name: str) -> None:
-        if name == "augmented" and state.current_mode != "augmented":
-            state.current_mode = "augmented"
-            state.reset_session()
-        elif name == "chat" and state.current_mode != "normal":
+        if name == "chat" and state.current_mode != "normal":
             state.current_mode = "normal"
             state.reset_session()
 
@@ -1598,7 +1855,6 @@ async def main_page() -> None:
             )
             with tabs:
                 ui.tab("chat", label="CHAT")
-                ui.tab("augmented", label="AUGMENTED")
                 ui.tab("cohort", label="COHORT")
                 ui.tab("review", label="REVIEW")
                 ui.tab("wiki", label="WIKI")
@@ -1617,9 +1873,7 @@ async def main_page() -> None:
     # ── CONTENT PANELS ──────────────────────────────────────────────
     with ui.tab_panels(tabs, value="chat").classes("w-full").style(f"flex:1;background:{C_GROUND};min-height:0;"):
         with ui.tab_panel("chat"):
-            _build_chat_panel("normal", state, slots, opts)
-        with ui.tab_panel("augmented"):
-            _build_chat_panel("augmented", state, slots, opts)
+            _build_unified_chat_panel(state, slots, opts)
         with ui.tab_panel("cohort"):
             _build_cohort_panel(state)
         with ui.tab_panel("review"):

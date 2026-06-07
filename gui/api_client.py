@@ -124,6 +124,46 @@ class AipApiClient:
         data = resp.json()
         return data.get("slots", [])
 
+    async def list_model_library(self, enabled_only: bool = True) -> list[dict[str, Any]]:
+        """Fetch model library from GET /api/v1/models/library.
+
+        Returns a list of model dicts from the enabled_models table.
+        If enabled_only=True, filters to models where enabled=1.
+        Each dict has: model_id, display_name, provider, cost_input/output_per_million,
+        context_length, supports_vision, supports_tools, enabled, etc.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(f"{self.base_url}/api/v1/models/library", timeout=5.0)
+            resp.raise_for_status()
+            data = resp.json()
+            items = data.get("items", [])
+            if enabled_only:
+                return [m for m in items if m.get("enabled") == 1]
+            return items
+        except Exception as exc:
+            log.warning("model_library_fetch_failed: %s", exc)
+            return []
+
+    async def beast_scan(self, query: str, limit: int = 5) -> dict[str, Any]:
+        """Fire Beast corpus scan via GET /api/v1/beast/scan.
+
+        Per AIP_UNIFIED_CHAT_SPEC §Beast Pane: non-blocking, fires AFTER
+        the chat response in bare mode. Returns scan results or error dict.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/beast/scan",
+                params={"query": query, "limit": limit},
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("beast_scan_failed: %s", exc)
+            return {"error": str(exc)}
+
     # ------------------------------------------------------------------
     # Session Management
     # ------------------------------------------------------------------
@@ -545,6 +585,7 @@ class AipApiClient:
         source: str = "all",
         max_sources: int = 10,
         model_slot: str = "synthesis",
+        system_prompt_modifier: str = "",
     ) -> dict[str, Any]:
         """Submit a knowledge-augmented query via POST /api/v1/ask.
 
@@ -553,6 +594,9 @@ class AipApiClient:
         as required fields; this method maps the GUI's ``query`` param
         to the backend's ``question`` field and defaults project_name
         to "default" so callers don't need to know the schema.
+
+        The system_prompt_modifier is prepended to the synthesis system
+        prompt by the backend (per AIP_UNIFIED_CHAT_SPEC §Chat Mode Picker).
 
         Returns the raw AskResult dict: status, answer, sources (list of
         {source_id, source_type, title, score, content_snippet, domain,
@@ -566,6 +610,8 @@ class AipApiClient:
             "max_sources": max_sources,
             "model_slot": model_slot,
         }
+        if system_prompt_modifier:
+            payload["system_prompt_modifier"] = system_prompt_modifier
         resp = await client.post(
             f"{self.base_url}/api/v1/ask",
             json=payload,

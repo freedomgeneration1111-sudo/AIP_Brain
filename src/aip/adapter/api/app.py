@@ -49,6 +49,7 @@ from aip.adapter.api.routes import (
     admin,
     artifacts,
     ask,
+    beast_scan,
     chat,
     corpus,
     ecs,
@@ -59,7 +60,9 @@ from aip.adapter.api.routes import (
     knowledge,
     memory,
     models,
+    models_library,
     projects,
+    retrieval_dashboard,
     review,
     sessions,
     sources,
@@ -1041,9 +1044,15 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(memory.router, prefix="/api/v1", tags=["memory"])
     app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
     app.include_router(models.router, prefix="/api/v1", tags=["models"])
+    app.include_router(
+        models_library.router, prefix="/api/v1", tags=["models_library"]
+    )
     app.include_router(actors.router, prefix="/api/v1", tags=["actors"])
     app.include_router(ingest.router, prefix="/api/v1", tags=["ingest"])
     app.include_router(ask.router, prefix="/api/v1", tags=["ask"])
+    app.include_router(
+        beast_scan.router, prefix="/api/v1", tags=["beast"]
+    )
     app.include_router(knowledge.router, prefix="/api/v1", tags=["knowledge"])
     app.include_router(wiki.router, prefix="/api/v1", tags=["wiki"])
     app.include_router(ecs.router, prefix="/api/v1", tags=["ecs"])
@@ -1056,6 +1065,8 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(collaborators.router, prefix="/api/v1", tags=["collaborators"])
     app.include_router(plugins.router, prefix="/api/v1", tags=["plugins"])
     app.include_router(performance.router, prefix="/api/v1", tags=["performance"])
+    # Sprint 5.7: Retrieval dashboard — lightweight observability
+    app.include_router(retrieval_dashboard.router, tags=["retrieval"])
 
     # Web UI static (HTMX dashboard)
     import pathlib

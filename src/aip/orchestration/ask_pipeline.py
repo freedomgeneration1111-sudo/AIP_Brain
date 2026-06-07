@@ -2,13 +2,22 @@
 
 Orchestrates the ask work loop:
 1. Resolve project by name
-2. Search project memory using LexicalStore (FTS5) and VectorStore (when available)
-3. Filter sources by type (ingested conversations, project artifacts, or all)
-4. Assemble an inspectable context packet
-5. Dispatch to model through the existing ModelProvider/ModelSlotResolver
-6. Generate a source-grounded answer with provenance references
-7. Optionally save the answer as a draft artifact with ECS lifecycle
-8. Record the full session trace in EventStore
+2. Search project memory using multi-channel RetrievalOrchestrator
+   (FTS + Vector + Graph + Wiki + Procedural) with parallel dispatch
+3. Assemble context via SmartContextPacker (budget-aware, extractive summary)
+4. Dispatch to model through the existing ModelProvider/ModelSlotResolver
+5. Generate a source-grounded answer with provenance references
+6. Optionally save the answer as a draft artifact with ECS lifecycle
+7. Record the full session trace (including RetrievalTrace) in EventStore
+
+Sprint 5.6: Multi-channel retrieval, RRF fusion, quality gating, retry on
+NEEDS_MORE_CONTEXT, SmartContextPacker with extractive summarization.
+
+Sprint 5.7: Parallel dispatch (``asyncio.gather``), orchestrator instance
+reuse via ``OrchestratorCache``, deprecated ``_assemble_context()`` in
+favour of ``SmartContextPacker``.  Legacy ``_search_sources()`` is preserved
+for backward compatibility but the primary path is now
+``_search_sources_with_trace()``.
 
 Uses existing AIP primitives — no parallel storage system.
 The primary search backend is LexicalStore (persistent FTS5) to ensure
@@ -23,7 +32,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 
 from aip.foundation.protocols import (
     ArtifactStore,
@@ -36,9 +45,23 @@ from aip.foundation.protocols import (
     VectorStore,
 )
 from aip.foundation.schemas.ask import AskResult, AskSource, SourceReference
-from aip.foundation.schemas.retrieval import Chunk
+from aip.foundation.schemas.retrieval import Chunk, RetrievalHit, RetrievalTrace
+from aip.orchestration.retrieval_orchestrator import (
+    OrchestratorCache,
+    OrchestratorConfig,
+    RetrievalOrchestrator,
+    get_orchestrator_cache,
+)
+from aip.orchestration.smart_context_packer import (
+    PackedContext,
+    PackerConfig,
+    SmartContextPacker,
+)
 
 logger = logging.getLogger(__name__)
+
+# Module-level cache singleton (Sprint 5.7)
+_orchestrator_cache: OrchestratorCache = get_orchestrator_cache()
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +126,15 @@ def _chunk_to_source_ref(chunk: Chunk) -> SourceReference:
 
 def _assemble_context(sources: list[SourceReference], max_sources: int = 10) -> str:
     """Build a context string from source references for model input.
+
+    .. deprecated:: Sprint 5.7
+        Use ``SmartContextPacker.pack()`` instead.  This function operates
+        on the legacy ``SourceReference`` type and truncates content
+        unconditionally at 200 chars.  The new packer uses
+        ``RetrievalHit`` with full content and extractive summarization.
+
+        This function is retained for backward compatibility and will be
+        removed in a future sprint.
 
     Each source is formatted with its ID and content snippet so the model
     can reference specific sources in its answer. Sources are truncated
@@ -358,6 +390,267 @@ async def _search_sources(
 
 
 # ---------------------------------------------------------------------------
+# Multi-channel retrieval via RetrievalOrchestrator (Sprint 5.6 / 5.7)
+# ---------------------------------------------------------------------------
+
+
+def _register_retriever_channels(
+    orchestrator: RetrievalOrchestrator,
+    stores: AskStores,
+    config: dict | None = None,
+) -> None:
+    """Register all available retriever channels on an orchestrator.
+
+    Only registers channels for stores that are actually available.
+    This is called once per orchestrator instance (via OrchestratorCache)
+    rather than on every ask call.
+
+    Args:
+        orchestrator: The orchestrator to register channels on.
+        stores: The ask stores containing the search backends.
+        config: Optional config dict for channel-specific settings.
+    """
+    # FTS channel — always available (LexicalStore)
+    if not orchestrator.is_registered("fts"):
+        async def _fts_retriever(query: str) -> list[RetrievalHit]:
+            fts_query = _sanitize_fts_query(query)
+            try:
+                chunks = await stores.lexical_store.search(
+                    fts_query, domain=None, limit=30,
+                )
+            except Exception as exc:
+                logger.warning("FTS retriever failed: %s", exc)
+                return []
+            hits = []
+            for i, chunk in enumerate(chunks):
+                hits.append(RetrievalHit(
+                    id=chunk.id,
+                    content=chunk.content or "",
+                    score=chunk.score,
+                    source_channel="fts",
+                    domain=chunk.domain or "",
+                    metadata=chunk.metadata or {},
+                    rank_in_channel=i + 1,
+                ))
+            return hits
+        orchestrator.register_channel("fts", _fts_retriever)
+
+    # Vector channel — when embedding provider + vector store available
+    has_vector_deps = (
+        stores.vector_store is not None and stores.embedding_provider is not None
+    )
+    if not orchestrator.is_registered("vector") and has_vector_deps:
+        _vec_store = stores.vector_store
+        _embed_prov = stores.embedding_provider
+
+        async def _vector_retriever(query: str) -> list[RetrievalHit]:
+            try:
+                query_vec = await _embed_prov.embed(query)
+                if not query_vec or len(query_vec) == 0:
+                    return []
+                chunks = await _vec_store.retrieve(query_vec, domain=None, top_k=20)
+            except Exception as exc:
+                logger.debug("Vector retriever failed (non-fatal): %s", exc)
+                return []
+            hits = []
+            for i, chunk in enumerate(chunks):
+                hits.append(RetrievalHit(
+                    id=chunk.id,
+                    content=chunk.content or "",
+                    score=chunk.score,
+                    source_channel="vector",
+                    domain=chunk.domain or "",
+                    metadata=chunk.metadata or {},
+                    rank_in_channel=i + 1,
+                ))
+            return hits
+        orchestrator.register_channel("vector", _vector_retriever)
+
+    # Corpus (CorpusTurnStore) channel — when available
+    if not orchestrator.is_registered("corpus") and stores.corpus_turn_store is not None:
+        _cts = stores.corpus_turn_store
+
+        async def _corpus_retriever(query: str) -> list[RetrievalHit]:
+            fts_query = _sanitize_fts_query(query)
+            try:
+                corpus_turns = await _cts.search(
+                    query=fts_query,
+                    primary_domain=None,
+                    limit=30,
+                )
+            except Exception as exc:
+                logger.warning("Corpus retriever failed: %s", exc)
+                return []
+            hits = []
+            for i, turn in enumerate(corpus_turns):
+                position_score = 1.0 - (i / max(len(corpus_turns), 1)) * 0.5
+                importance_boost = float(turn.importance or 0.0) * 0.3
+                hits.append(RetrievalHit(
+                    id=turn.turn_id,
+                    content=turn.searchable_text or "",
+                    score=position_score + importance_boost,
+                    source_channel="corpus",
+                    domain=turn.primary_domain or "",
+                    metadata={
+                        "type": "conversation_chunk",
+                        "conversation_id": turn.conversation_id,
+                        "source_format": "corpus_turn",
+                        "domain": turn.primary_domain or "",
+                        "importance": float(turn.importance or 0.0),
+                    },
+                    rank_in_channel=i + 1,
+                ))
+            return hits
+        orchestrator.register_channel("corpus", _corpus_retriever)
+
+
+def _retrieval_hit_to_source_ref(hit: RetrievalHit) -> SourceReference:
+    """Convert a RetrievalHit to a SourceReference for backward compatibility.
+
+    The ask() function still returns SourceReference in AskResult.sources
+    for backward compatibility.  This conversion preserves provenance.
+    """
+    meta = hit.metadata or {}
+    chunk_type = meta.get("type", "unknown")
+    conv_id = meta.get("conversation_id", "")
+    domain = hit.domain or meta.get("domain", "")
+
+    if chunk_type == "conversation_chunk" and conv_id:
+        title = f"conversation:{conv_id}"
+    else:
+        title = hit.id
+
+    content = hit.content or ""
+    snippet = content[:200].replace("\n", " ") if content else ""
+
+    return SourceReference(
+        source_id=hit.id,
+        source_type=chunk_type,
+        title=title,
+        score=hit.rrf_score or hit.score,
+        content_snippet=snippet,
+        domain=domain,
+        metadata={
+            "conversation_id": conv_id,
+            "source_format": meta.get("source_format", ""),
+            "source_channel": hit.source_channel,
+            "rrf_score": hit.rrf_score,
+        },
+    )
+
+
+async def _search_sources_with_trace(
+    query: str,
+    stores: AskStores,
+    source_filter: AskSource = "all",
+    max_sources: int = 10,
+    session_id: str = "",
+    config: dict | None = None,
+    enable_fts: bool = True,
+    enable_vector: bool = True,
+    enable_graph: bool = False,
+    enable_wiki: bool = False,
+    enable_procedural: bool = False,
+) -> tuple[list[SourceReference], RetrievalTrace | None, PackedContext | None]:
+    """Search for sources using the multi-channel RetrievalOrchestrator.
+
+    This is the **primary** retrieval path as of Sprint 5.7.  It uses
+    ``RetrievalOrchestrator`` with parallel dispatch and RRF fusion,
+    followed by ``SmartContextPacker`` for budget-aware context assembly.
+
+    The orchestrator instance is cached via ``OrchestratorCache`` so that
+    retriever channels are only registered once (not on every call).
+
+    Args:
+        query: The user's question.
+        stores: The ask stores containing search backends.
+        source_filter: Filter by source type ("all" | "ingested" | "artifacts").
+        max_sources: Maximum number of sources to return.
+        session_id: Correlation ID for tracing.
+        config: Optional config dict for channel-specific settings.
+        enable_fts: Whether to dispatch the FTS channel.
+        enable_vector: Whether to dispatch the vector channel.
+        enable_graph: Whether to dispatch the graph channel.
+        enable_wiki: Whether to dispatch the wiki channel.
+        enable_procedural: Whether to dispatch the procedural channel.
+
+    Returns:
+        Tuple of (source_references, retrieval_trace, packed_context).
+        The retrieval_trace may be None if the orchestrator path fails
+        (in which case this function falls back to the legacy path).
+    """
+    # Build a fingerprint of the store identities for cache keying
+    store_key = id(stores.lexical_store) ^ id(stores.vector_store) ^ id(stores.corpus_turn_store)
+
+    # Get or create a cached orchestrator
+    orchestrator = _orchestrator_cache.get_or_create(
+        store_key=store_key,
+        register_fn=lambda orch: _register_retriever_channels(orch, stores, config),
+    )
+
+    # Build per-call config (supports per-call enable_* toggles)
+    orch_config = OrchestratorConfig(
+        enable_fts=enable_fts,
+        enable_vector=enable_vector and stores.vector_store is not None and stores.embedding_provider is not None,
+        enable_graph=enable_graph,
+        enable_wiki=enable_wiki,
+        enable_procedural=enable_procedural,
+        max_hits=max_sources * 3,
+    )
+
+    try:
+        hits, trace = await orchestrator.retrieve(
+            query=query,
+            config=orch_config,
+            session_id=session_id,
+        )
+    except Exception as exc:
+        logger.warning("Orchestrator retrieval failed, falling back to legacy: %s", exc)
+        # Fallback to legacy path — this should never happen in production
+        # but provides a safety net during migration.
+        sources = await _search_sources(
+            query=query,
+            project_domain=None,
+            source_filter=source_filter,
+            lexical_store=stores.lexical_store,
+            vector_store=stores.vector_store,
+            embedding_provider=stores.embedding_provider,
+            max_sources=max_sources,
+            config=config,
+            corpus_turn_store=stores.corpus_turn_store,
+        )
+        return sources, None, None
+
+    # Filter by source type
+    if source_filter != "all":
+        filtered_hits = []
+        for hit in hits:
+            hit_type = hit.metadata.get("type", "")
+            if source_filter == "ingested" and hit_type == "conversation_chunk":
+                filtered_hits.append(hit)
+            elif source_filter == "artifacts" and hit_type != "conversation_chunk":
+                filtered_hits.append(hit)
+        hits = filtered_hits
+
+    # Limit to max_sources
+    hits = hits[:max_sources]
+
+    # Pack context via SmartContextPacker (primary path as of Sprint 5.7)
+    packer_config = PackerConfig(
+        max_context_tokens=4000,
+        max_hits=max_sources,
+        include_metadata=True,
+    )
+    packer = SmartContextPacker(config=packer_config)
+    packed = packer.pack(hits, query=query)
+
+    # Convert to SourceReference for backward compatibility
+    sources = [_retrieval_hit_to_source_ref(h) for h in hits]
+
+    return sources, trace, packed
+
+
+# ---------------------------------------------------------------------------
 # Store creation (same persistent stores as ingestion)
 # ---------------------------------------------------------------------------
 
@@ -525,6 +818,7 @@ async def ask(
     save_artifact: bool = False,
     model_slot: str = "synthesis",
     session_id: str | None = None,
+    system_prompt_modifier: str = "",
 ) -> AskResult:
     """Execute a source-grounded ask query against the AIP knowledge substrate.
 
@@ -557,20 +851,19 @@ async def ask(
         project_id = project.get("project_id", project_name)
         project_domain = project.get("domain") or project_name
 
-    # Step 2: Search for relevant sources
-    # Corpus is project-agnostic: we pass corpus_turn_store and search all
-    # turns regardless of project domain. The project_domain param is kept
-    # for future use but does not limit retrieval.
+    # Step 2: Search for relevant sources (primary path: orchestrator + packer)
+    # Sprint 5.7: _search_sources_with_trace() is the primary path.
+    # It uses RetrievalOrchestrator with parallel dispatch and RRF fusion,
+    # then SmartContextPacker for budget-aware context assembly.
+    retrieval_trace: RetrievalTrace | None = None
+    packed_context: PackedContext | None = None
     try:
-        sources = await _search_sources(
+        sources, retrieval_trace, packed_context = await _search_sources_with_trace(
             query=question,
-            project_domain=None,  # project-agnostic: search ALL corpus turns
+            stores=stores,
             source_filter=source,
-            lexical_store=stores.lexical_store,
-            vector_store=stores.vector_store,
-            embedding_provider=stores.embedding_provider,
             max_sources=max_sources,
-            corpus_turn_store=stores.corpus_turn_store,
+            session_id=session_id,
         )
     except Exception as exc:
         logger.error("Source search failed: %s", exc)
@@ -618,8 +911,12 @@ async def ask(
             model_slot=model_slot,
         )
 
-    # Step 4: Assemble context
-    context = _assemble_context(sources, max_sources)
+    # Step 4: Assemble context (primary: SmartContextPacker; legacy fallback)
+    if packed_context is not None:
+        context = packed_context.context_text
+    else:
+        # Fallback: legacy _assemble_context (deprecated in Sprint 5.7)
+        context = _assemble_context(sources, max_sources)
 
     # Step 5: Dispatch to model
     model_provider_name = ""
@@ -628,16 +925,23 @@ async def ask(
     model_errors: list[str] = []
 
     try:
+        base_system = (
+            "You are AIP, a source-grounded knowledge assistant. "
+            "Answer the user's question based ONLY on the provided sources. "
+            "Cite sources using [source: <source_id>] notation. "
+            "If the sources do not contain enough information, say so explicitly. "
+            "Do not fabricate information not present in the sources."
+        )
+        # Prepend chat mode modifier if provided (per AIP_UNIFIED_CHAT_SPEC)
+        system_content = (
+            f"{system_prompt_modifier}\n\n---\n\n{base_system}"
+            if system_prompt_modifier
+            else base_system
+        )
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "You are AIP, a source-grounded knowledge assistant. "
-                    "Answer the user's question based ONLY on the provided sources. "
-                    "Cite sources using [source: <source_id>] notation. "
-                    "If the sources do not contain enough information, say so explicitly. "
-                    "Do not fabricate information not present in the sources."
-                ),
+                "content": system_content,
             },
             {
                 "role": "user",
@@ -788,7 +1092,7 @@ async def ask(
                 errors=artifact_errors,
             )
 
-    # Step 9: Record successful trace
+    # Step 9: Record successful trace (includes retrieval trace data)
     await _record_trace(
         stores=stores,
         session_id=session_id,
@@ -801,6 +1105,7 @@ async def ask(
         artifact_id=artifact_id,
         errors=artifact_errors,
         status="OK",
+        retrieval_trace=retrieval_trace,
     )
 
     return AskResult(
@@ -835,15 +1140,33 @@ async def _record_trace(
     artifact_id: str,
     errors: list[str],
     status: str,
+    retrieval_trace: RetrievalTrace | None = None,
 ) -> None:
     """Record the full ask session trace in EventStore.
 
     This ensures that every ask query (successful or failed) leaves
     an audit trail: what was asked, what context was used, what answer
     was generated, and what happened.
+
+    Sprint 5.7: Also records RetrievalTrace data (channel timing, RRF
+    fusion stats, quality-gate verdict) when available.
     """
     if stores.event_store is None:
         return
+
+    # Build retrieval trace metadata
+    retrieval_meta: dict[str, Any] = {}
+    if retrieval_trace is not None:
+        retrieval_meta = {
+            "retrieval_round": retrieval_trace.round_number,
+            "retrieval_channels": json.dumps(retrieval_trace.channels_queried),
+            "retrieval_total_ms": retrieval_trace.total_elapsed_ms,
+            "retrieval_per_channel_ms": json.dumps(retrieval_trace.per_channel_elapsed_ms),
+            "retrieval_hits_before_fusion": retrieval_trace.hits_before_fusion,
+            "retrieval_hits_after_fusion": retrieval_trace.hits_after_fusion,
+            "retrieval_hits_after_gate": retrieval_trace.hits_after_quality_gate,
+            "retrieval_verdict": retrieval_trace.verdict,
+        }
 
     try:
         await stores.event_store.write_event(
@@ -864,6 +1187,7 @@ async def _record_trace(
             artifact_saved=bool(artifact_id),
             error_count=len(errors),
             errors=json.dumps(errors[:5]) if errors else "[]",
+            **retrieval_meta,
         )
     except Exception as exc:
         logger.debug("Failed to record ask trace: %s", exc)

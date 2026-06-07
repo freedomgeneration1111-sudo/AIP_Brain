@@ -33,6 +33,7 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from aip.foundation.protocols import (
@@ -93,6 +94,42 @@ class Beast:
         self._lexical = lexical_store
         self._corpus_turns = corpus_turn_store  # for _run_turn_tagging (batch 8 + registry)
         self._last_cycle_time: float | None = None
+
+        # Load Beast soul — identity/personality injected into all LLM system prompts
+        # AIP-G-02: if soul.md missing/unreadable, fall back to empty string, never raise
+        self._soul_text = self._load_soul_text()
+
+    # ------------------------------------------------------------------
+    # Soul Loading (AIP-G-02)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _load_soul_text() -> str:
+        """Load Beast soul from data/beast_soul.md.
+
+        Returns empty string if the file is missing or unreadable.
+        Per AIP-G-02: never raise, never fake.
+        """
+        soul_path = Path("data/beast_soul.md")
+        try:
+            if soul_path.exists():
+                text = soul_path.read_text(encoding="utf-8").strip()
+                if text:
+                    return text
+        except Exception as exc:
+            log.warning("beast_soul_load_failed", path=str(soul_path), error=str(exc))
+        return ""
+
+    def _prepend_soul(self, system_prompt: str) -> str:
+        """Prepend soul.md to a system prompt.
+
+        If self._soul_text is non-empty, returns:
+            "{soul_text}\n\n---\n\n{system_prompt}"
+        If empty, returns the original system_prompt unchanged.
+        """
+        if self._soul_text:
+            return f"{self._soul_text}\n\n---\n\n{system_prompt}"
+        return system_prompt
 
     # ------------------------------------------------------------------
     # Health Check
@@ -793,7 +830,7 @@ class Beast:
                 "Do not infer or hallucinate content not present in the chunks. Be concise and specific."
             )
             messages = [
-                {"role": "system", "content": system},
+                {"role": "system", "content": self._prepend_soul(system)},
                 {"role": "user", "content": user_prompt},
             ]
 
@@ -999,7 +1036,7 @@ Example response structure:
             user_prompt = f"Tag the following {len(batch)} conversation turns:\n\n" + "\n".join(blocks)
 
             messages = [
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": self._prepend_soul(system_prompt)},
                 {"role": "user", "content": user_prompt},
             ]
 
@@ -1642,7 +1679,7 @@ CRITICAL CONSTRAINTS:
         )
 
         messages = [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": self._prepend_soul(system_prompt)},
             {"role": "user", "content": user_prompt},
         ]
         result = await self._beast_provider.call("beast", messages)
@@ -1832,7 +1869,7 @@ Output format:
             )
 
             messages = [
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": self._prepend_soul(system_prompt)},
                 {"role": "user", "content": user_prompt},
             ]
 

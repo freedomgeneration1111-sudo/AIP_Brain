@@ -165,7 +165,12 @@ async def trigger_actor_cycle(actor_name: str, container: AipContainer = Depends
             summary = await container.sexton_actor.run_cycle()
             fc = getattr(container.sexton_actor, "_failure_classifier", None)
             unclassified = await fc.count_unclassified() if fc else 0
-            return {"actor": "sexton", "triggered": True, "remaining_unclassified": unclassified, "cycle_summary": summary}
+            return {
+                "actor": "sexton",
+                "triggered": True,
+                "remaining_unclassified": unclassified,
+                "cycle_summary": summary,
+            }
         except Exception as exc:
             return {"actor": "sexton", "triggered": False, "error": str(exc)}
 

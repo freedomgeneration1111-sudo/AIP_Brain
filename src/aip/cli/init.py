@@ -12,6 +12,7 @@ Performs:
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -125,6 +126,23 @@ def _init_state_db(db_path: Path) -> bool:
                 metadata_json TEXT DEFAULT '{}',
                 created_at TEXT DEFAULT (datetime('now')),
                 updated_at TEXT DEFAULT (datetime('now'))
+            );
+
+            -- Model library: cached OpenRouter models + BYOK entries
+            CREATE TABLE IF NOT EXISTS enabled_models (
+                model_id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                provider TEXT NOT NULL DEFAULT 'openrouter',
+                cost_input_per_million REAL,
+                cost_output_per_million REAL,
+                context_length INTEGER,
+                supports_vision INTEGER DEFAULT 0,
+                supports_tools INTEGER DEFAULT 0,
+                enabled INTEGER DEFAULT 0,
+                is_custom INTEGER DEFAULT 0,
+                custom_base_url TEXT,
+                custom_api_key TEXT,
+                last_fetched TEXT
             );
         """)
         conn.commit()
@@ -272,6 +290,65 @@ def _write_db_path_to_config(config_path: Path, db_path: str) -> None:
             f.write("\n")
 
 
+def _populate_enabled_models(state_db: Path) -> None:
+    """Populate enabled_models table from config/enabled_models.json.
+
+    The JSON file is a flat array of model_id strings (e.g.
+    ["openrouter/owl-alpha", "deepseek/deepseek-v4-flash:free"]).
+
+    Each entry is inserted with:
+      - display_name: the portion after the last "/" (or the whole string)
+      - provider: "openrouter" (default)
+      - enabled: 1 (models listed in the JSON are enabled by default)
+
+    Uses INSERT OR IGNORE so re-running init never overwrites rows that
+    may have been updated by model library fetch or user toggles.
+    """
+    json_path = Path("config/enabled_models.json")
+    if not json_path.exists():
+        click.echo("enabled_models: config/enabled_models.json not found, skipping seed")
+        return
+
+    try:
+        raw = json_path.read_text(encoding="utf-8")
+        model_ids = json.loads(raw)
+    except Exception as e:
+        click.echo(f"enabled_models: failed to read config/enabled_models.json: {e}")
+        return
+
+    if not isinstance(model_ids, list):
+        click.echo("enabled_models: expected JSON array in config/enabled_models.json, skipping")
+        return
+
+    if not model_ids:
+        click.echo("enabled_models: config/enabled_models.json is empty, no models seeded")
+        return
+
+    try:
+        conn = sqlite3.connect(str(state_db))
+        count = 0
+        for mid in model_ids:
+            if not isinstance(mid, str) or not mid.strip():
+                continue
+            mid = mid.strip()
+            # Derive display name from model_id: take portion after last "/"
+            display_name = mid.split("/")[-1] if "/" in mid else mid
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO enabled_models
+                    (model_id, display_name, provider, enabled)
+                VALUES (?, ?, 'openrouter', 1)
+                """,
+                (mid, display_name),
+            )
+            count += 1
+        conn.commit()
+        conn.close()
+        click.echo(f"enabled_models: seeded {count} model(s) from config/enabled_models.json")
+    except Exception as e:
+        click.echo(f"enabled_models: population skipped: {e}")
+
+
 @click.command("init")
 @click.option("--force", is_flag=True, help="Overwrite existing config/DBs (dangerous)")
 def init(force: bool) -> None:
@@ -318,7 +395,10 @@ def init(force: bool) -> None:
     state_db = db_dir / "state.db"
     if _init_state_db(state_db):
         click.echo("state.db: schema initialized")
-        click.echo("  (artifacts, projects, events, ecs_state, ecs_transitions, canonical_artifacts, entities)")
+        click.echo(
+            "  (artifacts, projects, events, ecs_state, ecs_transitions, "
+            "canonical_artifacts, entities, enabled_models)"
+        )
     else:
         state_db.touch(exist_ok=True)
         click.echo("state.db: touched (schema init failed, stores will create tables on first use)")
@@ -363,6 +443,12 @@ def init(force: bool) -> None:
         click.echo("Default project created (project_id='default', name='Default')")
     except Exception as e:
         click.echo(f"Default project creation skipped: {e}")
+
+    # 3c. Populate enabled_models from config/enabled_models.json (if it exists).
+    # The JSON file is a flat array of model_id strings. We INSERT OR IGNORE
+    # so re-running init is safe — it won't overwrite existing rows (which
+    # may have been updated by the model library fetch or user toggles).
+    _populate_enabled_models(state_db)
 
     # 4. Write db_path to config so ALL CLI commands use the same datastore
     _write_db_path_to_config(config_path, "db/state.db")
