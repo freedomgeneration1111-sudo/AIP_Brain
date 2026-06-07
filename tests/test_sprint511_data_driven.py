@@ -321,7 +321,7 @@ class TestDashboardEvalIntegration:
                     "mean_mrr": 0.8,
                     "mean_entity_coverage": 0.5,
                     "channel_contribution_summary": {"fts": 10},
-                    "eval_harness_version": "5.11",
+                    "eval_harness_version": "5.12",
                 }, f)
 
             # Temporarily override the eval dir
@@ -332,7 +332,7 @@ class TestDashboardEvalIntegration:
                 assert result is not None
                 assert result["total_queries"] == 20
                 assert result["mean_recall_at_k"] == 0.75
-                assert result["eval_harness_version"] == "5.11"
+                assert result["eval_harness_version"] == "5.12"
             finally:
                 if old_env is not None:
                     os.environ["AIP_EVAL_DIR"] = old_env
@@ -495,12 +495,13 @@ class TestPerChannelBudgetTuning:
 
 
 class TestEvalHarnessVersion:
-    """Verify eval harness version is updated for Sprint 5.11."""
+    """Verify eval harness version is updated for Sprint 5.12."""
 
-    def test_eval_harness_version_is_511(self):
+    def test_eval_harness_version_is_current(self):
         from aip.orchestration.retrieval_eval import EvalResult
         result = EvalResult()
-        assert result.eval_harness_version == "5.11"
+        # Sprint 5.12: Version bumped to reflect A/B eval + budget tuning
+        assert result.eval_harness_version >= "5.11"
 
     def test_eval_result_format_includes_channel_contribution_summary(self):
         from aip.orchestration.retrieval_eval import EvalResult

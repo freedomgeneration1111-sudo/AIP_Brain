@@ -16,6 +16,10 @@ and LLM entity extraction observability to the dashboard.  New endpoint
 endpoints now include channel_contributions and llm_entity_extraction
 fields in trace data.
 
+Sprint 5.12: Added ``GET /api/v1/retrieval/budget-tune`` endpoint for
+adaptive per-channel budget tuning suggestions based on channel
+contribution data.
+
 Layer: adapter (API route).  May import foundation and orchestration
 via the DI container.
 """
@@ -287,6 +291,97 @@ async def retrieval_quality(container: AipContainer = Depends(get_container)):
     }
 
     return result
+
+
+@router.get("/budget-tune")
+async def retrieval_budget_tune(
+    auto_apply: bool = Query(False, description="Whether to auto-apply suggested adjustments"),
+    max_change_fraction: float = Query(0.30, ge=0.01, le=1.0, description="Maximum fractional change per channel per cycle"),
+    container: AipContainer = Depends(get_container),
+):
+    """Return adaptive per-channel budget tuning suggestions.
+
+    Sprint 5.12: Analyzes channel contribution data from recent traces
+    and suggests per-channel budget adjustments.  Channels that
+    consistently contribute few hits may have their budgets reduced,
+    while high-value channels may receive budget increases.
+
+    By default (``auto_apply=False``), this endpoint returns suggestions
+    only and does not modify any configuration.  Set ``auto_apply=True``
+    to apply the adjustments to a fresh ``OrchestratorConfig`` instance.
+
+    **Note**: Even with ``auto_apply=True``, this endpoint only modifies
+    a newly created config object returned in the response — it does not
+    persist changes to any global state or database.
+
+    Query Parameters:
+        auto_apply: Whether to auto-apply suggested adjustments (default: False).
+        max_change_fraction: Maximum fractional change per channel per cycle
+            (default: 0.30, range: 0.01-1.0).
+
+    Returns:
+        JSON object with tuning results including:
+        - ``adjustments``: List of per-channel budget adjustment suggestions
+        - ``applied``: Whether adjustments were auto-applied
+        - ``summary``: Human-readable summary of the tuning result
+        - ``current_budgets``: Current per-channel budget configuration
+    """
+    from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
+    from aip.orchestration.adaptive_budget import AdaptiveBudgetTuner
+
+    # Compute channel contribution summary from recent traces
+    channel_contributions = await _compute_channel_contribution_summary(container)
+
+    # Count total queries from recent traces for min_samples check
+    traces = await _get_recent_traces(container, limit=100)
+    total_queries = len(traces)
+
+    # Create OrchestratorConfig and AdaptiveBudgetTuner
+    config = OrchestratorConfig()
+    tuner = AdaptiveBudgetTuner(
+        max_change_fraction=max_change_fraction,
+        auto_apply=auto_apply,
+    )
+
+    # Run the tuner
+    tuning_result = tuner.tune(
+        config=config,
+        channel_contributions=channel_contributions,
+        total_queries=total_queries,
+    )
+
+    # Build response
+    adjustments = []
+    for adj in tuning_result.adjustments:
+        adjustments.append({
+            "channel_name": adj.channel_name,
+            "current_budget": adj.current_budget,
+            "suggested_budget": adj.suggested_budget,
+            "change": adj.suggested_budget - adj.current_budget,
+            "reason": adj.reason,
+            "confidence": adj.confidence,
+        })
+
+    # Current budget snapshot (post-tuning if auto_apply)
+    current_budgets = {
+        "fts": config.fts_max_hits,
+        "vector": config.vector_max_hits,
+        "graph": config.graph_max_hits,
+        "wiki": config.wiki_max_hits,
+        "procedural": config.procedural_max_hits,
+        "corpus": config.corpus_max_hits,
+        "global_max_hits_per_channel": config.max_hits_per_channel,
+    }
+
+    return {
+        "status": "ok",
+        "adjustments": adjustments,
+        "applied": tuning_result.applied,
+        "summary": tuning_result.summary,
+        "channel_contributions": channel_contributions,
+        "total_queries": total_queries,
+        "current_budgets": current_budgets,
+    }
 
 
 # ---------------------------------------------------------------------------
