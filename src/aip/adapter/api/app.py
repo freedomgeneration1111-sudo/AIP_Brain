@@ -24,6 +24,7 @@ OPTIONAL (startup logs warning, service degrades gracefully):
   - Model provider: LLM dispatch (degrades to stub responses)
   - Knowledge store: compiled knowledge with embeddings (degrades to no knowledge compilation)
   - Beast actor: background health + corpus maintenance (degrades to no background tasks)
+  - ECS store: artifact lifecycle state (degrades to no ECS transitions — BUG-003: must init before actors)
 """
 
 from __future__ import annotations
@@ -544,6 +545,39 @@ async def lifespan(app: FastAPI):
                 "component_failed", component="trace_store", degradation="trace_events_unavailable", error=str(exc)
             )
 
+    # ECS store — use PersistentEcsStore for state that survives restart.
+    # IMPORTANT (BUG-003 fix): Must be initialized BEFORE Sexton actor creation
+    # because Sexton requires ecs_store for writing tagging proposals, wiki
+    # articles, and graph extraction artifacts via ECS transitions.  Previously
+    # ECS was initialized after the actors, causing Sexton to receive None.
+    try:
+        _ecs_mod = importlib.import_module("aip.adapter.ecs_store_persistent")
+        _PersistentEcsStore = _ecs_mod.PersistentEcsStore
+        container.ecs_store = _PersistentEcsStore(
+            db_path=db_path,
+            event_store=container.event_store,
+        )
+        await container.ecs_store.initialize()
+        log.info("component_initialized", component="ecs_store", persistent=True)
+    except Exception as exc:
+        log.warning("component_failed", component="ecs_store", degradation="in_memory_fallback", error=str(exc))
+
+    # ReviewQueueStore — optional, for MANUAL mode review queue persistence.
+    # Also initialized before actors so it's available if needed.
+    try:
+        _rqs_mod = importlib.import_module("aip.adapter.review_queue_store")
+        _ReviewQueueStore = _rqs_mod.ReviewQueueStore
+        container.review_queue_store = _ReviewQueueStore(db_path=db_path)
+        await container.review_queue_store.initialize()
+        log.info("component_initialized", component="review_queue_store", required=False)
+    except Exception as exc:
+        log.warning(
+            "component_failed",
+            component="review_queue_store",
+            degradation="manual_review_degraded",
+            error=str(exc),
+        )
+
     # --- Wire orchestration components (lazy import to preserve layer discipline) ---
     # Beast actor — requires vector_store + embedding_provider at minimum
     if container.vector_store is not None and container.embedding_provider is not None:
@@ -625,6 +659,12 @@ async def lifespan(app: FastAPI):
                 lexical_store=getattr(container, "lexical_store", None),
                 config=sexton_actor_config,
             )
+            # BUG-003 safety net: backfill _ecs if actor was created before
+            # ECS store was available (shouldn't happen now, but defensive)
+            if container.sexton_actor is not None and container.ecs_store is not None:
+                if getattr(container.sexton_actor, '_ecs', None) is None:
+                    container.sexton_actor._ecs = container.ecs_store
+                    log.info("sexton_actor_ecs_backfill", reason="ecs_store_was_none_at_creation")
             log.info("component_initialized", component="sexton_actor", required=False)
         except Exception as exc:
             log.warning(
@@ -661,33 +701,9 @@ async def lifespan(app: FastAPI):
             error=str(exc),
         )
 
-    # ReviewQueueStore — optional, for MANUAL mode review queue persistence
-    try:
-        _rqs_mod = importlib.import_module("aip.adapter.review_queue_store")
-        _ReviewQueueStore = _rqs_mod.ReviewQueueStore
-        container.review_queue_store = _ReviewQueueStore(db_path=db_path)
-        await container.review_queue_store.initialize()
-        log.info("component_initialized", component="review_queue_store", required=False)
-    except Exception as exc:
-        log.warning(
-            "component_failed",
-            component="review_queue_store",
-            degradation="manual_review_degraded",
-            error=str(exc),
-        )
-
-    # ECS store — use PersistentEcsStore for state that survives restart
-    try:
-        _ecs_mod = importlib.import_module("aip.adapter.ecs_store_persistent")
-        _PersistentEcsStore = _ecs_mod.PersistentEcsStore
-        container.ecs_store = _PersistentEcsStore(
-            db_path=db_path,
-            event_store=container.event_store,
-        )
-        await container.ecs_store.initialize()
-        log.info("component_initialized", component="ecs_store", persistent=True)
-    except Exception as exc:
-        log.warning("component_failed", component="ecs_store", degradation="in_memory_fallback", error=str(exc))
+    # ECS store and ReviewQueueStore are now initialized BEFORE actors
+    # (moved above to fix BUG-003).  This section is intentionally empty.
+    # See the initialization block after TraceStoreAdapter for the actual code.
 
     # Session store — chat session persistence (degrades to in-memory)
     try:

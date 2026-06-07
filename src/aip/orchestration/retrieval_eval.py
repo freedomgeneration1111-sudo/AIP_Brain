@@ -241,7 +241,7 @@ class EvalResult:
     per_query_results: list[QueryEvalResult] = field(default_factory=list)
     config_snapshot: dict = field(default_factory=dict)
     channel_contribution_summary: dict[str, int] = field(default_factory=dict)
-    eval_harness_version: str = "5.11"
+    eval_harness_version: str = "5.12"
 
     def to_dict(self) -> dict:
         """Serialize to a JSON-friendly dict."""
@@ -840,3 +840,211 @@ def compare_against_baseline(
         result.comparisons.append(comparison)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# A/B Evaluation Comparison (Sprint 5.12)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ABComparisonResult:
+    """Result of comparing two evaluation runs (config A vs config B).
+
+    Sprint 5.12: Provides A/B comparison for evaluating retrieval changes.
+    Compares two EvalResult instances side-by-side, computing delta metrics
+    and identifying queries where one configuration significantly outperforms
+    the other.
+
+    Attributes:
+        config_a_label: Label for configuration A (e.g. "baseline" or file path).
+        config_b_label: Label for configuration B.
+        result_a: The EvalResult for configuration A.
+        result_b: The EvalResult for configuration B.
+        metric_deltas: Dict of metric_name -> {a, b, delta, pct_change}.
+        per_query_deltas: Per-query delta breakdown.
+        winner: Overall winner ("A", "B", or "tie").
+        channel_delta: Channel contribution delta between configs.
+    """
+
+    config_a_label: str = "A"
+    config_b_label: str = "B"
+    result_a: EvalResult | None = None
+    result_b: EvalResult | None = None
+    metric_deltas: dict = field(default_factory=dict)
+    per_query_deltas: list[dict] = field(default_factory=list)
+    winner: str = "tie"
+    channel_delta: dict = field(default_factory=dict)
+
+    def format_report(self) -> str:
+        """Format a human-readable A/B comparison report."""
+        lines = [
+            "=" * 70,
+            "  A/B Retrieval Evaluation Comparison",
+            "=" * 70,
+            f"  Config A:  {self.config_a_label}",
+            f"  Config B:  {self.config_b_label}",
+            "-" * 70,
+            "  Metric Deltas (B - A, positive = B wins)",
+            "-" * 70,
+        ]
+
+        for metric_name, delta_info in sorted(self.metric_deltas.items()):
+            a_val = delta_info.get("a", 0)
+            b_val = delta_info.get("b", 0)
+            delta = delta_info.get("delta", 0)
+            pct = delta_info.get("pct_change", 0)
+            delta_str = f"+{delta:.4f}" if delta >= 0 else f"{delta:.4f}"
+            pct_str = f"+{pct:.1%}" if pct >= 0 else f"{pct:.1%}"
+            indicator = "  << B" if delta > 0 else ("  << A" if delta < 0 else "  (tie)")
+            lines.append(
+                f"  {metric_name:25s}  A={a_val:.4f}  B={b_val:.4f}  "
+                f"delta={delta_str}  ({pct_str}){indicator}"
+            )
+
+        # Channel contribution delta
+        if self.channel_delta:
+            lines.append("-" * 70)
+            lines.append("  Channel Contribution Delta (B - A)")
+            lines.append("-" * 70)
+            for ch, delta in sorted(self.channel_delta.items(), key=lambda x: x[1], reverse=True):
+                delta_str = f"+{delta}" if delta >= 0 else f"{delta}"
+                lines.append(f"    {ch:15s}  {delta_str}")
+
+        # Per-query highlights
+        if self.per_query_deltas:
+            lines.append("-" * 70)
+            lines.append("  Per-Query Highlights (largest improvements/regressions)")
+            lines.append("-" * 70)
+            sorted_queries = sorted(
+                self.per_query_deltas,
+                key=lambda q: abs(q.get("recall_delta", 0)),
+                reverse=True,
+            )
+            for qd in sorted_queries[:10]:
+                query_display = qd.get("query", "")[:45] + ("..." if len(qd.get("query", "")) > 45 else "")
+                recall_d = qd.get("recall_delta", 0)
+                mrr_d = qd.get("mrr_delta", 0)
+                rd_str = f"+{recall_d:.3f}" if recall_d >= 0 else f"{recall_d:.3f}"
+                md_str = f"+{mrr_d:.3f}" if mrr_d >= 0 else f"{mrr_d:.3f}"
+                lines.append(f"  Q: {query_display}")
+                lines.append(f"     Recall delta={rd_str}  MRR delta={md_str}")
+
+        lines.append("-" * 70)
+        lines.append(f"  Overall Winner: {self.winner.upper()}")
+        lines.append("=" * 70)
+        return "\n".join(lines)
+
+    def to_dict(self) -> dict:
+        """Serialize to a JSON-friendly dict."""
+        return {
+            "config_a_label": self.config_a_label,
+            "config_b_label": self.config_b_label,
+            "winner": self.winner,
+            "metric_deltas": self.metric_deltas,
+            "channel_delta": self.channel_delta,
+            "per_query_deltas": self.per_query_deltas[:20],
+        }
+
+    def to_json(self, path: str) -> None:
+        """Save A/B comparison results to a JSON file."""
+        with open(path, "w") as f:
+            json.dump(self.to_dict(), f, indent=2)
+
+
+def compare_eval_results(
+    result_a: EvalResult,
+    result_b: EvalResult,
+    config_a_label: str = "A",
+    config_b_label: str = "B",
+) -> ABComparisonResult:
+    """Compare two EvalResult instances and produce an A/B comparison.
+
+    Sprint 5.12: Compares metrics from two evaluation runs, computing deltas
+    and identifying which configuration performs better overall.  This is the
+    core logic behind the ``aip eval retrieval-ab`` CLI command.
+
+    Args:
+        result_a: EvalResult from configuration A.
+        result_b: EvalResult from configuration B.
+        config_a_label: Human-readable label for config A.
+        config_b_label: Human-readable label for config B.
+
+    Returns:
+        ABComparisonResult with detailed delta analysis.
+    """
+    comparison = ABComparisonResult(
+        config_a_label=config_a_label,
+        config_b_label=config_b_label,
+        result_a=result_a,
+        result_b=result_b,
+    )
+
+    # Compare aggregate metrics
+    metrics = [
+        ("mean_recall_at_k", result_a.mean_recall_at_k, result_b.mean_recall_at_k),
+        ("mean_precision_at_k", result_a.mean_precision_at_k, result_b.mean_precision_at_k),
+        ("mean_mrr", result_a.mean_mrr, result_b.mean_mrr),
+        ("mean_entity_coverage", result_a.mean_entity_coverage, result_b.mean_entity_coverage),
+    ]
+
+    wins_a = 0
+    wins_b = 0
+
+    for metric_name, a_val, b_val in metrics:
+        delta = b_val - a_val
+        pct_change = (delta / a_val) if a_val > 0 else (1.0 if b_val > 0 else 0.0)
+        comparison.metric_deltas[metric_name] = {
+            "a": round(a_val, 4),
+            "b": round(b_val, 4),
+            "delta": round(delta, 4),
+            "pct_change": round(pct_change, 4),
+        }
+        if delta > 0.001:
+            wins_b += 1
+        elif delta < -0.001:
+            wins_a += 1
+
+    # Channel contribution delta
+    all_channels = set(result_a.channel_contribution_summary.keys()) | set(result_b.channel_contribution_summary.keys())
+    for ch in all_channels:
+        a_count = result_a.channel_contribution_summary.get(ch, 0)
+        b_count = result_b.channel_contribution_summary.get(ch, 0)
+        comparison.channel_delta[ch] = b_count - a_count
+
+    # Per-query deltas
+    a_by_query = {r.query: r for r in result_a.per_query_results}
+    b_by_query = {r.query: r for r in result_b.per_query_results}
+    all_queries = set(a_by_query.keys()) | set(b_by_query.keys())
+
+    for query in all_queries:
+        a_q = a_by_query.get(query)
+        b_q = b_by_query.get(query)
+        if a_q is None or b_q is None:
+            continue
+        recall_delta = b_q.recall_at_k - a_q.recall_at_k
+        mrr_delta = b_q.mrr - a_q.mrr
+        comparison.per_query_deltas.append({
+            "query": query,
+            "recall_a": round(a_q.recall_at_k, 4),
+            "recall_b": round(b_q.recall_at_k, 4),
+            "recall_delta": round(recall_delta, 4),
+            "mrr_a": round(a_q.mrr, 4),
+            "mrr_b": round(b_q.mrr, 4),
+            "mrr_delta": round(mrr_delta, 4),
+        })
+
+    # Determine overall winner
+    if wins_b > wins_a:
+        comparison.winner = "B"
+    elif wins_a > wins_b:
+        comparison.winner = "A"
+    else:
+        # Tie-break on mean_recall_at_k
+        if result_b.mean_recall_at_k > result_a.mean_recall_at_k:
+            comparison.winner = "B"
+        elif result_a.mean_recall_at_k > result_b.mean_recall_at_k:
+            comparison.winner = "A"
+        else:
+            comparison.winner = "tie"
+
+    return comparison

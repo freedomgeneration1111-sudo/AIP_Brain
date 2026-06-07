@@ -4,6 +4,9 @@ Sprint 5.10: Provides ``aip eval retrieval`` command that runs the
 ``RetrievalEvalHarness`` against golden queries and outputs structured
 results (JSON + human-readable summary).
 
+Sprint 5.12: Adds ``aip eval retrieval-ab`` subcommand for A/B comparison
+of two evaluation configurations with delta metrics and winner determination.
+
 Usage::
 
     # Run evaluation with default golden queries
@@ -20,6 +23,12 @@ Usage::
 
     # Set the k parameter
     aip eval retrieval --k 5
+
+    # A/B comparison: compare two saved evaluation results
+    aip eval retrieval-ab --config-a eval_results/eval_a.json --config-b eval_results/eval_b.json
+
+    # A/B comparison: run both configs live and compare
+    aip eval retrieval-ab --config-a eval_results/eval_a.json --config-b eval_results/eval_b.json --label-a "FTS only" --label-b "All channels"
 """
 
 from __future__ import annotations
@@ -244,3 +253,145 @@ async def _run_eval(
             pass
 
     return result
+
+
+@eval_cmd.command("retrieval-ab")
+@click.option(
+    "--config-a", "-a",
+    required=True,
+    help="Path to evaluation JSON for configuration A",
+)
+@click.option(
+    "--config-b", "-b",
+    required=True,
+    help="Path to evaluation JSON for configuration B",
+)
+@click.option(
+    "--label-a",
+    default=None,
+    help="Human-readable label for config A (default: file path)",
+)
+@click.option(
+    "--label-b",
+    default=None,
+    help="Human-readable label for config B (default: file path)",
+)
+@click.option(
+    "--output-dir", "-o",
+    default="eval_results",
+    help="Directory to save A/B comparison results (default: eval_results)",
+)
+def retrieval_ab_eval(
+    config_a: str,
+    config_b: str,
+    label_a: str | None,
+    label_b: str | None,
+    output_dir: str,
+) -> None:
+    """Compare two evaluation runs (A/B test) with delta metrics.
+
+    Sprint 5.12: Loads two previously saved evaluation results and produces
+    a comparison report with delta metrics for Recall, Precision, MRR, and
+    Entity Coverage.  Also shows channel contribution deltas and per-query
+    highlights.
+
+    To use this command, first run two evaluations with different configs:
+
+        aip eval retrieval --output-dir eval_results
+        # (change config)
+        aip eval retrieval --output-dir eval_results
+
+    Then compare:
+
+        aip eval retrieval-ab \\
+            --config-a eval_results/eval_20260608T100000.json \\
+            --config-b eval_results/eval_20260608T110000.json \\
+            --label-a "FTS+Vector only" \\
+            --label-b "All channels"
+    """
+    import json as _json
+
+    from aip.orchestration.retrieval_eval import (
+        EvalResult,
+        compare_eval_results,
+        QueryEvalResult,
+    )
+
+    # Load config A
+    if not os.path.exists(config_a):
+        click.echo(f"Error: Config A file not found: {config_a}", err=True)
+        raise SystemExit(1)
+    try:
+        with open(config_a) as f:
+            data_a = _json.load(f)
+    except Exception as exc:
+        click.echo(f"Error loading config A: {exc}", err=True)
+        raise SystemExit(1)
+
+    # Load config B
+    if not os.path.exists(config_b):
+        click.echo(f"Error: Config B file not found: {config_b}", err=True)
+        raise SystemExit(1)
+    try:
+        with open(config_b) as f:
+            data_b = _json.load(f)
+    except Exception as exc:
+        click.echo(f"Error loading config B: {exc}", err=True)
+        raise SystemExit(1)
+
+    # Reconstruct EvalResult objects from JSON data
+    def _reconstruct(data: dict) -> EvalResult:
+        per_query = []
+        for pq in data.get("per_query_results", []):
+            per_query.append(QueryEvalResult(
+                query=pq.get("query", ""),
+                recall_at_k=pq.get("recall_at_k", 0),
+                precision_at_k=pq.get("precision_at_k", 0),
+                mrr=pq.get("mrr", 0),
+                entity_coverage=pq.get("entity_coverage", 0),
+                num_retrieved=pq.get("num_retrieved", 0),
+                num_relevant=pq.get("num_relevant", 0),
+                retrieved_ids=pq.get("retrieved_ids", []),
+                elapsed_ms=pq.get("elapsed_ms", 0),
+                channel_contributions=pq.get("channel_contributions", {}),
+            ))
+        return EvalResult(
+            timestamp=data.get("timestamp", ""),
+            total_queries=data.get("total_queries", 0),
+            mean_recall_at_k=data.get("mean_recall_at_k", 0),
+            mean_precision_at_k=data.get("mean_precision_at_k", 0),
+            mean_mrr=data.get("mean_mrr", 0),
+            mean_entity_coverage=data.get("mean_entity_coverage", 0),
+            per_query_results=per_query,
+            config_snapshot=data.get("config_snapshot", {}),
+            channel_contribution_summary=data.get("channel_contribution_summary", {}),
+        )
+
+    result_a = _reconstruct(data_a)
+    result_b = _reconstruct(data_b)
+
+    # Set labels
+    a_label = label_a or config_a
+    b_label = label_b or config_b
+
+    click.echo(f"Comparing A/B evaluation results...")
+    click.echo(f"  Config A: {a_label}")
+    click.echo(f"  Config B: {b_label}")
+
+    # Run comparison
+    comparison = compare_eval_results(
+        result_a=result_a,
+        result_b=result_b,
+        config_a_label=a_label,
+        config_b_label=b_label,
+    )
+
+    # Print report
+    click.echo("")
+    click.echo(comparison.format_report())
+
+    # Save comparison results
+    os.makedirs(output_dir, exist_ok=True)
+    comparison_path = os.path.join(output_dir, "ab_comparison.json")
+    comparison.to_json(comparison_path)
+    click.echo(f"\nA/B comparison saved to: {comparison_path}")

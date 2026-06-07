@@ -38,7 +38,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 from aip.foundation.schemas.retrieval import RetrievalHit, RetrievalTrace
 
@@ -189,6 +189,15 @@ class OrchestratorConfig:
     quality_gate_min_hits: int = 1
     max_hits: int = 50
 
+    # Sprint 5.12: LLM-based query expansion
+    # When enabled, the orchestrator calls a lightweight LLM before dispatch
+    # to generate alternative search terms for ambiguous or short queries.
+    # This is optional and behind a config flag for backward compatibility.
+    # Uses the "fast" model slot to minimize latency.
+    enable_llm_query_expansion: bool = False
+    llm_query_expansion_timeout: float = 2.0  # seconds, timeout for LLM expansion call
+    llm_query_expansion_max_terms: int = 5  # maximum number of expanded terms
+
     # Sprint 5.9→5.11: Per-channel budget allocation
     # These limits cap the number of hits each channel can contribute
     # to RRF fusion.  0 = no limit (use global max_hits).  Set these
@@ -288,16 +297,19 @@ class RetrievalOrchestrator:
         config: OrchestratorConfig | None = None,
         session_id: str = "",
         expanded_terms: list[str] | None = None,
+        model_provider: Any = None,
     ) -> tuple[list[RetrievalHit], RetrievalTrace]:
         """Execute a retrieval round with parallel dispatch and RRF fusion.
 
         This is the main entry point.  It:
-        1. Expands the query (if expanded_terms provided).
-        2. Determines which channels to dispatch.
-        3. Runs enabled channels **concurrently** via ``asyncio.gather()``.
-        4. Fuses results with RRF.
-        5. Applies quality gate.
-        6. Returns fused hits + trace.
+        1. Optionally expands the query via LLM (if ``enable_llm_query_expansion``
+           is True and a ``model_provider`` is supplied).
+        2. Expands the query with any provided or LLM-generated terms.
+        3. Determines which channels to dispatch.
+        4. Runs enabled channels **concurrently** via ``asyncio.gather()``.
+        5. Fuses results with RRF.
+        6. Applies quality gate.
+        7. Returns fused hits + trace.
 
         If the quality gate returns ``NEEDS_MORE_CONTEXT`` and
         ``max_retrieval_rounds > 0``, a retry round is automatically
@@ -308,7 +320,10 @@ class RetrievalOrchestrator:
             config: Per-call configuration.  Uses defaults if None.
             session_id: Correlation ID for tracing.
             expanded_terms: Extra terms for query expansion (retry rounds
-                may add terms automatically).
+                may add terms automatically).  If LLM query expansion is
+                enabled, these are merged with LLM-generated terms.
+            model_provider: ModelSlotResolver for LLM query expansion.
+                Required only when ``enable_llm_query_expansion`` is True.
 
         Returns:
             Tuple of (fused_hits, trace).  The trace captures timing,
@@ -317,14 +332,48 @@ class RetrievalOrchestrator:
         if config is None:
             config = OrchestratorConfig()
 
+        # Sprint 5.12: LLM query expansion
+        llm_expanded_terms: list[str] = []
+        if config.enable_llm_query_expansion and model_provider is not None:
+            try:
+                from aip.orchestration.llm_query_expansion import expand_query_with_llm
+                expansion_result = await expand_query_with_llm(
+                    query=query,
+                    model_provider=model_provider,
+                    timeout_seconds=config.llm_query_expansion_timeout,
+                    max_terms=config.llm_query_expansion_max_terms,
+                )
+                if expansion_result.success:
+                    llm_expanded_terms = expansion_result.expanded_terms
+                    logger.info(
+                        "llm_query_expansion_applied",
+                        extra={
+                            "session_id": session_id,
+                            "original_query": query[:80],
+                            "expanded_terms": llm_expanded_terms,
+                            "elapsed_ms": round(expansion_result.elapsed_ms, 1),
+                        },
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "llm_query_expansion_error",
+                    extra={"session_id": session_id, "error": str(exc)},
+                )
+
+        # Merge LLM-expanded terms with any provided expanded_terms
+        all_expanded = list(expanded_terms or [])
+        for term in llm_expanded_terms:
+            if term not in all_expanded:
+                all_expanded.append(term)
+
         all_hits: list[RetrievalHit] = []
         final_trace = RetrievalTrace(session_id=session_id, query=query)
 
         for round_num in range(config.max_retrieval_rounds):
             # Expand query for retry rounds
             current_query = (
-                expand_query(query, expanded_terms) if round_num == 0
-                else expand_query(query, expanded_terms)
+                expand_query(query, all_expanded) if round_num == 0
+                else expand_query(query, all_expanded)
             )
             if round_num > 0:
                 # On retry, broaden: use the original query without FTS AND
