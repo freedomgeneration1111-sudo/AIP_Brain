@@ -52,6 +52,21 @@ class RetrievalChannel(str, Enum):
     LEGACY = "legacy"  # pre-protocol _search_sources path
 
 
+class ContextQualityStatus(str, Enum):
+    """Quality assessment of assembled context before model dispatch.
+
+    The Answer Quality Gate evaluates whether the assembled context is
+    sufficient for the model to generate a reliable answer. This prevents
+    wasting model tokens on weak context and allows the system to signal
+    when more information is needed.
+    """
+
+    SUFFICIENT = "sufficient"           # Enough evidence to answer
+    MARGINAL = "marginal"               # Some evidence but coverage gaps
+    NEEDS_MORE_CONTEXT = "needs_more_context"  # Insufficient — retry or signal
+    EMPTY = "empty"                     # No context at all
+
+
 @dataclass
 class RetrievalHit:
     """Unified retrieval hit — every retriever returns this shape.
@@ -136,14 +151,16 @@ class RetrievalBudget:
 
     total_tokens: int = 8000  # total context window for evidence
     wiki_allocation: float = 0.12  # 10-15% for approved wiki background
-    evidence_allocation: float = 0.60  # 55-65% for retrieved evidence
+    evidence_allocation: float = 0.55  # 50-60% for retrieved evidence
+    procedural_allocation: float = 0.05  # 3-8% for procedural/how-to knowledge
     graph_debug_allocation: float = 0.03  # 0-5% for graph/debug (when active)
     chat_turns_allocation: float = 0.12  # 10-15% for recent chat turns
-    # Remaining = answer reserve + system prompt
+    # Remaining = answer reserve + system prompt (~13%)
 
     # Per-source caps
     max_sources: int = 25  # max candidate hits to consider
     max_wiki_articles: int = 3  # max wiki articles to inject
+    max_procedures: int = 3  # max procedural articles to inject
     max_same_conversation: int = 3  # max turns from same conversation
     max_same_domain_pct: float = 0.40  # max % of hits from one domain
 
@@ -239,6 +256,26 @@ class RetrievalTrace:
     fallbacks_triggered: list[str] = field(default_factory=list)
     # e.g. ["vector_store_unavailable", "graph_timeout"]
 
+    # Answer Quality Gate (Phase 5.5)
+    context_quality_status: str = ""  # ContextQualityStatus value
+    context_quality_scores: dict[str, float] = field(default_factory=dict)
+    # {"evidence_tokens": 3200, "entity_coverage": 0.75, "domain_coverage": 0.5}
+    quality_gate_elapsed_ms: float = 0.0
+
+    # Procedural retrieval (Phase 5.5)
+    procedural_injected: bool = False
+    procedural_articles: list[str] = field(default_factory=list)  # procedure IDs injected
+
+    # Automatic Retry (Phase 5.6)
+    retry_triggered: bool = False  # Was a second retrieval round triggered?
+    retry_reason: str = ""  # Why: "needs_more_context", "low_entity_coverage", etc.
+    retry_round: int = 0  # 0 = initial, 1 = first retry
+    retry_strategies_tried: list[str] = field(default_factory=list)
+    # e.g. ["llm_expansion", "relaxed_domain", "increased_sources"]
+    retry_quality_improved: bool = False  # Did quality improve after retry?
+    retry_first_status: str = ""  # Quality status before retry
+    retry_first_scores: dict[str, float] = field(default_factory=dict)  # Scores before retry
+
     # Timestamps
     created_at: datetime = field(default_factory=datetime.now)
 
@@ -301,6 +338,7 @@ class GoldenTestResult:
 __all__ = [
     "EvidenceStatus",
     "RetrievalChannel",
+    "ContextQualityStatus",
     "RetrievalHit",
     "RetrievalQuery",
     "RetrievalBudget",

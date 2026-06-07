@@ -107,7 +107,8 @@ class TestRetrievalBudget:
         b = RetrievalBudget()
         assert b.total_tokens == 8000
         assert b.wiki_allocation == pytest.approx(0.12)
-        assert b.evidence_allocation == pytest.approx(0.60)
+        assert b.evidence_allocation == pytest.approx(0.55)
+        assert b.procedural_allocation == pytest.approx(0.05)
         assert b.max_sources == 25
 
     def test_custom_budget(self):

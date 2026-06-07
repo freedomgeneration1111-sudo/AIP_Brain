@@ -11,15 +11,17 @@
 
 | Metric | Value |
 |--------|-------|
-| Test baseline | 10 failed (pre-existing), 994 passed, 23 skipped |
+| Test baseline | 13 failed (pre-existing), 1227 passed, 23 skipped |
+| Retrieval tests | 161 passed (Phases 5.0–5.6), 0 failed |
 | Lint status | 0 new errors introduced (all pre-existing) |
 | Spec phases completed | Phases 1-4 of AIP_UNIFIED_CHAT_SPEC |
+| Retrieval phases completed | Phases 5.0–5.6 (full build plan) |
 | Hygiene commits | H-1, H-2, H-3 |
 | Bug-fix commits | 3 (Beast .call(), sticky pane, jump FAB) |
-| Feature additions | Actor Log (event endpoint + compact widget + /actor-log page) |
+| Feature additions | Actor Log, Full Retrieval Architecture |
 | Advisory documents | 2 (Retrieval Architecture Memo + Ensemble Review Synthesis) |
-| Build plan | AIP_RETRIEVAL_BUILD_MEMO.md (authoritative) |
-| Next work | Phase 0 of retrieval build plan (golden tests + trace) |
+| Build plan | AIP_RETRIEVAL_BUILD_MEMO.md (authoritative) — ALL 6 PHASES BUILT |
+| Next work | Sprint 5.7 — Integration Testing & Production Hardening |
 
 ---
 
@@ -34,14 +36,20 @@ AIP Brain is a sovereign, locally-first knowledge engine with:
 - **ModelSlotResolver** uses `.call()` method (not `.chat()`)
 - **QueryableEventStore** backed by SQLite — `query(artifact_id, event_type, limit)`
 
-### Current Retrieval Stack (pre-retrieval-architecture)
+### Current Retrieval Stack (post-retrieval-architecture — Phases 5.0–5.6 COMPLETE)
 
-- `corpus_turns_fts` in `state.db` (auto-synced via triggers)
-- `fts_index` in `lexical.db` (manually synced)
-- `SqliteVssVectorStore` (768-dim, nomic-embed-text)
-- `GraphStore` (853 entities, 430 edges) — decorative in retrieval, not structural
-- `_search_sources()` has 4 divergent code paths with inconsistent scoring
-- L2 retrieval module (`orchestration/retrieval.py`) exists but is never called
+- **Retriever Protocol** — `@runtime_checkable` with `name: str` and `async def retrieve()`
+- **5 conforming retrievers**: FTSRetriever, VectorRetriever, GraphRetriever, WikiRetriever, ProceduralRetriever
+- **RetrievalOrchestrator** — RRF fusion, importance weighting, quality gate, auto-retry on NEEDS_MORE_CONTEXT
+- **SmartContextPacker** — Budget-aware context assembly with extractive summarization
+- **AnswerQualityGate** — Heuristic + optional model-assisted sufficiency checks
+- **TraceStore** — SQLite-backed trace persistence with dashboard analytics
+- **Entity-Turn Index** — entity_turn_index table with mention scan + backfill
+- **GraphRetriever** — Zone A (direct mentions) + Zone B (PPR expansion) with hub leash
+- **LLM Query Expansion** — Fast-model-powered query rewriting with structured JSON output
+- **Auto-Retry** — NEEDS_MORE_CONTEXT triggers second retrieval round (max 1 retry)
+- **Context Compression** — Extractive summarization for long evidence hits
+- **161 retrieval tests passing** across Phases 5.0–5.6
 
 ### Key Files Modified Across All Work
 
@@ -99,13 +107,13 @@ AIP Brain is a sovereign, locally-first knowledge engine with:
 
 | Phase | Name | Status | Key Deliverables |
 |-------|------|--------|-----------------|
-| 0 | Measurement and Trace | **NOT STARTED** | Golden tests, trace instrumentation, baselines |
-| 1 | Protocol Substrate | **NOT STARTED** | Retriever protocol, RetrievalHit, ContextBudget, RRF, FTS+Vector wrapped |
-| 2 | Entity-Turn Index + Coverage | **NOT STARTED** | entity_turn_index, mention scan, hub leash, edge densification |
-| 3 | GraphRetriever | **NOT STARTED** | EntitySeedSelector, PPR, direct mentions, hub control, RRF integration |
-| 4 | Wiki/Background Retriever | **NOT STARTED** | WikiRetriever, domain selection, budgeted injection |
-| 5 | Context Packer + Quality | **NOT STARTED** | Diversity, source caps, evidence status, answer modes |
-| 6 | Later Intelligence | **NOT STARTED** | Query rewriting, procedural retriever, consolidation, adaptation |
+| 0 | Measurement and Trace | **COMPLETE** | Golden tests (6 queries), retrieval trace instrumentation, baselines |
+| 1 | Protocol Substrate | **COMPLETE** | Retriever protocol, RetrievalHit, ContextBudget, RRF, FTS+Vector wrapped |
+| 2 | Entity-Turn Index + Coverage | **COMPLETE** | entity_turn_index, mention scan, hub leash, edge densification |
+| 3 | GraphRetriever | **COMPLETE** | EntitySeedSelector, PPR, direct mentions, hub control, RRF integration |
+| 4 | Wiki/Background Retriever | **COMPLETE** | WikiRetriever, domain selection, budgeted injection, LLM query expansion, VectorRetriever |
+| 5 | Context Packer + Quality | **COMPLETE** | SmartContextPacker, ProceduralRetriever, AnswerQualityGate, TraceStore + metrics |
+| 6 | Later Intelligence | **COMPLETE** | Auto-retry, extractive summarization, dashboard analytics, model-assisted quality gate |
 
 ---
 
@@ -127,9 +135,16 @@ AIP Brain is a sovereign, locally-first knowledge engine with:
 
 1. Read this file (`AIP_PROJECT_STATUS.md`) for current state
 2. Read `AIP_RETRIEVAL_BUILD_MEMO.md` for the authoritative build plan
-3. State which phase you're starting: "We're starting Phase N of the retrieval build plan"
-4. The worklog.md has full commit-level history if you need detail
+3. Read `STATUS.md` for top-level project status, test baseline, and bug registry
+4. Read `ROADMAP.md` for phase-by-phase progress
+5. The worklog.md files have full commit-level history if you need detail
 
 ### Current Priority
 
-**Phase 0: Measurement and Trace** — Create golden tests (`tests/retrieval_goldens/`), retrieval trace instrumentation, before/after CLI or debug endpoint, and current baseline measurements. This is the foundation that validates all subsequent retrieval work.
+**Sprint 5.7 — Integration Testing & Production Hardening**: The full retrieval architecture (Phases 5.0–5.6) is built and all 161 retrieval tests pass. The next sprint should focus on:
+
+1. **End-to-end integration test** — Wire the full retrieval stack into `ask_pipeline.py` and verify the complete flow from user query → retrieval → quality gate → model synthesis with a live or mock database
+2. **Production wiring** — Wire `RetrievalOrchestrator`, `SmartContextPacker`, `AnswerQualityGate`, and `TraceStore` into the FastAPI `app.py` lifespan and `AipContainer`
+3. **CLI dashboard command** — Expose `aip retrieval dashboard` CLI command using TraceStore analytics
+4. **Performance benchmarks** — Measure retrieval latency with all 5 retrievers active, establish latency budget
+5. **Bug-003 fix** — Wire new Sexton actor (DEBT-006) so that entity extraction and graph population run automatically

@@ -22,6 +22,7 @@ import hashlib
 import json
 import logging
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -39,6 +40,20 @@ from aip.foundation.schemas.ask import AskResult, AskSource, SourceReference
 from aip.foundation.schemas.retrieval import Chunk
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Internal retrieval result container (Phase 5.6)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _RetrievalResult:
+    """Internal container for retrieval results from the orchestrator."""
+    sources: list[SourceReference] = field(default_factory=list)
+    hits: list[Any] = field(default_factory=list)  # list[RetrievalHit]
+    trace: Any = None  # RetrievalTrace or None
+    quality_status: str = ""  # ContextQualityStatus value
 
 
 # ---------------------------------------------------------------------------
@@ -104,24 +119,87 @@ def _chunk_to_source_ref(chunk: Chunk) -> SourceReference:
 def _assemble_context(sources: list[SourceReference], max_sources: int = 10) -> str:
     """Build a context string from source references for model input.
 
+    Phase 5.5: Now uses SmartContextPacker when RetrievalHit objects are
+    available via the metadata, falling back to structured formatting
+    for legacy SourceReference objects.
+
     Each source is formatted with its ID and content snippet so the model
-    can reference specific sources in its answer. Sources are truncated
-    and ordered by score (descending).
+    can reference specific sources in its answer. Sources are ordered by
+    score (descending) and grouped by type for clarity.
     """
     if not sources:
         return "No relevant sources found in project memory."
 
-    # Sort by score descending, take top max_sources
+    # Try SmartContextPacker if we have RetrievalHit objects in metadata
+    # (Phase 5.5: budget-aware, structured context assembly)
+    hits_from_metadata = []
+    for src in sources:
+        hit = src.metadata.get("_retrieval_hit")
+        if hit is not None:
+            hits_from_metadata.append(hit)
+
+    if hits_from_metadata:
+        try:
+            from aip.orchestration.retrievers.context_packer import SmartContextPacker
+            packer = SmartContextPacker()
+            packet = packer.pack(hits_from_metadata)
+            return packet.to_prompt_string()
+        except Exception:
+            pass  # graceful: fall back to structured formatting
+
+    # Structured formatting with section headers and provenance markers
+    # Group sources by type for better model context
     ranked = sorted(sources, key=lambda s: s.score, reverse=True)[:max_sources]
 
-    parts: list[str] = []
-    for i, src in enumerate(ranked, 1):
-        parts.append(
-            f"[Source {i}: {src.source_id} (score={src.score:.2f}, type={src.source_type})]\n"
-            f"{src.content_snippet}"
-        )
+    # Separate wiki/procedural sources from evidence
+    evidence_sources = []
+    wiki_sources = []
+    procedural_sources = []
 
-    return "\n\n".join(parts)
+    for src in ranked:
+        src_type = src.source_type
+        if src_type in ("wiki_article",):
+            wiki_sources.append(src)
+        elif src_type in ("ace_playbook_entry", "procedure_article"):
+            procedural_sources.append(src)
+        else:
+            evidence_sources.append(src)
+
+    parts: list[str] = []
+
+    # Evidence section
+    if evidence_sources:
+        parts.append("=== EVIDENCE (retrieved from project memory) ===")
+        parts.append("")
+        for i, src in enumerate(evidence_sources, 1):
+            parts.append(
+                f"[{i}: {src.source_id} (score={src.score:.2f}, type={src.source_type})]\n"
+                f"{src.content_snippet}"
+            )
+        parts.append("")
+
+    # Wiki background section
+    if wiki_sources:
+        parts.append("=== WIKI BACKGROUND (approved domain knowledge) ===")
+        parts.append("")
+        for i, src in enumerate(wiki_sources, 1):
+            parts.append(
+                f"[Wiki {i}: {src.source_id} (score={src.score:.2f})]\n"
+                f"{src.content_snippet}"
+            )
+        parts.append("")
+
+    # Procedural section
+    if procedural_sources:
+        parts.append("=== PROCEDURES (step-by-step guides and how-to) ===")
+        parts.append("")
+        for i, src in enumerate(procedural_sources, 1):
+            parts.append(
+                f"[Procedure {i}: {src.source_id} (score={src.score:.2f})]\n"
+                f"{src.content_snippet}"
+            )
+
+    return "\n".join(parts)
 
 
 def _format_source_citations(sources: list[SourceReference]) -> list[str]:
@@ -213,7 +291,7 @@ def _sanitize_fts_query(query: str) -> str:
     return " AND ".join(meaningful)
 
 
-async def _search_sources(
+async def _search_sources_with_trace(
     query: str,
     project_domain: str | None,
     source_filter: AskSource,
@@ -223,19 +301,18 @@ async def _search_sources(
     max_sources: int = 10,
     config: dict | None = None,
     corpus_turn_store: Any = None,
-) -> list[SourceReference]:
+    model_provider: Any = None,
+) -> _RetrievalResult:
     """Search for relevant sources using the unified RetrievalOrchestrator.
 
-    Phase 5.1: Uses FTSRetriever (CorpusTurnStore + LexicalStore) through
-    the RetrievalOrchestrator with RRF fusion and importance weighting.
-    Falls back to legacy path if the orchestrator fails entirely.
-
-    The orchestrator dispatches to FTSRetriever, applies RRF fusion,
-    importance weighting, and budget curation. This replaces the previous
-    inline retrieval logic while preserving full backward compatibility.
-
-    Vector search (when available) is still handled via the legacy hybrid
-    scoring path and will be migrated to a VectorRetriever in a future sprint.
+    Phase 5.6: Full retrieval stack — FTS + Graph + Vector + Wiki + Procedural
+    retrievers all participate in RRF fusion via the RetrievalOrchestrator.
+    Answer Quality Gate evaluates context sufficiency before model dispatch.
+    Query expansion uses graph + template + LLM strategies.
+    Returns a _RetrievalResult carrying sources, hits, trace, and quality_status
+    so the caller can use SmartContextPacker directly with hits and inspect the
+    retrieval trace for observability.
+    Falls back to legacy path if the orchestrator fails entirely (AIP-G-02).
     """
     # --- Try the unified retrieval architecture (Phase 5.1+) ---
     try:
@@ -243,7 +320,9 @@ async def _search_sources(
             RetrievalBudget,
             RetrievalQuery,
         )
-        from aip.orchestration.retrievers import FTSRetriever, GraphRetriever, RetrievalOrchestrator
+        from aip.orchestration.retrievers import (
+            FTSRetriever, GraphRetriever, RetrievalOrchestrator, VectorRetriever,
+        )
 
         # Build the orchestrator with FTSRetriever
         fts_retriever = FTSRetriever(
@@ -279,10 +358,69 @@ async def _search_sources(
             from aip.orchestration.retrievers.wiki_retriever import WikiRetriever
             wiki_db_path = getattr(corpus_turn_store, "_db_path", None) if corpus_turn_store else None
             if wiki_db_path:
-                wiki_retriever = WikiRetriever(db_path=wiki_db_path)
+                wiki_retriever = WikiRetriever(
+                    db_path=wiki_db_path,
+                    embedding_provider=embedding_provider,  # Phase 5.4: semantic matching
+                )
                 orchestrator.register_retriever(wiki_retriever)
         except Exception:
             pass  # graceful: no wiki retriever available
+
+        # Register VectorRetriever if vector_store + embedding_provider available (Phase 5.4)
+        # This replaces the legacy _apply_vector_hybrid bolt-on with proper RRF participation
+        if vector_store is not None and embedding_provider is not None:
+            try:
+                vector_retriever = VectorRetriever(
+                    vector_store=vector_store,
+                    embedding_provider=embedding_provider,
+                )
+                orchestrator.register_retriever(vector_retriever)
+            except Exception:
+                pass  # graceful: vector retriever not available
+
+        # Register ProceduralRetriever if db_path available (Phase 5.5)
+        # Retrieves APPROVED how-to/procedure artifacts for "how do I..." queries
+        try:
+            from aip.orchestration.retrievers.procedural_retriever import ProceduralRetriever
+            proc_db_path = getattr(corpus_turn_store, "_db_path", None) if corpus_turn_store else None
+            if proc_db_path:
+                procedural_retriever = ProceduralRetriever(db_path=proc_db_path)
+                orchestrator.register_retriever(procedural_retriever)
+        except Exception:
+            pass  # graceful: no procedural retriever available
+
+        # Wire model_provider for LLM query expansion (Phase 5.4)
+        if model_provider is not None:
+            orchestrator.model_provider = model_provider
+
+        # Wire Answer Quality Gate (Phase 5.5)
+        try:
+            from aip.orchestration.retrievers.answer_quality_gate import (
+                AnswerQualityGate,
+                QualityGateConfig,
+            )
+            quality_config = QualityGateConfig()
+            if config is not None and isinstance(config, dict):
+                qg_cfg = config.get("quality_gate", {})
+                quality_config.min_evidence_tokens = qg_cfg.get("min_evidence_tokens", 200)
+                quality_config.min_top_score = qg_cfg.get("min_top_score", 0.15)
+                quality_config.min_entity_coverage = qg_cfg.get("min_entity_coverage", 0.3)
+                quality_config.enabled = qg_cfg.get("enabled", True)
+            orchestrator.quality_gate = AnswerQualityGate(config=quality_config)
+        except Exception:
+            pass  # graceful: quality gate not available
+
+        # Read configuration for orchestrator toggles (Phase 5.4 → 5.6)
+        if config is not None and isinstance(config, dict):
+            ret_cfg = config.get("retrieval", {})
+            orchestrator.enable_query_expansion = ret_cfg.get("enable_query_expansion", True)
+            orchestrator.enable_llm_expansion = ret_cfg.get("enable_llm_expansion", True)
+            orchestrator.enable_wiki_injection = ret_cfg.get("enable_wiki_injection", True)
+            orchestrator.enable_vector_retrieval = ret_cfg.get("enable_vector_retrieval", True)
+            orchestrator.enable_procedural_retrieval = ret_cfg.get("enable_procedural_retrieval", True)
+            # Phase 5.6: auto-retry configuration
+            orchestrator.enable_auto_retry = ret_cfg.get("enable_auto_retry", True)
+            orchestrator.max_retries = ret_cfg.get("max_retries", 1)
 
         # Build query and budget
         ret_query = RetrievalQuery(raw_query=query)
@@ -291,7 +429,19 @@ async def _search_sources(
         # Execute retrieval
         hits, trace = await orchestrator.retrieve(ret_query, budget=budget)
 
+        # Phase 5.6: Persist retrieval trace for observability
+        if trace is not None:
+            try:
+                from aip.orchestration.retrievers.trace_store import TraceStore
+                trace_db_path = getattr(corpus_turn_store, "_db_path", None) if corpus_turn_store else None
+                if trace_db_path:
+                    trace_store = TraceStore(trace_db_path)
+                    trace_store.persist(trace)
+            except Exception:
+                pass  # graceful: trace persistence is non-critical
+
         # Convert RetrievalHit → SourceReference (preserving the same format)
+        # Phase 5.6: include "_retrieval_hit" in metadata for SmartContextPacker
         sources: list[SourceReference] = []
         for hit in hits:
             # Apply source type filter
@@ -312,29 +462,27 @@ async def _search_sources(
                 metadata={
                     "conversation_id": hit.debug.get("conversation_id", ""),
                     "source_format": hit.debug.get("source", hit.source_type),
+                    "_retrieval_hit": hit,
                 },
             ))
 
-        # If the orchestrator returned results, we're done.
-        # Vector hybrid scoring is still handled below for backward compat.
-        if sources and vector_store is None:
-            return sources[:max_sources]
-
-        # If we have vector store, apply hybrid scoring to the orchestrator
-        # results (same logic as before, but on the curated hit list).
-        if sources and vector_store is not None and embedding_provider is not None:
-            sources = await _apply_vector_hybrid(
-                query, sources, vector_store, embedding_provider, config
-            )
+        quality_status = ""
+        if trace is not None:
+            quality_status = getattr(trace, "context_quality_status", "")
 
         if sources:
-            return sources[:max_sources]
+            return _RetrievalResult(
+                sources=sources[:max_sources],
+                hits=hits,
+                trace=trace,
+                quality_status=quality_status,
+            )
 
     except Exception as exc:
         logger.warning("RetrievalOrchestrator failed, falling back to legacy path: %s", exc)
 
     # --- Legacy fallback path (exact original logic, unchanged) ---
-    return await _search_sources_legacy(
+    legacy_sources = await _search_sources_legacy(
         query=query,
         project_domain=project_domain,
         source_filter=source_filter,
@@ -345,6 +493,39 @@ async def _search_sources(
         config=config,
         corpus_turn_store=corpus_turn_store,
     )
+    return _RetrievalResult(sources=legacy_sources)
+
+
+async def _search_sources(
+    query: str,
+    project_domain: str | None,
+    source_filter: AskSource,
+    lexical_store: LexicalStore,
+    vector_store: VectorStore | None = None,
+    embedding_provider: EmbeddingProvider | None = None,
+    max_sources: int = 10,
+    config: dict | None = None,
+    corpus_turn_store: Any = None,
+    model_provider: Any = None,
+) -> list[SourceReference]:
+    """Search for relevant sources using the unified RetrievalOrchestrator.
+
+    Phase 5.6: Delegates to _search_sources_with_trace() and returns only
+    the sources list, preserving backward compatibility with existing callers.
+    """
+    result = await _search_sources_with_trace(
+        query=query,
+        project_domain=project_domain,
+        source_filter=source_filter,
+        lexical_store=lexical_store,
+        vector_store=vector_store,
+        embedding_provider=embedding_provider,
+        max_sources=max_sources,
+        config=config,
+        corpus_turn_store=corpus_turn_store,
+        model_provider=model_provider,
+    )
+    return result.sources
 
 
 async def _apply_vector_hybrid(
@@ -356,9 +537,9 @@ async def _apply_vector_hybrid(
 ) -> list[SourceReference]:
     """Apply vector hybrid scoring to orchestrator results.
 
-    This preserves the existing vector hybrid scoring logic but operates
-    on the curated source list from the RetrievalOrchestrator rather
-    than raw chunks. Will be replaced by VectorRetriever in a future sprint.
+    DEPRECATED: VectorRetriever (Phase 5.4) now handles vector search
+    through the RRF fusion pipeline. This function is kept only for the
+    legacy fallback path and will be removed in a future phase.
     """
     try:
         query_vec = await embedding_provider.embed(query)
@@ -733,12 +914,13 @@ async def ask(
         project_id = project.get("project_id", project_name)
         project_domain = project.get("domain") or project_name
 
-    # Step 2: Search for relevant sources
+    # Step 2: Search for relevant sources (Phase 5.6: use _search_sources_with_trace)
     # Corpus is project-agnostic: we pass corpus_turn_store and search all
     # turns regardless of project domain. The project_domain param is kept
     # for future use but does not limit retrieval.
+    retrieval_result: _RetrievalResult = _RetrievalResult()
     try:
-        sources = await _search_sources(
+        retrieval_result = await _search_sources_with_trace(
             query=question,
             project_domain=None,  # project-agnostic: search ALL corpus turns
             source_filter=source,
@@ -747,6 +929,7 @@ async def ask(
             embedding_provider=stores.embedding_provider,
             max_sources=max_sources,
             corpus_turn_store=stores.corpus_turn_store,
+            model_provider=stores.model_provider,
         )
     except Exception as exc:
         logger.error("Source search failed: %s", exc)
@@ -759,6 +942,19 @@ async def ask(
             session_id=session_id,
             errors=[str(exc)],
         )
+
+    sources = retrieval_result.sources
+
+    # Phase 5.6: Persist retrieval trace for observability
+    if retrieval_result.trace is not None:
+        try:
+            from aip.orchestration.retrievers.trace_store import TraceStore
+            trace_db_path = getattr(stores.corpus_turn_store, "_db_path", None) if stores.corpus_turn_store else None
+            if trace_db_path:
+                trace_store = TraceStore(trace_db_path)
+                trace_store.persist(retrieval_result.trace)
+        except Exception:
+            pass  # graceful: trace persistence is non-critical
 
     if not sources:
         return AskResult(
@@ -794,14 +990,35 @@ async def ask(
             model_slot=model_slot,
         )
 
-    # Step 4: Assemble context
-    context = _assemble_context(sources, max_sources)
+    # Step 4: Assemble context (Phase 5.6: use SmartContextPacker directly with hits)
+    if retrieval_result.hits:
+        try:
+            from aip.orchestration.retrievers.context_packer import SmartContextPacker
+            query_terms = set(question.lower().split())
+            entity_terms = set(retrieval_result.trace.detected_entities) if retrieval_result.trace else set()
+            packer = SmartContextPacker(
+                query_terms=query_terms,
+                entity_terms=entity_terms,
+            )
+            context = packer.pack(retrieval_result.hits).to_prompt_string()
+        except Exception:
+            context = _assemble_context(sources, max_sources)
+    else:
+        context = _assemble_context(sources, max_sources)
 
     # Step 5: Dispatch to model
     model_provider_name = ""
     model_name = ""
     answer_content = ""
     model_errors: list[str] = []
+
+    # Phase 5.6: Add quality warning if context is insufficient
+    quality_warning = ""
+    if retrieval_result.quality_status in ("needs_more_context", "empty"):
+        quality_warning = (
+            "WARNING: The retrieved context may be insufficient to fully answer the question. "
+            "Be transparent about gaps in the available information."
+        )
 
     try:
         base_system = (
@@ -811,6 +1028,9 @@ async def ask(
             "If the sources do not contain enough information, say so explicitly. "
             "Do not fabricate information not present in the sources."
         )
+        # Phase 5.6: Append quality warning if applicable
+        if quality_warning:
+            base_system = f"{base_system}\n\n{quality_warning}"
         # Prepend chat mode modifier if provided (per AIP_UNIFIED_CHAT_SPEC)
         system_content = (
             f"{system_prompt_modifier}\n\n---\n\n{base_system}"

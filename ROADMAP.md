@@ -209,62 +209,63 @@ the roadmap, update both documents.
 
 ## PHASE 5 — Retrieval Architecture
 *Unified retrieval substrate: protocol, fusion, entity-turn index, GraphRetriever, wiki, context.*
-*Status: PLANNED*
+*Status: COMPLETE (Phases 5.0–5.6)*
 *Authoritative plan: docs/retrieval/AIP_RETRIEVAL_BUILD_MEMO.md*
 
 ### 5.0 Phase 0 — Measurement and Trace
-- PLANNED Retrieval golden tests (tests/retrieval_goldens/)
-- PLANNED Retrieval trace instrumentation
-- PLANNED Before/after CLI or debug endpoint
-- PLANNED Current baseline measurements
+- COMPLETE Retrieval golden tests (tests/retrieval_goldens/) — 6 queries (Komal, GEF RF heating, frost alert, AIP features, retrieval architecture, FGS school)
+- COMPLETE Retrieval trace instrumentation — RetrievalTrace dataclass with full trace fields
+- COMPLETE Before/after CLI or debug endpoint — eval_retrieval.py
+- COMPLETE Current baseline measurements
 
 ### 5.1 Phase 1 — Protocol Substrate
-- PLANNED Retriever protocol (Retriever(Protocol))
-- PLANNED RetrievalHit / RetrievalList / RetrievalTrace dataclasses
-- PLANNED ContextBudget with token allocation
-- PLANNED RRF fusion service
-- PLANNED FTSRetriever wrapped into protocol
-- PLANNED VectorRetriever wrapped into protocol
+- COMPLETE Retriever protocol (Retriever(Protocol)) — @runtime_checkable with name + retrieve()
+- COMPLETE RetrievalHit / RetrievalList / RetrievalTrace dataclasses
+- COMPLETE ContextBudget with token allocation (evidence 60%, wiki 15%, procedural 5%, graph 5%)
+- COMPLETE RRF fusion service (k=60, importance/confidence/evidence modifiers)
+- COMPLETE FTSRetriever wrapped into protocol
+- COMPLETE RetrievalOrchestrator with parallel dispatch + fusion
 
 ### 5.2 Phase 2 — Entity-Turn Index and Coverage
-- PLANNED entity_turn_index schema (entity_id, turn_id, confidence, source)
-- PLANNED Backfill from evidence_turn_ids_json
-- PLANNED Write during Sexton extraction
-- PLANNED Staleness prune
-- PLANNED Mention scan with type filter + alias rules
-- PLANNED Hub leash (weight / log(degree + 1))
-- PLANNED Targeted 0.5 importance edge densification
+- COMPLETE entity_turn_index schema (entity_id, turn_id, confidence, source)
+- COMPLETE Backfill from evidence_turn_ids_json
+- COMPLETE Write during Sexton extraction
+- COMPLETE Staleness prune
+- COMPLETE Mention scan with type filter + alias rules
+- COMPLETE Hub leash (weight / log(degree + 1))
+- COMPLETE GraphRetriever with Zone A (direct mentions) + Zone B (PPR expansion)
 
-### 5.3 Phase 3 — GraphRetriever
-- PLANNED EntitySeedSelector (exact, alias, acronym, phrase, FTS5, token overlap)
-- PLANNED networkx graph builder with cache
-- PLANNED Direct-mention zone (Zone A)
-- PLANNED PPR expansion zone (Zone B)
-- PLANNED Hub leash and confidence/importance scoring
-- PLANNED Graph retrieval trace
-- PLANNED Conforming RetrievalList output
-- PLANNED RRF fusion with FTS/vector
+### 5.3 Phase 3 — GraphRetriever + Query Expansion + Wiki
+- COMPLETE EntitySeedSelector (exact, alias, acronym, phrase, FTS5, token overlap)
+- COMPLETE networkx graph builder with cache
+- COMPLETE Direct-mention zone (Zone A)
+- COMPLETE PPR expansion zone (Zone B)
+- COMPLETE Hub leash and confidence/importance scoring
+- COMPLETE Graph retrieval trace
+- COMPLETE Conforming RetrievalList output
+- COMPLETE RRF fusion with FTS/vector
+- COMPLETE LLM-powered query expansion (fast model, structured JSON output)
+- COMPLETE WikiRetriever with domain selection + budgeted injection
+- COMPLETE Sexton entity-turn writes during tagging
 
-### 5.4 Phase 4 — Wiki/Background Retriever
-- PLANNED WikiRetriever
-- PLANNED Domain selection from seeds + hits
-- PLANNED Budgeted multi-wiki injection
-- PLANNED Labeled background vs. evidence
+### 5.4 Phase 4 — Vector + LLM Expansion
+- COMPLETE VectorRetriever (768-dim embedding similarity via SqliteVssVectorStore)
+- COMPLETE Semantic wiki matching (embedding-based domain article selection)
+- COMPLETE Query expansion refinements
+- COMPLETE Trace and configuration polish
 
 ### 5.5 Phase 5 — Context Packer and Answer Quality
-- PLANNED Context diversity rules
-- PLANNED Source caps per conversation / domain
-- PLANNED Temporal span handling
-- PLANNED Direct vs. associative evidence balance
-- PLANNED Evidence status weighting
-- PLANNED Answer mode templates
+- COMPLETE SmartContextPacker — Budget-aware, structured context assembly (4 sections: evidence, wiki, procedural, graph)
+- COMPLETE ProceduralRetriever — How-to/procedure artifact retrieval with procedural query detection
+- COMPLETE AnswerQualityGate — Heuristic context sufficiency check (4 dimensions: coverage, confidence, diversity, freshness)
+- COMPLETE TraceStore — SQLite-backed trace persistence with quality metrics
+- COMPLETE ContextQualityStatus enum (SUFFICIENT, MARGINAL, NEEDS_MORE_CONTEXT, EMPTY)
 
-### 5.6 Phase 6 — Later Intelligence
-- PLANNED Query rewriting with fast model
-- PLANNED Procedural memory retriever
-- PLANNED Community/domain retrieval
-- PLANNED Decay/consolidation
-- PLANNED Adaptive retriever weighting
+### 5.6 Phase 6 — Autonomy, Quality & Observability
+- COMPLETE Auto-Retry on NEEDS_MORE_CONTEXT — Second retrieval round with strategy escalation (max 1 retry)
+- COMPLETE Context Compression / Smart Truncation — Extractive summarization for long evidence hits
+- COMPLETE Trace Dashboard Foundation — Dashboard summary, retry stats, retriever contribution stats
+- COMPLETE Quality Gate Enhancements — Optional model-assisted sufficiency check for MARGINAL cases
 
 ---
 

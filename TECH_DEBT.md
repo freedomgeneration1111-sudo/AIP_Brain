@@ -293,34 +293,29 @@ singleton with a factory that returns a state object scoped to the current user/
 
 ## DEBT-009 — Four Divergent Retrieval Code Paths in `_search_sources()`
 
-**Status:** Active — blocks Retrieval Phase 1  
+**Status:** RESOLVED — Retrieval Phases 5.0–5.6  
 **Phase:** Retrieval Architecture  
-**Filed:** 2026-06-07
+**Filed:** 2026-06-07  
+**Resolved:** 2026-06-07
 
 **What was deferred:**  
-The current `_search_sources()` method in `ask_pipeline.py` has 4 code paths with
+The current `_search_sources()` method in `ask_pipeline.py` had 4 code paths with
 inconsistent scoring: FTS5 (corpus_turns_fts), FTS5 (lexical.db fts_index), vector
-similarity (SqliteVssVectorStore), and graph neighbor injection. Each path has its own
+similarity (SqliteVssVectorStore), and graph neighbor injection. Each path had its own
 scoring formula, its own result format, and no unified fusion. The L2 retrieval module
-(`orchestration/retrieval.py`) with RerankWeights (semantic 0.60, recency 0.15, authority
-0.15, frequency 0.10) is never called.
+(`orchestration/retrieval.py`) with RerankWeights was never called.
 
-Additionally, there are two separate FTS5 indexes (`corpus_turns_fts` in state.db,
-auto-synced via triggers; `fts_index` in lexical.db, manually synced) that can drift
-out of consistency.
+**Resolution:**  
+All 4 divergent paths replaced by the unified RetrievalOrchestrator with 5 conforming
+retrievers (FTSRetriever, VectorRetriever, GraphRetriever, WikiRetriever, ProceduralRetriever)
+under the Retriever protocol, with RRF fusion, SmartContextPacker, and AnswerQualityGate.
+See Phases 5.0–5.6 for details.
 
-**Why deferred:**  
-The retrieval works well enough for current dogfood use with FTS5 + vector hybrid.
-Unifying under the Retriever protocol is a major refactoring that should be done
-methodically as Retrieval Phase 1, not as an ad-hoc fix.
-
-**Remediation steps (Retrieval Phase 1):**  
-1. Create Retriever(Protocol) with `retrieve(query, budget, trace) → RetrievalList`
-2. Create RetrievalHit dataclass as the unified shape for all retriever outputs
-3. Wrap existing FTS5 and vector search as FTSRetriever and VectorRetriever conforming to protocol
-4. Create RRF fusion service that merges RetrievalList outputs
-5. Replace `_search_sources()` with RetrievalOrchestrator that dispatches to enabled retrievers
-6. Consolidate dual FTS5 indexes under unified search_index (source_type discriminator)
+**Remaining work:**  
+- `ask_pipeline.py` still has legacy `_search_sources()` alongside the new retrieval stack
+- Full production wiring into app.py/AipContainer is Sprint 5.7
+- Dual FTS5 indexes (corpus_turns_fts vs lexical.db fts_index) still exist but are unified
+  under the FTSRetriever
 
 **Related work:**  
 - `docs/retrieval/AIP_RETRIEVAL_BUILD_MEMO.md` — authoritative plan (§1, §3, §4)
@@ -332,27 +327,25 @@ methodically as Retrieval Phase 1, not as an ad-hoc fix.
 
 ## DEBT-010 — 0.7 Importance Coverage Bias in Graph Extraction
 
-**Status:** Active — blocks Retrieval Phase 2  
+**Status:** PARTIALLY RESOLVED — Retrieval Phase 5.2  
 **Phase:** Retrieval Architecture  
 **Filed:** 2026-06-07
 
 **What was deferred:**  
 Sexton's graph extraction only runs on turns with importance >= 0.7. This means everyday-
 but-crucial entities (like Komal — high mention frequency, low graph connectivity) have
-many mentions but weak graph edges. The entity_turn_index will be incomplete for these
-entities if we rely on graph extraction alone.
+many mentions but weak graph edges.
 
-**Why deferred:**  
-The 0.7 threshold was set conservatively to avoid extracting spurious relationships from
-low-importance turns. Lowering it globally would increase noise. The correct fix is
-targeted edge densification (Retrieval Phase 2), not a blanket threshold change.
+**Resolution so far:**  
+Retrieval Phase 5.2 added mention scan as an entity_turn_index population path (source =
+'mention_scan'), which provides direct entity-to-turn recall regardless of graph
+connectivity. The EntitySeedSelector and GraphRetriever's Zone A (direct mentions) now
+surface these turns.
 
-**Remediation steps (Retrieval Phase 2):**  
-1. Add mention scan as an entity_turn_index population path (source = 'mention_scan')
-2. Implement targeted edge densification: lower threshold to 0.5 for turns containing
-   known high-value entities, then golden-set domains, then multi-mention turns
-3. Add `sexton.graph_extraction_min_importance` config (default 0.7, dogfood 0.5)
-4. Run staged backfill in priority order
+**Remaining work:**  
+Targeted edge densification (lowering threshold to 0.5 for high-value entities) is not yet
+implemented. This requires Sexton wiring (BUG-003/DEBT-006) and a config change to
+`sexton.graph_extraction_min_importance`.
 
 **Related work:**  
 - `docs/retrieval/AIP_RETRIEVAL_BUILD_MEMO.md` §7 (Coverage Fix A and B)

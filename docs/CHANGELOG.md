@@ -8,6 +8,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased] — 2026-06-07
 
+### Retrieval Architecture — Phases 5.0–5.6 (COMPLETE)
+
+#### Phase 5.0 — Measurement and Trace
+- **Golden test suite** (`tests/retrieval_goldens/`): 6 YAML golden queries (Komal, GEF RF heating, frost alert device, AIP features, AIP retrieval architecture, FGS school registration) with must_include_clusters, must_not_dominate, and success thresholds.
+- **Retrieval trace instrumentation** (`retrieval_trace.py`): RetrievalTrace, RetrievalHit, RetrievalQuery, RetrievalBudget dataclasses with full provenance tracking.
+- **Baseline evaluation script** (`eval_retrieval.py`): Before/after CLI for retrieval quality measurement.
+- **FTS5 sanitization**: Stop-word filtering + AND-join query construction + single-quote handling.
+
+#### Phase 5.1 — Protocol Substrate
+- **Retriever Protocol** (`retriever.py`): `@runtime_checkable` with `name: str` and `async def retrieve(query, *, budget, trace) -> RetrievalList`.
+- **FTSRetriever** (`fts_retriever.py`): First conforming retriever, wraps FTS5 corpus_turns_fts search into RetrievalHit output.
+- **RRF fusion** (`rrf_fusion.py`): Reciprocal Rank Fusion with k=60, plus AIP-specific modifiers (importance, confidence, evidence_status, freshness, diversity).
+- **RetrievalOrchestrator** (`orchestrator.py`): Parallel dispatch to enabled retrievers, RRF fusion, budget enforcement, quality gate integration, auto-retry on NEEDS_MORE_CONTEXT.
+
+#### Phase 5.2 — Entity-Turn Index + GraphRetriever
+- **Entity-turn index**: entity_turn_index table (entity_id, turn_id, confidence, source) with backfill from evidence_turn_ids_json and mention scan.
+- **GraphRetriever** (`graph_retriever.py`): Zone A (direct entity-mention recall) + Zone B (PPR expansion via networkx PageRank), hub leash (weight / log(degree+1)), multi-signal scoring.
+- **EntitySeedSelector**: Exact canonical/alias match, acronym match, phrase longest-match-first, FTS5 entity search, token overlap scoring.
+- **Hub leash**: Configurable hub_penalty_weight, cap on turns per expanded entity, generic domain cap.
+
+#### Phase 5.3 — Query Expansion + Wiki + Entity Writes
+- **LLM-powered query expansion** (`query_expansion.py`): Fast-model structured JSON output with entities, query_variants, likely_domains, query_mode.
+- **WikiRetriever** (`wiki_retriever.py`): Domain selection from seeds + hits, budgeted multi-wiki injection, semantic matching via embedding similarity.
+- **Sexton entity-turn writes**: Entity extraction results written to entity_turn_index during tagging cycles.
+- **Hub leash tuning**: Configurable weights and caps, trace field for hub_penalty_applied.
+
+#### Phase 5.4 — VectorRetriever + Semantic Wiki
+- **VectorRetriever** (`vector_retriever.py`): 768-dim embedding similarity via SqliteVssVectorStore, conforming to Retriever protocol.
+- **Semantic wiki matching**: Embedding-based domain article selection for WikiRetriever.
+- **Trace and config polish**: Expanded trace fields, retriever-level configuration.
+
+#### Phase 5.5 — Context Quality & Reliability
+- **SmartContextPacker** (`context_packer.py`): Budget-aware, structured context assembly with 4 sections (evidence, wiki, procedural, graph), source caps, diversity rules, temporal span handling.
+- **ProceduralRetriever** (`procedural_retriever.py`): How-to/procedure artifact retrieval with procedural query detection and scoring.
+- **AnswerQualityGate** (`answer_quality_gate.py`): Heuristic context sufficiency check across 4 dimensions (coverage, confidence, diversity, freshness) with configurable thresholds.
+- **TraceStore** (`trace_store.py`): SQLite-backed trace persistence with quality metrics recording.
+- **ContextQualityStatus** enum: SUFFICIENT, MARGINAL, NEEDS_MORE_CONTEXT, EMPTY.
+
+#### Phase 5.6 — Autonomy, Quality & Observability
+- **Auto-Retry on NEEDS_MORE_CONTEXT**: Second retrieval round with strategy escalation (LLM expansion, relaxed domain, broader entity seeding, increased max_sources). Max 1 retry. Retry info recorded in RetrievalTrace (retry_triggered, retry_reason, retry_round, retry_strategies_tried).
+- **Context Compression / Smart Truncation**: Extractive summarization in SmartContextPacker for long evidence hits. Sentence-boundary splitting + scoring by query/entity overlap. ContextSection tracks compressed_count.
+- **Trace Dashboard Foundation**: TraceStore analytics methods — get_dashboard_summary(), query_retry_stats(), query_retriever_stats(). Quality status distribution over time, average entity coverage, most common fallback/retry reasons, per-retriever contribution stats.
+- **Quality Gate Enhancements**: Optional model-assisted sufficiency check in AnswerQualityGate for MARGINAL cases. QualityGateConfig.enable_model_assisted and model_assisted_slot options. Pure heuristic remains default/fast path.
+
+#### Retrieval Test Suite
+- **161 retrieval tests passing** across 4 test files:
+  - `tests/test_retrieval_trace.py` — Schema and budget tests
+  - `tests/test_phase54_retrieval.py` — VectorRetriever + query expansion tests
+  - `tests/test_phase55_retrieval.py` — ContextPacker + QualityGate + ProceduralRetriever + TraceStore tests
+  - `tests/test_phase56_retrieval.py` — Auto-retry + extractive summarization + dashboard analytics + model-assisted gate tests
+
 ### Unified Chat Spec — Phases 1-4
 
 #### Added

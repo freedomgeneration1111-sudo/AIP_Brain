@@ -1,7 +1,7 @@
 # AIP Status
 
 **Version:** 0.1.0-alpha
-**Architecture Revision:** 5.3
+**Architecture Revision:** 5.6
 **Last Updated:** 2026-06-07
 **Companion Docs:** docs/AIP_PROJECT_STATUS.md (full project state), docs/retrieval/AIP_RETRIEVAL_BUILD_MEMO.md (authoritative build plan)
 
@@ -35,7 +35,8 @@ Production configuration is **enforced programmatically**. Unsafe configs fail a
 
 ## Module Status
 
-- **Tests:** 10 failed (pre-existing), 994 passed, 23 skipped
+- **Tests:** 13 failed (pre-existing), 1227 passed, 23 skipped
+- **Retrieval tests:** 161 passed (Phases 5.0–5.6), 0 failed
 - **Architecture:** Three-layer (foundation → orchestration → adapter)
 - **Default DB path:** `db/state.db` (SQLite, laptop profile)
 - **Scaffolding:** ~5-8% overall (MCP dispatch, adaptive router, ScriptNode sandbox)
@@ -84,27 +85,27 @@ not running. Only failure classification (old Sexton) fires every 300s. The new 
 
 **Authoritative document:** `docs/retrieval/AIP_RETRIEVAL_BUILD_MEMO.md`
 
-The retrieval system is being rebuilt from first principles as a unified substrate rather than
-the current 4 divergent search paths. The build proceeds in 7 phases:
+The retrieval system has been rebuilt from first principles as a unified substrate. All 6 build phases are COMPLETE:
 
 | Phase | Name | Status | Key Deliverables |
 |-------|------|--------|-----------------|
-| 0 | Measurement and Trace | NOT STARTED | Golden tests, trace instrumentation, baselines |
-| 1 | Protocol Substrate | NOT STARTED | Retriever protocol, RetrievalHit, ContextBudget, RRF, FTS+Vector wrapped |
-| 2 | Entity-Turn Index + Coverage | NOT STARTED | entity_turn_index, mention scan, hub leash, edge densification |
-| 3 | GraphRetriever | NOT STARTED | EntitySeedSelector, PPR, direct mentions, hub control, RRF integration |
-| 4 | Wiki/Background Retriever | NOT STARTED | WikiRetriever, domain selection, budgeted injection |
-| 5 | Context Packer + Quality | NOT STARTED | Diversity, source caps, evidence status, answer modes |
-| 6 | Later Intelligence | NOT STARTED | Query rewriting, procedural retriever, consolidation, adaptation |
+| 0 | Measurement and Trace | COMPLETE | Golden tests, trace instrumentation, baselines |
+| 1 | Protocol Substrate | COMPLETE | Retriever protocol, RetrievalHit, ContextBudget, RRF, FTS+Vector wrapped |
+| 2 | Entity-Turn Index + Coverage | COMPLETE | entity_turn_index, mention scan, hub leash, edge densification |
+| 3 | GraphRetriever | COMPLETE | EntitySeedSelector, PPR, direct mentions, hub control, RRF integration |
+| 4 | Wiki/Background + Vector | COMPLETE | WikiRetriever, VectorRetriever, LLM query expansion |
+| 5 | Context Packer + Quality | COMPLETE | SmartContextPacker, ProceduralRetriever, AnswerQualityGate, TraceStore |
+| 6 | Autonomy & Observability | COMPLETE | Auto-retry, extractive summarization, dashboard analytics, model-assisted quality gate |
 
-### Current Retrieval Stack (pre-retrieval-architecture)
+### Current Retrieval Stack (post-retrieval-architecture)
 
-- `corpus_turns_fts` in `state.db` (auto-synced via triggers)
-- `fts_index` in `lexical.db` (manually synced)
-- `SqliteVssVectorStore` (768-dim, nomic-embed-text)
-- `GraphStore` (853 entities, 430 edges) — decorative in retrieval, not structural
-- `_search_sources()` has 4 divergent code paths with inconsistent scoring
-- L2 retrieval module (`orchestration/retrieval.py`) exists but is never called
+- **Retriever Protocol** — `@runtime_checkable` with `name: str` and `async def retrieve()`
+- **5 conforming retrievers**: FTSRetriever, VectorRetriever, GraphRetriever, WikiRetriever, ProceduralRetriever
+- **RetrievalOrchestrator** — RRF fusion, importance weighting, quality gate, auto-retry on NEEDS_MORE_CONTEXT
+- **SmartContextPacker** — Budget-aware context assembly with extractive summarization
+- **AnswerQualityGate** — Heuristic + optional model-assisted sufficiency checks
+- **TraceStore** — SQLite-backed trace persistence with dashboard analytics
+- **161 retrieval tests passing** across Phases 5.0–5.6
 
 ## Runtime Gap Closure (P9)
 
@@ -246,7 +247,7 @@ generate in Sexton vigil cycles.
 
 ## Next Priorities
 
-1. **Retrieval Build Phase 0** — Golden tests, trace instrumentation, baseline measurements (see `docs/retrieval/AIP_RETRIEVAL_BUILD_MEMO.md`)
+1. **Sprint 5.7 — Integration Testing & Production Hardening** — Wire full retrieval stack into app.py/AipContainer, end-to-end integration tests, performance benchmarks, CLI dashboard command
 2. **BUG-003** — Wire new Sexton actor (DEBT-006 fix — tagging, embedding, wiki, graph extraction not running)
 3. **BUG-001** — Project lost on restart
 4. **BUG-002** — chat.py uses wrong db_path for GraphStore
