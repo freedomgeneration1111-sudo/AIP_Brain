@@ -2,6 +2,19 @@
 
 Session tokens + API key management with bcrypt.
 Laptop profile (auth_enabled=False): all requests treated as DEFINER.
+
+ReadPoolMixin evaluation (Sprint 5.21):
+    NOT beneficial for auth session store. Reasons:
+    - validate_session() is a primary-key SELECT (<1ms), not read-heavy enough
+      to warrant a separate connection pool.
+    - validate_api_key() bottleneck is bcrypt.checkpw(), not the DB read.
+    - Auth requests are typically sequential (one user at a time), not
+      concurrent like ask pipeline reads.
+    - Adding ReadPoolMixin would consume 3 extra connections (~3MB) with
+      minimal throughput benefit.
+    - WAL mode already allows concurrent reads alongside writes.
+    If multi-user collaborative sessions drive concurrent auth reads in the
+    future, re-evaluate.
 """
 
 from __future__ import annotations

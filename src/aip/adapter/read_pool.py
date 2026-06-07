@@ -19,6 +19,32 @@ Telemetry:
 - Exhaustion count: subset of fallback where all pool slots were occupied.
 - Checkout latency: rolling average of time spent in _checkout_read_conn().
 
+Interpreting exhaustion_rate:
+- 0.0–0.1: Healthy. Pool is adequately sized for current load.
+  Most checkouts are served from pool connections. No action needed.
+- 0.1–0.3: Moderate. Pool handles most traffic but falls back
+  occasionally under bursts. Acceptable for most workloads. Consider
+  increasing pool_size if latency-sensitive reads are falling back.
+- 0.3–0.6: High. A significant fraction of reads hit the write
+  connection, which serializes through the single writer. This
+  increases read latency and can block writes. **Increase pool_size
+  by 1–2 connections** (e.g. from 3 to 5) and re-observe.
+- >0.6: Critical. The pool is severely undersized. Most reads
+  bypass the pool entirely, defeating its purpose. **Double the
+  pool_size** and investigate whether read patterns have changed
+  (e.g. new concurrent ask workloads, higher query complexity).
+
+When to increase pool_size:
+- If exhaustion_rate is consistently >0.3 on a store.
+- If avg_checkout_latency_ms is high (>50ms) due to stale-connection
+  recreation (which adds ~10ms per stale conn).
+- If concurrent ask workloads are increasing (each ask touches 3–4
+  stores, so 5 concurrent asks = ~15–20 simultaneous pool checkouts).
+
+Note: Increasing pool_size increases memory usage (~1MB per SQLite
+connection) and file descriptors. For a single-process app, 5–7 pool
+connections per store is usually the practical maximum.
+
 Usage::
 
     class MyStore(StoreHealthMixin, ReadPoolMixin):
@@ -63,6 +89,7 @@ class ReadPoolHealth(TypedDict):
     - exhaustion_rate: exhaustion_count / checkout_count (utilization indicator)
     - avg_checkout_latency_ms: rolling average (window=20)
     - p95_checkout_latency_ms: 95th percentile of recent checkout latencies
+    - recommendation: actionable guidance when exhaustion_rate > 0.3
     """
 
     pool_size: int
@@ -73,6 +100,7 @@ class ReadPoolHealth(TypedDict):
     exhaustion_rate: float
     avg_checkout_latency_ms: float
     p95_checkout_latency_ms: float
+    recommendation: str
 
 
 class ReadPoolMixin:
@@ -214,9 +242,15 @@ class ReadPoolMixin:
 
         Includes utilization indicators:
         - exhaustion_rate: fraction of checkouts that hit pool exhaustion.
-          A high rate (>0.3) suggests the pool size may be too small.
+          Interpretation:
+            0.0–0.1  Healthy — pool is adequately sized.
+            0.1–0.3  Moderate — occasional fallbacks, usually fine.
+            0.3–0.6  High — increase pool_size by 1–2 connections.
+            >0.6     Critical — double pool_size and investigate.
         - p95_checkout_latency_ms: 95th percentile of recent checkout
           latencies, useful for spotting tail latency from stale connections.
+        - recommendation: when exhaustion_rate > 0.3, suggests increasing
+          pool_size; otherwise empty string.
         """
         pool_active = sum(
             1 for avail in getattr(self, "_read_pool_available", []) if not avail
@@ -234,8 +268,22 @@ class ReadPoolMixin:
         exhaustion_count = getattr(self, "_pool_exhaustion_count", 0)
         exhaustion_rate = (exhaustion_count / checkout_count) if checkout_count > 0 else 0.0
 
+        # Generate recommendation when exhaustion rate is high
+        pool_size = getattr(self, "_read_pool_size", 0)
+        recommendation = ""
+        if exhaustion_rate > 0.6:
+            recommendation = (
+                f"Critical: exhaustion_rate={exhaustion_rate:.2%}. "
+                f"Double pool_size from {pool_size} to {pool_size * 2} and investigate read patterns."
+            )
+        elif exhaustion_rate > 0.3:
+            recommendation = (
+                f"High: exhaustion_rate={exhaustion_rate:.2%}. "
+                f"Consider increasing pool_size from {pool_size} to {pool_size + 2}."
+            )
+
         return {
-            "pool_size": getattr(self, "_read_pool_size", 0),
+            "pool_size": pool_size,
             "pool_active": pool_active,
             "checkout_count": checkout_count,
             "fallback_count": getattr(self, "_pool_fallback_count", 0),
@@ -243,6 +291,7 @@ class ReadPoolMixin:
             "exhaustion_rate": round(exhaustion_rate, 4),
             "avg_checkout_latency_ms": round(avg_latency_ms, 3),
             "p95_checkout_latency_ms": round(p95_latency_ms, 3),
+            "recommendation": recommendation,
         }
 
     async def _close_read_pool(self) -> None:

@@ -532,14 +532,29 @@ class TestRunEntityMaintenance:
 
 
 class TestRunCycle:
+    """Tests for Beast run_cycle() after ADR-011 restructuring.
+
+    Per ADR-011, run_cycle() is a lightweight heartbeat that runs:
+    1. Health check
+    2. Lightweight heartbeat (budget check, stale artifact flagging)
+    3. Context advisory (conditional domain summaries — only if beast_provider
+       is configured and corpus has changed)
+
+    Maintenance operations (corpus, entity, tagging, embedding, graph) have
+    moved to Sexton. The "corpus" and "entity" keys are no longer in the
+    cycle summary.
+    """
+
     @pytest.mark.asyncio
     async def test_run_cycle_returns_summary(self):
+        """After ADR-011, run_cycle returns heartbeat-style summary."""
         b = _make_beast(projects=[])
         summary = await b.run_cycle()
 
+        # ADR-011: run_cycle is lightweight heartbeat, not full maintenance
         assert "health_overall" in summary
-        assert "corpus" in summary
-        assert "entity" in summary
+        assert "heartbeat" in summary
+        assert "context_advisory" in summary
         assert "cycle_elapsed_seconds" in summary
         assert summary["cycle_elapsed_seconds"] >= 0
 
@@ -552,25 +567,53 @@ class TestRunCycle:
         assert b._last_cycle_time is not None
 
     @pytest.mark.asyncio
-    async def test_run_cycle_emits_event(self):
+    async def test_run_cycle_emits_heartbeat_event(self):
+        """After ADR-011, run_cycle emits 'beast_heartbeat' (not cycle_complete)."""
         ev = AsyncMock(spec=EventStore)
         b = _make_beast(event_store=ev, projects=[])
         await b.run_cycle()
 
-        # Should emit at least: health_check, corpus_maintenance, cycle_complete
-        cycle_events = [
-            c for c in ev.write_event.call_args_list if c.kwargs.get("event_type") == "beast_cycle_complete"
+        # ADR-011: heartbeat event, not the old cycle_complete
+        heartbeat_events = [
+            c for c in ev.write_event.call_args_list
+            if c.kwargs.get("event_type") == "beast_heartbeat"
         ]
-        assert len(cycle_events) == 1
-        assert "cycle_elapsed_seconds" in cycle_events[0].kwargs
+        assert len(heartbeat_events) >= 1
 
     @pytest.mark.asyncio
-    async def test_run_cycle_works_without_project_store(self):
+    async def test_run_cycle_emits_health_check_event(self):
+        """run_cycle also triggers health_check which emits its own event."""
+        ev = AsyncMock(spec=EventStore)
+        b = _make_beast(event_store=ev, projects=[])
+        await b.run_cycle()
+
+        health_events = [
+            c for c in ev.write_event.call_args_list
+            if c.kwargs.get("event_type") == "beast_health_check"
+        ]
+        assert len(health_events) == 1
+        assert health_events[0].kwargs["actor"] == "beast"
+
+    @pytest.mark.asyncio
+    async def test_run_cycle_context_advisory_no_llm(self):
+        """Without beast_provider, context_advisory indicates heartbeat-only."""
         b = _make_beast(project_store=None)
         summary = await b.run_cycle()
 
         assert summary["health_overall"] in ("ok", "degraded")
-        assert summary["corpus"]["mode"] == "global_no_project_store"
+        # No LLM configured → heartbeat-only advisory
+        assert summary["context_advisory"]["note"] == "no_llm_heartbeat_only"
+
+    @pytest.mark.asyncio
+    async def test_run_cycle_heartbeat_structure(self):
+        """Verify heartbeat sub-dict has expected fields after ADR-011."""
+        b = _make_beast(projects=[])
+        summary = await b.run_cycle()
+
+        hb = summary["heartbeat"]
+        assert "budget_ok" in hb
+        assert "stale_generated_flagged" in hb
+        assert "heartbeat_written" in hb
 
 
 # -----------------------------------------------------------------------

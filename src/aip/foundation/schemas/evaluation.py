@@ -84,9 +84,13 @@ class SextonConfig:
     audit_on_slot_change: bool = True
     max_unclassified_before_alert: int = 10
 
-    # Graph extraction batching (off by default — conservative)
-    graph_extraction_batch_enabled: bool = False
-    graph_extraction_batch_size: int = 1  # 1 = per-turn (current behavior)
+    # Graph extraction batching — enabled by default (Sprint 5.21 graduation).
+    # Batch mode reduces LLM API calls by N/batch_size, saving cost.
+    # With batch_size=2, each LLM call processes 2 turns, halving API calls.
+    # Falls back to per-turn processing if batch response parsing fails.
+    # See test_sexton_graph_batch.py for E2E coverage.
+    graph_extraction_batch_enabled: bool = True
+    graph_extraction_batch_size: int = 2  # Conservative default; increase to 4–6 for larger corpora
 
 
 @dataclass

@@ -151,6 +151,7 @@ class TestReadPoolTelemetry:
         assert "p95_checkout_latency_ms" in health["read_pool"]
         assert "pool_size" in health["read_pool"]
         assert "pool_active" in health["read_pool"]
+        assert "recommendation" in health["read_pool"]
 
     @pytest.mark.asyncio
     async def test_read_pool_health_typed_dict_shape(self, graph_store):
@@ -163,6 +164,7 @@ class TestReadPoolTelemetry:
             "pool_size", "pool_active", "checkout_count",
             "fallback_count", "exhaustion_count", "exhaustion_rate",
             "avg_checkout_latency_ms", "p95_checkout_latency_ms",
+            "recommendation",
         }
         assert set(health.keys()) == expected_keys
 
@@ -241,6 +243,59 @@ class TestReadPoolTelemetry:
 
         health = graph_store.read_pool_health()
         assert health["exhaustion_rate"] > 0.3
+
+        for conn in conns:
+            graph_store._return_read_conn(conn)
+
+    @pytest.mark.asyncio
+    async def test_recommendation_empty_when_healthy(self, graph_store):
+        """recommendation should be empty string when exhaustion_rate is low."""
+        # A few sequential checkouts — no fallback
+        for _ in range(3):
+            conn = await graph_store._checkout_read_conn()
+            graph_store._return_read_conn(conn)
+
+        health = graph_store.read_pool_health()
+        assert health["exhaustion_rate"] == 0.0
+        assert health["recommendation"] == ""
+
+    @pytest.mark.asyncio
+    async def test_recommendation_high_exhaustion(self, graph_store):
+        """recommendation should suggest increasing pool when exhaustion_rate > 0.3."""
+        # Exhaust pool + fallbacks to drive rate > 0.3
+        conns = []
+        for _ in range(3):
+            conns.append(await graph_store._checkout_read_conn())
+
+        # 3 fallbacks → 3 pool + 3 fallback = 6 total, 3 exhaustions → rate = 0.5
+        for _ in range(3):
+            fb = await graph_store._checkout_read_conn()
+            graph_store._return_read_conn(fb)
+
+        health = graph_store.read_pool_health()
+        assert health["exhaustion_rate"] > 0.3
+        assert "increase" in health["recommendation"].lower() or "pool_size" in health["recommendation"].lower()
+
+        for conn in conns:
+            graph_store._return_read_conn(conn)
+
+    @pytest.mark.asyncio
+    async def test_recommendation_critical_exhaustion(self, graph_store):
+        """recommendation should say 'Critical' when exhaustion_rate > 0.6."""
+        # Exhaust pool + many fallbacks to drive rate > 0.6
+        conns = []
+        for _ in range(3):
+            conns.append(await graph_store._checkout_read_conn())
+
+        # 6 fallbacks → 3 pool + 6 fallback = 9 total, 6 exhaustions → rate ≈ 0.67
+        for _ in range(6):
+            fb = await graph_store._checkout_read_conn()
+            graph_store._return_read_conn(fb)
+
+        health = graph_store.read_pool_health()
+        assert health["exhaustion_rate"] > 0.6
+        assert "critical" in health["recommendation"].lower()
+        assert "Double" in health["recommendation"]
 
         for conn in conns:
             graph_store._return_read_conn(conn)
