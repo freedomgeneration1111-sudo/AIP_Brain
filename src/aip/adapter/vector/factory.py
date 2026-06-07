@@ -1,11 +1,8 @@
 """Vector store factory — creates the appropriate VectorStore implementation.
 
 Configuration flag switches between "pgvector" and "sqlite_vss".
-Adapter may import foundation but not orchestration.
-
-Sprint 5.13: Calls async initialize() on SqliteVssVectorStore after
-construction so tables and VSS extension are ready before the store
-is returned to callers.
+The ``runtime_mode`` key in vector_cfg controls brute-force fallback
+behavior (development / production / strict).
 """
 
 from __future__ import annotations
@@ -19,6 +16,18 @@ from aip.foundation.schemas import PgvectorConfig
 logger = logging.getLogger(__name__)
 
 
+def _resolve_runtime_mode(vector_cfg: dict) -> Any:
+    """Resolve RuntimeMode from config, defaulting to DEVELOPMENT."""
+    from aip.adapter.vector.sqlite_vss_store import RuntimeMode
+
+    mode_str = vector_cfg.get("runtime_mode", "development").lower()
+    try:
+        return RuntimeMode(mode_str)
+    except ValueError:
+        logger.warning("Unknown runtime_mode '%s', defaulting to DEVELOPMENT", mode_str)
+        return RuntimeMode.DEVELOPMENT
+
+
 async def create_vector_store(config: Any, embedding_provider: Any = None) -> VectorStore:
     """Create the appropriate VectorStore based on config.
 
@@ -26,10 +35,6 @@ async def create_vector_store(config: Any, embedding_provider: Any = None) -> Ve
     - PgvectorStore for "pgvector"
     - SqliteVssVectorStore for "sqlite_vss"
     - Falls back to sqlite_vss if pgvector is unavailable
-
-    When ``embedding_provider`` is provided, it is passed to the
-    SqliteVssVectorStore constructor so that the ``store()`` compat
-    method can generate real embeddings instead of inserting zero vectors.
 
     The returned object implements the VectorStore Protocol.
     Orchestration code never knows which backend is active.
@@ -57,7 +62,7 @@ async def create_vector_store(config: Any, embedding_provider: Any = None) -> Ve
             logger.info("VectorStore: pgvector backend initialized")
             return store
         except Exception as e:
-            logger.warning(f"pgvector unavailable ({e}), falling back to sqlite_vss")
+            logger.warning("pgvector unavailable (%s), falling back to sqlite_vss", e)
             return await _create_sqlite_vss(vector_cfg, embedding_provider)
 
     return await _create_sqlite_vss(vector_cfg, embedding_provider)
@@ -66,23 +71,23 @@ async def create_vector_store(config: Any, embedding_provider: Any = None) -> Ve
 async def _create_sqlite_vss(vector_cfg: dict, embedding_provider: Any = None) -> VectorStore:
     """Create SqliteVssVectorStore as default or fallback.
 
-    Sprint 5.13: Calls ``initialize()`` on the store before returning it
-    so that VSS detection and table creation are complete.
-
-    If sqlite_vss creation/initialization fails entirely, falls back
-    to InMemoryVectorStore as a last resort.
+    Calls ``initialize()`` on the store before returning it so that
+    VSS detection and table creation are complete.  Falls back to
+    InMemoryVectorStore as a last resort.
     """
     try:
         from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
 
         db_path = vector_cfg.get("db_path", "db/vectors.db")
         dimensions = vector_cfg.get("dimensions", 768)
+        runtime_mode = _resolve_runtime_mode(vector_cfg)
+
         store = SqliteVssVectorStore(
             db_path=db_path,
             dimensions=dimensions,
             embedding_provider=embedding_provider,
+            runtime_mode=runtime_mode,
         )
-        # Sprint 5.13: must call initialize() before using the store
         await store.initialize()
 
         if store._vss_available:
@@ -96,11 +101,11 @@ async def _create_sqlite_vss(vector_cfg: dict, embedding_provider: Any = None) -
         else:
             logger.warning(
                 "sqlite_vss extension not available, using persistent sqlite metadata + "
-                "brute-force search (embeddings stored in embedding_json column for persistence)"
+                "brute-force search (mode=%s)", runtime_mode.value,
             )
         return store
     except Exception as e:
-        logger.warning(f"sqlite_vss store creation failed ({e}), falling back to in-memory store")
+        logger.warning("sqlite_vss store creation failed (%s), falling back to in-memory store", e)
 
     # Last-resort in-memory fallback
     from aip.adapter.vector._in_memory import InMemoryVectorStore

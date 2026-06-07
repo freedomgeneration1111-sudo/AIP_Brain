@@ -2,7 +2,10 @@
 
 No UI, workflow, Beast, MCP, or queued task may bypass the DEFINER gates.
 Adapter only (composes Foundation Protocols/schemas; no orchestration imports).
-Uses aiosqlite for async-safe database access.
+
+Constructor is lightweight (stores config only). Call ``initialize()``
+(async) to create tables before first use, or rely on lazy creation
+via ``_get_conn()``.
 """
 
 from __future__ import annotations
@@ -17,6 +20,25 @@ import aiosqlite
 from aip.foundation.protocols import AutonomyGate
 from aip.foundation.schemas import AutonomyEscalation, AutonomyLevel, coerce_autonomy_level
 
+# ---------------------------------------------------------------------------
+# Single source of truth for DDL
+# ---------------------------------------------------------------------------
+
+_DDL_AUTONOMY_ESCALATIONS = """
+    CREATE TABLE IF NOT EXISTS autonomy_escalations (
+        escalation_id TEXT PRIMARY KEY,
+        action_type TEXT NOT NULL,
+        requested_by TEXT NOT NULL,
+        resource_id TEXT NOT NULL,
+        current_level TEXT NOT NULL,
+        requested_level TEXT NOT NULL,
+        granted INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        model_gen_assumption TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+"""
+
 
 class AutonomyGateImpl(AutonomyGate):
     """SQLite-backed AutonomyGate.
@@ -27,7 +49,7 @@ class AutonomyGateImpl(AutonomyGate):
     - Auto-grants read/write.
     - Writes full audit trail to autonomy_escalations in the provided state db.
 
-    Uses aiosqlite for async-compatible database access.
+    Uses a persistent aiosqlite connection per instance with error recovery.
     """
 
     def __init__(self, config: dict | None = None, escalation_store: Any | None = None) -> None:
@@ -36,63 +58,59 @@ class AutonomyGateImpl(AutonomyGate):
         # (ignored; we manage table directly like other adapters)
         self._db_path = self._config.get("db_path", "db/state.db")  # fallback; tests override via config
         self._conn: aiosqlite.Connection | None = None
-        self._ensure_table_sync()
-
-    def _ensure_table_sync(self) -> None:
-        """Synchronous table creation during init (runs once at startup)."""
-        conn = sqlite3.connect(self._db_path)
-        try:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS autonomy_escalations (
-                    escalation_id TEXT PRIMARY KEY,
-                    action_type TEXT NOT NULL,
-                    requested_by TEXT NOT NULL,
-                    resource_id TEXT NOT NULL,
-                    current_level TEXT NOT NULL,
-                    requested_level TEXT NOT NULL,
-                    granted INTEGER NOT NULL,
-                    reason TEXT NOT NULL,
-                    model_gen_assumption TEXT,
-                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-                )
-            """)
-            conn.commit()
-        finally:
-            conn.close()
+        self._tables_ready = False
 
     async def _get_conn(self) -> aiosqlite.Connection:
+        """Return a persistent connection, creating one if needed.
+
+        Lazily ensures tables on first connection so that callers
+        who bypass ``initialize()`` still get a working schema.
+        """
         if self._conn is None:
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
+            await self._conn.execute("PRAGMA journal_mode=WAL")
+            if not self._tables_ready:
+                await self._create_tables(self._conn)
+                self._tables_ready = True
         return self._conn
 
-    async def _ensure_table(self) -> None:
+    async def _create_tables(self, conn: aiosqlite.Connection) -> None:
+        """Create autonomy_escalations table on the given connection."""
+        await conn.execute(_DDL_AUTONOMY_ESCALATIONS)
+        await conn.commit()
+
+    async def initialize(self) -> None:
+        """Idempotent table creation (called by lifespan / DI container).
+
+        Uses a short-lived connection to create tables, then discards it.
+        Subsequent operations use the persistent connection from _get_conn().
+        """
+        if self._tables_ready:
+            return
         conn = await aiosqlite.connect(self._db_path)
         try:
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS autonomy_escalations (
-                    escalation_id TEXT PRIMARY KEY,
-                    action_type TEXT NOT NULL,
-                    requested_by TEXT NOT NULL,
-                    resource_id TEXT NOT NULL,
-                    current_level TEXT NOT NULL,
-                    requested_level TEXT NOT NULL,
-                    granted INTEGER NOT NULL,
-                    reason TEXT NOT NULL,
-                    model_gen_assumption TEXT,
-                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-                )
-            """)
-            await conn.commit()
+            await self._create_tables(conn)
+            self._tables_ready = True
         finally:
             await conn.close()
 
-    async def initialize(self) -> None:
-        await self._ensure_table()
-
     async def close(self) -> None:
+        """Close the persistent connection."""
         if self._conn is not None:
-            await self._conn.close()
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+
+    async def _reset_conn(self) -> None:
+        """Reset the persistent connection (called on errors)."""
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
             self._conn = None
 
     def _level_rank(self, level: AutonomyLevel | str) -> int:
@@ -184,9 +202,9 @@ class AutonomyGateImpl(AutonomyGate):
                     ),
                 )
             return results
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def _record_escalation(self, esc: AutonomyEscalation) -> None:
         conn = await self._get_conn()
@@ -212,6 +230,6 @@ class AutonomyGateImpl(AutonomyGate):
                 ),
             )
             await conn.commit()
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise

@@ -9,7 +9,8 @@ Architecture:
 - Stores current state in ecs_state table.
 - Stores transition history in ecs_transitions table.
 - Uses GuardrailedEcsStore validation logic for transition rules.
-- Lazy async connection via _get_conn(), sync table creation in __init__.
+- Lightweight constructor with async initialize() for table creation.
+- Persistent connection with error recovery via _reset_conn().
 """
 
 from __future__ import annotations
@@ -20,19 +21,54 @@ from datetime import datetime, timezone
 
 import aiosqlite
 
+from aip.adapter.store_health import StoreHealthMixin
 from aip.foundation.ecs_graph import InvalidTransitionError, validate_transition
 from aip.foundation.protocols import EcsStore, EventStore
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Single source of truth for DDL
+# ---------------------------------------------------------------------------
 
-class PersistentEcsStore(EcsStore):
+_DDL_ECS_STATE = """
+    CREATE TABLE IF NOT EXISTS ecs_state (
+        artifact_id TEXT PRIMARY KEY,
+        current_state TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+"""
+
+_DDL_ECS_TRANSITIONS = """
+    CREATE TABLE IF NOT EXISTS ecs_transitions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        artifact_id TEXT NOT NULL,
+        from_state TEXT,
+        to_state TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        superseded_by TEXT,
+        timestamp TEXT NOT NULL,
+        metadata TEXT DEFAULT '{}'
+    )
+"""
+
+_DDL_IDX_ECS_TRANSITIONS_ARTIFACT = """
+    CREATE INDEX IF NOT EXISTS idx_ecs_transitions_artifact
+    ON ecs_transitions(artifact_id, timestamp DESC)
+"""
+
+
+class PersistentEcsStore(EcsStore, StoreHealthMixin):
     """ECS store that validates every transition against the state graph
     AND persists state to SQLite.
 
     Replaces the in-memory-only approach with proper persistence.
     State is loaded from SQLite on first access after restart.
     Transition history is recorded for audit.
+
+    Uses a persistent aiosqlite connection per instance with error recovery.
+    Includes connection health metrics via StoreHealthMixin.
     """
 
     def __init__(
@@ -46,98 +82,65 @@ class PersistentEcsStore(EcsStore):
         # In-memory cache (populated from DB on first read)
         self._state_cache: dict[str, str] = {}
         self._cache_loaded = False
-
-        # Sync table creation for backward compat with existing tests
-        self._ensure_table_sync()
-
-    def _ensure_table_sync(self) -> None:
-        """Create tables synchronously for backward compatibility."""
-        try:
-            conn = sqlite3.connect(self._db_path)
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS ecs_state (
-                    artifact_id TEXT PRIMARY KEY,
-                    current_state TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS ecs_transitions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    artifact_id TEXT NOT NULL,
-                    from_state TEXT,
-                    to_state TEXT NOT NULL,
-                    actor TEXT NOT NULL,
-                    reason TEXT NOT NULL,
-                    superseded_by TEXT,
-                    timestamp TEXT NOT NULL,
-                    metadata TEXT DEFAULT '{}'
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_ecs_transitions_artifact
-                ON ecs_transitions(artifact_id, timestamp DESC)
-                """
-            )
-            conn.commit()
-            conn.close()
-        except Exception as exc:
-            logger.warning("Could not create ECS tables synchronously: %s", exc)
+        self._tables_ready = False
 
     async def _get_conn(self) -> aiosqlite.Connection:
-        """Get or create the async database connection."""
+        """Return a persistent connection, creating one if needed.
+
+        Lazily ensures tables on first connection so that callers
+        who bypass ``initialize()`` still get a working schema.
+        """
         if self._conn is None:
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = aiosqlite.Row
             await self._conn.execute("PRAGMA journal_mode=WAL")
+            self._health_track_connect()
+            if not self._tables_ready:
+                await self._create_tables(self._conn)
+                self._tables_ready = True
         return self._conn
 
-    async def initialize(self) -> None:
-        """Initialize the async connection and ensure tables exist."""
-        conn = await self._get_conn()
-        await conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS ecs_state (
-                artifact_id TEXT PRIMARY KEY,
-                current_state TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        await conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS ecs_transitions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                artifact_id TEXT NOT NULL,
-                from_state TEXT,
-                to_state TEXT NOT NULL,
-                actor TEXT NOT NULL,
-                reason TEXT NOT NULL,
-                superseded_by TEXT,
-                timestamp TEXT NOT NULL,
-                metadata TEXT DEFAULT '{}'
-            )
-            """
-        )
-        await conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_ecs_transitions_artifact
-            ON ecs_transitions(artifact_id, timestamp DESC)
-            """
-        )
+    async def _create_tables(self, conn: aiosqlite.Connection) -> None:
+        """Create ECS tables and indexes on the given connection."""
+        await conn.execute(_DDL_ECS_STATE)
+        await conn.execute(_DDL_ECS_TRANSITIONS)
+        await conn.execute(_DDL_IDX_ECS_TRANSITIONS_ARTIFACT)
         await conn.commit()
 
+    async def initialize(self) -> None:
+        """Idempotent table creation (called by lifespan / DI container).
+
+        Uses a short-lived connection to create tables, then discards it.
+        Subsequent operations use the persistent connection from _get_conn().
+        """
+        if self._tables_ready:
+            return
+        conn = await aiosqlite.connect(self._db_path)
+        try:
+            await self._create_tables(conn)
+            self._tables_ready = True
+        finally:
+            await conn.close()
+
     async def close(self) -> None:
-        """Close the database connection."""
+        """Close the persistent connection."""
         if self._conn is not None:
-            await self._conn.close()
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
             self._conn = None
+
+    async def _reset_conn(self) -> None:
+        """Reset the persistent connection (called on errors)."""
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+            self._cache_loaded = False
+            self._health_track_reset()
 
     async def _load_state_from_db(self) -> None:
         """Load all state from DB into the in-memory cache."""
@@ -208,7 +211,7 @@ class PersistentEcsStore(EcsStore):
             )
             await conn.commit()
         except Exception:
-            await conn.rollback()
+            await self._reset_conn()
             raise
 
         # Update cache
@@ -239,28 +242,32 @@ class PersistentEcsStore(EcsStore):
     async def get_transition_history(self, artifact_id: str, limit: int = 100) -> list[dict]:
         """Get transition history for an artifact."""
         conn = await self._get_conn()
-        cursor = await conn.execute(
-            """
-            SELECT from_state, to_state, actor, reason, superseded_by, timestamp
-            FROM ecs_transitions
-            WHERE artifact_id = ?
-            ORDER BY timestamp DESC
-            LIMIT ?
-            """,
-            (artifact_id, limit),
-        )
-        rows = await cursor.fetchall()
-        return [
-            {
-                "from_state": row["from_state"],
-                "to_state": row["to_state"],
-                "actor": row["actor"],
-                "reason": row["reason"],
-                "superseded_by": row["superseded_by"],
-                "timestamp": row["timestamp"],
-            }
-            for row in rows
-        ]
+        try:
+            cursor = await conn.execute(
+                """
+                SELECT from_state, to_state, actor, reason, superseded_by, timestamp
+                FROM ecs_transitions
+                WHERE artifact_id = ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (artifact_id, limit),
+            )
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "from_state": row["from_state"],
+                    "to_state": row["to_state"],
+                    "actor": row["actor"],
+                    "reason": row["reason"],
+                    "superseded_by": row["superseded_by"],
+                    "timestamp": row["timestamp"],
+                }
+                for row in rows
+            ]
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def list_by_state(self, state: str, limit: int = 500) -> list[str]:
         """List artifact IDs currently in a given ECS state.

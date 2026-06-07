@@ -108,6 +108,20 @@ async def health(container: AipContainer = Depends(get_container)):
             logger.warning("Health check: DB write verification failed", exc_info=True)
             db_writable = False
 
+    # Connection health metrics — gather from stores that support StoreHealthMixin
+    store_health = {}
+    for store_name in (
+        "entity_store", "event_store", "artifact_store", "ecs_store",
+        "canonical_store", "budget_store", "project_store", "session_store",
+        "review_queue_store", "vigil_store", "corpus_turn_store", "lexical_store",
+    ):
+        store = getattr(container, store_name, None)
+        if store is not None and hasattr(store, "connection_health"):
+            try:
+                store_health[store_name] = store.connection_health()
+            except Exception:
+                store_health[store_name] = {"error": "health_check_failed"}
+
     return {
         "status": status,
         "uptime_seconds": uptime_seconds,
@@ -121,4 +135,5 @@ async def health(container: AipContainer = Depends(get_container)):
         "actors": actors_status,
         "budget_status": budget_status,
         "db_writable": db_writable,
+        "store_health": store_health,
     }

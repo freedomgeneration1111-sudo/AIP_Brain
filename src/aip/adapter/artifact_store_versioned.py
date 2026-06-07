@@ -3,6 +3,10 @@
 Each write appends a new version; no version is ever overwritten.
 Uses SQLite for persistence.
 Uses aiosqlite for async-safe database access.
+
+Constructor is lightweight (stores path only). Call ``initialize()``
+(async) to create tables before first use, or rely on lazy creation
+via ``_get_conn()``.
 """
 
 from __future__ import annotations
@@ -13,79 +17,100 @@ from datetime import datetime, timezone
 
 import aiosqlite
 
+from aip.adapter.store_health import StoreHealthMixin
 
-class VersionedArtifactStore:
+# ---------------------------------------------------------------------------
+# Single source of truth for DDL
+# ---------------------------------------------------------------------------
+
+_DDL_ARTIFACTS = """
+    CREATE TABLE IF NOT EXISTS artifacts (
+        id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        metadata_json TEXT,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (id, version)
+    )
+"""
+
+_DDL_IDX_ARTIFACTS_ID = """
+    CREATE INDEX IF NOT EXISTS idx_artifacts_id
+    ON artifacts(id)
+"""
+
+
+class VersionedArtifactStore(StoreHealthMixin):
     """ArtifactStore implementation with version preservation.
 
     Every version is preserved for provenance.
-    Generated ≠ canonical — versions support separation.
+    Generated != canonical — versions support separation.
     Artifact hash is not approval; supersession marks old entries, does not delete them.
 
-    Uses aiosqlite for async-compatible database access.
+    Uses a persistent aiosqlite connection per instance with error recovery.
+    Includes connection health metrics via StoreHealthMixin.
     """
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
         self._conn: aiosqlite.Connection | None = None
-        self._ensure_table_sync()
-
-    def _ensure_table_sync(self) -> None:
-        """Synchronous table creation during init (runs once at startup)."""
-        conn = sqlite3.connect(self._db_path)
-        try:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS artifacts (
-                    id TEXT NOT NULL,
-                    version INTEGER NOT NULL,
-                    content TEXT NOT NULL,
-                    metadata_json TEXT,
-                    created_at TEXT NOT NULL,
-                    PRIMARY KEY (id, version)
-                )
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_artifacts_id
-                ON artifacts(id)
-            """)
-            conn.commit()
-        finally:
-            conn.close()
+        self._tables_ready = False
 
     async def _get_conn(self) -> aiosqlite.Connection:
+        """Return a persistent connection, creating one if needed.
+
+        Lazily ensures tables on first connection so that callers
+        who bypass ``initialize()`` still get a working schema.
+        """
         if self._conn is None:
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
+            await self._conn.execute("PRAGMA journal_mode=WAL")
+            self._health_track_connect()
+            if not self._tables_ready:
+                await self._create_tables(self._conn)
+                self._tables_ready = True
         return self._conn
 
-    async def _ensure_table(self) -> None:
+    async def _create_tables(self, conn: aiosqlite.Connection) -> None:
+        """Create artifacts table and index on the given connection."""
+        await conn.execute(_DDL_ARTIFACTS)
+        await conn.execute(_DDL_IDX_ARTIFACTS_ID)
+        await conn.commit()
+
+    async def initialize(self) -> None:
+        """Idempotent table creation (called by lifespan / DI container).
+
+        Uses a short-lived connection to create tables, then discards it.
+        Subsequent operations use the persistent connection from _get_conn().
+        """
+        if self._tables_ready:
+            return
         conn = await aiosqlite.connect(self._db_path)
         try:
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS artifacts (
-                    id TEXT NOT NULL,
-                    version INTEGER NOT NULL,
-                    content TEXT NOT NULL,
-                    metadata_json TEXT,
-                    created_at TEXT NOT NULL,
-                    PRIMARY KEY (id, version)
-                )
-            """)
-            await conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_artifacts_id
-                ON artifacts(id)
-            """)
-            await conn.commit()
+            await self._create_tables(conn)
+            self._tables_ready = True
         finally:
             await conn.close()
 
-    async def initialize(self) -> None:
-        """Async initialization — ensures tables exist."""
-        await self._ensure_table()
-
     async def close(self) -> None:
+        """Close the persistent connection."""
         if self._conn is not None:
-            await self._conn.close()
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
             self._conn = None
+
+    async def _reset_conn(self) -> None:
+        """Reset the persistent connection (called on errors)."""
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+            self._health_track_reset()
 
     async def write(self, id: str, content: str, metadata: dict) -> None:
         """Write artifact content, appending a new version.
@@ -108,9 +133,9 @@ class VersionedArtifactStore:
                 (id, next_version, content, meta_json, now),
             )
             await conn.commit()
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def read(self, id: str, version: int | None = None) -> str:
         """Read artifact content by id and optional version.
@@ -135,9 +160,11 @@ class VersionedArtifactStore:
             if row is None:
                 raise KeyError(f"Artifact {id!r} version {version} not found")
             return row[0]
-        finally:
-            await conn.close()
-            self._conn = None
+        except KeyError:
+            raise
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def list_versions(self, id: str) -> list[int]:
         """List all version numbers for an artifact, ascending order."""
@@ -146,9 +173,9 @@ class VersionedArtifactStore:
             cursor = await conn.execute("SELECT version FROM artifacts WHERE id = ? ORDER BY version ASC", (id,))
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def read_metadata(self, id: str, version: int | None = None) -> dict:
         """Read artifact metadata by id and optional version.
@@ -173,9 +200,11 @@ class VersionedArtifactStore:
             if row is None:
                 raise KeyError(f"Artifact {id!r} version {version} not found")
             return json.loads(row[0]) if row[0] else {}
-        finally:
-            await conn.close()
-            self._conn = None
+        except KeyError:
+            raise
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def read_with_metadata(self, id: str, version: int | None = None) -> tuple[str, dict]:
         """Read artifact content and metadata together.
@@ -199,9 +228,11 @@ class VersionedArtifactStore:
             if row is None:
                 raise KeyError(f"Artifact {id!r} version {version} not found")
             return row[0], json.loads(row[1]) if row[1] else {}
-        finally:
-            await conn.close()
-            self._conn = None
+        except KeyError:
+            raise
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def list_artifacts_by_metadata(
         self,
@@ -217,8 +248,6 @@ class VersionedArtifactStore:
         """
         conn = await self._get_conn()
         try:
-            # Use JSON extraction for SQLite >= 3.38 or LIKE for older versions
-            # Fallback: LIKE pattern matching on metadata_json
             if artifact_type:
                 sql = """
                     SELECT a.id, a.content, a.metadata_json, a.created_at
@@ -259,6 +288,6 @@ class VersionedArtifactStore:
                     "created_at": row[3],
                 })
             return results
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise

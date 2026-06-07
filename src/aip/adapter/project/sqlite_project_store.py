@@ -2,6 +2,10 @@
 
 Minimal implementation: provides list_projects() so Beast and other
 actors can iterate over projects for corpus maintenance and health checks.
+
+Constructor is lightweight (stores path only). Call ``initialize()``
+(async) to create tables before first use, or rely on lazy creation
+via ``_get_conn()``.
 """
 
 from __future__ import annotations
@@ -13,64 +17,86 @@ import aiosqlite
 
 from aip.foundation.protocols import ProjectStore
 
+# ---------------------------------------------------------------------------
+# Single source of truth for DDL
+# ---------------------------------------------------------------------------
+
+_DDL_PROJECTS = """
+    CREATE TABLE IF NOT EXISTS projects (
+        project_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        domain TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+"""
+
 
 class SqliteProjectStore(ProjectStore):
     """SQLite-backed ProjectStore.
 
     Stores project metadata (id, name, status, domain, timestamps).
-    Uses aiosqlite for async-compatible database access.
+
+    Uses a persistent aiosqlite connection per instance with error recovery.
     """
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
         self._conn: aiosqlite.Connection | None = None
-        self._ensure_table_sync()
-
-    def _ensure_table_sync(self) -> None:
-        """Synchronous table creation during init (runs once at startup)."""
-        conn = sqlite3.connect(self._db_path)
-        try:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS projects (
-                    project_id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'active',
-                    domain TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-                )
-            """)
-            conn.commit()
-        finally:
-            conn.close()
+        self._tables_ready = False
 
     async def _get_conn(self) -> aiosqlite.Connection:
+        """Return a persistent connection, creating one if needed.
+
+        Lazily ensures tables on first connection so that callers
+        who bypass ``initialize()`` still get a working schema.
+        """
         if self._conn is None:
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
+            await self._conn.execute("PRAGMA journal_mode=WAL")
+            if not self._tables_ready:
+                await self._create_tables(self._conn)
+                self._tables_ready = True
         return self._conn
 
+    async def _create_tables(self, conn: aiosqlite.Connection) -> None:
+        """Create projects table on the given connection."""
+        await conn.execute(_DDL_PROJECTS)
+        await conn.commit()
+
     async def initialize(self) -> None:
-        """Async initialization — ensures tables exist."""
+        """Idempotent table creation (called by lifespan / DI container).
+
+        Uses a short-lived connection to create tables, then discards it.
+        Subsequent operations use the persistent connection from _get_conn().
+        """
+        if self._tables_ready:
+            return
         conn = await aiosqlite.connect(self._db_path)
         try:
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS projects (
-                    project_id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'active',
-                    domain TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-                )
-            """)
-            await conn.commit()
+            await self._create_tables(conn)
+            self._tables_ready = True
         finally:
             await conn.close()
 
     async def close(self) -> None:
+        """Close the persistent connection."""
         if self._conn is not None:
-            await self._conn.close()
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+
+    async def _reset_conn(self) -> None:
+        """Reset the persistent connection (called on errors)."""
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
             self._conn = None
 
     async def list_projects(self, status: str | None = None) -> list[dict]:
@@ -106,9 +132,9 @@ class SqliteProjectStore(ProjectStore):
                     },
                 )
             return results
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def create_project(self, project_id: str, name: str, domain: str = "") -> dict:
         """Create a new project. Returns the created project dict.
@@ -147,6 +173,6 @@ class SqliteProjectStore(ProjectStore):
                 "created_at": now,
                 "updated_at": now,
             }
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise

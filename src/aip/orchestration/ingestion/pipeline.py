@@ -319,7 +319,7 @@ async def create_ingestion_stores(db_path: str) -> IngestionStores:
     except Exception:
         pass  # graceful fallback to no embedding — vectors will be metadata-only
 
-    # Sprint 5.13: Use persistent SqliteVssVectorStore instead of InMemoryVectorStore
+    # Use persistent SqliteVssVectorStore instead of InMemoryVectorStore
     # so that vectors ingested via `aip ingest` survive process restarts.
     vector_db = os.path.join(os.path.dirname(db_path), "vectors.db")
     vector_store = SqliteVssVectorStore(

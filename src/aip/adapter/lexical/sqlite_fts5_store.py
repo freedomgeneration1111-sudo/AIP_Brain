@@ -1,12 +1,8 @@
 """SQLite FTS5 implementation of LexicalStore Protocol.
 
-Adapter imports only foundation (schemas + protocols).
-Local, deterministic, laptop-viable (no external services).
-Uses aiosqlite for async-safe database access.
-
-Sprint 5.13: Removed blocking sqlite3.connect() from __init__.
-All table creation and I/O now goes through async initialize() and
-_get_conn(). The constructor is lightweight (stores path only).
+Constructor is lightweight (stores path only).  Call ``initialize()``
+(async) to create tables before first use, or rely on lazy creation
+via ``_get_conn()``.
 """
 
 from __future__ import annotations
@@ -21,7 +17,10 @@ import aiosqlite
 from aip.foundation.protocols import LexicalStore
 from aip.foundation.schemas import Chunk
 
-# Single source of truth for DDL statements
+# ---------------------------------------------------------------------------
+# Single source of truth for DDL
+# ---------------------------------------------------------------------------
+
 _DDL_FTS_DOCUMENTS = """
     CREATE TABLE IF NOT EXISTS fts_documents (
         doc_id TEXT PRIMARY KEY,
@@ -42,11 +41,7 @@ class SqliteFts5LexicalStore(LexicalStore):
     """SQLite + FTS5 implementation of LexicalStore.
 
     Maintains a regular documents table + FTS5 virtual index.
-    Tokenizer defaults to unicode61 (configurable via [lexical] in future).
-    Uses aiosqlite for async-compatible database access.
-
-    Sprint 5.13: Constructor is lightweight — stores path only.
-    Call ``initialize()`` (async) to create tables before first use.
+    Uses a persistent aiosqlite connection per instance with error recovery.
     """
 
     def __init__(self, db_path: str) -> None:
@@ -55,14 +50,15 @@ class SqliteFts5LexicalStore(LexicalStore):
         self._tables_ready = False
 
     async def _get_conn(self) -> aiosqlite.Connection:
-        """Return a reusable connection, creating one if needed.
+        """Return a persistent connection, creating one if needed.
 
         Lazily ensures tables on first connection so that callers
-        who bypass ``initialize()`` (e.g. tests) still get a working schema.
+        who bypass ``initialize()`` still get a working schema.
         """
         if self._conn is None:
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
+            await self._conn.execute("PRAGMA journal_mode=WAL")
             if not self._tables_ready:
                 await self._create_tables(self._conn)
                 self._tables_ready = True
@@ -90,8 +86,21 @@ class SqliteFts5LexicalStore(LexicalStore):
             await conn.close()
 
     async def close(self) -> None:
+        """Close the persistent connection."""
         if self._conn is not None:
-            await self._conn.close()
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+
+    async def _reset_conn(self) -> None:
+        """Reset the persistent connection (called on errors)."""
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
             self._conn = None
 
     async def index_document(self, doc_id: str, content: str, domain: str, metadata: dict) -> None:
@@ -118,10 +127,9 @@ class SqliteFts5LexicalStore(LexicalStore):
                 (doc_id, content, domain, meta_json),
             )
             await conn.commit()
-        finally:
-            # Close connection after each write to avoid holding locks
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def search(self, query: str, domain: str | None = None, limit: int = 10) -> list[Chunk]:
         conn = await self._get_conn()
@@ -154,9 +162,9 @@ class SqliteFts5LexicalStore(LexicalStore):
                     ),
                 )
             return results
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def delete_document(self, doc_id: str) -> None:
         conn = await self._get_conn()
@@ -167,6 +175,6 @@ class SqliteFts5LexicalStore(LexicalStore):
             )
             await conn.execute("DELETE FROM fts_documents WHERE doc_id = ?", (doc_id,))
             await conn.commit()
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise

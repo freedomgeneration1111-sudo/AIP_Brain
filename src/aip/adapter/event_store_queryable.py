@@ -4,6 +4,10 @@ Append-only: events are never modified or deleted.
 Supports query by artifact_id and event_type for review,
 DEFINER audit, and Sexton failure analysis.
 Uses aiosqlite for async-safe database access.
+
+Constructor is lightweight (stores path only). Call ``initialize()``
+(async) to create tables before first use, or rely on lazy creation
+via ``_get_conn()``.
 """
 
 from __future__ import annotations
@@ -14,89 +18,90 @@ from datetime import datetime, timezone
 
 import aiosqlite
 
+from aip.adapter.store_health import StoreHealthMixin
 from aip.foundation.schemas import Event
 
+# ---------------------------------------------------------------------------
+# Single source of truth for DDL
+# ---------------------------------------------------------------------------
 
-class QueryableEventStore:
+_DDL_EVENTS = """
+    CREATE TABLE IF NOT EXISTS events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        artifact_id TEXT NOT NULL,
+        from_state TEXT,
+        to_state TEXT,
+        metadata_json TEXT,
+        created_at TEXT NOT NULL
+    )
+"""
+
+_DDL_IDX_EVENTS_ARTIFACT = """
+    CREATE INDEX IF NOT EXISTS idx_events_artifact
+    ON events(artifact_id)
+"""
+
+_DDL_IDX_EVENTS_TYPE = """
+    CREATE INDEX IF NOT EXISTS idx_events_type
+    ON events(event_type)
+"""
+
+_DDL_IDX_EVENTS_CREATED = """
+    CREATE INDEX IF NOT EXISTS idx_events_created
+    ON events(created_at)
+"""
+
+
+class QueryableEventStore(StoreHealthMixin):
     """EventStore with query support for timeline reconstruction.
 
-    Uses aiosqlite for async-compatible database access.
+    Uses a persistent aiosqlite connection per instance with error recovery.
+    Includes connection health metrics via StoreHealthMixin.
     """
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
         self._conn: aiosqlite.Connection | None = None
-        # Initialize tables synchronously during __init__ for backward compat
-        self._init_tables_sync()
-
-    def _init_tables_sync(self) -> None:
-        """Synchronous table creation during init (runs once at startup)."""
-        conn = sqlite3.connect(self._db_path)
-        try:
-            cur = conn.cursor()
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_type TEXT NOT NULL,
-                    actor TEXT NOT NULL,
-                    artifact_id TEXT NOT NULL,
-                    from_state TEXT,
-                    to_state TEXT,
-                    metadata_json TEXT,
-                    created_at TEXT NOT NULL
-                )
-            """)
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_events_artifact
-                ON events(artifact_id)
-            """)
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_events_type
-                ON events(event_type)
-            """)
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_events_created
-                ON events(created_at)
-            """)
-            conn.commit()
-        finally:
-            conn.close()
+        self._tables_ready = False
 
     async def _get_conn(self) -> aiosqlite.Connection:
+        """Return a persistent connection, creating one if needed.
+
+        Lazily ensures tables on first connection so that callers
+        who bypass ``initialize()`` still get a working schema.
+        """
         if self._conn is None:
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
+            await self._conn.execute("PRAGMA journal_mode=WAL")
+            self._health_track_connect()
+            if not self._tables_ready:
+                await self._create_tables(self._conn)
+                self._tables_ready = True
         return self._conn
 
+    async def _create_tables(self, conn: aiosqlite.Connection) -> None:
+        """Create events table and indexes on the given connection."""
+        await conn.execute(_DDL_EVENTS)
+        await conn.execute(_DDL_IDX_EVENTS_ARTIFACT)
+        await conn.execute(_DDL_IDX_EVENTS_TYPE)
+        await conn.execute(_DDL_IDX_EVENTS_CREATED)
+        await conn.commit()
+
     async def initialize(self) -> None:
-        """Async initialization — ensures tables exist."""
+        """Idempotent table creation (called by lifespan / DI container).
+
+        Uses a short-lived connection to create tables, then discards it.
+        Subsequent operations use the persistent connection from _get_conn().
+        """
+        if self._tables_ready:
+            return
         conn = await aiosqlite.connect(self._db_path)
         try:
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_type TEXT NOT NULL,
-                    actor TEXT NOT NULL,
-                    artifact_id TEXT NOT NULL,
-                    from_state TEXT,
-                    to_state TEXT,
-                    metadata_json TEXT,
-                    created_at TEXT NOT NULL
-                )
-            """)
-            await conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_events_artifact
-                ON events(artifact_id)
-            """)
-            await conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_events_type
-                ON events(event_type)
-            """)
-            await conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_events_created
-                ON events(created_at)
-            """)
-            await conn.commit()
+            await self._create_tables(conn)
+            self._tables_ready = True
         finally:
             await conn.close()
 
@@ -121,9 +126,9 @@ class QueryableEventStore:
                 (event_type, actor, artifact_id, from_state, to_state, meta_json, now),
             )
             await conn.commit()
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def query(
         self,
@@ -170,11 +175,25 @@ class QueryableEventStore:
                     ),
                 )
             return results
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def close(self) -> None:
+        """Close the persistent connection."""
         if self._conn is not None:
-            await self._conn.close()
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
             self._conn = None
+
+    async def _reset_conn(self) -> None:
+        """Reset the persistent connection (called on errors)."""
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+            self._health_track_reset()

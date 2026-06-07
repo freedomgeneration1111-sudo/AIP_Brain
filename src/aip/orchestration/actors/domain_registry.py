@@ -72,12 +72,6 @@ def load_registry(registry_path: str) -> DomainRegistry:
     Raises FileNotFoundError if path doesn't exist.
     Raises ValueError if file parses to 0 domains.
     Never raises for individual malformed entries — skip and continue.
-
-    Simple usage / test (in docstring for reference):
-        registry = load_registry("docs/beast_domain_registry_v1.md")
-        assert len(registry.domains) >= 26
-        assert registry.is_approved_domain("nbcm")
-        assert registry.is_approved_bridge("nbcm->theology_research")
     """
     if not os.path.isfile(registry_path):
         raise FileNotFoundError(f"Registry file not found: {registry_path}")

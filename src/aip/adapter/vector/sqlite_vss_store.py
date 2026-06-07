@@ -1,18 +1,18 @@
 """sqlite_vss implementation of the VectorStore protocol.
 
-SQLite-based vector backend. pgvector adapter available for production.
-Uses aiosqlite for async-safe database access.
-store() compat method generates real embeddings via EmbeddingProvider.
+SQLite-based vector backend with graceful degradation when the VSS
+extension is unavailable.  Embeddings are persisted in the
+``embedding_json`` column so vectors survive restarts even in
+brute-force mode.
 
-Sprint 5.13: Removed blocking sqlite3.connect() from __init__.
-VSS detection and table creation moved to async initialize().
-Constructor is lightweight (stores path + dimensions only).
-Brute-force fallback hardened with LIMIT, streaming, and explicit
-degradation signaling.
+Constructor is lightweight (stores path + dimensions only).  Call
+``initialize()`` (async) to detect VSS availability and create tables
+before first use, or rely on lazy creation via ``_get_conn()``.
 """
 
 from __future__ import annotations
 
+import enum
 import json
 import logging
 import sqlite3
@@ -25,7 +25,10 @@ from aip.foundation.schemas import Chunk
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
 # Single source of truth for DDL
+# ---------------------------------------------------------------------------
+
 _DDL_VECTOR_METADATA = """
     CREATE TABLE IF NOT EXISTS vector_metadata (
         id TEXT PRIMARY KEY,
@@ -42,21 +45,37 @@ _DDL_DOMAIN_INDEX = """
     ON vector_metadata(domain)
 """
 
-# Safety cap for brute-force scans — prevents full-table scan on large corpora
+# ---------------------------------------------------------------------------
+# Brute-force safety cap
+# ---------------------------------------------------------------------------
+
 _BRUTE_FORCE_SCAN_LIMIT = 10_000
 
 
+# ---------------------------------------------------------------------------
+# Runtime mode for brute-force fallback policy
+# ---------------------------------------------------------------------------
+
+class RuntimeMode(enum.Enum):
+    """Controls behavior when VSS is unavailable.
+
+    - DEVELOPMENT: Gracefully fall back to brute-force (default).
+    - PRODUCTION: Log a hard warning and stamp results as degraded,
+      but still return results (fail-soft with explicit signalling).
+    - STRICT: Raise RuntimeError on any brute-force attempt.
+    """
+
+    DEVELOPMENT = "development"
+    PRODUCTION = "production"
+    STRICT = "strict"
+
+
 class SqliteVssVectorStore(VectorStore):
-    """VectorStore backed by sqlite_vss extension.
+    """VectorStore backed by sqlite_vss extension with brute-force fallback.
 
-    Uses aiosqlite for async-compatible database access.
-    Falls back gracefully when sqlite_vss is not available.
-
-    Sprint 5.13: Constructor is lightweight — stores path only.
-    Call ``initialize()`` (async) to detect VSS availability and create
-    tables before first use.  The brute-force fallback is capped at
-    ``_BRUTE_FORCE_SCAN_LIMIT`` rows and signals degradation via
-    ``health_check()`` and chunk metadata.
+    Uses a persistent aiosqlite connection per instance.  Falls back to
+    brute-force cosine similarity when the VSS extension is unavailable.
+    The brute-force fallback behavior is governed by ``RuntimeMode``.
     """
 
     def __init__(
@@ -64,30 +83,29 @@ class SqliteVssVectorStore(VectorStore):
         db_path: str,
         dimensions: int = 768,
         embedding_provider: EmbeddingProvider | None = None,
+        runtime_mode: RuntimeMode = RuntimeMode.DEVELOPMENT,
     ) -> None:
         self._db_path = db_path
         self._dimensions = dimensions
         self._embedding_provider = embedding_provider
+        self._runtime_mode = runtime_mode
         self._vss_available = False
         self._tables_ready = False
+        self._conn: aiosqlite.Connection | None = None
 
     # ------------------------------------------------------------------
-    # Async initialization (replaces blocking _init_vss_sync)
+    # Async initialization
     # ------------------------------------------------------------------
 
     async def initialize(self) -> None:
         """Detect VSS extension availability and create tables.
 
-        Must be called after construction (by lifespan, factory, or tests)
-        before the store is used.  Idempotent — safe to call multiple times.
+        Idempotent — safe to call multiple times.
         """
         if self._tables_ready:
             return
 
         # Detect VSS via a synchronous probe (tiny, runs once).
-        # This is the one remaining sync call — it opens a read-only
-        # connection to test extension loading, then closes it immediately.
-        # It does NOT create tables (that's done async below).
         self._vss_available = self._probe_vss_availability()
 
         conn = await aiosqlite.connect(self._db_path)
@@ -97,14 +115,22 @@ class SqliteVssVectorStore(VectorStore):
         finally:
             await conn.close()
 
-        backend = "sqlite_vss" if self._vss_available else "sqlite_vss_fallback"
-        logger.info("SqliteVssVectorStore initialized (backend=%s, db=%s)", backend, self._db_path)
+        backend = "sqlite_vss" if self._vss_available else "brute_force"
+        logger.info(
+            "SqliteVssVectorStore initialized (backend=%s, db=%s, mode=%s)",
+            backend, self._db_path, self._runtime_mode.value,
+        )
+
+        if not self._vss_available and self._runtime_mode == RuntimeMode.PRODUCTION:
+            logger.warning(
+                "PRODUCTION mode with VSS unavailable — all vector retrieval "
+                "will use brute-force scan. Install sqlite_vss for production."
+            )
 
     def _probe_vss_availability(self) -> bool:
         """Test whether the sqlite_vss extension can be loaded.
 
-        Opens a short-lived in-memory connection to probe.  Does NOT
-        write to the database.  Returns True if VSS loaded successfully.
+        Opens a short-lived in-memory connection to probe.
         """
         try:
             conn = sqlite3.connect(":memory:")
@@ -118,7 +144,7 @@ class SqliteVssVectorStore(VectorStore):
                 except ImportError:
                     pass
                 except Exception as e:
-                    logger.debug("sqlite_vss package load_vss failed (will try fallback): %s", e)
+                    logger.debug("sqlite_vss package load_vss failed: %s", e)
                 if not loaded:
                     try:
                         conn.load_extension("vss0")
@@ -140,11 +166,10 @@ class SqliteVssVectorStore(VectorStore):
         """Create metadata table, indexes, and (if VSS available) virtual table."""
         await conn.execute(_DDL_VECTOR_METADATA)
         await conn.execute(_DDL_DOMAIN_INDEX)
-        # Ensure embedding_json column exists (migrate older schemas)
         try:
             await conn.execute("ALTER TABLE vector_metadata ADD COLUMN embedding_json TEXT")
         except Exception:
-            pass  # column already exists
+            pass
         if self._vss_available:
             await conn.execute(
                 f"""
@@ -157,17 +182,18 @@ class SqliteVssVectorStore(VectorStore):
         await conn.commit()
 
     async def _get_conn(self) -> aiosqlite.Connection:
-        """Return a new aiosqlite connection with tables ensured.
+        """Return a persistent connection, creating one if needed.
 
-        Each call creates a fresh connection (safe for concurrent async use).
-        Lazily runs table creation if initialize() was never called.
+        Lazily ensures tables on first connection.
         """
-        conn = await aiosqlite.connect(self._db_path)
-        conn.row_factory = sqlite3.Row
-        if not self._tables_ready:
-            await self._create_tables(conn)
-            self._tables_ready = True
-        return conn
+        if self._conn is None:
+            self._conn = await aiosqlite.connect(self._db_path)
+            self._conn.row_factory = sqlite3.Row
+            await self._conn.execute("PRAGMA journal_mode=WAL")
+            if not self._tables_ready:
+                await self._create_tables(self._conn)
+                self._tables_ready = True
+        return self._conn
 
     # ------------------------------------------------------------------
     # Core vector operations
@@ -203,8 +229,10 @@ class SqliteVssVectorStore(VectorStore):
                 emb_str = json.dumps(embedding)
                 await conn.execute("INSERT INTO vss_vectors(rowid, embedding) VALUES (?, ?)", (rowid, emb_str))
             await conn.commit()
-        finally:
-            await conn.close()
+        except Exception:
+            # If the persistent conn is stale, reset it
+            await self._reset_conn()
+            raise
 
     async def retrieve(
         self,
@@ -248,8 +276,9 @@ class SqliteVssVectorStore(VectorStore):
                     ),
                 )
             return results
-        finally:
-            await conn.close()
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def _brute_force_retrieve(
         self,
@@ -259,27 +288,33 @@ class SqliteVssVectorStore(VectorStore):
     ) -> list[Chunk]:
         """Brute-force cosine similarity over stored embeddings.
 
-        Used when the VSS extension is unavailable.  Embeddings are persisted
-        in the ``embedding_json`` column so vectors survive restarts.
-
-        Sprint 5.13 hardening:
-        - Queries are capped at ``_BRUTE_FORCE_SCAN_LIMIT`` rows to prevent
-          unbounded full-table scans on large corpora.
-        - Results include ``_degraded_retrieval`` in metadata so callers
-          and the retrieval trace can detect the fallback path.
-        - A warning is logged on every call so operators notice the
-          degraded mode in production.
+        Used when the VSS extension is unavailable.  Behavior depends on
+        ``_runtime_mode``:
+        - DEVELOPMENT: Proceed with scan (default).
+        - PRODUCTION: Proceed but stamp degradation explicitly.
+        - STRICT: Raise RuntimeError.
         """
-        logger.warning(
-            "Brute-force vector retrieval active (VSS unavailable). "
-            "Consider installing sqlite_vss for production workloads. "
-            "db=%s, domain=%s, top_k=%d",
-            self._db_path, domain, top_k,
-        )
+        if self._runtime_mode == RuntimeMode.STRICT:
+            raise RuntimeError(
+                "VSS extension unavailable and RuntimeMode is STRICT — "
+                "brute-force retrieval is disabled. Install sqlite_vss."
+            )
+
+        if self._runtime_mode == RuntimeMode.PRODUCTION:
+            logger.warning(
+                "PRODUCTION: Brute-force vector retrieval active (VSS unavailable). "
+                "db=%s, domain=%s, top_k=%d — results are degraded.",
+                self._db_path, domain, top_k,
+            )
+        else:
+            logger.warning(
+                "Brute-force vector retrieval active (VSS unavailable). "
+                "db=%s, domain=%s, top_k=%d",
+                self._db_path, domain, top_k,
+            )
 
         conn = await self._get_conn()
         try:
-            # Cap the scan to prevent O(N) on huge tables
             scan_limit = max(top_k * 100, _BRUTE_FORCE_SCAN_LIMIT)
             if domain:
                 cursor = await conn.execute(
@@ -297,9 +332,7 @@ class SqliteVssVectorStore(VectorStore):
                 )
             rows = await cursor.fetchall()
 
-            # Score with early termination: once we have top_k candidates
-            # above a reasonable threshold, stop scanning.
-            min_score_threshold = 0.1  # skip obviously irrelevant
+            min_score_threshold = 0.1
             candidates: list[tuple[float, str, str, str, str]] = []
             for row in rows:
                 id_, content, domain_val, meta_json, emb_json = row
@@ -320,7 +353,7 @@ class SqliteVssVectorStore(VectorStore):
             results = []
             for score, id_, content, domain_val, meta_json in candidates[:top_k]:
                 meta = json.loads(meta_json) if meta_json else {}
-                meta["_degraded_retrieval"] = True  # signal to callers
+                meta["_degraded_retrieval"] = True
                 meta["_retrieval_backend"] = "brute_force"
                 results.append(
                     Chunk(
@@ -332,8 +365,9 @@ class SqliteVssVectorStore(VectorStore):
                     ),
                 )
             return results
-        finally:
-            await conn.close()
+        except Exception:
+            await self._reset_conn()
+            raise
 
     def _cosine_similarity(self, a: list[float], b: list[float]) -> float:
         if not a or not b or len(a) != len(b):
@@ -355,8 +389,9 @@ class SqliteVssVectorStore(VectorStore):
                 if self._vss_available:
                     await conn.execute("DELETE FROM vss_vectors WHERE rowid = ?", (row[0],))
                 await conn.commit()
-        finally:
-            await conn.close()
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def count(self, domain: str | None = None) -> int:
         conn = await self._get_conn()
@@ -367,16 +402,12 @@ class SqliteVssVectorStore(VectorStore):
                 cursor = await conn.execute("SELECT COUNT(*) FROM vector_metadata")
             row = await cursor.fetchone()
             return row[0] if row else 0
-        finally:
-            await conn.close()
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def store(self, chunk: Chunk) -> str:
-        """Store a Chunk, generating a real embedding via EmbeddingProvider.
-
-        When an ``EmbeddingProvider`` is available, generates a real
-        embedding from the chunk content and calls ``upsert()``.
-        Without a provider, stores metadata-only (no vector index).
-        """
+        """Store a Chunk, generating a real embedding via EmbeddingProvider."""
         content = chunk.content or ""
 
         if self._embedding_provider is not None:
@@ -392,29 +423,23 @@ class SqliteVssVectorStore(VectorStore):
                     )
                     logger.info(
                         "store() generated real embedding for chunk '%s' (dim=%d, domain='%s').",
-                        chunk.id,
-                        len(embedding),
-                        chunk.domain,
+                        chunk.id, len(embedding), chunk.domain,
                     )
                     return chunk.id
                 else:
                     logger.warning(
                         "EmbeddingProvider returned empty vector for chunk '%s'. "
-                        "Falling back to metadata-only storage.",
-                        chunk.id,
+                        "Falling back to metadata-only storage.", chunk.id,
                     )
             except Exception as exc:
                 logger.warning(
                     "Embedding generation failed for chunk '%s': %s. "
-                    "Storing metadata-only.",
-                    chunk.id,
-                    exc,
+                    "Storing metadata-only.", chunk.id, exc,
                 )
         else:
             logger.warning(
                 "store() called without EmbeddingProvider for chunk '%s'. "
-                "Storing metadata-only.",
-                chunk.id,
+                "Storing metadata-only.", chunk.id,
             )
 
         # Metadata-only fallback
@@ -434,15 +459,16 @@ class SqliteVssVectorStore(VectorStore):
                     (chunk.id, content, chunk.domain, meta_json),
                 )
             await conn.commit()
-        finally:
-            await conn.close()
+        except Exception:
+            await self._reset_conn()
+            raise
 
         return chunk.id
 
     async def health_check(self) -> dict:
         """Check vector store health and return status."""
-        conn = await self._get_conn()
         try:
+            conn = await self._get_conn()
             cursor = await conn.execute("SELECT COUNT(*) FROM vector_metadata")
             row = await cursor.fetchone()
             count = row[0] if row else 0
@@ -451,6 +477,7 @@ class SqliteVssVectorStore(VectorStore):
                 "backend_name": "sqlite_vss" if self._vss_available else "sqlite_vss_fallback",
                 "vss_available": self._vss_available,
                 "degraded": not self._vss_available,
+                "runtime_mode": self._runtime_mode.value,
                 "count": count,
             }
         except Exception as e:
@@ -459,8 +486,6 @@ class SqliteVssVectorStore(VectorStore):
                 "backend_name": "sqlite_vss",
                 "error": str(e),
             }
-        finally:
-            await conn.close()
 
     async def list_stale_vectors(
         self,
@@ -491,16 +516,12 @@ class SqliteVssVectorStore(VectorStore):
             for row in rows:
                 meta = json.loads(row[3]) if row[3] else {}
                 results.append(
-                    {
-                        "id": row[0],
-                        "domain": row[1],
-                        "created_at": row[2],
-                        "metadata": meta,
-                    },
+                    {"id": row[0], "domain": row[1], "created_at": row[2], "metadata": meta},
                 )
             return results
-        finally:
-            await conn.close()
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def list_all_ids(
         self,
@@ -523,8 +544,9 @@ class SqliteVssVectorStore(VectorStore):
                 )
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
-        finally:
-            await conn.close()
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def get_by_id(self, chunk_id: str) -> Chunk | None:
         """Retrieve a chunk by its ID directly (no vector similarity)."""
@@ -545,8 +567,24 @@ class SqliteVssVectorStore(VectorStore):
                 metadata=json.loads(meta_json) if meta_json else {},
                 domain=domain_val,
             )
-        finally:
-            await conn.close()
+        except Exception:
+            await self._reset_conn()
+            raise
+
+    async def _reset_conn(self) -> None:
+        """Reset the persistent connection (called on errors)."""
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
 
     async def close(self) -> None:
-        pass
+        """Close the persistent connection."""
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None

@@ -4,6 +4,10 @@ BudgetStore Protocol required.
 state.db stores budgets.
 Adapter may import foundation but not orchestration.
 Uses aiosqlite for async-safe database access.
+
+Constructor is lightweight (stores path only). Call ``initialize()``
+(async) to create tables before first use, or rely on lazy creation
+via ``_get_conn()``.
 """
 
 from __future__ import annotations
@@ -15,77 +19,94 @@ import aiosqlite
 from aip.foundation.protocols import BudgetStore
 from aip.foundation.schemas import BudgetScope
 
+# ---------------------------------------------------------------------------
+# Single source of truth for DDL
+# ---------------------------------------------------------------------------
+
+_DDL_BUDGET_LEDGER = """
+    CREATE TABLE IF NOT EXISTS budget_ledger (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scope TEXT NOT NULL,
+        scope_id TEXT NOT NULL,
+        tokens_used INTEGER NOT NULL,
+        cost_usd REAL NOT NULL DEFAULT 0.0,
+        model_slot TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+"""
+
+_DDL_IDX_BUDGET_SCOPE = """
+    CREATE INDEX IF NOT EXISTS idx_budget_scope
+    ON budget_ledger(scope, scope_id)
+"""
+
 
 class SqliteBudgetStore(BudgetStore):
     """SQLite implementation of BudgetStore Protocol.
 
     Uses state.db for persistence. Budget ledger is append-only
     (consumption records are never deleted, only summed).
-    Uses aiosqlite for async-compatible database access.
+
+    Uses a persistent aiosqlite connection per instance with error recovery.
     """
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
         self._conn: aiosqlite.Connection | None = None
-        self._ensure_table_sync()
-
-    def _ensure_table_sync(self) -> None:
-        """Synchronous table creation during init (runs once at startup)."""
-        conn = sqlite3.connect(self._db_path)
-        try:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS budget_ledger (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    scope TEXT NOT NULL,
-                    scope_id TEXT NOT NULL,
-                    tokens_used INTEGER NOT NULL,
-                    cost_usd REAL NOT NULL DEFAULT 0.0,
-                    model_slot TEXT NOT NULL,
-                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-                )
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_budget_scope
-                ON budget_ledger(scope, scope_id)
-            """)
-            conn.commit()
-        finally:
-            conn.close()
+        self._tables_ready = False
 
     async def _get_conn(self) -> aiosqlite.Connection:
+        """Return a persistent connection, creating one if needed.
+
+        Lazily ensures tables on first connection so that callers
+        who bypass ``initialize()`` still get a working schema.
+        """
         if self._conn is None:
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
+            await self._conn.execute("PRAGMA journal_mode=WAL")
+            if not self._tables_ready:
+                await self._create_tables(self._conn)
+                self._tables_ready = True
         return self._conn
 
-    async def _ensure_table(self) -> None:
+    async def _create_tables(self, conn: aiosqlite.Connection) -> None:
+        """Create budget_ledger table and index on the given connection."""
+        await conn.execute(_DDL_BUDGET_LEDGER)
+        await conn.execute(_DDL_IDX_BUDGET_SCOPE)
+        await conn.commit()
+
+    async def initialize(self) -> None:
+        """Idempotent table creation (called by lifespan / DI container).
+
+        Uses a short-lived connection to create tables, then discards it.
+        Subsequent operations use the persistent connection from _get_conn().
+        """
+        if self._tables_ready:
+            return
         conn = await aiosqlite.connect(self._db_path)
         try:
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS budget_ledger (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    scope TEXT NOT NULL,
-                    scope_id TEXT NOT NULL,
-                    tokens_used INTEGER NOT NULL,
-                    cost_usd REAL NOT NULL DEFAULT 0.0,
-                    model_slot TEXT NOT NULL,
-                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-                )
-            """)
-            await conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_budget_scope
-                ON budget_ledger(scope, scope_id)
-            """)
-            await conn.commit()
+            await self._create_tables(conn)
+            self._tables_ready = True
         finally:
             await conn.close()
 
-    async def initialize(self) -> None:
-        await self._ensure_table()
-
     async def close(self) -> None:
+        """Close the persistent connection."""
         if self._conn is not None:
-            await self._conn.close()
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+
+    async def _reset_conn(self) -> None:
+        """Reset the persistent connection (called on errors)."""
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
             self._conn = None
 
     async def get_budget(self, scope: BudgetScope, scope_id: str) -> dict:
@@ -118,9 +139,9 @@ class SqliteBudgetStore(BudgetStore):
                 "limit": limit,
                 "warning_threshold": warning_threshold,
             }
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def record_usage(
         self,
@@ -137,9 +158,9 @@ class SqliteBudgetStore(BudgetStore):
                 (scope, scope_id, tokens_used, cost_usd, model_slot),
             )
             await conn.commit()
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def check_limit(self, scope: BudgetScope, scope_id: str) -> bool:
         """Check whether budget has remaining capacity.

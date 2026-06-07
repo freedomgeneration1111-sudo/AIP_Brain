@@ -1,35 +1,17 @@
 """RetrievalOrchestrator — multi-channel retrieval with parallel dispatch and RRF fusion.
 
-Sprint 5.6: Multi-channel retrieval (FTS + Vector + Graph + Wiki + Procedural),
-query expansion, budget-aware packing, quality gating, and automatic retry
-on NEEDS_MORE_CONTEXT.
+Registers retriever channels as async callables, dispatches them concurrently
+via ``asyncio.gather()``, fuses results with Reciprocal Rank Fusion (RRF),
+and applies a quality gate.  Per-call ``OrchestratorConfig`` controls which
+channels are active and budget allocation.
 
-Sprint 5.7: Parallel dispatch via ``asyncio.gather()``, orchestrator instance
-reuse/caching, and correct per-channel trace timing under concurrency.
-
-Sprint 5.9: Per-channel budget allocation via ``OrchestratorConfig`` fields
-(``max_hits_per_channel``, ``fts_max_hits``, etc.).  Limits are enforced
-**before** RRF fusion to prevent a single channel from dominating results.
-``get_channel_max_hits()`` provides resolution logic: channel-specific →
-global default → 0 (unlimited).
-
-Architecture
-------------
-Each *retriever channel* is registered as an async callable that accepts a
-query string and returns ``list[RetrievalHit]``.  The orchestrator:
-
-1. Expands the query (synonym / entity expansion).
-2. Dispatches all enabled channels **concurrently** via ``asyncio.gather()``.
-3. Merges results with Reciprocal Rank Fusion (RRF).
-4. Applies a quality gate (minimum fused-score threshold).
-5. Returns the fused hits plus a ``RetrievalTrace`` for observability.
-
-The orchestrator supports per-call configuration toggles (``enable_fts``,
-``enable_vector``, etc.) while sharing a lazily-registered set of
-retriever callables across calls.
-
-Layer: orchestration.  May import foundation, stdlib.  May NOT import
-adapter directly — stores are injected via registration.
+Architecture:
+    1. Query expansion (synonym / entity / LLM).
+    2. Concurrent dispatch via ``asyncio.gather()``.
+    3. Per-channel budget enforcement before fusion.
+    4. RRF merge.
+    5. Quality gate (min RRF score + min hit count).
+    6. Automatic retry on NEEDS_MORE_CONTEXT.
 """
 
 from __future__ import annotations
@@ -157,22 +139,13 @@ def expand_query(query: str, extra_terms: list[str] | None = None) -> str:
 class OrchestratorConfig:
     """Per-call or default configuration for RetrievalOrchestrator.
 
-    The ``enable_*`` flags control which well-known channels are dispatched
-    in a given retrieval round.  The ``extra_channels`` list allows
-    enabling additional registered channels that are not covered by the
-    built-in flags (e.g. "corpus", "slow1", custom channels).
+    ``enable_*`` flags control which channels are dispatched.  ``extra_channels``
+    enables additional registered channels not covered by built-in flags.
+    ``enable_all_registered`` dispatches every registered channel regardless
+    of per-channel flags.
 
-    The ``enable_all_registered`` flag, when True, dispatches every
-    registered channel regardless of the per-channel flags.  This is
-    convenient for testing or when all channels should always run.
-
-    Sprint 5.9: Per-channel budget allocation via ``max_hits_per_channel``
-    and specific ``<channel>_max_hits`` fields.  These limits are enforced
-    **before** RRF fusion so that no single channel can dominate results.
-    A value of 0 means "no limit" (use the global ``max_hits``).
-
-    Per-call overrides: the orchestrator will skip channels that are
-    disabled or have no registered retriever.
+    Per-channel budget: ``max_hits_per_channel`` and ``<channel>_max_hits``
+    cap each channel's contribution before RRF fusion.  0 = no limit.
     """
 
     enable_fts: bool = True
@@ -189,34 +162,21 @@ class OrchestratorConfig:
     quality_gate_min_hits: int = 1
     max_hits: int = 50
 
-    # Sprint 5.12: LLM-based query expansion
-    # When enabled, the orchestrator calls a lightweight LLM before dispatch
-    # to generate alternative search terms for ambiguous or short queries.
-    # This is optional and behind a config flag for backward compatibility.
-    # Uses the "fast" model slot to minimize latency.
     enable_llm_query_expansion: bool = False
-    llm_query_expansion_timeout: float = 2.0  # seconds, timeout for LLM expansion call
-    llm_query_expansion_max_terms: int = 5  # maximum number of expanded terms
+    llm_query_expansion_timeout: float = 2.0
+    llm_query_expansion_max_terms: int = 5
 
-    # Sprint 5.9→5.11: Per-channel budget allocation
-    # These limits cap the number of hits each channel can contribute
-    # to RRF fusion.  0 = no limit (use global max_hits).  Set these
-    # when one channel tends to dominate results (e.g. FTS returning
-    # 30 hits while Graph only returns 5).
-    #
-    # Sprint 5.11: Data-driven tuning — FTS and corpus are high-volume
-    # channels that tend to dominate RRF scores due to sheer hit count.
-    # Contribution analysis shows Graph/Wiki have high precision but low
-    # recall; capping FTS/corpus prevents them from drowning out the
-    # high-precision Graph/Wiki hits.  Graph and Wiki are given generous
-    # limits since they return fewer but more targeted results.
-    max_hits_per_channel: int = 0  # default limit for ALL channels (0 = unlimited)
-    fts_max_hits: int = 15  # FTS is high-volume; cap to prevent dominance
-    vector_max_hits: int = 0  # Vector is moderate; no cap needed
-    graph_max_hits: int = 10  # Graph returns few but precise hits; allow up to 10
-    wiki_max_hits: int = 8  # Wiki articles are fewer but high quality
-    procedural_max_hits: int = 5  # Procedural guides are typically few
-    corpus_max_hits: int = 15  # Corpus can be high-volume like FTS; cap similarly
+    # Per-channel budget: caps each channel's contribution to RRF fusion.
+    # 0 = no limit (use global max_hits).  FTS/corpus are capped because
+    # they tend to dominate RRF scores; Graph/Wiki have high precision
+    # but low recall and need generous limits.
+    max_hits_per_channel: int = 0
+    fts_max_hits: int = 15
+    vector_max_hits: int = 0
+    graph_max_hits: int = 10
+    wiki_max_hits: int = 8
+    procedural_max_hits: int = 5
+    corpus_max_hits: int = 15
 
     def get_channel_max_hits(self, channel_name: str) -> int:
         """Return the per-channel hit limit for a given channel.
@@ -332,7 +292,7 @@ class RetrievalOrchestrator:
         if config is None:
             config = OrchestratorConfig()
 
-        # Sprint 5.12: LLM query expansion
+        # LLM query expansion (optional)
         llm_expanded_terms: list[str] = []
         if config.enable_llm_query_expansion and model_provider is not None:
             try:
@@ -408,14 +368,7 @@ class RetrievalOrchestrator:
         session_id: str = "",
         round_number: int = 0,
     ) -> tuple[list[RetrievalHit], RetrievalTrace]:
-        """Execute one retrieval round: dispatch channels, fuse, quality-gate.
-
-        **Sprint 5.7**: Channels are dispatched concurrently via
-        ``asyncio.gather()`` instead of sequentially.  Per-channel timing
-        is captured with ``time.monotonic()`` wrapped around each
-        individual coroutine so that wall-clock times remain accurate even
-        under concurrency.
-        """
+        """Execute one retrieval round: dispatch channels, fuse, quality-gate."""
         trace = RetrievalTrace(
             session_id=session_id,
             query=query,
@@ -450,7 +403,6 @@ class RetrievalOrchestrator:
             trace.verdict = "NO_RESULTS"
             return [], trace
 
-        # -- Parallel dispatch (Sprint 5.7) ---------------------------------
         round_start = time.monotonic()
 
         async def _dispatch_one(
@@ -484,16 +436,12 @@ class RetrievalOrchestrator:
             channel_results[name] = hits
             trace.per_channel_elapsed_ms[name] = elapsed_ms
 
-        # -- Per-channel budget enforcement (Sprint 5.9) --------------------
-        # Trim each channel's hit list to its configured max_hits limit
-        # BEFORE RRF fusion.  This prevents a single dominant channel from
-        # overwhelming the fused results.
+        # Per-channel budget enforcement before fusion
         for ch_name in list(channel_results.keys()):
             ch_limit = config.get_channel_max_hits(ch_name)
             if ch_limit > 0 and len(channel_results[ch_name]) > ch_limit:
                 channel_results[ch_name] = channel_results[ch_name][:ch_limit]
 
-        # Sprint 5.10: Record per-channel raw hit counts before fusion
         trace.per_channel_hit_counts = {
             ch_name: len(hits) for ch_name, hits in channel_results.items()
         }
@@ -514,9 +462,7 @@ class RetrievalOrchestrator:
         trace.hits_after_quality_gate = len(filtered)
         trace.verdict = verdict
 
-        # Sprint 5.10: Record channel contribution counts for hits that
-        # survived RRF fusion + quality gate.  This tells us which channels
-        # actually contributed to the final result set.
+        # Channel contribution counts (post quality-gate)
         ch_contrib: dict[str, int] = {}
         for hit in filtered:
             # A hit may have come from multiple channels (dedup in RRF)
@@ -529,11 +475,7 @@ class RetrievalOrchestrator:
                 ch_contrib[ch] = ch_contrib.get(ch, 0) + 1
         trace.channel_contributions = ch_contrib
 
-        # Sprint 5.11: Extract LLM entity extraction observability from
-        # graph channel hits.  The graph retriever stamps the first hit's
-        # metadata with LLM timing/status/count data; we transfer it to
-        # the trace so it's available for dashboard observability without
-        # iterating over all hits.
+        # Extract graph-channel LLM entity extraction observability
         for hit in filtered:
             if hit.source_channel == "graph" and hit.metadata:
                 llm_ms = hit.metadata.get("_llm_entity_extraction_ms")
@@ -551,7 +493,7 @@ class RetrievalOrchestrator:
 
 
 # ---------------------------------------------------------------------------
-# Orchestrator cache (Sprint 5.7)
+# Orchestrator cache
 # ---------------------------------------------------------------------------
 
 class OrchestratorCache:

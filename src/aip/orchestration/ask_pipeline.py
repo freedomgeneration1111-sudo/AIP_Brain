@@ -47,7 +47,6 @@ from aip.orchestration.smart_context_packer import (
 
 logger = logging.getLogger(__name__)
 
-# Module-level orchestrator cache (singleton per process)
 _orchestrator_cache: OrchestratorCache = get_orchestrator_cache()
 
 
@@ -95,18 +94,11 @@ async def _resolve_project(
     project_name: str,
     project_store: ProjectStore,
 ) -> dict | None:
-    """Resolve a project by name or ID from ProjectStore.
-
-    Searches first by name (display name), then by project_id
-    (internal identifier) as a fallback. Returns the project dict
-    if found, None otherwise.
-    """
+    """Resolve a project by name, then by project_id as fallback."""
     projects = await project_store.list_projects()
-    # First try matching by name (display name)
     for p in projects:
         if p.get("name") == project_name:
             return p
-    # Fallback: match by project_id (internal identifier)
     for p in projects:
         if p.get("project_id") == project_name:
             return p
@@ -128,11 +120,8 @@ def _sanitize_fts_query(query: str) -> str:
     """
     import re
 
-    # Remove common punctuation that FTS5 doesn't handle
     cleaned = re.sub(r'[?!.*+\-^(){}|~"\\]', " ", query)
-    # Extract word tokens
     tokens = cleaned.split()
-    # Filter out very short tokens and common stop words
     stop_words = {"a", "an", "the", "is", "are", "was", "were", "be", "been",
                   "being", "have", "has", "had", "do", "does", "did", "will",
                   "would", "could", "should", "may", "might", "shall", "can",
@@ -145,15 +134,13 @@ def _sanitize_fts_query(query: str) -> str:
     meaningful = [t for t in tokens if len(t) >= 2 and t.lower() not in stop_words]
 
     if not meaningful:
-        # Fallback: use all non-stop-word tokens including short ones
         meaningful = [t for t in tokens if len(t) >= 1 and t.lower() not in stop_words]
 
     if not meaningful:
-        # Last resort: use the original query's first few words
         meaningful = [t for t in tokens[:3] if t]
 
     if not meaningful:
-        return query  # Return original as last resort
+        return query
 
     return " AND ".join(meaningful)
 
@@ -294,7 +281,7 @@ def _register_retriever_channels(
         async def _graph_retriever(query: str) -> list[RetrievalHit]:
             """Graph retriever: extract entities from query, run PPR, surface related nodes.
 
-            Sprint 5.11: Tracks LLM entity extraction timing and status in
+            Tracks LLM entity extraction timing and status in
             hit metadata (``_llm_entity_extraction_ms``, ``_llm_entity_extraction_status``,
             ``_llm_entity_count``) so the orchestrator can transfer it to the
             RetrievalTrace for dashboard observability.
@@ -324,11 +311,11 @@ def _register_retriever_channels(
                     llm_fn=_llm_entity_fn,
                 )
 
-                # Sprint 5.11: Track LLM entity extraction timing
+                # Track LLM entity extraction timing
                 import time as _time
                 ext_start = _time.monotonic()
 
-                # Sprint 5.9→5.10: Use EntityExtractor for robust entity extraction
+                # Use EntityExtractor for robust entity extraction
                 # (noun-phrase + graph-fuzzy + optional LLM fallback)
                 seed_entities = await extractor.extract_async(
                     query, graph_store=_graph_store,
@@ -372,7 +359,7 @@ def _register_retriever_channels(
             # The graph channel surfaces *entity names* and their graph context,
             # which augments the other channels rather than returning raw content.
             #
-            # Sprint 5.11: Include LLM entity extraction observability data
+            # Include LLM entity extraction observability data
             # in the first hit's metadata so the orchestrator can transfer
             # it to the RetrievalTrace.
             hits: list[RetrievalHit] = []
@@ -770,7 +757,7 @@ async def create_ask_stores(db_path: str) -> AskStores:
     except Exception:
         pass  # graceful: no embedding provider — lexical-only search
 
-    # Sprint 5.13: Use persistent SqliteVssVectorStore instead of InMemoryVectorStore
+    # Use persistent SqliteVssVectorStore instead of InMemoryVectorStore
     # so that vectors survive process restarts.  The VSS extension may not be
     # available, in which case the store degrades to brute-force search over
     # the embedding_json column — but data is still persistent.
@@ -881,7 +868,7 @@ async def ask(
         project_domain = project.get("domain") or project_name
 
     # Step 2: Search for relevant sources (primary path: orchestrator + packer)
-    # Sprint 5.7: _search_sources_with_trace() is the primary path.
+    # _search_sources_with_trace() is the primary path.
     # It uses RetrievalOrchestrator with parallel dispatch and RRF fusion,
     # then SmartContextPacker for budget-aware context assembly.
     retrieval_trace: RetrievalTrace | None = None
@@ -941,7 +928,7 @@ async def ask(
         )
 
     # Step 4: Assemble context via SmartContextPacker
-    # Sprint 5.8: SmartContextPacker is the only context assembly path.
+    # SmartContextPacker is the only context assembly path.
     # packed_context is always set by _search_sources_with_trace().
     context = packed_context.context_text if packed_context else "No relevant sources found in project memory."
 
@@ -1175,7 +1162,7 @@ async def _record_trace(
     an audit trail: what was asked, what context was used, what answer
     was generated, and what happened.
 
-    Sprint 5.7: Also records RetrievalTrace data (channel timing, RRF
+    Also records RetrievalTrace data (channel timing, RRF
     fusion stats, quality-gate verdict) when available.
     """
     if stores.event_store is None:
@@ -1193,7 +1180,7 @@ async def _record_trace(
             "retrieval_hits_after_fusion": retrieval_trace.hits_after_fusion,
             "retrieval_hits_after_gate": retrieval_trace.hits_after_quality_gate,
             "retrieval_verdict": retrieval_trace.verdict,
-            # Sprint 5.11: Channel contributions and LLM entity extraction
+            # Channel contributions and LLM entity extraction
             # observability data stored in trace for dashboard access
             "retrieval_channel_contributions": json.dumps(retrieval_trace.channel_contributions),
             "retrieval_llm_entity_extraction_ms": retrieval_trace.llm_entity_extraction_ms,

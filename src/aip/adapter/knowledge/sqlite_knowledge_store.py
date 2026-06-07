@@ -5,6 +5,10 @@ with provenance and dual indexing into VectorStore + LexicalStore
 only on APPROVED state.
 Uses aiosqlite for async-safe database access.
 Real embeddings via injected EmbeddingProvider.
+
+Constructor is lightweight (stores path + deps only). Call ``initialize()``
+(async) to create tables before first use, or rely on lazy creation
+via ``_get_conn()``.
 """
 
 from __future__ import annotations
@@ -27,6 +31,35 @@ from aip.foundation.schemas import CompilationState
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Single source of truth for DDL
+# ---------------------------------------------------------------------------
+
+_DDL_COMPILED_KNOWLEDGE = """
+    CREATE TABLE IF NOT EXISTS compiled_knowledge (
+        knowledge_id TEXT PRIMARY KEY,
+        content TEXT,
+        source_canonical_ids TEXT,
+        domain TEXT,
+        state TEXT,
+        metadata TEXT,
+        created_at TEXT,
+        updated_at TEXT
+    )
+"""
+
+_DDL_COMPILED_KNOWLEDGE_PROVENANCE = """
+    CREATE TABLE IF NOT EXISTS compiled_knowledge_provenance (
+        knowledge_id TEXT,
+        canonical_id TEXT,
+        canonical_domain TEXT,
+        canonical_title TEXT,
+        canonical_evaluation_scores TEXT,
+        canonical_state TEXT,
+        PRIMARY KEY (knowledge_id, canonical_id)
+    )
+"""
+
 
 class SqliteKnowledgeStore(KnowledgeStore):
     """SQLite-backed KnowledgeStore.
@@ -35,15 +68,15 @@ class SqliteKnowledgeStore(KnowledgeStore):
     no collapse). Maintains separate provenance table for
     source canonical chain.
 
-    Dual-indexes content into VectorStore + LexicalStore **only** when state
-    reaches "APPROVED" (mirrors CanonicalPromotionConfig behavior).
+    Dual-indexes content into VectorStore + LexicalStore only when state
+    reaches "APPROVED".
 
     When an ``EmbeddingProvider`` is injected, real embeddings are generated
     for APPROVED content and for semantic search queries. Without an
     ``EmbeddingProvider``, the store degrades gracefully: dual-indexing is
     skipped and search falls back to lexical-only.
 
-    Uses aiosqlite for async-compatible database access.
+    Uses a persistent aiosqlite connection per instance with error recovery.
     """
 
     def __init__(
@@ -58,96 +91,72 @@ class SqliteKnowledgeStore(KnowledgeStore):
         self._lexical_store = lexical_store
         self._embedding_provider = embedding_provider
         self._conn: aiosqlite.Connection | None = None
-        self._ensure_tables_sync()
-
-    def _ensure_tables_sync(self) -> None:
-        """Synchronous table creation during init (runs once at startup)."""
-        conn = sqlite3.connect(self._db_path)
-        try:
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS compiled_knowledge (
-                    knowledge_id TEXT PRIMARY KEY,
-                    content TEXT,
-                    source_canonical_ids TEXT,  -- JSON array
-                    domain TEXT,
-                    state TEXT,
-                    metadata TEXT,              -- JSON
-                    created_at TEXT,
-                    updated_at TEXT
-                );
-
-                CREATE TABLE IF NOT EXISTS compiled_knowledge_provenance (
-                    knowledge_id TEXT,
-                    canonical_id TEXT,
-                    canonical_domain TEXT,
-                    canonical_title TEXT,
-                    canonical_evaluation_scores TEXT,  -- JSON
-                    canonical_state TEXT,
-                    PRIMARY KEY (knowledge_id, canonical_id)
-                );
-                """,
-            )
-        finally:
-            conn.close()
+        self._tables_ready = False
 
     async def _get_conn(self) -> aiosqlite.Connection:
+        """Return a persistent connection, creating one if needed.
+
+        Lazily ensures tables on first connection so that callers
+        who bypass ``initialize()`` still get a working schema.
+        """
         if self._conn is None:
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
+            await self._conn.execute("PRAGMA journal_mode=WAL")
+            if not self._tables_ready:
+                await self._create_tables(self._conn)
+                self._tables_ready = True
         return self._conn
 
-    async def _ensure_tables(self) -> None:
+    async def _create_tables(self, conn: aiosqlite.Connection) -> None:
+        """Create compiled_knowledge and provenance tables on the given connection."""
+        await conn.execute(_DDL_COMPILED_KNOWLEDGE)
+        await conn.execute(_DDL_COMPILED_KNOWLEDGE_PROVENANCE)
+        await conn.commit()
+
+    async def initialize(self) -> None:
+        """Idempotent table creation (called by lifespan / DI container).
+
+        Uses a short-lived connection to create tables, then discards it.
+        Subsequent operations use the persistent connection from _get_conn().
+        """
+        if self._tables_ready:
+            return
         conn = await aiosqlite.connect(self._db_path)
         try:
-            await conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS compiled_knowledge (
-                    knowledge_id TEXT PRIMARY KEY,
-                    content TEXT,
-                    source_canonical_ids TEXT,  -- JSON array
-                    domain TEXT,
-                    state TEXT,
-                    metadata TEXT,              -- JSON
-                    created_at TEXT,
-                    updated_at TEXT
-                );
-
-                CREATE TABLE IF NOT EXISTS compiled_knowledge_provenance (
-                    knowledge_id TEXT,
-                    canonical_id TEXT,
-                    canonical_domain TEXT,
-                    canonical_title TEXT,
-                    canonical_evaluation_scores TEXT,  -- JSON
-                    canonical_state TEXT,
-                    PRIMARY KEY (knowledge_id, canonical_id)
-                );
-                """,
-            )
+            await self._create_tables(conn)
+            self._tables_ready = True
         finally:
             await conn.close()
 
-    async def initialize(self) -> None:
-        """Idempotent table creation (called by lifespan / container)."""
-        await self._ensure_tables()
-
     async def close(self) -> None:
+        """Close the persistent connection."""
         if self._conn is not None:
-            await self._conn.close()
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+
+    async def _reset_conn(self) -> None:
+        """Reset the persistent connection (called on errors)."""
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
             self._conn = None
 
     async def _generate_embedding(self, text: str) -> list[float] | None:
         """Generate a real embedding via the injected EmbeddingProvider.
 
         Returns the embedding vector on success, or ``None`` if no provider
-        is available or embedding generation fails. Logs warnings on failure
-        so that operators can diagnose connectivity or configuration issues.
+        is available or embedding generation fails.
         """
         if self._embedding_provider is None:
             logger.debug(
                 "No EmbeddingProvider configured — skipping embedding generation "
-                "for text (%d chars). Semantic search will not be available for "
-                "this content.",
+                "for text (%d chars).",
                 len(text),
             )
             return None
@@ -156,17 +165,14 @@ class SqliteKnowledgeStore(KnowledgeStore):
             embedding = await self._embedding_provider.embed(text)
             if not embedding or len(embedding) == 0:
                 logger.warning(
-                    "EmbeddingProvider returned empty vector for text (%d chars). "
-                    "Falling back to lexical-only indexing.",
+                    "EmbeddingProvider returned empty vector for text (%d chars).",
                     len(text),
                 )
                 return None
             return embedding
         except Exception as exc:
             logger.warning(
-                "Embedding generation failed for text (%d chars): %s. "
-                "Falling back to lexical-only indexing. Check that the embedding "
-                "provider (e.g. Ollama) is running and accessible.",
+                "Embedding generation failed for text (%d chars): %s.",
                 len(text),
                 exc,
             )
@@ -183,12 +189,10 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
         Generates a real embedding via the EmbeddingProvider when available.
         If embedding fails or no provider is configured, only lexical indexing
-        is performed — the content is still discoverable via text search.
+        is performed.
         """
-        # Generate real embedding
         embedding = await self._generate_embedding(content[:2000])
 
-        # Vector store upsert — only when we have a real embedding
         if embedding is not None:
             try:
                 await self._vector_store.upsert(
@@ -199,25 +203,23 @@ class SqliteKnowledgeStore(KnowledgeStore):
                     domain,
                 )
                 logger.info(
-                    "Indexed compiled knowledge '%s' into vector store (embedding dim=%d, domain='%s').",
+                    "Indexed compiled knowledge '%s' into vector store (dim=%d, domain='%s').",
                     knowledge_id,
                     len(embedding),
                     domain,
                 )
             except Exception as exc:
                 logger.warning(
-                    "Vector store upsert failed for compiled knowledge '%s': %s. "
-                    "Lexical index will still be available.",
+                    "Vector store upsert failed for compiled knowledge '%s': %s.",
                     knowledge_id,
                     exc,
                 )
         else:
             logger.info(
-                "No embedding available for compiled knowledge '%s' — skipping vector index. Lexical index only.",
+                "No embedding available for compiled knowledge '%s' — lexical index only.",
                 knowledge_id,
             )
 
-        # Lexical store index — always attempt (best-effort)
         try:
             await self._lexical_store.index_document(
                 f"compiled:{knowledge_id}",
@@ -227,8 +229,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
             )
         except Exception as exc:
             logger.warning(
-                "Lexical store index failed for compiled knowledge '%s': %s. "
-                "This is non-fatal but text search may not find this content.",
+                "Lexical store index failed for compiled knowledge '%s': %s.",
                 knowledge_id,
                 exc,
             )
@@ -273,7 +274,6 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 ),
             )
 
-            # Provenance links (simplified — full details come via get_provenance join in real usage)
             for cid in source_canonical_ids or []:
                 await conn.execute(
                     """
@@ -286,11 +286,10 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 )
 
             await conn.commit()
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
-        # Dual index only on APPROVED (exact per prose)
         if state == "APPROVED":
             await self._dual_index(knowledge_id, content, domain, metadata)
 
@@ -314,9 +313,9 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
             }
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def list_compiled(self, domain: str | None = None, state: CompilationState | None = None) -> list[dict]:
         conn = await self._get_conn()
@@ -345,24 +344,21 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 }
                 for r in rows
             ]
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def update_state(self, knowledge_id: str, new_state: CompilationState) -> None:
         """Validate and perform state transition.
 
         When transitioning to "APPROVED", triggers dual-indexing into
         VectorStore + LexicalStore with real embeddings (when available).
-        This ensures that knowledge items promoted via the state machine
-        (SPECIFIED -> COMPILED -> REVIEWED -> APPROVED) are properly
-        indexed even if they were not stored with state=APPROVED initially.
         """
         valid_transitions = {
             "SPECIFIED": {"COMPILED", "FAILED"},
             "COMPILED": {"REVIEWED", "FAILED"},
             "REVIEWED": {"APPROVED", "FAILED"},
-            "APPROVED": set(),  # terminal
+            "APPROVED": set(),
             "FAILED": set(),
         }
         current = await self.get_compiled(knowledge_id)
@@ -370,7 +366,6 @@ class SqliteKnowledgeStore(KnowledgeStore):
             return
         allowed = valid_transitions.get(current["state"], set())
         if new_state not in allowed and new_state != current["state"]:
-            # For 0.1 we log but allow (full validation can tighten in 10.5)
             logger.info(
                 "State transition '%s' -> '%s' for knowledge '%s' is not in "
                 "the standard transition table. Allowing for 0.1 compatibility.",
@@ -387,13 +382,10 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 (new_state, now, knowledge_id),
             )
             await conn.commit()
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
-        # When transitioning TO APPROVED, trigger dual indexing with real embeddings.
-        # This is the primary path: items are stored as COMPILED, then promoted
-        # through REVIEWED -> APPROVED via update_state().
         if new_state == "APPROVED" and current["state"] != "APPROVED":
             await self._dual_index(
                 knowledge_id,
@@ -425,9 +417,9 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 }
                 for r in rows
             ]
-        finally:
-            await conn.close()
-            self._conn = None
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def search_compiled(self, query: str, domain: str | None = None, limit: int = 10) -> list[dict]:
         """Search across Vector + Lexical stores with semantic and text matching.
@@ -439,7 +431,6 @@ class SqliteKnowledgeStore(KnowledgeStore):
         """
         results: list[dict] = []
 
-        # Lexical search (always available)
         try:
             lexical_hits = await self._lexical_store.search(query, domain=domain, limit=limit)
             for h in lexical_hits:
@@ -454,7 +445,6 @@ class SqliteKnowledgeStore(KnowledgeStore):
         except Exception as exc:
             logger.debug("Lexical search failed for query '%s': %s", query[:100], exc)
 
-        # Vector search — enabled when embedding_provider is available
         if self._embedding_provider is not None:
             query_vec = await self._generate_embedding(query)
             if query_vec is not None:
@@ -476,7 +466,6 @@ class SqliteKnowledgeStore(KnowledgeStore):
                         exc,
                     )
 
-        # Dedup + limit (simple)
         seen: set[str] = set()
         deduped: list[dict] = []
         for r in sorted(results, key=lambda x: x.get("score", 0.0), reverse=True):
