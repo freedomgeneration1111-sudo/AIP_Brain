@@ -99,6 +99,22 @@ class GraphStore:
                     relationships_found INTEGER DEFAULT 0
                 )
             """)
+            # Entity-turn index (hippocampal index): maps entities to the turns that mention them.
+            # This is the core data structure for Zone A (direct mention) retrieval.
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS entity_turn_index (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    entity_id TEXT NOT NULL,
+                    turn_id TEXT NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 0.5,
+                    source TEXT NOT NULL DEFAULT 'sexton_extraction',
+                    created_at TEXT NOT NULL,
+                    UNIQUE(entity_id, turn_id, source)
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_eti_entity ON entity_turn_index(entity_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_eti_turn ON entity_turn_index(turn_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_eti_confidence ON entity_turn_index(confidence DESC)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_graph_edges_source ON graph_edges(source_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_graph_edges_target ON graph_edges(target_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_graph_nodes_domain ON graph_nodes(domain)")
@@ -343,6 +359,263 @@ class GraphStore:
             return {"connected": True, "nodes": nodes, "edges": edges}
         except Exception as exc:
             return {"connected": False, "error": str(exc)}
+
+    # ------------------------------------------------------------------
+    # Entity-turn index (hippocampal index)
+    # ------------------------------------------------------------------
+
+    def write_entity_turn(
+        self,
+        entity_id: str,
+        turn_id: str,
+        confidence: float = 0.7,
+        source: str = "sexton_extraction",
+    ) -> None:
+        """Write a single entity→turn link to the hippocampal index.
+
+        The UNIQUE(entity_id, turn_id, source) constraint means the same
+        entity-turn pair from the same source is idempotent. If Sexton
+        extracts the same entity from the same turn twice, the second
+        write silently updates confidence but does not duplicate the row.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        conn = sqlite3.connect(self._db_path)
+        try:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO entity_turn_index
+                    (entity_id, turn_id, confidence, source, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (entity_id, turn_id, confidence, source, now),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def write_entity_turn_batch(
+        self,
+        entries: list[tuple[str, str, float, str]],
+    ) -> int:
+        """Bulk-write entity→turn links. Returns count written.
+
+        Args:
+            entries: List of (entity_id, turn_id, confidence, source) tuples.
+        """
+        if not entries:
+            return 0
+        now = datetime.now(timezone.utc).isoformat()
+        conn = sqlite3.connect(self._db_path)
+        try:
+            conn.executemany(
+                """
+                INSERT OR REPLACE INTO entity_turn_index
+                    (entity_id, turn_id, confidence, source, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                [(eid, tid, conf, src, now) for eid, tid, conf, src in entries],
+            )
+            conn.commit()
+            return len(entries)
+        finally:
+            conn.close()
+
+    def get_turns_for_entities(
+        self,
+        entity_ids: list[str],
+        min_confidence: float = 0.3,
+        limit: int = 50,
+    ) -> list[dict]:
+        """Return turns that mention any of the given entities.
+
+        Returns list of dicts with: turn_id, entity_id, confidence, source.
+        Results are ordered by confidence descending (highest-confidence
+        entity-turn links first). This is the Zone A retrieval path.
+
+        Hub leash: If an entity appears in >limit turns, only the top
+        turns by confidence are returned. This prevents hub entities
+        (like "Komal" which may have 100+ turns) from drowning out
+        other entities' contributions.
+        """
+        if not entity_ids:
+            return []
+        conn = sqlite3.connect(self._db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            placeholders = ",".join("?" for _ in entity_ids)
+            rows = conn.execute(
+                f"""
+                SELECT turn_id, entity_id, confidence, source
+                FROM entity_turn_index
+                WHERE entity_id IN ({placeholders})
+                  AND confidence >= ?
+                ORDER BY confidence DESC
+                LIMIT ?
+                """,
+                (*entity_ids, min_confidence, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def get_entities_for_turn(self, turn_id: str) -> list[dict]:
+        """Return all entity mentions for a given turn.
+
+        Used to populate the entities field in RetrievalHit when
+        converting a turn found via graph expansion.
+        """
+        conn = sqlite3.connect(self._db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute(
+                """
+                SELECT entity_id, confidence, source
+                FROM entity_turn_index
+                WHERE turn_id = ?
+                ORDER BY confidence DESC
+                """,
+                (turn_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def backfill_entity_turn_index(self) -> dict:
+        """Backfill entity_turn_index from existing graph_edges.evidence_turn_ids_json.
+
+        For every edge that has evidence_turn_ids, write the source and target
+        entities as entity→turn links with the edge's confidence. This is a
+        one-time migration that runs at startup to populate the index from
+        data that already exists in the graph.
+
+        Returns dict with: entities_written, edges_processed, skipped.
+        """
+        conn = sqlite3.connect(self._db_path)
+        conn.row_factory = sqlite3.Row
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            # Check if backfill has already been done (heuristic: count rows)
+            existing = conn.execute("SELECT COUNT(*) FROM entity_turn_index").fetchone()[0]
+            if existing > 0:
+                return {"entities_written": 0, "edges_processed": 0, "skipped": "already_populated"}
+
+            edges = conn.execute(
+                "SELECT source_id, target_id, confidence, evidence_turn_ids_json FROM graph_edges"
+            ).fetchall()
+
+            entries: list[tuple] = []
+            for edge in edges:
+                turn_ids = json.loads(edge["evidence_turn_ids_json"] or "[]")
+                confidence = float(edge["confidence"] or 0.5)
+                for turn_id in turn_ids:
+                    entries.append((edge["source_id"], turn_id, confidence, "edge_backfill"))
+                    entries.append((edge["target_id"], turn_id, confidence, "edge_backfill"))
+
+            if entries:
+                conn.executemany(
+                    """
+                    INSERT OR IGNORE INTO entity_turn_index
+                        (entity_id, turn_id, confidence, source, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    [(eid, tid, conf, src, now) for eid, tid, conf, src in entries],
+                )
+                conn.commit()
+
+            return {
+                "entities_written": len(entries),
+                "edges_processed": len(edges),
+                "skipped": None,
+            }
+        finally:
+            conn.close()
+
+    def mention_scan(self, limit: int = 500) -> dict:
+        """Cheap mention scan — no LLM. Finds corpus turns that mention known entity names.
+
+        For each graph node (canonical_name + aliases), scans corpus_turns.searchable_text
+        for substring matches. Writes matches to entity_turn_index with lower confidence
+        (0.4) and source='mention_scan'.
+
+        This is a startup/background operation that ensures the entity-turn index
+        covers turns that Sexton hasn't extracted yet. It's cheap because it only
+        does SQLite LIKE queries, no LLM calls.
+
+        Returns dict with: entities_scanned, mentions_found, turns_processed.
+        """
+        import re as _re
+
+        conn = sqlite3.connect(self._db_path)
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            # Get all nodes with their names and aliases
+            nodes = conn.execute(
+                "SELECT id, canonical_name, aliases_json, entity_type FROM graph_nodes"
+            ).fetchall()
+
+            mentions_found = 0
+            entities_scanned = 0
+            entries: list[tuple] = []
+
+            for node in nodes:
+                entity_id = node["id"]
+                canonical = node["canonical_name"]
+                aliases = json.loads(node["aliases_json"] or "[]")
+
+                # Build search terms: canonical name + aliases
+                search_terms = [canonical] + aliases[:5]  # cap aliases to avoid explosion
+                entities_scanned += 1
+
+                for term in search_terms:
+                    if len(term) < 3:
+                        continue  # skip very short terms (too many false positives)
+
+                    # Search corpus_turns for mentions
+                    turns = conn.execute(
+                        """
+                        SELECT turn_id FROM corpus_turns
+                        WHERE searchable_text LIKE ?
+                        LIMIT ?
+                        """,
+                        (f"%{term}%", limit),
+                    ).fetchall()
+
+                    for turn in turns:
+                        tid = turn["turn_id"]
+                        entries.append((entity_id, tid, 0.4, "mention_scan"))
+                        mentions_found += 1
+
+            # Batch write (INSERT OR IGNORE to avoid overwriting higher-confidence entries)
+            if entries:
+                conn.executemany(
+                    """
+                    INSERT OR IGNORE INTO entity_turn_index
+                        (entity_id, turn_id, confidence, source, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    [(eid, tid, conf, src, now) for eid, tid, conf, src in entries],
+                )
+                conn.commit()
+
+            return {
+                "entities_scanned": entities_scanned,
+                "mentions_found": mentions_found,
+                "turns_processed": 0,
+            }
+        finally:
+            conn.close()
+
+    def entity_turn_count(self) -> int:
+        """Count of rows in entity_turn_index."""
+        conn = sqlite3.connect(self._db_path)
+        try:
+            return conn.execute("SELECT COUNT(*) FROM entity_turn_index").fetchone()[0]
+        finally:
+            conn.close()
+
+    # ------------------------------------------------------------------
+    # Row converters
+    # ------------------------------------------------------------------
 
     def _row_to_node(self, row: sqlite3.Row) -> GraphNode:
         return GraphNode(

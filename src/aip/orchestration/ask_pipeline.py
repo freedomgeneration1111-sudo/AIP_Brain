@@ -243,7 +243,7 @@ async def _search_sources(
             RetrievalBudget,
             RetrievalQuery,
         )
-        from aip.orchestration.retrievers import FTSRetriever, RetrievalOrchestrator
+        from aip.orchestration.retrievers import FTSRetriever, GraphRetriever, RetrievalOrchestrator
 
         # Build the orchestrator with FTSRetriever
         fts_retriever = FTSRetriever(
@@ -252,6 +252,24 @@ async def _search_sources(
         )
         orchestrator = RetrievalOrchestrator()
         orchestrator.register_retriever(fts_retriever)
+
+        # Register GraphRetriever if graph_store is available (Phase 5.2)
+        # Graceful: if graph_store is None or fails, only FTS is used (AIP-G-02)
+        graph_store = None
+        try:
+            from aip.adapter.graph_store import GraphStore
+            db_path = getattr(corpus_turn_store, "_db_path", None) if corpus_turn_store else None
+            if db_path:
+                graph_store = GraphStore(db_path)
+        except Exception:
+            pass  # graceful: no graph store available
+
+        if graph_store is not None:
+            graph_retriever = GraphRetriever(
+                graph_store=graph_store,
+                corpus_turn_store=corpus_turn_store,
+            )
+            orchestrator.register_retriever(graph_retriever)
 
         # Build query and budget
         ret_query = RetrievalQuery(raw_query=query)
