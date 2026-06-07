@@ -1,9 +1,7 @@
 """SmartContextPacker — budget-aware context assembly with extractive summarization.
 
-Sprint 5.6: Introduced as the primary context assembly path, replacing the
-legacy ``_assemble_context()`` function that worked with ``SourceReference``
-objects.  The packer operates on ``RetrievalHit`` instances produced by
-``RetrievalOrchestrator`` and applies:
+Primary context assembly path that operates on ``RetrievalHit`` instances
+produced by ``RetrievalOrchestrator`` and applies:
 
 1. **Budget-aware packing** — fits as many hits as possible within a token
    budget, prioritising higher RRF-scored hits.
@@ -13,9 +11,7 @@ objects.  The packer operates on ``RetrievalHit`` instances produced by
 3. **Provenance metadata** — each packed segment is annotated with its
    source ID, channel, and score so the model can cite accurately.
 
-Sprint 5.7: This is now the **only active** context assembly path.
-The legacy ``_assemble_context()`` in ``ask_pipeline.py`` was removed
-in Sprint 5.8.
+This is now the **only active** context assembly path.
 
 Layer: orchestration.  May import foundation, stdlib.  May NOT import
 adapter directly.
@@ -52,7 +48,7 @@ class PackerConfig:
             keep the best half of sentences.
         include_metadata: Whether to prepend provenance headers to each
             hit's content in the packed context.
-        max_hits_per_channel: Sprint 5.9 — cap the number of hits that any
+        max_hits_per_channel: Cap the number of hits that any
             single channel can contribute to the packed context.  0 = no
             limit.  This works in concert with the orchestrator-level
             ``OrchestratorConfig.max_hits_per_channel`` but applies at the
@@ -64,7 +60,7 @@ class PackerConfig:
     min_hits: int = 3
     extractive_summary_ratio: float = 0.5
     include_metadata: bool = True
-    max_hits_per_channel: int = 0  # Sprint 5.9: 0 = no per-channel limit
+    max_hits_per_channel: int = 0  # 0 = no per-channel limit
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +226,7 @@ class SmartContextPacker:
         min_hits = self._config.min_hits
         per_channel_limit = self._config.max_hits_per_channel
 
-        # Sprint 5.9: Enforce per-channel hit limits before packing.
+        # Enforce per-channel hit limits before packing.
         # This ensures no single channel dominates the context even after
         # RRF fusion.  Hits are already sorted by rrf_score (descending).
         if per_channel_limit > 0:

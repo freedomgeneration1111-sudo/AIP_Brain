@@ -1,6 +1,6 @@
 """EntityExtractor — configurable entity extraction for the Graph channel.
 
-Sprint 5.9: Replaces the simple capitalized-word extraction with a more
+Replaces the simple capitalized-word extraction with a more
 robust, multi-strategy approach:
 
 1. **Noun-phrase extraction** — lightweight regex/POS-inspired heuristics
@@ -17,7 +17,7 @@ robust, multi-strategy approach:
    callable is provided, a lightweight prompt extracts entities.  This is
    disabled by default and only activated when configured.
 
-Sprint 5.10: Added ``create_llm_entity_fn()`` factory that wires
+Added ``create_llm_entity_fn()`` factory that wires
 ``EntityExtractor`` to the existing ``ModelProvider`` / ``ModelSlotResolver``
 via the orchestration-layer proxy.  New config fields:
 ``entity_extraction_mode``, ``llm_entity_extraction_model``,
@@ -94,7 +94,7 @@ class EntityExtractorConfig:
     use_graph_fuzzy: bool = True
     fuzzy_match_threshold: float = 0.6
     use_llm_fallback: bool = False
-    # Sprint 5.10: LLM entity extraction configuration
+    # LLM entity extraction configuration
     entity_extraction_mode: str = "local"  # "local" | "hybrid_llm" | "llm_primary"
     llm_entity_extraction_model: str = "fast"  # model slot for LLM extraction
     llm_fallback_threshold: int = 2  # trigger LLM when primary finds < N entities
@@ -359,9 +359,9 @@ class EntityExtractor:
         """Async entity extraction — includes LLM fallback support.
 
         Same as ``extract()`` but also supports the LLM extraction
-        strategy and fallback.  Sprint 5.10: Now respects
-        ``entity_extraction_mode`` and ``llm_fallback_threshold`` settings
-        for more fine-grained control over when LLM extraction is invoked.
+        strategy and fallback.  Now respects ``entity_extraction_mode`` and
+        ``llm_fallback_threshold`` settings for more fine-grained control
+        over when LLM extraction is invoked.
         """
         cfg = self._config
         mode = cfg.entity_extraction_mode
@@ -414,7 +414,7 @@ class EntityExtractor:
 
 
 # ---------------------------------------------------------------------------
-# LLM entity extraction factory (Sprint 5.10)
+# LLM entity extraction factory
 # ---------------------------------------------------------------------------
 
 # System prompt for LLM-based entity extraction

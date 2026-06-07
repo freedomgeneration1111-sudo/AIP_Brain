@@ -34,7 +34,8 @@ class HealthEndpointResponse(TypedDict):
     actors: dict[str, dict[str, bool]]
     budget_status: str
     db_writable: bool
-    store_health: dict[str, ConnectionHealth | dict[str, str]]
+    store_health: dict[str, dict[str, Any]]
+    read_pool_summary: dict[str, Any]
 
 
 @router.get("/health")
@@ -144,6 +145,35 @@ async def health(container: AipContainer = Depends(get_container)):
             except Exception:
                 store_health[store_name] = {"error": "health_check_failed"}
 
+    # Aggregate read pool summary across all pool-enabled stores
+    read_pool_summary: dict[str, Any] = {
+        "pool_stores": [],
+        "total_checkouts": 0,
+        "total_fallbacks": 0,
+        "total_exhaustions": 0,
+        "aggregate_exhaustion_rate": 0.0,
+        "stores_with_high_exhaustion": [],
+    }
+    for store_name, health_data in store_health.items():
+        pool_data = health_data.get("read_pool")
+        if isinstance(pool_data, dict):
+            read_pool_summary["pool_stores"].append(store_name)
+            read_pool_summary["total_checkouts"] += pool_data.get("checkout_count", 0)
+            read_pool_summary["total_fallbacks"] += pool_data.get("fallback_count", 0)
+            read_pool_summary["total_exhaustions"] += pool_data.get("exhaustion_count", 0)
+            # Flag stores with high exhaustion rate (>0.3 suggests pool too small)
+            rate = pool_data.get("exhaustion_rate", 0.0)
+            if rate > 0.3:
+                read_pool_summary["stores_with_high_exhaustion"].append({
+                    "store": store_name,
+                    "exhaustion_rate": rate,
+                    "pool_size": pool_data.get("pool_size", 0),
+                })
+    total_co = read_pool_summary["total_checkouts"]
+    read_pool_summary["aggregate_exhaustion_rate"] = (
+        round(read_pool_summary["total_exhaustions"] / total_co, 4) if total_co > 0 else 0.0
+    )
+
     return {
         "status": status,
         "uptime_seconds": uptime_seconds,
@@ -158,4 +188,5 @@ async def health(container: AipContainer = Depends(get_container)):
         "budget_status": budget_status,
         "db_writable": db_writable,
         "store_health": store_health,
+        "read_pool_summary": read_pool_summary,
     }

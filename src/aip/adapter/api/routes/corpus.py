@@ -5,7 +5,6 @@ ingested conversation turns stored in CorpusTurnStore (corpus_turns
 table in state.db).  Distinct from /sources which covers entity store
 and knowledge store content.
 
-Phase 4: Knowledge Exploration Features.
 """
 
 from __future__ import annotations

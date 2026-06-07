@@ -1,27 +1,13 @@
 """Retrieval Dashboard API — read-only observability endpoints.
 
-Sprint 5.7: Exposes retrieval performance metrics via
+Exposes retrieval performance metrics via
 ``GET /api/v1/retrieval/dashboard`` so that operators can monitor
 retrieval latency, channel usage, quality-gate verdicts, and retry
 rates without needing direct database access.
 
-Sprint 5.8: Enhanced dashboard with recent traces, top failing queries,
-latency trends, and a dedicated recent-traces endpoint.  Added
-``GET /api/v1/retrieval/traces`` for individual trace inspection and
-``GET /api/v1/retrieval/channels`` for per-channel health.
-
-Sprint 5.11: Added evaluation metrics, channel contribution summaries,
-and LLM entity extraction observability to the dashboard.  New endpoint
-``GET /api/v1/retrieval/quality`` for evaluation trend data.  Existing
-endpoints now include channel_contributions and llm_entity_extraction
-fields in trace data.
-
-Sprint 5.12: Added ``GET /api/v1/retrieval/budget-tune`` endpoint for
-adaptive per-channel budget tuning suggestions based on channel
-contribution data.
-
-Layer: adapter (API route).  May import foundation and orchestration
-via the DI container.
+Includes recent traces, top failing queries, latency trends, and
+dedicated endpoints for individual trace inspection, per-channel health,
+evaluation trend data, and adaptive per-channel budget tuning suggestions.
 """
 
 from __future__ import annotations
@@ -54,9 +40,9 @@ async def retrieval_dashboard(container: AipContainer = Depends(get_container)):
     - **Recent traces**: last 10 retrieval traces with key metrics
     - **Top failing queries**: queries with the worst quality-gate outcomes
     - **Latency trend**: avg latency over the last 5 time buckets
-    - **Channel contributions** (Sprint 5.11): which channels contributed
+    - **Channel contributions**: which channels contributed
       hits that survived fusion and quality gate
-    - **LLM entity extraction** (Sprint 5.11): summary of LLM fallback
+    - **LLM entity extraction**: summary of LLM fallback
       usage, timing, and success rate
 
     Returns 200 with the summary dict, or a minimal placeholder if
@@ -150,10 +136,10 @@ async def retrieval_dashboard(container: AipContainer = Depends(get_container)):
         }
     ]
 
-    # Sprint 5.11: Channel contribution summary from recent traces
+    # Channel contribution summary from recent traces
     result["channel_contribution_summary"] = await _compute_channel_contribution_summary(container)
 
-    # Sprint 5.11: LLM entity extraction observability summary
+    # LLM entity extraction observability summary
     result["llm_entity_extraction"] = await _compute_llm_extraction_summary(container)
 
     return result
@@ -168,7 +154,7 @@ async def retrieval_traces(
 
     Each trace includes the query, channels dispatched, per-channel
     elapsed time, total elapsed time, hit counts, the quality-gate
-    verdict, and (Sprint 5.11) channel contributions and LLM entity
+    verdict, and channel contributions and LLM entity
     extraction observability data.
     """
     traces = await _get_recent_traces(container, limit=limit)
@@ -180,7 +166,7 @@ async def retrieval_channels(container: AipContainer = Depends(get_container)):
     """Return per-channel health and performance metrics.
 
     Lists all known retrieval channels with their dispatch counts,
-    average latency, hit-rate statistics, and (Sprint 5.11) contribution
+    average latency, hit-rate statistics, and contribution
     percentages based on recent trace data.
     """
     trace_store = container.trace_store
@@ -196,7 +182,7 @@ async def retrieval_channels(container: AipContainer = Depends(get_container)):
 
     channel_usage = summary.get("channel_usage", {})
 
-    # Sprint 5.11: Get contribution data for richer channel health
+    # Get contribution data for richer channel health
     contribution_summary = await _compute_channel_contribution_summary(container)
 
     total_contrib = sum(contribution_summary.values()) or 1
@@ -249,7 +235,7 @@ async def retrieval_stats(container: AipContainer = Depends(get_container)):
 async def retrieval_quality(container: AipContainer = Depends(get_container)):
     """Return evaluation quality metrics and trends.
 
-    Sprint 5.11: Exposes the latest evaluation results and channel
+    Exposes the latest evaluation results and channel
     contribution data so that retrieval quality trends can be monitored
     through the dashboard API without running the CLI eval command.
 
@@ -301,7 +287,7 @@ async def retrieval_budget_tune(
 ):
     """Return adaptive per-channel budget tuning suggestions.
 
-    Sprint 5.12: Analyzes channel contribution data from recent traces
+    Analyzes channel contribution data from recent traces
     and suggests per-channel budget adjustments.  Channels that
     consistently contribute few hits may have their budgets reduced,
     while high-value channels may receive budget increases.
@@ -397,7 +383,7 @@ async def _get_recent_traces(
     Returns a list of trace dicts with query, timing, channel, and
     verdict information extracted from the event metadata.
 
-    Sprint 5.11: Added channel_contributions and llm_entity_extraction
+    Added channel_contributions and llm_entity_extraction
     fields to trace output.
     """
     if container.event_store is None:
@@ -438,7 +424,7 @@ async def _get_recent_traces(
         except (json.JSONDecodeError, TypeError):
             per_channel_ms = {}
 
-        # Sprint 5.11: Extract channel contributions
+        # Extract channel contributions
         channel_contributions_raw = metadata.get("retrieval_channel_contributions", "{}")
         try:
             channel_contributions = (
@@ -449,7 +435,7 @@ async def _get_recent_traces(
         except (json.JSONDecodeError, TypeError):
             channel_contributions = {}
 
-        # Sprint 5.11: Extract LLM entity extraction data
+        # Extract LLM entity extraction data
         llm_entity_extraction = {
             "ms": metadata.get("retrieval_llm_entity_extraction_ms", 0),
             "status": metadata.get("retrieval_llm_entity_extraction_status", "not_used"),
@@ -503,7 +489,7 @@ async def _compute_channel_contribution_summary(
 ) -> dict[str, int]:
     """Compute aggregated channel contribution counts from recent traces.
 
-    Sprint 5.11: Aggregates the channel_contributions field across
+    Aggregates the channel_contributions field across
     recent traces to show which channels are actually contributing
     hits to the final result set (after RRF + quality gate).
     """
@@ -522,7 +508,7 @@ async def _compute_llm_extraction_summary(
 ) -> dict[str, Any]:
     """Compute LLM entity extraction observability summary from recent traces.
 
-    Sprint 5.11: Aggregates LLM entity extraction timing and success
+    Aggregates LLM entity extraction timing and success
     rates across recent traces so operators can monitor cost vs. benefit.
     """
     traces = await _get_recent_traces(container, limit=limit)
@@ -570,7 +556,7 @@ async def _compute_llm_extraction_summary(
 def _load_latest_eval_result() -> dict[str, Any] | None:
     """Load the most recent evaluation result from the eval_results directory.
 
-    Sprint 5.11: Scans the default eval_results/ directory for the most
+    Scans the default eval_results/ directory for the most
     recent timestamped eval JSON file and returns its contents.  Returns
     None if no eval results exist.
     """

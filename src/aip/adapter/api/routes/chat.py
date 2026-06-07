@@ -2,25 +2,18 @@
 
 WebSocket chat endpoint at /api/v1/chat/{session_id}
 
-Phase 4 Knowledge Exploration enhancements:
-- Augmented mode now routes through retrieval + context injection
-  before model dispatch, producing source-grounded answers
-- Sources are included in the response payload so the GUI can
-  display citations and provenance
-- Normal mode remains unchanged: direct model dispatch
+Augmented mode routes through retrieval + context injection before model
+dispatch, producing source-grounded answers. Sources are included in the
+response payload for citation display. Normal mode dispatches directly.
 
-Phase 3 Auto-Save Ingestion enhancements (preserved):
-- Auto-save hook triggers ingestion after each completed chat turn
-- Ingestion is non-blocking: response is sent immediately, ingestion runs as a background task
-- Session auto_save flag controls whether ingestion fires (default: True)
-- Ingestion status (idle/ingesting/error) tracked in session metadata
-- Gate flow: triggered when session is "augmented" mode and ReviewQueueStore is available
-- Trajectory regulation check after each turn (when SessionManager is available)
-- Graceful degradation when model_provider, review_queue_store, or ingestion stores are unavailable
+Auto-save hooks trigger ingestion after each completed chat turn.
+Ingestion is non-blocking: the response is sent immediately, ingestion
+runs as a background task. Session auto_save flag controls whether
+ingestion fires (default: True). Trajectory regulation checks run after
+each turn when SessionManager is available.
 
-Message flow (normal): message → ModelSlotResolver.call() → response → [auto-save ingestion]
-Message flow (augmented): message → retrieve sources → assemble context → ModelSlotResolver.call() → response + sources → [auto-save ingestion]
-Also: context_reset (from L4), budget exhaustion, trajectory_warning.
+Message flow (normal): message → model dispatch → response → [auto-save]
+Message flow (augmented): message → retrieve sources → assemble context → model dispatch → response + sources → [auto-save]
 """
 
 from __future__ import annotations
@@ -219,7 +212,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         if session_mode == "augmented" and (
                             _container.corpus_turn_store is not None or _container.lexical_store is not None
                         ):
-                            # === 1. DEFINER PROFILE INJECTION ===
+                            # Definer profile injection
                             try:
                                 # Use the full app config — same pattern as ask pipeline.
                                 # _container.config is set in AipContainer.__init__ from the
@@ -246,8 +239,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                             except Exception as exc:
                                 logger.warning("definer_profile_injection_failed", error=str(exc))
 
-                            # === AUGMENTED MODE: Retrieve sources + inject context ===
-                            # Order: DEFINER (done) → Wiki → Graph → Sources → Synthesis instruction
+                            # Augmented mode: retrieve sources and inject context
                             try:
                                 from aip.orchestration.ask_pipeline import (
                                     AskStores,
@@ -267,7 +259,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                     except Exception:
                                         logger.warning("project_lookup_failed", exc_info=True)
 
-                                # --- Primary: corpus turn retrieval ---
+                                # Corpus turn retrieval
                                 corpus_turns_used = False
                                 source_dicts: list[dict] = []
                                 if _container.corpus_turn_store is not None:
@@ -287,7 +279,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                             domain=domain,
                                         )
 
-                                # --- Fallback: orchestrator pipeline (Sprint 5.8) ---
+                                # Fallback: orchestrator pipeline
                                 source_refs: list = []
                                 packed_ctx = None
                                 if not corpus_turns_used and _container.lexical_store is not None:
@@ -309,7 +301,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                         max_sources=10,
                                     )
 
-                                # --- Determine active domain for wiki/graph ---
+                                # Determine active domain for wiki/graph
                                 if corpus_turns_used and source_dicts:
                                     query_domain: str | None = source_dicts[0].get("domain") or domain
                                 elif source_refs:
@@ -320,7 +312,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                 has_sources = bool(source_dicts or source_refs)
 
                                 if has_sources:
-                                    # === 2. WIKI OVERVIEW INJECTION ===
+                                    # Wiki overview injection
                                     try:
                                         if (
                                             query_domain
@@ -346,7 +338,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                     except Exception as _wiki_exc:
                                         logger.debug("wiki_overview_injection_failed", error=str(_wiki_exc))
 
-                                    # === 3. GRAPH CONNECTIONS INJECTION ===
+                                    # Graph connections injection
                                     try:
                                         if query_domain:
                                             graph_neighbors = await _get_graph_neighbors(query_domain, container=_container)
@@ -366,7 +358,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                     except Exception as _graph_exc:
                                         logger.debug("graph_neighbors_injection_failed", error=str(_graph_exc))
 
-                                    # === 4. SOURCES INJECTION ===
+                                    # Sources injection
                                     if corpus_turns_used:
                                         context = _assemble_corpus_context(source_dicts)
                                         response_sources = [
@@ -381,7 +373,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                             for s in source_dicts
                                         ]
                                     else:
-                                        # Sprint 5.8: use SmartContextPacker output
+                                        # Use SmartContextPacker output
                                         context = packed_ctx.context_text if packed_ctx else "No relevant sources found."
                                         response_sources = [
                                             {
@@ -402,7 +394,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                         }
                                     )
 
-                                    # === 5. SYNTHESIS INSTRUCTION (separate message) ===
+                                    # Synthesis instruction
                                     messages.append(
                                         {
                                             "role": "system",
@@ -438,7 +430,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                             }
                                         )
                         else:
-                            # === NORMAL MODE: Direct model dispatch ===
+                            # Normal mode: direct model dispatch
                             if session_meta and session_meta.get("role"):
                                 role_hint = session_meta.get("role", "")
                                 if role_hint:  # only inject for explicit actor roles (plain chat uses role=None; prevents Beast leak)
@@ -510,8 +502,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                             session=session_id,
                         )
 
-                        # Capture turn_index BEFORE increment (0-based: first turn = 0)
-                        # so corpus_turns turn_index matches the existing CLI ingest convention
+                        # Capture turn_index before increment
                         turn_index = 0
                         _pre_meta = get_session_meta(session_id)
                         if _pre_meta:

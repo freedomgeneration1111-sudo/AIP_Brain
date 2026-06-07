@@ -12,7 +12,6 @@ The ECS state machine enforces valid transitions:
              GENERATED (re-synthesis loop)
   FAILED → SPECIFIED (re-specify after failure)
 
-Phase 4: Knowledge Exploration Features.
 """
 
 from __future__ import annotations

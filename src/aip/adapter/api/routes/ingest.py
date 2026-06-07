@@ -7,12 +7,10 @@ These endpoints allow the GUI and other surfaces to trigger the
 ingestion pipeline (parse → chunk → FTS5 index → vector upsert)
 without going through the CLI.
 
-Phase 3 Auto-Save: the auto-save hook in the chat WebSocket handler
-calls the ingestion pipeline directly (not via HTTP) for efficiency.
-This route exists for:
-  1. Manual ingestion triggers from the GUI
-  2. Re-ingestion after configuration changes
-  3. External integrations (MCP, scripts)
+The auto-save hook in the chat WebSocket handler calls the ingestion
+pipeline directly (not via HTTP) for efficiency.  This route exists
+for manual ingestion triggers, re-ingestion after configuration changes,
+and external integrations (MCP, scripts).
 """
 
 from __future__ import annotations

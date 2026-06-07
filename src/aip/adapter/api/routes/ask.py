@@ -6,8 +6,6 @@ knowledge-augmented queries without requiring CLI access.
 The ask pipeline retrieves relevant sources from LexicalStore and
 VectorStore, assembles context, dispatches to the configured model,
 and returns a source-grounded answer with provenance references.
-
-Phase 4: Knowledge Exploration Features.
 """
 
 from __future__ import annotations
@@ -169,7 +167,7 @@ async def ask_retrieve_only(payload: dict, container: AipContainer = Depends(get
     # project_domain is kept for future use but does not limit retrieval.
     project_domain = None
 
-    # Use the orchestrator pipeline for retrieval (Sprint 5.8)
+    # Use the orchestrator pipeline for retrieval
     try:
         sources, _trace, _packed = await _search_sources_with_trace(
             query=question,

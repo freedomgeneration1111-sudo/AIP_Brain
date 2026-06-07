@@ -1,6 +1,5 @@
 """Session routes (start loads ACE Playbook).
 
-Enhanced for Phase 3 Auto-Save Ingestion:
 - Session creation now delegates to SessionStore when wired
 - Falls back to in-memory _sessions dict when SessionStore is unavailable
 - Syncs persistent store to in-memory dict for fast lookups

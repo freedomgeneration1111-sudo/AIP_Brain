@@ -1,6 +1,6 @@
 """LLM Query Expansion — lightweight LLM-based query expansion for retrieval.
 
-Sprint 5.12: Adds an optional LLM-based query expansion step that runs
+Adds an optional LLM-based query expansion step that runs
 before retrieval dispatch.  This helps ambiguous or short queries by
 generating alternative phrasings, synonyms, and related terms.
 

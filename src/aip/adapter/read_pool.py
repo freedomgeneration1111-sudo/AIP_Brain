@@ -13,6 +13,12 @@ Pool semantics:
 - If all connections are in use, the caller falls back to the store's
   existing persistent connection (graceful degradation, never blocks).
 
+Telemetry:
+- Checkout count: total number of successful pool checkouts.
+- Fallback count: times the pool was exhausted and the write conn was used.
+- Exhaustion count: subset of fallback where all pool slots were occupied.
+- Checkout latency: rolling average of time spent in _checkout_read_conn().
+
 Usage::
 
     class MyStore(StoreHealthMixin, ReadPoolMixin):
@@ -31,7 +37,8 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from typing import Any
+import time
+from typing import Any, TypedDict
 
 import aiosqlite
 
@@ -41,6 +48,31 @@ log = logging.getLogger(__name__)
 # - 2 readers for parallel ask requests
 # - 1 spare so a slow read doesn't immediately fall back to the write conn
 _DEFAULT_POOL_SIZE = 3
+
+# Rolling average window for checkout latency tracking
+_LATENCY_WINDOW = 20
+
+
+class ReadPoolHealth(TypedDict):
+    """Structured type for read pool telemetry metrics.
+
+    Key metrics for production observability:
+    - checkout_count: total successful checkouts (pool + fallback)
+    - fallback_count: times write conn was used (pool exhausted or stale)
+    - exhaustion_count: subset of fallback where all pool slots were occupied
+    - exhaustion_rate: exhaustion_count / checkout_count (utilization indicator)
+    - avg_checkout_latency_ms: rolling average (window=20)
+    - p95_checkout_latency_ms: 95th percentile of recent checkout latencies
+    """
+
+    pool_size: int
+    pool_active: int
+    checkout_count: int
+    fallback_count: int
+    exhaustion_count: int
+    exhaustion_rate: float
+    avg_checkout_latency_ms: float
+    p95_checkout_latency_ms: float
 
 
 class ReadPoolMixin:
@@ -59,12 +91,23 @@ class ReadPoolMixin:
     _read_pool_size: int
     _read_pool_initialized: bool
 
+    # Telemetry counters
+    _pool_checkout_count: int
+    _pool_fallback_count: int
+    _pool_exhaustion_count: int
+    _pool_checkout_latencies: list[float]
+
     def _init_read_pool(self, pool_size: int = _DEFAULT_POOL_SIZE) -> None:
         """Initialize pool bookkeeping (call from __init__)."""
         self._read_pool = []
         self._read_pool_available = []
         self._read_pool_size = pool_size
         self._read_pool_initialized = False
+        # Telemetry
+        self._pool_checkout_count = 0
+        self._pool_fallback_count = 0
+        self._pool_exhaustion_count = 0
+        self._pool_checkout_latencies = []
 
     async def _ensure_read_pool(self) -> None:
         """Create pool connections lazily on first use."""
@@ -104,6 +147,7 @@ class ReadPoolMixin:
         Returns a read-only connection if available, otherwise falls back
         to the store's existing persistent (write) connection.  Never blocks.
         """
+        t0 = time.monotonic()
         await self._ensure_read_pool()
 
         for i, available in enumerate(self._read_pool_available):
@@ -113,6 +157,7 @@ class ReadPoolMixin:
                 # Verify connection is still alive
                 try:
                     await conn.execute("SELECT 1")
+                    self._record_checkout(t0, fallback=False)
                     return conn
                 except Exception:
                     # Connection is stale — recreate it
@@ -126,13 +171,16 @@ class ReadPoolMixin:
                     await new_conn.execute("PRAGMA journal_mode=WAL")
                     await new_conn.execute("PRAGMA query_only = ON")
                     self._read_pool[i] = new_conn
+                    self._record_checkout(t0, fallback=False)
                     return new_conn
 
         # All pool connections in use — fall back to write connection
+        self._pool_exhaustion_count += 1
         log.debug(
             "read_pool_exhausted store=%s — falling back to write conn",
             self.__class__.__name__,
         )
+        self._record_checkout(t0, fallback=True)
         return await self._get_conn()  # type: ignore[attr-defined]
 
     def _return_read_conn(self, conn: aiosqlite.Connection) -> None:
@@ -146,6 +194,56 @@ class ReadPoolMixin:
                 self._read_pool_available[i] = True
                 return
         # Not a pool connection (was a write-conn fallback) — no action needed
+
+    def _record_checkout(self, t0: float, fallback: bool) -> None:
+        """Record checkout telemetry."""
+        elapsed = time.monotonic() - t0
+        self._pool_checkout_count += 1
+        if fallback:
+            self._pool_fallback_count += 1
+        self._pool_checkout_latencies.append(elapsed)
+        if len(self._pool_checkout_latencies) > _LATENCY_WINDOW:
+            self._pool_checkout_latencies = self._pool_checkout_latencies[-_LATENCY_WINDOW:]
+
+    def read_pool_health(self) -> ReadPoolHealth:
+        """Return read pool telemetry metrics.
+
+        Only meaningful for stores that have ReadPoolMixin. Callers
+        should check ``hasattr(store, "read_pool_health")`` before
+        invoking.
+
+        Includes utilization indicators:
+        - exhaustion_rate: fraction of checkouts that hit pool exhaustion.
+          A high rate (>0.3) suggests the pool size may be too small.
+        - p95_checkout_latency_ms: 95th percentile of recent checkout
+          latencies, useful for spotting tail latency from stale connections.
+        """
+        pool_active = sum(
+            1 for avail in getattr(self, "_read_pool_available", []) if not avail
+        )
+        latencies = getattr(self, "_pool_checkout_latencies", [])
+        avg_latency_ms = 0.0
+        p95_latency_ms = 0.0
+        if latencies:
+            avg_latency_ms = (sum(latencies) / len(latencies)) * 1000
+            sorted_lat = sorted(latencies)
+            p95_idx = max(0, int(len(sorted_lat) * 0.95) - 1)
+            p95_latency_ms = sorted_lat[p95_idx] * 1000
+
+        checkout_count = getattr(self, "_pool_checkout_count", 0)
+        exhaustion_count = getattr(self, "_pool_exhaustion_count", 0)
+        exhaustion_rate = (exhaustion_count / checkout_count) if checkout_count > 0 else 0.0
+
+        return {
+            "pool_size": getattr(self, "_read_pool_size", 0),
+            "pool_active": pool_active,
+            "checkout_count": checkout_count,
+            "fallback_count": getattr(self, "_pool_fallback_count", 0),
+            "exhaustion_count": exhaustion_count,
+            "exhaustion_rate": round(exhaustion_rate, 4),
+            "avg_checkout_latency_ms": round(avg_latency_ms, 3),
+            "p95_checkout_latency_ms": round(p95_latency_ms, 3),
+        }
 
     async def _close_read_pool(self) -> None:
         """Close all read pool connections."""

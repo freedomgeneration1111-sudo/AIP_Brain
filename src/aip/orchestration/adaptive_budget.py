@@ -1,6 +1,6 @@
 """Adaptive Budget Tuning — data-driven per-channel budget adjustments.
 
-Sprint 5.12: Uses channel contribution data from recent retrieval traces
+Uses channel contribution data from recent retrieval traces
 to suggest (or automatically apply) adjustments to per-channel budgets
 in ``OrchestratorConfig``.
 

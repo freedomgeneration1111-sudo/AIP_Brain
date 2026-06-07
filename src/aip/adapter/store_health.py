@@ -7,6 +7,7 @@ Provides a lightweight mixin that tracks connection health metrics:
 - Tables ready status
 - Last operation timestamp
 - Rolling average operation latency
+- Read pool telemetry (for stores with ReadPoolMixin)
 
 Stores that use the async init + persistent connection pattern can
 inherit from this mixin to expose health data through the /health endpoint.
@@ -15,14 +16,20 @@ inherit from this mixin to expose health data through the /health endpoint.
 from __future__ import annotations
 
 import time
-from typing import TypedDict
+from typing import Any, TypedDict
 
 # Rolling average window for operation latency tracking
 _LATENCY_WINDOW = 20
 
 
 class ConnectionHealth(TypedDict):
-    """Structured type for connection health metrics returned by StoreHealthMixin."""
+    """Structured type for connection health metrics returned by StoreHealthMixin.
+
+    Stores with ReadPoolMixin also include a ``read_pool`` key with pool
+    telemetry.  See ``ReadPoolHealth`` in ``aip.adapter.read_pool`` for
+    the sub-dict shape.  This field is not declared in the TypedDict
+    because it is conditional.
+    """
 
     store_type: str
     connected: bool
@@ -47,6 +54,9 @@ class StoreHealthMixin:
     Call _health_track_connect() when creating a new persistent connection.
     Call _health_track_reset() when resetting a connection due to error.
     Call _health_track_operation() after each DB operation to update latency.
+
+    If the store also inherits ReadPoolMixin, ``connection_health()`` will
+    automatically include read pool telemetry under the ``read_pool`` key.
     """
 
     # Tracked internally — initialized lazily to avoid requiring __init__ changes
@@ -96,27 +106,18 @@ class StoreHealthMixin:
         if len(self._health_latency_samples) > _LATENCY_WINDOW:
             self._health_latency_samples = self._health_latency_samples[-_LATENCY_WINDOW:]
 
-    def connection_health(self) -> ConnectionHealth:
+    def connection_health(self) -> dict[str, Any]:
         """Return connection health metrics for this store.
 
-        Returns a dict with:
-        - store_type: class name
-        - connected: whether a persistent connection exists
-        - tables_ready: whether tables have been created
-        - connection_age_seconds: age of the current connection (0 if not connected)
-        - resets: number of connection resets since startup
-        - seconds_since_last_reset: time since last reset (0 if never reset)
-        - seconds_since_last_op: time since last tracked operation (0 if none)
-        - total_ops: total number of tracked operations since startup
-        - avg_op_latency_ms: rolling average of recent operation latencies in ms
-        - db_path: the database file path
+        Returns a dict with core connection fields plus, for stores
+        that have ReadPoolMixin, a ``read_pool`` sub-dict with pool
+        telemetry (checkout count, fallback count, exhaustion frequency,
+        average checkout latency).
         """
         self._health_ensure_init()
         now = time.monotonic()
 
         conn = getattr(self, "_conn", None)
-        # Consider connected if either the write connection or any read pool
-        # connection is active (read-heavy stores may only use pool connections)
         read_pool_active = bool(getattr(self, "_read_pool_initialized", False))
         connected = conn is not None or read_pool_active
         tables_ready = getattr(self, "_tables_ready", False)
@@ -130,7 +131,7 @@ class StoreHealthMixin:
         if self._health_latency_samples:
             avg_latency_ms = (sum(self._health_latency_samples) / len(self._health_latency_samples)) * 1000
 
-        return {
+        result: dict[str, Any] = {
             "store_type": self.__class__.__name__,
             "connected": connected,
             "tables_ready": tables_ready,
@@ -142,3 +143,9 @@ class StoreHealthMixin:
             "avg_op_latency_ms": round(avg_latency_ms, 2),
             "db_path": db_path,
         }
+
+        # Include read pool telemetry for stores with ReadPoolMixin
+        if hasattr(self, "read_pool_health"):
+            result["read_pool"] = self.read_pool_health()
+
+        return result

@@ -5,7 +5,6 @@ and compiled knowledge that have been indexed into LexicalStore and
 VectorStore. Unlike /memory/search which searches *within* sources,
 this endpoint *browses* the source inventory.
 
-Phase 4: Knowledge Exploration Features.
 """
 
 from __future__ import annotations

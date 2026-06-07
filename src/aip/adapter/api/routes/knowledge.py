@@ -7,7 +7,6 @@ The KnowledgeStore manages the Deferred Compiled Knowledge Layer:
 knowledge items track provenance to source canonicals and follow a
 compilation state machine: SPECIFIED → COMPILED → REVIEWED → APPROVED.
 
-Phase 4: Knowledge Exploration Features.
 """
 
 from __future__ import annotations

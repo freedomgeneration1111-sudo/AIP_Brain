@@ -1,6 +1,6 @@
 """Wiki API routes — browse approved beast_wiki articles.
 
-Unlike /knowledge which queries compiled_knowledge (empty until Phase 4
+Unlike /knowledge which queries compiled_knowledge (empty until the
 compilation pipeline runs), this endpoint reads directly from the
 artifacts + ecs_state tables where beast_wiki articles are stored after
 Beast generates them.

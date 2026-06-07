@@ -3,7 +3,7 @@
 Serves a minimal HTML page with Cytoscape.js loaded from CDN.
 Data fetched from /api/v1/graph/data.
 
-Acceptable for Phase 2B — full NiceGUI integration is Phase 4.
+Acceptable as a standalone page; full NiceGUI integration is planned.
 """
 
 from __future__ import annotations

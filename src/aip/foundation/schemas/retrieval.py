@@ -36,7 +36,7 @@ class RetrievalResult:
 
 
 # ---------------------------------------------------------------------------
-# Sprint 5.6+ types — multi-channel retrieval pipeline
+# Multi-channel retrieval pipeline types
 # ---------------------------------------------------------------------------
 
 
@@ -81,12 +81,12 @@ class RetrievalTrace:
     that TraceStore analytics and the dashboard endpoint can report on
     retrieval performance without re-running queries.
 
-    Sprint 5.10: Added ``channel_contributions`` field that records which
+    Added ``channel_contributions`` field that records which
     channels actually contributed hits that survived RRF fusion and the
     quality gate.  This data is valuable for tuning ``ChannelSelector``
     rules, per-channel budgets, and understanding channel effectiveness.
 
-    Sprint 5.11: Added ``llm_entity_extraction_ms`` and
+    Added ``llm_entity_extraction_ms`` and
     ``llm_entity_extraction_status`` fields for observability of the LLM
     entity extraction fallback path.  These allow operators to monitor
     the cost (latency) vs. benefit (entities found) of the LLM fallback
@@ -110,12 +110,12 @@ class RetrievalTrace:
             returned by that channel before budget enforcement.  Useful
             for understanding channel yield.
         llm_entity_extraction_ms: Wall-clock time in milliseconds for the
-            LLM entity extraction call (0.0 if not invoked).  Sprint 5.11.
+            LLM entity extraction call (0.0 if not invoked).
         llm_entity_extraction_status: Status of the LLM entity extraction
             call: ``"not_used"``, ``"success"``, ``"failed"``, or
-            ``"timeout"``.  Sprint 5.11.
+            ``"timeout"``.
         llm_entity_count: Number of entities returned by LLM extraction
-            (0 if not used or failed).  Sprint 5.11.
+            (0 if not used or failed).
     """
 
     session_id: str = ""
@@ -128,10 +128,10 @@ class RetrievalTrace:
     hits_after_fusion: int = 0
     hits_after_quality_gate: int = 0
     verdict: str = "OK"
-    # Sprint 5.10: Channel contribution tracking
+    # Channel contribution tracking
     channel_contributions: dict[str, int] = field(default_factory=dict)
     per_channel_hit_counts: dict[str, int] = field(default_factory=dict)
-    # Sprint 5.11: LLM entity extraction observability
+    # LLM entity extraction observability
     llm_entity_extraction_ms: float = 0.0
     llm_entity_extraction_status: str = "not_used"  # "not_used" | "success" | "failed" | "timeout"
     llm_entity_count: int = 0
