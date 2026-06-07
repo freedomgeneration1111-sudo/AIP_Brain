@@ -170,8 +170,19 @@ def corpus_turn_to_hit(turn: Any, rank: int, channel: RetrievalChannel = Retriev
 
 
 def _sanitize_fts_query(query: str) -> str:
-    """Robust FTS5 sanitization (same spirit as ask_pipeline)."""
-    # Remove FTS5 special characters (including single quote for possessives like AIP's)
+    """Robust FTS5 sanitization — delegates to the canonical implementation.
+
+    Uses the shared sanitize_fts_query from orchestration.retrievers.fts_retriever
+    to ensure the eval script and the production pipeline use identical logic.
+    Falls back to a local copy if the import fails (standalone mode).
+    """
+    try:
+        from aip.orchestration.retrievers.fts_retriever import sanitize_fts_query as _canonical
+        return _canonical(query)
+    except ImportError:
+        pass
+
+    # Local fallback (identical logic, for standalone use without aip installed)
     cleaned = re.sub(r"""[?!.*+\-^(){}|~'"\\]""", " ", query)
     tokens = cleaned.split()
     stop_words = {"a", "an", "the", "is", "are", "was", "were", "be", "been",

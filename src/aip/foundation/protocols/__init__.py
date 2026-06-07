@@ -7,7 +7,7 @@ This module preserves backward compatibility so that existing imports like::
 continue to work unchanged.
 
 The actual definitions live in domain-specific sub-modules:
-    storage, model, auth, budget, actors, knowledge, plugin
+    storage, model, auth, budget, actors, knowledge, plugin, retrieval
 """
 
 from __future__ import annotations
@@ -42,6 +42,11 @@ from .model import (
 # -- plugin --
 from .plugin import (
     PluginProvider,
+)
+
+# -- retrieval --
+from .retrieval import (
+    Retriever,
 )
 
 # -- storage --
@@ -84,4 +89,6 @@ __all__ = [
     "KnowledgeStore",
     # plugin
     "PluginProvider",
+    # retrieval
+    "Retriever",
 ]

@@ -175,18 +175,21 @@ async def _resolve_project(
 def _sanitize_fts_query(query: str) -> str:
     """Sanitize a user query for FTS5 MATCH syntax.
 
-    FTS5 has special syntax for operators like AND, OR, NOT, NEAR, *, ^, etc.
-    Questions from users often contain ?, !, and other characters that
-    are not valid in FTS5 MATCH expressions. This function extracts
-    clean word tokens and joins them with AND for FTS5 matching.
+    Delegates to the canonical sanitize_fts_query in
+    orchestration.retrievers.fts_retriever. The local copy
+    is kept only as a fallback for the legacy path.
     """
+    try:
+        from aip.orchestration.retrievers.fts_retriever import sanitize_fts_query
+        return sanitize_fts_query(query)
+    except ImportError:
+        pass
+
+    # Local fallback (legacy path)
     import re
 
-    # Remove common punctuation that FTS5 doesn't handle
-    cleaned = re.sub(r'[?!.*+\-^(){}|~"\\]', " ", query)
-    # Extract word tokens
+    cleaned = re.sub(r"""[?!.*+\-^(){}|~'"\\]""", " ", query)
     tokens = cleaned.split()
-    # Filter out very short tokens and common stop words
     stop_words = {"a", "an", "the", "is", "are", "was", "were", "be", "been",
                   "being", "have", "has", "had", "do", "does", "did", "will",
                   "would", "could", "should", "may", "might", "shall", "can",
@@ -199,15 +202,13 @@ def _sanitize_fts_query(query: str) -> str:
     meaningful = [t for t in tokens if len(t) >= 2 and t.lower() not in stop_words]
 
     if not meaningful:
-        # Fallback: use all non-stop-word tokens including short ones
         meaningful = [t for t in tokens if len(t) >= 1 and t.lower() not in stop_words]
 
     if not meaningful:
-        # Last resort: use the original query's first few words
         meaningful = [t for t in tokens[:3] if t]
 
     if not meaningful:
-        return query  # Return original as last resort
+        return query
 
     return " AND ".join(meaningful)
 
@@ -223,21 +224,164 @@ async def _search_sources(
     config: dict | None = None,
     corpus_turn_store: Any = None,
 ) -> list[SourceReference]:
-    """Search for relevant sources using existing retrieval infrastructure.
+    """Search for relevant sources using the unified RetrievalOrchestrator.
 
-    Primary search: CorpusTurnStore (FTS5 on corpus_turns) — the canonical
-    corpus of ingested turns. Corpus is project-agnostic: no domain/project
-    filter is applied so all turns are searched regardless of project.
+    Phase 5.1: Uses FTSRetriever (CorpusTurnStore + LexicalStore) through
+    the RetrievalOrchestrator with RRF fusion and importance weighting.
+    Falls back to legacy path if the orchestrator fails entirely.
 
-    Supplementary: LexicalStore (FTS5 on fts_documents) — always available,
-    also searched without domain filter to catch artifacts and indexed content.
+    The orchestrator dispatches to FTSRetriever, applies RRF fusion,
+    importance weighting, and budget curation. This replaces the previous
+    inline retrieval logic while preserving full backward compatibility.
 
-    Supplementary: VectorStore — when embedding provider is configured.
+    Vector search (when available) is still handled via the legacy hybrid
+    scoring path and will be migrated to a VectorRetriever in a future sprint.
+    """
+    # --- Try the unified retrieval architecture (Phase 5.1+) ---
+    try:
+        from aip.foundation.schemas.retrieval_trace import (
+            RetrievalBudget,
+            RetrievalQuery,
+        )
+        from aip.orchestration.retrievers import FTSRetriever, RetrievalOrchestrator
 
-    For corpus turn vectors (turn_id keys after embedding pipeline), performs
-    hybrid scoring: 0.4 * lexical + 0.6 * vector (configurable via [retrieval]).
-    Legacy chunk retrieval continues to work unchanged (graceful: if no vectors
-    or no overlap, falls back to FTS5 + original vector scores).
+        # Build the orchestrator with FTSRetriever
+        fts_retriever = FTSRetriever(
+            corpus_turn_store=corpus_turn_store,
+            lexical_store=lexical_store,
+        )
+        orchestrator = RetrievalOrchestrator()
+        orchestrator.register_retriever(fts_retriever)
+
+        # Build query and budget
+        ret_query = RetrievalQuery(raw_query=query)
+        budget = RetrievalBudget(max_sources=max(max_sources * 2, 25))
+
+        # Execute retrieval
+        hits, trace = await orchestrator.retrieve(ret_query, budget=budget)
+
+        # Convert RetrievalHit → SourceReference (preserving the same format)
+        sources: list[SourceReference] = []
+        for hit in hits:
+            # Apply source type filter
+            hit_type = hit.source_type
+            if source_filter == "ingested" and hit_type != "corpus_turn":
+                continue
+            elif source_filter == "artifacts" and hit_type == "corpus_turn":
+                continue
+
+            snippet = hit.snippet or (hit.text[:200].replace("\n", " ") if hit.text else "")
+            sources.append(SourceReference(
+                source_id=hit.source_id,
+                source_type=hit_type,
+                title=hit.title or hit.id,
+                score=hit.score,
+                content_snippet=snippet,
+                domain=hit.domain or "",
+                metadata={
+                    "conversation_id": hit.debug.get("conversation_id", ""),
+                    "source_format": hit.debug.get("source", hit.source_type),
+                },
+            ))
+
+        # If the orchestrator returned results, we're done.
+        # Vector hybrid scoring is still handled below for backward compat.
+        if sources and vector_store is None:
+            return sources[:max_sources]
+
+        # If we have vector store, apply hybrid scoring to the orchestrator
+        # results (same logic as before, but on the curated hit list).
+        if sources and vector_store is not None and embedding_provider is not None:
+            sources = await _apply_vector_hybrid(
+                query, sources, vector_store, embedding_provider, config
+            )
+
+        if sources:
+            return sources[:max_sources]
+
+    except Exception as exc:
+        logger.warning("RetrievalOrchestrator failed, falling back to legacy path: %s", exc)
+
+    # --- Legacy fallback path (exact original logic, unchanged) ---
+    return await _search_sources_legacy(
+        query=query,
+        project_domain=project_domain,
+        source_filter=source_filter,
+        lexical_store=lexical_store,
+        vector_store=vector_store,
+        embedding_provider=embedding_provider,
+        max_sources=max_sources,
+        config=config,
+        corpus_turn_store=corpus_turn_store,
+    )
+
+
+async def _apply_vector_hybrid(
+    query: str,
+    sources: list[SourceReference],
+    vector_store: VectorStore,
+    embedding_provider: EmbeddingProvider,
+    config: dict | None = None,
+) -> list[SourceReference]:
+    """Apply vector hybrid scoring to orchestrator results.
+
+    This preserves the existing vector hybrid scoring logic but operates
+    on the curated source list from the RetrievalOrchestrator rather
+    than raw chunks. Will be replaced by VectorRetriever in a future sprint.
+    """
+    try:
+        query_vec = await embedding_provider.embed(query)
+        if not query_vec or len(query_vec) == 0:
+            return sources
+
+        vec_hits = await vector_store.retrieve(query_vec, domain=None, top_k=len(sources) * 2)
+        if not vec_hits:
+            return sources
+
+        # Build vector score map
+        vec_scores: dict[str, float] = {}
+        max_vec = max((h.score for h in vec_hits), default=1.0) or 1.0
+        for h in vec_hits:
+            vec_scores[h.id] = min(1.0, h.score / max_vec)
+
+        # Get weights
+        if config is None:
+            config = {}
+        ret_cfg = config.get("retrieval", {}) if isinstance(config, dict) else {}
+        lex_w = float(ret_cfg.get("lexical_weight", 0.4))
+        vec_w = float(ret_cfg.get("vector_weight", 0.6))
+
+        # Normalize lexical scores
+        max_lex = max((s.score for s in sources), default=1.0) or 1.0
+        for src in sources:
+            lex_norm = min(1.0, src.score / max_lex)
+            vec_norm = vec_scores.get(src.source_id, 0.0)
+            src.score = lex_w * lex_norm + vec_w * vec_norm
+
+        # Re-sort
+        sources.sort(key=lambda s: s.score, reverse=True)
+
+    except Exception as exc:
+        logger.debug("Vector hybrid scoring failed (non-fatal): %s", exc)
+
+    return sources
+
+
+async def _search_sources_legacy(
+    query: str,
+    project_domain: str | None,
+    source_filter: AskSource,
+    lexical_store: LexicalStore,
+    vector_store: VectorStore | None = None,
+    embedding_provider: EmbeddingProvider | None = None,
+    max_sources: int = 10,
+    config: dict | None = None,
+    corpus_turn_store: Any = None,
+) -> list[SourceReference]:
+    """Legacy retrieval path — exact original _search_sources logic.
+
+    Used as fallback if the RetrievalOrchestrator fails entirely (AIP-G-02).
+    This is the pre-Phase-5.1 code, preserved unchanged for safety.
     """
     all_chunks: list[Chunk] = []
 
