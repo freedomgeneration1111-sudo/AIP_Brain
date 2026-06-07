@@ -52,6 +52,7 @@ def detect_query_entities(
     query: str,
     graph_store: Any,
     max_entities: int = 10,
+    entity_type_filter: list[str] | None = None,
 ) -> list[tuple[str, float]]:
     """Detect entities in the query by matching against graph_nodes.
 
@@ -66,6 +67,9 @@ def detect_query_entities(
         query: The raw user query string.
         graph_store: GraphStore instance with search_nodes() method.
         max_entities: Maximum entities to return.
+        entity_type_filter: Optional list of entity types to filter by
+            (e.g. ["PERSON", "ORGANIZATION"]). When set, only entities
+            whose entity_type is in this list are returned.
 
     Returns:
         List of (entity_id, confidence) tuples, sorted by confidence descending.
@@ -74,6 +78,7 @@ def detect_query_entities(
         return []
 
     candidates: dict[str, float] = {}
+    candidate_types: dict[str, str] = {}  # entity_id → entity_type
 
     # Strategy 1: Search by query fragments
     # Strip punctuation from tokens for matching
@@ -106,8 +111,17 @@ def detect_query_entities(
                 else:
                     score = max(score, 0.5)
                 candidates[node.id] = score
+                candidate_types[node.id] = node.entity_type
         except Exception:
             continue
+
+    # Apply entity_type filter if specified
+    if entity_type_filter:
+        type_set = {t.upper() for t in entity_type_filter}
+        candidates = {
+            eid: score for eid, score in candidates.items()
+            if candidate_types.get(eid, "").upper() in type_set
+        }
 
     # Sort by confidence and return top-k
     sorted_entities = sorted(candidates.items(), key=lambda x: x[1], reverse=True)
@@ -560,6 +574,15 @@ class GraphRetriever:
                 "expanded_entities": expanded_entities[:10],
                 "zone_a_count": zone_a_count,
                 "zone_b_count": zone_b_count,
+                "hub_leash": self._hub_leash,
+                "ppr_alpha": self._ppr_alpha,
+                "max_zone_b_entities": self._max_zone_b_entities,
+                "zones_used": (
+                    ["A"] if zone_a_count > 0 and zone_b_count == 0
+                    else ["B"] if zone_b_count > 0 and zone_a_count == 0
+                    else ["A", "B"] if zone_a_count > 0 and zone_b_count > 0
+                    else []
+                ),
                 "domains": [],  # populated by orchestrator from hits
             },
         )

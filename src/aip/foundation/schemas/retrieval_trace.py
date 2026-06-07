@@ -207,6 +207,10 @@ class RetrievalTrace:
     detected_entities: list[str] = field(default_factory=list)
     entity_confidences: dict[str, float] = field(default_factory=dict)
 
+    # Query expansion (Phase 5.3)
+    query_expansions: list[str] = field(default_factory=list)
+    # Expanded search terms from graph neighbors + template rules
+
     # Per-retriever traces
     retriever_traces: list[RetrieverTrace] = field(default_factory=list)
 

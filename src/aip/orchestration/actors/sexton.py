@@ -1207,6 +1207,7 @@ Output format:
         total_processed = 0
         total_entities = 0
         total_relationships = 0
+        total_entity_turn_links = 0
 
         for turn in turns:
             turn_id = turn["turn_id"]
@@ -1241,6 +1242,8 @@ Output format:
 
             entities_this_turn = 0
             rels_this_turn = 0
+            # Track entity IDs extracted from this turn for entity_turn_index writes
+            entity_ids_this_turn: list[tuple[str, float]] = []  # (entity_id, confidence)
 
             for item in parsed:
                 if not isinstance(item, dict):
@@ -1275,6 +1278,9 @@ Output format:
                         graph_store.upsert_node(node)
                         entities_this_turn += 1
 
+                    # Track for entity-turn index write (both new and existing entities)
+                    entity_ids_this_turn.append((node_id, confidence))
+
                 elif "relationship_type" in item:
                     # Relationship item
                     src_raw = (item.get("source") or "").strip()
@@ -1300,6 +1306,8 @@ Output format:
                                 confidence=0.6,
                                 source="sexton_extraction",
                             ))
+                        # Track source/target entities for entity-turn index
+                        entity_ids_this_turn.append((nid, confidence * 0.8))
 
                     edge_id = f"{src_id}__{rel_type}__{tgt_id}"
                     edge = GraphEdge(
@@ -1315,6 +1323,25 @@ Output format:
                     rels_this_turn += 1
 
             graph_store.log_turn_extracted(turn_id, entities_this_turn, rels_this_turn)
+
+            # Write entity→turn links to the hippocampal index.
+            # This is the KEY freshness mechanism: every future high-importance turn
+            # automatically populates the entity-turn index, so GraphRetriever's
+            # Zone A (direct mentions) can find these turns on subsequent queries.
+            if entity_ids_this_turn:
+                # Deduplicate entity_ids for this turn (same entity from entity + rel items)
+                seen_eids: set[str] = set()
+                unique_entries: list[tuple[str, str, float, str]] = []
+                for eid, conf in entity_ids_this_turn:
+                    if eid not in seen_eids:
+                        seen_eids.add(eid)
+                        unique_entries.append((eid, turn_id, conf, "sexton_extraction"))
+                try:
+                    written = graph_store.write_entity_turn_batch(unique_entries)
+                    total_entity_turn_links += written
+                except Exception as eti_exc:
+                    log.warning("sexton_entity_turn_write_failed", turn_id=turn_id, error=str(eti_exc))
+
             total_processed += 1
             total_entities += entities_this_turn
             total_relationships += rels_this_turn
@@ -1328,6 +1355,7 @@ Output format:
             turns=total_processed,
             entities=total_entities,
             relationships=total_relationships,
+            entity_turn_links=total_entity_turn_links,
         )
 
         await self._emit_event(
@@ -1337,6 +1365,7 @@ Output format:
                 "turns_processed": total_processed,
                 "entities_created": total_entities,
                 "relationships_created": total_relationships,
+                "entity_turn_links": total_entity_turn_links,
             },
         )
 
@@ -1344,6 +1373,7 @@ Output format:
             "turns_processed": total_processed,
             "entities_created": total_entities,
             "relationships_created": total_relationships,
+            "entity_turn_links": total_entity_turn_links,
         }
 
     # ------------------------------------------------------------------

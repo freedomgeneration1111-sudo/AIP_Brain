@@ -2,6 +2,7 @@
 
 Phase 5.1: FTSRetriever, RRF fusion, RetrievalOrchestrator.
 Phase 5.2: GraphRetriever (entity-turn index + PPR expansion).
+Phase 5.3: Query expansion, WikiRetriever, configurable hub leash.
 
 Each retriever implements the Retriever protocol from
 foundation.protocols.retrieval and returns list[RetrievalHit].
@@ -21,6 +22,8 @@ from aip.orchestration.retrievers.orchestrator import (
     apply_importance_weighting,
 )
 from aip.orchestration.retrievers.rrf_fusion import rrf_fuse
+from aip.orchestration.retrievers.query_expansion import expand_query, QueryExpansion
+from aip.orchestration.retrievers.wiki_retriever import WikiRetriever
 
 __all__ = [
     "FTSRetriever",
@@ -32,4 +35,7 @@ __all__ = [
     "GraphRetriever",
     "detect_query_entities",
     "apply_hub_leash",
+    "expand_query",
+    "QueryExpansion",
+    "WikiRetriever",
 ]

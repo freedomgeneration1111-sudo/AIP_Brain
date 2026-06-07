@@ -270,6 +270,19 @@ async def _search_sources(
                 corpus_turn_store=corpus_turn_store,
             )
             orchestrator.register_retriever(graph_retriever)
+            # Wire graph_store for query expansion (Phase 5.3)
+            orchestrator.graph_store = graph_store
+
+        # Register WikiRetriever if db_path available (Phase 5.3)
+        # Injects APPROVED beast_wiki articles for domain-level context
+        try:
+            from aip.orchestration.retrievers.wiki_retriever import WikiRetriever
+            wiki_db_path = getattr(corpus_turn_store, "_db_path", None) if corpus_turn_store else None
+            if wiki_db_path:
+                wiki_retriever = WikiRetriever(db_path=wiki_db_path)
+                orchestrator.register_retriever(wiki_retriever)
+        except Exception:
+            pass  # graceful: no wiki retriever available
 
         # Build query and budget
         ret_query = RetrievalQuery(raw_query=query)
