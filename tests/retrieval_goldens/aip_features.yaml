@@ -1,0 +1,35 @@
+# Golden Test: AIP features query
+# Tests retrieval of the system's own capabilities — self-knowledge.
+# The AIP (AI Poiesis) system has many feature discussions across
+# conversations about architecture, spec decisions, and implementation.
+
+query: "What features does AIP have and what is its architecture?"
+description: >
+  Self-knowledge query. AIP should be able to retrieve its own architecture
+  decisions, feature implementations, and spec documents. This tests whether
+  the aip domain and aip_loom domain turns surface properly, and whether
+  graph connectivity among AIP concepts helps retrieval.
+
+must_include_clusters:
+  - three_layer_architecture   # Foundation → orchestration → adapter
+  - actor_system               # Beast, Vigil, Sexton
+  - ecs_state_machine          # Artifact lifecycle states
+  - retrieval_system           # Current and planned retrieval
+  - corpus_management          # Corpus turns, FTS5, tagging
+  - sovereignty_gates          # DEFINER sovereignty, no auto-approve
+
+must_not_dominate:
+  - generic_ai_discussions     # General AI conversations not about AIP
+  - unrelated_software_projects # Other software not AIP
+
+expected_domains:
+  - aip
+  - aip_loom
+  - technology
+
+success:
+  recall_at_10: 0.50
+  recall_at_25: 0.70
+  recall_at_40: 0.85
+  noise_top_10_max: 0.25
+  answer_quality_manual_gate: pass

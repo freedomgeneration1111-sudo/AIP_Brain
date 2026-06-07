@@ -1,0 +1,33 @@
+# Golden Test: Frost alert device query
+# Tests retrieval of agricultural technology content.
+# The frost alert device is an IoT/agricultural technology project
+# that appears in climate adaptation and agricultural turns.
+
+query: "What is the frost alert device and where is it deployed?"
+description: >
+  Agricultural technology query requiring retrieval of device specifications,
+  deployment locations, and impact data. Tests cross-domain retrieval:
+  the device spans agriculture, technology, and climate adaptation domains.
+
+must_include_clusters:
+  - device_description       # What the frost alert device is
+  - deployment_locations     # Where it has been deployed
+  - agricultural_impact      # Impact on farming communities
+  - technology_specification # Technical details of the device
+
+must_not_dominate:
+  - generic_weather_mentions     # General weather discussions
+  - unrelated_iot_devices       # Other IoT devices not frost-related
+  - generic_agriculture         # Broad agriculture not about frost alerts
+
+expected_domains:
+  - agriculture
+  - technology
+  - climate_adaptation
+
+success:
+  recall_at_10: 0.50
+  recall_at_25: 0.75
+  recall_at_40: 0.85
+  noise_top_10_max: 0.30
+  answer_quality_manual_gate: pass

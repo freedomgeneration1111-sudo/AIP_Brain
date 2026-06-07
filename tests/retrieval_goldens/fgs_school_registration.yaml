@@ -1,0 +1,34 @@
+# Golden Test: FGS school registration query
+# Tests retrieval of organizational/administrative content.
+# Freedom Generation School registration processes appear across
+# multiple conversations about school administration.
+
+query: "How does Freedom Generation School handle registration and enrollment?"
+description: >
+  Administrative/process query requiring retrieval of school registration
+  procedures, enrollment details, and organizational structure. Tests whether
+  procedural information (how-to) surfaces properly, and whether the
+  freedom_gen domain turns about FGS are found.
+
+must_include_clusters:
+  - registration_process      # How FGS registration works
+  - enrollment_procedures     # Enrollment steps and requirements
+  - school_structure          # FGS organizational structure
+  - student_admissions        # Admissions-related information
+
+must_not_dominate:
+  - generic_school_mentions    # School discussions not about FGS
+  - unrelated_education        # Education topics not about FGS registration
+  - komal_individual_role      # Komal mentions not about registration
+
+expected_domains:
+  - freedom_gen
+  - ministry
+  - education
+
+success:
+  recall_at_10: 0.50
+  recall_at_25: 0.70
+  recall_at_40: 0.85
+  noise_top_10_max: 0.30
+  answer_quality_manual_gate: pass

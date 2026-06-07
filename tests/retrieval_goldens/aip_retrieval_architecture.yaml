@@ -1,0 +1,35 @@
+# Golden Test: AIP retrieval architecture query
+# Tests retrieval of the most recent architectural decisions about retrieval.
+# This is a meta-query: asking the system about its own retrieval design.
+# Time-sensitive: should prefer recent discussions over old ones.
+
+query: "How does AIP's retrieval architecture work and what is the build plan?"
+description: >
+  Meta-query about the system's own retrieval architecture. Tests temporal
+  relevance (should prefer recent architecture discussions over old ones),
+  document-type discrimination (spec vs. implementation vs. discussion),
+  and whether approved wiki articles about AIP architecture surface.
+
+must_include_clusters:
+  - retriever_protocol         # Unified Retriever protocol design
+  - entity_turn_index          # Hippocampal index concept
+  - graph_retriever_ppr        # GraphRetriever with PPR
+  - rrf_fusion                 # Reciprocal Rank Fusion
+  - context_budget             # Token allocation strategy
+  - build_phases               # Phase 0-6 build order
+
+must_not_dominate:
+  - old_retrieval_discussions  # Pre-architecture discussions
+  - generic_rag_mentions       # General RAG discussions not about AIP
+  - unrelated_search_topics    # General search/IR not about AIP
+
+expected_domains:
+  - aip
+  - aip_loom
+
+success:
+  recall_at_10: 0.50
+  recall_at_25: 0.75
+  recall_at_40: 0.85
+  noise_top_10_max: 0.25
+  answer_quality_manual_gate: pass

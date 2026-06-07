@@ -1,0 +1,33 @@
+# Golden Test: GEF RF heating technology query
+# Tests retrieval of technical/scientific content in a specific domain.
+# The GEF (Global Environment Facility) RF (radio frequency) heating
+# technology appears in climate/clean energy corpus turns.
+
+query: "What is GEF RF heating and how does it work?"
+description: >
+  Technical domain query requiring retrieval of specific scientific/technology
+  content. Tests whether FTS5 can surface domain-specific terminology and
+  whether vector search captures semantic similarity for technical concepts
+  even when exact terms differ.
+
+must_include_clusters:
+  - gef_project_description    # What the GEF project is about
+  - rf_heating_technology      # How RF heating works technically
+  - clean_energy_application   # Clean energy context
+  - pakistan_energy_sector     # Pakistan-specific deployment context
+
+must_not_dominate:
+  - generic_energy_mentions    # General energy discussions not about GEF RF
+  - unrelated_gef_projects     # Other GEF projects not about RF heating
+
+expected_domains:
+  - clean_energy
+  - technology
+  - pakistan_development
+
+success:
+  recall_at_10: 0.50
+  recall_at_25: 0.75
+  recall_at_40: 0.85
+  noise_top_10_max: 0.30
+  answer_quality_manual_gate: pass

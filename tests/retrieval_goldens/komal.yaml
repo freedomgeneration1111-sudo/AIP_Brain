@@ -1,0 +1,38 @@
+# Golden Test: Komal identity query
+# Tests retrieval of a person with high mention frequency but weak graph connectivity.
+# Komal appears in many corpus turns (principal role, school, Urdu, curriculum,
+# brick kiln, loans) but graph extraction at 0.7 threshold may miss her.
+# This is the PRIMARY test case for entity-turn index coverage.
+
+query: "Who is Komal and what does she do?"
+description: >
+  Komal is a high-frequency entity in the corpus with multiple role clusters.
+  Pre-retrieval-architecture, FTS5 may find her by name but struggle to
+  surface the full scope of her involvement across domains. Post GraphRetriever,
+  direct entity-mention recall should find all clusters.
+
+must_include_clusters:
+  - principal_role          # Komal as school principal
+  - freedom_generation_school  # Her connection to FGS
+  - urdu_translation_collaboration  # Urdu work with Moses
+  - curriculum_development  # Curriculum design involvement
+  - brick_kiln_liberation   # Brick kiln ministry connection
+  - loan_or_support_applications  # Financial support cases
+
+must_not_dominate:
+  - unrelated_aip_implementation  # AIP tech discussions mentioning "Komal" tangentially
+  - generic_pakistan_mentions     # Pakistan references not about Komal
+  - duplicate_low_signal_turns    # Same information repeated across turns
+
+# Domain expectations: these domains should appear in results
+expected_domains:
+  - freedom_gen
+  - ministry
+  - nbcm
+
+success:
+  recall_at_10: 0.50   # At least 3 of 6 clusters in top 10
+  recall_at_25: 0.75   # At least 5 of 6 clusters in top 25
+  recall_at_40: 0.85   # At least 5 of 6 clusters in top 40
+  noise_top_10_max: 0.25  # No more than 25% noise in top 10
+  answer_quality_manual_gate: pass  # Human evaluates answer quality
