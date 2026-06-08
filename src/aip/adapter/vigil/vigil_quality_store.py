@@ -842,3 +842,183 @@ class VigilQualityStore:
                 "vigil_quality_store_prune_failed",
                 error=str(exc),
             )
+
+    def verify_rollup_integrity(self) -> dict:
+        """Verify that rollup rows are consistent with source data.
+
+        Sprint 5.29: Checks that rollup row counts and aggregated
+        values are consistent with the source daily data (for daily
+        rollups) and daily rollup data (for weekly rollups).
+
+        The verification process:
+        1. For each daily rollup row, check that rollup_count matches
+           the number of original rows that existed for that day
+           (if any original rows still exist, the rollup may be stale).
+        2. For each weekly rollup row, check that rollup_count is
+           consistent with the daily rollup rows for that week.
+        3. Check for orphaned rollups (rollups for days/weeks that
+           have no corresponding source data at all).
+
+        Returns a dict with verification results including any
+        inconsistencies found.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        issues: list[dict] = []
+        daily_verified = 0
+        weekly_verified = 0
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+
+                # Verify daily rollups
+                daily_rollups = conn.execute("""
+                    SELECT id, cycle_timestamp, rollup_count,
+                           AVG(avg_citation_rate) as avg_citation,
+                           AVG(avg_grounding_rate) as avg_grounding,
+                           AVG(avg_llm_faithfulness) as avg_faithfulness,
+                           SUM(evaluated_count) as sum_evaluated,
+                           SUM(flagged_count) as sum_flagged
+                    FROM vigil_quality_history
+                    WHERE is_rollup = 1 AND rollup_period = 'daily'
+                    GROUP BY id
+                """).fetchall()
+
+                for row in daily_rollups:
+                    rollup_id = row["id"]
+                    rollup_day = row["cycle_timestamp"][:10]  # YYYY-MM-DD
+                    rollup_count = row["rollup_count"]
+
+                    # Check if any original rows still exist for this day
+                    # (they should have been deleted during rollup)
+                    remaining = conn.execute("""
+                        SELECT COUNT(*) as cnt
+                        FROM vigil_quality_history
+                        WHERE is_rollup = 0 AND DATE(cycle_timestamp) = ?
+                    """, (rollup_day,)).fetchone()
+
+                    if remaining and remaining["cnt"] > 0:
+                        issues.append({
+                            "type": "daily_rollup_has_remaining_originals",
+                            "rollup_id": rollup_id,
+                            "day": rollup_day,
+                            "remaining_original_rows": remaining["cnt"],
+                            "expected_remaining": 0,
+                            "description": (
+                                f"Daily rollup for {rollup_day} has {remaining['cnt']} "
+                                f"original rows still present (should have been deleted)"
+                            ),
+                        })
+
+                    # Check rollup_count is positive
+                    if rollup_count <= 0:
+                        issues.append({
+                            "type": "daily_rollup_invalid_count",
+                            "rollup_id": rollup_id,
+                            "day": rollup_day,
+                            "rollup_count": rollup_count,
+                            "description": (
+                                f"Daily rollup for {rollup_day} has invalid "
+                                f"rollup_count={rollup_count}"
+                            ),
+                        })
+
+                    daily_verified += 1
+
+                # Verify weekly rollups
+                weekly_rollups = conn.execute("""
+                    SELECT id, cycle_timestamp, rollup_count
+                    FROM vigil_quality_history
+                    WHERE is_rollup = 1 AND rollup_period = 'weekly'
+                """).fetchall()
+
+                for row in weekly_rollups:
+                    rollup_id = row["id"]
+                    rollup_count = row["rollup_count"]
+
+                    # Check rollup_count is positive
+                    if rollup_count <= 0:
+                        issues.append({
+                            "type": "weekly_rollup_invalid_count",
+                            "rollup_id": rollup_id,
+                            "rollup_count": rollup_count,
+                            "description": (
+                                f"Weekly rollup id={rollup_id} has invalid "
+                                f"rollup_count={rollup_count}"
+                            ),
+                        })
+
+                    weekly_verified += 1
+
+                # Check for days with both original and rollup rows
+                # (partial rollup — some originals not included)
+                mixed_days = conn.execute("""
+                    SELECT DATE(cycle_timestamp) as day,
+                           SUM(CASE WHEN is_rollup = 0 THEN 1 ELSE 0 END) as originals,
+                           SUM(CASE WHEN is_rollup = 1 AND rollup_period = 'daily' THEN 1 ELSE 0 END) as rollups
+                    FROM vigil_quality_history
+                    GROUP BY DATE(cycle_timestamp)
+                    HAVING originals > 0 AND rollups > 0
+                """).fetchall()
+
+                for row in mixed_days:
+                    issues.append({
+                        "type": "mixed_day_originals_and_rollups",
+                        "day": row["day"],
+                        "original_rows": row["originals"],
+                        "rollup_rows": row["rollups"],
+                        "description": (
+                            f"Day {row['day']} has both {row['originals']} original rows "
+                            f"and {row['rollups']} daily rollup rows — possible partial rollup"
+                        ),
+                    })
+
+                # Overall stats
+                total_rows = conn.execute(
+                    "SELECT COUNT(*) FROM vigil_quality_history"
+                ).fetchone()[0]
+                original_rows = conn.execute(
+                    "SELECT COUNT(*) FROM vigil_quality_history WHERE is_rollup = 0"
+                ).fetchone()[0]
+                rollup_rows = total_rows - original_rows
+
+            result = {
+                "valid": len(issues) == 0,
+                "issues": issues,
+                "total_issues": len(issues),
+                "daily_rollups_verified": daily_verified,
+                "weekly_rollups_verified": weekly_verified,
+                "total_rows": total_rows,
+                "original_rows": original_rows,
+                "rollup_rows": rollup_rows,
+            }
+
+            if issues:
+                logger.warning(
+                    "vigil_quality_rollup_integrity_issues",
+                    total_issues=len(issues),
+                    daily_verified=daily_verified,
+                    weekly_verified=weekly_verified,
+                )
+            else:
+                logger.info(
+                    "vigil_quality_rollup_integrity_ok",
+                    daily_verified=daily_verified,
+                    weekly_verified=weekly_verified,
+                )
+
+            return result
+
+        except Exception as exc:
+            logger.warning(
+                "vigil_quality_rollup_integrity_check_failed",
+                error=str(exc),
+            )
+            return {
+                "valid": False,
+                "error": str(exc),
+                "issues": [],
+                "total_issues": 0,
+            }

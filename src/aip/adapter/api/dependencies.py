@@ -90,6 +90,8 @@ class AipContainer:
         self._config_watcher: Any = None  # ConfigWatcher for hot-reload
         self._read_pool_auto_sizer: Any = None  # ReadPoolAutoSizer for auto pool sizing
         self._auto_tuning_policy: Any = None  # AutoTuningPolicy for configurable thresholds
+        # Sprint 5.29: Persistent alert history store
+        self._alert_history_store: Any = None  # AlertHistoryStore for SQLite-backed alert history
         # Backfill status for async backfill tracking (simple in-memory for now)
         self.backfill_status: dict = {"running": False, "last_result": None, "progress": {}}
 

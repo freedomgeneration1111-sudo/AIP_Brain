@@ -302,6 +302,16 @@ min_alert_interval_seconds = 300   # Rate-limit: don't re-alert for 5 min
 webhook_max_retries = 3            # Sprint 5.26: retry count for webhook
 webhook_retry_base_delay_seconds = 1.0  # Sprint 5.26: exponential backoff base
 
+# Sprint 5.29: Config-driven alert routing.
+# Maps alert types to specific transports. When configured, only the listed
+# transports are used for that alert type. When not configured (default),
+# all enabled transports are used for all alert types.
+# Transport options: "webhook", "email"
+# [alerting.routes]
+# batch_reduction = ["webhook"]                    # Webhook only for batch reductions
+# quality_degradation = ["email", "webhook"]        # Both email and webhook for quality
+# pool_adjustment = ["email"]                        # Email only for pool adjustments
+
 # ---------------------------------------------------------------------------
 # Sprint 5.26: Auto-Tuning Policy Engine
 # Configurable thresholds for read pool auto-sizing and graph batch auto-tuning.

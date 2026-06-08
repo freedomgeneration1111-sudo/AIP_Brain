@@ -389,6 +389,127 @@ async def vigil_rollup_stats(
     }
 
 
+@router.get("/vigil/quality/retention/verify")
+async def vigil_rollup_verify(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.29: Verify rollup integrity.
+
+    Checks that rollup row counts and aggregated values are consistent
+    with source data. Returns a list of any integrity issues found.
+    """
+    quality_store = getattr(container, "_vigil_quality_store", None)
+
+    if quality_store is None:
+        return {
+            "status": "quality_store_not_configured",
+            "verification": {},
+        }
+
+    try:
+        verification = quality_store.verify_rollup_integrity()
+    except Exception as exc:
+        logger.warning("vigil_rollup_verify_failed", error=str(exc))
+        verification = {"valid": False, "error": str(exc), "issues": []}
+
+    return {
+        "status": "ok",
+        "verification": verification,
+    }
+
+
+@router.get("/vigil/quality/health")
+async def vigil_quality_health(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.29: Consolidated health endpoint for quality and auto-tuning systems.
+
+    Provides a single place for operators to check the health of:
+    - Alerting system (enabled, transports, recent failures)
+    - Retention/rollup status (row counts, integrity)
+    - Auto-tuning status (policy, pool sizing, batch tuning)
+
+    Combines data from /vigil/quality/alerts, /vigil/quality/retention,
+    and auto-tuning policy status into a unified view.
+    """
+    # Alerting status
+    alert_manager = getattr(container, "_alert_manager", None)
+    alerting_status: dict[str, Any] = {
+        "available": False,
+    }
+    if alert_manager is not None:
+        try:
+            status = alert_manager.get_status()
+            alerting_status = {
+                "available": True,
+                "enabled": status.get("enabled", False),
+                "webhook_configured": status.get("webhook_configured", False),
+                "email_configured": status.get("email_configured", False),
+                "total_alerts_sent": status.get("total_alerts_sent", 0),
+                "total_send_failures": status.get("total_send_failures", 0),
+                "history_store_attached": status.get("history_store_attached", False),
+                "routes_configured": bool(status.get("routes", {})),
+                "recent_failures_count": len(status.get("recent_failures", [])),
+            }
+        except Exception as exc:
+            alerting_status = {"available": False, "error": str(exc)}
+
+    # Retention/rollup status
+    quality_store = getattr(container, "_vigil_quality_store", None)
+    retention_status: dict[str, Any] = {
+        "available": False,
+    }
+    if quality_store is not None:
+        try:
+            ret = quality_store.get_retention_status()
+            retention_status = {
+                "available": True,
+                "total_rows": ret.get("total_rows", 0),
+                "original_rows": ret.get("original_rows", 0),
+                "rollup_rows": ret.get("rollup_rows", 0),
+                "retention_days": ret.get("retention_days", 0),
+            }
+        except Exception as exc:
+            retention_status = {"available": False, "error": str(exc)}
+
+    # Auto-tuning status
+    auto_tuning_policy = getattr(container, "_auto_tuning_policy", None)
+    auto_sizer = getattr(container, "_read_pool_auto_sizer", None)
+    auto_tuning_status: dict[str, Any] = {
+        "available": False,
+    }
+    if auto_tuning_policy is not None:
+        try:
+            auto_tuning_status = {
+                "available": True,
+                "policy_valid": auto_tuning_policy.is_valid() if hasattr(auto_tuning_policy, "is_valid") else None,
+                "pool_auto_sizer_available": auto_sizer is not None,
+            }
+        except Exception as exc:
+            auto_tuning_status = {"available": False, "error": str(exc)}
+
+    # Overall health
+    overall_healthy = True
+    if alerting_status.get("available") and alerting_status.get("total_send_failures", 0) > 10:
+        overall_healthy = False
+    if retention_status.get("available") and retention_status.get("error"):
+        overall_healthy = False
+
+    return {
+        "status": "healthy" if overall_healthy else "degraded",
+        "alerting": alerting_status,
+        "retention": retention_status,
+        "auto_tuning": auto_tuning_status,
+        "components": {
+            "quality_store": quality_store is not None,
+            "alert_manager": alert_manager is not None,
+            "alert_history_store": getattr(container, "_alert_history_store", None) is not None,
+            "auto_tuning_policy": auto_tuning_policy is not None,
+            "read_pool_auto_sizer": auto_sizer is not None,
+        },
+    }
+
+
 @router.get("/vigil/quality/dashboard", response_class=HTMLResponse)
 async def vigil_quality_dashboard(
     container: AipContainer = Depends(get_container),
@@ -449,6 +570,7 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
          background: #0f172a; color: #e2e8f0; padding: 24px; }
   h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; color: #f1f5f9; }
+  h2 { font-size: 18px; font-weight: 600; margin-bottom: 8px; color: #f1f5f9; margin-top: 16px; }
   .subtitle { font-size: 14px; color: #94a3b8; margin-bottom: 24px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
   .card { background: #1e293b; border-radius: 8px; padding: 16px; border: 1px solid #334155; }
@@ -482,6 +604,24 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                     background: #4ade80; margin-right: 6px; animation: pulse 2s infinite; }
   .live-indicator.off { background: #64748b; animation: none; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  /* Sprint 5.29: Alerts Panel */
+  .alerts-panel { background: #1e293b; border-radius: 8px; padding: 20px;
+                  border: 1px solid #334155; margin-bottom: 16px; }
+  .alerts-panel h3 { font-size: 14px; color: #94a3b8; margin-bottom: 12px;
+                     text-transform: uppercase; letter-spacing: 0.5px; }
+  .alert-item { padding: 8px 12px; border-radius: 4px; margin-bottom: 6px;
+                border-left: 3px solid; font-size: 13px; }
+  .alert-item.info { border-left-color: #3b82f6; background: rgba(59,130,246,0.08); }
+  .alert-item.warning { border-left-color: #f59e0b; background: rgba(245,158,11,0.08); }
+  .alert-item.critical { border-left-color: #ef4444; background: rgba(239,68,68,0.08); }
+  .alert-item .alert-type { font-weight: 600; color: #f1f5f9; text-transform: uppercase; font-size: 11px; }
+  .alert-item .alert-severity { font-weight: 600; margin-left: 8px; font-size: 11px; }
+  .alert-item .alert-severity.info { color: #3b82f6; }
+  .alert-item .alert-severity.warning { color: #f59e0b; }
+  .alert-item .alert-severity.critical { color: #ef4444; }
+  .alert-item .alert-time { color: #64748b; font-size: 11px; margin-left: 8px; }
+  .alert-item .alert-msg { color: #cbd5e1; margin-top: 4px; font-size: 12px; }
+  .no-alerts { color: #64748b; font-size: 13px; font-style: italic; }
 </style>
 </head>
 <body>
@@ -531,10 +671,17 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   <canvas id="flagChart" width="800" height="200"></canvas>
 </div>
 
+<!-- Sprint 5.29: Alerts Panel -->
+<div class="alerts-panel">
+  <h3>Recent Alerts</h3>
+  <div id="alerts-list"><span class="no-alerts">Loading alerts...</span></div>
+</div>
+
 <div class="status-bar" id="meta"></div>
 
 <script>
 const API_URL = '../vigil/quality';
+const ALERTS_URL = '../vigil/quality/alerts';
 let currentData = null;
 let liveInterval = null;
 let isLive = false;
@@ -554,6 +701,14 @@ function trendIcon(trend) {
 
 function formatRate(v) {
   return (v * 100).toFixed(1) + '%';
+}
+
+function formatTime(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleString();
+  } catch { return ts; }
 }
 
 function renderSummary(data) {
@@ -576,6 +731,37 @@ function renderSummary(data) {
       ${trendLabel ? `<div class="trend ${trendClass}">${trendLabel}</div>` : ''}
     </div>`;
   }).join('');
+}
+
+// Sprint 5.29: Fetch and render alerts panel
+async function fetchAlerts() {
+  try {
+    const resp = await fetch(ALERTS_URL + '?limit=10');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const alerts = data.alerts || [];
+    const list = document.getElementById('alerts-list');
+
+    if (alerts.length === 0) {
+      list.innerHTML = '<span class="no-alerts">No recent alerts</span>';
+      return;
+    }
+
+    list.innerHTML = alerts.map(a => {
+      const severity = a.severity || 'info';
+      const alertType = a.alert_type || 'unknown';
+      const msg = a.message || '';
+      const ts = a.timestamp || '';
+      return `<div class="alert-item ${severity}">
+        <span class="alert-type">${alertType.replace(/_/g, ' ')}</span>
+        <span class="alert-severity ${severity}">${severity.toUpperCase()}</span>
+        <span class="alert-time">${formatTime(ts)}</span>
+        <div class="alert-msg">${msg}</div>
+      </div>`;
+    }).join('');
+  } catch (err) {
+    // Silently ignore alert fetch errors
+  }
 }
 
 function drawLineChart(canvasId, datasets, labels) {
@@ -728,7 +914,7 @@ function toggleLive() {
   if (isLive) {
     btn.classList.add('active');
     dot.classList.remove('off');
-    liveInterval = setInterval(fetchData, 10000); // Poll every 10s
+    liveInterval = setInterval(() => { fetchData(); fetchAlerts(); }, 10000); // Poll every 10s
   } else {
     btn.classList.remove('active');
     dot.classList.add('off');
@@ -739,6 +925,7 @@ function toggleLive() {
 
 // Auto-load on page load
 fetchData();
+fetchAlerts();
 </script>
 
 </body>

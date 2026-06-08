@@ -787,6 +787,15 @@ async def lifespan(app: FastAPI):
         from aip.adapter.alerting import AlertConfig, AlertManager
 
         alert_cfg_dict = config.get("alerting", {})
+        # Sprint 5.29: Parse alert routing config from [alerting.routes]
+        routes_raw = alert_cfg_dict.get("routes", {})
+        routes = {}
+        if isinstance(routes_raw, dict):
+            for alert_type, transport_list in routes_raw.items():
+                if isinstance(transport_list, list):
+                    routes[alert_type] = transport_list
+                elif isinstance(transport_list, str):
+                    routes[alert_type] = [transport_list]
         alert_config = AlertConfig(
             enabled=alert_cfg_dict.get("enabled", False),
             webhook_url=alert_cfg_dict.get("webhook_url", ""),
@@ -803,6 +812,7 @@ async def lifespan(app: FastAPI):
             min_alert_interval_seconds=int(alert_cfg_dict.get("min_alert_interval_seconds", 300)),
             webhook_max_retries=int(alert_cfg_dict.get("webhook_max_retries", 3)),
             webhook_retry_base_delay_seconds=float(alert_cfg_dict.get("webhook_retry_base_delay_seconds", 1.0)),
+            routes=routes,
         )
         container._alert_manager = AlertManager(alert_config)
         # Validate config at startup and log any warnings
@@ -821,6 +831,34 @@ async def lifespan(app: FastAPI):
             "component_failed",
             component="alert_manager",
             degradation="no_operator_alerts",
+            error=str(exc),
+        )
+
+    # Sprint 5.29: AlertHistoryStore — persistent alert history (SQLite-backed).
+    # When available, attaches to the AlertManager so alert history and
+    # delivery failures survive process restarts.
+    try:
+        from aip.adapter.alert_history_store import AlertHistoryStore
+
+        alert_db_path = os.path.join(os.path.dirname(db_path), "alert_history.db")
+        container._alert_history_store = AlertHistoryStore(alert_db_path)
+        container._alert_history_store.initialize()
+
+        # Attach to AlertManager if initialized
+        if container._alert_manager is not None:
+            container._alert_manager.attach_history_store(container._alert_history_store)
+
+        log.info(
+            "component_initialized",
+            component="alert_history_store",
+            required=False,
+            db_path=alert_db_path,
+        )
+    except Exception as exc:
+        log.warning(
+            "component_failed",
+            component="alert_history_store",
+            degradation="in_memory_alert_history",
             error=str(exc),
         )
 

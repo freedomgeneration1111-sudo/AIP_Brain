@@ -20,6 +20,13 @@ Sprint 5.28: Admin visibility improvements:
 - Enables the /vigil/quality/alerts endpoint for operator visibility
 - Full alerting configuration status exposed via API
 
+Sprint 5.29: Durability and routing improvements:
+
+- AlertHistoryStore integration for SQLite-backed persistent alert history
+- Alert history survives process restarts when a persistent store is attached
+- Config-driven alert routing: map alert types to specific transports
+- get_alert_history() queries persistent store when available
+
 Design principles:
 - Lightweight and opt-in — alerting is disabled by default
 - Multiple transport mechanisms (webhook, email)
@@ -144,6 +151,10 @@ class AlertConfig:
     # Sprint 5.26: Webhook retry configuration
     webhook_max_retries: int = 3
     webhook_retry_base_delay_seconds: float = 1.0
+    # Sprint 5.29: Config-driven alert routing
+    # Maps alert_type to list of transports (e.g., {"batch_reduction": ["webhook"]})
+    # When empty, all enabled transports are used for all alert types (default).
+    routes: dict[str, list[str]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -334,14 +345,16 @@ class AlertManager:
         self._config = config or AlertConfig()
         # Rate-limiting: (alert_type, subject) -> last_alert_timestamp
         self._last_alert_time: dict[tuple[str, str], float] = {}
-        # History of sent alerts (last 50)
+        # History of sent alerts (last 50) — in-memory fallback
         self._alert_history: list[dict] = []
-        # Sprint 5.26: Delivery failure history
+        # Sprint 5.26: Delivery failure history — in-memory fallback
         self._delivery_failures: list[DeliveryFailure] = []
         # Sprint 5.26: Webhook URL validation status (lazy, on first use)
         self._webhook_url_validated: bool = False
         self._webhook_url_valid: bool | None = None
         self._webhook_url_validation_reason: str = ""
+        # Sprint 5.29: Persistent alert history store (optional)
+        self._history_store: Any = None
         # Counters
         self._total_alerts_sent = 0
         self._total_alerts_rate_limited = 0
@@ -460,8 +473,22 @@ class AlertManager:
 
         self._total_alerts_sent += 1
 
+        # Sprint 5.29: Persist to SQLite store if attached
+        if self._history_store is not None:
+            try:
+                self._history_store.record_alert(alert_dict)
+            except Exception as exc:
+                logger.warning(
+                    "alert_history_store_write_failed",
+                    error=str(exc),
+                )
+
+        # Sprint 5.29: Config-driven routing — only dispatch to transports
+        # that are mapped for this alert_type (or all if no routes configured)
+        transports = self._get_transports_for_alert(alert.alert_type)
+
         # Dispatch to transports
-        if self._config.webhook_url:
+        if "webhook" in transports and self._config.webhook_url:
             try:
                 self._send_webhook_with_retry(alert)
             except Exception as exc:
@@ -481,7 +508,7 @@ class AlertManager:
                     retries_attempted=self._config.webhook_max_retries,
                 )
 
-        if self._config.email_to:
+        if "email" in transports and self._config.email_to:
             try:
                 self._send_email(alert)
             except Exception as exc:
@@ -528,6 +555,8 @@ class AlertManager:
                 "max_retries": self._config.webhook_max_retries,
                 "base_delay_seconds": self._config.webhook_retry_base_delay_seconds,
             },
+            "history_store_attached": self._history_store is not None,
+            "routes": self._config.routes if self._config.routes else {},
         }
 
     def get_alert_history(
@@ -542,6 +571,10 @@ class AlertManager:
         Sprint 5.28: Provides a queryable interface for the alerts
         endpoint and admin visibility.
 
+        Sprint 5.29: When a persistent AlertHistoryStore is attached,
+        queries the SQLite store for full history across restarts.
+        Falls back to in-memory history when no store is available.
+
         Parameters
         ----------
         alert_type:
@@ -555,6 +588,22 @@ class AlertManager:
         limit:
             Maximum number of alerts to return (most recent first).
         """
+        # Sprint 5.29: Prefer persistent store when available
+        if self._history_store is not None:
+            try:
+                return self._history_store.get_alert_history(
+                    alert_type=alert_type,
+                    severity=severity,
+                    since=since,
+                    limit=limit,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "alert_history_store_query_fallback",
+                    error=str(exc),
+                )
+                # Fall through to in-memory
+
         history = self._alert_history
 
         if alert_type:
@@ -570,6 +619,10 @@ class AlertManager:
     def get_delivery_failures(self, transport: str | None = None, limit: int = 20) -> list[dict]:
         """Return delivery failure history, optionally filtered by transport.
 
+        Sprint 5.29: When a persistent AlertHistoryStore is attached,
+        queries the SQLite store for full failure history across restarts.
+        Falls back to in-memory history when no store is available.
+
         Parameters
         ----------
         transport:
@@ -577,6 +630,20 @@ class AlertManager:
         limit:
             Maximum number of failures to return (most recent first).
         """
+        # Sprint 5.29: Prefer persistent store when available
+        if self._history_store is not None:
+            try:
+                return self._history_store.get_delivery_failures(
+                    transport=transport,
+                    limit=limit,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "alert_history_store_failures_fallback",
+                    error=str(exc),
+                )
+                # Fall through to in-memory
+
         failures = self._delivery_failures
         if transport:
             failures = [f for f in failures if f.transport == transport]
@@ -591,6 +658,61 @@ class AlertManager:
             "batch_reduction": self._config.alert_on_batch_reduction,
         }
         return mapping.get(alert_type, True)
+
+    # Sprint 5.29: Persistent history store integration
+
+    def attach_history_store(self, store: Any) -> None:
+        """Attach a persistent AlertHistoryStore for durable alert history.
+
+        Sprint 5.29: When a persistent store is attached, all new alerts
+        and delivery failures are written to SQLite in addition to the
+        in-memory buffers.  Query methods (get_alert_history,
+        get_delivery_failures) prefer the persistent store when available,
+        enabling full history access across process restarts.
+
+        Parameters
+        ----------
+        store:
+            An AlertHistoryStore instance with record_alert(),
+            record_delivery_failure(), get_alert_history(), and
+            get_delivery_failures() methods.
+        """
+        self._history_store = store
+        logger.info(
+            "alert_history_store_attached",
+            store_type=type(store).__name__,
+        )
+
+    # Sprint 5.29: Config-driven alert routing
+
+    def _get_transports_for_alert(self, alert_type: str) -> list[str]:
+        """Determine which transports to use for a given alert type.
+
+        Sprint 5.29: If ``routes`` is configured in AlertConfig, only
+        the transports listed for this alert_type are used.  If the
+        alert_type has no entry in routes, or routes is empty, all
+        configured transports are used (default behavior).
+
+        Returns a list of transport names: "webhook", "email".
+        """
+        if self._config.routes and alert_type in self._config.routes:
+            configured = self._config.routes[alert_type]
+            # Only return transports that are actually configured
+            result = []
+            for t in configured:
+                if t == "webhook" and self._config.webhook_url:
+                    result.append(t)
+                elif t == "email" and self._config.email_to:
+                    result.append(t)
+            return result
+
+        # Default: all configured transports
+        transports = []
+        if self._config.webhook_url:
+            transports.append("webhook")
+        if self._config.email_to:
+            transports.append("email")
+        return transports
 
     def _validate_webhook_url_lazy(self) -> bool:
         """Validate the webhook URL on first use.
@@ -754,3 +876,13 @@ class AlertManager:
         self._delivery_failures.append(failure)
         if len(self._delivery_failures) > self._MAX_FAILURE_HISTORY:
             self._delivery_failures = self._delivery_failures[-self._MAX_FAILURE_HISTORY:]
+
+        # Sprint 5.29: Also persist to the SQLite store if attached
+        if self._history_store is not None:
+            try:
+                self._history_store.record_delivery_failure(failure.to_dict())
+            except Exception as exc:
+                logger.warning(
+                    "alert_history_store_failure_write_failed",
+                    error=str(exc),
+                )
