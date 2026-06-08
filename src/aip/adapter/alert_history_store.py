@@ -97,8 +97,8 @@ _DEFAULT_MAX_FAILURE_ROWS = 1000
 # Default maximum number of delivery status rows to retain (Sprint 5.33)
 _DEFAULT_MAX_DELIVERY_STATUS_ROWS = 2000
 
-# Schema version for migrations (Sprint 5.38: v6 adds transition_probabilities table)
-_SCHEMA_VERSION = 6
+# Schema version for migrations (Sprint 5.39: v7 adds model_retraining_events table)
+_SCHEMA_VERSION = 7
 
 
 class AlertHistoryStore:
@@ -368,6 +368,26 @@ class AlertHistoryStore:
                     conn.execute("""
                         CREATE INDEX IF NOT EXISTS idx_delivery_receipts_cid
                         ON delivery_receipts (correlation_id)
+                    """)
+
+                # Sprint 5.39: Schema migration v6 -> v7
+                # Add model_retraining_events table for tracking model retraining
+                if current_version < 7:
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS model_retraining_events (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            trigger_reason TEXT NOT NULL,
+                            alerts_since_last_train INTEGER NOT NULL DEFAULT 0,
+                            transition_count INTEGER NOT NULL DEFAULT 0,
+                            total_types INTEGER NOT NULL DEFAULT 0,
+                            trained_at TEXT NOT NULL,
+                            created_at TEXT NOT NULL
+                        )
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_retraining_events_trained_at
+                        ON model_retraining_events (trained_at)
                     """)
 
             self._initialized = True
@@ -1462,3 +1482,205 @@ class AlertHistoryStore:
                 return cursor.fetchone()[0]
         except Exception:
             return 0
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.39: Transition probability persistence
+    # -----------------------------------------------------------------------
+
+    def save_transition_probabilities(
+        self,
+        transition_counts: dict[tuple[str, str], int],
+        transition_totals: dict[str, int],
+    ) -> bool:
+        """Upsert transition probabilities to the transition_probabilities table.
+
+        Sprint 5.39: Persists the learned transition probability model
+        so it survives process restarts. Uses INSERT OR REPLACE to update
+        existing entries.
+
+        Parameters
+        ----------
+        transition_counts:
+            Dict mapping (from_type, to_type) -> count of observed transitions.
+        transition_totals:
+            Dict mapping from_type -> total outgoing transitions.
+
+        Returns True if successfully saved, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                for (from_type, to_type), count in transition_counts.items():
+                    total_from = transition_totals.get(from_type, 0)
+                    conn.execute("""
+                        INSERT OR REPLACE INTO transition_probabilities
+                            (from_type, to_type, count, total_from, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (from_type, to_type, count, total_from, now))
+
+            logger.info(
+                "transition_probabilities_saved",
+                transition_pairs=len(transition_counts),
+                total_types=len(transition_totals),
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "transition_probabilities_save_failed",
+                error=str(exc),
+            )
+            return False
+
+    def load_transition_probabilities(
+        self,
+    ) -> tuple[dict[tuple[str, str], int], dict[str, int]]:
+        """Load all transition probabilities from the table.
+
+        Sprint 5.39: Returns (transition_counts, transition_totals) for
+        rebuilding the in-memory learned prediction model on startup.
+
+        Returns
+        -------
+        transition_counts : dict[tuple[str, str], int]
+            Dict mapping (from_type, to_type) -> count.
+        transition_totals : dict[str, int]
+            Dict mapping from_type -> total outgoing transitions.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT from_type, to_type, count, total_from
+                    FROM transition_probabilities
+                """)
+                rows = cursor.fetchall()
+
+            transition_counts: dict[tuple[str, str], int] = {}
+            transition_totals: dict[str, int] = {}
+            for row in rows:
+                from_type = row["from_type"]
+                to_type = row["to_type"]
+                count = row["count"]
+                total_from = row["total_from"]
+                transition_counts[(from_type, to_type)] = count
+                # Use the latest total_from for each from_type
+                transition_totals[from_type] = max(
+                    transition_totals.get(from_type, 0), total_from
+                )
+
+            logger.info(
+                "transition_probabilities_loaded",
+                transition_pairs=len(transition_counts),
+                total_types=len(transition_totals),
+            )
+            return transition_counts, transition_totals
+        except Exception as exc:
+            logger.warning(
+                "transition_probabilities_load_failed",
+                error=str(exc),
+            )
+            return {}, {}
+
+    def record_retraining_event(self, event: dict) -> bool:
+        """Record when a model retraining occurred.
+
+        Sprint 5.39: Persists a retraining event to the
+        model_retraining_events table so that operators can see
+        when and why the model was retrained.
+
+        Parameters
+        ----------
+        event:
+            Dict with fields: trigger_reason, alerts_since_last_train,
+            transition_count, total_types, trained_at.
+
+        Returns True if successfully recorded, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("""
+                    INSERT INTO model_retraining_events (
+                        trigger_reason, alerts_since_last_train,
+                        transition_count, total_types, trained_at, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    event.get("trigger_reason", "unknown"),
+                    event.get("alerts_since_last_train", 0),
+                    event.get("transition_count", 0),
+                    event.get("total_types", 0),
+                    event.get("trained_at", now),
+                    now,
+                ))
+
+            logger.info(
+                "retraining_event_recorded",
+                trigger_reason=event.get("trigger_reason", "unknown"),
+                alerts_since_last_train=event.get("alerts_since_last_train", 0),
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "retraining_event_record_failed",
+                error=str(exc),
+            )
+            return False
+
+    def get_retraining_events(self, limit: int = 20) -> list[dict]:
+        """Get recent retraining events.
+
+        Sprint 5.39: Returns the most recent model retraining events
+        from the persistent store, ordered by created_at descending.
+
+        Parameters
+        ----------
+        limit:
+            Maximum number of events to return.
+
+        Returns a list of retraining event dicts, most recent first.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT id, trigger_reason, alerts_since_last_train,
+                           transition_count, total_types, trained_at, created_at
+                    FROM model_retraining_events
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """, (limit,))
+                rows = cursor.fetchall()
+
+            result = []
+            for row in rows:
+                result.append({
+                    "id": row["id"],
+                    "trigger_reason": row["trigger_reason"],
+                    "alerts_since_last_train": row["alerts_since_last_train"],
+                    "transition_count": row["transition_count"],
+                    "total_types": row["total_types"],
+                    "trained_at": row["trained_at"],
+                    "created_at": row["created_at"],
+                })
+
+            return result
+        except Exception as exc:
+            logger.warning(
+                "retraining_events_query_failed",
+                error=str(exc),
+            )
+            return []

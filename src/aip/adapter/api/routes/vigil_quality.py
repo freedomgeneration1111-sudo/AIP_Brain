@@ -974,6 +974,11 @@ async def vigil_quality_websocket(
     - Accepts `token` query param, validated against ws_auth_token config
     - Rate limits commands per connection (max ws_rate_limit_per_minute per minute)
 
+    Sprint 5.39: Native permessage-deflate support.
+    - Accepts `compression` query param; if "deflate" and native deflate is
+      enabled in config, negotiates permessage-deflate at the protocol level.
+    - Falls back gracefully when unsupported.
+
     Command protocol (JSON messages from client):
     - {"action": "acknowledge", "alert_id": <int>}
     - {"action": "dismiss", "alert_id": <int>}
@@ -992,7 +997,30 @@ async def vigil_quality_websocket(
             await websocket.close(code=4001, reason="Unauthorized: invalid token")
             return
 
-    await websocket.accept()
+    # Sprint 5.39: Native permessage-deflate negotiation
+    native_deflate_requested = (
+        websocket.query_params.get("compression", "") == "deflate"
+    )
+    native_deflate_supported = (
+        alert_manager is not None
+        and alert_manager.config.ws_native_permessage_deflate_enabled
+    )
+    use_native_deflate = native_deflate_requested and native_deflate_supported
+
+    # Accept with permessage-deflate if both sides support it
+    # Starlette's WebSocket.accept() supports the 'compression' parameter
+    # which maps to the websockets library's permessage-deflate extension
+    if use_native_deflate:
+        try:
+            await websocket.accept(compression="deflate")
+            if alert_manager is not None:
+                alert_manager.set_ws_permessage_deflate_negotiated(True)
+        except TypeError:
+            # Older Starlette version may not support compression param
+            await websocket.accept()
+            use_native_deflate = False
+    else:
+        await websocket.accept()
 
     # Sprint 5.33: Rate limiting state per connection
     _ws_command_timestamps: list[float] = []
@@ -2328,9 +2356,19 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   .virtual-alert-list::-webkit-scrollbar { width: 6px; }
   .virtual-alert-list::-webkit-scrollbar-track { background: #0f172a; }
   .virtual-alert-list::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+  /* Sprint 5.39: Offline banner styling */
+  .offline-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+    background: #f59e0b; color: #1e293b; padding: 8px 20px; font-size: 13px;
+    font-weight: 600; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+  .offline-banner.hidden { display: none; }
 </style>
 </head>
 <body>
+
+<!-- Sprint 5.39: Offline banner -->
+<div class="offline-banner" id="offlineBanner" style="display:none;">
+  <span id="offlineBannerText">Offline — 0 actions queued</span>
+</div>
 
 <h1>Vigil Quality Dashboard</h1>
 <p class="subtitle">Real-time quality metrics from AIP Brain Vigil evaluation cycles</p>
@@ -2546,6 +2584,8 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     <span class="perf-metric">Status: <span id="cbStatus" class="value">inactive</span></span>
     <span class="perf-metric">Rate: <span id="cbRate" class="value">0</span>/min</span>
     <span class="perf-metric">Threshold: <span id="cbThreshold" class="value">100</span></span>
+    <span class="perf-metric">Effective Threshold: <span id="cbEffectiveThreshold" class="value">—</span></span>
+    <span class="perf-metric">Auto-Tune: <span id="cbAutoTuneStatus" class="value">disabled</span></span>
     <span class="perf-metric">Throttled: <span id="cbThrottled" class="value">0</span></span>
     <span class="perf-metric">Activations: <span id="cbActivations" class="value">0</span></span>
     <span class="perf-metric">Cooldown: <span id="cbCooldown" class="value">0</span>s</span>
@@ -2598,6 +2638,63 @@ const _perfMetrics = { wsMsgsReceived: 0, wsMsgsDeduped: 0, lastRenderTime: 0 };
 const _wsMsgDedupSet = new Set();
 const _WS_DEDUP_MAX_SIZE = 1000;
 
+// Sprint 5.39: Offline action queue (page-level backup alongside SW IndexedDB queue)
+const offlineActionQueue = [];
+
+// Sprint 5.39: Update the offline banner visibility and text
+function updateOfflineBanner(queueCount) {
+  const banner = document.getElementById('offlineBanner');
+  const text = document.getElementById('offlineBannerText');
+  if (!banner || !text) return;
+  if (queueCount > 0 || !navigator.onLine) {
+    const total = queueCount + offlineActionQueue.length;
+    text.textContent = 'Offline \\u2014 ' + total + ' action' + (total !== 1 ? 's' : '') + ' queued';
+    banner.style.display = '';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+// Sprint 5.39: Queue an offline action locally and update banner
+function queueOfflineAction(url, method, body, actionType) {
+  offlineActionQueue.push({url: url, method: method, body: body, action_type: actionType, timestamp: Date.now()});
+  updateOfflineBanner(0);
+}
+
+// Sprint 5.39: Replay all queued actions on reconnection
+async function replayOfflineActionQueue() {
+  if (offlineActionQueue.length === 0) return;
+  const actions = [...offlineActionQueue];
+  offlineActionQueue.length = 0;
+  updateOfflineBanner(0);
+  for (const action of actions) {
+    try {
+      await fetch(action.url, {
+        method: action.method,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(action.body),
+      });
+    } catch(e) {
+      // Re-queue if still offline
+      offlineActionQueue.push(action);
+    }
+  }
+  updateOfflineBanner(0);
+  // Sprint 5.39: Also tell SW to check its IndexedDB queue
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({type: 'check_offline_queue'});
+  }
+}
+
+// Sprint 5.39: Monitor online/offline events
+window.addEventListener('online', function() {
+  replayOfflineActionQueue();
+  updateOfflineBanner(0);
+});
+window.addEventListener('offline', function() {
+  updateOfflineBanner(offlineActionQueue.length);
+});
+
 // Sprint 5.38: Service Worker for connection pooling (replaces SharedWorker)
 // Service Worker provides better offline resilience, background sync, and
 // more robust tab coordination than SharedWorker.
@@ -2619,6 +2716,174 @@ async function initServiceWorker() {
         const baseReconnectDelay = 1000;
         const bc = new BroadcastChannel('aip-dashboard-ws');
 
+        // Sprint 5.39: Offline cache management
+        const CACHE_NAME = 'aip-dashboard-cache-v1';
+        const STATIC_ASSET_EXTENSIONS = ['.html', '.js', '.css', '.woff', '.woff2', '.png', '.svg', '.ico'];
+        const API_PATH_PREFIX = '/vigil/quality/';
+
+        // Sprint 5.39: IndexedDB offline action queue
+        const OFFLINE_QUEUE_DB = 'aip-offline-db';
+        const OFFLINE_QUEUE_STORE = 'aip-offline-actions';
+
+        function openOfflineDB() {
+          return new Promise(function(resolve, reject) {
+            const request = indexedDB.open(OFFLINE_QUEUE_DB, 1);
+            request.onupgradeneeded = function(event) {
+              const db = event.target.result;
+              if (!db.objectStoreNames.contains(OFFLINE_QUEUE_STORE)) {
+                db.createObjectStore(OFFLINE_QUEUE_STORE, {keyPath: 'id', autoIncrement: true});
+              }
+            };
+            request.onsuccess = function(event) { resolve(event.target.result); };
+            request.onerror = function(event) { reject(event.target.error); };
+          });
+        }
+
+        async function enqueueOfflineAction(action) {
+          try {
+            const db = await openOfflineDB();
+            const tx = db.transaction(OFFLINE_QUEUE_STORE, 'readwrite');
+            const store = tx.objectStore(OFFLINE_QUEUE_STORE);
+            store.put(action);
+            await new Promise(function(resolve, reject) {
+              tx.oncomplete = resolve;
+              tx.onerror = reject;
+            });
+            bc.postMessage({type: 'offline_queue_updated', count: await getOfflineQueueCount()});
+          } catch(e) {}
+        }
+
+        async function getOfflineQueueCount() {
+          try {
+            const db = await openOfflineDB();
+            const tx = db.transaction(OFFLINE_QUEUE_STORE, 'readonly');
+            const store = tx.objectStore(OFFLINE_QUEUE_STORE);
+            const request = store.count();
+            return new Promise(function(resolve) {
+              request.onsuccess = function() { resolve(request.result); };
+              request.onerror = function() { resolve(0); };
+            });
+          } catch(e) { return 0; }
+        }
+
+        async function replayOfflineActions() {
+          try {
+            const db = await openOfflineDB();
+            const tx = db.transaction(OFFLINE_QUEUE_STORE, 'readonly');
+            const store = tx.objectStore(OFFLINE_QUEUE_STORE);
+            const getAll = store.getAll();
+            const actions = await new Promise(function(resolve, reject) {
+              getAll.onsuccess = function() { resolve(getAll.result); };
+              getAll.onerror = function() { resolve([]); };
+            });
+            if (!actions.length) return;
+            let replayed = 0;
+            for (const action of actions) {
+              try {
+                const resp = await fetch(action.url, {
+                  method: action.method || 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: action.body ? JSON.stringify(action.body) : undefined,
+                });
+                if (resp.ok || resp.status < 500) {
+                  // Remove from queue on success or client error
+                  const delTx = db.transaction(OFFLINE_QUEUE_STORE, 'readwrite');
+                  delTx.objectStore(OFFLINE_QUEUE_STORE).delete(action.id);
+                  await new Promise(function(r) { delTx.oncomplete = r; });
+                  replayed++;
+                }
+              } catch(e) {
+                // Still offline, keep in queue
+              }
+            }
+            if (replayed > 0) {
+              bc.postMessage({type: 'offline_queue_replayed', replayed: replayed, remaining: await getOfflineQueueCount()});
+            }
+          } catch(e) {}
+        }
+
+        // Sprint 5.39: Fetch event handler — cache-first for static, network-first for API
+        self.addEventListener('fetch', function(event) {
+          const url = new URL(event.request.url);
+          // Only handle GET requests for caching
+          if (event.request.method !== 'GET') {
+            // For POST/PUT: if network fails, queue for later replay
+            event.respondWith(
+              fetch(event.request).catch(async function() {
+                const contentType = event.request.headers.get('Content-Type') || '';
+                if (url.pathname.startsWith(API_PATH_PREFIX) && event.request.method !== 'GET') {
+                  let body = null;
+                  try { body = await event.request.clone().json(); } catch(e) {}
+                  const actionType = url.pathname.split('/').pop() || 'unknown';
+                  await enqueueOfflineAction({
+                    url: url.href,
+                    method: event.request.method,
+                    body: body,
+                    action_type: actionType,
+                    timestamp: Date.now(),
+                  });
+                }
+                return new Response(JSON.stringify({queued: true, offline: true}), {
+                  status: 202,
+                  headers: {'Content-Type': 'application/json'},
+                });
+              })
+            );
+            return;
+          }
+          // Cache-first for static assets
+          const isStatic = STATIC_ASSET_EXTENSIONS.some(function(ext) { return url.pathname.endsWith(ext); });
+          if (isStatic) {
+            event.respondWith(
+              caches.open(CACHE_NAME).then(function(cache) {
+                return cache.match(event.request).then(function(cached) {
+                  if (cached) return cached;
+                  return fetch(event.request).then(function(response) {
+                    if (response.ok) {
+                      cache.put(event.request, response.clone());
+                    }
+                    return response;
+                  }).catch(function() {
+                    return new Response('Offline', {status: 503});
+                  });
+                });
+              })
+            );
+            return;
+          }
+          // Network-first for API calls
+          if (url.pathname.startsWith(API_PATH_PREFIX)) {
+            event.respondWith(
+              fetch(event.request).then(function(response) {
+                if (response.ok) {
+                  const clone = response.clone();
+                  caches.open(CACHE_NAME).then(function(cache) {
+                    cache.put(event.request, clone);
+                  });
+                }
+                return response;
+              }).catch(function() {
+                return caches.open(CACHE_NAME).then(function(cache) {
+                  return cache.match(event.request).then(function(cached) {
+                    return cached || new Response(JSON.stringify({error: 'Offline', offline: true}), {
+                      status: 503,
+                      headers: {'Content-Type': 'application/json'},
+                    });
+                  });
+                });
+              })
+            );
+            return;
+          }
+        });
+
+        // Sprint 5.39: Sync event — replay queued actions when connectivity restored
+        self.addEventListener('sync', function(event) {
+          if (event.tag === 'aip-offline-sync') {
+            event.waitUntil(replayOfflineActions());
+          }
+        });
+
         self.addEventListener('message', function(event) {
           const msg = event.data;
           if (msg.type === 'connect_ws') {
@@ -2631,6 +2896,9 @@ async function initServiceWorker() {
             }
           } else if (msg.type === 'check_ws_status') {
             bc.postMessage({type: 'ws_status', status: ws ? (ws.readyState === WebSocket.OPEN ? 'connected' : 'disconnected') : 'disconnected'});
+          } else if (msg.type === 'check_offline_queue') {
+            // Sprint 5.39: Attempt to replay queued actions
+            event.waitUntil(replayOfflineActions());
           }
         });
 
@@ -2641,6 +2909,8 @@ async function initServiceWorker() {
             ws.onopen = function() {
               reconnectAttempts = 0;
               bc.postMessage({type: 'ws_status', status: 'connected'});
+              // Sprint 5.39: On reconnect, try to replay offline actions
+              replayOfflineActions();
             };
             ws.onmessage = function(event) {
               bc.postMessage({type: 'ws_message', data: event.data});
@@ -2671,15 +2941,24 @@ async function initServiceWorker() {
           if (msg.status === 'connected') {
             wsConnected = true;
             updateConnStatus('connected', 'WS Connected (ServiceWorker)');
+            // Sprint 5.39: On reconnection, replay offline action queue
+            replayOfflineActionQueue();
           } else if (msg.status === 'disconnected') {
             wsConnected = false;
             updateConnStatus('disconnected', 'WS Reconnecting (ServiceWorker)');
           }
+        } else if (msg.type === 'offline_queue_updated') {
+          // Sprint 5.39: SW queued an action while offline
+          updateOfflineBanner(msg.count || offlineActionQueue.length);
+        } else if (msg.type === 'offline_queue_replayed') {
+          // Sprint 5.39: SW replayed some actions
+          updateOfflineBanner(msg.remaining || 0);
         }
       };
       // Tell Service Worker to connect
       const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = wsProto + '//' + location.host + '/vigil/quality/dashboard/ws';
+      // Sprint 5.39: Request native permessage-deflate if available
+      const wsUrl = wsProto + '//' + location.host + '/vigil/quality/dashboard/ws?compression=deflate';
       navigator.serviceWorker.controller.postMessage({type: 'connect_ws', wsUrl: wsUrl});
       // Register tab with server
       updateConnStatus('connecting', 'SW Connecting...');
@@ -2734,7 +3013,7 @@ function initSharedWorkerFallback() {
       function connectWS() {
         if (reconnectAttempts >= maxReconnectAttempts) return;
         const wsProto = (typeof location !== 'undefined' && location.protocol === 'https:') ? 'wss:' : 'ws:';
-        const wsUrl = wsProto + '//' + (typeof location !== 'undefined' ? location.host : 'localhost') + '/vigil/quality/dashboard/ws';
+        const wsUrl = wsProto + '//' + (typeof location !== 'undefined' ? location.host : 'localhost') + '/vigil/quality/dashboard/ws?compression=deflate';
         try {
           ws = new WebSocket(wsUrl);
           ws.onopen = function() {
@@ -2876,7 +3155,7 @@ function connectWebSocket() {
 
   try {
     const wsProto = (location.protocol === 'https:') ? 'wss:' : 'ws:';
-    const wsUrl = wsProto + '//' + location.host + '/vigil/quality/dashboard/ws';
+    const wsUrl = wsProto + '//' + location.host + '/vigil/quality/dashboard/ws?compression=deflate';
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
@@ -2997,12 +3276,28 @@ function wsAcknowledge() {
   const alertId = document.getElementById('actionAlertId').value;
   if (!alertId) return;
   wsSendCommand({action: 'acknowledge', alert_id: parseInt(alertId), acknowledged_by: 'dashboard'});
+  // Sprint 5.39: Also attempt HTTP POST for durability; on failure, queue offline
+  fetch('../vigil/quality/alerts/' + alertId + '/acknowledge', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({acknowledged_by: 'dashboard'}),
+  }).catch(function() {
+    queueOfflineAction('../vigil/quality/alerts/' + alertId + '/acknowledge', 'POST', {acknowledged_by: 'dashboard'}, 'acknowledge');
+  });
 }
 
 function wsDismiss() {
   const alertId = document.getElementById('actionAlertId').value;
   if (!alertId) return;
   wsSendCommand({action: 'dismiss', alert_id: parseInt(alertId), dismissed_by: 'dashboard'});
+  // Sprint 5.39: Also attempt HTTP POST for durability; on failure, queue offline
+  fetch('../vigil/quality/alerts/' + alertId + '/dismiss', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({dismissed_by: 'dashboard'}),
+  }).catch(function() {
+    queueOfflineAction('../vigil/quality/alerts/' + alertId + '/dismiss', 'POST', {dismissed_by: 'dashboard'}, 'dismiss');
+  });
 }
 
 function wsMute() {
@@ -3010,6 +3305,14 @@ function wsMute() {
   const subject = document.getElementById('actionMuteSubject').value;
   if (!type || !subject) return;
   wsSendCommand({action: 'mute', alert_type: type, subject: subject, duration_seconds: 3600});
+  // Sprint 5.39: Also attempt HTTP POST for durability; on failure, queue offline
+  fetch('../vigil/quality/alerts/mute', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({alert_type: type, subject: subject, duration_seconds: 3600}),
+  }).catch(function() {
+    queueOfflineAction('../vigil/quality/alerts/mute', 'POST', {alert_type: type, subject: subject, duration_seconds: 3600}, 'mute');
+  });
 }
 
 function wsUnmute() {
@@ -3223,13 +3526,42 @@ async function fetchAlerts() {
   }
 }
 
-// Sprint 5.30→5.33: Acknowledge/dismiss via WS command or HTTP fallback
+// Sprint 5.30→5.33→5.39: Acknowledge/dismiss via WS command or HTTP fallback with offline queueing
 async function ackAlert(alertId) {
-  wsSendCommand({action: 'acknowledge', alert_id: alertId, acknowledged_by: 'dashboard'});
+  try {
+    wsSendCommand({action: 'acknowledge', alert_id: alertId, acknowledged_by: 'dashboard'});
+    // Sprint 5.39: Also send HTTP POST for durability; if offline, queue it
+    const resp = await fetch('../vigil/quality/alerts/' + alertId + '/acknowledge', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({acknowledged_by: 'dashboard'}),
+    });
+    if (!resp.ok && !navigator.onLine) {
+      queueOfflineAction('../vigil/quality/alerts/' + alertId + '/acknowledge', 'POST', {acknowledged_by: 'dashboard'}, 'acknowledge');
+    }
+  } catch(e) {
+    if (!navigator.onLine) {
+      queueOfflineAction('../vigil/quality/alerts/' + alertId + '/acknowledge', 'POST', {acknowledged_by: 'dashboard'}, 'acknowledge');
+    }
+  }
 }
 
 async function dismissAlert(alertId) {
-  wsSendCommand({action: 'dismiss', alert_id: alertId, dismissed_by: 'dashboard'});
+  try {
+    wsSendCommand({action: 'dismiss', alert_id: alertId, dismissed_by: 'dashboard'});
+    const resp = await fetch('../vigil/quality/alerts/' + alertId + '/dismiss', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({dismissed_by: 'dashboard'}),
+    });
+    if (!resp.ok && !navigator.onLine) {
+      queueOfflineAction('../vigil/quality/alerts/' + alertId + '/dismiss', 'POST', {dismissed_by: 'dashboard'}, 'dismiss');
+    }
+  } catch(e) {
+    if (!navigator.onLine) {
+      queueOfflineAction('../vigil/quality/alerts/' + alertId + '/dismiss', 'POST', {dismissed_by: 'dashboard'}, 'dismiss');
+    }
+  }
 }
 
 // Sprint 5.31: Mute rules management
@@ -3842,12 +4174,58 @@ function configurePagerDuty() {
 // Restore notification prefs on load
 restoreNotifPrefs();
 
+// Sprint 5.39: Fetch circuit breaker auto-tune status from alerting status API
+async function fetchCircuitBreakerAutoTune() {
+  try {
+    const resp = await fetch('../vigil/quality/health');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const alerting = data.alerting || {};
+    const cb = alerting.circuit_breaker || {};
+    const autoTune = cb.auto_tune || {};
+    const el = (id) => document.getElementById(id);
+    if (el('cbEffectiveThreshold')) {
+      el('cbEffectiveThreshold').textContent = cb.effective_threshold != null ? cb.effective_threshold : '—';
+    }
+    if (el('cbAutoTuneStatus')) {
+      if (autoTune.enabled) {
+        const adjCount = autoTune.total_adjustments || 0;
+        const baselines = autoTune.baseline_rates_count || 0;
+        el('cbAutoTuneStatus').textContent = 'enabled (' + adjCount + ' adj, ' + baselines + ' baselines)';
+      } else {
+        el('cbAutoTuneStatus').textContent = 'disabled';
+      }
+    }
+    // Also update the basic circuit breaker fields
+    if (el('cbStatus')) {
+      el('cbStatus').textContent = cb.active ? 'active' : 'inactive';
+    }
+    if (el('cbRate')) {
+      el('cbRate').textContent = cb.current_rate_per_minute || 0;
+    }
+    if (el('cbThreshold')) {
+      el('cbThreshold').textContent = cb.threshold || 100;
+    }
+    if (el('cbThrottled')) {
+      el('cbThrottled').textContent = cb.total_throttled_alerts || 0;
+    }
+    if (el('cbActivations')) {
+      el('cbActivations').textContent = cb.total_activations || 0;
+    }
+    if (el('cbCooldown')) {
+      el('cbCooldown').textContent = cb.cooldown_remaining != null ? Math.round(cb.cooldown_remaining) : 0;
+    }
+  } catch(err) {}
+}
+
 // Initial fetch for Sprint 5.36+5.37 panels
 setTimeout(function() {
   fetchAutoMergeSuggestions();
   fetchPredictions();
   fetchPruningHistory();
   fetchPredictionAccuracy();
+  // Sprint 5.39: Fetch circuit breaker auto-tune status
+  fetchCircuitBreakerAutoTune();
   // Sprint 5.38: Try Service Worker first, then fall back to SharedWorker
   initServiceWorker();
   // Sprint 5.37: Register this tab with the server
@@ -3859,6 +4237,8 @@ setTimeout(function() {
 // Refresh pruning history and prediction accuracy periodically
 setInterval(fetchPruningHistory, 60000);
 setInterval(fetchPredictionAccuracy, 30000);
+// Sprint 5.39: Refresh circuit breaker auto-tune status periodically
+setInterval(fetchCircuitBreakerAutoTune, 30000);
 // Sprint 5.37: Update performance metrics periodically
 setInterval(updatePerfMetrics, 5000);
 

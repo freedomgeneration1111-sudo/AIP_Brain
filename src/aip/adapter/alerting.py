@@ -276,6 +276,25 @@ class AlertConfig:
     delivery_receipts_enabled: bool = False  # Track delivery confirmations per channel
     # Sprint 5.38: WebSocket compression
     ws_compression_enabled: bool = False  # Enable per-message deflate compression for WS
+    # Sprint 5.39: Offline cache for dashboard assets
+    offline_cache_enabled: bool = False  # Enable Service Worker offline cache and action queueing
+    # Sprint 5.39: Transition probability persistence and retraining
+    transition_persistence_enabled: bool = False  # Persist learned transition model to DB
+    retrain_interval_seconds: int = 3600  # Periodic retraining interval (0 = disabled)
+    retrain_after_n_alerts: int = 100  # Retrain after N new alerts since last train
+    # Sprint 5.39: Circuit breaker auto-tuning
+    circuit_breaker_auto_tune_enabled: bool = False  # Enable dynamic threshold adjustment
+    circuit_breaker_auto_tune_lookback_hours: int = 168  # Look back 7 days for pattern learning
+    circuit_breaker_auto_tune_sensitivity: float = 1.5  # Multiplier above baseline for threshold
+    circuit_breaker_auto_tune_min_threshold: int = 20  # Minimum allowed threshold
+    circuit_breaker_auto_tune_max_threshold: int = 500  # Maximum allowed threshold
+    # Sprint 5.39: Delivery receipt polling
+    delivery_receipt_polling_enabled: bool = False  # Enable polling for email delivery status
+    delivery_receipt_poll_interval_seconds: int = 300  # Poll every 5 minutes
+    email_read_tracking_enabled: bool = False  # Track email open/read via webhook or pixel
+    email_delivery_webhook_url: str = ""  # Webhook URL for email delivery callbacks
+    # Sprint 5.39: Native WebSocket permessage-deflate
+    ws_native_permessage_deflate_enabled: bool = False  # Use protocol-level permessage-deflate instead of app-level
 
 
 # ---------------------------------------------------------------------------
@@ -565,6 +584,29 @@ class AlertManager:
         # Sprint 5.38: WebSocket compression metrics
         self._ws_compression_negotiated: bool = False
         self._ws_compression_bytes_saved_estimate: int = 0
+        # Sprint 5.39: Transition probability persistence and retraining
+        self._transition_persistence_enabled: bool = self._config.transition_persistence_enabled
+        self._retrain_interval_seconds: int = self._config.retrain_interval_seconds
+        self._retrain_after_n_alerts: int = self._config.retrain_after_n_alerts
+        self._alerts_since_last_retrain: int = 0
+        self._last_retrain_time: float = 0.0
+        self._total_retraining_events: int = 0
+        # Sprint 5.39: Circuit breaker auto-tuning
+        self._cb_effective_threshold: int = 0  # 0 means use config threshold
+        self._cb_baseline_rates: dict[str, float] = {}  # (hour_of_day, day_of_week) -> avg_rate
+        self._cb_auto_tune_last_computed: float = 0.0
+        self._cb_auto_tune_compute_interval: int = 300  # Recompute every 5 minutes
+        self._cb_threshold_adjustments: list[dict] = []  # History of adjustments
+        self._total_auto_tune_adjustments: int = 0
+        # Sprint 5.39: Delivery receipt polling
+        self._receipt_polling_thread: threading.Thread | None = None
+        self._receipt_polling_running: bool = False
+        self._email_delivery_statuses: dict[str, dict[str, Any]] = {}  # correlation_id -> {email: {status, ...}}
+        self._total_receipt_polls: int = 0
+        self._total_email_status_updates: int = 0
+        # Sprint 5.39: Native WebSocket permessage-deflate
+        self._ws_permessage_deflate_negotiated: bool = False
+        self._ws_native_deflate_bytes_saved: int = 0
         # Lock for thread-safe mutation of shared state
         self._lock = threading.Lock()
 
@@ -1220,6 +1262,27 @@ class AlertManager:
             },
             # Sprint 5.38: WebSocket compression
             "ws_compression": self.get_compression_status(),
+            # Sprint 5.39: Offline cache status
+            "offline_cache_enabled": self._config.offline_cache_enabled,
+            # Sprint 5.39: Transition probability persistence & retraining
+            "transition_persistence": {
+                "persistence_enabled": self._transition_persistence_enabled,
+                "last_retrain_time": self._last_retrain_time,
+                "alerts_since_last_retrain": self._alerts_since_last_retrain,
+                "total_retraining_events": self._total_retraining_events,
+                "retrain_interval_seconds": self._retrain_interval_seconds,
+                "retrain_after_n_alerts": self._retrain_after_n_alerts,
+            },
+            # Sprint 5.39: Circuit breaker auto-tuning
+            "circuit_breaker_auto_tune": self.get_cb_auto_tune_status(),
+            # Sprint 5.39: Delivery receipt polling
+            "delivery_receipt_polling": self.get_delivery_polling_status(),
+            # Sprint 5.39: Native WebSocket permessage-deflate
+            "ws_native_deflate": {
+                "enabled": self._config.ws_native_permessage_deflate_enabled,
+                "negotiated": self._ws_permessage_deflate_negotiated,
+                "mode": "native" if self._ws_permessage_deflate_negotiated else "application_level",
+            },
         }
 
     def get_alert_history(
@@ -3517,6 +3580,9 @@ class AlertManager:
         updates transition counts between consecutive alert types
         for the same subject. This data is used by the learned
         prediction model instead of the static _CAUSAL_PREDICTION_CHAIN.
+
+        Sprint 5.39: Increments _alerts_since_last_retrain and
+        checks if retraining is needed.
         """
         with self._lock:
             self._alert_type_sequence.append((alert.alert_type, alert.subject, now))
@@ -3533,6 +3599,13 @@ class AlertManager:
                     self._transition_counts[pair] = self._transition_counts.get(pair, 0) + 1
                     self._transition_totals[prev_type] = self._transition_totals.get(prev_type, 0) + 1
                     break
+
+            # Sprint 5.39: Track alerts since last retrain and check if retrain needed
+            self._alerts_since_last_retrain += 1
+
+        # Sprint 5.39: Check if retraining is needed (outside lock to avoid deadlock)
+        if self._transition_persistence_enabled and self.check_retrain_needed():
+            self.retrain_transition_model()
 
     def get_transition_probabilities(self, from_type: str | None = None) -> dict[str, Any]:
         """Return computed transition probabilities from the learned model.
@@ -3764,9 +3837,19 @@ class AlertManager:
         The circuit breaker uses a "half-open" approach: after the
         cooldown expires, the next check evaluates the current rate.
         If still high, the breaker re-activates; if low, it deactivates.
+
+        Sprint 5.39: If auto-tune is enabled, the threshold is
+        dynamically adjusted based on historical alert rate patterns.
         """
         if not self._config.circuit_breaker_enabled:
             return False
+
+        # Sprint 5.39: Update auto-tune threshold if enabled
+        if self._config.circuit_breaker_auto_tune_enabled:
+            self.update_cb_auto_tune()
+
+        # Sprint 5.39: Use effective threshold (may be auto-tuned)
+        threshold = self.get_cb_effective_threshold()
 
         with self._lock:
             # If circuit breaker is active, check cooldown
@@ -3777,14 +3860,14 @@ class AlertManager:
                 else:
                     # Cooldown expired — check if rate is still high
                     rate = len(self._throttle_alert_timestamps)
-                    if rate >= self._config.throttle_threshold_per_minute:
+                    if rate >= threshold:
                         # Still high — re-activate
                         self._circuit_breaker_activated_at = now
                         self._total_circuit_breaker_activations += 1
                         logger.warning(
                             "circuit_breaker_reactivated",
                             alert_rate=rate,
-                            threshold=self._config.throttle_threshold_per_minute,
+                            threshold=threshold,
                         )
                         return True
                     else:
@@ -3798,14 +3881,14 @@ class AlertManager:
 
             # Not active — check if we should activate
             rate = len(self._throttle_alert_timestamps)
-            if rate >= self._config.throttle_threshold_per_minute:
+            if rate >= threshold:
                 self._circuit_breaker_active = True
                 self._circuit_breaker_activated_at = now
                 self._total_circuit_breaker_activations += 1
                 logger.warning(
                     "circuit_breaker_activated",
                     alert_rate=rate,
-                    threshold=self._config.throttle_threshold_per_minute,
+                    threshold=threshold,
                 )
                 return True
 
@@ -3816,6 +3899,8 @@ class AlertManager:
 
         Sprint 5.38: Provides visibility into the circuit breaker
         state for the dashboard and API endpoints.
+
+        Sprint 5.39: Includes auto-tune info and effective threshold.
         """
         now = time.time()
         with self._lock:
@@ -3825,6 +3910,7 @@ class AlertManager:
                 "active": self._circuit_breaker_active,
                 "current_rate_per_minute": rate,
                 "threshold": self._config.throttle_threshold_per_minute,
+                "effective_threshold": self.get_cb_effective_threshold(),
                 "cooldown_seconds": self._config.circuit_breaker_cooldown_seconds,
                 "total_activations": self._total_circuit_breaker_activations,
                 "total_throttled_alerts": self._total_throttled_alerts,
@@ -3833,7 +3919,232 @@ class AlertManager:
                     0,
                     self._config.circuit_breaker_cooldown_seconds - (now - self._circuit_breaker_activated_at)
                 ) if self._circuit_breaker_active else 0,
+                "auto_tune": self.get_cb_auto_tune_status(),
             }
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.39: Circuit breaker auto-tuning
+    # -----------------------------------------------------------------------
+
+    def compute_cb_auto_tune_threshold(self) -> int:
+        """Compute the auto-tuned circuit breaker threshold.
+
+        Sprint 5.39: Queries alert history from the store to compute
+        baseline rates by (hour_of_day, day_of_week).  The effective
+        threshold is baseline_rate * sensitivity, clamped to
+        [min_threshold, max_threshold].
+
+        If auto-tune is disabled, returns the static config threshold.
+        If no history store is attached, falls back to config threshold.
+        """
+        if not self._config.circuit_breaker_auto_tune_enabled:
+            return self._config.throttle_threshold_per_minute
+
+        # Need a history store for pattern learning
+        if self._history_store is None:
+            logger.debug(
+                "cb_auto_tune_no_store",
+                reason="no AlertHistoryStore attached",
+            )
+            return self._config.throttle_threshold_per_minute
+
+        # Determine the lookback window
+        lookback_hours = self._config.circuit_breaker_auto_tune_lookback_hours
+        cutoff = time.time() - (lookback_hours * 3600)
+
+        # Query alert history from the store
+        try:
+            if hasattr(self._history_store, "get_alert_history_since"):
+                alerts = self._history_store.get_alert_history_since(since=cutoff)
+            elif hasattr(self._history_store, "query_alerts"):
+                alerts = self._history_store.query_alerts(since_epoch=cutoff)
+            else:
+                # Fallback: try the standard get_alerts method
+                since_iso = datetime.fromtimestamp(cutoff, tz=timezone.utc).isoformat()
+                alerts = self._history_store.get_alerts(since=since_iso) if hasattr(self._history_store, "get_alerts") else []
+        except Exception as exc:
+            logger.warning(
+                "cb_auto_tune_store_query_failed",
+                error=str(exc),
+            )
+            return self._config.throttle_threshold_per_minute
+
+        if not alerts:
+            logger.debug(
+                "cb_auto_tune_no_history",
+                reason="no alerts found in lookback window",
+            )
+            return self._config.throttle_threshold_per_minute
+
+        # Build per-timeslot rates: (hour_of_day, day_of_week) -> list of counts per minute
+        # We bucket alerts into hourly slots and compute the rate per minute for each slot
+        timeslot_counts: dict[str, list[int]] = {}
+        for alert_record in alerts:
+            ts = alert_record.get("timestamp", "")
+            if not ts:
+                continue
+            try:
+                dt = datetime.fromisoformat(ts)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                hour = dt.hour
+                dow = dt.weekday()  # 0=Monday
+                key = f"{hour}:{dow}"
+                if key not in timeslot_counts:
+                    timeslot_counts[key] = []
+                # We count 1 per alert in this timeslot
+                timeslot_counts[key].append(1)
+            except (ValueError, TypeError):
+                continue
+
+        if not timeslot_counts:
+            return self._config.throttle_threshold_per_minute
+
+        # Compute average rate per minute for each timeslot
+        # Each bucket represents the alerts in that hour across multiple weeks
+        # Rate = total_alerts_in_slot / (number_of_weeks * 60)  [alerts per minute]
+        baseline_rates: dict[str, float] = {}
+        num_weeks = max(1, lookback_hours / 168)
+        for key, counts in timeslot_counts.items():
+            # Rate per minute for this timeslot
+            rate_per_minute = len(counts) / (num_weeks * 60)
+            baseline_rates[key] = rate_per_minute
+
+        self._cb_baseline_rates = baseline_rates
+
+        # Find the current timeslot
+        now = time.time()
+        now_dt = datetime.fromtimestamp(now, tz=timezone.utc)
+        current_key = f"{now_dt.hour}:{now_dt.weekday()}"
+
+        # Get the baseline rate for the current timeslot, or average across all
+        baseline_rate = baseline_rates.get(current_key)
+        if baseline_rate is None:
+            # No data for this exact timeslot — use the average of all rates
+            if baseline_rates:
+                baseline_rate = sum(baseline_rates.values()) / len(baseline_rates)
+            else:
+                return self._config.throttle_threshold_per_minute
+
+        # Compute effective threshold: baseline * sensitivity, clamped
+        sensitivity = self._config.circuit_breaker_auto_tune_sensitivity
+        min_threshold = self._config.circuit_breaker_auto_tune_min_threshold
+        max_threshold = self._config.circuit_breaker_auto_tune_max_threshold
+
+        effective = int(baseline_rate * sensitivity)
+        effective = max(min_threshold, min(max_threshold, effective))
+
+        logger.info(
+            "cb_auto_tune_computed",
+            current_timeslot=current_key,
+            baseline_rate=round(baseline_rate, 3),
+            sensitivity=sensitivity,
+            raw_threshold=int(baseline_rate * sensitivity),
+            effective_threshold=effective,
+            baseline_rates_count=len(baseline_rates),
+        )
+
+        return effective
+
+    def get_cb_effective_threshold(self) -> int:
+        """Return the effective circuit breaker threshold.
+
+        Sprint 5.39: Returns the auto-tuned threshold if auto-tune
+        is enabled and a threshold has been computed. Otherwise
+        returns the static config threshold.
+        """
+        if self._cb_effective_threshold > 0:
+            return self._cb_effective_threshold
+        return self._config.throttle_threshold_per_minute
+
+    def update_cb_auto_tune(self) -> dict:
+        """Recompute the auto-tuned threshold if enough time has elapsed.
+
+        Sprint 5.39: Compares the old and new threshold, records
+        adjustments for audit trail when the threshold changes.
+        Returns an info dict with the computation details.
+        """
+        result: dict[str, Any] = {
+            "old_threshold": self.get_cb_effective_threshold(),
+            "new_threshold": self.get_cb_effective_threshold(),
+            "baseline_rate": 0.0,
+            "reason": "no_change",
+        }
+
+        if not self._config.circuit_breaker_auto_tune_enabled:
+            result["reason"] = "auto_tune_disabled"
+            return result
+
+        now = time.time()
+        elapsed = now - self._cb_auto_tune_last_computed
+
+        if elapsed < self._cb_auto_tune_compute_interval:
+            result["reason"] = "interval_not_elapsed"
+            result["seconds_remaining"] = int(self._cb_auto_tune_compute_interval - elapsed)
+            return result
+
+        # Compute new threshold
+        old_threshold = self.get_cb_effective_threshold()
+        new_threshold = self.compute_cb_auto_tune_threshold()
+
+        # Determine current baseline rate for reporting
+        now_dt = datetime.fromtimestamp(now, tz=timezone.utc)
+        current_key = f"{now_dt.hour}:{now_dt.weekday()}"
+        baseline_rate = self._cb_baseline_rates.get(current_key, 0.0)
+
+        result["old_threshold"] = old_threshold
+        result["new_threshold"] = new_threshold
+        result["baseline_rate"] = round(baseline_rate, 3)
+
+        if new_threshold != old_threshold:
+            # Record the adjustment
+            adjustment = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "old_threshold": old_threshold,
+                "new_threshold": new_threshold,
+                "baseline_rate": round(baseline_rate, 3),
+                "timeslot": current_key,
+                "sensitivity": self._config.circuit_breaker_auto_tune_sensitivity,
+            }
+            self._cb_threshold_adjustments.append(adjustment)
+            # Keep only the last 50 adjustments
+            if len(self._cb_threshold_adjustments) > 50:
+                self._cb_threshold_adjustments = self._cb_threshold_adjustments[-50:]
+            self._total_auto_tune_adjustments += 1
+
+            result["reason"] = "threshold_adjusted"
+
+            logger.info(
+                "cb_auto_tune_adjusted",
+                old_threshold=old_threshold,
+                new_threshold=new_threshold,
+                baseline_rate=round(baseline_rate, 3),
+                timeslot=current_key,
+            )
+        else:
+            result["reason"] = "threshold_unchanged"
+
+        # Update the effective threshold
+        self._cb_effective_threshold = new_threshold
+        self._cb_auto_tune_last_computed = now
+
+        return result
+
+    def get_cb_auto_tune_status(self) -> dict:
+        """Return the circuit breaker auto-tuning status.
+
+        Sprint 5.39: Provides visibility into the auto-tuning state
+        for the dashboard and API endpoints.
+        """
+        return {
+            "enabled": self._config.circuit_breaker_auto_tune_enabled,
+            "effective_threshold": self.get_cb_effective_threshold(),
+            "config_threshold": self._config.throttle_threshold_per_minute,
+            "baseline_rates_count": len(self._cb_baseline_rates),
+            "last_computed": self._cb_auto_tune_last_computed,
+            "recent_adjustments": self._cb_threshold_adjustments[-5:],
+            "total_adjustments": self._total_auto_tune_adjustments,
+        }
 
     # -----------------------------------------------------------------------
     # Sprint 5.38: Multi-channel delivery receipts
@@ -3849,6 +4160,9 @@ class AlertManager:
         Sprint 5.38: Extracts receipt data from each transport's
         result and stores it per correlation ID. Slack provides
         message_ts, PagerDuty provides dedup_key + status.
+
+        Sprint 5.39: When delivery_receipt_polling_enabled, also
+        tracks email "sent" status even without push receipts.
         """
         receipts: dict[str, dict[str, Any]] = {}
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -3860,6 +4174,15 @@ class AlertManager:
                     **receipt,
                     "confirmed_at": now_iso,
                     "delivery_status": result.get("status", "unknown"),
+                }
+            elif (self._config.delivery_receipt_polling_enabled
+                  and channel == "email"):
+                # Sprint 5.39: Track email as "sent" for polling even
+                # without a push receipt
+                receipts[channel] = {
+                    "delivery_status": "sent",
+                    "confirmed_at": now_iso,
+                    "polling_enabled": True,
                 }
 
         if receipts:
@@ -3958,3 +4281,522 @@ class AlertManager:
                 "negotiated": self._ws_compression_negotiated,
                 "bytes_saved_estimate": self._ws_compression_bytes_saved_estimate,
             }
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.39: Transition probability persistence & retraining
+    # -----------------------------------------------------------------------
+
+    def persist_transition_model(self) -> bool:
+        """Save current transition_counts and transition_totals to DB.
+
+        Sprint 5.39: Persists the in-memory transition probability model
+        to the AlertHistoryStore's transition_probabilities table.
+        Should be called periodically (e.g., after retraining or on shutdown).
+
+        Returns True if successfully persisted, False otherwise.
+        """
+        if self._history_store is None:
+            logger.warning(
+                "transition_model_persist_no_store",
+                message="No history store attached — cannot persist transition model",
+            )
+            return False
+
+        with self._lock:
+            counts_copy = dict(self._transition_counts)
+            totals_copy = dict(self._transition_totals)
+
+        if not counts_copy:
+            logger.debug(
+                "transition_model_persist_empty",
+                message="No transition data to persist",
+            )
+            return True
+
+        try:
+            result = self._history_store.save_transition_probabilities(
+                transition_counts=counts_copy,
+                transition_totals=totals_copy,
+            )
+            if result:
+                logger.info(
+                    "transition_model_persisted",
+                    transition_pairs=len(counts_copy),
+                    total_types=len(totals_copy),
+                )
+            return result
+        except Exception as exc:
+            logger.warning(
+                "transition_model_persist_failed",
+                error=str(exc),
+            )
+            return False
+
+    def load_transition_model(self) -> bool:
+        """Load transition probabilities from the store into memory.
+
+        Sprint 5.39: Loads the persisted transition probability model
+        from the AlertHistoryStore on startup. Replaces the current
+        in-memory _transition_counts and _transition_totals.
+
+        Returns True if successfully loaded, False otherwise.
+        """
+        if self._history_store is None:
+            logger.warning(
+                "transition_model_load_no_store",
+                message="No history store attached — cannot load transition model",
+            )
+            return False
+
+        try:
+            counts, totals = self._history_store.load_transition_probabilities()
+            with self._lock:
+                if counts:
+                    self._transition_counts = counts
+                    self._transition_totals = totals
+                    self._learned_model_last_trained = time.time()
+
+            logger.info(
+                "transition_model_loaded",
+                transition_pairs=len(counts),
+                total_types=len(totals),
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "transition_model_load_failed",
+                error=str(exc),
+            )
+            return False
+
+    def retrain_transition_model(self) -> dict:
+        """Full retrain from the alert_history in the store.
+
+        Sprint 5.39: Computes transitions from stored alert sequences
+        in the AlertHistoryStore. Records a retraining event. Resets
+        _alerts_since_last_retrain. Persists the new model.
+
+        Returns a dict with retraining results.
+        """
+        now = time.time()
+        trigger_reason = "scheduled"
+
+        # Determine trigger reason
+        if self._alerts_since_last_retrain >= self._retrain_after_n_alerts > 0:
+            trigger_reason = "new_alerts_threshold"
+
+        # Load all alert history from the store to recompute transitions
+        new_counts: dict[tuple[str, str], int] = {}
+        new_totals: dict[str, int] = {}
+
+        if self._history_store is not None:
+            try:
+                # Get all alerts ordered by timestamp for sequence building
+                all_alerts = self._history_store.get_alert_history(limit=5000)
+                # Group by subject and compute transitions
+                subject_last: dict[str, str] = {}
+                for alert in reversed(all_alerts):  # oldest first
+                    subject = alert.get("subject", "")
+                    alert_type = alert.get("alert_type", "")
+                    if subject in subject_last:
+                        prev_type = subject_last[subject]
+                        pair = (prev_type, alert_type)
+                        new_counts[pair] = new_counts.get(pair, 0) + 1
+                        new_totals[prev_type] = new_totals.get(prev_type, 0) + 1
+                    subject_last[subject] = alert_type
+            except Exception as exc:
+                logger.warning(
+                    "transition_retrain_history_load_failed",
+                    error=str(exc),
+                )
+                # Fall back to current in-memory data
+                with self._lock:
+                    new_counts = dict(self._transition_counts)
+                    new_totals = dict(self._transition_totals)
+
+        with self._lock:
+            self._transition_counts = new_counts
+            self._transition_totals = new_totals
+            self._alerts_since_last_retrain = 0
+            self._last_retrain_time = now
+            self._learned_model_last_trained = now
+            self._total_retraining_events += 1
+            transition_count = len(self._transition_counts)
+            total_types = len(self._transition_totals)
+
+        # Record retraining event in persistent store
+        if self._history_store is not None:
+            try:
+                self._history_store.record_retraining_event({
+                    "trigger_reason": trigger_reason,
+                    "alerts_since_last_train": self._alerts_since_last_retrain,
+                    "transition_count": transition_count,
+                    "total_types": total_types,
+                    "trained_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception as exc:
+                logger.warning(
+                    "transition_retrain_event_record_failed",
+                    error=str(exc),
+                )
+
+        # Persist the retrained model
+        self.persist_transition_model()
+
+        result = {
+            "trigger_reason": trigger_reason,
+            "transition_count": transition_count,
+            "total_types": total_types,
+            "alerts_since_last_retrain": 0,
+            "retrained_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        logger.info(
+            "transition_model_retrained",
+            trigger_reason=trigger_reason,
+            transition_count=transition_count,
+            total_types=total_types,
+        )
+
+        return result
+
+    def check_retrain_needed(self) -> bool:
+        """Check if the transition model should be retrained.
+
+        Sprint 5.39: Returns True if either:
+        - retrain_interval_seconds has elapsed since last retrain, or
+        - _alerts_since_last_retrain >= retrain_after_n_alerts
+
+        Returns False if transition persistence is disabled or if
+        both conditions are unmet.
+        """
+        if not self._transition_persistence_enabled:
+            return False
+
+        now = time.time()
+
+        # Check interval-based retraining
+        if self._retrain_interval_seconds > 0 and self._last_retrain_time > 0:
+            elapsed = now - self._last_retrain_time
+            if elapsed >= self._retrain_interval_seconds:
+                return True
+
+        # Check alert-count-based retraining
+        if self._retrain_after_n_alerts > 0 and self._alerts_since_last_retrain >= self._retrain_after_n_alerts:
+            return True
+
+        return False
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.39: Delivery receipt polling
+    # -----------------------------------------------------------------------
+
+    def start_receipt_polling(self) -> None:
+        """Start the background receipt polling thread.
+
+        Sprint 5.39: Launches a daemon thread that periodically polls
+        for email delivery status updates when polling is enabled.
+        """
+        if not self._config.delivery_receipt_polling_enabled:
+            return
+        if self._receipt_polling_running:
+            return
+
+        self._receipt_polling_running = True
+
+        def _poll_loop() -> None:
+            while self._receipt_polling_running:
+                try:
+                    self.poll_email_delivery_status()
+                except Exception as exc:
+                    logger.debug(
+                        "receipt_poll_error",
+                        error=str(exc),
+                    )
+                interval = self._config.delivery_receipt_poll_interval_seconds
+                if interval <= 0:
+                    interval = 300
+                # Sleep in small increments for responsiveness
+                elapsed = 0
+                while elapsed < interval and self._receipt_polling_running:
+                    time.sleep(1)
+                    elapsed += 1
+
+        self._receipt_polling_thread = threading.Thread(
+            target=_poll_loop,
+            daemon=True,
+            name="aip-receipt-polling",
+        )
+        self._receipt_polling_thread.start()
+        logger.info(
+            "receipt_polling_started",
+            interval_seconds=self._config.delivery_receipt_poll_interval_seconds,
+        )
+
+    def stop_receipt_polling(self) -> None:
+        """Stop the receipt polling thread.
+
+        Sprint 5.39: Sets the running flag to False, causing the
+        polling loop to exit on its next iteration.
+        """
+        self._receipt_polling_running = False
+        if self._receipt_polling_thread is not None:
+            self._receipt_polling_thread.join(timeout=5)
+            self._receipt_polling_thread = None
+        logger.info("receipt_polling_stopped")
+
+    def poll_email_delivery_status(self) -> dict:
+        """Poll for email delivery status updates.
+
+        Sprint 5.39: For each correlation_id that has email delivery
+        but no confirmed read/delivery status, checks the webhook URL
+        for updates. Updates internal tracking and returns a summary.
+
+        If email_delivery_webhook_url is configured, POSTs to it with
+        the correlation_ids to check. Otherwise, marks email as "sent"
+        for tracking purposes.
+
+        Returns a dict summarizing the polling results.
+        """
+        if not self._config.delivery_receipt_polling_enabled:
+            return {"polled": 0, "updated": 0}
+
+        self._total_receipt_polls += 1
+        updated = 0
+        polled = 0
+
+        with self._lock:
+            # Find correlation IDs with email channel that need status updates
+            pending_cids = []
+            for cid, receipts in self._delivery_receipts.items():
+                if "email" in receipts:
+                    email_receipt = receipts["email"]
+                    current_status = email_receipt.get("delivery_status", "unknown")
+                    # Only poll for emails that are "sent" or "delivered" but not yet "read"
+                    if current_status in ("sent", "delivered", "unknown"):
+                        pending_cids.append(cid)
+
+        if not pending_cids:
+            return {"polled": 0, "updated": 0}
+
+        # If webhook URL is configured, poll it for status updates
+        if self._config.email_delivery_webhook_url:
+            try:
+                payload = json.dumps({
+                    "action": "check_delivery_status",
+                    "correlation_ids": pending_cids,
+                }).encode("utf-8")
+
+                req = urllib.request.Request(
+                    self._config.email_delivery_webhook_url,
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    if resp.status == 200:
+                        body = resp.read().decode("utf-8")
+                        try:
+                            results = json.loads(body)
+                            if isinstance(results, dict):
+                                statuses = results.get("statuses", {})
+                                for cid, status_info in statuses.items():
+                                    if isinstance(status_info, dict):
+                                        self.update_email_delivery_status(
+                                            cid,
+                                            status_info.get("status", "unknown"),
+                                            status_info,
+                                        )
+                                        updated += 1
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
+                polled = len(pending_cids)
+            except Exception as exc:
+                logger.debug(
+                    "email_delivery_poll_failed",
+                    error=str(exc),
+                )
+                polled = len(pending_cids)
+        else:
+            # No webhook URL — mark as "sent" for tracking if not already tracked
+            for cid in pending_cids:
+                with self._lock:
+                    if cid not in self._email_delivery_statuses:
+                        self._email_delivery_statuses[cid] = {
+                            "email": {
+                                "status": "sent",
+                                "updated_at": datetime.now(timezone.utc).isoformat(),
+                            }
+                        }
+                        updated += 1
+                polled += 1
+
+        if updated > 0:
+            self._total_email_status_updates += updated
+            logger.debug(
+                "email_delivery_poll_updated",
+                polled=polled,
+                updated=updated,
+            )
+
+        return {"polled": polled, "updated": updated}
+
+    def update_email_delivery_status(
+        self, correlation_id: str, status: str, details: dict[str, Any]
+    ) -> None:
+        """Update the email delivery status for a correlation ID.
+
+        Sprint 5.39: Merges new status information with existing
+        delivery receipt data. Tracks status progression:
+        sent → delivered → read (or bounced/failed).
+        """
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        with self._lock:
+            # Update email delivery statuses
+            if correlation_id not in self._email_delivery_statuses:
+                self._email_delivery_statuses[correlation_id] = {}
+
+            self._email_delivery_statuses[correlation_id]["email"] = {
+                "status": status,
+                "updated_at": now_iso,
+                **{k: v for k, v in details.items() if k != "status"},
+            }
+
+            # Also merge into delivery receipts if that channel exists
+            if correlation_id in self._delivery_receipts:
+                if "email" in self._delivery_receipts[correlation_id]:
+                    self._delivery_receipts[correlation_id]["email"].update({
+                        "delivery_status": status,
+                        "email_poll_updated_at": now_iso,
+                    })
+                else:
+                    self._delivery_receipts[correlation_id]["email"] = {
+                        "delivery_status": status,
+                        "confirmed_at": now_iso,
+                        "email_poll_updated_at": now_iso,
+                    }
+
+        self._total_email_status_updates += 1
+        logger.debug(
+            "email_delivery_status_updated",
+            correlation_id=correlation_id,
+            status=status,
+        )
+
+    def get_enhanced_delivery_receipts(self, correlation_id: str) -> dict[str, Any]:
+        """Return delivery receipts with email polling status merged.
+
+        Sprint 5.39: Like get_delivery_receipts but includes email
+        polling status from _email_delivery_statuses, providing a
+        complete view of per-channel delivery status including email.
+        """
+        with self._lock:
+            receipts = dict(self._delivery_receipts.get(correlation_id, {}))
+
+            # Merge email polling status
+            email_status = self._email_delivery_statuses.get(correlation_id, {})
+            if "email" in email_status:
+                if "email" in receipts:
+                    receipts["email"].update(email_status["email"])
+                else:
+                    receipts["email"] = dict(email_status["email"])
+
+            return receipts
+
+    def get_delivery_polling_status(self) -> dict[str, Any]:
+        """Return delivery receipt polling status and metrics.
+
+        Sprint 5.39: For dashboard and API visibility into the
+        polling subsystem.
+        """
+        with self._lock:
+            return {
+                "enabled": self._config.delivery_receipt_polling_enabled,
+                "poll_interval_seconds": self._config.delivery_receipt_poll_interval_seconds,
+                "email_read_tracking_enabled": self._config.email_read_tracking_enabled,
+                "webhook_configured": bool(self._config.email_delivery_webhook_url),
+                "total_polls": self._total_receipt_polls,
+                "total_email_status_updates": self._total_email_status_updates,
+                "tracked_email_count": len(self._email_delivery_statuses),
+                "polling_active": self._receipt_polling_running,
+            }
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.39: Native WebSocket permessage-deflate
+    # -----------------------------------------------------------------------
+
+    def set_ws_permessage_deflate_negotiated(self, negotiated: bool) -> None:
+        """Set whether native permessage-deflate was negotiated.
+
+        Sprint 5.39: Called by the WebSocket handler after connection
+        setup to indicate whether the permessage-deflate extension was
+        successfully negotiated at the protocol level.
+        """
+        self._ws_permessage_deflate_negotiated = negotiated
+        if negotiated:
+            logger.info(
+                "ws_native_permessage_deflate_negotiated",
+                mode="native",
+            )
+
+    def compress_ws_message_native_aware(self, data: str) -> tuple[str, bool]:
+        """Compress a WebSocket message with native deflate awareness.
+
+        Sprint 5.39: When native permessage-deflate is enabled AND
+        successfully negotiated, this is a no-op since the protocol
+        layer handles compression transparently. Falls back to the
+        application-level compress_ws_message when native deflate
+        is not available.
+        """
+        if not self._config.ws_compression_enabled:
+            return data, False
+
+        # If native permessage-deflate is active, protocol handles it
+        if (self._config.ws_native_permessage_deflate_enabled
+                and self._ws_permessage_deflate_negotiated):
+            # No application-level compression needed — protocol does it
+            return data, False
+
+        # Fall back to application-level compression
+        return self.compress_ws_message(data)
+
+    def decompress_ws_message_native_aware(self, data: str) -> str:
+        """Decompress a WebSocket message with native deflate awareness.
+
+        Sprint 5.39: When native permessage-deflate is active, the
+        protocol layer handles decompression transparently, so this
+        is a no-op. Falls back to application-level decompression
+        otherwise.
+        """
+        if (self._config.ws_native_permessage_deflate_enabled
+                and self._ws_permessage_deflate_negotiated):
+            # Protocol layer handles decompression — data is already plain text
+            return data
+
+        # Fall back to application-level decompression
+        return self.decompress_ws_message(data)
+
+    def get_native_deflate_status(self) -> dict[str, Any]:
+        """Return native permessage-deflate status and metrics.
+
+        Sprint 5.39: For dashboard and API visibility.
+        """
+        mode = "disabled"
+        if self._config.ws_native_permessage_deflate_enabled:
+            if self._ws_permessage_deflate_negotiated:
+                mode = "native"
+            else:
+                mode = "fallback_application_level"
+        elif self._config.ws_compression_enabled:
+            mode = "application_level"
+
+        return {
+            "native_enabled": self._config.ws_native_permessage_deflate_enabled,
+            "native_negotiated": self._ws_permessage_deflate_negotiated,
+            "app_level_enabled": self._config.ws_compression_enabled,
+            "mode": mode,
+            "bytes_saved_estimate": self._ws_compression_bytes_saved_estimate,
+        }

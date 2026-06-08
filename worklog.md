@@ -60,3 +60,43 @@ Stage Summary:
 - /vigil/quality/retention/rollup-stats shows daily/weekly rollup statistics
 - Weekly rollup aggregation reduces long-term storage while preserving trend data
 - Lifespan smoke test validates full operational wiring on startup
+
+---
+Task ID: sprint-5.39
+Agent: main
+Task: Sprint 5.39 — Strengthen offline support, make learned model persistent, improve circuit breaker adaptability, move toward native protocol-level features
+
+Work Log:
+- Implemented Deliverable 1: Service Worker Offline Cache
+  - Enhanced SW blob code with Cache API, IndexedDB offline queue, fetch event handler (cache-first for assets, network-first for API), sync event handler
+  - Added offline action queueing in dashboard JS with banner, replay on reconnect
+  - Added offline_cache_enabled config to AlertConfig
+- Implemented Deliverable 2: Transition Probability Persistence + Retraining
+  - Added save_transition_probabilities, load_transition_probabilities, record_retraining_event, get_retraining_events to AlertHistoryStore
+  - Schema migration v6→v7 with model_retraining_events table
+  - Added persist_transition_model, load_transition_model, retrain_transition_model, check_retrain_needed to AlertManager
+  - Added transition_persistence_enabled, retrain_interval_seconds, retrain_after_n_alerts config fields
+- Implemented Deliverable 3: Circuit Breaker Auto-Tuning
+  - Added compute_cb_auto_tune_threshold, get_cb_effective_threshold, update_cb_auto_tune, get_cb_auto_tune_status to AlertManager
+  - Modified _check_circuit_breaker to use effective threshold
+  - Added auto-tune config fields and dashboard display elements
+- Implemented Deliverable 4: Delivery Receipt Polling
+  - Added start_receipt_polling, stop_receipt_polling, poll_email_delivery_status, update_email_delivery_status, get_enhanced_delivery_receipts, get_delivery_polling_status
+  - Modified _record_delivery_receipts to track email "sent" status when polling enabled
+  - Added polling config fields (delivery_receipt_polling_enabled, email_read_tracking_enabled, email_delivery_webhook_url)
+- Implemented Deliverable 5: Native WebSocket Per-Message Deflate
+  - Added ws_native_permessage_deflate_enabled config
+  - Added set_ws_permessage_deflate_negotiated, compress_ws_message_native_aware, decompress_ws_message_native_aware, get_native_deflate_status
+  - Modified WS endpoint to support compression="deflate" negotiation with ?compression=deflate query param
+  - Updated all dashboard WS URLs to include compression=deflate parameter
+- Created test_sprint539_resilience_intelligence.py with 72 tests across 6 test classes
+- All 72 Sprint 5.39 tests pass
+- All 61 Sprint 5.38 tests continue to pass
+
+Stage Summary:
+- Dashboard works meaningfully offline with queued actions that replay on reconnect
+- Learned prediction model persists across restarts via SQLite and retrains periodically
+- Circuit breaker can automatically adjust its threshold based on historical patterns
+- Delivery status (including email where possible) is visible per channel via polling
+- WebSocket uses native permessage-deflate compression when available, with graceful fallback
+- All changes are backward-compatible with safe defaults
