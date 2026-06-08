@@ -94,8 +94,11 @@ _DEFAULT_MAX_ALERT_ROWS = 5000
 # Default maximum number of delivery failure rows to retain
 _DEFAULT_MAX_FAILURE_ROWS = 1000
 
-# Schema version for migrations (Sprint 5.32: v4 adds delivery status updates)
-_SCHEMA_VERSION = 4
+# Default maximum number of delivery status rows to retain (Sprint 5.33)
+_DEFAULT_MAX_DELIVERY_STATUS_ROWS = 2000
+
+# Schema version for migrations (Sprint 5.33: v5 adds alert_groups table)
+_SCHEMA_VERSION = 5
 
 
 class AlertHistoryStore:
@@ -309,6 +312,24 @@ class AlertHistoryStore:
                     conn.execute("""
                         CREATE INDEX IF NOT EXISTS idx_delivery_status_correlation_id
                         ON alert_delivery_status (correlation_id)
+                    """)
+
+                # Sprint 5.33: Schema migration v4 -> v5
+                # Add alert_groups table for persistent alert grouping
+                if current_version < 5:
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS alert_groups (
+                            group_key TEXT NOT NULL,
+                            correlation_id TEXT NOT NULL,
+                            created_at TEXT NOT NULL,
+                            PRIMARY KEY (group_key, correlation_id)
+                        )
+                    """)
+
+                    # Index for group_key lookups
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_alert_groups_group_key
+                        ON alert_groups (group_key)
                     """)
 
             self._initialized = True
@@ -918,6 +939,8 @@ class AlertHistoryStore:
         Sprint 5.31: Persists the per-transport delivery outcomes so
         operators can query the status of any alert by correlation ID,
         even after a process restart.
+
+        Sprint 5.33: Auto-prunes delivery status after recording.
         """
         if not self._initialized:
             self.initialize()
@@ -944,6 +967,9 @@ class AlertHistoryStore:
                     status_dict.get("completed_at", ""),
                     now,
                 ))
+
+            # Sprint 5.33: Auto-prune delivery status after recording
+            self.prune_delivery_status()
 
             return True
         except Exception as exc:
@@ -1227,3 +1253,174 @@ class AlertHistoryStore:
                     """, (self._max_failure_rows,))
         except Exception as exc:
             logger.warning("alert_failure_store_prune_failed", error=str(exc))
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.33: Alert group persistence
+    # -----------------------------------------------------------------------
+
+    def record_alert_group(self, group_key: str, correlation_id: str) -> bool:
+        """Persist an alert group membership to SQLite.
+
+        Sprint 5.33: Records that a correlation_id belongs to a group_key
+        so alert groups survive process restarts.
+
+        Returns True if successfully recorded, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("""
+                    INSERT OR IGNORE INTO alert_groups (group_key, correlation_id, created_at)
+                    VALUES (?, ?, ?)
+                """, (group_key, correlation_id, now))
+            return True
+        except Exception as exc:
+            logger.warning(
+                "alert_group_record_failed",
+                group_key=group_key,
+                correlation_id=correlation_id,
+                error=str(exc),
+            )
+            return False
+
+    def get_alert_groups(self) -> dict[str, list[str]]:
+        """Load all alert groups from SQLite.
+
+        Sprint 5.33: Rebuilds the in-memory _alert_groups dict from
+        persistent storage on startup.
+
+        Returns a dict mapping group_key -> list of correlation_ids.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT group_key, correlation_id
+                    FROM alert_groups
+                    ORDER BY created_at ASC
+                """)
+                rows = cursor.fetchall()
+
+            result: dict[str, list[str]] = {}
+            for row in rows:
+                gk = row["group_key"]
+                cid = row["correlation_id"]
+                if gk not in result:
+                    result[gk] = []
+                result[gk].append(cid)
+
+            return result
+        except Exception as exc:
+            logger.warning("alert_groups_load_failed", error=str(exc))
+            return {}
+
+    def delete_alert_group(self, group_key: str) -> bool:
+        """Delete a group from persistent storage.
+
+        Sprint 5.33: Used for cleanup when a group is removed.
+
+        Returns True if any rows were deleted, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                cursor = conn.execute("""
+                    DELETE FROM alert_groups WHERE group_key = ?
+                """, (group_key,))
+                return cursor.rowcount > 0
+        except Exception as exc:
+            logger.warning(
+                "alert_group_delete_failed",
+                group_key=group_key,
+                error=str(exc),
+            )
+            return False
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.33: Delivery status auto-pruning
+    # -----------------------------------------------------------------------
+
+    def prune_delivery_status(
+        self,
+        max_rows: int = _DEFAULT_MAX_DELIVERY_STATUS_ROWS,
+        max_age_days: int = 30,
+    ) -> int:
+        """Prune delivery status records by age and count.
+
+        Sprint 5.33: Deletes records older than max_age_days days,
+        then if still over max_rows, deletes oldest records keeping
+        only max_rows.
+
+        Returns the number of deleted records.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        deleted = 0
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+
+                # Delete records older than max_age_days
+                if max_age_days > 0:
+                    import time as _time
+                    cutoff = datetime.fromtimestamp(
+                        _time.time() - (max_age_days * 86400),
+                        tz=timezone.utc,
+                    ).isoformat()
+                    cursor = conn.execute("""
+                        DELETE FROM alert_delivery_status
+                        WHERE created_at < ?
+                    """, (cutoff,))
+                    deleted += cursor.rowcount
+
+                # If still over max_rows, delete oldest records
+                count = conn.execute("SELECT COUNT(*) FROM alert_delivery_status").fetchone()[0]
+                if count > max_rows:
+                    cursor = conn.execute("""
+                        DELETE FROM alert_delivery_status
+                        WHERE id NOT IN (
+                            SELECT id FROM alert_delivery_status
+                            ORDER BY created_at DESC
+                            LIMIT ?
+                        )
+                    """, (max_rows,))
+                    deleted += cursor.rowcount
+
+            if deleted > 0:
+                logger.info(
+                    "delivery_status_pruned",
+                    deleted=deleted,
+                    max_rows=max_rows,
+                    max_age_days=max_age_days,
+                )
+
+            return deleted
+        except Exception as exc:
+            logger.warning("delivery_status_prune_failed", error=str(exc))
+            return 0
+
+    def get_delivery_status_count(self) -> int:
+        """Return the total number of delivery status rows.
+
+        Sprint 5.33: Used by the stats endpoint to report row counts.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                cursor = conn.execute("SELECT COUNT(*) FROM alert_delivery_status")
+                return cursor.fetchone()[0]
+        except Exception:
+            return 0

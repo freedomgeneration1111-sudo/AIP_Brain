@@ -746,6 +746,45 @@ async def vigil_alert_delivery_status(
 
 
 # ---------------------------------------------------------------------------
+# Sprint 5.33: Delivery status statistics
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vigil/quality/alerts/delivery-status/stats")
+async def vigil_delivery_status_stats(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.33: Get delivery status statistics.
+
+    Returns counts and summary stats for delivery status records,
+    including total count, status breakdown, and oldest/newest timestamps.
+    Useful for monitoring the delivery pipeline health and pruning status.
+    """
+    alert_history_store = getattr(container, "_alert_history_store", None)
+
+    if alert_history_store is None:
+        return {
+            "status": "history_store_not_configured",
+            "stats": {},
+        }
+
+    try:
+        count = alert_history_store.get_delivery_status_count()
+        return {
+            "status": "ok",
+            "stats": {
+                "total_delivery_status_records": count,
+            },
+        }
+    except Exception as exc:
+        logger.warning("vigil_delivery_status_stats_failed", error=str(exc))
+        return {
+            "status": "error",
+            "stats": {"error": str(exc)},
+        }
+
+
+# ---------------------------------------------------------------------------
 # Sprint 5.31: Alert silencing / muting rules
 # ---------------------------------------------------------------------------
 
@@ -919,11 +958,15 @@ async def vigil_quality_sse(
 async def vigil_quality_websocket(
     websocket: WebSocket,
 ) -> None:
-    """Sprint 5.32: WebSocket endpoint for bidirectional dashboard communication.
+    """Sprint 5.32 → 5.33: WebSocket endpoint for bidirectional dashboard communication.
 
     Allows the dashboard to:
     - Receive real-time alert events (same events as SSE)
-    - Send commands: acknowledge, dismiss, mute
+    - Send commands: acknowledge, dismiss, mute, unmute, bulk_acknowledge, bulk_dismiss
+
+    Sprint 5.33: Added WebSocket authentication and rate limiting.
+    - Accepts `token` query param, validated against ws_auth_token config
+    - Rate limits commands per connection (max ws_rate_limit_per_minute per minute)
 
     Command protocol (JSON messages from client):
     - {"action": "acknowledge", "alert_id": <int>}
@@ -933,12 +976,22 @@ async def vigil_quality_websocket(
     - {"action": "bulk_acknowledge", "group_key": "<str>"}
     - {"action": "bulk_dismiss", "group_key": "<str>"}
     """
-    await websocket.accept()
-
-    # Get the container and alert manager from app state
-    # (WebSocket endpoints don't support Depends, so we access app state)
+    # Sprint 5.33: Authentication check via token query param
     container = websocket.app.state.container if hasattr(websocket.app.state, "container") else None
     alert_manager = getattr(container, "_alert_manager", None) if container else None
+
+    if alert_manager is not None and alert_manager.config.ws_auth_token:
+        token = websocket.query_params.get("token", "")
+        if token != alert_manager.config.ws_auth_token:
+            await websocket.close(code=4001, reason="Unauthorized: invalid token")
+            return
+
+    await websocket.accept()
+
+    # Sprint 5.33: Rate limiting state per connection
+    _ws_command_timestamps: list[float] = []
+    import time as _time
+    _ws_rate_limit = alert_manager.config.ws_rate_limit_per_minute if alert_manager else 60
 
     # Register as a WebSocket subscriber for real-time events
     if alert_manager is not None:
@@ -985,6 +1038,17 @@ async def vigil_quality_websocket(
 
                     action = command.get("action", "")
                     result = {"event": "command_result", "action": action}
+
+                    # Sprint 5.33: Rate limiting per connection
+                    now_ts = _time.time()
+                    _ws_command_timestamps.append(now_ts)
+                    # Prune timestamps older than 60 seconds
+                    _ws_command_timestamps[:] = [t for t in _ws_command_timestamps if now_ts - t < 60]
+                    if len(_ws_command_timestamps) > _ws_rate_limit:
+                        result["error"] = "rate_limited"
+                        result["retry_after_seconds"] = 60
+                        await websocket.send_json(result)
+                        continue
 
                     if alert_manager is None:
                         result["status"] = "alerting_not_configured"
@@ -1341,6 +1405,27 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                    color: #94a3b8; margin-left: 12px; }
   .sse-dot { width: 6px; height: 6px; border-radius: 50%; background: #4ade80; }
   .sse-dot.disconnected { background: #f87171; }
+  /* Sprint 5.33: Connection status indicator */
+  .conn-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
+                 color: #94a3b8; margin-left: 12px; padding: 2px 8px;
+                 background: #1e293b; border-radius: 4px; border: 1px solid #334155; }
+  .conn-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .conn-dot.connected { background: #4ade80; animation: pulse 2s infinite; }
+  .conn-dot.connecting { background: #f59e0b; }
+  .conn-dot.disconnected { background: #f87171; }
+  .conn-dot.fallback { background: #3b82f6; }
+  /* Sprint 5.33: Action buttons panel */
+  .action-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px;
+                flex-wrap: wrap; }
+  .action-bar button { background: #3b82f6; color: white; border: none; padding: 6px 14px;
+                       border-radius: 4px; cursor: pointer; font-size: 12px; }
+  .action-bar button:hover { background: #2563eb; }
+  .action-bar button.warn { background: #f59e0b; color: #0f172a; }
+  .action-bar button.warn:hover { background: #d97706; }
+  .action-bar button.danger { background: #ef4444; }
+  .action-bar button.danger:hover { background: #dc2626; }
+  .action-bar input { background: #1e293b; border: 1px solid #475569;
+           color: #e2e8f0; padding: 5px 10px; border-radius: 4px; font-size: 12px; width: 120px; }
 </style>
 </head>
 <body>
@@ -1368,6 +1453,11 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   <button id="liveBtn" onclick="toggleLive()" title="Toggle auto-refresh">
     <span id="liveDot" class="live-indicator off"></span>Live
   </button>
+  <!-- Sprint 5.33: Connection status indicator -->
+  <span id="connStatus" class="conn-status">
+    <span id="connDot" class="conn-dot disconnected"></span>
+    <span id="connLabel">Disconnected</span>
+  </span>
   <span id="sseStatus" class="sse-indicator" style="display:none">
     <span id="sseDot" class="sse-dot"></span>SSE
   </span>
@@ -1379,6 +1469,20 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   <label><input type="checkbox" id="tog-grounding" checked> Grounding Rate</label>
   <label><input type="checkbox" id="tog-faithfulness" checked> Faithfulness</label>
   <label><input type="checkbox" id="tog-flag" checked> Flag Rate</label>
+</div>
+
+<!-- Sprint 5.33: Action buttons for WebSocket commands -->
+<div class="action-bar" id="actionBar">
+  <input type="number" id="actionAlertId" placeholder="Alert ID">
+  <button onclick="wsAcknowledge()">Acknowledge</button>
+  <button onclick="wsDismiss()" class="danger">Dismiss</button>
+  <input type="text" id="actionMuteType" placeholder="Alert type" size="12">
+  <input type="text" id="actionMuteSubject" placeholder="Subject" size="12">
+  <button onclick="wsMute()" class="warn">Mute</button>
+  <button onclick="wsUnmute()" class="warn">Unmute</button>
+  <input type="text" id="actionGroupKey" placeholder="Group key" size="14">
+  <button onclick="wsBulkAcknowledge()">Bulk Ack</button>
+  <button onclick="wsBulkDismiss()" class="danger">Bulk Dismiss</button>
 </div>
 
 <div class="grid" id="summary-cards"></div>
@@ -1416,9 +1520,154 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <script>
 const API_URL = '../vigil/quality';
 const ALERTS_URL = '../vigil/quality/alerts';
+const WS_URL = ((location.protocol === 'https:') ? 'wss:' : 'ws:') + '//' + location.host + '../vigil/quality/dashboard/ws';
 let currentData = null;
 let liveInterval = null;
 let isLive = false;
+
+// Sprint 5.33: WebSocket connection with SSE fallback
+let ws = null;
+let wsConnected = false;
+let useWS = true;  // Prefer WebSocket, fall back to SSE
+
+function updateConnStatus(state, label) {
+  const dot = document.getElementById('connDot');
+  const lbl = document.getElementById('connLabel');
+  dot.className = 'conn-dot ' + state;
+  lbl.textContent = label || state;
+}
+
+function connectWebSocket() {
+  if (!useWS) return;
+  try {
+    const wsProto = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+    const wsUrl = wsProto + '//' + location.host + '/vigil/quality/dashboard/ws';
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      wsConnected = true;
+      updateConnStatus('connected', 'WS Connected');
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.event === 'keepalive') return;
+        if (msg.event === 'ws_connected') return;
+        // Refresh alerts on any alert-related event
+        if (msg.event && msg.event.startsWith('alert_')) {
+          fetchAlerts();
+        }
+      } catch (err) {}
+    };
+
+    ws.onclose = () => {
+      wsConnected = false;
+      updateConnStatus('disconnected', 'WS Disconnected');
+      // Reconnect after 3 seconds
+      setTimeout(() => { if (useWS) connectWebSocket(); }, 3000);
+    };
+
+    ws.onerror = () => {
+      wsConnected = false;
+      updateConnStatus('disconnected', 'WS Error');
+      // Fall back to SSE
+      useWS = false;
+      ws = null;
+      updateConnStatus('fallback', 'SSE Fallback');
+      connectSSE();
+    };
+  } catch (err) {
+    useWS = false;
+    updateConnStatus('fallback', 'SSE Fallback');
+    connectSSE();
+  }
+}
+
+// Sprint 5.33: Send command via WebSocket or HTTP POST
+function wsSendCommand(command) {
+  if (wsConnected && ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(command));
+  } else {
+    // SSE fallback: use HTTP POST to REST endpoints
+    httpFallback(command);
+  }
+}
+
+function httpFallback(command) {
+  const action = command.action;
+  if (action === 'acknowledge') {
+    fetch('../vigil/quality/alerts/' + command.alert_id + '/acknowledge', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({acknowledged_by: command.acknowledged_by || 'dashboard'})
+    }).then(r => { if (r.ok) fetchAlerts(); }).catch(() => {});
+  } else if (action === 'dismiss') {
+    fetch('../vigil/quality/alerts/' + command.alert_id + '/dismiss', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({dismissed_by: command.dismissed_by || 'dashboard'})
+    }).then(r => { if (r.ok) fetchAlerts(); }).catch(() => {});
+  } else if (action === 'mute') {
+    fetch('../vigil/quality/alerts/mute', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({alert_type: command.alert_type, subject: command.subject,
+                            duration_seconds: command.duration_seconds || 3600, muted_by: 'dashboard'})
+    }).then(r => { if (r.ok) fetchMuteRules(); }).catch(() => {});
+  } else if (action === 'unmute') {
+    fetch('../vigil/quality/alerts/mute?alert_type=' + encodeURIComponent(command.alert_type) +
+          '&subject=' + encodeURIComponent(command.subject), {
+      method: 'DELETE'
+    }).then(r => { if (r.ok) fetchMuteRules(); }).catch(() => {});
+  } else if (action === 'bulk_acknowledge') {
+    fetch('../vigil/quality/alerts/groups/bulk-acknowledge', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({group_key: command.group_key, acted_by: 'dashboard'})
+    }).then(r => { if (r.ok) fetchAlerts(); }).catch(() => {});
+  } else if (action === 'bulk_dismiss') {
+    fetch('../vigil/quality/alerts/groups/bulk-dismiss', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({group_key: command.group_key, acted_by: 'dashboard'})
+    }).then(r => { if (r.ok) fetchAlerts(); }).catch(() => {});
+  }
+}
+
+// Sprint 5.33: Action button handlers — send commands via WS or HTTP
+function wsAcknowledge() {
+  const alertId = document.getElementById('actionAlertId').value;
+  if (!alertId) return;
+  wsSendCommand({action: 'acknowledge', alert_id: parseInt(alertId), acknowledged_by: 'dashboard'});
+}
+
+function wsDismiss() {
+  const alertId = document.getElementById('actionAlertId').value;
+  if (!alertId) return;
+  wsSendCommand({action: 'dismiss', alert_id: parseInt(alertId), dismissed_by: 'dashboard'});
+}
+
+function wsMute() {
+  const type = document.getElementById('actionMuteType').value;
+  const subject = document.getElementById('actionMuteSubject').value;
+  if (!type || !subject) return;
+  wsSendCommand({action: 'mute', alert_type: type, subject: subject, duration_seconds: 3600});
+}
+
+function wsUnmute() {
+  const type = document.getElementById('actionMuteType').value;
+  const subject = document.getElementById('actionMuteSubject').value;
+  if (!type || !subject) return;
+  wsSendCommand({action: 'unmute', alert_type: type, subject: subject});
+}
+
+function wsBulkAcknowledge() {
+  const groupKey = document.getElementById('actionGroupKey').value;
+  if (!groupKey) return;
+  wsSendCommand({action: 'bulk_acknowledge', group_key: groupKey, acknowledged_by: 'dashboard'});
+}
+
+function wsBulkDismiss() {
+  const groupKey = document.getElementById('actionGroupKey').value;
+  if (!groupKey) return;
+  wsSendCommand({action: 'bulk_dismiss', group_key: groupKey, dismissed_by: 'dashboard'});
+}
 
 // Toggle metric visibility checkboxes
 ['citation','grounding','faithfulness','flag'].forEach(m => {
@@ -1467,7 +1716,7 @@ function renderSummary(data) {
   }).join('');
 }
 
-// Sprint 5.29→5.30: Fetch and render alerts panel with acknowledgment support
+// Sprint 5.29→5.33: Fetch and render alerts panel with acknowledgment support
 async function fetchAlerts() {
   try {
     const resp = await fetch(ALERTS_URL + '?limit=10');
@@ -1488,7 +1737,6 @@ async function fetchAlerts() {
       const ts = a.timestamp || '';
       const ack = a.acknowledged || 0;
       const alertId = a.id || '';
-      // Sprint 5.30: Add acknowledged/dismissed visual distinction
       let ackClass = '';
       let ackBadge = '';
       let actionBtns = '';
@@ -1499,7 +1747,6 @@ async function fetchAlerts() {
         ackClass = ' dismissed';
         ackBadge = '<span class="ack-badge ack-2">DISMISSED</span>';
       } else if (alertId) {
-        // Only show action buttons for open alerts with an ID
         actionBtns = '<span class="alert-actions">'
           + '<button class="btn-ack" onclick="ackAlert(' + alertId + ')">Ack</button>'
           + '<button class="btn-dismiss" onclick="dismissAlert(' + alertId + ')">Dismiss</button>'
@@ -1518,28 +1765,13 @@ async function fetchAlerts() {
   }
 }
 
-// Sprint 5.30: Acknowledge an alert via API
+// Sprint 5.30→5.33: Acknowledge/dismiss via WS command or HTTP fallback
 async function ackAlert(alertId) {
-  try {
-    const resp = await fetch('../vigil/quality/alerts/' + alertId + '/acknowledge', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({acknowledged_by: 'dashboard'})
-    });
-    if (resp.ok) fetchAlerts();
-  } catch (err) {}
+  wsSendCommand({action: 'acknowledge', alert_id: alertId, acknowledged_by: 'dashboard'});
 }
 
-// Sprint 5.30: Dismiss an alert via API
 async function dismissAlert(alertId) {
-  try {
-    const resp = await fetch('../vigil/quality/alerts/' + alertId + '/dismiss', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({dismissed_by: 'dashboard'})
-    });
-    if (resp.ok) fetchAlerts();
-  } catch (err) {}
+  wsSendCommand({action: 'dismiss', alert_id: alertId, dismissed_by: 'dashboard'});
 }
 
 // Sprint 5.31: Mute rules management
@@ -1573,25 +1805,19 @@ async function addMuteRule() {
     const subject = document.getElementById('mute-subject').value;
     const duration = parseInt(document.getElementById('mute-duration').value) || 3600;
     if (!type || !subject) return;
-    const resp = await fetch('../vigil/quality/alerts/mute', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({alert_type: type, subject: subject, duration_seconds: duration, muted_by: 'dashboard'})
-    });
-    if (resp.ok) { fetchMuteRules(); document.getElementById('mute-type').value = ''; document.getElementById('mute-subject').value = ''; }
+    wsSendCommand({action: 'mute', alert_type: type, subject: subject, duration_seconds: duration});
+    fetchMuteRules();
+    document.getElementById('mute-type').value = '';
+    document.getElementById('mute-subject').value = '';
   } catch (err) {}
 }
 
 async function removeMuteRule(type, subject) {
-  try {
-    const resp = await fetch('../vigil/quality/alerts/mute?alert_type=' + encodeURIComponent(type) + '&subject=' + encodeURIComponent(subject), {
-      method: 'DELETE'
-    });
-    if (resp.ok) fetchMuteRules();
-  } catch (err) {}
+  wsSendCommand({action: 'unmute', alert_type: type, subject: subject});
+  fetchMuteRules();
 }
 
-// Sprint 5.31: SSE (Server-Sent Events) for real-time updates
+// Sprint 5.31→5.33: SSE (Server-Sent Events) for real-time updates (fallback)
 let sseConnected = false;
 function connectSSE() {
   try {
@@ -1742,12 +1968,10 @@ async function fetchData() {
   try {
     let url;
     if (range && range !== '0') {
-      // Time-range mode: calculate the 'since' timestamp
       const days = parseInt(range);
       const since = new Date(Date.now() - days * 86400000).toISOString();
       url = API_URL + '?since=' + encodeURIComponent(since) + '&limit=500';
     } else {
-      // Cycle count mode
       url = API_URL + '?last_n_cycles=' + cycles;
     }
 
@@ -1776,7 +2000,7 @@ function toggleLive() {
   if (isLive) {
     btn.classList.add('active');
     dot.classList.remove('off');
-    liveInterval = setInterval(() => { fetchData(); fetchAlerts(); }, 10000); // Poll every 10s
+    liveInterval = setInterval(() => { fetchData(); fetchAlerts(); }, 10000);
   } else {
     btn.classList.remove('active');
     dot.classList.add('off');
@@ -1785,11 +2009,12 @@ function toggleLive() {
   }
 }
 
-// Auto-load on page load
+// Auto-load on page load — Sprint 5.33: Try WebSocket first, fall back to SSE
 fetchData();
 fetchAlerts();
 fetchMuteRules();
-connectSSE();
+updateConnStatus('connecting', 'Connecting...');
+connectWebSocket();
 </script>
 
 </body>

@@ -224,6 +224,14 @@ class AlertConfig:
     # When set, these override the global digest settings for specific alert types.
     # Example: {"batch_reduction": {"interval_minutes": 5, "min_alerts": 2}}
     digest_overrides: dict[str, dict[str, int]] = field(default_factory=dict)
+    # Sprint 5.33: Delivery status auto-pruning max age
+    delivery_status_max_age_days: int = 30
+    # Sprint 5.33: WebSocket authentication and rate limiting
+    ws_auth_token: str = ""
+    ws_rate_limit_per_minute: int = 60
+    # Sprint 5.33: Causal alert grouping
+    causal_grouping_enabled: bool = False
+    causal_grouping_window_seconds: int = 300
 
 
 # ---------------------------------------------------------------------------
@@ -927,6 +935,14 @@ class AlertManager:
                 "failure": dict(self._delivery_failure_by_transport),
             },
             "alert_groups": len(self._alert_groups),
+            # Sprint 5.33: New config fields in status
+            "delivery_status_max_age_days": self._config.delivery_status_max_age_days,
+            "ws_auth_configured": bool(self._config.ws_auth_token),
+            "ws_rate_limit_per_minute": self._config.ws_rate_limit_per_minute,
+            "causal_grouping": {
+                "enabled": self._config.causal_grouping_enabled,
+                "window_seconds": self._config.causal_grouping_window_seconds,
+            },
         }
 
     def get_alert_history(
@@ -1436,10 +1452,18 @@ class AlertManager:
         grouped together. This enables the dashboard to visually
         cluster related alerts and supports bulk actions on a group.
 
+        Sprint 5.33: Persists group membership to AlertHistoryStore
+        so groups survive process restarts. Also supports causal
+        grouping when enabled.
+
         Grouping rules (pragmatic, start simple):
         - Alerts with the same subject are grouped together
         - The group key is the subject string
         - Pool exhaustion + quality degradation on same store → same group
+        - When causal_grouping_enabled, alerts in the causal chain
+          (pool_adjustment → quality_degradation → batch_reduction)
+          sharing the same subject within the time window are grouped
+          under a `causal:{subject}` key.
         """
         if not alert.subject:
             return
@@ -1452,6 +1476,22 @@ class AlertManager:
             # Keep only last 50 correlation IDs per group
             if len(self._alert_groups[group_key]) > 50:
                 self._alert_groups[group_key] = self._alert_groups[group_key][-50:]
+
+            # Sprint 5.33: Persist group membership to store
+            if self._history_store is not None:
+                try:
+                    self._history_store.record_alert_group(group_key, correlation_id)
+                except Exception as exc:
+                    logger.warning(
+                        "alert_group_persist_failed",
+                        group_key=group_key,
+                        correlation_id=correlation_id,
+                        error=str(exc),
+                    )
+
+        # Sprint 5.33: Causal grouping
+        if self._config.causal_grouping_enabled:
+            self._add_causal_group(alert, correlation_id)
 
     def get_alert_groups(self) -> dict[str, list[str]]:
         """Return all alert correlation groups.
@@ -1661,6 +1701,9 @@ class AlertManager:
         # Sprint 5.32: Rebuild delivery status from persistent store
         self._rebuild_delivery_status()
 
+        # Sprint 5.33: Rebuild alert groups from persistent store
+        self._rebuild_alert_groups()
+
     def _rebuild_rate_limit_state(self) -> None:
         """Rebuild in-memory rate-limiting state from persistent store.
 
@@ -1720,6 +1763,81 @@ class AlertManager:
         except Exception as exc:
             logger.warning(
                 "alert_mute_rules_rebuild_failed",
+                error=str(exc),
+            )
+
+    # Sprint 5.33: Causal alert grouping
+
+    _CAUSAL_CHAIN = ["pool_adjustment", "quality_degradation", "batch_reduction"]
+
+    def _add_causal_group(self, alert: Alert, correlation_id: str) -> None:
+        """Add an alert to a causal group if it matches the causal chain.
+
+        Sprint 5.33: When causal_grouping_enabled is True, alerts with
+        alert_types in the causal chain (pool_adjustment →
+        quality_degradation → batch_reduction) that share the same
+        subject within the configured time window are grouped under
+        `causal:{subject}`.
+        """
+        if alert.alert_type not in self._CAUSAL_CHAIN:
+            return
+
+        causal_key = f"causal:{alert.subject}"
+        now = time.time()
+        window = self._config.causal_grouping_window_seconds
+
+        with self._lock:
+            if causal_key not in self._alert_groups:
+                self._alert_groups[causal_key] = []
+            self._alert_groups[causal_key].append(correlation_id)
+
+            # Keep only correlation IDs from alerts within the time window
+            # We keep up to 50 per causal group
+            if len(self._alert_groups[causal_key]) > 50:
+                self._alert_groups[causal_key] = self._alert_groups[causal_key][-50:]
+
+            # Persist to store
+            if self._history_store is not None:
+                try:
+                    self._history_store.record_alert_group(causal_key, correlation_id)
+                except Exception as exc:
+                    logger.warning(
+                        "causal_group_persist_failed",
+                        causal_key=causal_key,
+                        correlation_id=correlation_id,
+                        error=str(exc),
+                    )
+
+    def _rebuild_alert_groups(self) -> None:
+        """Rebuild in-memory alert groups from persistent store.
+
+        Sprint 5.33: On startup (or after attaching a history store),
+        queries the AlertHistoryStore for persisted alert group memberships
+        and populates _alert_groups. This ensures groups survive restarts.
+        """
+        if self._history_store is None:
+            return
+
+        try:
+            groups = self._history_store.get_alert_groups()
+            if groups:
+                with self._lock:
+                    for group_key, correlation_ids in groups.items():
+                        if group_key not in self._alert_groups:
+                            self._alert_groups[group_key] = []
+                        # Merge, avoiding duplicates
+                        existing = set(self._alert_groups[group_key])
+                        for cid in correlation_ids:
+                            if cid not in existing:
+                                self._alert_groups[group_key].append(cid)
+                                existing.add(cid)
+                logger.info(
+                    "alert_groups_rebuilt",
+                    groups_rebuilt=len(groups),
+                )
+        except Exception as exc:
+            logger.warning(
+                "alert_groups_rebuild_failed",
                 error=str(exc),
             )
 
