@@ -28,3 +28,35 @@ Stage Summary:
 - StoreHealthMixin now tracks operation-level metrics: last op time, total ops, avg latency
 - 14+ AI fingerprint patterns removed from beast.py and CLI modules
 - Auth session store fully migrated to persistent connection pattern with WAL mode
+
+---
+Task ID: sprint-5.28
+Agent: main
+Task: Sprint 5.28 — Alerting integration, admin endpoints, weekly rollup, lifespan smoke test
+
+Work Log:
+- Verified Sexton batch-reduction alert auto-wiring (already wired from Sprint 5.25)
+- Enhanced alert context data in Sexton _auto_tune_batch_size() to include window_size, min/max batch size
+- Added AlertManager.get_alert_history() method with filtering by alert_type, severity, since, limit
+- Created GET /vigil/quality/alerts endpoint with full filtering support and config status exposure
+- Created GET /vigil/quality/retention endpoint for retention status visibility
+- Created POST /vigil/quality/retention/rollup endpoint for manual daily/weekly rollup triggering
+- Created GET /vigil/quality/retention/rollup-stats endpoint for rollup statistics
+- Implemented VigilQualityStore.run_weekly_rollup() — aggregates daily rollups older than N weeks into weekly summaries
+- Implemented VigilQualityStore.get_rollup_stats() — returns daily/weekly rollup counts and time ranges
+- Added weekly_rollup_age_weeks parameter to VigilQualityStore constructor (default 4)
+- Updated app.py lifespan to pass weekly_rollup_age_weeks from config and schedule weekly rollup task
+- Updated app.py shutdown to cancel weekly rollup scheduler
+- Added Query parameter resolution for direct test calls to alerting endpoints
+- Created test_sprint528_operator_tooling.py with 27 tests across 6 test classes
+- All Sprint 5.27 tests (38) continue to pass
+- All Sprint 5.28 tests (27) pass
+- Pushed commit e2df1d3 to GitHub
+
+Stage Summary:
+- Batch size reductions in Sexton automatically generate alerts with full context
+- /vigil/quality/alerts endpoint surfaces history, delivery failures, and config status
+- /vigil/quality/retention and /vigil/quality/retention/rollup provide admin visibility and control
+- /vigil/quality/retention/rollup-stats shows daily/weekly rollup statistics
+- Weekly rollup aggregation reduces long-term storage while preserving trend data
+- Lifespan smoke test validates full operational wiring on startup
