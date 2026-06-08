@@ -3,19 +3,28 @@
 Sprint 5.25: Watches ``aip.config.toml`` for changes and reloads
 specific, low-risk configuration values without a full process restart.
 
+Sprint 5.26: Safety audit improvements:
+- Validation for hot-reloaded values (pool_size 1-20, batch_size respects min/max)
+- Rejection logging with clear messages
+- Admin endpoint for hot-reload status, pending/rejected changes
+- Support for ``[auto_tuning_policy]`` section hot-reload
+
 Supported hot-reload keys:
 - ``read_pool.pool_size`` — global pool size for read-heavy stores
 - ``read_pool.stores.*.pool_size`` — per-store pool size overrides
 - ``sexton.graph_extraction_batch_size`` — graph extraction batch size
 - ``sexton.graph_extraction_batch_size_max`` — max batch size cap
 - ``sexton.graph_extraction_batch_size_min`` — min batch size floor
+- ``auto_tuning_policy.*`` — auto-tuning policy parameters (Sprint 5.26)
 
 Design principles:
 - Conservative — only reload specific, low-risk values
 - Non-blocking — file checks are synchronous and fast (stat-based)
 - Debounced — coalesces rapid edits within a 2-second window
 - Observable — all reloads are logged and exposed via status endpoint
-- Safe — parsing errors never crash the process; bad values are ignored
+- Safe — parsing errors never crash the process; bad values are rejected
+- Validated — values are checked against safe ranges before applying
+  (Sprint 5.26)
 
 Implementation uses periodic polling (not inotify) for maximum
 portability across Linux, macOS, and CI environments.
@@ -26,6 +35,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +53,37 @@ _DEBOUNCE_INTERVAL = 2.0
 _HOT_RELOADABLE_KEYS = frozenset({
     "read_pool",
     "sexton",
+    "auto_tuning_policy",  # Sprint 5.26
 })
+
+# ---------------------------------------------------------------------------
+# Validation rules for hot-reloaded values (Sprint 5.26)
+# ---------------------------------------------------------------------------
+
+# Mapping: dotted_key -> (min_value, max_value, description)
+_VALUE_RANGES: dict[str, tuple[float, float, str]] = {
+    "read_pool.pool_size": (1, 20, "pool_size must be between 1 and 20"),
+    "sexton.graph_extraction_batch_size": (1, 16, "batch_size must be between 1 and 16"),
+    "sexton.graph_extraction_batch_size_max": (2, 16, "batch_size_max must be between 2 and 16"),
+    "sexton.graph_extraction_batch_size_min": (1, 4, "batch_size_min must be between 1 and 4"),
+    # Per-store pool_size overrides — validated by the same range as global
+}
+
+# Auto-tuning policy validation ranges
+_POLICY_RANGES: dict[str, tuple[float, float, str]] = {
+    "auto_tuning_policy.read_pool_exhaustion_threshold": (0.1, 0.9, "must be 0.1-0.9"),
+    "auto_tuning_policy.read_pool_auto_apply_consecutive": (2, 20, "must be 2-20"),
+    "auto_tuning_policy.read_pool_auto_apply_max_increase": (1, 10, "must be 1-10"),
+    "auto_tuning_policy.read_pool_auto_apply_max_pool": (3, 20, "must be 3-20"),
+    "auto_tuning_policy.read_pool_auto_rollback_consecutive": (2, 20, "must be 2-20"),
+    "auto_tuning_policy.read_pool_auto_rollback_healthy": (0.01, 0.5, "must be 0.01-0.5"),
+    "auto_tuning_policy.graph_batch_decrease_threshold": (0.1, 0.8, "must be 0.1-0.8"),
+    "auto_tuning_policy.graph_batch_increase_threshold": (0.0, 0.5, "must be 0.0-0.5"),
+    "auto_tuning_policy.graph_batch_auto_tune_window": (2, 20, "must be 2-20"),
+    "auto_tuning_policy.graph_batch_min_size": (1, 4, "must be 1-4"),
+    "auto_tuning_policy.graph_batch_max_size": (2, 16, "must be 2-16"),
+    "auto_tuning_policy.cooldown_seconds": (0, 3600, "must be 0-3600"),
+}
 
 
 @dataclass
@@ -57,7 +97,6 @@ class ConfigReloadEvent:
 
     def __post_init__(self):
         if not self.timestamp:
-            from datetime import datetime, timezone
             self.timestamp = datetime.now(timezone.utc).isoformat()
 
     def to_dict(self) -> dict:
@@ -69,8 +108,40 @@ class ConfigReloadEvent:
         }
 
 
+@dataclass
+class ConfigRejectedEvent:
+    """Record of a rejected hot-reload value (Sprint 5.26).
+
+    When a hot-reloaded value fails validation, it is recorded here
+    with the reason for rejection. The old value is preserved.
+    """
+
+    key: str
+    rejected_value: Any
+    reason: str
+    timestamp: str = ""
+
+    def __post_init__(self):
+        if not self.timestamp:
+            self.timestamp = datetime.now(timezone.utc).isoformat()
+
+    def to_dict(self) -> dict:
+        return {
+            "key": self.key,
+            "rejected_value": str(self.rejected_value),
+            "reason": self.reason,
+            "timestamp": self.timestamp,
+        }
+
+
 class ConfigWatcher:
     """Watches aip.config.toml for changes and applies safe hot-reloads.
+
+    Sprint 5.26 improvements:
+    - Validates hot-reloaded values against safe ranges before applying
+    - Records rejected values with clear reason strings
+    - Supports ``[auto_tuning_policy]`` section
+    - Provides detailed status via get_status() including rejected changes
 
     Usage::
 
@@ -83,6 +154,9 @@ class ConfigWatcher:
         # Get status for health endpoint
         status = watcher.get_status()
     """
+
+    # Maximum number of rejected events to keep
+    _MAX_REJECTED_HISTORY = 30
 
     def __init__(
         self,
@@ -97,8 +171,10 @@ class ConfigWatcher:
         self._last_check: float = 0.0
         self._last_reload: float = 0.0
         self._reload_history: list[ConfigReloadEvent] = []
+        self._rejected_history: list[ConfigRejectedEvent] = []  # Sprint 5.26
         self._total_reloads = 0
         self._total_reload_errors = 0
+        self._total_rejected = 0  # Sprint 5.26
         self._enabled = True
 
         # Initialize mtime
@@ -158,11 +234,45 @@ class ConfigWatcher:
         self._last_reload = now
         return events
 
+    def _validate_value(self, dotted_key: str, value: Any) -> tuple[bool, str]:
+        """Validate a hot-reloaded value against safe ranges.
+
+        Returns (is_valid, reason).  If valid, reason is empty string.
+        """
+        # Check direct key ranges
+        if dotted_key in _VALUE_RANGES:
+            min_val, max_val, desc = _VALUE_RANGES[dotted_key]
+            if isinstance(value, (int, float)):
+                if not (min_val <= value <= max_val):
+                    return False, desc
+            return True, ""
+
+        # Check per-store pool_size overrides
+        if "read_pool.stores" in dotted_key and dotted_key.endswith(".pool_size"):
+            if isinstance(value, (int, float)):
+                if not (1 <= value <= 20):
+                    return False, "per-store pool_size must be between 1 and 20"
+            return True, ""
+
+        # Check auto-tuning policy ranges
+        if dotted_key in _POLICY_RANGES:
+            min_val, max_val, desc = _POLICY_RANGES[dotted_key]
+            if isinstance(value, (int, float)):
+                if not (min_val <= value <= max_val):
+                    return False, desc
+            return True, ""
+
+        # No specific validation rule — allow (but log)
+        return True, ""
+
     def _parse_and_apply(self) -> list[ConfigReloadEvent]:
         """Parse the config file and apply safe hot-reload values.
 
         Only reloads values in the hot-reloadable key set.  All other
         changes are ignored (they require a process restart).
+
+        Sprint 5.26: Validates values before applying and records
+        rejected changes.
         """
         events: list[ConfigReloadEvent] = []
 
@@ -212,6 +322,26 @@ class ConfigWatcher:
             # Find changed values within this section
             changed = self._find_changes(key, current_section, new_section)
             for event in changed:
+                # Sprint 5.26: Validate before applying
+                is_valid, reason = self._validate_value(event.key, event.new_value)
+                if not is_valid:
+                    self._total_rejected += 1
+                    rejected = ConfigRejectedEvent(
+                        key=event.key,
+                        rejected_value=event.new_value,
+                        reason=reason,
+                    )
+                    self._rejected_history.append(rejected)
+                    if len(self._rejected_history) > self._MAX_REJECTED_HISTORY:
+                        self._rejected_history = self._rejected_history[-self._MAX_REJECTED_HISTORY:]
+                    logger.warning(
+                        "config_hot_reload_rejected",
+                        key=event.key,
+                        rejected_value=event.new_value,
+                        reason=reason,
+                    )
+                    continue  # Skip this change
+
                 events.append(event)
                 # Apply to in-memory config
                 self._apply_to_config(key, event.key, event.new_value)
@@ -281,12 +411,14 @@ class ConfigWatcher:
         """Apply a hot-reloaded value to live components.
 
         This is where we wire config changes to actual running components
-        like ReadPoolMixin stores and the Sexton actor.
+        like ReadPoolMixin stores, the Sexton actor, and the auto-sizer.
         """
         if section == "read_pool":
             self._apply_read_pool_change(dotted_key, value)
         elif section == "sexton":
             self._apply_sexton_change(dotted_key, value)
+        elif section == "auto_tuning_policy":
+            self._apply_policy_change(dotted_key, value)
 
     def _apply_read_pool_change(self, dotted_key: str, value: Any) -> None:
         """Apply read pool config changes to live stores."""
@@ -345,6 +477,52 @@ class ConfigWatcher:
                 error=str(exc),
             )
 
+    def _apply_policy_change(self, dotted_key: str, value: Any) -> None:
+        """Apply auto-tuning policy changes to live components.
+
+        When policy values change, we reload the full policy from the
+        in-memory config and apply it to the auto-sizer and Sexton.
+        """
+        try:
+            from aip.adapter.auto_tuning_policy import (
+                load_policy_from_config,
+                apply_policy_to_auto_sizer,
+                apply_policy_to_sexton,
+            )
+
+            current_config = getattr(self._container, "config", {})
+            policy = load_policy_from_config(current_config)
+
+            if not policy.is_valid():
+                logger.warning(
+                    "config_hot_reload_policy_invalid",
+                    errors=policy._validation_errors,
+                )
+                return
+
+            # Apply to auto-sizer
+            auto_sizer = getattr(self._container, "_read_pool_auto_sizer", None)
+            if auto_sizer is not None:
+                apply_policy_to_auto_sizer(policy, auto_sizer)
+
+            # Apply to Sexton
+            sexton = getattr(self._container, "sexton_actor", None)
+            if sexton is not None:
+                apply_policy_to_sexton(policy, sexton)
+
+            logger.info(
+                "config_hot_reload_policy_applied",
+                changed_key=dotted_key,
+            )
+        except Exception as exc:
+            self._total_reload_errors += 1
+            logger.warning(
+                "config_hot_reload_policy_apply_failed",
+                key=dotted_key,
+                value=value,
+                error=str(exc),
+            )
+
     def _update_all_pool_sizes(self, new_size: int) -> None:
         """Update pool size on all pool-enabled stores."""
         new_size = max(1, min(20, int(new_size)))
@@ -374,7 +552,7 @@ class ConfigWatcher:
                 )
 
     def get_status(self) -> dict:
-        """Return config watcher status for the health endpoint."""
+        """Return config watcher status for the health/admin endpoint."""
         return {
             "enabled": self._enabled,
             "config_path": str(self._config_path),
@@ -384,6 +562,8 @@ class ConfigWatcher:
             "last_reload": round(self._last_reload, 1),
             "total_reloads": self._total_reloads,
             "total_reload_errors": self._total_reload_errors,
+            "total_rejected": self._total_rejected,
             "hot_reloadable_sections": list(_HOT_RELOADABLE_KEYS),
             "recent_reloads": [e.to_dict() for e in self._reload_history[-5:]],
+            "recent_rejections": [r.to_dict() for r in self._rejected_history[-5:]],
         }

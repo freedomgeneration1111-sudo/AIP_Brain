@@ -7,11 +7,20 @@ in the self-tuning system:
 - Read pool auto-sizing adjustments (increases AND rollbacks)
 - Graph extraction batch size reductions due to high parse failure rate
 
+Sprint 5.26: Transport hardening improvements:
+
+- Retry with exponential backoff for webhook delivery
+- Webhook URL validation at startup / first use
+- SMTP authentication support (username/password/TLS control)
+- Delivery failure history tracking with detailed error records
+
 Design principles:
 - Lightweight and opt-in — alerting is disabled by default
 - Multiple transport mechanisms (webhook, email)
 - Non-blocking — alerts are fire-and-forget; failures are logged but never
   interrupt the calling code
+- Resilient — webhook retries with exponential backoff; transport errors
+  are recorded with full context for operator debugging
 - Configurable via ``[alerting]`` section in ``aip.config.toml``
 
 Configuration example::
@@ -23,19 +32,26 @@ Configuration example::
     email_from = "aip-brain@example.com"
     smtp_host = "smtp.example.com"
     smtp_port = 587
+    smtp_username = "aip-brain"
+    smtp_password = ""  # Set via AIP_SMTP_PASSWORD env var
+    smtp_use_tls = true
     alert_on_quality_degradation = true
     alert_on_pool_adjustment = true
     alert_on_batch_reduction = true
     min_alert_interval_seconds = 300   # Rate-limit: don't re-alert for 5 min
+    webhook_max_retries = 3            # Sprint 5.26: retry count
+    webhook_retry_base_delay_seconds = 1.0  # Sprint 5.26: exponential backoff base
 """
 
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from aip.logging import get_logger
@@ -56,6 +72,12 @@ class AlertConfig:
     notifications are sent.  Operators must explicitly enable alerting
     and configure at least one transport (webhook_url or email_to).
 
+    Sprint 5.26 additions:
+    - smtp_username / smtp_password: SMTP authentication
+    - smtp_use_tls: Explicit TLS control (default True for port 587)
+    - webhook_max_retries: Retry count for failed webhook deliveries
+    - webhook_retry_base_delay_seconds: Base delay for exponential backoff
+
     Attributes
     ----------
     enabled:
@@ -71,6 +93,15 @@ class AlertConfig:
         SMTP server hostname for sending emails.
     smtp_port:
         SMTP server port (default 587 for TLS).
+    smtp_username:
+        Username for SMTP authentication.  If empty, no authentication
+        is attempted (backwards compatible with Sprint 5.25).
+    smtp_password:
+        Password for SMTP authentication.  Prefer the AIP_SMTP_PASSWORD
+        environment variable over storing it in the config file.
+    smtp_use_tls:
+        Whether to use TLS for the SMTP connection.  Default True for
+        port 587.  Set to False for port 25 / no-TLS relays.
     alert_on_quality_degradation:
         Alert when Vigil detects a degrading quality trend across cycles.
     alert_on_pool_adjustment:
@@ -82,6 +113,13 @@ class AlertConfig:
     min_alert_interval_seconds:
         Minimum time between identical alert types for the same subject.
         Prevents alert storms.  Default 300 (5 minutes).
+    webhook_max_retries:
+        Maximum number of retry attempts for failed webhook deliveries.
+        Default 3.  Each retry uses exponential backoff.
+    webhook_retry_base_delay_seconds:
+        Base delay in seconds for exponential backoff on webhook retries.
+        The Nth retry waits (base_delay * 2^N) seconds.
+        Default 1.0 (1s, 2s, 4s for retries 1-3).
     """
 
     enabled: bool = False
@@ -90,10 +128,16 @@ class AlertConfig:
     email_from: str = "aip-brain@localhost"
     smtp_host: str = ""
     smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_use_tls: bool = True
     alert_on_quality_degradation: bool = True
     alert_on_pool_adjustment: bool = True
     alert_on_batch_reduction: bool = True
     min_alert_interval_seconds: int = 300
+    # Sprint 5.26: Webhook retry configuration
+    webhook_max_retries: int = 3
+    webhook_retry_base_delay_seconds: float = 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +175,6 @@ class Alert:
 
     def __post_init__(self):
         if not self.timestamp:
-            from datetime import datetime, timezone
             self.timestamp = datetime.now(timezone.utc).isoformat()
 
     def to_dict(self) -> dict:
@@ -146,6 +189,106 @@ class Alert:
 
 
 # ---------------------------------------------------------------------------
+# Delivery failure record (Sprint 5.26)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class DeliveryFailure:
+    """Record of a failed alert delivery attempt.
+
+    Tracks the transport, error details, and retry context so operators
+    can diagnose persistent delivery problems.
+
+    Attributes
+    ----------
+    transport:
+        ``webhook`` or ``email``.
+    alert_type:
+        The alert type that failed delivery.
+    subject:
+        The alert subject.
+    error_message:
+        The exception or error string.
+    timestamp:
+        ISO 8601 timestamp of the failure.
+    retry_attempt:
+        Which retry attempt this failure represents (0 = initial attempt).
+    final:
+        Whether this was the final attempt (no more retries).
+    """
+
+    transport: str
+    alert_type: str
+    subject: str
+    error_message: str
+    timestamp: str = ""
+    retry_attempt: int = 0
+    final: bool = True
+
+    def __post_init__(self):
+        if not self.timestamp:
+            self.timestamp = datetime.now(timezone.utc).isoformat()
+
+    def to_dict(self) -> dict:
+        return {
+            "transport": self.transport,
+            "alert_type": self.alert_type,
+            "subject": self.subject,
+            "error_message": self.error_message,
+            "timestamp": self.timestamp,
+            "retry_attempt": self.retry_attempt,
+            "final": self.final,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Webhook URL validation
+# ---------------------------------------------------------------------------
+
+# Valid webhook URL schemes
+_WEBHOOK_VALID_SCHEMES = frozenset({"http", "https"})
+
+# Regex for basic URL structure validation
+_WEBHOOK_URL_PATTERN = re.compile(
+    r"^https?://[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?"
+    r"(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*"
+    r"(:[0-9]{1,5})?(/.*)?$"
+)
+
+
+def validate_webhook_url(url: str) -> tuple[bool, str]:
+    """Validate a webhook URL for basic correctness.
+
+    Checks that the URL:
+    1. Uses http or https scheme
+    2. Has a valid hostname structure
+    3. Is not empty or whitespace
+
+    Returns (is_valid, reason) tuple.  If valid, reason is empty string.
+    """
+    if not url or not url.strip():
+        return False, "Webhook URL is empty"
+
+    url = url.strip()
+
+    # Check scheme
+    scheme_sep = url.find("://")
+    if scheme_sep == -1:
+        return False, "Webhook URL must include a scheme (http:// or https://)"
+
+    scheme = url[:scheme_sep].lower()
+    if scheme not in _WEBHOOK_VALID_SCHEMES:
+        return False, f"Webhook URL scheme must be http or https, got '{scheme}'"
+
+    # Basic structural validation
+    if not _WEBHOOK_URL_PATTERN.match(url):
+        return False, "Webhook URL has invalid hostname structure"
+
+    return True, ""
+
+
+# ---------------------------------------------------------------------------
 # Alert manager
 # ---------------------------------------------------------------------------
 
@@ -153,11 +296,18 @@ class Alert:
 class AlertManager:
     """Manages operator alerting for auto-tuning events.
 
+    Sprint 5.26 improvements:
+    - Webhook delivery uses retry with exponential backoff
+    - Webhook URLs are validated on first use (or at startup via validate_config)
+    - SMTP authentication support (username/password)
+    - Delivery failure history with full context for each failure
+
     Provides a single ``send_alert()`` method that:
     1. Checks if the alert type is enabled
     2. Rate-limits identical alerts (per type + subject)
-    3. Dispatches to configured transports (webhook, email)
+    3. Dispatches to configured transports (webhook with retries, email with auth)
     4. Logs all alerts regardless of transport success
+    5. Records delivery failures with detailed context
 
     Usage::
 
@@ -171,16 +321,26 @@ class AlertManager:
         ))
     """
 
+    # Maximum number of delivery failure records to keep
+    _MAX_FAILURE_HISTORY = 50
+
     def __init__(self, config: AlertConfig | None = None) -> None:
         self._config = config or AlertConfig()
         # Rate-limiting: (alert_type, subject) -> last_alert_timestamp
         self._last_alert_time: dict[tuple[str, str], float] = {}
         # History of sent alerts (last 50)
         self._alert_history: list[dict] = []
+        # Sprint 5.26: Delivery failure history
+        self._delivery_failures: list[DeliveryFailure] = []
+        # Sprint 5.26: Webhook URL validation status (lazy, on first use)
+        self._webhook_url_validated: bool = False
+        self._webhook_url_valid: bool | None = None
+        self._webhook_url_validation_reason: str = ""
         # Counters
         self._total_alerts_sent = 0
         self._total_alerts_rate_limited = 0
         self._total_send_failures = 0
+        self._total_webhook_retries = 0
 
     @property
     def config(self) -> AlertConfig:
@@ -189,6 +349,53 @@ class AlertManager:
     @config.setter
     def config(self, value: AlertConfig) -> None:
         self._config = value
+        # Reset validation state when config changes (URL may have changed)
+        self._webhook_url_validated = False
+        self._webhook_url_valid = None
+        self._webhook_url_validation_reason = ""
+
+    def validate_config(self) -> list[str]:
+        """Validate the alerting configuration and return any warnings.
+
+        This can be called at startup to catch configuration problems
+        early.  Returns a list of warning strings (empty if all valid).
+        Does NOT raise — warnings are informational for the operator.
+        """
+        warnings: list[str] = []
+
+        if not self._config.enabled:
+            return warnings
+
+        # Validate webhook URL if configured
+        if self._config.webhook_url:
+            is_valid, reason = validate_webhook_url(self._config.webhook_url)
+            if not is_valid:
+                warnings.append(f"Webhook URL invalid: {reason}")
+                self._webhook_url_valid = False
+                self._webhook_url_validation_reason = reason
+            else:
+                self._webhook_url_valid = True
+                self._webhook_url_validation_reason = ""
+            self._webhook_url_validated = True
+        else:
+            self._webhook_url_validated = True
+
+        # Validate email configuration
+        if self._config.email_to:
+            if not self._config.smtp_host:
+                warnings.append(
+                    "Email alerts configured (email_to) but smtp_host is empty. "
+                    "Email delivery will fail."
+                )
+
+        # Check that at least one transport is configured
+        if not self._config.webhook_url and not self._config.email_to:
+            warnings.append(
+                "Alerting is enabled but no transports are configured. "
+                "Set webhook_url or email_to to receive notifications."
+            )
+
+        return warnings
 
     def send_alert(self, alert: Alert) -> bool:
         """Send an alert through configured transports.
@@ -248,26 +455,39 @@ class AlertManager:
         self._total_alerts_sent += 1
 
         # Dispatch to transports
-        sent_any = False
-
         if self._config.webhook_url:
             try:
-                self._send_webhook(alert)
-                sent_any = True
+                self._send_webhook_with_retry(alert)
             except Exception as exc:
                 self._total_send_failures += 1
+                self._record_failure(DeliveryFailure(
+                    transport="webhook",
+                    alert_type=alert.alert_type,
+                    subject=alert.subject,
+                    error_message=str(exc),
+                    retry_attempt=self._config.webhook_max_retries,
+                    final=True,
+                ))
                 logger.warning(
-                    "alert_webhook_failed",
+                    "alert_webhook_failed_final",
                     url=self._config.webhook_url[:50],
                     error=str(exc),
+                    retries_attempted=self._config.webhook_max_retries,
                 )
 
         if self._config.email_to:
             try:
                 self._send_email(alert)
-                sent_any = True
             except Exception as exc:
                 self._total_send_failures += 1
+                self._record_failure(DeliveryFailure(
+                    transport="email",
+                    alert_type=alert.alert_type,
+                    subject=alert.subject,
+                    error_message=str(exc),
+                    retry_attempt=0,
+                    final=True,
+                ))
                 logger.warning(
                     "alert_email_failed",
                     to=self._config.email_to[:50],
@@ -284,17 +504,41 @@ class AlertManager:
         return {
             "enabled": self._config.enabled,
             "webhook_configured": bool(self._config.webhook_url),
+            "webhook_url_valid": self._webhook_url_valid,
             "email_configured": bool(self._config.email_to),
+            "smtp_auth_configured": bool(self._config.smtp_username),
             "total_alerts_sent": self._total_alerts_sent,
             "total_rate_limited": self._total_alerts_rate_limited,
             "total_send_failures": self._total_send_failures,
+            "total_webhook_retries": self._total_webhook_retries,
             "recent_alerts": self._alert_history[-5:],
+            "recent_failures": [f.to_dict() for f in self._delivery_failures[-5:]],
             "alert_types_enabled": {
                 "quality_degradation": self._config.alert_on_quality_degradation,
                 "pool_adjustment": self._config.alert_on_pool_adjustment,
                 "batch_reduction": self._config.alert_on_batch_reduction,
             },
+            "webhook_retry_config": {
+                "max_retries": self._config.webhook_max_retries,
+                "base_delay_seconds": self._config.webhook_retry_base_delay_seconds,
+            },
         }
+
+    def get_delivery_failures(self, transport: str | None = None, limit: int = 20) -> list[dict]:
+        """Return delivery failure history, optionally filtered by transport.
+
+        Parameters
+        ----------
+        transport:
+            If provided, return only failures for this transport ("webhook" or "email").
+        limit:
+            Maximum number of failures to return (most recent first).
+        """
+        failures = self._delivery_failures
+        if transport:
+            failures = [f for f in failures if f.transport == transport]
+        # Return most recent first
+        return [f.to_dict() for f in reversed(failures[-limit:])]
 
     def _is_alert_type_enabled(self, alert_type: str) -> bool:
         """Check if a specific alert type is enabled."""
@@ -305,8 +549,88 @@ class AlertManager:
         }
         return mapping.get(alert_type, True)
 
-    def _send_webhook(self, alert: Alert) -> None:
-        """POST alert payload to the configured webhook URL.
+    def _validate_webhook_url_lazy(self) -> bool:
+        """Validate the webhook URL on first use.
+
+        Returns True if the URL is valid or already validated.
+        Logs a warning if the URL fails validation but does NOT prevent
+        the send attempt (the URL might still work for non-standard cases).
+        """
+        if self._webhook_url_validated:
+            return self._webhook_url_valid is not False
+
+        is_valid, reason = validate_webhook_url(self._config.webhook_url)
+        self._webhook_url_validated = True
+        self._webhook_url_valid = is_valid
+        self._webhook_url_validation_reason = reason
+
+        if not is_valid:
+            logger.warning(
+                "alert_webhook_url_invalid",
+                url=self._config.webhook_url[:50],
+                reason=reason,
+                note="Delivery will be attempted but may fail",
+            )
+
+        return is_valid
+
+    def _send_webhook_with_retry(self, alert: Alert) -> None:
+        """POST alert payload to the configured webhook URL with retry.
+
+        Uses exponential backoff between retries.  The initial attempt
+        plus up to ``webhook_max_retries`` retry attempts are made.
+
+        Backoff timing: attempt N waits (base_delay * 2^N) seconds
+        before retrying.  For the default base_delay of 1.0 and
+        max_retries of 3, the delays are 1s, 2s, 4s.
+        """
+        # Lazy-validate the URL on first use
+        self._validate_webhook_url_lazy()
+
+        max_retries = self._config.webhook_max_retries
+        base_delay = self._config.webhook_retry_base_delay_seconds
+        last_error: Exception | None = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                self._send_webhook_once(alert)
+                # Success — return immediately
+                if attempt > 0:
+                    logger.info(
+                        "alert_webhook_retry_succeeded",
+                        url=self._config.webhook_url[:50],
+                        attempt=attempt,
+                    )
+                return
+            except Exception as exc:
+                last_error = exc
+                if attempt < max_retries:
+                    # Record intermediate failure
+                    self._total_webhook_retries += 1
+                    delay = base_delay * (2 ** attempt)
+                    self._record_failure(DeliveryFailure(
+                        transport="webhook",
+                        alert_type=alert.alert_type,
+                        subject=alert.subject,
+                        error_message=str(exc),
+                        retry_attempt=attempt,
+                        final=False,
+                    ))
+                    logger.info(
+                        "alert_webhook_retry",
+                        url=self._config.webhook_url[:50],
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                        delay_seconds=delay,
+                        error=str(exc),
+                    )
+                    time.sleep(delay)
+
+        # All retries exhausted — raise the last error
+        raise last_error or RuntimeError("Webhook delivery failed after all retries")
+
+    def _send_webhook_once(self, alert: Alert) -> None:
+        """POST alert payload to the configured webhook URL (single attempt).
 
         Uses stdlib urllib to avoid adding requests/aiohttp dependency.
         Timeout is 10 seconds — alerts must not block the caller.
@@ -323,12 +647,22 @@ class AlertManager:
             method="POST",
         )
 
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            if resp.status >= 400:
-                raise RuntimeError(f"Webhook returned HTTP {resp.status}")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status >= 400:
+                    raise RuntimeError(f"Webhook returned HTTP {resp.status}")
+        except urllib.error.URLError as exc:
+            # Provide more context for common connection errors
+            reason = getattr(exc, "reason", str(exc))
+            raise RuntimeError(f"Webhook connection failed: {reason}") from exc
 
     def _send_email(self, alert: Alert) -> None:
-        """Send alert email via SMTP.
+        """Send alert email via SMTP with optional authentication.
+
+        Sprint 5.26: Added SMTP authentication support.  When
+        smtp_username is configured, the SMTP session authenticates
+        using LOGIN method before sending.  TLS behavior is controlled
+        by smtp_use_tls (default True).
 
         Uses stdlib smtplib.  This is a blocking call but SMTP sends
         are typically fast.  If this becomes a concern, it can be
@@ -353,5 +687,27 @@ class AlertManager:
         msg["To"] = self._config.email_to
 
         with smtplib.SMTP(self._config.smtp_host, self._config.smtp_port, timeout=10) as smtp:
-            smtp.starttls()
+            # SMTP EHLO is required before STARTTLS
+            smtp.ehlo()
+
+            if self._config.smtp_use_tls:
+                smtp.starttls()
+                smtp.ehlo()  # Re-identify after TLS upgrade
+
+            # Authenticate if credentials are provided
+            if self._config.smtp_username:
+                # Prefer environment variable for password if not set in config
+                password = self._config.smtp_password
+                if not password:
+                    import os
+                    password = os.environ.get("AIP_SMTP_PASSWORD", "")
+                if password:
+                    smtp.login(self._config.smtp_username, password)
+
             smtp.send_message(msg)
+
+    def _record_failure(self, failure: DeliveryFailure) -> None:
+        """Record a delivery failure in the history."""
+        self._delivery_failures.append(failure)
+        if len(self._delivery_failures) > self._MAX_FAILURE_HISTORY:
+            self._delivery_failures = self._delivery_failures[-self._MAX_FAILURE_HISTORY:]

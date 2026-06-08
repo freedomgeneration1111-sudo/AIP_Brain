@@ -385,3 +385,59 @@ async def get_backfill_status(container: AipContainer = Depends(get_container)):
     Includes running flag, current progress, and last result.
     """
     return container.backfill_status
+
+
+# ------------------------------------------------------------------
+# Sprint 5.26: Hot-Reload Admin Endpoint
+# ------------------------------------------------------------------
+
+
+@router.get("/admin/hot-reload/status")
+async def get_hot_reload_status(container: AipContainer = Depends(get_container)):
+    """Get detailed hot-reload status including pending and rejected changes.
+
+    Sprint 5.26: Provides operators with visibility into the hot-reload
+    system, including:
+    - ConfigWatcher status (enabled, last reload, errors)
+    - Recent successful reloads
+    - Recent rejected changes with reasons
+    - Current auto-tuning policy values
+    - Alert manager config validation status
+    """
+    result: dict = {
+        "config_watcher": {},
+        "auto_tuning_policy": {},
+        "alerting_validation": [],
+    }
+
+    # Config watcher status
+    config_watcher = getattr(container, "_config_watcher", None)
+    if config_watcher is not None and hasattr(config_watcher, "get_status"):
+        try:
+            result["config_watcher"] = config_watcher.get_status()
+        except Exception:
+            result["config_watcher"] = {"error": "status_retrieval_failed"}
+
+    # Auto-tuning policy status
+    try:
+        from aip.adapter.auto_tuning_policy import load_policy_from_config
+        config = getattr(container, "config", {})
+        policy = load_policy_from_config(config)
+        result["auto_tuning_policy"] = {
+            "current_values": policy.to_dict(),
+            "is_valid": policy.is_valid(),
+            "validation_errors": policy._validation_errors,
+        }
+    except Exception as exc:
+        result["auto_tuning_policy"] = {"error": str(exc)}
+
+    # Alerting config validation
+    alert_manager = getattr(container, "_alert_manager", None)
+    if alert_manager is not None and hasattr(alert_manager, "validate_config"):
+        try:
+            warnings = alert_manager.validate_config()
+            result["alerting_validation"] = warnings
+        except Exception:
+            result["alerting_validation"] = ["validation_failed"]
+
+    return result

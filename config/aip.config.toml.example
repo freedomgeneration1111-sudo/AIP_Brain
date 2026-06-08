@@ -279,3 +279,51 @@ inject_in_augmented_chat = true
 # Approximate token budget for the profile block (rough 4 chars/token).
 # Profile will be truncated with a note if it exceeds this.
 max_profile_tokens = 800
+
+# ---------------------------------------------------------------------------
+# Sprint 5.25: Operator Alerting
+# Lightweight webhook/email notifications for significant auto-tuning events.
+# Disabled by default — enable and configure transports as needed.
+# ---------------------------------------------------------------------------
+[alerting]
+enabled = false
+# webhook_url = "https://hooks.slack.com/services/..."  # POST JSON alerts
+# email_to = "ops@example.com"
+# email_from = "aip-brain@example.com"
+# smtp_host = "smtp.example.com"
+# smtp_port = 587
+# smtp_username = "aip-brain"           # Sprint 5.26: SMTP authentication
+# smtp_password = ""                     # Prefer AIP_SMTP_PASSWORD env var
+# smtp_use_tls = true                    # Sprint 5.26: TLS control (default true)
+alert_on_quality_degradation = true
+alert_on_pool_adjustment = true
+alert_on_batch_reduction = true
+min_alert_interval_seconds = 300   # Rate-limit: don't re-alert for 5 min
+webhook_max_retries = 3            # Sprint 5.26: retry count for webhook
+webhook_retry_base_delay_seconds = 1.0  # Sprint 5.26: exponential backoff base
+
+# ---------------------------------------------------------------------------
+# Sprint 5.26: Auto-Tuning Policy Engine
+# Configurable thresholds for read pool auto-sizing and graph batch auto-tuning.
+# Changes here are hot-reloadable — adjust behavior without restart.
+# All values have safe ranges; invalid values are rejected with clear logging.
+# ---------------------------------------------------------------------------
+[auto_tuning_policy]
+# Read pool auto-sizing policy
+read_pool_exhaustion_threshold = 0.3      # Exhaustion rate > this triggers sizing
+read_pool_auto_apply_consecutive = 5       # Consecutive observations before auto-apply
+read_pool_auto_apply_max_increase = 4      # Max connections above configured
+read_pool_auto_apply_max_pool = 12         # Absolute pool size cap
+read_pool_auto_rollback_enabled = true     # Auto-rollback when exhaustion recovers
+read_pool_auto_rollback_consecutive = 5    # Low-exhaustion observations before rollback
+read_pool_auto_rollback_healthy = 0.15     # Exhaustion below this = healthy
+
+# Graph extraction batch auto-tuning policy
+graph_batch_decrease_threshold = 0.3       # Failure rate above → decrease
+graph_batch_increase_threshold = 0.1        # Failure rate below → increase
+graph_batch_auto_tune_window = 5           # Batches to consider
+graph_batch_min_size = 1
+graph_batch_max_size = 8
+
+# Cooldown between auto-tuning adjustments (seconds)
+cooldown_seconds = 60

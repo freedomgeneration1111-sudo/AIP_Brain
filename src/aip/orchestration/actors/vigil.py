@@ -142,6 +142,7 @@ Be strict: if a specific number, date, or factual claim appears in the response 
         event_store: Any = None,  # for emitting vigil events
         corpus_turn_store: Any = None,  # for reading augmented chat turns
         alert_manager: Any = None,  # Sprint 5.25: AlertManager for quality degradation alerts
+        quality_store: Any = None,  # Sprint 5.26: VigilQualityStore for persistence
     ) -> None:
         self.config = config
         self.vigil_store = vigil_store
@@ -171,6 +172,24 @@ Be strict: if a specific number, date, or factual claim appears in the response 
 
         # Sprint 5.25: Alert manager for operator notifications
         self._alert_manager = alert_manager
+
+        # Sprint 5.26: Persistent quality history store
+        self._quality_store = quality_store
+        # If a quality store is provided, load history from it on startup
+        if self._quality_store is not None:
+            try:
+                persisted = self._quality_store.get_cycles(last_n_cycles=10)
+                if persisted:
+                    self._cycle_report_history = persisted
+                    logger.info(
+                        "vigil_quality_history_loaded_from_store",
+                        loaded_cycles=len(persisted),
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "vigil_quality_history_load_failed",
+                    error=str(exc),
+                )
 
     # ------------------------------------------------------------------
     # ADR-011 Quality Evaluation Cycle
@@ -1000,6 +1019,16 @@ Be strict: if a specific number, date, or factual claim appears in the response 
         })
         if len(self._cycle_report_history) > 10:
             self._cycle_report_history = self._cycle_report_history[-10:]
+
+        # Sprint 5.26: Persist cycle report to quality store
+        if self._quality_store is not None:
+            try:
+                self._quality_store.record_cycle(report)
+            except Exception as exc:
+                logger.warning(
+                    "vigil_quality_persist_failed",
+                    error=str(exc),
+                )
 
         # Only write an artifact if there are quality concerns
         has_concerns = (
