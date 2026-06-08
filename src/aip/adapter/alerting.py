@@ -264,6 +264,18 @@ class AlertConfig:
     notification_routes: dict[str, list[str]] = field(default_factory=dict)  # severity/type -> channels
     # Sprint 5.37: Causal prediction accuracy
     prediction_accuracy_window_seconds: int = 600  # Time window to check if prediction materialized
+    # Sprint 5.38: Learned prediction model
+    learned_prediction_enabled: bool = False  # Use learned transition probabilities instead of static chain
+    learned_prediction_min_samples: int = 10  # Minimum alert pairs before learned model is used
+    learned_prediction_confidence_threshold: float = 0.05  # Minimum transition probability to predict
+    # Sprint 5.38: Alert throttling & circuit breaker
+    throttle_threshold_per_minute: int = 100  # Alert rate threshold to trigger throttling
+    circuit_breaker_enabled: bool = False  # Enable circuit breaker mode
+    circuit_breaker_cooldown_seconds: int = 300  # Duration of digest-only mode during storm
+    # Sprint 5.38: Multi-channel delivery receipts
+    delivery_receipts_enabled: bool = False  # Track delivery confirmations per channel
+    # Sprint 5.38: WebSocket compression
+    ws_compression_enabled: bool = False  # Enable per-message deflate compression for WS
 
 
 # ---------------------------------------------------------------------------
@@ -532,6 +544,27 @@ class AlertManager:
         self._prediction_accuracy_hits: int = 0
         self._prediction_accuracy_misses: int = 0
         self._last_auto_merge_time: float = 0.0  # Cooldown tracking
+        # Sprint 5.38: Learned transition probability model
+        # _transition_counts: (from_type, to_type) -> count of observed transitions
+        self._transition_counts: dict[tuple[str, str], int] = {}
+        # _transition_totals: from_type -> total outgoing transitions
+        self._transition_totals: dict[str, int] = {}
+        # _alert_type_sequence: list of (alert_type, subject, timestamp) for transition analysis
+        self._alert_type_sequence: list[tuple[str, str, float]] = []
+        self._learned_model_last_trained: float = 0.0
+        self._total_learned_predictions_made: int = 0
+        # Sprint 5.38: Alert throttling & circuit breaker
+        self._throttle_alert_timestamps: list[float] = []  # Sliding window of alert timestamps
+        self._circuit_breaker_active: bool = False
+        self._circuit_breaker_activated_at: float = 0.0
+        self._total_throttled_alerts: int = 0
+        self._total_circuit_breaker_activations: int = 0
+        # Sprint 5.38: Multi-channel delivery receipts
+        # _delivery_receipts: correlation_id -> {channel -> {receipt_key, receipt_value, confirmed_at}}
+        self._delivery_receipts: dict[str, dict[str, dict[str, Any]]] = {}
+        # Sprint 5.38: WebSocket compression metrics
+        self._ws_compression_negotiated: bool = False
+        self._ws_compression_bytes_saved_estimate: int = 0
         # Lock for thread-safe mutation of shared state
         self._lock = threading.Lock()
 
@@ -668,6 +701,41 @@ class AlertManager:
         # Record the alert time
         self._last_alert_time[key] = now
 
+        # Sprint 5.38: Alert throttling & circuit breaker
+        self._record_throttle_window(now)
+        if self._check_circuit_breaker(now):
+            # Circuit breaker active — force digest-only delivery
+            # Non-critical alerts are buffered; critical alerts still dispatch
+            if alert.severity != "critical":
+                self._total_throttled_alerts += 1
+                logger.info(
+                    "alert_throttled_circuit_breaker",
+                    alert_type=alert.alert_type,
+                    severity=alert.severity,
+                    subject=alert.subject,
+                )
+                # Buffer for digest even if digest not normally enabled
+                self._correlation_counter += 1
+                correlation_id = f"alert-{self._correlation_counter}-{uuid.uuid4().hex[:8]}"
+                alert_dict = alert.to_dict()
+                alert_dict["correlation_id"] = correlation_id
+                self._alert_history.append(alert_dict)
+                if len(self._alert_history) > 50:
+                    self._alert_history = self._alert_history[-50:]
+                self._total_alerts_sent += 1
+                with self._lock:
+                    self._digest_buffer.append(alert_dict)
+                    # Notify subscribers about throttled alert
+                    self._notify_realtime_subscribers({
+                        "event": "alert_throttled",
+                        "correlation_id": correlation_id,
+                        "alert_type": alert.alert_type,
+                        "severity": alert.severity,
+                        "subject": alert.subject,
+                        "circuit_breaker_active": True,
+                    })
+                return f"throttled:{correlation_id}"
+
         # Sprint 5.30: Check for severity escalation
         escalated = self._check_escalation(alert, now)
         if escalated:
@@ -703,6 +771,9 @@ class AlertManager:
             self._alert_history = self._alert_history[-50:]
 
         self._total_alerts_sent += 1
+
+        # Sprint 5.38: Record alert for learned prediction model
+        self._record_alert_for_transition_learning(alert, now)
 
         # Persist to SQLite store if attached
         if self._history_store is not None:
@@ -878,11 +949,14 @@ class AlertManager:
         # Sprint 5.37: Slack notification channel
         if "slack" in transports and self._config.slack_webhook_url:
             try:
-                self._send_slack_notification(alert)
+                slack_receipt = self._send_slack_notification(alert)
                 transport_results["slack"] = {
                     "status": "delivered",
                     "retries": 0,
                 }
+                # Sprint 5.38: Capture Slack delivery receipt (message timestamp)
+                if slack_receipt and self._config.delivery_receipts_enabled:
+                    transport_results["slack"]["receipt"] = slack_receipt
             except Exception as exc:
                 all_succeeded = False
                 self._total_send_failures += 1
@@ -910,11 +984,14 @@ class AlertManager:
         # Sprint 5.37: PagerDuty notification channel
         if "pagerduty" in transports and self._config.pagerduty_integration_key:
             try:
-                self._send_pagerduty_notification(alert)
+                pd_receipt = self._send_pagerduty_notification(alert)
                 transport_results["pagerduty"] = {
                     "status": "delivered",
                     "retries": 0,
                 }
+                # Sprint 5.38: Capture PagerDuty delivery receipt (dedup_key)
+                if pd_receipt and self._config.delivery_receipts_enabled:
+                    transport_results["pagerduty"]["receipt"] = pd_receipt
             except Exception as exc:
                 all_succeeded = False
                 self._total_send_failures += 1
@@ -959,6 +1036,10 @@ class AlertManager:
                 self._delivery_failure_by_transport[transport_name] = (
                     self._delivery_failure_by_transport.get(transport_name, 0) + 1
                 )
+
+        # Sprint 5.38: Track multi-channel delivery receipts
+        if self._config.delivery_receipts_enabled:
+            self._record_delivery_receipts(correlation_id, transport_results)
 
         # Sprint 5.31 → 5.32: Notify SSE/WebSocket subscribers about the delivery result
         self._notify_realtime_subscribers({
@@ -1121,6 +1202,24 @@ class AlertManager:
                 "pagerduty_configured": bool(self._config.pagerduty_integration_key),
                 "notification_routes": self._config.notification_routes,
             },
+            # Sprint 5.38: Learned prediction model
+            "learned_prediction": {
+                "enabled": self._config.learned_prediction_enabled,
+                "min_samples": self._config.learned_prediction_min_samples,
+                "confidence_threshold": self._config.learned_prediction_confidence_threshold,
+                "total_learned_predictions": self._total_learned_predictions_made,
+                "last_trained": self._learned_model_last_trained,
+                "transition_types_known": len(self._transition_totals),
+            },
+            # Sprint 5.38: Alert throttling & circuit breaker
+            "circuit_breaker": self.get_circuit_breaker_status(),
+            # Sprint 5.38: Multi-channel delivery receipts
+            "delivery_receipts": {
+                "enabled": self._config.delivery_receipts_enabled,
+                "tracked_count": len(self._delivery_receipts),
+            },
+            # Sprint 5.38: WebSocket compression
+            "ws_compression": self.get_compression_status(),
         }
 
     def get_alert_history(
@@ -2591,14 +2690,18 @@ class AlertManager:
     # Sprint 5.37: Notification channel diversification — Slack & PagerDuty
     # -----------------------------------------------------------------------
 
-    def _send_slack_notification(self, alert: Alert) -> None:
+    def _send_slack_notification(self, alert: Alert) -> dict[str, str] | None:
         """Send alert notification to a Slack webhook.
 
         Sprint 5.37: Posts a Slack-compatible message to the configured
         slack_webhook_url. Uses the same retry/backoff logic as webhook.
+
+        Sprint 5.38: Returns a delivery receipt dict with message_ts when
+        delivery_receipts_enabled is True. Returns None on early return
+        or when no URL configured.
         """
         if not self._config.slack_webhook_url:
-            return
+            return None
 
         severity_colors = {
             "info": "#3b82f6",
@@ -2633,19 +2736,32 @@ class AlertManager:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 if resp.status >= 400:
                     raise RuntimeError(f"Slack webhook returned HTTP {resp.status}")
+                # Sprint 5.38: Parse response body for message timestamp receipt
+                if self._config.delivery_receipts_enabled:
+                    try:
+                        body = resp.read().decode("utf-8", errors="replace")
+                        resp_data = json.loads(body) if body else {}
+                        message_ts = resp_data.get("ts", "")
+                        return {"message_ts": message_ts, "channel": resp_data.get("channel", "")}
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
+                return None
         except urllib.error.URLError as exc:
             reason = getattr(exc, "reason", str(exc))
             raise RuntimeError(f"Slack webhook connection failed: {reason}") from exc
 
-    def _send_pagerduty_notification(self, alert: Alert) -> None:
+    def _send_pagerduty_notification(self, alert: Alert) -> dict[str, str] | None:
         """Send alert notification to PagerDuty via Events API v2.
 
         Sprint 5.37: Posts a PagerDuty event to the configured
         pagerduty_integration_key. Supports info, warning, critical
         severity mapping.
+
+        Sprint 5.38: Returns a delivery receipt dict with dedup_key and
+        event status when delivery_receipts_enabled is True.
         """
         if not self._config.pagerduty_integration_key:
-            return
+            return None
 
         severity_map = {
             "info": "info",
@@ -2654,9 +2770,13 @@ class AlertManager:
         }
         pd_severity = severity_map.get(alert.severity, "warning")
 
+        # Sprint 5.38: Generate dedup_key for PagerDuty receipt tracking
+        dedup_key = f"aip-brain-{alert.alert_type}-{alert.subject}-{uuid.uuid4().hex[:8]}"
+
         payload = json.dumps({
             "routing_key": self._config.pagerduty_integration_key,
             "event_action": "trigger",
+            "dedup_key": dedup_key,
             "payload": {
                 "summary": f"[AIP Brain] {alert.alert_type}: {alert.subject} — {alert.message[:200]}",
                 "severity": pd_severity,
@@ -2680,6 +2800,19 @@ class AlertManager:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 if resp.status >= 400:
                     raise RuntimeError(f"PagerDuty API returned HTTP {resp.status}")
+                # Sprint 5.38: Parse response body for dedup_key and status receipt
+                if self._config.delivery_receipts_enabled:
+                    try:
+                        body = resp.read().decode("utf-8", errors="replace")
+                        resp_data = json.loads(body) if body else {}
+                        return {
+                            "dedup_key": resp_data.get("dedup_key", dedup_key),
+                            "status": resp_data.get("status", "triggered"),
+                            "message": resp_data.get("message", ""),
+                        }
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
+                return {"dedup_key": dedup_key} if self._config.delivery_receipts_enabled else None
         except urllib.error.URLError as exc:
             reason = getattr(exc, "reason", str(exc))
             raise RuntimeError(f"PagerDuty connection failed: {reason}") from exc
@@ -3372,3 +3505,456 @@ class AlertManager:
                     "alert_history_store_failure_write_failed",
                     error=str(exc),
                 )
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.38: Learned prediction model — transition probabilities
+    # -----------------------------------------------------------------------
+
+    def _record_alert_for_transition_learning(self, alert: Alert, now: float) -> None:
+        """Record alert for building transition probability model.
+
+        Sprint 5.38: Appends the alert to the internal sequence and
+        updates transition counts between consecutive alert types
+        for the same subject. This data is used by the learned
+        prediction model instead of the static _CAUSAL_PREDICTION_CHAIN.
+        """
+        with self._lock:
+            self._alert_type_sequence.append((alert.alert_type, alert.subject, now))
+            # Keep only last 1000 entries to bound memory
+            if len(self._alert_type_sequence) > 1000:
+                self._alert_type_sequence = self._alert_type_sequence[-1000:]
+
+            # Find the previous alert for the same subject to build transition
+            for i in range(len(self._alert_type_sequence) - 2, -1, -1):
+                prev_type, prev_subject, prev_ts = self._alert_type_sequence[i]
+                if prev_subject == alert.subject:
+                    # Record transition
+                    pair = (prev_type, alert.alert_type)
+                    self._transition_counts[pair] = self._transition_counts.get(pair, 0) + 1
+                    self._transition_totals[prev_type] = self._transition_totals.get(prev_type, 0) + 1
+                    break
+
+    def get_transition_probabilities(self, from_type: str | None = None) -> dict[str, Any]:
+        """Return computed transition probabilities from the learned model.
+
+        Sprint 5.38: Returns a dict mapping from_type to a dict of
+        (to_type -> probability). If from_type is specified, returns
+        only transitions from that type. Probabilities are computed
+        as count / total for each from_type.
+
+        Returns confidence information based on sample size.
+        """
+        with self._lock:
+            if from_type:
+                total = self._transition_totals.get(from_type, 0)
+                if total == 0:
+                    return {"from_type": from_type, "transitions": {}, "total_samples": 0, "confidence": 0.0}
+                transitions = {}
+                for (ft, tt), count in self._transition_counts.items():
+                    if ft == from_type:
+                        prob = count / total
+                        # Wilson score interval approximation for confidence
+                        z = 1.96  # 95% CI
+                        n = total
+                        p_hat = prob
+                        denominator = 1 + z**2 / n
+                        center = (p_hat + z**2 / (2 * n)) / denominator
+                        margin = z * ((p_hat * (1 - p_hat) / n + z**2 / (4 * n**2)) ** 0.5) / denominator
+                        transitions[tt] = {
+                            "probability": round(prob, 4),
+                            "count": count,
+                            "confidence_lower": round(max(0, center - margin), 4),
+                            "confidence_upper": round(min(1, center + margin), 4),
+                        }
+                return {
+                    "from_type": from_type,
+                    "transitions": transitions,
+                    "total_samples": total,
+                    "confidence": round(min(1.0, total / self._config.learned_prediction_min_samples), 4),
+                }
+            else:
+                result = {}
+                for ft in self._transition_totals:
+                    total = self._transition_totals[ft]
+                    transitions = {}
+                    for (f, t), count in self._transition_counts.items():
+                        if f == ft:
+                            prob = count / total
+                            transitions[t] = round(prob, 4)
+                    result[ft] = {
+                        "transitions": transitions,
+                        "total_samples": total,
+                    }
+                return result
+
+    def predict_causal_chain_learned(self, alert: Alert) -> list[dict]:
+        """Predict next alerts using learned transition probabilities.
+
+        Sprint 5.38: Instead of using the static _CAUSAL_PREDICTION_CHAIN,
+        this method queries the transition probability model built from
+        actual alert sequences. Returns predictions with confidence
+        intervals derived from sample size and transition probability.
+
+        Falls back to the static chain if the learned model has
+        insufficient data (< learned_prediction_min_samples).
+        """
+        if not self._config.learned_prediction_enabled:
+            return []
+
+        # Check if this alert matches a previous prediction
+        if self._config.causal_prediction_enabled:
+            self.record_prediction_outcome(alert)
+            self._expire_prediction_outcomes()
+
+        now = time.time()
+        from_type = alert.alert_type
+
+        with self._lock:
+            total = self._transition_totals.get(from_type, 0)
+
+        # If insufficient data, fall back to static chain
+        if total < self._config.learned_prediction_min_samples:
+            logger.debug(
+                "learned_prediction_insufficient_data",
+                from_type=from_type,
+                total_samples=total,
+                min_required=self._config.learned_prediction_min_samples,
+            )
+            # Fall back to static chain if enabled
+            if self._config.causal_prediction_enabled:
+                return self.predict_causal_chain(alert)
+            return []
+
+        # Build predictions from learned probabilities
+        with self._lock:
+            transitions = {}
+            for (ft, tt), count in self._transition_counts.items():
+                if ft == from_type:
+                    transitions[tt] = count / total
+
+        predictions = []
+        for to_type, probability in sorted(transitions.items(), key=lambda x: -x[1]):
+            if probability < self._config.learned_prediction_confidence_threshold:
+                continue
+
+            prediction_id = f"lpred-{uuid.uuid4().hex[:8]}"
+
+            # Confidence interval using Wilson score
+            z = 1.96
+            n = total
+            p_hat = probability
+            denominator = 1 + z**2 / n
+            center = (p_hat + z**2 / (2 * n)) / denominator
+            margin = z * ((p_hat * (1 - p_hat) / n + z**2 / (4 * n**2)) ** 0.5) / denominator
+
+            # Estimate delay based on average observed delay
+            estimated_delay = self._estimate_transition_delay(from_type, to_type, alert.subject)
+
+            prediction = {
+                "prediction_id": prediction_id,
+                "predicted_alert_type": to_type,
+                "subject": alert.subject,
+                "probability": round(probability, 4),
+                "confidence_lower": round(max(0, center - margin), 4),
+                "confidence_upper": round(min(1, center + margin), 4),
+                "estimated_delay_seconds": estimated_delay,
+                "triggered_by": from_type,
+                "triggered_at": alert.timestamp,
+                "predicted_at": datetime.now(timezone.utc).isoformat(),
+                "model": "learned",
+                "sample_size": total,
+            }
+            predictions.append(prediction)
+
+            # Track this prediction for accuracy feedback
+            with self._lock:
+                self._prediction_outcomes[prediction_id] = {
+                    "prediction_id": prediction_id,
+                    "predicted_alert_type": to_type,
+                    "subject": alert.subject,
+                    "triggered_by": from_type,
+                    "predicted_at_epoch": now,
+                    "predicted_at": prediction["predicted_at"],
+                    "estimated_delay_seconds": estimated_delay,
+                    "confidence": probability,
+                    "outcome": "pending",
+                    "model": "learned",
+                }
+
+        with self._lock:
+            subject = alert.subject
+            if subject not in self._causal_predictions:
+                self._causal_predictions[subject] = []
+            self._causal_predictions[subject].extend(predictions)
+            self._total_predictions_made += len(predictions)
+            self._total_learned_predictions_made += len(predictions)
+            self._learned_model_last_trained = now
+
+        # Notify dashboard subscribers
+        self._notify_realtime_subscribers({
+            "event": "causal_predictions",
+            "subject": alert.subject,
+            "predictions": predictions,
+            "triggered_by": from_type,
+            "model": "learned",
+        })
+
+        logger.info(
+            "learned_predictions_generated",
+            triggered_by=from_type,
+            subject=alert.subject,
+            prediction_count=len(predictions),
+            sample_size=total,
+        )
+
+        return predictions
+
+    def _estimate_transition_delay(self, from_type: str, to_type: str, subject: str) -> int:
+        """Estimate the average delay between two alert types for a subject.
+
+        Sprint 5.38: Scans the alert sequence to compute average
+        time between from_type and to_type occurrences for the same subject.
+        """
+        delays = []
+        with self._lock:
+            seq = self._alert_type_sequence
+            # Find pairs of consecutive (from_type, to_type) for this subject
+            last_from_ts = None
+            for atype, asubject, ats in seq:
+                if asubject != subject:
+                    continue
+                if atype == from_type:
+                    last_from_ts = ats
+                elif atype == to_type and last_from_ts is not None:
+                    delays.append(ats - last_from_ts)
+                    last_from_ts = None
+
+        if delays:
+            return int(sum(delays) / len(delays))
+        # Default: causal grouping window / 2
+        return self._config.causal_grouping_window_seconds // 2
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.38: Alert throttling & circuit breaker
+    # -----------------------------------------------------------------------
+
+    def _record_throttle_window(self, now: float) -> None:
+        """Record an alert timestamp in the sliding throttle window.
+
+        Sprint 5.38: Maintains a sliding 60-second window of alert
+        timestamps for rate-based throttling decisions.
+        """
+        with self._lock:
+            self._throttle_alert_timestamps.append(now)
+            # Prune entries older than 60 seconds
+            cutoff = now - 60
+            self._throttle_alert_timestamps = [
+                ts for ts in self._throttle_alert_timestamps if ts > cutoff
+            ]
+
+    def _check_circuit_breaker(self, now: float) -> bool:
+        """Check if the circuit breaker should be active.
+
+        Sprint 5.38: Returns True if the alert rate exceeds
+        throttle_threshold_per_minute and circuit_breaker_enabled
+        is True. Once activated, the circuit breaker stays active
+        for circuit_breaker_cooldown_seconds, then automatically
+        resets for the next evaluation cycle.
+
+        The circuit breaker uses a "half-open" approach: after the
+        cooldown expires, the next check evaluates the current rate.
+        If still high, the breaker re-activates; if low, it deactivates.
+        """
+        if not self._config.circuit_breaker_enabled:
+            return False
+
+        with self._lock:
+            # If circuit breaker is active, check cooldown
+            if self._circuit_breaker_active:
+                elapsed = now - self._circuit_breaker_activated_at
+                if elapsed < self._config.circuit_breaker_cooldown_seconds:
+                    return True
+                else:
+                    # Cooldown expired — check if rate is still high
+                    rate = len(self._throttle_alert_timestamps)
+                    if rate >= self._config.throttle_threshold_per_minute:
+                        # Still high — re-activate
+                        self._circuit_breaker_activated_at = now
+                        self._total_circuit_breaker_activations += 1
+                        logger.warning(
+                            "circuit_breaker_reactivated",
+                            alert_rate=rate,
+                            threshold=self._config.throttle_threshold_per_minute,
+                        )
+                        return True
+                    else:
+                        # Rate has dropped — deactivate
+                        self._circuit_breaker_active = False
+                        logger.info(
+                            "circuit_breaker_deactivated",
+                            alert_rate=rate,
+                        )
+                        return False
+
+            # Not active — check if we should activate
+            rate = len(self._throttle_alert_timestamps)
+            if rate >= self._config.throttle_threshold_per_minute:
+                self._circuit_breaker_active = True
+                self._circuit_breaker_activated_at = now
+                self._total_circuit_breaker_activations += 1
+                logger.warning(
+                    "circuit_breaker_activated",
+                    alert_rate=rate,
+                    threshold=self._config.throttle_threshold_per_minute,
+                )
+                return True
+
+            return False
+
+    def get_circuit_breaker_status(self) -> dict[str, Any]:
+        """Return current circuit breaker status and metrics.
+
+        Sprint 5.38: Provides visibility into the circuit breaker
+        state for the dashboard and API endpoints.
+        """
+        now = time.time()
+        with self._lock:
+            rate = len(self._throttle_alert_timestamps)
+            return {
+                "enabled": self._config.circuit_breaker_enabled,
+                "active": self._circuit_breaker_active,
+                "current_rate_per_minute": rate,
+                "threshold": self._config.throttle_threshold_per_minute,
+                "cooldown_seconds": self._config.circuit_breaker_cooldown_seconds,
+                "total_activations": self._total_circuit_breaker_activations,
+                "total_throttled_alerts": self._total_throttled_alerts,
+                "activated_at": self._circuit_breaker_activated_at,
+                "cooldown_remaining": max(
+                    0,
+                    self._config.circuit_breaker_cooldown_seconds - (now - self._circuit_breaker_activated_at)
+                ) if self._circuit_breaker_active else 0,
+            }
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.38: Multi-channel delivery receipts
+    # -----------------------------------------------------------------------
+
+    def _record_delivery_receipts(
+        self,
+        correlation_id: str,
+        transport_results: dict[str, dict[str, Any]],
+    ) -> None:
+        """Record delivery receipts from transport results.
+
+        Sprint 5.38: Extracts receipt data from each transport's
+        result and stores it per correlation ID. Slack provides
+        message_ts, PagerDuty provides dedup_key + status.
+        """
+        receipts: dict[str, dict[str, Any]] = {}
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        for channel, result in transport_results.items():
+            receipt = result.get("receipt")
+            if receipt:
+                receipts[channel] = {
+                    **receipt,
+                    "confirmed_at": now_iso,
+                    "delivery_status": result.get("status", "unknown"),
+                }
+
+        if receipts:
+            with self._lock:
+                self._delivery_receipts[correlation_id] = receipts
+
+    def get_delivery_receipts(self, correlation_id: str) -> dict[str, Any]:
+        """Return delivery receipts for a given correlation ID.
+
+        Sprint 5.38: Returns per-channel receipt information including
+        Slack message_ts, PagerDuty dedup_key, and confirmation timestamps.
+        """
+        with self._lock:
+            return self._delivery_receipts.get(correlation_id, {})
+
+    def get_all_delivery_receipts(self, limit: int = 50) -> dict[str, dict[str, Any]]:
+        """Return all delivery receipts, limited to most recent.
+
+        Sprint 5.38: For dashboard display of per-channel receipt status.
+        """
+        with self._lock:
+            items = list(self._delivery_receipts.items())
+            if len(items) > limit:
+                items = items[-limit:]
+            return dict(items)
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.38: WebSocket compression
+    # -----------------------------------------------------------------------
+
+    def compress_ws_message(self, data: str) -> tuple[str, bool]:
+        """Compress a WebSocket message using zlib deflate.
+
+        Sprint 5.38: Implements per-message deflate compression for
+        WebSocket frames. Returns (compressed_data_b64, was_compressed).
+        If compression is disabled or the compressed output is not smaller,
+        returns the original data uncompressed.
+
+        Uses base64 encoding for the compressed bytes so they can be
+        transported as text in JSON-based WebSocket messages.
+        """
+        if not self._config.ws_compression_enabled:
+            return data, False
+
+        try:
+            import zlib
+            import base64
+
+            raw_bytes = data.encode("utf-8")
+            compressed = zlib.compress(raw_bytes, level=6)
+            compressed_b64 = base64.b64encode(compressed).decode("ascii")
+
+            # Only use compressed version if it's actually smaller
+            if len(compressed_b64) < len(data):
+                saved = len(data) - len(compressed_b64)
+                with self._lock:
+                    self._ws_compression_bytes_saved_estimate += saved
+                return compressed_b64, True
+
+            return data, False
+        except Exception as exc:
+            logger.debug(
+                "ws_compression_failed",
+                error=str(exc),
+            )
+            return data, False
+
+    def decompress_ws_message(self, compressed_b64: str) -> str:
+        """Decompress a base64-encoded zlib-compressed WebSocket message.
+
+        Sprint 5.38: Counterpart to compress_ws_message. Decodes
+        the base64 data and decompresses with zlib inflate.
+        """
+        try:
+            import zlib
+            import base64
+
+            compressed = base64.b64decode(compressed_b64)
+            decompressed = zlib.decompress(compressed)
+            return decompressed.decode("utf-8")
+        except Exception as exc:
+            logger.debug(
+                "ws_decompression_failed",
+                error=str(exc),
+            )
+            return compressed_b64  # Return as-is if decompression fails
+
+    def get_compression_status(self) -> dict[str, Any]:
+        """Return WebSocket compression status and metrics.
+
+        Sprint 5.38: For dashboard and API visibility.
+        """
+        with self._lock:
+            return {
+                "enabled": self._config.ws_compression_enabled,
+                "negotiated": self._ws_compression_negotiated,
+                "bytes_saved_estimate": self._ws_compression_bytes_saved_estimate,
+            }

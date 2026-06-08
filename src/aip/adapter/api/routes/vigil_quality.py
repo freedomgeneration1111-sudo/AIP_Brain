@@ -2539,6 +2539,51 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 
 <div class="status-bar" id="meta"></div>
 
+<!-- Sprint 5.38: Circuit Breaker Status -->
+<div class="policy-panel" id="circuitBreakerPanel">
+  <h3>Circuit Breaker</h3>
+  <div>
+    <span class="perf-metric">Status: <span id="cbStatus" class="value">inactive</span></span>
+    <span class="perf-metric">Rate: <span id="cbRate" class="value">0</span>/min</span>
+    <span class="perf-metric">Threshold: <span id="cbThreshold" class="value">100</span></span>
+    <span class="perf-metric">Throttled: <span id="cbThrottled" class="value">0</span></span>
+    <span class="perf-metric">Activations: <span id="cbActivations" class="value">0</span></span>
+    <span class="perf-metric">Cooldown: <span id="cbCooldown" class="value">0</span>s</span>
+  </div>
+</div>
+
+<!-- Sprint 5.38: WS Compression -->
+<div class="perf-panel" id="wsCompressionPanel">
+  <h3>WS Compression</h3>
+  <div>
+    <span class="perf-metric">Enabled: <span id="wsCompEnabled" class="value">no</span></span>
+    <span class="perf-metric">Bytes Saved: <span id="wsCompSaved" class="value">0</span></span>
+    <span class="perf-metric">Negotiated: <span id="wsCompNegotiated" class="value">no</span></span>
+  </div>
+</div>
+
+<!-- Sprint 5.38: Delivery Receipts -->
+<div class="policy-panel" id="deliveryReceiptsPanel">
+  <h3>Delivery Receipts</h3>
+  <div>
+    <span class="perf-metric">Enabled: <span id="drEnabled" class="value">no</span></span>
+    <span class="perf-metric">Tracked: <span id="drTracked" class="value">0</span></span>
+  </div>
+  <div id="receiptList" style="font-size:11px;color:#94a3b8;margin-top:8px;max-height:120px;overflow-y:auto;"></div>
+</div>
+
+<!-- Sprint 5.38: Learned Prediction Model -->
+<div class="prediction-panel" id="learnedModelPanel">
+  <h3>Learned Prediction Model</h3>
+  <div>
+    <span class="perf-metric">Enabled: <span id="lpEnabled" class="value">no</span></span>
+    <span class="perf-metric">Min Samples: <span id="lpMinSamples" class="value">10</span></span>
+    <span class="perf-metric">Known Transitions: <span id="lpTransitions" class="value">0</span></span>
+    <span class="perf-metric">Learned Predictions: <span id="lpPredCount" class="value">0</span></span>
+  </div>
+  <div id="transitionProbList" style="font-size:11px;color:#94a3b8;margin-top:8px;max-height:120px;overflow-y:auto;"></div>
+</div>
+
 <script>
 const API_URL = '../vigil/quality';
 const ALERTS_URL = '../vigil/quality/alerts';
@@ -2553,14 +2598,103 @@ const _perfMetrics = { wsMsgsReceived: 0, wsMsgsDeduped: 0, lastRenderTime: 0 };
 const _wsMsgDedupSet = new Set();
 const _WS_DEDUP_MAX_SIZE = 1000;
 
-// Sprint 5.37: SharedWorker for connection pooling
-let sharedWorker = null;
+// Sprint 5.38: Service Worker for connection pooling (replaces SharedWorker)
+// Service Worker provides better offline resilience, background sync, and
+// more robust tab coordination than SharedWorker.
+let serviceWorkerRegistration = null;
+let sharedWorker = null;  // Fallback for browsers without SW support
 let tabId = 'tab-' + Math.random().toString(36).substring(2, 10);
+let swChannel = null;  // BroadcastChannel for SW communication
 
-// Sprint 5.37: Try to create a SharedWorker for WS connection pooling
-function initSharedWorker() {
+// Sprint 5.38: Try Service Worker first, then fall back to SharedWorker
+async function initServiceWorker() {
   try {
-    // Create SharedWorker from inline blob for same-origin compatibility
+    // Try BroadcastChannel + Service Worker approach
+    if ('serviceWorker' in navigator && 'BroadcastChannel' in window) {
+      // Register the Service Worker from a blob URL
+      const swCode = `
+        let ws = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 10;
+        const baseReconnectDelay = 1000;
+        const bc = new BroadcastChannel('aip-dashboard-ws');
+
+        self.addEventListener('message', function(event) {
+          const msg = event.data;
+          if (msg.type === 'connect_ws') {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+              connectWS(msg.wsUrl);
+            }
+          } else if (msg.type === 'ws_send') {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(msg.data);
+            }
+          } else if (msg.type === 'check_ws_status') {
+            bc.postMessage({type: 'ws_status', status: ws ? (ws.readyState === WebSocket.OPEN ? 'connected' : 'disconnected') : 'disconnected'});
+          }
+        });
+
+        function connectWS(wsUrl) {
+          if (reconnectAttempts >= maxReconnectAttempts) return;
+          try {
+            ws = new WebSocket(wsUrl);
+            ws.onopen = function() {
+              reconnectAttempts = 0;
+              bc.postMessage({type: 'ws_status', status: 'connected'});
+            };
+            ws.onmessage = function(event) {
+              bc.postMessage({type: 'ws_message', data: event.data});
+            };
+            ws.onclose = function() {
+              bc.postMessage({type: 'ws_status', status: 'disconnected'});
+              const delay = Math.min(baseReconnectDelay * Math.pow(2, reconnectAttempts), 30000);
+              reconnectAttempts++;
+              setTimeout(function() { connectWS(wsUrl); }, delay);
+            };
+            ws.onerror = function() {
+              bc.postMessage({type: 'ws_status', status: 'error'});
+            };
+          } catch(e) {}
+        }
+      `;
+      const blob = new Blob([swCode], {type: 'application/javascript'});
+      const swUrl = URL.createObjectURL(blob);
+      serviceWorkerRegistration = await navigator.serviceWorker.register(swUrl, {scope: '/'});
+      // Use BroadcastChannel for communication
+      swChannel = new BroadcastChannel('aip-dashboard-ws');
+      swChannel.onmessage = function(event) {
+        const msg = event.data;
+        if (msg.type === 'ws_message') {
+          _perfMetrics.wsMsgsReceived++;
+          handleIncomingWSMessage(msg.data);
+        } else if (msg.type === 'ws_status') {
+          if (msg.status === 'connected') {
+            wsConnected = true;
+            updateConnStatus('connected', 'WS Connected (ServiceWorker)');
+          } else if (msg.status === 'disconnected') {
+            wsConnected = false;
+            updateConnStatus('disconnected', 'WS Reconnecting (ServiceWorker)');
+          }
+        }
+      };
+      // Tell Service Worker to connect
+      const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = wsProto + '//' + location.host + '/vigil/quality/dashboard/ws';
+      navigator.serviceWorker.controller.postMessage({type: 'connect_ws', wsUrl: wsUrl});
+      // Register tab with server
+      updateConnStatus('connecting', 'SW Connecting...');
+      return;
+    }
+  } catch(e) {
+    // Service Worker not supported — fall back to SharedWorker
+  }
+  // Sprint 5.37 fallback: SharedWorker for WS connection pooling
+  initSharedWorkerFallback();
+}
+
+// Sprint 5.37: SharedWorker fallback when Service Worker is not available
+function initSharedWorkerFallback() {
+  try {
     const workerCode = `
       let ws = null;
       let tabs = new Map();
@@ -2576,11 +2710,9 @@ function initSharedWorker() {
         port.onmessage = function(event) {
           const msg = event.data;
           if (msg.type === 'register') {
-            // Tab is registering itself
             tabs.set(msg.tabId || tabId, port);
             port.postMessage({type: 'registered', tabId: msg.tabId || tabId});
           } else if (msg.type === 'ws_send') {
-            // Tab wants to send a WS message
             if (ws && ws.readyState === WebSocket.OPEN) {
               ws.send(msg.data);
             }
@@ -2593,11 +2725,9 @@ function initSharedWorker() {
           tabs.delete(tabId);
         };
 
-        // If no WS connection yet, create one
         if (!ws || ws.readyState !== WebSocket.OPEN) {
           connectWS();
         }
-        // Send current tab its ID
         port.postMessage({type: 'init', tabId: tabId, wsConnected: ws && ws.readyState === WebSocket.OPEN});
       };
 
@@ -2638,7 +2768,6 @@ function initSharedWorker() {
     sharedWorker.port.onmessage = function(event) {
       const msg = event.data;
       if (msg.type === 'ws_message') {
-        // Route WS message to the local handler
         _perfMetrics.wsMsgsReceived++;
         handleIncomingWSMessage(msg.data);
       } else if (msg.type === 'ws_status') {
@@ -2654,11 +2783,8 @@ function initSharedWorker() {
       }
     };
     sharedWorker.port.start();
-    // Register this tab with the SharedWorker
     sharedWorker.port.postMessage({type: 'register', tabId: tabId});
-    // Register tab with server via direct WS or fallback
   } catch(e) {
-    // SharedWorker not supported — fall back to direct WS
     sharedWorker = null;
   }
 }
@@ -3722,8 +3848,8 @@ setTimeout(function() {
   fetchPredictions();
   fetchPruningHistory();
   fetchPredictionAccuracy();
-  // Sprint 5.37: Try SharedWorker first, then fall back to direct WS
-  initSharedWorker();
+  // Sprint 5.38: Try Service Worker first, then fall back to SharedWorker
+  initServiceWorker();
   // Sprint 5.37: Register this tab with the server
   if (wsConnected) {
     wsSendCommand({action: 'tab_register', tab_id: tabId});

@@ -97,8 +97,8 @@ _DEFAULT_MAX_FAILURE_ROWS = 1000
 # Default maximum number of delivery status rows to retain (Sprint 5.33)
 _DEFAULT_MAX_DELIVERY_STATUS_ROWS = 2000
 
-# Schema version for migrations (Sprint 5.33: v5 adds alert_groups table)
-_SCHEMA_VERSION = 5
+# Schema version for migrations (Sprint 5.38: v6 adds transition_probabilities table)
+_SCHEMA_VERSION = 6
 
 
 class AlertHistoryStore:
@@ -330,6 +330,44 @@ class AlertHistoryStore:
                     conn.execute("""
                         CREATE INDEX IF NOT EXISTS idx_alert_groups_group_key
                         ON alert_groups (group_key)
+                    """)
+
+                # Sprint 5.38: Schema migration v5 -> v6
+                # Add transition_probabilities table for learned prediction model persistence
+                if current_version < 6:
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS transition_probabilities (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            from_type TEXT NOT NULL,
+                            to_type TEXT NOT NULL,
+                            count INTEGER NOT NULL DEFAULT 0,
+                            total_from INTEGER NOT NULL DEFAULT 0,
+                            updated_at TEXT NOT NULL,
+                            UNIQUE(from_type, to_type)
+                        )
+                    """)
+
+                    # Index for from_type lookups
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_transition_from_type
+                        ON transition_probabilities (from_type)
+                    """)
+
+                    # Add delivery_receipts table for multi-channel receipt tracking
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS delivery_receipts (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            correlation_id TEXT NOT NULL,
+                            channel TEXT NOT NULL,
+                            receipt_data TEXT NOT NULL DEFAULT '{}',
+                            confirmed_at TEXT NOT NULL,
+                            created_at TEXT NOT NULL
+                        )
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_delivery_receipts_cid
+                        ON delivery_receipts (correlation_id)
                     """)
 
             self._initialized = True
