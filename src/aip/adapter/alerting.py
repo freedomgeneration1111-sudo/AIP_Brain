@@ -41,6 +41,14 @@ Sprint 5.31: Noise reduction, delivery visibility, and real-time updates:
 - Alert silencing/muting rules: temporarily mute (alert_type, subject) pairs
 - Alert aggregation/digest: batch low-severity alerts into periodic summaries
 
+Sprint 5.32: Durability, real-time interaction, and operational visibility:
+
+- Delivery status persistence: delivery status records survive restarts via SQLite
+- WebSocket dashboard channel: bidirectional WS for real-time updates + commands
+- Alert correlation & grouping: group related alerts, bulk acknowledge/dismiss
+- Digest customization per alert type: per-type intervals via TOML config
+- Rate-limit & mute metrics in health endpoint
+
 Design principles:
 - Lightweight and opt-in — alerting is disabled by default
 - Multiple transport mechanisms (webhook, email)
@@ -91,7 +99,7 @@ from typing import Any
 
 from aip.logging import get_logger
 
-# Optional asyncio import for SSE notifications
+# Optional asyncio import for SSE/WebSocket notifications
 try:
     import asyncio
 except ImportError:
@@ -211,6 +219,11 @@ class AlertConfig:
     digest_enabled: bool = False
     digest_interval_minutes: int = 15
     digest_min_alerts: int = 3
+    # Sprint 5.32: Per-alert-type digest overrides
+    # Maps alert_type to {"interval_minutes": N, "min_alerts": N}
+    # When set, these override the global digest settings for specific alert types.
+    # Example: {"batch_reduction": {"interval_minutes": 5, "min_alerts": 2}}
+    digest_overrides: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -437,6 +450,15 @@ class AlertManager:
         self._digest_last_flush: float = time.time()
         # Sprint 5.31: SSE subscribers — list of asyncio.Queue for real-time push
         self._sse_subscribers: list[Any] = []
+        # Sprint 5.32: WebSocket subscribers — list of websocket objects for bidirectional push
+        self._ws_subscribers: list[Any] = []
+        # Sprint 5.32: Digest flush counter for health metrics
+        self._total_digest_flushes: int = 0
+        # Sprint 5.32: Delivery success/failure counters by transport
+        self._delivery_success_by_transport: dict[str, int] = {}
+        self._delivery_failure_by_transport: dict[str, int] = {}
+        # Sprint 5.32: Alert correlation groups — group_key -> list of correlation_ids
+        self._alert_groups: dict[str, list[str]] = {}
         # Lock for thread-safe mutation of shared state
         self._lock = threading.Lock()
 
@@ -628,28 +650,38 @@ class AlertManager:
                        (t == "email" and self._config.email_to):
                         transports.append(t)
 
+        # Sprint 5.32: Alert correlation grouping
+        self._add_alert_to_group(alert, correlation_id)
+
         # Sprint 5.31: Check if this alert should go to digest buffer instead
-        # Low-severity (info) alerts are buffered when digest is enabled
+        # Sprint 5.32: Use per-type digest overrides if configured
         if self._config.digest_enabled and alert.severity == "info" and not escalated:
+            # Determine per-type or global digest settings
+            digest_interval, digest_min = self._get_digest_settings(alert.alert_type)
+
             with self._lock:
                 self._digest_buffer.append(alert_dict)
                 # Check if we should flush the digest
                 elapsed = now - self._digest_last_flush
-                interval_secs = self._config.digest_interval_minutes * 60
-                if len(self._digest_buffer) >= self._config.digest_min_alerts or elapsed >= interval_secs:
+                interval_secs = digest_interval * 60
+                if len(self._digest_buffer) >= digest_min or elapsed >= interval_secs:
                     self._flush_digest()
                 # Record delivery status as "buffered" for digest
-                self._delivery_status[correlation_id] = {
+                status_dict = {
                     "status": "buffered_for_digest",
                     "correlation_id": correlation_id,
                     "alert_type": alert.alert_type,
+                    "severity": alert.severity,
                     "subject": alert.subject,
                     "transports": transports,
                     "transport_results": {},
                     "dispatched_at": datetime.now(timezone.utc).isoformat(),
                 }
-            # Notify SSE subscribers about the buffered alert
-            self._notify_sse_subscribers({
+                self._delivery_status[correlation_id] = status_dict
+                # Sprint 5.32: Persist delivery status to SQLite
+                self._persist_delivery_status(status_dict)
+            # Notify SSE/WebSocket subscribers about the buffered alert
+            self._notify_realtime_subscribers({
                 "event": "alert_buffered",
                 "correlation_id": correlation_id,
                 "alert_type": alert.alert_type,
@@ -689,17 +721,20 @@ class AlertManager:
         """
         # Initialize delivery status tracking for this correlation ID
         transport_results: dict[str, dict[str, Any]] = {}
+        status_dict = {
+            "status": "dispatching",
+            "correlation_id": correlation_id,
+            "alert_type": alert.alert_type,
+            "severity": alert.severity,
+            "subject": alert.subject,
+            "transports": transports,
+            "transport_results": transport_results,
+            "dispatched_at": datetime.now(timezone.utc).isoformat(),
+        }
         with self._lock:
-            self._delivery_status[correlation_id] = {
-                "status": "dispatching",
-                "correlation_id": correlation_id,
-                "alert_type": alert.alert_type,
-                "severity": alert.severity,
-                "subject": alert.subject,
-                "transports": transports,
-                "transport_results": transport_results,
-                "dispatched_at": datetime.now(timezone.utc).isoformat(),
-            }
+            self._delivery_status[correlation_id] = status_dict
+            # Sprint 5.32: Persist initial delivery status to SQLite
+            self._persist_delivery_status(status_dict)
 
         all_succeeded = True
 
@@ -768,17 +803,29 @@ class AlertManager:
                 )
 
         # Update final delivery status
+        final_status = "delivered" if all_succeeded else "partial" if transport_results else "failed"
         with self._lock:
             if correlation_id in self._delivery_status:
-                self._delivery_status[correlation_id]["status"] = (
-                    "delivered" if all_succeeded else "partial" if transport_results else "failed"
-                )
+                self._delivery_status[correlation_id]["status"] = final_status
                 self._delivery_status[correlation_id]["completed_at"] = (
                     datetime.now(timezone.utc).isoformat()
                 )
+                # Sprint 5.32: Update persistent delivery status
+                self._update_persistent_delivery_status(correlation_id, final_status)
 
-        # Sprint 5.31: Notify SSE subscribers about the delivery result
-        self._notify_sse_subscribers({
+        # Sprint 5.32: Track delivery success/failure by transport
+        for transport_name, result in transport_results.items():
+            if result.get("status") == "delivered":
+                self._delivery_success_by_transport[transport_name] = (
+                    self._delivery_success_by_transport.get(transport_name, 0) + 1
+                )
+            else:
+                self._delivery_failure_by_transport[transport_name] = (
+                    self._delivery_failure_by_transport.get(transport_name, 0) + 1
+                )
+
+        # Sprint 5.31 → 5.32: Notify SSE/WebSocket subscribers about the delivery result
+        self._notify_realtime_subscribers({
             "event": "alert_delivered" if all_succeeded else "alert_delivery_failed",
             "correlation_id": correlation_id,
             "alert_type": alert.alert_type,
@@ -868,8 +915,18 @@ class AlertManager:
                 "interval_minutes": self._config.digest_interval_minutes,
                 "min_alerts": self._config.digest_min_alerts,
                 "buffered_count": len(self._digest_buffer),
+                # Sprint 5.32: Per-type overrides
+                "overrides": self._config.digest_overrides,
+                "total_flushes": self._total_digest_flushes,
             },
             "sse_subscribers": len(self._sse_subscribers),
+            # Sprint 5.32: WebSocket and operational metrics
+            "ws_subscribers": len(self._ws_subscribers),
+            "delivery_by_transport": {
+                "success": dict(self._delivery_success_by_transport),
+                "failure": dict(self._delivery_failure_by_transport),
+            },
+            "alert_groups": len(self._alert_groups),
         }
 
     def get_alert_history(
@@ -1133,6 +1190,8 @@ class AlertManager:
         buffered = list(self._digest_buffer)
         self._digest_buffer.clear()
         self._digest_last_flush = time.time()
+        # Sprint 5.32: Track digest flush count for health metrics
+        self._total_digest_flushes += 1
 
         # Build a digest summary
         type_counts: dict[str, int] = {}
@@ -1206,6 +1265,9 @@ class AlertManager:
         Sprint 5.31: Called periodically (e.g., from a background task)
         to ensure that buffered alerts are flushed even if the minimum
         count threshold hasn't been reached.
+
+        Sprint 5.32: Uses the shortest interval from per-type overrides
+        or global settings to determine if enough time has elapsed.
         """
         if not self._config.digest_enabled:
             return
@@ -1215,7 +1277,13 @@ class AlertManager:
             if not self._digest_buffer:
                 return
             elapsed = now - self._digest_last_flush
-            interval_secs = self._config.digest_interval_minutes * 60
+            # Sprint 5.32: Use shortest interval from overrides or global
+            min_interval = self._config.digest_interval_minutes
+            for override in self._config.digest_overrides.values():
+                override_interval = override.get("interval_minutes", min_interval)
+                if override_interval < min_interval:
+                    min_interval = override_interval
+            interval_secs = min_interval * 60
             if elapsed >= interval_secs:
                 self._flush_digest()
 
@@ -1257,6 +1325,248 @@ class AlertManager:
                     queue.put_nowait(event)
             except Exception:
                 pass  # Subscriber queue may be full or closed
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.32: Delivery status persistence
+    # -----------------------------------------------------------------------
+
+    def _persist_delivery_status(self, status_dict: dict) -> None:
+        """Persist delivery status to the AlertHistoryStore.
+
+        Sprint 5.32: Writes the current delivery status to SQLite so
+        that it survives process restarts. Called whenever a new
+        delivery status is created (dispatching or buffered_for_digest).
+
+        Must be called with self._lock held.
+        """
+        if self._history_store is not None:
+            try:
+                self._history_store.record_delivery_status(status_dict)
+            except Exception as exc:
+                logger.warning(
+                    "alert_delivery_status_persist_failed",
+                    correlation_id=status_dict.get("correlation_id", ""),
+                    error=str(exc),
+                )
+
+    def _update_persistent_delivery_status(self, correlation_id: str, final_status: str) -> None:
+        """Update the persistent delivery status record.
+
+        Sprint 5.32: Called when delivery completes (delivered/partial/failed)
+        to update the SQLite record with the final status and completion time.
+
+        Must be called with self._lock held.
+        """
+        if self._history_store is not None:
+            try:
+                self._history_store.update_delivery_status(
+                    correlation_id=correlation_id,
+                    status=final_status,
+                    completed_at=datetime.now(timezone.utc).isoformat(),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "alert_delivery_status_update_failed",
+                    correlation_id=correlation_id,
+                    error=str(exc),
+                )
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.32: WebSocket support
+    # -----------------------------------------------------------------------
+
+    def add_ws_subscriber(self, websocket: Any) -> None:
+        """Add a WebSocket connection as a subscriber.
+
+        Sprint 5.32: WebSocket subscribers receive the same events as
+        SSE subscribers, plus can send commands back to the server.
+        """
+        with self._lock:
+            self._ws_subscribers.append(websocket)
+
+    def remove_ws_subscriber(self, websocket: Any) -> None:
+        """Remove a WebSocket subscriber."""
+        with self._lock:
+            try:
+                self._ws_subscribers.remove(websocket)
+            except ValueError:
+                pass
+
+    def _notify_realtime_subscribers(self, event: dict) -> None:
+        """Push an event to all SSE and WebSocket subscribers.
+
+        Sprint 5.32: Unified notification method that pushes events
+        to both SSE queues and WebSocket connections. Replaces the
+        separate _notify_sse_subscribers calls in send_alert flow.
+        """
+        # Push to SSE subscribers (asyncio.Queue)
+        self._notify_sse_subscribers(event)
+
+        # Push to WebSocket subscribers
+        with self._lock:
+            ws_subs = list(self._ws_subscribers)
+
+        for ws in ws_subs:
+            try:
+                if hasattr(ws, "send_json"):
+                    # FastAPI WebSocket — schedule the send
+                    if asyncio is not None:
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                asyncio.ensure_future(ws.send_json(event))
+                            else:
+                                loop.run_until_complete(ws.send_json(event))
+                        except RuntimeError:
+                            pass
+                elif hasattr(ws, "put_nowait"):
+                    # asyncio.Queue fallback
+                    ws.put_nowait(event)
+            except Exception:
+                pass  # WebSocket may be closed
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.32: Alert correlation & grouping
+    # -----------------------------------------------------------------------
+
+    def _add_alert_to_group(self, alert: Alert, correlation_id: str) -> None:
+        """Add an alert to a correlation group based on its subject.
+
+        Sprint 5.32: Related alerts sharing the same subject are
+        grouped together. This enables the dashboard to visually
+        cluster related alerts and supports bulk actions on a group.
+
+        Grouping rules (pragmatic, start simple):
+        - Alerts with the same subject are grouped together
+        - The group key is the subject string
+        - Pool exhaustion + quality degradation on same store → same group
+        """
+        if not alert.subject:
+            return
+
+        group_key = alert.subject
+        with self._lock:
+            if group_key not in self._alert_groups:
+                self._alert_groups[group_key] = []
+            self._alert_groups[group_key].append(correlation_id)
+            # Keep only last 50 correlation IDs per group
+            if len(self._alert_groups[group_key]) > 50:
+                self._alert_groups[group_key] = self._alert_groups[group_key][-50:]
+
+    def get_alert_groups(self) -> dict[str, list[str]]:
+        """Return all alert correlation groups.
+
+        Sprint 5.32: Returns a dict mapping group keys (subjects) to
+        lists of correlation IDs. This enables the dashboard to display
+        related alerts together and support bulk operations.
+        """
+        with self._lock:
+            return dict(self._alert_groups)
+
+    def bulk_acknowledge_group(self, group_key: str, acknowledged_by: str = "operator") -> dict:
+        """Acknowledge all alerts in a correlation group.
+
+        Sprint 5.32: Finds all alerts in the specified group and
+        acknowledges them. Returns a summary of how many were
+        acknowledged vs. not found.
+        """
+        with self._lock:
+            correlation_ids = list(self._alert_groups.get(group_key, []))
+
+        acknowledged = 0
+        not_found = 0
+        for cid in correlation_ids:
+            # Find the alert by correlation_id in the history store
+            if self._history_store is not None:
+                try:
+                    # Look up the alert by correlation_id
+                    alert = self._history_store.get_alert_by_correlation_id(cid)
+                    if alert and alert.get("acknowledged", 0) == 0:
+                        if self._history_store.acknowledge_alert(alert["id"], acknowledged_by):
+                            acknowledged += 1
+                        else:
+                            not_found += 1
+                    else:
+                        not_found += 1
+                except Exception:
+                    not_found += 1
+            else:
+                not_found += 1
+
+        logger.info(
+            "alert_bulk_acknowledge",
+            group_key=group_key,
+            acknowledged=acknowledged,
+            not_found=not_found,
+        )
+
+        return {
+            "group_key": group_key,
+            "acknowledged": acknowledged,
+            "not_found": not_found,
+            "total": len(correlation_ids),
+        }
+
+    def bulk_dismiss_group(self, group_key: str, dismissed_by: str = "operator") -> dict:
+        """Dismiss all alerts in a correlation group.
+
+        Sprint 5.32: Finds all alerts in the specified group and
+        dismisses them. Returns a summary of how many were dismissed
+        vs. not found.
+        """
+        with self._lock:
+            correlation_ids = list(self._alert_groups.get(group_key, []))
+
+        dismissed = 0
+        not_found = 0
+        for cid in correlation_ids:
+            if self._history_store is not None:
+                try:
+                    alert = self._history_store.get_alert_by_correlation_id(cid)
+                    if alert and alert.get("acknowledged", 0) == 0:
+                        if self._history_store.dismiss_alert(alert["id"], dismissed_by):
+                            dismissed += 1
+                        else:
+                            not_found += 1
+                    else:
+                        not_found += 1
+                except Exception:
+                    not_found += 1
+            else:
+                not_found += 1
+
+        logger.info(
+            "alert_bulk_dismiss",
+            group_key=group_key,
+            dismissed=dismissed,
+            not_found=not_found,
+        )
+
+        return {
+            "group_key": group_key,
+            "dismissed": dismissed,
+            "not_found": not_found,
+            "total": len(correlation_ids),
+        }
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.32: Digest customization per alert type
+    # -----------------------------------------------------------------------
+
+    def _get_digest_settings(self, alert_type: str) -> tuple[int, int]:
+        """Get digest interval and min_alerts for a specific alert type.
+
+        Sprint 5.32: Checks per-type overrides first, falls back to
+        global settings if no override is configured for this type.
+
+        Returns (interval_minutes, min_alerts) tuple.
+        """
+        override = self._config.digest_overrides.get(alert_type)
+        if override:
+            interval = override.get("interval_minutes", self._config.digest_interval_minutes)
+            min_alerts = override.get("min_alerts", self._config.digest_min_alerts)
+            return (interval, min_alerts)
+        return (self._config.digest_interval_minutes, self._config.digest_min_alerts)
 
     def _is_alert_type_enabled(self, alert_type: str) -> bool:
         """Check if a specific alert type is enabled."""
@@ -1348,6 +1658,9 @@ class AlertManager:
         # Sprint 5.31: Rebuild mute rules from persistent store
         self._rebuild_mute_rules()
 
+        # Sprint 5.32: Rebuild delivery status from persistent store
+        self._rebuild_delivery_status()
+
     def _rebuild_rate_limit_state(self) -> None:
         """Rebuild in-memory rate-limiting state from persistent store.
 
@@ -1410,7 +1723,35 @@ class AlertManager:
                 error=str(exc),
             )
 
-    # Sprint 5.29: Config-driven alert routing
+    def _rebuild_delivery_status(self) -> None:
+        """Rebuild in-memory delivery status from persistent store.
+
+        Sprint 5.32: On startup (or after attaching a history store),
+        queries the AlertHistoryStore for recent delivery status records
+        and populates _delivery_status. This ensures delivery status
+        is queryable after a restart, even for alerts dispatched in
+        the previous process lifetime.
+        """
+        if self._history_store is None:
+            return
+
+        try:
+            recent = self._history_store.get_recent_delivery_statuses(limit=100)
+            if recent:
+                with self._lock:
+                    for status_dict in recent:
+                        cid = status_dict.get("correlation_id", "")
+                        if cid and cid not in self._delivery_status:
+                            self._delivery_status[cid] = status_dict
+                logger.info(
+                    "alert_delivery_status_rebuilt",
+                    statuses_rebuilt=len(recent),
+                )
+        except Exception as exc:
+            logger.warning(
+                "alert_delivery_status_rebuild_failed",
+                error=str(exc),
+            )
 
     def _get_transports_for_alert(self, alert_type: str) -> list[str]:
         """Determine which transports to use for a given alert type.

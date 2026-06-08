@@ -27,10 +27,11 @@ Returns time-series data for:
 from __future__ import annotations
 
 import asyncio
+import json as _json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -452,6 +453,13 @@ async def vigil_quality_health(
                 "history_store_attached": status.get("history_store_attached", False),
                 "routes_configured": bool(status.get("routes", {})),
                 "recent_failures_count": len(status.get("recent_failures", [])),
+                # Sprint 5.32: Operational metrics
+                "active_mute_rules": status.get("active_mute_rules", 0),
+                "total_rate_limited": status.get("total_rate_limited", 0),
+                "digest_flushes": status.get("digest", {}).get("total_flushes", 0),
+                "delivery_by_transport": status.get("delivery_by_transport", {}),
+                "ws_subscribers": status.get("ws_subscribers", 0),
+                "alert_groups": status.get("alert_groups", 0),
             }
         except Exception as exc:
             alerting_status = {"available": False, "error": str(exc)}
@@ -900,6 +908,287 @@ async def vigil_quality_sse(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.32: WebSocket dashboard channel
+# ---------------------------------------------------------------------------
+
+
+@router.websocket("/vigil/quality/dashboard/ws")
+async def vigil_quality_websocket(
+    websocket: WebSocket,
+) -> None:
+    """Sprint 5.32: WebSocket endpoint for bidirectional dashboard communication.
+
+    Allows the dashboard to:
+    - Receive real-time alert events (same events as SSE)
+    - Send commands: acknowledge, dismiss, mute
+
+    Command protocol (JSON messages from client):
+    - {"action": "acknowledge", "alert_id": <int>}
+    - {"action": "dismiss", "alert_id": <int>}
+    - {"action": "mute", "alert_type": "<str>", "subject": "<str>", "duration_seconds": <int>}
+    - {"action": "unmute", "alert_type": "<str>", "subject": "<str>"}
+    - {"action": "bulk_acknowledge", "group_key": "<str>"}
+    - {"action": "bulk_dismiss", "group_key": "<str>"}
+    """
+    await websocket.accept()
+
+    # Get the container and alert manager from app state
+    # (WebSocket endpoints don't support Depends, so we access app state)
+    container = websocket.app.state.container if hasattr(websocket.app.state, "container") else None
+    alert_manager = getattr(container, "_alert_manager", None) if container else None
+
+    # Register as a WebSocket subscriber for real-time events
+    if alert_manager is not None:
+        alert_manager.add_ws_subscriber(websocket)
+
+    # Also create an SSE-style queue for event push
+    event_queue: asyncio.Queue = asyncio.Queue()
+    if alert_manager is not None:
+        alert_manager.add_sse_subscriber(event_queue)
+
+    try:
+        # Send initial connection confirmation
+        await websocket.send_json({"event": "ws_connected", "message": "WebSocket connection established"})
+
+        # Run two concurrent tasks:
+        # 1. Push events from the queue to the WebSocket
+        # 2. Receive commands from the WebSocket
+        async def push_events():
+            """Push alert events to the WebSocket client."""
+            try:
+                while True:
+                    try:
+                        event = await asyncio.wait_for(event_queue.get(), timeout=30.0)
+                        await websocket.send_json(event)
+                    except asyncio.TimeoutError:
+                        # Send keepalive
+                        await websocket.send_json({"event": "keepalive"})
+            except Exception:
+                pass  # WebSocket closed
+
+        async def receive_commands():
+            """Receive and process commands from the WebSocket client."""
+            while True:
+                try:
+                    data = await websocket.receive_text()
+                    if not data:
+                        continue
+
+                    try:
+                        command = _json.loads(data)
+                    except _json.JSONDecodeError:
+                        await websocket.send_json({"event": "error", "message": "Invalid JSON"})
+                        continue
+
+                    action = command.get("action", "")
+                    result = {"event": "command_result", "action": action}
+
+                    if alert_manager is None:
+                        result["status"] = "alerting_not_configured"
+                        await websocket.send_json(result)
+                        continue
+
+                    if action == "acknowledge":
+                        alert_id = command.get("alert_id")
+                        if alert_id is not None:
+                            success = alert_manager.acknowledge_alert(
+                                int(alert_id), command.get("acknowledged_by", "operator")
+                            )
+                            result["success"] = success
+                            result["alert_id"] = alert_id
+                        else:
+                            result["error"] = "alert_id required"
+
+                    elif action == "dismiss":
+                        alert_id = command.get("alert_id")
+                        if alert_id is not None:
+                            success = alert_manager.dismiss_alert(
+                                int(alert_id), command.get("dismissed_by", "operator")
+                            )
+                            result["success"] = success
+                            result["alert_id"] = alert_id
+                        else:
+                            result["error"] = "alert_id required"
+
+                    elif action == "mute":
+                        alert_type = command.get("alert_type", "")
+                        subject = command.get("subject", "")
+                        if alert_type and subject:
+                            rule = alert_manager.add_mute_rule(
+                                alert_type=alert_type,
+                                subject=subject,
+                                duration_seconds=command.get("duration_seconds", 3600),
+                                muted_by=command.get("muted_by", "operator"),
+                            )
+                            result["mute_rule"] = rule
+                        else:
+                            result["error"] = "alert_type and subject required"
+
+                    elif action == "unmute":
+                        alert_type = command.get("alert_type", "")
+                        subject = command.get("subject", "")
+                        if alert_type and subject:
+                            removed = alert_manager.remove_mute_rule(alert_type, subject)
+                            result["unmuted"] = removed
+                        else:
+                            result["error"] = "alert_type and subject required"
+
+                    elif action == "bulk_acknowledge":
+                        group_key = command.get("group_key", "")
+                        if group_key:
+                            bulk_result = alert_manager.bulk_acknowledge_group(
+                                group_key=group_key,
+                                acknowledged_by=command.get("acknowledged_by", "operator"),
+                            )
+                            result["bulk_result"] = bulk_result
+                        else:
+                            result["error"] = "group_key required"
+
+                    elif action == "bulk_dismiss":
+                        group_key = command.get("group_key", "")
+                        if group_key:
+                            bulk_result = alert_manager.bulk_dismiss_group(
+                                group_key=group_key,
+                                dismissed_by=command.get("dismissed_by", "operator"),
+                            )
+                            result["bulk_result"] = bulk_result
+                        else:
+                            result["error"] = "group_key required"
+
+                    else:
+                        result["error"] = f"Unknown action: {action}"
+
+                    await websocket.send_json(result)
+
+                except WebSocketDisconnect:
+                    break
+                except Exception as exc:
+                    try:
+                        await websocket.send_json({"event": "error", "message": str(exc)})
+                    except Exception:
+                        break
+
+        # Run both tasks concurrently
+        push_task = asyncio.create_task(push_events())
+        receive_task = asyncio.create_task(receive_commands())
+
+        try:
+            # Wait for either task to complete (which means disconnect)
+            done, pending = await asyncio.wait(
+                [push_task, receive_task],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            # Cancel remaining tasks
+            for task in pending:
+                task.cancel()
+        except Exception:
+            pass
+
+    finally:
+        # Clean up subscribers
+        if alert_manager is not None:
+            alert_manager.remove_ws_subscriber(websocket)
+            alert_manager.remove_sse_subscriber(event_queue)
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.32: Alert correlation groups & bulk actions
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vigil/quality/alerts/groups")
+async def vigil_alert_groups(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.32: List all alert correlation groups.
+
+    Returns a dict mapping group keys (subjects) to lists of
+    correlation IDs. Related alerts sharing the same subject are
+    grouped together for visual clustering and bulk operations.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "groups": {},
+        }
+
+    groups = alert_manager.get_alert_groups()
+
+    return {
+        "status": "ok",
+        "groups": groups,
+        "total_groups": len(groups),
+    }
+
+
+class BulkActionRequest(BaseModel):
+    """Request body for bulk alert actions."""
+    group_key: str
+    acted_by: str = "operator"
+
+
+@router.post("/vigil/quality/alerts/groups/bulk-acknowledge")
+async def vigil_bulk_acknowledge(
+    request: BulkActionRequest,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.32: Acknowledge all alerts in a correlation group.
+
+    Bulk acknowledges all unacknowledged alerts that share the
+    specified group key (subject). This is useful for resolving
+    related alerts in a single action.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "acknowledged": 0,
+        }
+
+    result = alert_manager.bulk_acknowledge_group(
+        group_key=request.group_key,
+        acknowledged_by=request.acted_by,
+    )
+
+    return {
+        "status": "ok",
+        **result,
+    }
+
+
+@router.post("/vigil/quality/alerts/groups/bulk-dismiss")
+async def vigil_bulk_dismiss(
+    request: BulkActionRequest,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.32: Dismiss all alerts in a correlation group.
+
+    Bulk dismisses all unacknowledged alerts that share the
+    specified group key (subject).
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "dismissed": 0,
+        }
+
+    result = alert_manager.bulk_dismiss_group(
+        group_key=request.group_key,
+        dismissed_by=request.acted_by,
+    )
+
+    return {
+        "status": "ok",
+        **result,
+    }
 
 
 @router.get("/vigil/quality/dashboard", response_class=HTMLResponse)

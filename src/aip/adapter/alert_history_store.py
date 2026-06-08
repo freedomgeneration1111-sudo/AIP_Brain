@@ -12,6 +12,11 @@ Sprint 5.31: Added mute rules table for persistent alert silencing.
 Added delivery status tracking table for per-correlation-ID transport outcomes.
 Schema v3 adds alert_mute_rules and alert_delivery_status tables.
 
+Sprint 5.32: Added update_delivery_status() for updating records on completion.
+Added get_recent_delivery_statuses() for rebuilding in-memory state on restart.
+Added get_alert_by_correlation_id() for bulk group operations.
+Schema v4 adds retry_count and group_key columns to delivery status.
+
 Schema:
     alert_history
         id              INTEGER PRIMARY KEY AUTOINCREMENT
@@ -89,8 +94,8 @@ _DEFAULT_MAX_ALERT_ROWS = 5000
 # Default maximum number of delivery failure rows to retain
 _DEFAULT_MAX_FAILURE_ROWS = 1000
 
-# Schema version for migrations (Sprint 5.31: v3 adds mute_rules, delivery_status)
-_SCHEMA_VERSION = 3
+# Schema version for migrations (Sprint 5.32: v4 adds delivery status updates)
+_SCHEMA_VERSION = 4
 
 
 class AlertHistoryStore:
@@ -987,6 +992,143 @@ class AlertHistoryStore:
         except Exception as exc:
             logger.warning(
                 "alert_delivery_status_query_failed",
+                correlation_id=correlation_id,
+                error=str(exc),
+            )
+            return None
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.32: Delivery status persistence enhancements
+    # -----------------------------------------------------------------------
+
+    def update_delivery_status(
+        self,
+        correlation_id: str,
+        status: str,
+        completed_at: str,
+    ) -> bool:
+        """Update an existing delivery status record.
+
+        Sprint 5.32: Called when delivery completes to update the
+        persistent record with the final status and completion time.
+        This ensures delivery status survives process restarts.
+
+        Returns True if the record was updated, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                cursor = conn.execute("""
+                    UPDATE alert_delivery_status
+                    SET status = ?, completed_at = ?
+                    WHERE correlation_id = ?
+                """, (status, completed_at, correlation_id))
+                return cursor.rowcount > 0
+        except Exception as exc:
+            logger.warning(
+                "alert_delivery_status_update_failed",
+                correlation_id=correlation_id,
+                error=str(exc),
+            )
+            return False
+
+    def get_recent_delivery_statuses(self, limit: int = 100) -> list[dict]:
+        """Return recent delivery status records.
+
+        Sprint 5.32: Used by AlertManager to rebuild its in-memory
+        delivery status cache on startup, ensuring that delivery status
+        is queryable after a restart.
+
+        Returns a list of delivery status dicts, most recent first.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT correlation_id, status, alert_type, severity, subject,
+                           transports, transport_results, dispatched_at, completed_at
+                    FROM alert_delivery_status
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """, (limit,))
+                rows = cursor.fetchall()
+
+            result = []
+            for row in rows:
+                result.append({
+                    "correlation_id": row["correlation_id"],
+                    "status": row["status"],
+                    "alert_type": row["alert_type"],
+                    "severity": row["severity"],
+                    "subject": row["subject"],
+                    "transports": json.loads(row["transports"]) if row["transports"] else [],
+                    "transport_results": json.loads(row["transport_results"]) if row["transport_results"] else {},
+                    "dispatched_at": row["dispatched_at"],
+                    "completed_at": row["completed_at"],
+                })
+
+            return result
+        except Exception as exc:
+            logger.warning(
+                "alert_recent_delivery_statuses_query_failed",
+                error=str(exc),
+            )
+            return []
+
+    def get_alert_by_correlation_id(self, correlation_id: str) -> dict | None:
+        """Return a single alert by its correlation ID.
+
+        Sprint 5.32: Used by bulk acknowledge/dismiss operations to
+        look up alerts by their correlation ID instead of database ID.
+
+        Returns the alert dict or None if not found.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT id, alert_type, severity, subject, message, data, timestamp,
+                           correlation_id, acknowledged, acknowledged_at, acknowledged_by
+                    FROM alert_history
+                    WHERE correlation_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """, (correlation_id,))
+                row = cursor.fetchone()
+
+            if row is None:
+                return None
+
+            try:
+                data = json.loads(row["data"]) if row["data"] else {}
+            except (json.JSONDecodeError, TypeError):
+                data = {}
+
+            return {
+                "id": row["id"],
+                "alert_type": row["alert_type"],
+                "severity": row["severity"],
+                "subject": row["subject"],
+                "message": row["message"],
+                "data": data,
+                "timestamp": row["timestamp"],
+                "correlation_id": row["correlation_id"],
+                "acknowledged": row["acknowledged"],
+                "acknowledged_at": row["acknowledged_at"],
+                "acknowledged_by": row["acknowledged_by"],
+            }
+        except Exception as exc:
+            logger.warning(
+                "alert_get_by_correlation_id_failed",
                 correlation_id=correlation_id,
                 error=str(exc),
             )

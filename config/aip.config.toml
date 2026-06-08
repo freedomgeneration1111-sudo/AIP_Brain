@@ -263,6 +263,14 @@ min_alert_interval_seconds = 300  # Rate-limit: don't re-alert same subject for 
 # digest_interval_minutes = 15        # Flush digest every N minutes
 # digest_min_alerts = 3               # Flush digest when N alerts are buffered
 
+# Sprint 5.32: Per-alert-type digest overrides
+# Different alert types can have different digest intervals and minimum counts.
+# When an override is set, it takes precedence over the global settings for that type.
+# [alerting.digest_overrides]
+# batch_reduction = { interval_minutes = 5, min_alerts = 2 }
+# quality_degradation = { interval_minutes = 30, min_alerts = 5 }
+# pool_adjustment = { interval_minutes = 10, min_alerts = 3 }
+
 # Sprint 5.25: Configuration hot-reload.
 # When enabled, the ConfigWatcher polls aip.config.toml for changes and
 # applies safe values (read_pool.pool_size, sexton.batch_size) without
