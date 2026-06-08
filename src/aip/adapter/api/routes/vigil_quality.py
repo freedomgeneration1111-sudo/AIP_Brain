@@ -211,6 +211,184 @@ async def vigil_quality(
     }
 
 
+@router.get("/vigil/quality/alerts")
+async def vigil_alerts(
+    alert_type: str | None = Query(default=None, description="Filter by alert type: quality_degradation, pool_adjustment, batch_reduction"),
+    severity: str | None = Query(default=None, description="Filter by severity: info, warning, critical"),
+    since: str | None = Query(default=None, description="ISO 8601 datetime — only return alerts after this timestamp"),
+    limit: int = Query(default=50, ge=1, le=200, description="Maximum number of alerts to return"),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.28: Expose recent alert history, delivery failures, and config status.
+
+    Provides operators with visibility into what alerts have been triggered,
+    whether they were delivered successfully, and how the alerting system
+    is currently configured.
+
+    Filtering:
+    - ``alert_type``: Filter by alert type (quality_degradation, pool_adjustment, batch_reduction)
+    - ``severity``: Filter by severity level (info, warning, critical)
+    - ``since``: ISO 8601 datetime — only return alerts after this timestamp
+    - ``limit``: Maximum number of alerts to return (default 50, max 200)
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "alerts": [],
+            "delivery_failures": [],
+            "config": {},
+        }
+
+    # Resolve Query parameters to plain values (direct test calls may pass Query objects)
+    _alert_type = alert_type.default if hasattr(alert_type, 'default') else alert_type
+    _severity = severity.default if hasattr(severity, 'default') else severity
+    _since = since.default if hasattr(since, 'default') else since
+    if isinstance(limit, int):
+        _limit = limit
+    elif hasattr(limit, 'default'):
+        _limit = limit.default
+    else:
+        _limit = int(limit)
+
+    # Get filtered alert history
+    alerts = alert_manager.get_alert_history(
+        alert_type=_alert_type,
+        severity=_severity,
+        since=_since,
+        limit=_limit,
+    )
+
+    # Get recent delivery failures
+    delivery_failures = alert_manager.get_delivery_failures(limit=10)
+
+    # Get current alerting configuration status
+    config_status = alert_manager.get_status()
+
+    return {
+        "status": "ok",
+        "alerts": alerts,
+        "total_alerts_returned": len(alerts),
+        "delivery_failures": delivery_failures,
+        "total_delivery_failures": len(delivery_failures),
+        "config": {
+            "enabled": config_status.get("enabled", False),
+            "webhook_configured": config_status.get("webhook_configured", False),
+            "webhook_url_valid": config_status.get("webhook_url_valid"),
+            "email_configured": config_status.get("email_configured", False),
+            "smtp_auth_configured": config_status.get("smtp_auth_configured", False),
+            "alert_types_enabled": config_status.get("alert_types_enabled", {}),
+            "total_alerts_sent": config_status.get("total_alerts_sent", 0),
+            "total_rate_limited": config_status.get("total_rate_limited", 0),
+            "total_send_failures": config_status.get("total_send_failures", 0),
+            "total_webhook_retries": config_status.get("total_webhook_retries", 0),
+            "webhook_retry_config": config_status.get("webhook_retry_config", {}),
+        },
+    }
+
+
+@router.get("/vigil/quality/retention")
+async def vigil_retention_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.28: View current retention and rollup status.
+
+    Returns information about the quality store's data retention
+    configuration, current row counts, oldest/newest timestamps,
+    and rollup statistics.
+    """
+    quality_store = getattr(container, "_vigil_quality_store", None)
+
+    if quality_store is None:
+        return {
+            "status": "quality_store_not_configured",
+            "retention": {},
+        }
+
+    try:
+        retention_status = quality_store.get_retention_status()
+    except Exception as exc:
+        logger.warning("vigil_retention_status_failed", error=str(exc))
+        retention_status = {"error": str(exc)}
+
+    return {
+        "status": "ok",
+        "retention": retention_status,
+    }
+
+
+@router.post("/vigil/quality/retention/rollup")
+async def vigil_retention_rollup(
+    period: str = Query(default="daily", description="Rollup period: 'daily' or 'weekly'"),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.28: Manually trigger a rollup aggregation.
+
+    Allows operators to manually trigger daily or weekly rollup
+    aggregation instead of waiting for the scheduled background task.
+
+    Parameters
+    ----------
+    period:
+        The rollup period to run: ``daily`` (default) or ``weekly``.
+        Daily rollup aggregates individual rows older than rollup_age_days
+        into daily summaries. Weekly rollup aggregates daily rollup rows
+        older than weekly_rollup_age_weeks into weekly summaries.
+    """
+    quality_store = getattr(container, "_vigil_quality_store", None)
+
+    if quality_store is None:
+        return {
+            "status": "quality_store_not_configured",
+            "result": {},
+        }
+
+    try:
+        if period == "weekly":
+            result = quality_store.run_weekly_rollup()
+        else:
+            result = quality_store.run_rollup()
+    except Exception as exc:
+        logger.warning("vigil_retention_rollup_failed", error=str(exc))
+        result = {"error": str(exc), "rolled_up_days": 0}
+
+    return {
+        "status": "ok",
+        "period": period,
+        "result": result,
+    }
+
+
+@router.get("/vigil/quality/retention/rollup-stats")
+async def vigil_rollup_stats(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.28: View rollup statistics.
+
+    Returns counts of daily and weekly rollup rows, along with
+    the time range they cover.
+    """
+    quality_store = getattr(container, "_vigil_quality_store", None)
+
+    if quality_store is None:
+        return {
+            "status": "quality_store_not_configured",
+            "stats": {},
+        }
+
+    try:
+        stats = quality_store.get_rollup_stats()
+    except Exception as exc:
+        logger.warning("vigil_rollup_stats_failed", error=str(exc))
+        stats = {"error": str(exc)}
+
+    return {
+        "status": "ok",
+        "stats": stats,
+    }
+
+
 @router.get("/vigil/quality/dashboard", response_class=HTMLResponse)
 async def vigil_quality_dashboard(
     container: AipContainer = Depends(get_container),

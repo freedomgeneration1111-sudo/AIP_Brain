@@ -8,6 +8,10 @@ Sprint 5.27: Added configurable retention policy and daily/weekly rollup
 aggregation.  Older data is aggregated into summary rows to keep the
 table from growing indefinitely while preserving long-term trends.
 
+Sprint 5.28: Added weekly rollup aggregation (daily rollups older than N
+weeks are further aggregated into weekly summaries). Added get_rollup_stats()
+for admin visibility. Manual rollup trigger via API endpoint.
+
 Schema:
     vigil_quality_history
         id              INTEGER PRIMARY KEY AUTOINCREMENT
@@ -90,17 +94,22 @@ class VigilQualityStore:
         store.run_rollup()
     """
 
+    # Sprint 5.28: Default age in weeks before daily rollups are eligible for weekly rollup
+    _DEFAULT_WEEKLY_ROLLUP_AGE_WEEKS = 4
+
     def __init__(
         self,
         db_path: str | Path,
         max_history_rows: int = _DEFAULT_MAX_HISTORY_ROWS,
         retention_days: int = _DEFAULT_RETENTION_DAYS,
         rollup_age_days: int = _DEFAULT_ROLLUP_AGE_DAYS,
+        weekly_rollup_age_weeks: int = _DEFAULT_WEEKLY_ROLLUP_AGE_WEEKS,
     ) -> None:
         self._db_path = str(db_path)
         self._max_history_rows = max_history_rows
         self._retention_days = retention_days
         self._rollup_age_days = rollup_age_days
+        self._weekly_rollup_age_weeks = weekly_rollup_age_weeks
         self._initialized = False
 
     def initialize(self) -> None:
@@ -560,6 +569,228 @@ class VigilQualityStore:
                 error=str(exc),
             )
             return {"error": str(exc), "rolled_up_days": 0}
+
+    def run_weekly_rollup(self) -> dict:
+        """Run weekly rollup aggregation for older daily rollup data.
+
+        Sprint 5.28: Aggregates daily rollup rows that are older than
+        ``weekly_rollup_age_weeks`` into weekly summary rows. This
+        provides a second level of aggregation to further reduce
+        long-term storage growth while preserving trend visibility.
+
+        The weekly rollup process:
+        1. Finds all daily rollup rows (is_rollup=1, rollup_period='daily')
+           older than weekly_rollup_age_weeks
+        2. Groups them by ISO week (year-week number)
+        3. Computes weighted averages for rate columns and sums for count columns
+        4. Inserts a single weekly rollup row per week
+        5. Deletes the daily rollup rows that were aggregated
+
+        Returns a dict with rollup statistics.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(weeks=self._weekly_rollup_age_weeks)
+        ).isoformat()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+
+                # Find eligible daily rollup rows grouped by ISO week
+                cursor = conn.execute("""
+                    SELECT
+                        STRFTIME('%Y-W%W', cycle_timestamp) as iso_week,
+                        COUNT(*) as cnt,
+                        AVG(avg_citation_rate) as avg_citation,
+                        AVG(avg_grounding_rate) as avg_grounding,
+                        AVG(avg_llm_faithfulness) as avg_faithfulness,
+                        SUM(evaluated_count) as sum_evaluated,
+                        SUM(flagged_count) as sum_flagged,
+                        SUM(hedging_detected_count) as sum_hedging,
+                        SUM(llm_eval_count) as sum_llm_eval,
+                        SUM(llm_hallucinations) as sum_hallucinations,
+                        SUM(cycle_elapsed_seconds) as sum_elapsed,
+                        SUM(rollup_count) as sum_rollup_count
+                    FROM vigil_quality_history
+                    WHERE is_rollup = 1
+                      AND rollup_period = 'daily'
+                      AND cycle_timestamp < ?
+                    GROUP BY STRFTIME('%Y-W%W', cycle_timestamp)
+                    HAVING cnt > 1
+                    ORDER BY iso_week ASC
+                """, (cutoff,))
+
+                rows = cursor.fetchall()
+
+                if not rows:
+                    return {"rolled_up_weeks": 0, "rows_aggregated": 0, "rows_deleted": 0}
+
+                total_aggregated = 0
+                total_deleted = 0
+                weeks_rolled = 0
+
+                for row in rows:
+                    iso_week, cnt, avg_citation, avg_grounding, avg_faithfulness, \
+                        sum_evaluated, sum_flagged, sum_hedging, sum_llm_eval, \
+                        sum_hallucinations, sum_elapsed, sum_rollup_count = row
+
+                    # Use Monday noon UTC of that week as the rollup timestamp
+                    # Parse the ISO week to get a representative date
+                    rollup_ts = f"{iso_week}-T12:00:00Z"
+
+                    # Insert weekly rollup row
+                    conn.execute("""
+                        INSERT INTO vigil_quality_history (
+                            cycle_timestamp, avg_citation_rate, avg_grounding_rate,
+                            avg_llm_faithfulness, evaluated_count, flagged_count,
+                            hedging_detected_count, llm_eval_count, llm_hallucinations,
+                            cycle_elapsed_seconds, trend_indicators, cycle_report,
+                            is_rollup, rollup_period, rollup_count
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        rollup_ts,
+                        avg_citation,
+                        avg_grounding,
+                        avg_faithfulness,
+                        sum_evaluated,
+                        sum_flagged,
+                        sum_hedging,
+                        sum_llm_eval,
+                        sum_hallucinations,
+                        sum_elapsed,
+                        json.dumps({"rollup_source": "weekly", "original_week": iso_week}),
+                        json.dumps({
+                            "rollup": True,
+                            "period": "weekly",
+                            "aggregated_daily_rollups": cnt,
+                            "original_data_points": sum_rollup_count or cnt,
+                        }),
+                        1,  # is_rollup
+                        "weekly",
+                        sum_rollup_count or cnt,
+                    ))
+
+                    # Delete daily rollup rows for this week
+                    # We need to match the same rows: daily rollups in this ISO week
+                    # Parse week number from iso_week (format: YYYY-WNN)
+                    try:
+                        year_part = int(iso_week[:4])
+                        week_part = int(iso_week[6:])
+                        # Compute the date range for this ISO week
+                        from datetime import date
+                        week_start = date.fromisocalendar(year_part, week_part, 1)  # Monday
+                        week_end = date.fromisocalendar(year_part, week_part, 7)  # Sunday
+                        week_start_str = week_start.isoformat()
+                        week_end_str = week_end.isoformat()
+                    except (ValueError, IndexError):
+                        # Fallback: skip this week if we can't parse the date
+                        continue
+
+                    delete_cursor = conn.execute("""
+                        DELETE FROM vigil_quality_history
+                        WHERE is_rollup = 1
+                          AND rollup_period = 'daily'
+                          AND DATE(cycle_timestamp) >= ?
+                          AND DATE(cycle_timestamp) <= ?
+                    """, (week_start_str, week_end_str))
+                    total_deleted += delete_cursor.rowcount
+                    total_aggregated += cnt
+                    weeks_rolled += 1
+
+                logger.info(
+                    "vigil_quality_store_weekly_rollup",
+                    rolled_up_weeks=weeks_rolled,
+                    rows_aggregated=total_aggregated,
+                    rows_deleted=total_deleted,
+                )
+
+                return {
+                    "rolled_up_weeks": weeks_rolled,
+                    "rows_aggregated": total_aggregated,
+                    "rows_deleted": total_deleted,
+                }
+
+        except Exception as exc:
+            logger.warning(
+                "vigil_quality_store_weekly_rollup_failed",
+                error=str(exc),
+            )
+            return {"error": str(exc), "rolled_up_weeks": 0}
+
+    def get_rollup_stats(self) -> dict:
+        """Return statistics about rollup aggregation.
+
+        Sprint 5.28: Provides operators with visibility into how many
+        daily and weekly rollup rows exist, the time ranges they cover,
+        and the space savings achieved through aggregation.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+
+                # Daily rollup stats
+                daily_count = conn.execute(
+                    "SELECT COUNT(*) FROM vigil_quality_history WHERE is_rollup = 1 AND rollup_period = 'daily'"
+                ).fetchone()[0]
+
+                daily_oldest = None
+                daily_newest = None
+                if daily_count > 0:
+                    row = conn.execute(
+                        "SELECT MIN(cycle_timestamp) as oldest, MAX(cycle_timestamp) as newest FROM vigil_quality_history WHERE is_rollup = 1 AND rollup_period = 'daily'"
+                    ).fetchone()
+                    daily_oldest = row[0] if row else None
+                    daily_newest = row[1] if row else None
+
+                # Weekly rollup stats
+                weekly_count = conn.execute(
+                    "SELECT COUNT(*) FROM vigil_quality_history WHERE is_rollup = 1 AND rollup_period = 'weekly'"
+                ).fetchone()[0]
+
+                weekly_oldest = None
+                weekly_newest = None
+                if weekly_count > 0:
+                    row = conn.execute(
+                        "SELECT MIN(cycle_timestamp) as oldest, MAX(cycle_timestamp) as newest FROM vigil_quality_history WHERE is_rollup = 1 AND rollup_period = 'weekly'"
+                    ).fetchone()
+                    weekly_oldest = row[0] if row else None
+                    weekly_newest = row[1] if row else None
+
+                # Original row count
+                original_count = conn.execute(
+                    "SELECT COUNT(*) FROM vigil_quality_history WHERE is_rollup = 0"
+                ).fetchone()[0]
+
+                # Total data points represented (including rollup counts)
+                total_represented = conn.execute(
+                    "SELECT COALESCE(SUM(rollup_count), 0) + COUNT(*) - COALESCE(SUM(CASE WHEN is_rollup = 1 THEN 1 ELSE 0 END), 0) FROM vigil_quality_history"
+                ).fetchone()[0]
+
+            return {
+                "daily_rollups": {
+                    "count": daily_count,
+                    "oldest_timestamp": daily_oldest,
+                    "newest_timestamp": daily_newest,
+                },
+                "weekly_rollups": {
+                    "count": weekly_count,
+                    "oldest_timestamp": weekly_oldest,
+                    "newest_timestamp": weekly_newest,
+                },
+                "original_rows": original_count,
+                "total_rows": daily_count + weekly_count + original_count,
+                "total_data_points_represented": total_represented,
+                "rollup_age_days": self._rollup_age_days,
+                "weekly_rollup_age_weeks": self._weekly_rollup_age_weeks,
+            }
+        except Exception as exc:
+            return {"error": str(exc)}
 
     def _prune_if_needed(self) -> None:
         """Prune old records based on retention policy.

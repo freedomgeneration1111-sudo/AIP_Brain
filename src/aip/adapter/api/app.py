@@ -760,6 +760,7 @@ async def lifespan(app: FastAPI):
             max_history_rows=int(quality_cfg.get("max_history_rows", 10000)),
             retention_days=int(quality_cfg.get("retention_days", 90)),
             rollup_age_days=int(quality_cfg.get("rollup_age_days", 7)),
+            weekly_rollup_age_weeks=int(quality_cfg.get("weekly_rollup_age_weeks", 4)),
         )
         container._vigil_quality_store.initialize()
         log.info(
@@ -1200,6 +1201,43 @@ async def lifespan(app: FastAPI):
         quality_rollup_task = asyncio.create_task(_quality_rollup_scheduler(), name="quality-rollup-scheduler")
         log.info("quality_rollup_scheduler_created")
 
+    # --- Quality Store Weekly Rollup scheduler (Sprint 5.28) ---
+    # Runs weekly rollup once per week to aggregate daily rollups into
+    # weekly summaries for long-term trend visibility with minimal storage.
+    quality_weekly_rollup_task: asyncio.Task | None = None
+    if container._vigil_quality_store is not None:
+
+        async def _quality_weekly_rollup_scheduler():
+            """Background loop that runs weekly rollup on the quality store.
+
+            Aggregates daily rollup rows that are older than
+            ``weekly_rollup_age_weeks`` into weekly summary rows.
+            Runs once every 7 days.
+            """
+            weekly_rollup_interval = 604800  # 7 days
+            log.info("quality_weekly_rollup_scheduler_starting", interval_s=weekly_rollup_interval)
+            while True:
+                try:
+                    result = container._vigil_quality_store.run_weekly_rollup()
+                    if result.get("rolled_up_weeks", 0) > 0:
+                        log.info(
+                            "quality_weekly_rollup_completed",
+                            weeks=result.get("rolled_up_weeks", 0),
+                            aggregated=result.get("rows_aggregated", 0),
+                            deleted=result.get("rows_deleted", 0),
+                        )
+                except asyncio.CancelledError:
+                    log.info("quality_weekly_rollup_scheduler_cancelled")
+                    raise
+                except Exception as exc:
+                    log.warning("quality_weekly_rollup_failed", error=str(exc))
+                await asyncio.sleep(weekly_rollup_interval)
+
+        quality_weekly_rollup_task = asyncio.create_task(
+            _quality_weekly_rollup_scheduler(), name="quality-weekly-rollup-scheduler"
+        )
+        log.info("quality_weekly_rollup_scheduler_created")
+
     log.info(
         "startup_complete",
         required_initialized=5,
@@ -1234,6 +1272,7 @@ async def lifespan(app: FastAPI):
         ("sexton_actor", sexton_actor_task),
         ("config_watcher", config_watcher_task),
         ("quality_rollup", quality_rollup_task),
+        ("quality_weekly_rollup", quality_weekly_rollup_task),
     ]:
         if task is not None:
             log.info(f"{task_name}_scheduler_cancelling")

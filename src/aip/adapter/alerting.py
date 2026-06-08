@@ -14,6 +14,12 @@ Sprint 5.26: Transport hardening improvements:
 - SMTP authentication support (username/password/TLS control)
 - Delivery failure history tracking with detailed error records
 
+Sprint 5.28: Admin visibility improvements:
+
+- get_alert_history() method with filtering by type, severity, and time range
+- Enables the /vigil/quality/alerts endpoint for operator visibility
+- Full alerting configuration status exposed via API
+
 Design principles:
 - Lightweight and opt-in — alerting is disabled by default
 - Multiple transport mechanisms (webhook, email)
@@ -523,6 +529,43 @@ class AlertManager:
                 "base_delay_seconds": self._config.webhook_retry_base_delay_seconds,
             },
         }
+
+    def get_alert_history(
+        self,
+        alert_type: str | None = None,
+        severity: str | None = None,
+        since: str | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        """Return alert history with optional filtering.
+
+        Sprint 5.28: Provides a queryable interface for the alerts
+        endpoint and admin visibility.
+
+        Parameters
+        ----------
+        alert_type:
+            If provided, return only alerts of this type
+            (``quality_degradation``, ``pool_adjustment``, ``batch_reduction``).
+        severity:
+            If provided, return only alerts with this severity
+            (``info``, ``warning``, ``critical``).
+        since:
+            ISO 8601 datetime — only return alerts with timestamps after this.
+        limit:
+            Maximum number of alerts to return (most recent first).
+        """
+        history = self._alert_history
+
+        if alert_type:
+            history = [a for a in history if a.get("alert_type") == alert_type]
+        if severity:
+            history = [a for a in history if a.get("severity") == severity]
+        if since:
+            history = [a for a in history if a.get("timestamp", "") > since]
+
+        # Return most recent first
+        return list(reversed(history[-limit:]))
 
     def get_delivery_failures(self, transport: str | None = None, limit: int = 20) -> list[dict]:
         """Return delivery failure history, optionally filtered by transport.
