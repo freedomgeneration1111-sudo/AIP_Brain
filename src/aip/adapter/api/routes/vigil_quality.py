@@ -463,6 +463,9 @@ async def vigil_quality_health(
                 # Sprint 5.34: Session and group TTL info
                 "ws_sessions": status.get("ws_sessions", 0),
                 "alert_group_ttl": status.get("alert_group_ttl", {}),
+                # Sprint 5.35: Heartbeat and pruning scheduler
+                "ws_heartbeat": status.get("ws_heartbeat", {}),
+                "prune_scheduler": status.get("prune_scheduler", {}),
             }
         except Exception as exc:
             alerting_status = {"available": False, "error": str(exc)}
@@ -1024,15 +1027,29 @@ async def vigil_quality_websocket(
         # 1. Push events from the queue to the WebSocket
         # 2. Receive commands from the WebSocket
         async def push_events():
-            """Push alert events to the WebSocket client."""
+            """Push alert events to the WebSocket client.
+
+            Sprint 5.35: Sends periodic heartbeat pings to the client
+            instead of simple keepalives. The heartbeat interval is
+            configured via ws_heartbeat_interval_seconds.
+            """
+            heartbeat_interval = (
+                alert_manager.config.ws_heartbeat_interval_seconds
+                if alert_manager else 30
+            )
             try:
                 while True:
                     try:
-                        event = await asyncio.wait_for(event_queue.get(), timeout=30.0)
+                        event = await asyncio.wait_for(
+                            event_queue.get(), timeout=float(heartbeat_interval)
+                        )
                         await websocket.send_json(event)
                     except asyncio.TimeoutError:
-                        # Send keepalive
-                        await websocket.send_json({"event": "keepalive"})
+                        # Sprint 5.35: Send heartbeat ping instead of plain keepalive
+                        await websocket.send_json({"event": "heartbeat_ping"})
+                        # Sprint 5.35: Run dead-session detection
+                        if alert_manager is not None:
+                            alert_manager.cleanup_dead_ws_sessions()
             except Exception:
                 pass  # WebSocket closed
 
@@ -1052,6 +1069,12 @@ async def vigil_quality_websocket(
 
                     action = command.get("action", "")
                     result = {"event": "command_result", "action": action}
+
+                    # Sprint 5.35: Heartbeat pong — not subject to rate limiting
+                    if action == "heartbeat_pong":
+                        if alert_manager is not None:
+                            alert_manager.update_ws_session_heartbeat(session_id)
+                        continue  # Skip rate limiting and response
 
                     # Sprint 5.33: Rate limiting per connection
                     now_ts = _time.time()
@@ -1135,6 +1158,31 @@ async def vigil_quality_websocket(
                             result["bulk_result"] = bulk_result
                         else:
                             result["error"] = "group_key required"
+
+                    # Sprint 5.35: Merge two alert groups
+                    elif action == "merge_groups":
+                        source_key = command.get("source_key", "")
+                        target_key = command.get("target_key", "")
+                        if source_key and target_key:
+                            merge_result = alert_manager.merge_alert_groups(source_key, target_key)
+                            result["merge_result"] = merge_result
+                        else:
+                            result["error"] = "source_key and target_key required"
+
+                    # Sprint 5.35: Split an alert group
+                    elif action == "split_group":
+                        group_key = command.get("group_key", "")
+                        correlation_ids = command.get("correlation_ids", [])
+                        new_group_key = command.get("new_group_key")
+                        if group_key and correlation_ids:
+                            split_result = alert_manager.split_alert_group(
+                                group_key=group_key,
+                                correlation_ids=correlation_ids,
+                                new_group_key=new_group_key,
+                            )
+                            result["split_result"] = split_result
+                        else:
+                            result["error"] = "group_key and correlation_ids required"
 
                     else:
                         result["error"] = f"Unknown action: {action}"
@@ -1409,6 +1457,188 @@ async def vigil_ws_sessions(
     }
 
 
+# ---------------------------------------------------------------------------
+# Sprint 5.35: Alert group merge & split
+# ---------------------------------------------------------------------------
+
+
+class MergeGroupsRequest(BaseModel):
+    """Request body for merging two alert groups."""
+    source_key: str
+    target_key: str
+
+
+class SplitGroupRequest(BaseModel):
+    """Request body for splitting an alert group."""
+    group_key: str
+    correlation_ids: list[str]
+    new_group_key: str | None = None
+
+
+@router.post("/vigil/quality/alerts/groups/merge")
+async def vigil_merge_groups(
+    request: MergeGroupsRequest,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.35: Merge two alert groups.
+
+    Moves all correlation IDs from the source group into the target
+    group, then deletes the source group. Returns merge details.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "merged_count": 0,
+        }
+
+    return alert_manager.merge_alert_groups(request.source_key, request.target_key)
+
+
+@router.post("/vigil/quality/alerts/groups/split")
+async def vigil_split_group(
+    request: SplitGroupRequest,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.35: Split an alert group.
+
+    Moves specified correlation IDs from the group into a new group.
+    If new_group_key is not provided, one is auto-generated.
+    Returns split details.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "split_count": 0,
+        }
+
+    return alert_manager.split_alert_group(
+        group_key=request.group_key,
+        correlation_ids=request.correlation_ids,
+        new_group_key=request.new_group_key,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.35: Delivery status pruning scheduler
+# ---------------------------------------------------------------------------
+
+
+class PruneSchedulerConfig(BaseModel):
+    """Request body for updating pruning scheduler configuration."""
+    interval_seconds: int | None = None
+    max_age_days: int | None = None
+    max_rows: int | None = None
+
+
+@router.get("/vigil/quality/alerts/delivery-status/prune/scheduler")
+async def vigil_prune_scheduler_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.35: Get the current status of the delivery status pruning scheduler.
+
+    Returns whether the scheduler is running, the interval, last run time,
+    next scheduled run, and total scheduled prune count.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "scheduler": {},
+        }
+
+    return {
+        "status": "ok",
+        "scheduler": alert_manager.get_prune_scheduler_status(),
+    }
+
+
+@router.post("/vigil/quality/alerts/delivery-status/prune/scheduler/start")
+async def vigil_prune_scheduler_start(
+    interval_seconds: int | None = Query(default=None, description="Pruning interval in seconds"),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.35: Start the delivery status pruning scheduler.
+
+    If interval_seconds is provided, updates the config before starting.
+    The scheduler runs in a background thread and prunes delivery status
+    records periodically.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "started": False,
+        }
+
+    if interval_seconds is not None:
+        alert_manager.config.delivery_status_prune_interval_seconds = interval_seconds
+
+    started = alert_manager.start_prune_scheduler()
+
+    return {
+        "status": "ok" if started else "not_started",
+        "started": started,
+        "scheduler": alert_manager.get_prune_scheduler_status(),
+    }
+
+
+@router.post("/vigil/quality/alerts/delivery-status/prune/scheduler/stop")
+async def vigil_prune_scheduler_stop(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.35: Stop the delivery status pruning scheduler."""
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+        }
+
+    alert_manager.stop_prune_scheduler()
+
+    return {
+        "status": "ok",
+        "scheduler": alert_manager.get_prune_scheduler_status(),
+    }
+
+
+@router.patch("/vigil/quality/alerts/delivery-status/prune/scheduler/config")
+async def vigil_prune_scheduler_config(
+    update: PruneSchedulerConfig,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.35: Update pruning scheduler configuration at runtime.
+
+    Allows operators to change the interval, max_age_days, and max_rows
+    without restarting. Changes take effect on the next prune cycle.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "config": {},
+        }
+
+    if update.interval_seconds is not None:
+        alert_manager.config.delivery_status_prune_interval_seconds = update.interval_seconds
+    if update.max_age_days is not None:
+        alert_manager.config.delivery_status_max_age_days = update.max_age_days
+    if update.max_rows is not None:
+        alert_manager.config.delivery_status_max_rows = update.max_rows
+
+    return {
+        "status": "ok",
+        "config": alert_manager.get_prune_scheduler_status(),
+    }
+
+
 @router.get("/vigil/quality/dashboard", response_class=HTMLResponse)
 async def vigil_quality_dashboard(
     container: AipContainer = Depends(get_container),
@@ -1603,6 +1833,18 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   .causal-arrow { color: #475569; font-size: 18px; font-weight: bold; }
   .causal-group-header { font-size: 12px; color: #cbd5e1; margin-bottom: 6px; font-weight: 600; }
   .causal-empty { color: #64748b; font-size: 13px; font-style: italic; }
+  /* Sprint 5.35: Merge/split group buttons */
+  .group-ops { display: flex; gap: 6px; align-items: center; margin-left: 8px; }
+  .group-ops button { font-size: 10px; padding: 2px 8px; border-radius: 3px;
+                      cursor: pointer; border: none; }
+  .group-ops .btn-merge { background: rgba(168,139,250,0.2); color: #a78bfa; }
+  .group-ops .btn-merge:hover { background: rgba(168,139,250,0.4); }
+  .group-ops .btn-split { background: rgba(56,189,248,0.2); color: #38bdf8; }
+  .group-ops .btn-split:hover { background: rgba(56,189,248,0.4); }
+  /* Sprint 5.35: Dashboard state restore indicator */
+  .state-restored { font-size: 10px; color: #4ade80; margin-left: 8px; }
+  /* Sprint 5.35: Heartbeat status */
+  .hb-status { font-size: 10px; color: #64748b; margin-left: 4px; }
 </style>
 </head>
 <body>
@@ -1660,6 +1902,12 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   <input type="text" id="actionGroupKey" placeholder="Group key" size="14">
   <button onclick="wsBulkAcknowledge()">Bulk Ack</button>
   <button onclick="wsBulkDismiss()" class="danger">Bulk Dismiss</button>
+  <!-- Sprint 5.35: Merge/split group controls -->
+  <input type="text" id="mergeSourceKey" placeholder="Source group" size="12">
+  <input type="text" id="mergeTargetKey" placeholder="Target group" size="12">
+  <button onclick="wsMergeGroups()" class="warn">Merge</button>
+  <input type="text" id="splitGroupKey" placeholder="Split group" size="12">
+  <button onclick="wsSplitGroup()">Split</button>
 </div>
 
 <div class="grid" id="summary-cards"></div>
@@ -1710,7 +1958,7 @@ let currentData = null;
 let liveInterval = null;
 let isLive = false;
 
-// Sprint 5.33→5.34: WebSocket connection with SSE fallback and exponential backoff reconnection
+// Sprint 5.33→5.34→5.35: WebSocket connection with SSE fallback, exponential backoff, heartbeat
 let ws = null;
 let wsConnected = false;
 let useWS = true;  // Prefer WebSocket, fall back to SSE
@@ -1719,6 +1967,9 @@ let wsReconnectAttempts = 0;
 let wsMaxReconnectAttempts = 10;
 let wsBaseReconnectDelay = 1000; // 1 second base
 let wsReconnectTimer = null;
+// Sprint 5.35: Heartbeat tracking
+let wsLastHeartbeatSent = 0;
+let wsLastHeartbeatReceived = 0;
 
 function updateConnStatus(state, label) {
   const dot = document.getElementById('connDot');
@@ -1753,6 +2004,14 @@ function connectWebSocket() {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
+        // Sprint 5.35: Handle heartbeat ping from server — respond with pong
+        if (msg.event === 'heartbeat_ping') {
+          wsLastHeartbeatReceived = Date.now();
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({action: 'heartbeat_pong'}));
+          }
+          return;
+        }
         if (msg.event === 'keepalive') return;
         if (msg.event === 'ws_connected') {
           // Sprint 5.34: Store session_id if provided
@@ -1768,6 +2027,10 @@ function connectWebSocket() {
         // Sprint 5.34: Handle session events
         if (msg.event === 'ws_session_connected' || msg.event === 'ws_session_disconnected') {
           // Could display active session count if desired
+        }
+        // Sprint 5.35: Handle group merge/split events
+        if (msg.event === 'alert_groups_merged' || msg.event === 'alert_group_split') {
+          fetchCausalGroups();
         }
       } catch (err) {}
     };
@@ -1855,6 +2118,16 @@ function httpFallback(command) {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({group_key: command.group_key, acted_by: 'dashboard'})
     }).then(r => { if (r.ok) fetchAlerts(); }).catch(() => {});
+  } else if (action === 'merge_groups') {
+    fetch('../vigil/quality/alerts/groups/merge', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({source_key: command.source_key, target_key: command.target_key})
+    }).then(r => { if (r.ok) fetchCausalGroups(); }).catch(() => {});
+  } else if (action === 'split_group') {
+    fetch('../vigil/quality/alerts/groups/split', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({group_key: command.group_key, correlation_ids: command.correlation_ids})
+    }).then(r => { if (r.ok) fetchCausalGroups(); }).catch(() => {});
   }
 }
 
@@ -1895,6 +2168,34 @@ function wsBulkDismiss() {
   const groupKey = document.getElementById('actionGroupKey').value;
   if (!groupKey) return;
   wsSendCommand({action: 'bulk_dismiss', group_key: groupKey, dismissed_by: 'dashboard'});
+}
+
+// Sprint 5.35: Merge/split group commands
+function wsMergeGroups() {
+  const sourceKey = document.getElementById('mergeSourceKey').value;
+  const targetKey = document.getElementById('mergeTargetKey').value;
+  if (!sourceKey || !targetKey) return;
+  wsSendCommand({action: 'merge_groups', source_key: sourceKey, target_key: targetKey});
+  fetchCausalGroups();
+}
+
+function wsSplitGroup() {
+  const groupKey = document.getElementById('splitGroupKey').value;
+  if (!groupKey) return;
+  // Split the most recent half of the group's alerts
+  // First fetch groups to get the correlation IDs
+  fetch('../vigil/quality/alerts/groups')
+    .then(r => r.json())
+    .then(data => {
+      const groups = data.groups || {};
+      const cids = groups[groupKey] || [];
+      if (cids.length < 2) { alert('Group must have at least 2 alerts to split'); return; }
+      const half = Math.ceil(cids.length / 2);
+      const splitCids = cids.slice(half);
+      wsSendCommand({action: 'split_group', group_key: groupKey, correlation_ids: splitCids});
+      fetchCausalGroups();
+    })
+    .catch(() => {});
 }
 
 // Toggle metric visibility checkboxes
@@ -2330,7 +2631,53 @@ function toggleLive() {
   }
 }
 
-// Auto-load on page load — Sprint 5.34: Check localStorage preference, try WebSocket first
+// Sprint 5.35: Dashboard state persistence — save/restore filters, panels, sort, view mode
+function saveDashboardState() {
+  try {
+    const state = {
+      range: document.getElementById('range').value,
+      cycles: document.getElementById('cycles').value,
+      tog_citation: document.getElementById('tog-citation').checked,
+      tog_grounding: document.getElementById('tog-grounding').checked,
+      tog_faithfulness: document.getElementById('tog-faithfulness').checked,
+      tog_flag: document.getElementById('tog-flag').checked,
+      isLive: isLive,
+      causalCollapsed: document.getElementById('causalPanel').classList.contains('collapsed'),
+      timestamp: Date.now(),
+    };
+    localStorage.setItem('aip_dashboard_state', JSON.stringify(state));
+  } catch(e) {}
+}
+
+function restoreDashboardState() {
+  try {
+    const saved = localStorage.getItem('aip_dashboard_state');
+    if (!saved) return false;
+    const state = JSON.parse(saved);
+    // Don't restore state older than 24 hours
+    if (Date.now() - (state.timestamp || 0) > 86400000) return false;
+    if (state.range) document.getElementById('range').value = state.range;
+    if (state.cycles) document.getElementById('cycles').value = state.cycles;
+    if (state.tog_citation !== undefined) document.getElementById('tog-citation').checked = state.tog_citation;
+    if (state.tog_grounding !== undefined) document.getElementById('tog-grounding').checked = state.tog_grounding;
+    if (state.tog_faithfulness !== undefined) document.getElementById('tog-faithfulness').checked = state.tog_faithfulness;
+    if (state.tog_flag !== undefined) document.getElementById('tog-flag').checked = state.tog_flag;
+    if (state.causalCollapsed) document.getElementById('causalPanel').classList.add('collapsed');
+    // Don't restore isLive to avoid unexpected auto-refresh
+    return true;
+  } catch(e) { return false; }
+}
+
+// Save state on relevant changes
+['range', 'cycles'].forEach(id => {
+  document.getElementById(id).addEventListener('change', saveDashboardState);
+});
+['tog-citation', 'tog-grounding', 'tog-faithfulness', 'tog-flag'].forEach(id => {
+  document.getElementById(id).addEventListener('change', saveDashboardState);
+});
+
+// Auto-load on page load — Sprint 5.34→5.35: Restore dashboard state, then connect
+const stateRestored = restoreDashboardState();
 fetchData();
 fetchAlerts();
 fetchMuteRules();
@@ -2350,6 +2697,8 @@ try {
 }
 // Sprint 5.34: Load causal group visualization
 fetchCausalGroups();
+// Sprint 5.35: Save state periodically
+setInterval(saveDashboardState, 30000);
 </script>
 
 </body>

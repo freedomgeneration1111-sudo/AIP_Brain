@@ -236,6 +236,12 @@ class AlertConfig:
     delivery_status_max_rows: int = 2000
     # Sprint 5.34: Alert group TTL (hours, 0=disabled)
     alert_group_ttl_hours: int = 24
+    # Sprint 5.35: WebSocket heartbeat interval in seconds
+    ws_heartbeat_interval_seconds: int = 30
+    # Sprint 5.35: WebSocket heartbeat timeout — missed heartbeats before session cleanup
+    ws_heartbeat_missed_limit: int = 3
+    # Sprint 5.35: Delivery status pruning scheduler interval in seconds (0=disabled)
+    delivery_status_prune_interval_seconds: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -477,6 +483,14 @@ class AlertManager:
         self._alert_groups_metadata: dict[str, float] = {}
         # Sprint 5.34: Group TTL cleanup counter
         self._total_groups_cleaned: int = 0
+        # Sprint 5.35: Pruning scheduler state
+        self._prune_scheduler_thread: threading.Thread | None = None
+        self._prune_scheduler_running: bool = False
+        self._last_prune_run: float = 0.0
+        self._next_prune_run: float = 0.0
+        self._total_scheduled_prunes: int = 0
+        # Sprint 5.35: Dead session cleanup counter
+        self._total_dead_sessions_cleaned: int = 0
         # Lock for thread-safe mutation of shared state
         self._lock = threading.Lock()
 
@@ -961,6 +975,13 @@ class AlertManager:
                 "groups_cleaned": self._total_groups_cleaned,
             },
             "delivery_status_max_rows": self._config.delivery_status_max_rows,
+            # Sprint 5.35: Heartbeat and pruning scheduler info
+            "ws_heartbeat": {
+                "interval_seconds": self._config.ws_heartbeat_interval_seconds,
+                "missed_limit": self._config.ws_heartbeat_missed_limit,
+                "dead_sessions_cleaned": self._total_dead_sessions_cleaned,
+            },
+            "prune_scheduler": self.get_prune_scheduler_status(),
         }
 
     def get_alert_history(
@@ -1588,13 +1609,18 @@ class AlertManager:
         Sprint 5.34: Tracks active WebSocket connections so operators
         can monitor who is connected to the dashboard.
 
+        Sprint 5.35: Includes last_heartbeat_at for dead-session detection.
+
         Broadcasts a ws_session_connected event to other subscribers.
         """
+        now = time.time()
         with self._lock:
             self._ws_sessions[session_id] = {
                 "websocket": websocket,
                 "connected_at": datetime.now(timezone.utc).isoformat(),
                 "remote_addr": remote_addr,
+                "last_heartbeat_at": now,
+                "missed_heartbeats": 0,
             }
 
         # Notify other subscribers about the new session
@@ -1634,6 +1660,8 @@ class AlertManager:
 
         Sprint 5.34: Returns a list of session info dicts (without
         the actual websocket object) for API exposure.
+
+        Sprint 5.35: Includes last_heartbeat_at and missed_heartbeats.
         """
         with self._lock:
             return [
@@ -1641,9 +1669,93 @@ class AlertManager:
                     "session_id": sid,
                     "connected_at": info.get("connected_at", ""),
                     "remote_addr": info.get("remote_addr", ""),
+                    "last_heartbeat_at": info.get("last_heartbeat_at", 0),
+                    "missed_heartbeats": info.get("missed_heartbeats", 0),
                 }
                 for sid, info in self._ws_sessions.items()
             ]
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.35: WebSocket heartbeat & dead-session detection
+    # -----------------------------------------------------------------------
+
+    def update_ws_session_heartbeat(self, session_id: str) -> bool:
+        """Update the last heartbeat time for a WebSocket session.
+
+        Sprint 5.35: Called when a heartbeat/ping response is received
+        from the client. Resets the missed heartbeat counter.
+
+        Returns True if the session was found, False otherwise.
+        """
+        with self._lock:
+            session = self._ws_sessions.get(session_id)
+            if session is None:
+                return False
+            session["last_heartbeat_at"] = time.time()
+            session["missed_heartbeats"] = 0
+        return True
+
+    def increment_missed_heartbeats(self) -> list[str]:
+        """Increment missed heartbeat count for all active sessions.
+
+        Sprint 5.35: Called periodically by the heartbeat checker.
+        Returns a list of session IDs that exceeded the missed limit
+        and should be cleaned up.
+        """
+        limit = self._config.ws_heartbeat_missed_limit
+        dead_sessions: list[str] = []
+
+        with self._lock:
+            for session_id, session in list(self._ws_sessions.items()):
+                session["missed_heartbeats"] = session.get("missed_heartbeats", 0) + 1
+                if session["missed_heartbeats"] >= limit:
+                    dead_sessions.append(session_id)
+
+        return dead_sessions
+
+    def cleanup_dead_ws_sessions(self) -> int:
+        """Detect and remove dead WebSocket sessions based on missed heartbeats.
+
+        Sprint 5.35: Iterates all active sessions, increments missed
+        heartbeats, and removes sessions that have exceeded the limit.
+        Also removes them from the ws_subscribers list.
+
+        Returns the count of cleaned up sessions.
+        """
+        dead_session_ids = self.increment_missed_heartbeats()
+        if not dead_session_ids:
+            return 0
+
+        for session_id in dead_session_ids:
+            # Get the websocket object before removing the session
+            with self._lock:
+                session = self._ws_sessions.get(session_id)
+                ws_obj = session.get("websocket") if session else None
+
+            # Remove from subscribers
+            if ws_obj is not None:
+                self.remove_ws_subscriber(ws_obj)
+
+            # Unregister the session (broadcasts disconnect event)
+            with self._lock:
+                self._ws_sessions.pop(session_id, None)
+
+            self._total_dead_sessions_cleaned += 1
+
+            logger.info(
+                "ws_session_dead_cleaned",
+                session_id=session_id,
+                reason="missed_heartbeats_exceeded",
+            )
+
+        if dead_session_ids:
+            self._notify_realtime_subscribers({
+                "event": "ws_dead_sessions_cleaned",
+                "count": len(dead_session_ids),
+                "session_ids": dead_session_ids,
+            })
+
+        return len(dead_session_ids)
 
     def bulk_acknowledge_group(self, group_key: str, acknowledged_by: str = "operator") -> dict:
         """Acknowledge all alerts in a correlation group.
@@ -1729,6 +1841,285 @@ class AlertManager:
             "dismissed": dismissed,
             "not_found": not_found,
             "total": len(correlation_ids),
+        }
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.35: Alert group merge & split
+    # -----------------------------------------------------------------------
+
+    def merge_alert_groups(self, source_key: str, target_key: str) -> dict:
+        """Merge source group into target group.
+
+        Sprint 5.35: Moves all correlation IDs from source_key into
+        target_key, then deletes the source group. If target_key does
+        not exist, it is created. Causal group metadata and persistent
+        store records are updated accordingly.
+
+        Returns a summary dict with merge details.
+        """
+        with self._lock:
+            source_cids = list(self._alert_groups.get(source_key, []))
+            if not source_cids:
+                return {
+                    "status": "empty_source",
+                    "source_key": source_key,
+                    "target_key": target_key,
+                    "merged_count": 0,
+                }
+
+            # Merge into target
+            if target_key not in self._alert_groups:
+                self._alert_groups[target_key] = []
+            existing = set(self._alert_groups[target_key])
+            merged = 0
+            for cid in source_cids:
+                if cid not in existing:
+                    self._alert_groups[target_key].append(cid)
+                    existing.add(cid)
+                    merged += 1
+
+            # Keep only last 50 per group
+            if len(self._alert_groups[target_key]) > 50:
+                self._alert_groups[target_key] = self._alert_groups[target_key][-50:]
+
+            # Update metadata for target
+            self._alert_groups_metadata[target_key] = time.time()
+
+            # Remove source group
+            del self._alert_groups[source_key]
+            self._alert_groups_metadata.pop(source_key, None)
+
+        # Update persistent store
+        if self._history_store is not None:
+            try:
+                # Delete source group records
+                self._history_store.delete_alert_group(source_key)
+                # Re-record target group memberships
+                for cid in self._alert_groups[target_key]:
+                    self._history_store.record_alert_group(target_key, cid)
+            except Exception as exc:
+                logger.warning(
+                    "alert_group_merge_persist_failed",
+                    source_key=source_key,
+                    target_key=target_key,
+                    error=str(exc),
+                )
+
+        logger.info(
+            "alert_groups_merged",
+            source_key=source_key,
+            target_key=target_key,
+            merged_count=merged,
+        )
+
+        self._notify_realtime_subscribers({
+            "event": "alert_groups_merged",
+            "source_key": source_key,
+            "target_key": target_key,
+            "merged_count": merged,
+        })
+
+        return {
+            "status": "ok",
+            "source_key": source_key,
+            "target_key": target_key,
+            "merged_count": merged,
+            "total_in_target": len(self._alert_groups.get(target_key, [])),
+        }
+
+    def split_alert_group(
+        self, group_key: str, correlation_ids: list[str], new_group_key: str | None = None
+    ) -> dict:
+        """Split a group by moving specified correlation IDs to a new group.
+
+        Sprint 5.35: Removes the specified correlation IDs from the
+        source group and creates a new group with them. If new_group_key
+        is not provided, one is generated based on the original key.
+
+        Returns a summary dict with split details.
+        """
+        with self._lock:
+            existing_cids = list(self._alert_groups.get(group_key, []))
+            if not existing_cids:
+                return {
+                    "status": "empty_source",
+                    "group_key": group_key,
+                    "split_count": 0,
+                }
+
+            # Determine which CIDs to move
+            to_move = [cid for cid in correlation_ids if cid in set(existing_cids)]
+            if not to_move:
+                return {
+                    "status": "no_matching_cids",
+                    "group_key": group_key,
+                    "split_count": 0,
+                }
+
+            # Generate new group key if not provided
+            if not new_group_key:
+                new_group_key = f"{group_key}_split_{uuid.uuid4().hex[:6]}"
+
+            # Create new group with the split CIDs
+            self._alert_groups[new_group_key] = to_move
+            self._alert_groups_metadata[new_group_key] = time.time()
+
+            # Remove moved CIDs from source
+            remaining = [cid for cid in existing_cids if cid not in set(to_move)]
+            if remaining:
+                self._alert_groups[group_key] = remaining
+            else:
+                del self._alert_groups[group_key]
+                self._alert_groups_metadata.pop(group_key, None)
+
+        # Update persistent store
+        if self._history_store is not None:
+            try:
+                # Delete old group and re-record both
+                self._history_store.delete_alert_group(group_key)
+                # Re-record remaining in source
+                if group_key in self._alert_groups:
+                    for cid in self._alert_groups[group_key]:
+                        self._history_store.record_alert_group(group_key, cid)
+                # Record new group
+                for cid in to_move:
+                    self._history_store.record_alert_group(new_group_key, cid)
+            except Exception as exc:
+                logger.warning(
+                    "alert_group_split_persist_failed",
+                    group_key=group_key,
+                    new_group_key=new_group_key,
+                    error=str(exc),
+                )
+
+        logger.info(
+            "alert_group_split",
+            group_key=group_key,
+            new_group_key=new_group_key,
+            split_count=len(to_move),
+        )
+
+        self._notify_realtime_subscribers({
+            "event": "alert_group_split",
+            "source_key": group_key,
+            "new_group_key": new_group_key,
+            "split_count": len(to_move),
+        })
+
+        return {
+            "status": "ok",
+            "group_key": group_key,
+            "new_group_key": new_group_key,
+            "split_count": len(to_move),
+            "remaining_in_source": len(self._alert_groups.get(group_key, [])),
+        }
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.35: Delivery status pruning scheduler
+    # -----------------------------------------------------------------------
+
+    def start_prune_scheduler(self) -> bool:
+        """Start the background delivery status pruning scheduler.
+
+        Sprint 5.35: If delivery_status_prune_interval_seconds > 0,
+        starts a daemon thread that periodically prunes delivery status
+        records based on the current configuration.
+
+        Returns True if the scheduler was started, False if already
+        running or interval is 0.
+        """
+        interval = self._config.delivery_status_prune_interval_seconds
+        if interval <= 0:
+            return False
+
+        with self._lock:
+            if self._prune_scheduler_running:
+                return False
+            self._prune_scheduler_running = True
+
+        def _scheduler_loop():
+            while self._prune_scheduler_running:
+                interval_secs = self._config.delivery_status_prune_interval_seconds
+                if interval_secs <= 0:
+                    break
+                time.sleep(interval_secs)
+                if not self._prune_scheduler_running:
+                    break
+                try:
+                    self._run_scheduled_prune()
+                except Exception as exc:
+                    logger.warning(
+                        "scheduled_prune_failed",
+                        error=str(exc),
+                    )
+
+        self._prune_scheduler_thread = threading.Thread(
+            target=_scheduler_loop,
+            daemon=True,
+            name="delivery-status-prune-scheduler",
+        )
+        self._prune_scheduler_thread.start()
+
+        self._next_prune_run = time.time() + self._config.delivery_status_prune_interval_seconds
+
+        logger.info(
+            "prune_scheduler_started",
+            interval_seconds=self._config.delivery_status_prune_interval_seconds,
+        )
+        return True
+
+    def stop_prune_scheduler(self) -> None:
+        """Stop the delivery status pruning scheduler."""
+        self._prune_scheduler_running = False
+        if self._prune_scheduler_thread is not None:
+            self._prune_scheduler_thread.join(timeout=5.0)
+            self._prune_scheduler_thread = None
+
+        logger.info("prune_scheduler_stopped")
+
+    def _run_scheduled_prune(self) -> int:
+        """Execute a single scheduled prune cycle.
+
+        Sprint 5.35: Prunes delivery status records using current config
+        parameters and updates the scheduler state.
+
+        Returns the number of records pruned.
+        """
+        if self._history_store is None:
+            return 0
+
+        deleted = self._history_store.prune_delivery_status(
+            max_rows=self._config.delivery_status_max_rows,
+            max_age_days=self._config.delivery_status_max_age_days,
+        )
+
+        now = time.time()
+        self._last_prune_run = now
+        self._next_prune_run = now + self._config.delivery_status_prune_interval_seconds
+        self._total_scheduled_prunes += 1
+
+        logger.info(
+            "scheduled_prune_completed",
+            deleted=deleted,
+            total_scheduled_prunes=self._total_scheduled_prunes,
+        )
+
+        return deleted
+
+    def get_prune_scheduler_status(self) -> dict:
+        """Return the current state of the pruning scheduler.
+
+        Sprint 5.35: Provides visibility into the scheduler's status
+        including last run time, next scheduled run, and total runs.
+        """
+        return {
+            "running": self._prune_scheduler_running,
+            "interval_seconds": self._config.delivery_status_prune_interval_seconds,
+            "last_prune_run": self._last_prune_run,
+            "next_prune_run": self._next_prune_run,
+            "total_scheduled_prunes": self._total_scheduled_prunes,
+            "max_age_days": self._config.delivery_status_max_age_days,
+            "max_rows": self._config.delivery_status_max_rows,
         }
 
     # -----------------------------------------------------------------------
@@ -1920,6 +2311,11 @@ class AlertManager:
         quality_degradation → batch_reduction) that share the same
         subject within the configured time window are grouped under
         `causal:{subject}`.
+
+        Sprint 5.35: Time-window enforcement — only group alerts into
+        causal chains if the group's last activity was within the
+        configured causal_grouping_window_seconds. If the group has
+        been inactive beyond the window, a new causal group is started.
         """
         if alert.alert_type not in self._CAUSAL_CHAIN:
             return
@@ -1929,12 +2325,33 @@ class AlertManager:
         window = self._config.causal_grouping_window_seconds
 
         with self._lock:
+            # Sprint 5.35: Check time window — if the causal group's last
+            # activity was outside the window, dissolve it and start fresh
+            if causal_key in self._alert_groups_metadata:
+                last_activity = self._alert_groups_metadata[causal_key]
+                if (now - last_activity) > window:
+                    # Group is stale — dissolve it before adding new entry
+                    logger.debug(
+                        "causal_group_window_expired",
+                        causal_key=causal_key,
+                        elapsed_seconds=round(now - last_activity, 1),
+                        window_seconds=window,
+                    )
+                    # Delete from persistent store
+                    if self._history_store is not None:
+                        try:
+                            self._history_store.delete_alert_group(causal_key)
+                        except Exception:
+                            pass
+                    del self._alert_groups[causal_key]
+                    del self._alert_groups_metadata[causal_key]
+
             if causal_key not in self._alert_groups:
                 self._alert_groups[causal_key] = []
             self._alert_groups[causal_key].append(correlation_id)
 
             # Sprint 5.34: Update causal group's last_activity_at timestamp
-            self._alert_groups_metadata[causal_key] = time.time()
+            self._alert_groups_metadata[causal_key] = now
 
             # Keep only correlation IDs from alerts within the time window
             # We keep up to 50 per causal group
