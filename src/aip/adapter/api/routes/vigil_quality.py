@@ -1184,6 +1184,51 @@ async def vigil_quality_websocket(
                         else:
                             result["error"] = "group_key and correlation_ids required"
 
+                    # Sprint 5.36: Auto-merge suggestions
+                    elif action == "get_auto_merge_suggestions":
+                        suggestions = alert_manager.suggest_auto_merges()
+                        result["suggestions"] = suggestions
+
+                    # Sprint 5.36: Apply auto-merge
+                    elif action == "apply_auto_merge":
+                        source_key = command.get("source_key", "")
+                        target_key = command.get("target_key", "")
+                        if source_key and target_key:
+                            merge_result = alert_manager.apply_auto_merge(source_key, target_key)
+                            result["merge_result"] = merge_result
+                        else:
+                            result["error"] = "source_key and target_key required"
+
+                    # Sprint 5.36: Get causal predictions
+                    elif action == "get_predictions":
+                        subject = command.get("subject")
+                        predictions = alert_manager.get_causal_predictions(subject=subject)
+                        result["predictions"] = predictions
+
+                    # Sprint 5.36: Get pruning history
+                    elif action == "get_pruning_history":
+                        limit = command.get("limit")
+                        history = alert_manager.get_pruning_history(limit=limit)
+                        result["history"] = history
+
+                    # Sprint 5.36: Get batching status
+                    elif action == "get_batching_status":
+                        result["batching"] = {
+                            "batch_window_seconds": alert_manager.config.ws_batch_window_seconds,
+                            "batch_max_size": alert_manager.config.ws_batch_max_size,
+                            "total_flushes": alert_manager._ws_batch_total_flushes,
+                            "total_events_sent": alert_manager._ws_batch_total_events_sent,
+                            "buffered_count": len(alert_manager._ws_batch_buffer),
+                        }
+
+                    # Sprint 5.36: Notification preferences (client-side, server just acknowledges)
+                    elif action == "update_notification_prefs":
+                        # Notification prefs are stored client-side in localStorage
+                        # This action serves as an acknowledgment/echo
+                        prefs = command.get("prefs", {})
+                        result["prefs"] = prefs
+                        result["saved"] = True
+
                     else:
                         result["error"] = f"Unknown action: {action}"
 
@@ -1639,6 +1684,170 @@ async def vigil_prune_scheduler_config(
     }
 
 
+# ---------------------------------------------------------------------------
+# Sprint 5.36: Alert group auto-merge suggestions
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vigil/quality/alerts/groups/auto-merge")
+async def vigil_auto_merge_suggestions(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.36: Get auto-merge suggestions for alert groups.
+
+    Returns a list of group pairs that could be merged based on
+    subject similarity and recent activity within the configured window.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "suggestions": [],
+        }
+
+    suggestions = alert_manager.suggest_auto_merges()
+
+    return {
+        "status": "ok",
+        "suggestions": suggestions,
+        "total_suggestions": len(suggestions),
+    }
+
+
+class ApplyAutoMergeRequest(BaseModel):
+    """Request body for applying an auto-merge suggestion."""
+    source_key: str
+    target_key: str
+
+
+@router.post("/vigil/quality/alerts/groups/auto-merge/apply")
+async def vigil_apply_auto_merge(
+    request: ApplyAutoMergeRequest,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.36: Apply an auto-merge suggestion.
+
+    Merges the source group into the target group and removes
+    the suggestion from the pending list.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "merged_count": 0,
+        }
+
+    result = alert_manager.apply_auto_merge(request.source_key, request.target_key)
+    return {
+        "status": "ok",
+        **result,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.36: Causal chain predictions
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vigil/quality/alerts/predictions")
+async def vigil_causal_predictions(
+    subject: str | None = Query(default=None, description="Filter predictions by subject"),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.36: Get causal chain predictions.
+
+    Returns predicted next alerts in causal chains. When causal
+    prediction is enabled, the system predicts what alerts are likely
+    to follow based on the configured causal chain rules.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "predictions": {},
+        }
+
+    predictions = alert_manager.get_causal_predictions(subject=subject)
+
+    return {
+        "status": "ok",
+        "predictions": predictions,
+        "prediction_enabled": alert_manager.config.causal_prediction_enabled,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.36: Pruning history
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vigil/quality/alerts/delivery-status/prune/history")
+async def vigil_pruning_history(
+    limit: int | None = Query(default=None, description="Max history records to return"),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.36: Get pruning scheduler run history.
+
+    Returns the history of the last N pruning runs, each containing
+    timestamp, records deleted, and config at time of run.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "history": [],
+        }
+
+    history = alert_manager.get_pruning_history(limit=limit)
+
+    # Compute summary metrics
+    total_pruned = sum(r.get("records_deleted", 0) for r in history)
+
+    return {
+        "status": "ok",
+        "history": history,
+        "total_records_pruned": total_pruned,
+        "total_runs": len(history),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.36: WebSocket batching status
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vigil/quality/dashboard/ws/batching")
+async def vigil_ws_batching_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.36: Get WebSocket message batching status.
+
+    Returns current batching configuration and metrics.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "batching": {},
+        }
+
+    return {
+        "status": "ok",
+        "batching": {
+            "batch_window_seconds": alert_manager.config.ws_batch_window_seconds,
+            "batch_max_size": alert_manager.config.ws_batch_max_size,
+            "total_flushes": alert_manager._ws_batch_total_flushes,
+            "total_events_sent": alert_manager._ws_batch_total_events_sent,
+            "buffered_count": len(alert_manager._ws_batch_buffer),
+        },
+    }
+
+
 @router.get("/vigil/quality/dashboard", response_class=HTMLResponse)
 async def vigil_quality_dashboard(
     container: AipContainer = Depends(get_container),
@@ -1845,6 +2054,48 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   .state-restored { font-size: 10px; color: #4ade80; margin-left: 8px; }
   /* Sprint 5.35: Heartbeat status */
   .hb-status { font-size: 10px; color: #64748b; margin-left: 4px; }
+  /* Sprint 5.36: Auto-merge suggestion panel */
+  .merge-suggest-panel { background: #1e293b; border-radius: 8px; padding: 20px;
+                         border: 1px solid #334155; margin-bottom: 16px; }
+  .merge-suggest-panel h3 { font-size: 14px; color: #94a3b8; margin-bottom: 12px;
+                             text-transform: uppercase; letter-spacing: 0.5px; }
+  .merge-suggest-item { padding: 8px 12px; border-radius: 4px; margin-bottom: 6px;
+                        background: rgba(168,139,250,0.08); border-left: 3px solid #a78bfa;
+                        font-size: 12px; color: #cbd5e1; display: flex; align-items: center; gap: 8px; }
+  .merge-suggest-item .similarity { font-weight: 600; color: #a78bfa; }
+  .merge-suggest-item button { font-size: 10px; padding: 2px 8px; border-radius: 3px;
+                                cursor: pointer; border: none; background: rgba(168,139,250,0.2);
+                                color: #a78bfa; }
+  .merge-suggest-item button:hover { background: rgba(168,139,250,0.4); }
+  /* Sprint 5.36: Prediction panel */
+  .prediction-panel { background: #1e293b; border-radius: 8px; padding: 20px;
+                      border: 1px solid #334155; margin-bottom: 16px; }
+  .prediction-panel h3 { font-size: 14px; color: #94a3b8; margin-bottom: 12px;
+                          text-transform: uppercase; letter-spacing: 0.5px; }
+  .prediction-item { padding: 6px 12px; border-radius: 4px; margin-bottom: 4px;
+                     background: rgba(56,189,248,0.08); border-left: 3px solid #38bdf8;
+                     font-size: 12px; color: #cbd5e1; }
+  .prediction-item .pred-type { font-weight: 600; color: #38bdf8; }
+  .prediction-item .pred-confidence { font-size: 10px; color: #94a3b8; margin-left: 6px; }
+  .prediction-item .pred-delay { font-size: 10px; color: #64748b; }
+  /* Sprint 5.36: Notification preferences */
+  .notif-panel { background: #1e293b; border-radius: 8px; padding: 20px;
+                 border: 1px solid #334155; margin-bottom: 16px; }
+  .notif-panel h3 { font-size: 14px; color: #94a3b8; margin-bottom: 12px;
+                     text-transform: uppercase; letter-spacing: 0.5px; }
+  .notif-row { display: flex; gap: 12px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+  .notif-row label { font-size: 12px; color: #cbd5e1; display: flex; align-items: center; gap: 4px; }
+  .notif-row input[type=checkbox] { accent-color: #3b82f6; }
+  .notif-row select { background: #0f172a; border: 1px solid #475569; color: #e2e8f0;
+                      padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  /* Sprint 5.36: Pruning chart container */
+  .prune-chart-container { background: #1e293b; border-radius: 8px; padding: 20px;
+                           border: 1px solid #334155; margin-bottom: 16px; }
+  .prune-chart-container h3 { font-size: 14px; color: #94a3b8; margin-bottom: 12px;
+                               text-transform: uppercase; letter-spacing: 0.5px; }
+  .prune-metric { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+                  color: #cbd5e1; margin-right: 16px; }
+  .prune-metric .value { font-weight: 700; color: #f1f5f9; font-size: 16px; }
 </style>
 </head>
 <body>
@@ -1940,12 +2191,59 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   </div>
 </div>
 
+<!-- Sprint 5.36: Auto-Merge Suggestions Panel -->
+<div class="merge-suggest-panel" id="mergeSuggestPanel">
+  <h3>Auto-Merge Suggestions</h3>
+  <div id="merge-suggest-list"><span class="no-alerts">No merge suggestions</span></div>
+  <button onclick="fetchAutoMergeSuggestions()" style="margin-top:8px;font-size:11px;background:#3b82f6;color:white;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;">Refresh Suggestions</button>
+</div>
+
+<!-- Sprint 5.36: Causal Chain Predictions Panel -->
+<div class="prediction-panel" id="predictionPanel">
+  <h3>Expected Next Alerts (Causal Predictions)</h3>
+  <div id="prediction-list"><span class="no-alerts">No active predictions</span></div>
+</div>
+
 <!-- Sprint 5.34: Causal Group Visualization -->
 <div class="causal-panel" id="causalPanel">
   <h3 onclick="toggleCausalPanel()">Alert Groups &amp; Causal Chains</h3>
   <div class="causal-chain-container" id="causalChainContainer">
     <div id="causal-chains"><span class="causal-empty">No alert groups</span></div>
   </div>
+</div>
+
+<!-- Sprint 5.36: Notification Preferences -->
+<div class="notif-panel" id="notifPanel">
+  <h3>Notification Preferences</h3>
+  <div class="notif-row">
+    <label><input type="checkbox" id="notif-critical" checked> Critical</label>
+    <label><input type="checkbox" id="notif-warning"> Warning</label>
+    <label><input type="checkbox" id="notif-info"> Info</label>
+    <label>Alert types:
+      <select id="notif-type">
+        <option value="all" selected>All types</option>
+        <option value="quality_degradation">Quality Degradation</option>
+        <option value="pool_adjustment">Pool Adjustment</option>
+        <option value="batch_reduction">Batch Reduction</option>
+      </select>
+    </label>
+  </div>
+  <div class="notif-row" style="margin-top:8px">
+    <button onclick="saveNotifPrefs()" style="font-size:11px;background:#3b82f6;color:white;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;">Save Preferences</button>
+    <button onclick="requestNotificationPermission()" style="font-size:11px;background:#f59e0b;color:#0f172a;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;">Enable Browser Notifications</button>
+    <span id="notifPermStatus" style="font-size:10px;color:#64748b;"></span>
+  </div>
+</div>
+
+<!-- Sprint 5.36: Pruning Observability -->
+<div class="prune-chart-container" id="pruneChartContainer">
+  <h3>Pruning Scheduler Metrics</h3>
+  <div>
+    <span class="prune-metric">Total Pruned: <span id="pruneTotalPruned" class="value">0</span></span>
+    <span class="prune-metric">Total Runs: <span id="pruneTotalRuns" class="value">0</span></span>
+    <span class="prune-metric">Last Run: <span id="pruneLastRun" class="value">-</span></span>
+  </div>
+  <div id="prune-history-list" style="margin-top:12px;max-height:120px;overflow-y:auto;font-size:11px;color:#94a3b8;"></div>
 </div>
 
 <div class="status-bar" id="meta"></div>
@@ -2004,6 +2302,11 @@ function connectWebSocket() {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
+        // Sprint 5.36: Handle batch_events from server-side batching
+        if (msg.event === 'batch_events') {
+          handleBatchEvents(msg);
+          return;
+        }
         // Sprint 5.35: Handle heartbeat ping from server — respond with pong
         if (msg.event === 'heartbeat_ping') {
           wsLastHeartbeatReceived = Date.now();
@@ -2031,6 +2334,14 @@ function connectWebSocket() {
         // Sprint 5.35: Handle group merge/split events
         if (msg.event === 'alert_groups_merged' || msg.event === 'alert_group_split') {
           fetchCausalGroups();
+        }
+        // Sprint 5.36: Handle causal prediction events
+        if (msg.event === 'causal_predictions') {
+          updatePredictions(msg.predictions || []);
+        }
+        // Sprint 5.36: Show browser notification for alert events
+        if (msg.event && msg.event.startsWith('alert_') && (msg.severity || msg.alert_type)) {
+          showBrowserNotification(msg);
         }
       } catch (err) {}
     };
@@ -2643,6 +2954,11 @@ function saveDashboardState() {
       tog_flag: document.getElementById('tog-flag').checked,
       isLive: isLive,
       causalCollapsed: document.getElementById('causalPanel').classList.contains('collapsed'),
+      // Sprint 5.36: Save notification prefs alongside dashboard state
+      notifCritical: document.getElementById('notif-critical').checked,
+      notifWarning: document.getElementById('notif-warning').checked,
+      notifInfo: document.getElementById('notif-info').checked,
+      notifType: document.getElementById('notif-type').value,
       timestamp: Date.now(),
     };
     localStorage.setItem('aip_dashboard_state', JSON.stringify(state));
@@ -2663,6 +2979,11 @@ function restoreDashboardState() {
     if (state.tog_faithfulness !== undefined) document.getElementById('tog-faithfulness').checked = state.tog_faithfulness;
     if (state.tog_flag !== undefined) document.getElementById('tog-flag').checked = state.tog_flag;
     if (state.causalCollapsed) document.getElementById('causalPanel').classList.add('collapsed');
+    // Sprint 5.36: Restore notification preferences
+    if (state.notifCritical !== undefined) document.getElementById('notif-critical').checked = state.notifCritical;
+    if (state.notifWarning !== undefined) document.getElementById('notif-warning').checked = state.notifWarning;
+    if (state.notifInfo !== undefined) document.getElementById('notif-info').checked = state.notifInfo;
+    if (state.notifType) document.getElementById('notif-type').value = state.notifType;
     // Don't restore isLive to avoid unexpected auto-refresh
     return true;
   } catch(e) { return false; }
@@ -2699,6 +3020,196 @@ try {
 fetchCausalGroups();
 // Sprint 5.35: Save state periodically
 setInterval(saveDashboardState, 30000);
+
+// Sprint 5.36: Auto-merge suggestions
+async function fetchAutoMergeSuggestions() {
+  try {
+    const resp = await fetch('../vigil/quality/alerts/groups/auto-merge');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const suggestions = data.suggestions || [];
+    const list = document.getElementById('merge-suggest-list');
+    if (suggestions.length === 0) {
+      list.innerHTML = '<span class="no-alerts">No merge suggestions</span>';
+      return;
+    }
+    list.innerHTML = suggestions.map(s =>
+      '<div class="merge-suggest-item">'
+      + '<span class="similarity">' + (s.similarity * 100).toFixed(0) + '% similar</span>'
+      + '<span>' + s.source_key + ' (' + s.source_count + ') + ' + s.target_key + ' (' + s.target_count + ')</span>'
+      + '<button onclick="applyAutoMerge(\\'' + s.source_key + '\\', \\'' + s.target_key + '\\')">Merge</button>'
+      + '</div>'
+    ).join('');
+  } catch (err) {}
+}
+
+async function applyAutoMerge(sourceKey, targetKey) {
+  try {
+    const resp = await fetch('../vigil/quality/alerts/groups/auto-merge/apply', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({source_key: sourceKey, target_key: targetKey})
+    });
+    if (resp.ok) {
+      fetchAutoMergeSuggestions();
+      fetchCausalGroups();
+    }
+  } catch (err) {}
+}
+
+// Sprint 5.36: Causal predictions
+function updatePredictions(predictions) {
+  const list = document.getElementById('prediction-list');
+  const allPreds = [];
+  if (typeof predictions === 'object' && !Array.isArray(predictions)) {
+    for (const [subject, preds] of Object.entries(predictions)) {
+      allPreds.push(...preds.map(p => ({...p, subject})));
+    }
+  } else if (Array.isArray(predictions)) {
+    allPreds.push(...predictions);
+  }
+  if (allPreds.length === 0) {
+    list.innerHTML = '<span class="no-alerts">No active predictions</span>';
+    return;
+  }
+  list.innerHTML = allPreds.map(p =>
+    '<div class="prediction-item">'
+    + '<span class="pred-type">' + (p.predicted_alert_type || '').replace(/_/g, ' ') + '</span>'
+    + ' <span style="color:#cbd5e1">for ' + (p.subject || '') + '</span>'
+    + '<span class="pred-confidence">confidence: ' + ((p.confidence || 0) * 100).toFixed(0) + '%</span>'
+    + '<span class="pred-delay">~' + (p.estimated_delay_seconds || 0) + 's delay</span>'
+    + '</div>'
+  ).join('');
+}
+
+// Sprint 5.36: Fetch predictions from API
+async function fetchPredictions() {
+  try {
+    const resp = await fetch('../vigil/quality/alerts/predictions');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    updatePredictions(data.predictions || {});
+  } catch (err) {}
+}
+
+// Sprint 5.36: Notification preferences
+function saveNotifPrefs() {
+  const prefs = {
+    critical: document.getElementById('notif-critical').checked,
+    warning: document.getElementById('notif-warning').checked,
+    info: document.getElementById('notif-info').checked,
+    alertType: document.getElementById('notif-type').value,
+  };
+  try {
+    localStorage.setItem('aip_notif_prefs', JSON.stringify(prefs));
+    // Send to server for acknowledgment
+    wsSendCommand({action: 'update_notification_prefs', prefs: prefs});
+  } catch(e) {}
+}
+
+function restoreNotifPrefs() {
+  try {
+    const stored = localStorage.getItem('aip_notif_prefs');
+    if (stored) {
+      const prefs = JSON.parse(stored);
+      if (prefs.critical !== undefined) document.getElementById('notif-critical').checked = prefs.critical;
+      if (prefs.warning !== undefined) document.getElementById('notif-warning').checked = prefs.warning;
+      if (prefs.info !== undefined) document.getElementById('notif-info').checked = prefs.info;
+      if (prefs.alertType) document.getElementById('notif-type').value = prefs.alertType;
+    }
+  } catch(e) {}
+}
+
+function requestNotificationPermission() {
+  if ('Notification' in window) {
+    Notification.requestPermission().then(perm => {
+      document.getElementById('notifPermStatus').textContent =
+        perm === 'granted' ? 'Notifications enabled' : 'Permission: ' + perm;
+    });
+  } else {
+    document.getElementById('notifPermStatus').textContent = 'Browser notifications not supported';
+  }
+}
+
+function shouldNotify(alertEvent) {
+  try {
+    const stored = localStorage.getItem('aip_notif_prefs');
+    if (!stored) return false;
+    const prefs = JSON.parse(stored);
+    const sev = alertEvent.severity || 'info';
+    const type = alertEvent.alert_type || '';
+    if (!prefs[sev]) return false;
+    if (prefs.alertType && prefs.alertType !== 'all' && prefs.alertType !== type) return false;
+    return Notification.permission === 'granted';
+  } catch(e) { return false; }
+}
+
+function showBrowserNotification(alertEvent) {
+  if (!shouldNotify(alertEvent)) return;
+  try {
+    new Notification('AIP Brain Alert', {
+      body: (alertEvent.alert_type || '').replace(/_/g, ' ') + ': ' + (alertEvent.subject || ''),
+      tag: alertEvent.correlation_id || '',
+    });
+  } catch(e) {}
+}
+
+// Sprint 5.36: Pruning observability
+async function fetchPruningHistory() {
+  try {
+    const resp = await fetch('../vigil/quality/alerts/delivery-status/prune/history');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const history = data.history || [];
+    document.getElementById('pruneTotalPruned').textContent = data.total_records_pruned || 0;
+    document.getElementById('pruneTotalRuns').textContent = data.total_runs || 0;
+    if (history.length > 0) {
+      const last = history[history.length - 1];
+      document.getElementById('pruneLastRun').textContent = last.timestamp_iso ? new Date(last.timestamp_iso).toLocaleString() : '-';
+    }
+    const list = document.getElementById('prune-history-list');
+    if (history.length === 0) {
+      list.innerHTML = '<span style="color:#64748b;">No pruning history yet</span>';
+    } else {
+      list.innerHTML = history.slice().reverse().slice(0, 10).map(h =>
+        '<div style="padding:2px 0;border-bottom:1px solid #1e293b;">'
+        + (h.timestamp_iso ? new Date(h.timestamp_iso).toLocaleString() : '-') + ': '
+        + h.records_deleted + ' rows deleted'
+        + '</div>'
+      ).join('');
+    }
+  } catch (err) {}
+}
+
+// Sprint 5.36: Handle batch_events from WebSocket
+function handleBatchEvents(batchMsg) {
+  const events = batchMsg.events || [];
+  events.forEach(ev => {
+    if (ev.event && ev.event.startsWith('alert_')) {
+      fetchAlerts();
+      // Show browser notification if configured
+      if (ev.severity || ev.alert_type) showBrowserNotification(ev);
+    }
+    if (ev.event === 'alert_groups_merged' || ev.event === 'alert_group_split') {
+      fetchCausalGroups();
+    }
+    if (ev.event === 'causal_predictions') {
+      updatePredictions(ev.predictions || []);
+    }
+  });
+}
+
+// Restore notification prefs on load
+restoreNotifPrefs();
+
+// Initial fetch for Sprint 5.36 panels
+setTimeout(function() {
+  fetchAutoMergeSuggestions();
+  fetchPredictions();
+  fetchPruningHistory();
+}, 1000);
+
+// Refresh pruning history periodically
+setInterval(fetchPruningHistory, 60000);
 </script>
 
 </body>

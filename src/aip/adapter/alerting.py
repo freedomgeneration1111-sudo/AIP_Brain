@@ -242,6 +242,18 @@ class AlertConfig:
     ws_heartbeat_missed_limit: int = 3
     # Sprint 5.35: Delivery status pruning scheduler interval in seconds (0=disabled)
     delivery_status_prune_interval_seconds: int = 0
+    # Sprint 5.36: WebSocket message batching window in seconds (0=disabled, send immediately)
+    ws_batch_window_seconds: float = 0.5
+    # Sprint 5.36: WebSocket message batching max batch size
+    ws_batch_max_size: int = 20
+    # Sprint 5.36: Auto-merge suggestion window in seconds (0=disabled)
+    auto_merge_window_seconds: int = 600
+    # Sprint 5.36: Auto-merge similarity threshold (0.0-1.0, subject overlap)
+    auto_merge_similarity_threshold: float = 0.6
+    # Sprint 5.36: Causal chain prediction enabled
+    causal_prediction_enabled: bool = False
+    # Sprint 5.36: Pruning history retention (number of past runs to keep)
+    pruning_history_size: int = 20
 
 
 # ---------------------------------------------------------------------------
@@ -491,6 +503,20 @@ class AlertManager:
         self._total_scheduled_prunes: int = 0
         # Sprint 5.35: Dead session cleanup counter
         self._total_dead_sessions_cleaned: int = 0
+        # Sprint 5.36: WebSocket message batching — pending events buffer
+        self._ws_batch_buffer: list[dict] = []
+        self._ws_batch_flush_scheduled: bool = False
+        self._ws_batch_total_flushes: int = 0
+        self._ws_batch_total_events_sent: int = 0
+        # Sprint 5.36: Auto-merge suggestions — list of pending suggestions
+        self._auto_merge_suggestions: list[dict] = []
+        self._total_auto_merges_suggested: int = 0
+        self._total_auto_merges_applied: int = 0
+        # Sprint 5.36: Pruning history — list of recent prune run records
+        self._pruning_history: list[dict] = []
+        # Sprint 5.36: Causal chain prediction state
+        self._causal_predictions: dict[str, list[dict]] = {}  # subject → predicted alerts
+        self._total_predictions_made: int = 0
         # Lock for thread-safe mutation of shared state
         self._lock = threading.Lock()
 
@@ -982,6 +1008,26 @@ class AlertManager:
                 "dead_sessions_cleaned": self._total_dead_sessions_cleaned,
             },
             "prune_scheduler": self.get_prune_scheduler_status(),
+            # Sprint 5.36: Batching, auto-merge, and prediction info
+            "ws_batching": {
+                "batch_window_seconds": self._config.ws_batch_window_seconds,
+                "batch_max_size": self._config.ws_batch_max_size,
+                "total_flushes": self._ws_batch_total_flushes,
+                "total_events_sent": self._ws_batch_total_events_sent,
+                "buffered_count": len(self._ws_batch_buffer),
+            },
+            "auto_merge": {
+                "window_seconds": self._config.auto_merge_window_seconds,
+                "similarity_threshold": self._config.auto_merge_similarity_threshold,
+                "suggestions_available": len(self._auto_merge_suggestions),
+                "total_suggested": self._total_auto_merges_suggested,
+                "total_applied": self._total_auto_merges_applied,
+            },
+            "causal_prediction": {
+                "enabled": self._config.causal_prediction_enabled,
+                "total_predictions": self._total_predictions_made,
+                "subjects_with_predictions": len(self._causal_predictions),
+            },
         }
 
     def get_alert_history(
@@ -1453,18 +1499,49 @@ class AlertManager:
         Sprint 5.32: Unified notification method that pushes events
         to both SSE queues and WebSocket connections. Replaces the
         separate _notify_sse_subscribers calls in send_alert flow.
+
+        Sprint 5.36: When WebSocket batching is enabled (ws_batch_window_seconds > 0),
+        events are buffered and flushed as a batch after the window elapses.
+        SSE subscribers still receive events immediately.
         """
-        # Push to SSE subscribers (asyncio.Queue)
+        # Push to SSE subscribers (asyncio.Queue) — always immediate
         self._notify_sse_subscribers(event)
 
-        # Push to WebSocket subscribers
+        # Sprint 5.36: Buffer events for batched WebSocket delivery
+        batch_window = self._config.ws_batch_window_seconds
+        if batch_window > 0:
+            with self._lock:
+                self._ws_batch_buffer.append(event)
+                if not self._ws_batch_flush_scheduled:
+                    self._ws_batch_flush_scheduled = True
+                    # Schedule a flush after the batch window
+                    if asyncio is not None:
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                asyncio.ensure_future(self._flush_ws_batch_later(batch_window))
+                            else:
+                                # No running loop — flush immediately in a thread
+                                threading.Timer(batch_window, self._flush_ws_batch).start()
+                        except RuntimeError:
+                            threading.Timer(batch_window, self._flush_ws_batch).start()
+                    else:
+                        threading.Timer(batch_window, self._flush_ws_batch).start()
+                # If buffer exceeds max batch size, flush immediately
+                if len(self._ws_batch_buffer) >= self._config.ws_batch_max_size:
+                    self._flush_ws_batch()
+        else:
+            # Original immediate delivery path
+            self._push_event_to_ws_subscribers(event)
+
+    def _push_event_to_ws_subscribers(self, event: dict) -> None:
+        """Push a single event to all WebSocket subscribers (immediate mode)."""
         with self._lock:
             ws_subs = list(self._ws_subscribers)
 
         for ws in ws_subs:
             try:
                 if hasattr(ws, "send_json"):
-                    # FastAPI WebSocket — schedule the send
                     if asyncio is not None:
                         try:
                             loop = asyncio.get_event_loop()
@@ -1475,10 +1552,64 @@ class AlertManager:
                         except RuntimeError:
                             pass
                 elif hasattr(ws, "put_nowait"):
-                    # asyncio.Queue fallback
                     ws.put_nowait(event)
             except Exception:
                 pass  # WebSocket may be closed
+
+    async def _flush_ws_batch_later(self, delay: float) -> None:
+        """Async coroutine that flushes the WebSocket batch after a delay."""
+        await asyncio.sleep(delay)
+        self._flush_ws_batch()
+
+    def _flush_ws_batch(self) -> None:
+        """Flush buffered WebSocket events as a single batch message.
+
+        Sprint 5.36: Collects all buffered events and sends them as a
+        single `batch_events` message. This reduces the number of
+        WebSocket frames during high-volume alert periods, improving
+        bandwidth efficiency.
+        """
+        with self._lock:
+            if not self._ws_batch_buffer:
+                self._ws_batch_flush_scheduled = False
+                return
+            events = list(self._ws_batch_buffer)
+            self._ws_batch_buffer = []
+            self._ws_batch_flush_scheduled = False
+
+        batch_msg = {
+            "event": "batch_events",
+            "events": events,
+            "count": len(events),
+        }
+
+        ws_subs = list(self._ws_subscribers)
+        for ws in ws_subs:
+            try:
+                if hasattr(ws, "send_json"):
+                    if asyncio is not None:
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                asyncio.ensure_future(ws.send_json(batch_msg))
+                            else:
+                                loop.run_until_complete(ws.send_json(batch_msg))
+                        except RuntimeError:
+                            pass
+                elif hasattr(ws, "put_nowait"):
+                    ws.put_nowait(batch_msg)
+            except Exception:
+                pass
+
+        with self._lock:
+            self._ws_batch_total_flushes += 1
+            self._ws_batch_total_events_sent += len(events)
+
+        logger.debug(
+            "ws_batch_flushed",
+            events_count=len(events),
+            total_flushes=self._ws_batch_total_flushes,
+        )
 
     # -----------------------------------------------------------------------
     # Sprint 5.32: Alert correlation & grouping
@@ -1537,6 +1668,9 @@ class AlertManager:
         # Sprint 5.33: Causal grouping
         if self._config.causal_grouping_enabled:
             self._add_causal_group(alert, correlation_id)
+
+        # Sprint 5.36: Causal chain prediction
+        self.predict_causal_chain(alert)
 
     def get_alert_groups(self) -> dict[str, list[str]]:
         """Return all alert correlation groups.
@@ -2015,6 +2149,185 @@ class AlertManager:
         }
 
     # -----------------------------------------------------------------------
+    # Sprint 5.36: Alert group auto-merge by similarity
+    # -----------------------------------------------------------------------
+
+    def suggest_auto_merges(self) -> list[dict]:
+        """Suggest alert groups that could be merged based on similarity.
+
+        Sprint 5.36: Compares all non-causal groups and identifies pairs
+        where subjects overlap significantly (measured by token overlap)
+        and the groups have recent activity within auto_merge_window_seconds.
+        Returns a list of merge suggestion dicts, each containing source_key,
+        target_key, similarity score, and reason.
+        """
+        window = self._config.auto_merge_window_seconds
+        if window <= 0:
+            return []
+
+        now = time.time()
+        threshold = self._config.auto_merge_similarity_threshold
+        suggestions: list[dict] = []
+
+        with self._lock:
+            group_keys = list(self._alert_groups.keys())
+
+        # Compare each pair of non-causal groups
+        non_causal_keys = [k for k in group_keys if not k.startswith("causal:")]
+        for i, key_a in enumerate(non_causal_keys):
+            for key_b in non_causal_keys[i + 1:]:
+                # Check if both groups have recent activity
+                meta_a = self._alert_groups_metadata.get(key_a, 0)
+                meta_b = self._alert_groups_metadata.get(key_b, 0)
+                if (now - meta_a) > window or (now - meta_b) > window:
+                    continue
+
+                # Compute subject similarity using token overlap
+                similarity = self._compute_subject_similarity(key_a, key_b)
+                if similarity >= threshold:
+                    suggestions.append({
+                        "source_key": key_a,
+                        "target_key": key_b,
+                        "similarity": round(similarity, 3),
+                        "reason": f"Subjects overlap {similarity:.0%} and both active within {window}s",
+                        "source_count": len(self._alert_groups.get(key_a, [])),
+                        "target_count": len(self._alert_groups.get(key_b, [])),
+                    })
+
+        with self._lock:
+            self._auto_merge_suggestions = suggestions
+            self._total_auto_merges_suggested += len(suggestions)
+
+        if suggestions:
+            logger.info(
+                "auto_merge_suggestions_generated",
+                count=len(suggestions),
+            )
+
+        return suggestions
+
+    def apply_auto_merge(self, source_key: str, target_key: str) -> dict:
+        """Apply an auto-merge suggestion by merging the two groups.
+
+        Sprint 5.36: Performs the actual merge and tracks the count
+        of auto-merges applied. Returns the merge result dict.
+        """
+        result = self.merge_alert_groups(source_key, target_key)
+        if result.get("status") == "ok":
+            with self._lock:
+                self._total_auto_merges_applied += 1
+                # Remove from suggestions
+                self._auto_merge_suggestions = [
+                    s for s in self._auto_merge_suggestions
+                    if not (s["source_key"] == source_key and s["target_key"] == target_key)
+                ]
+        return result
+
+    def get_auto_merge_suggestions(self) -> list[dict]:
+        """Return current auto-merge suggestions."""
+        with self._lock:
+            return list(self._auto_merge_suggestions)
+
+    @staticmethod
+    def _compute_subject_similarity(key_a: str, key_b: str) -> float:
+        """Compute similarity between two group keys using token overlap.
+
+        Uses Jaccard similarity on word-level tokens after normalizing
+        (lowercasing, splitting on non-alphanumeric). Returns a float
+        between 0.0 and 1.0.
+        """
+        import re as _re
+        tokens_a = set(_re.findall(r"[a-z0-9]+", key_a.lower()))
+        tokens_b = set(_re.findall(r"[a-z0-9]+", key_b.lower()))
+        if not tokens_a or not tokens_b:
+            return 0.0
+        intersection = tokens_a & tokens_b
+        union = tokens_a | tokens_b
+        return len(intersection) / len(union)
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.36: Causal chain prediction
+    # -----------------------------------------------------------------------
+
+    _CAUSAL_PREDICTION_CHAIN = {
+        "pool_adjustment": ["quality_degradation", "batch_reduction"],
+        "quality_degradation": ["batch_reduction"],
+        "batch_reduction": [],
+    }
+
+    def predict_causal_chain(self, alert: Alert) -> list[dict]:
+        """Predict the likely next alerts in a causal chain.
+
+        Sprint 5.36: When a causal-chain alert arrives (e.g., pool_adjustment),
+        predicts what subsequent alerts are likely based on the configured
+        causal chain rules and historical patterns. Returns a list of
+        predicted alert dicts with alert_type, estimated delay, and confidence.
+        """
+        if not self._config.causal_prediction_enabled:
+            return []
+
+        if alert.alert_type not in self._CAUSAL_PREDICTION_CHAIN:
+            return []
+
+        predicted_types = self._CAUSAL_PREDICTION_CHAIN[alert.alert_type]
+        if not predicted_types:
+            return []
+
+        predictions = []
+        now = time.time()
+        for i, pred_type in enumerate(predicted_types):
+            # Estimate delay based on position in chain (rough heuristic)
+            estimated_delay_seconds = (i + 1) * self._config.causal_grouping_window_seconds // 2
+            # Confidence decreases with chain depth
+            confidence = round(1.0 - (i * 0.25), 2)
+
+            prediction = {
+                "predicted_alert_type": pred_type,
+                "subject": alert.subject,
+                "estimated_delay_seconds": estimated_delay_seconds,
+                "confidence": confidence,
+                "triggered_by": alert.alert_type,
+                "triggered_at": alert.timestamp,
+                "predicted_at": datetime.now(timezone.utc).isoformat(),
+            }
+            predictions.append(prediction)
+
+        with self._lock:
+            subject = alert.subject
+            if subject not in self._causal_predictions:
+                self._causal_predictions[subject] = []
+            self._causal_predictions[subject].extend(predictions)
+            self._total_predictions_made += len(predictions)
+
+        # Notify dashboard subscribers about predictions
+        self._notify_realtime_subscribers({
+            "event": "causal_predictions",
+            "subject": alert.subject,
+            "predictions": predictions,
+            "triggered_by": alert.alert_type,
+        })
+
+        logger.info(
+            "causal_predictions_generated",
+            triggered_by=alert.alert_type,
+            subject=alert.subject,
+            prediction_count=len(predictions),
+        )
+
+        return predictions
+
+    def get_causal_predictions(self, subject: str | None = None) -> dict[str, list[dict]] | list[dict]:
+        """Return current causal predictions, optionally filtered by subject.
+
+        Sprint 5.36: If subject is provided, returns predictions for that
+        subject only. Otherwise returns all predictions.
+        """
+        with self._lock:
+            if subject:
+                return self._causal_predictions.get(subject, [])
+            return dict(self._causal_predictions)
+
+    # -----------------------------------------------------------------------
     # Sprint 5.35: Delivery status pruning scheduler
     # -----------------------------------------------------------------------
 
@@ -2083,6 +2396,9 @@ class AlertManager:
         Sprint 5.35: Prunes delivery status records using current config
         parameters and updates the scheduler state.
 
+        Sprint 5.36: Records pruning run history (timestamp + records deleted)
+        for observability.
+
         Returns the number of records pruned.
         """
         if self._history_store is None:
@@ -2098,6 +2414,21 @@ class AlertManager:
         self._next_prune_run = now + self._config.delivery_status_prune_interval_seconds
         self._total_scheduled_prunes += 1
 
+        # Sprint 5.36: Record pruning history
+        run_record = {
+            "timestamp": now,
+            "timestamp_iso": datetime.now(timezone.utc).isoformat(),
+            "records_deleted": deleted,
+            "max_age_days": self._config.delivery_status_max_age_days,
+            "max_rows": self._config.delivery_status_max_rows,
+        }
+        with self._lock:
+            self._pruning_history.append(run_record)
+            # Keep only the last N records
+            max_history = self._config.pruning_history_size
+            if len(self._pruning_history) > max_history:
+                self._pruning_history = self._pruning_history[-max_history:]
+
         logger.info(
             "scheduled_prune_completed",
             deleted=deleted,
@@ -2111,16 +2442,36 @@ class AlertManager:
 
         Sprint 5.35: Provides visibility into the scheduler's status
         including last run time, next scheduled run, and total runs.
+
+        Sprint 5.36: Includes pruning history for observability.
         """
+        # Compute total rows pruned from history
+        total_rows_pruned = sum(r.get("records_deleted", 0) for r in self._pruning_history)
+
         return {
             "running": self._prune_scheduler_running,
             "interval_seconds": self._config.delivery_status_prune_interval_seconds,
             "last_prune_run": self._last_prune_run,
             "next_prune_run": self._next_prune_run,
             "total_scheduled_prunes": self._total_scheduled_prunes,
+            "total_rows_pruned": total_rows_pruned,
             "max_age_days": self._config.delivery_status_max_age_days,
             "max_rows": self._config.delivery_status_max_rows,
+            "history": list(self._pruning_history),
         }
+
+    def get_pruning_history(self, limit: int | None = None) -> list[dict]:
+        """Return pruning run history records.
+
+        Sprint 5.36: Returns the last N pruning run records for
+        observability dashboards. Each record contains timestamp,
+        records_deleted, and config at time of run.
+        """
+        with self._lock:
+            history = list(self._pruning_history)
+        if limit:
+            history = history[-limit:]
+        return history
 
     # -----------------------------------------------------------------------
     # Sprint 5.32: Digest customization per alert type
