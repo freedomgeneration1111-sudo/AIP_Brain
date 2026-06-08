@@ -232,6 +232,10 @@ class AlertConfig:
     # Sprint 5.33: Causal alert grouping
     causal_grouping_enabled: bool = False
     causal_grouping_window_seconds: int = 300
+    # Sprint 5.34: Delivery status max rows for pruning
+    delivery_status_max_rows: int = 2000
+    # Sprint 5.34: Alert group TTL (hours, 0=disabled)
+    alert_group_ttl_hours: int = 24
 
 
 # ---------------------------------------------------------------------------
@@ -467,6 +471,12 @@ class AlertManager:
         self._delivery_failure_by_transport: dict[str, int] = {}
         # Sprint 5.32: Alert correlation groups — group_key -> list of correlation_ids
         self._alert_groups: dict[str, list[str]] = {}
+        # Sprint 5.34: WebSocket session tracking — session_id -> {websocket, connected_at, remote_addr}
+        self._ws_sessions: dict[str, dict[str, Any]] = {}
+        # Sprint 5.34: Alert group metadata — group_key -> last_activity_at (epoch float)
+        self._alert_groups_metadata: dict[str, float] = {}
+        # Sprint 5.34: Group TTL cleanup counter
+        self._total_groups_cleaned: int = 0
         # Lock for thread-safe mutation of shared state
         self._lock = threading.Lock()
 
@@ -943,6 +953,14 @@ class AlertManager:
                 "enabled": self._config.causal_grouping_enabled,
                 "window_seconds": self._config.causal_grouping_window_seconds,
             },
+            # Sprint 5.34: Session and group TTL info
+            "ws_sessions": len(self._ws_sessions),
+            "alert_group_ttl": {
+                "ttl_hours": self._config.alert_group_ttl_hours,
+                "total_groups": len(self._alert_groups),
+                "groups_cleaned": self._total_groups_cleaned,
+            },
+            "delivery_status_max_rows": self._config.delivery_status_max_rows,
         }
 
     def get_alert_history(
@@ -1468,6 +1486,9 @@ class AlertManager:
         if not alert.subject:
             return
 
+        # Sprint 5.34: Run TTL cleanup before adding new groups
+        self.cleanup_expired_groups()
+
         group_key = alert.subject
         with self._lock:
             if group_key not in self._alert_groups:
@@ -1476,6 +1497,9 @@ class AlertManager:
             # Keep only last 50 correlation IDs per group
             if len(self._alert_groups[group_key]) > 50:
                 self._alert_groups[group_key] = self._alert_groups[group_key][-50:]
+
+            # Sprint 5.34: Update group's last_activity_at timestamp
+            self._alert_groups_metadata[group_key] = time.time()
 
             # Sprint 5.33: Persist group membership to store
             if self._history_store is not None:
@@ -1502,6 +1526,124 @@ class AlertManager:
         """
         with self._lock:
             return dict(self._alert_groups)
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.34: Alert group TTL & auto-cleanup
+    # -----------------------------------------------------------------------
+
+    def cleanup_expired_groups(self) -> int:
+        """Dissolve alert groups whose TTL has expired.
+
+        Sprint 5.34: Iterates all groups and removes those where
+        (now - last_activity_at) > alert_group_ttl_hours * 3600.
+        Also removes from persistent store if attached.
+
+        Returns the count of dissolved groups.
+        """
+        ttl_hours = self._config.alert_group_ttl_hours
+        if ttl_hours <= 0:
+            return 0
+
+        now = time.time()
+        expired_keys: list[str] = []
+
+        with self._lock:
+            for group_key, last_activity in list(self._alert_groups_metadata.items()):
+                if (now - last_activity) > ttl_hours * 3600:
+                    expired_keys.append(group_key)
+
+            for key in expired_keys:
+                del self._alert_groups[key]
+                del self._alert_groups_metadata[key]
+                self._total_groups_cleaned += 1
+
+                # Delete from persistent store
+                if self._history_store is not None:
+                    try:
+                        self._history_store.delete_alert_group(key)
+                    except Exception as exc:
+                        logger.warning(
+                            "alert_group_ttl_delete_failed",
+                            group_key=key,
+                            error=str(exc),
+                        )
+
+        if expired_keys:
+            logger.info(
+                "alert_groups_ttl_expired",
+                expired_count=len(expired_keys),
+                group_keys=expired_keys,
+                ttl_hours=ttl_hours,
+            )
+
+        return len(expired_keys)
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.34: WebSocket session management
+    # -----------------------------------------------------------------------
+
+    def register_ws_session(self, session_id: str, websocket: Any, remote_addr: str = "") -> None:
+        """Register a WebSocket session with a unique ID.
+
+        Sprint 5.34: Tracks active WebSocket connections so operators
+        can monitor who is connected to the dashboard.
+
+        Broadcasts a ws_session_connected event to other subscribers.
+        """
+        with self._lock:
+            self._ws_sessions[session_id] = {
+                "websocket": websocket,
+                "connected_at": datetime.now(timezone.utc).isoformat(),
+                "remote_addr": remote_addr,
+            }
+
+        # Notify other subscribers about the new session
+        self._notify_realtime_subscribers({
+            "event": "ws_session_connected",
+            "session_id": session_id,
+        })
+
+        logger.info(
+            "ws_session_registered",
+            session_id=session_id,
+            remote_addr=remote_addr,
+        )
+
+    def unregister_ws_session(self, session_id: str) -> None:
+        """Remove a WebSocket session.
+
+        Sprint 5.34: Broadcasts a ws_session_disconnected event to
+        other subscribers before removing the session.
+        """
+        # Notify other subscribers about the disconnect
+        self._notify_realtime_subscribers({
+            "event": "ws_session_disconnected",
+            "session_id": session_id,
+        })
+
+        with self._lock:
+            self._ws_sessions.pop(session_id, None)
+
+        logger.info(
+            "ws_session_unregistered",
+            session_id=session_id,
+        )
+
+    def get_ws_sessions(self) -> list[dict]:
+        """Return info about active WebSocket sessions.
+
+        Sprint 5.34: Returns a list of session info dicts (without
+        the actual websocket object) for API exposure.
+        """
+        with self._lock:
+            return [
+                {
+                    "session_id": sid,
+                    "connected_at": info.get("connected_at", ""),
+                    "remote_addr": info.get("remote_addr", ""),
+                }
+                for sid, info in self._ws_sessions.items()
+            ]
 
     def bulk_acknowledge_group(self, group_key: str, acknowledged_by: str = "operator") -> dict:
         """Acknowledge all alerts in a correlation group.
@@ -1790,6 +1932,9 @@ class AlertManager:
             if causal_key not in self._alert_groups:
                 self._alert_groups[causal_key] = []
             self._alert_groups[causal_key].append(correlation_id)
+
+            # Sprint 5.34: Update causal group's last_activity_at timestamp
+            self._alert_groups_metadata[causal_key] = time.time()
 
             # Keep only correlation IDs from alerts within the time window
             # We keep up to 50 per causal group

@@ -460,6 +460,9 @@ async def vigil_quality_health(
                 "delivery_by_transport": status.get("delivery_by_transport", {}),
                 "ws_subscribers": status.get("ws_subscribers", 0),
                 "alert_groups": status.get("alert_groups", 0),
+                # Sprint 5.34: Session and group TTL info
+                "ws_sessions": status.get("ws_sessions", 0),
+                "alert_group_ttl": status.get("alert_group_ttl", {}),
             }
         except Exception as exc:
             alerting_status = {"available": False, "error": str(exc)}
@@ -997,6 +1000,13 @@ async def vigil_quality_websocket(
     if alert_manager is not None:
         alert_manager.add_ws_subscriber(websocket)
 
+    # Sprint 5.34: Register WS session with unique ID
+    import uuid as _uuid
+    session_id = str(_uuid.uuid4())
+    remote_addr = websocket.client.host if websocket.client else ""
+    if alert_manager is not None:
+        alert_manager.register_ws_session(session_id, websocket, remote_addr)
+
     # Also create an SSE-style queue for event push
     event_queue: asyncio.Queue = asyncio.Queue()
     if alert_manager is not None:
@@ -1004,7 +1014,11 @@ async def vigil_quality_websocket(
 
     try:
         # Send initial connection confirmation
-        await websocket.send_json({"event": "ws_connected", "message": "WebSocket connection established"})
+        await websocket.send_json({
+            "event": "ws_connected",
+            "message": "WebSocket connection established",
+            "session_id": session_id,
+        })
 
         # Run two concurrent tasks:
         # 1. Push events from the queue to the WebSocket
@@ -1156,6 +1170,8 @@ async def vigil_quality_websocket(
         if alert_manager is not None:
             alert_manager.remove_ws_subscriber(websocket)
             alert_manager.remove_sse_subscriber(event_queue)
+            # Sprint 5.34: Unregister WS session
+            alert_manager.unregister_ws_session(session_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1252,6 +1268,144 @@ async def vigil_bulk_dismiss(
     return {
         "status": "ok",
         **result,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.34: Delivery status pruning admin API
+# ---------------------------------------------------------------------------
+
+
+class PruningConfigUpdate(BaseModel):
+    """Request body for updating delivery status pruning configuration."""
+    max_age_days: int | None = None
+    max_rows: int | None = None
+
+
+@router.post("/vigil/quality/alerts/delivery-status/prune")
+async def vigil_delivery_status_prune(
+    max_age_days: int | None = Query(default=None, description="Max age in days for pruning"),
+    max_rows: int | None = Query(default=None, description="Max rows to keep after pruning"),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.34: Manually trigger delivery status pruning.
+
+    Prunes delivery status records older than max_age_days and/or
+    keeps only the max_rows most recent records. Returns pruning stats
+    including rows deleted and remaining count.
+    """
+    alert_history_store = getattr(container, "_alert_history_store", None)
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_history_store is None:
+        return {
+            "status": "history_store_not_configured",
+            "pruned": 0,
+            "remaining": 0,
+        }
+
+    try:
+        # Use provided params or fall back to config defaults
+        prune_age = max_age_days if max_age_days is not None else (
+            alert_manager.config.delivery_status_max_age_days if alert_manager else 30
+        )
+        prune_rows = max_rows if max_rows is not None else (
+            alert_manager.config.delivery_status_max_rows if alert_manager else 2000
+        )
+
+        deleted = alert_history_store.prune_delivery_status(
+            max_rows=prune_rows,
+            max_age_days=prune_age,
+        )
+        remaining = alert_history_store.get_delivery_status_count()
+
+        return {
+            "status": "ok",
+            "pruned": deleted,
+            "remaining": remaining,
+            "max_age_days": prune_age,
+            "max_rows": prune_rows,
+        }
+    except Exception as exc:
+        logger.warning("vigil_delivery_status_prune_failed", error=str(exc))
+        return {
+            "status": "error",
+            "error": str(exc),
+            "pruned": 0,
+            "remaining": 0,
+        }
+
+
+@router.patch("/vigil/quality/alerts/delivery-status/config")
+async def vigil_delivery_status_config(
+    update: PruningConfigUpdate,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.34: Update delivery status pruning parameters at runtime.
+
+    Allows operators to change max_age_days and max_rows for delivery
+    status pruning without restarting. Changes take effect on the next
+    pruning cycle.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "config": {},
+        }
+
+    try:
+        if update.max_age_days is not None:
+            alert_manager.config.delivery_status_max_age_days = update.max_age_days
+        if update.max_rows is not None:
+            alert_manager.config.delivery_status_max_rows = update.max_rows
+
+        return {
+            "status": "ok",
+            "config": {
+                "max_age_days": alert_manager.config.delivery_status_max_age_days,
+                "max_rows": alert_manager.config.delivery_status_max_rows,
+            },
+        }
+    except Exception as exc:
+        logger.warning("vigil_delivery_status_config_update_failed", error=str(exc))
+        return {
+            "status": "error",
+            "error": str(exc),
+            "config": {},
+        }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.34: WebSocket session listing endpoint
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vigil/quality/dashboard/ws/sessions")
+async def vigil_ws_sessions(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.34: List active WebSocket dashboard sessions.
+
+    Returns a list of currently connected WebSocket sessions with
+    session IDs, connection times, and remote addresses.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "sessions": [],
+            "total_sessions": 0,
+        }
+
+    sessions = alert_manager.get_ws_sessions()
+
+    return {
+        "status": "ok",
+        "sessions": sessions,
+        "total_sessions": len(sessions),
     }
 
 
@@ -1426,6 +1580,29 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   .action-bar button.danger:hover { background: #dc2626; }
   .action-bar input { background: #1e293b; border: 1px solid #475569;
            color: #e2e8f0; padding: 5px 10px; border-radius: 4px; font-size: 12px; width: 120px; }
+  /* Sprint 5.34: Causal chain visualization */
+  .causal-panel { background: #1e293b; border-radius: 8px; padding: 20px;
+                  border: 1px solid #334155; margin-bottom: 16px; }
+  .causal-panel h3 { font-size: 14px; color: #94a3b8; margin-bottom: 12px;
+                     text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer;
+                     display: flex; align-items: center; gap: 6px; }
+  .causal-panel h3::after { content: '▼'; font-size: 10px; transition: transform 0.2s; }
+  .causal-panel.collapsed h3::after { transform: rotate(-90deg); }
+  .causal-panel.collapsed .causal-chain-container { display: none; }
+  .causal-chain-container { overflow-x: auto; }
+  .causal-chain { display: flex; align-items: center; gap: 4px; padding: 8px 0;
+                  flex-wrap: wrap; }
+  .causal-node { background: #0f172a; border: 1px solid #475569; border-radius: 6px;
+                 padding: 6px 12px; font-size: 11px; min-width: 80px; text-align: center; }
+  .causal-node .node-type { color: #f1f5f9; font-weight: 600; text-transform: capitalize; font-size: 10px; }
+  .causal-node .node-severity { font-size: 9px; margin-top: 2px; }
+  .causal-node .node-severity.info { color: #3b82f6; }
+  .causal-node .node-severity.warning { color: #f59e0b; }
+  .causal-node .node-severity.critical { color: #ef4444; }
+  .causal-node .node-time { color: #64748b; font-size: 9px; margin-top: 2px; }
+  .causal-arrow { color: #475569; font-size: 18px; font-weight: bold; }
+  .causal-group-header { font-size: 12px; color: #cbd5e1; margin-bottom: 6px; font-weight: 600; }
+  .causal-empty { color: #64748b; font-size: 13px; font-style: italic; }
 </style>
 </head>
 <body>
@@ -1515,6 +1692,14 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   </div>
 </div>
 
+<!-- Sprint 5.34: Causal Group Visualization -->
+<div class="causal-panel" id="causalPanel">
+  <h3 onclick="toggleCausalPanel()">Alert Groups &amp; Causal Chains</h3>
+  <div class="causal-chain-container" id="causalChainContainer">
+    <div id="causal-chains"><span class="causal-empty">No alert groups</span></div>
+  </div>
+</div>
+
 <div class="status-bar" id="meta"></div>
 
 <script>
@@ -1525,10 +1710,15 @@ let currentData = null;
 let liveInterval = null;
 let isLive = false;
 
-// Sprint 5.33: WebSocket connection with SSE fallback
+// Sprint 5.33→5.34: WebSocket connection with SSE fallback and exponential backoff reconnection
 let ws = null;
 let wsConnected = false;
 let useWS = true;  // Prefer WebSocket, fall back to SSE
+// Sprint 5.34: Exponential backoff reconnection
+let wsReconnectAttempts = 0;
+let wsMaxReconnectAttempts = 10;
+let wsBaseReconnectDelay = 1000; // 1 second base
+let wsReconnectTimer = null;
 
 function updateConnStatus(state, label) {
   const dot = document.getElementById('connDot');
@@ -1539,6 +1729,13 @@ function updateConnStatus(state, label) {
 
 function connectWebSocket() {
   if (!useWS) return;
+
+  // Sprint 5.34: Clear any pending reconnect timer
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+
   try {
     const wsProto = (location.protocol === 'https:') ? 'wss:' : 'ws:';
     const wsUrl = wsProto + '//' + location.host + '/vigil/quality/dashboard/ws';
@@ -1546,36 +1743,67 @@ function connectWebSocket() {
 
     ws.onopen = () => {
       wsConnected = true;
+      // Sprint 5.34: Reset reconnect counter on successful connect
+      wsReconnectAttempts = 0;
       updateConnStatus('connected', 'WS Connected');
+      // Sprint 5.34: Persist connection preference
+      try { localStorage.setItem('aip_dashboard_connection', 'websocket'); } catch(e) {}
     };
 
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
         if (msg.event === 'keepalive') return;
-        if (msg.event === 'ws_connected') return;
+        if (msg.event === 'ws_connected') {
+          // Sprint 5.34: Store session_id if provided
+          if (msg.session_id) {
+            window._wsSessionId = msg.session_id;
+          }
+          return;
+        }
         // Refresh alerts on any alert-related event
         if (msg.event && msg.event.startsWith('alert_')) {
           fetchAlerts();
+        }
+        // Sprint 5.34: Handle session events
+        if (msg.event === 'ws_session_connected' || msg.event === 'ws_session_disconnected') {
+          // Could display active session count if desired
         }
       } catch (err) {}
     };
 
     ws.onclose = () => {
       wsConnected = false;
-      updateConnStatus('disconnected', 'WS Disconnected');
-      // Reconnect after 3 seconds
-      setTimeout(() => { if (useWS) connectWebSocket(); }, 3000);
+      // Sprint 5.34: Exponential backoff reconnection
+      if (useWS && wsReconnectAttempts < wsMaxReconnectAttempts) {
+        const delay = Math.min(wsBaseReconnectDelay * Math.pow(2, wsReconnectAttempts), 30000);
+        wsReconnectAttempts++;
+        updateConnStatus('disconnected', 'Reconnecting in ' + Math.round(delay/1000) + 's (attempt ' + wsReconnectAttempts + '/' + wsMaxReconnectAttempts + ')');
+        wsReconnectTimer = setTimeout(() => { if (useWS) connectWebSocket(); }, delay);
+      } else if (useWS) {
+        updateConnStatus('disconnected', 'Max retries reached — SSE fallback');
+        useWS = false;
+        ws = null;
+        connectSSE();
+      } else {
+        updateConnStatus('disconnected', 'WS Disconnected');
+      }
     };
 
     ws.onerror = () => {
       wsConnected = false;
-      updateConnStatus('disconnected', 'WS Error');
-      // Fall back to SSE
-      useWS = false;
-      ws = null;
-      updateConnStatus('fallback', 'SSE Fallback');
-      connectSSE();
+      // Sprint 5.34: Don't immediately fall back — let onclose handle reconnect
+      // Only fall back to SSE if we've been trying WS for a while
+      if (wsReconnectAttempts >= 3) {
+        useWS = false;
+        ws = null;
+        if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+        updateConnStatus('fallback', 'SSE Fallback');
+        try { localStorage.setItem('aip_dashboard_connection', 'sse'); } catch(e) {}
+        connectSSE();
+      } else {
+        updateConnStatus('disconnected', 'WS Error — reconnecting...');
+      }
     };
   } catch (err) {
     useWS = false;
@@ -1817,6 +2045,99 @@ async function removeMuteRule(type, subject) {
   fetchMuteRules();
 }
 
+// Sprint 5.34: Causal group visualization
+function toggleCausalPanel() {
+  const panel = document.getElementById('causalPanel');
+  panel.classList.toggle('collapsed');
+}
+
+async function fetchCausalGroups() {
+  try {
+    const resp = await fetch('../vigil/quality/alerts/groups');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const groups = data.groups || {};
+    const container = document.getElementById('causal-chains');
+
+    const groupKeys = Object.keys(groups);
+    if (groupKeys.length === 0) {
+      container.innerHTML = '<span class="causal-empty">No alert groups</span>';
+      return;
+    }
+
+    let html = '';
+    for (const [groupKey, correlationIds] of Object.entries(groups)) {
+      const isCausal = groupKey.startsWith('causal:');
+      const label = isCausal ? '🔗 Causal: ' + groupKey.substring(7) : '📁 ' + groupKey;
+      const count = correlationIds.length;
+
+      if (isCausal) {
+        // For causal groups, fetch alert details and show chain
+        html += '<div class="causal-group-header">' + label + ' (' + count + ' alerts)</div>';
+        html += '<div class="causal-chain" id="chain-' + groupKey.replace(/[^a-zA-Z0-9]/g, '_') + '">';
+        html += '<span class="causal-empty" style="font-size:11px">Loading chain...</span>';
+        html += '</div>';
+        // Fetch alert details for this causal chain
+        fetchCausalChainDetails(groupKey, correlationIds);
+      } else {
+        // Regular group — just show summary
+        html += '<div class="causal-group-header">' + label + ' (' + count + ' alerts)</div>';
+        html += '<div class="causal-chain">';
+        html += '<span style="color:#64748b;font-size:11px">' + count + ' related alert(s)</span>';
+        html += '</div>';
+      }
+    }
+    container.innerHTML = html;
+  } catch (err) {}
+}
+
+async function fetchCausalChainDetails(groupKey, correlationIds) {
+  try {
+    // Fetch recent alerts and find those matching our correlation IDs
+    const resp = await fetch(ALERTS_URL + '?limit=50');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const alerts = data.alerts || [];
+
+    // Match alerts to correlation IDs
+    const chainAlerts = [];
+    const cidSet = new Set(correlationIds);
+    for (const a of alerts) {
+      if (cidSet.has(a.correlation_id)) {
+        chainAlerts.push(a);
+      }
+    }
+
+    // Sort by timestamp
+    chainAlerts.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+
+    const chainEl = document.getElementById('chain-' + groupKey.replace(/[^a-zA-Z0-9]/g, '_'));
+    if (!chainEl) return;
+
+    if (chainAlerts.length === 0) {
+      chainEl.innerHTML = '<span style="color:#64748b;font-size:11px">No details available</span>';
+      return;
+    }
+
+    let chainHtml = '';
+    chainAlerts.forEach((a, i) => {
+      if (i > 0) {
+        chainHtml += '<span class="causal-arrow">→</span>';
+      }
+      const severity = a.severity || 'info';
+      const alertType = (a.alert_type || 'unknown').replace(/_/g, ' ');
+      const shortTime = a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : '';
+      chainHtml += '<div class="causal-node">'
+        + '<div class="node-type">' + alertType + '</div>'
+        + '<div class="node-severity ' + severity + '">' + severity.toUpperCase() + '</div>'
+        + '<div class="node-time">' + shortTime + '</div>'
+      + '</div>';
+    });
+
+    chainEl.innerHTML = chainHtml;
+  } catch (err) {}
+}
+
 // Sprint 5.31→5.33: SSE (Server-Sent Events) for real-time updates (fallback)
 let sseConnected = false;
 function connectSSE() {
@@ -2009,12 +2330,26 @@ function toggleLive() {
   }
 }
 
-// Auto-load on page load — Sprint 5.33: Try WebSocket first, fall back to SSE
+// Auto-load on page load — Sprint 5.34: Check localStorage preference, try WebSocket first
 fetchData();
 fetchAlerts();
 fetchMuteRules();
 updateConnStatus('connecting', 'Connecting...');
-connectWebSocket();
+// Sprint 5.34: Load connection preference from localStorage
+try {
+  const savedPref = localStorage.getItem('aip_dashboard_connection');
+  if (savedPref === 'sse') {
+    useWS = false;
+    updateConnStatus('fallback', 'SSE (saved preference)');
+    connectSSE();
+  } else {
+    connectWebSocket();
+  }
+} catch(e) {
+  connectWebSocket();
+}
+// Sprint 5.34: Load causal group visualization
+fetchCausalGroups();
 </script>
 
 </body>
