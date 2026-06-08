@@ -189,9 +189,9 @@ class TestAlertManager:
             subject="test",
             message="Test alert",
         )
-        # Should return True (not an error — just not configured)
+        # Should return empty string (alerting disabled, not an error)
         result = manager.send_alert(alert)
-        assert result is True
+        assert result == ""
 
     def test_alert_manager_rate_limits_identical_alerts(self):
         """AlertManager rate-limits identical alert types for the same subject."""
@@ -218,7 +218,7 @@ class TestAlertManager:
         result1 = manager.send_alert(alert1)
         # Second identical alert should be rate-limited
         result2 = manager.send_alert(alert2)
-        assert result2 is False  # Rate limited
+        assert result2 == "rate_limited"  # Rate limited
 
         assert manager._total_alerts_rate_limited == 1
 
@@ -232,8 +232,8 @@ class TestAlertManager:
 
         result1 = manager.send_alert(alert1)
         result2 = manager.send_alert(alert2)
-        assert result1 is True  # Not rate limited (different subject)
-        assert result2 is True  # Not rate limited (different subject)
+        assert result1  # Not rate limited (different subject)
+        assert result2  # Not rate limited (different subject)
 
     def test_alert_manager_tracks_history(self):
         """AlertManager keeps a history of dispatched alerts."""
@@ -315,9 +315,9 @@ class TestAlertManager:
         result1 = manager.send_alert(quality_alert)
         # Pool alert type is disabled — should be accepted (not an error)
         result2 = manager.send_alert(pool_alert)
-        # Both return True because they're "accepted" even if filtered
-        assert result1 is True
-        assert result2 is True
+        # result1 dispatched (type enabled), result2 skipped (type disabled)
+        assert result1
+        assert result2 == ""
 
     @pytest.mark.asyncio
     async def test_vigil_alerts_on_quality_degradation(self):

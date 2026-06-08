@@ -185,7 +185,7 @@ class TestAlertingIntegration:
         )
 
         result = manager.send_alert(alert)
-        assert result is True
+        assert result
         assert manager._total_alerts_sent == 1
         # Verify the alert was recorded in history
         assert len(manager._alert_history) == 1
@@ -314,7 +314,7 @@ class TestAlertingIntegration:
         )
 
         result = manager.send_alert(alert)
-        assert result is True
+        assert result
         batch_alerts = [
             h for h in manager._alert_history
             if h["alert_type"] == "batch_reduction"
@@ -340,8 +340,8 @@ class TestAlertingIntegration:
             message="Should not be recorded",
         )
         result = manager.send_alert(alert)
-        # Returns True (not an error, just skipped)
-        assert result is True
+        # Returns empty string (type disabled, not an error)
+        assert result == ""
         # But no alert should be in history (it was skipped)
         assert len(manager._alert_history) == 0
 
@@ -369,8 +369,8 @@ class TestAlertingIntegration:
         result1 = manager.send_alert(alert1)
         result2 = manager.send_alert(alert2)
 
-        assert result1 is True
-        assert result2 is False  # Rate-limited
+        assert result1
+        assert result2 == "rate_limited"  # Rate-limited
         assert manager._total_alerts_rate_limited == 1
         assert len(manager._alert_history) == 1  # Only first recorded
 

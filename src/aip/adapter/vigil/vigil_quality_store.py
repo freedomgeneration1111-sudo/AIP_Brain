@@ -440,6 +440,7 @@ class VigilQualityStore:
                 "max_history_rows": self._max_history_rows,
                 "retention_days": self._retention_days,
                 "rollup_age_days": self._rollup_age_days,
+                "weekly_rollup_age_weeks": self._weekly_rollup_age_weeks,
             }
         except Exception as exc:
             return {
@@ -447,7 +448,84 @@ class VigilQualityStore:
                 "max_history_rows": self._max_history_rows,
                 "retention_days": self._retention_days,
                 "rollup_age_days": self._rollup_age_days,
+                "weekly_rollup_age_weeks": self._weekly_rollup_age_weeks,
             }
+
+    # Sprint 5.30: Runtime configuration update
+
+    def update_config(
+        self,
+        retention_days: int | None = None,
+        rollup_age_days: int | None = None,
+        weekly_rollup_age_weeks: int | None = None,
+    ) -> dict:
+        """Update retention and rollup configuration at runtime.
+
+        Sprint 5.30: Allows operators to change retention and rollup
+        parameters via the PATCH /vigil/quality/retention/config endpoint
+        without restarting the process. Changes take effect immediately
+        on the running VigilQualityStore instance.
+
+        Parameters
+        ----------
+        retention_days:
+            New retention period in days. Must be >= 0 (0 = unlimited).
+            If None, the current value is kept.
+        rollup_age_days:
+            New age threshold in days for daily rollup eligibility.
+            Must be >= 0. If None, the current value is kept.
+        weekly_rollup_age_weeks:
+            New age threshold in weeks for weekly rollup eligibility.
+            Must be >= 0. If None, the current value is kept.
+
+        Returns a dict with the effective configuration after update.
+        """
+        validation_errors: list[str] = []
+
+        if retention_days is not None:
+            if retention_days < 0:
+                validation_errors.append("retention_days must be >= 0")
+            else:
+                self._retention_days = retention_days
+
+        if rollup_age_days is not None:
+            if rollup_age_days < 0:
+                validation_errors.append("rollup_age_days must be >= 0")
+            else:
+                self._rollup_age_days = rollup_age_days
+
+        if weekly_rollup_age_weeks is not None:
+            if weekly_rollup_age_weeks < 0:
+                validation_errors.append("weekly_rollup_age_weeks must be >= 0")
+            else:
+                self._weekly_rollup_age_weeks = weekly_rollup_age_weeks
+
+        logger.info(
+            "vigil_quality_store_config_updated",
+            retention_days=self._retention_days,
+            rollup_age_days=self._rollup_age_days,
+            weekly_rollup_age_weeks=self._weekly_rollup_age_weeks,
+        )
+
+        return {
+            "retention_days": self._retention_days,
+            "rollup_age_days": self._rollup_age_days,
+            "weekly_rollup_age_weeks": self._weekly_rollup_age_weeks,
+            "validation_errors": validation_errors,
+        }
+
+    def get_config(self) -> dict:
+        """Return the current retention and rollup configuration.
+
+        Sprint 5.30: Used by GET /vigil/quality/retention/config to
+        expose the current configuration to operators.
+        """
+        return {
+            "retention_days": self._retention_days,
+            "rollup_age_days": self._rollup_age_days,
+            "weekly_rollup_age_weeks": self._weekly_rollup_age_weeks,
+            "max_history_rows": self._max_history_rows,
+        }
 
     def run_rollup(self) -> dict:
         """Run daily rollup aggregation for older data.

@@ -27,6 +27,14 @@ Sprint 5.29: Durability and routing improvements:
 - Config-driven alert routing: map alert types to specific transports
 - get_alert_history() queries persistent store when available
 
+Sprint 5.30: Responsiveness, interactivity, and operational control:
+
+- Async alert dispatch: send_alert() is non-blocking, returns correlation ID
+- Alert acknowledgment/dismissal with persistent state in AlertHistoryStore
+- Configurable alert severity escalation based on occurrence count
+- Rate-limiting state rebuilt from persistent store on restart (no alert storms)
+- Delivery happens in background threads; failures recorded asynchronously
+
 Design principles:
 - Lightweight and opt-in — alerting is disabled by default
 - Multiple transport mechanisms (webhook, email)
@@ -54,13 +62,21 @@ Configuration example::
     min_alert_interval_seconds = 300   # Rate-limit: don't re-alert for 5 min
     webhook_max_retries = 3            # Sprint 5.26: retry count
     webhook_retry_base_delay_seconds = 1.0  # Sprint 5.26: exponential backoff base
+
+    # Sprint 5.30: Escalation configuration
+    # escalation_threshold = 3            # Alert N times before escalating
+    # escalation_window_seconds = 3600    # Count alerts within this window
+    # escalation_severity = "critical"    # Severity to escalate to
+    # escalation_additional_transports = []  # Extra transports on escalation
 """
 
 from __future__ import annotations
 
 import json
 import re
+import threading
 import time
+import uuid
 import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
@@ -90,6 +106,12 @@ class AlertConfig:
     - smtp_use_tls: Explicit TLS control (default True for port 587)
     - webhook_max_retries: Retry count for failed webhook deliveries
     - webhook_retry_base_delay_seconds: Base delay for exponential backoff
+
+    Sprint 5.30 additions:
+    - escalation_threshold: Number of occurrences before escalating severity
+    - escalation_window_seconds: Time window for counting occurrences
+    - escalation_severity: Severity level to escalate to
+    - escalation_additional_transports: Extra transports to use on escalation
 
     Attributes
     ----------
@@ -133,6 +155,19 @@ class AlertConfig:
         Base delay in seconds for exponential backoff on webhook retries.
         The Nth retry waits (base_delay * 2^N) seconds.
         Default 1.0 (1s, 2s, 4s for retries 1-3).
+    escalation_threshold:
+        Number of times the same (alert_type, subject) must occur within
+        the escalation window before severity is automatically escalated.
+        Default 3.  Set to 0 to disable escalation.
+    escalation_window_seconds:
+        Time window in seconds for counting occurrences toward escalation.
+        Default 3600 (1 hour).
+    escalation_severity:
+        The severity level to escalate to.  Default "critical".
+    escalation_additional_transports:
+        Additional transports to use when an alert is escalated.
+        For example, if normal routing sends batch_reduction to webhook
+        only, escalation could add email: ["email"].
     """
 
     enabled: bool = False
@@ -155,6 +190,11 @@ class AlertConfig:
     # Maps alert_type to list of transports (e.g., {"batch_reduction": ["webhook"]})
     # When empty, all enabled transports are used for all alert types (default).
     routes: dict[str, list[str]] = field(default_factory=dict)
+    # Sprint 5.30: Escalation configuration
+    escalation_threshold: int = 3
+    escalation_window_seconds: int = 3600
+    escalation_severity: str = "critical"
+    escalation_additional_transports: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -319,17 +359,25 @@ class AlertManager:
     - SMTP authentication support (username/password)
     - Delivery failure history with full context for each failure
 
+    Sprint 5.30 improvements:
+    - Async alert dispatch: send_alert() returns a correlation ID immediately
+      and performs actual transport delivery in a background thread
+    - Alert acknowledgment/dismissal with persistent state
+    - Configurable severity escalation based on occurrence count
+    - Rate-limiting state rebuilt from persistent store on restart
+
     Provides a single ``send_alert()`` method that:
     1. Checks if the alert type is enabled
     2. Rate-limits identical alerts (per type + subject)
-    3. Dispatches to configured transports (webhook with retries, email with auth)
-    4. Logs all alerts regardless of transport success
-    5. Records delivery failures with detailed context
+    3. Checks for severity escalation
+    4. Records the alert (with correlation ID) to in-memory + persistent store
+    5. Dispatches to configured transports in a background thread
+    6. Returns a correlation ID immediately
 
     Usage::
 
         alert_mgr = AlertManager(AlertConfig(enabled=True, webhook_url="..."))
-        alert_mgr.send_alert(Alert(
+        correlation_id = alert_mgr.send_alert(Alert(
             alert_type="quality_degradation",
             severity="warning",
             subject="vigil_faithfulness",
@@ -360,6 +408,10 @@ class AlertManager:
         self._total_alerts_rate_limited = 0
         self._total_send_failures = 0
         self._total_webhook_retries = 0
+        # Sprint 5.30: Correlation ID counter for async dispatch
+        self._correlation_counter = 0
+        # Sprint 5.30: Occurrence tracking for escalation
+        self._occurrence_tracker: dict[tuple[str, str], list[float]] = {}
 
     @property
     def config(self) -> AlertConfig:
@@ -414,13 +466,28 @@ class AlertManager:
                 "Set webhook_url or email_to to receive notifications."
             )
 
+        # Sprint 5.30: Validate escalation configuration
+        if self._config.escalation_threshold > 0:
+            valid_severities = {"info", "warning", "critical"}
+            if self._config.escalation_severity not in valid_severities:
+                warnings.append(
+                    f"Escalation severity '{self._config.escalation_severity}' is not "
+                    f"one of {valid_severities}. Escalation may not work as expected."
+                )
+
         return warnings
 
-    def send_alert(self, alert: Alert) -> bool:
+    def send_alert(self, alert: Alert) -> str:
         """Send an alert through configured transports.
 
-        Returns True if the alert was dispatched (or would have been
-        if alerting is disabled), False if rate-limited.
+        Sprint 5.30: Refactored to be fully non-blocking. The actual
+        webhook and email delivery happens in a background thread.
+        Returns a correlation ID immediately that can be used to track
+        the alert's delivery status.
+
+        Returns a correlation ID string. If alerting is disabled or the
+        alert type is disabled, returns an empty string. If rate-limited,
+        returns the string "rate_limited".
         """
         # Check master switch
         if not self._config.enabled:
@@ -429,7 +496,7 @@ class AlertManager:
                 alert_type=alert.alert_type,
                 subject=alert.subject,
             )
-            return True  # Not an error — just not configured
+            return ""  # Not an error — just not configured
 
         # Check if this alert type is enabled
         if not self._is_alert_type_enabled(alert.alert_type):
@@ -437,7 +504,7 @@ class AlertManager:
                 "alert_skipped_type_disabled",
                 alert_type=alert.alert_type,
             )
-            return True
+            return ""
 
         # Rate-limit check
         key = (alert.alert_type, alert.subject)
@@ -451,10 +518,27 @@ class AlertManager:
                 subject=alert.subject,
                 seconds_since_last=round(now - last_time, 1),
             )
-            return False
+            return "rate_limited"
 
         # Record the alert time
         self._last_alert_time[key] = now
+
+        # Sprint 5.30: Check for severity escalation
+        escalated = self._check_escalation(alert, now)
+        if escalated:
+            original_severity = alert.severity
+            alert = Alert(
+                alert_type=alert.alert_type,
+                severity=self._config.escalation_severity,
+                subject=alert.subject,
+                message=f"[ESCALATED from {original_severity}] {alert.message}",
+                data={**alert.data, "escalated_from": original_severity, "escalated": True},
+                timestamp=alert.timestamp,
+            )
+
+        # Generate correlation ID
+        self._correlation_counter += 1
+        correlation_id = f"alert-{self._correlation_counter}-{uuid.uuid4().hex[:8]}"
 
         # Log the alert regardless of transport success
         logger.info(
@@ -463,17 +547,19 @@ class AlertManager:
             severity=alert.severity,
             subject=alert.subject,
             message=alert.message[:200],
+            correlation_id=correlation_id,
         )
 
         # Record in history
         alert_dict = alert.to_dict()
+        alert_dict["correlation_id"] = correlation_id
         self._alert_history.append(alert_dict)
         if len(self._alert_history) > 50:
             self._alert_history = self._alert_history[-50:]
 
         self._total_alerts_sent += 1
 
-        # Sprint 5.29: Persist to SQLite store if attached
+        # Persist to SQLite store if attached
         if self._history_store is not None:
             try:
                 self._history_store.record_alert(alert_dict)
@@ -483,29 +569,60 @@ class AlertManager:
                     error=str(exc),
                 )
 
-        # Sprint 5.29: Config-driven routing — only dispatch to transports
-        # that are mapped for this alert_type (or all if no routes configured)
+        # Sprint 5.30: Determine transports (include escalation extras if escalated)
         transports = self._get_transports_for_alert(alert.alert_type)
+        if escalated and self._config.escalation_additional_transports:
+            for t in self._config.escalation_additional_transports:
+                if t not in transports:
+                    if (t == "webhook" and self._config.webhook_url) or \
+                       (t == "email" and self._config.email_to):
+                        transports.append(t)
 
-        # Dispatch to transports
+        # Sprint 5.30: Dispatch to transports in a background thread
+        # This makes send_alert() non-blocking
+        dispatch_thread = threading.Thread(
+            target=self._dispatch_to_transports,
+            args=(alert, transports, correlation_id),
+            daemon=True,
+            name=f"alert-dispatch-{correlation_id}",
+        )
+        dispatch_thread.start()
+
+        return correlation_id
+
+    def _dispatch_to_transports(
+        self,
+        alert: Alert,
+        transports: list[str],
+        correlation_id: str,
+    ) -> None:
+        """Perform actual transport dispatch in a background thread.
+
+        Sprint 5.30: This method runs in a daemon thread so that
+        send_alert() can return immediately.  Delivery attempts,
+        successes, and failures are still reliably recorded in the
+        AlertHistoryStore even when dispatch happens asynchronously.
+        """
         if "webhook" in transports and self._config.webhook_url:
             try:
                 self._send_webhook_with_retry(alert)
             except Exception as exc:
                 self._total_send_failures += 1
-                self._record_failure(DeliveryFailure(
+                failure = DeliveryFailure(
                     transport="webhook",
                     alert_type=alert.alert_type,
                     subject=alert.subject,
                     error_message=str(exc),
                     retry_attempt=self._config.webhook_max_retries,
                     final=True,
-                ))
+                )
+                self._record_failure(failure)
                 logger.warning(
                     "alert_webhook_failed_final",
                     url=self._config.webhook_url[:50],
                     error=str(exc),
                     retries_attempted=self._config.webhook_max_retries,
+                    correlation_id=correlation_id,
                 )
 
         if "email" in transports and self._config.email_to:
@@ -513,24 +630,63 @@ class AlertManager:
                 self._send_email(alert)
             except Exception as exc:
                 self._total_send_failures += 1
-                self._record_failure(DeliveryFailure(
+                failure = DeliveryFailure(
                     transport="email",
                     alert_type=alert.alert_type,
                     subject=alert.subject,
                     error_message=str(exc),
                     retry_attempt=0,
                     final=True,
-                ))
+                )
+                self._record_failure(failure)
                 logger.warning(
                     "alert_email_failed",
                     to=self._config.email_to[:50],
                     error=str(exc),
+                    correlation_id=correlation_id,
                 )
 
-        # Return True if the alert was dispatched (even if no transports
-        # were configured — the alert was logged and recorded in history).
-        # Returns False only if the alert was rate-limited.
-        return True
+    # Sprint 5.30: Alert acknowledgment / dismissal
+
+    def acknowledge_alert(self, alert_id: int, acknowledged_by: str = "operator") -> bool:
+        """Acknowledge an alert by its database ID.
+
+        Sprint 5.30: Delegates to the AlertHistoryStore if attached.
+        Returns True if successful, False if the store is not attached
+        or the alert was not found.
+        """
+        if self._history_store is not None:
+            try:
+                return self._history_store.acknowledge_alert(alert_id, acknowledged_by)
+            except Exception as exc:
+                logger.warning(
+                    "alert_acknowledge_failed",
+                    alert_id=alert_id,
+                    error=str(exc),
+                )
+                return False
+        logger.warning("alert_acknowledge_no_store", alert_id=alert_id)
+        return False
+
+    def dismiss_alert(self, alert_id: int, dismissed_by: str = "operator") -> bool:
+        """Dismiss an alert by its database ID.
+
+        Sprint 5.30: Delegates to the AlertHistoryStore if attached.
+        Returns True if successful, False if the store is not attached
+        or the alert was not found.
+        """
+        if self._history_store is not None:
+            try:
+                return self._history_store.dismiss_alert(alert_id, dismissed_by)
+            except Exception as exc:
+                logger.warning(
+                    "alert_dismiss_failed",
+                    alert_id=alert_id,
+                    error=str(exc),
+                )
+                return False
+        logger.warning("alert_dismiss_no_store", alert_id=alert_id)
+        return False
 
     def get_status(self) -> dict:
         """Return alerting status for the health endpoint."""
@@ -557,6 +713,13 @@ class AlertManager:
             },
             "history_store_attached": self._history_store is not None,
             "routes": self._config.routes if self._config.routes else {},
+            # Sprint 5.30: Escalation config in status
+            "escalation": {
+                "threshold": self._config.escalation_threshold,
+                "window_seconds": self._config.escalation_window_seconds,
+                "severity": self._config.escalation_severity,
+                "additional_transports": self._config.escalation_additional_transports,
+            },
         }
 
     def get_alert_history(
@@ -659,6 +822,53 @@ class AlertManager:
         }
         return mapping.get(alert_type, True)
 
+    # Sprint 5.30: Severity escalation logic
+
+    def _check_escalation(self, alert: Alert, now: float) -> bool:
+        """Check if an alert should be escalated based on occurrence count.
+
+        Sprint 5.30: If the same (alert_type, subject) has occurred
+        escalation_threshold times within escalation_window_seconds,
+        the alert severity is automatically increased to escalation_severity
+        and additional transports may be triggered.
+
+        Returns True if escalation is triggered, False otherwise.
+        """
+        threshold = self._config.escalation_threshold
+        if threshold <= 0:
+            return False
+
+        key = (alert.alert_type, alert.subject)
+        window = self._config.escalation_window_seconds
+
+        # Track this occurrence
+        if key not in self._occurrence_tracker:
+            self._occurrence_tracker[key] = []
+
+        occurrences = self._occurrence_tracker[key]
+        occurrences.append(now)
+
+        # Prune occurrences outside the window
+        cutoff = now - window
+        occurrences[:] = [t for t in occurrences if t > cutoff]
+
+        # Check if threshold is reached
+        if len(occurrences) >= threshold:
+            # Reset the tracker after escalation to avoid re-escalating
+            # the same window of alerts
+            self._occurrence_tracker[key] = []
+            logger.info(
+                "alert_escalation_triggered",
+                alert_type=alert.alert_type,
+                subject=alert.subject,
+                occurrence_count=len(occurrences),
+                threshold=threshold,
+                escalated_to=self._config.escalation_severity,
+            )
+            return True
+
+        return False
+
     # Sprint 5.29: Persistent history store integration
 
     def attach_history_store(self, store: Any) -> None:
@@ -669,6 +879,10 @@ class AlertManager:
         in-memory buffers.  Query methods (get_alert_history,
         get_delivery_failures) prefer the persistent store when available,
         enabling full history access across process restarts.
+
+        Sprint 5.30: After attaching the store, rebuilds the in-memory
+        rate-limiting state from the persistent store so that duplicate
+        alert storms are prevented immediately after a restart.
 
         Parameters
         ----------
@@ -682,6 +896,36 @@ class AlertManager:
             "alert_history_store_attached",
             store_type=type(store).__name__,
         )
+
+        # Sprint 5.30: Rebuild rate-limiting state from persistent store
+        self._rebuild_rate_limit_state()
+
+    def _rebuild_rate_limit_state(self) -> None:
+        """Rebuild in-memory rate-limiting state from persistent store.
+
+        Sprint 5.30: On startup (or after attaching a history store),
+        queries the AlertHistoryStore for recent alerts within the
+        rate-limit window and populates _last_alert_time. This prevents
+        alert storms immediately after a restart.
+        """
+        if self._history_store is None:
+            return
+
+        try:
+            recent = self._history_store.get_recent_alerts_for_dedup(
+                window_seconds=self._config.min_alert_interval_seconds,
+            )
+            if recent:
+                self._last_alert_time.update(recent)
+                logger.info(
+                    "alert_rate_limit_state_rebuilt",
+                    keys_rebuilt=len(recent),
+                )
+        except Exception as exc:
+            logger.warning(
+                "alert_rate_limit_rebuild_failed",
+                error=str(exc),
+            )
 
     # Sprint 5.29: Config-driven alert routing
 
@@ -829,9 +1073,8 @@ class AlertManager:
         using LOGIN method before sending.  TLS behavior is controlled
         by smtp_use_tls (default True).
 
-        Uses stdlib smtplib.  This is a blocking call but SMTP sends
-        are typically fast.  If this becomes a concern, it can be
-        moved to a background thread in a future sprint.
+        Sprint 5.30: This method is called from a background thread,
+        so it does not block the main event loop or calling code.
         """
         import smtplib
         from email.mime.text import MIMEText

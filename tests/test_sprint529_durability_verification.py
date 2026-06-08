@@ -382,12 +382,17 @@ class TestAlertManagerWithHistoryStore:
             mgr.attach_history_store(store)
 
             # This will fail to deliver (invalid URL), recording a failure
+            # Sprint 5.30: dispatch is async, need to wait for background thread
             mgr.send_alert(Alert(
                 alert_type="batch_reduction",
                 severity="warning",
                 subject="test",
                 message="Will fail to deliver",
             ))
+
+            # Wait for background dispatch thread to complete
+            import time
+            time.sleep(0.5)
 
             # Check persistent store has the delivery failure
             failures = store.get_delivery_failures()

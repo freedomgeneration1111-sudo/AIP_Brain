@@ -4,6 +4,10 @@ Sprint 5.29: Provides durable alert history that survives process restarts.
 Mirrors the in-memory history pattern from AlertManager but persists to SQLite
 so that historical alerts and delivery failures remain queryable across restarts.
 
+Sprint 5.30: Added alert acknowledgment/dismissal support with schema v2.
+Alerts can be acknowledged or dismissed via API, and the status persists
+across restarts. Added correlation_id for async dispatch tracking.
+
 Schema:
     alert_history
         id              INTEGER PRIMARY KEY AUTOINCREMENT
@@ -14,6 +18,10 @@ Schema:
         data            TEXT NOT NULL DEFAULT '{}'  -- JSON
         timestamp       TEXT NOT NULL           -- ISO 8601 UTC
         created_at      TEXT NOT NULL           -- Row insertion time
+        correlation_id  TEXT NOT NULL DEFAULT ''  -- Sprint 5.30: correlation ID for async dispatch
+        acknowledged    INTEGER NOT NULL DEFAULT 0  -- Sprint 5.30: 0=open, 1=acknowledged, 2=dismissed
+        acknowledged_at TEXT NOT NULL DEFAULT ''     -- Sprint 5.30: when acknowledged
+        acknowledged_by TEXT NOT NULL DEFAULT ''     -- Sprint 5.30: who acknowledged
 
     alert_delivery_failures
         id              INTEGER PRIMARY KEY AUTOINCREMENT
@@ -53,8 +61,8 @@ _DEFAULT_MAX_ALERT_ROWS = 5000
 # Default maximum number of delivery failure rows to retain
 _DEFAULT_MAX_FAILURE_ROWS = 1000
 
-# Schema version for migrations
-_SCHEMA_VERSION = 1
+# Schema version for migrations (Sprint 5.30: v2 adds correlation_id, acknowledged columns)
+_SCHEMA_VERSION = 2
 
 
 class AlertHistoryStore:
@@ -64,6 +72,11 @@ class AlertHistoryStore:
     process restarts. When an AlertManager is paired with this store,
     all sent alerts and delivery failures are written to SQLite and
     can be queried at any time, even after a restart.
+
+    Sprint 5.30: Added acknowledgment/dismissal support and correlation ID
+    tracking. Alerts can be acknowledged (operator has seen and accepted)
+    or dismissed (operator has resolved the underlying issue). Both states
+    persist across restarts and are visible in the dashboard and API.
 
     Usage::
 
@@ -82,6 +95,9 @@ class AlertHistoryStore:
 
         # Query history
         alerts = store.get_alert_history(alert_type="batch_reduction", limit=50)
+
+        # Acknowledge an alert (Sprint 5.30)
+        store.acknowledge_alert(alert_id=1, acknowledged_by="operator")
     """
 
     def __init__(
@@ -99,6 +115,10 @@ class AlertHistoryStore:
         """Create the alert history tables if they don't exist.
 
         Safe to call multiple times — uses IF NOT EXISTS.
+
+        Sprint 5.30: Runs schema migration from v1 to v2 if needed,
+        adding correlation_id, acknowledged, acknowledged_at, and
+        acknowledged_by columns.
         """
         if self._initialized:
             return
@@ -168,6 +188,43 @@ class AlertHistoryStore:
                     ON alert_delivery_failures (timestamp)
                 """)
 
+                # Sprint 5.30: Schema migration v1 -> v2
+                # Add correlation_id, acknowledged, acknowledged_at, acknowledged_by columns
+                current_version = 0
+                try:
+                    cursor = conn.execute(
+                        "SELECT value FROM alert_meta WHERE key = 'schema_version'"
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        current_version = int(row[0])
+                except Exception:
+                    pass
+
+                if current_version < 2:
+                    for col_spec in [
+                        "ALTER TABLE alert_history ADD COLUMN correlation_id TEXT NOT NULL DEFAULT ''",
+                        "ALTER TABLE alert_history ADD COLUMN acknowledged INTEGER NOT NULL DEFAULT 0",
+                        "ALTER TABLE alert_history ADD COLUMN acknowledged_at TEXT NOT NULL DEFAULT ''",
+                        "ALTER TABLE alert_history ADD COLUMN acknowledged_by TEXT NOT NULL DEFAULT ''",
+                    ]:
+                        try:
+                            conn.execute(col_spec)
+                        except sqlite3.OperationalError:
+                            pass  # Column already exists
+
+                # Index for acknowledged queries
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_alert_history_acknowledged
+                    ON alert_history (acknowledged)
+                """)
+
+                # Index for correlation_id lookups
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_alert_history_correlation_id
+                    ON alert_history (correlation_id)
+                """)
+
                 # Record schema version
                 conn.execute("""
                     INSERT OR REPLACE INTO alert_meta (key, value)
@@ -196,7 +253,7 @@ class AlertHistoryStore:
         ----------
         alert_dict:
             Dict with alert fields: alert_type, severity, subject,
-            message, data (optional), timestamp.
+            message, data (optional), timestamp, correlation_id (optional).
 
         Returns True if successfully recorded, False otherwise.
         """
@@ -207,12 +264,17 @@ class AlertHistoryStore:
             now = datetime.now(timezone.utc).isoformat()
             ts = alert_dict.get("timestamp", now)
             data_json = json.dumps(alert_dict.get("data", {}), default=str)
+            correlation_id = alert_dict.get("correlation_id", "")
 
             with sqlite3.connect(self._db_path) as conn:
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("""
-                    INSERT INTO alert_history (alert_type, severity, subject, message, data, timestamp, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO alert_history (
+                        alert_type, severity, subject, message, data,
+                        timestamp, created_at, correlation_id,
+                        acknowledged, acknowledged_at, acknowledged_by
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '', '')
                 """, (
                     alert_dict.get("alert_type", ""),
                     alert_dict.get("severity", ""),
@@ -221,6 +283,7 @@ class AlertHistoryStore:
                     data_json,
                     ts,
                     now,
+                    correlation_id,
                 ))
 
             # Auto-prune if needed
@@ -324,7 +387,8 @@ class AlertHistoryStore:
                 where_clause = "WHERE " + " AND ".join(conditions)
 
             query = f"""
-                SELECT id, alert_type, severity, subject, message, data, timestamp
+                SELECT id, alert_type, severity, subject, message, data, timestamp,
+                       correlation_id, acknowledged, acknowledged_at, acknowledged_by
                 FROM alert_history
                 {where_clause}
                 ORDER BY timestamp DESC
@@ -344,7 +408,7 @@ class AlertHistoryStore:
                 except (json.JSONDecodeError, TypeError):
                     data = {}
 
-                result.append({
+                alert_dict = {
                     "id": row["id"],
                     "alert_type": row["alert_type"],
                     "severity": row["severity"],
@@ -352,7 +416,21 @@ class AlertHistoryStore:
                     "message": row["message"],
                     "data": data,
                     "timestamp": row["timestamp"],
-                })
+                }
+
+                # Sprint 5.30: Include acknowledgment fields if available
+                try:
+                    alert_dict["correlation_id"] = row["correlation_id"] if "correlation_id" in row.keys() else ""
+                    alert_dict["acknowledged"] = row["acknowledged"] if "acknowledged" in row.keys() else 0
+                    alert_dict["acknowledged_at"] = row["acknowledged_at"] if "acknowledged_at" in row.keys() else ""
+                    alert_dict["acknowledged_by"] = row["acknowledged_by"] if "acknowledged_by" in row.keys() else ""
+                except Exception:
+                    alert_dict["correlation_id"] = ""
+                    alert_dict["acknowledged"] = 0
+                    alert_dict["acknowledged_at"] = ""
+                    alert_dict["acknowledged_by"] = ""
+
+                result.append(alert_dict)
 
             return result
         except Exception as exc:
@@ -428,6 +506,209 @@ class AlertHistoryStore:
                 error=str(exc),
             )
             return []
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.30: Acknowledgment / Dismissal
+    # -----------------------------------------------------------------------
+
+    def acknowledge_alert(self, alert_id: int, acknowledged_by: str = "operator") -> bool:
+        """Mark an alert as acknowledged.
+
+        Sprint 5.30: Sets the acknowledged status to 1 (acknowledged),
+        records who acknowledged it and when.
+
+        Parameters
+        ----------
+        alert_id:
+            The database ID of the alert to acknowledge.
+        acknowledged_by:
+            Identifier for who acknowledged the alert (default "operator").
+
+        Returns True if the alert was found and updated, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                cursor = conn.execute("""
+                    UPDATE alert_history
+                    SET acknowledged = 1, acknowledged_at = ?, acknowledged_by = ?
+                    WHERE id = ?
+                """, (now, acknowledged_by, alert_id))
+                if cursor.rowcount == 0:
+                    return False
+
+            logger.info(
+                "alert_acknowledged",
+                alert_id=alert_id,
+                acknowledged_by=acknowledged_by,
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "alert_acknowledge_failed",
+                alert_id=alert_id,
+                error=str(exc),
+            )
+            return False
+
+    def dismiss_alert(self, alert_id: int, dismissed_by: str = "operator") -> bool:
+        """Mark an alert as dismissed.
+
+        Sprint 5.30: Sets the acknowledged status to 2 (dismissed),
+        indicating the operator has resolved the underlying issue or
+        explicitly dismissed the alert. Records who dismissed it and when.
+
+        Parameters
+        ----------
+        alert_id:
+            The database ID of the alert to dismiss.
+        dismissed_by:
+            Identifier for who dismissed the alert (default "operator").
+
+        Returns True if the alert was found and updated, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                cursor = conn.execute("""
+                    UPDATE alert_history
+                    SET acknowledged = 2, acknowledged_at = ?, acknowledged_by = ?
+                    WHERE id = ?
+                """, (now, dismissed_by, alert_id))
+                if cursor.rowcount == 0:
+                    return False
+
+            logger.info(
+                "alert_dismissed",
+                alert_id=alert_id,
+                dismissed_by=dismissed_by,
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "alert_dismiss_failed",
+                alert_id=alert_id,
+                error=str(exc),
+            )
+            return False
+
+    def get_alert_by_id(self, alert_id: int) -> dict | None:
+        """Return a single alert by its database ID.
+
+        Sprint 5.30: Used by the acknowledge/dismiss endpoints to verify
+        that an alert exists before updating its status.
+
+        Parameters
+        ----------
+        alert_id:
+            The database ID of the alert.
+
+        Returns the alert dict or None if not found.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT id, alert_type, severity, subject, message, data, timestamp,
+                           correlation_id, acknowledged, acknowledged_at, acknowledged_by
+                    FROM alert_history
+                    WHERE id = ?
+                """, (alert_id,))
+                row = cursor.fetchone()
+
+            if row is None:
+                return None
+
+            try:
+                data = json.loads(row["data"]) if row["data"] else {}
+            except (json.JSONDecodeError, TypeError):
+                data = {}
+
+            return {
+                "id": row["id"],
+                "alert_type": row["alert_type"],
+                "severity": row["severity"],
+                "subject": row["subject"],
+                "message": row["message"],
+                "data": data,
+                "timestamp": row["timestamp"],
+                "correlation_id": row["correlation_id"],
+                "acknowledged": row["acknowledged"],
+                "acknowledged_at": row["acknowledged_at"],
+                "acknowledged_by": row["acknowledged_by"],
+            }
+        except Exception as exc:
+            logger.warning(
+                "alert_get_by_id_failed",
+                alert_id=alert_id,
+                error=str(exc),
+            )
+            return None
+
+    def get_recent_alerts_for_dedup(self, window_seconds: int) -> dict[tuple[str, str], float]:
+        """Return recent alerts within the rate-limit window for deduplication.
+
+        Sprint 5.30: Used by AlertManager to rebuild its in-memory
+        rate-limiting state (_last_alert_time) from the persistent store
+        after a process restart. This prevents duplicate alert storms
+        immediately after restart.
+
+        Parameters
+        ----------
+        window_seconds:
+            The rate-limit window in seconds. Only alerts within this
+            window are returned.
+
+        Returns a dict mapping (alert_type, subject) -> timestamp (epoch float).
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            import time as _time
+            cutoff = datetime.fromtimestamp(
+                _time.time() - window_seconds, tz=timezone.utc
+            ).isoformat()
+
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT alert_type, subject, MAX(timestamp) as latest_ts
+                    FROM alert_history
+                    WHERE timestamp > ?
+                    GROUP BY alert_type, subject
+                """, (cutoff,))
+                rows = cursor.fetchall()
+
+            result: dict[tuple[str, str], float] = {}
+            for row in rows:
+                # Parse ISO 8601 timestamp back to epoch float
+                try:
+                    ts_str = row["latest_ts"]
+                    dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                    epoch = dt.timestamp()
+                    result[(row["alert_type"], row["subject"])] = epoch
+                except (ValueError, TypeError):
+                    continue
+
+            return result
+        except Exception as exc:
+            logger.warning(
+                "alert_history_store_dedup_query_failed",
+                error=str(exc),
+            )
+            return {}
 
     def get_alert_count(self) -> int:
         """Return the total number of stored alert history rows."""

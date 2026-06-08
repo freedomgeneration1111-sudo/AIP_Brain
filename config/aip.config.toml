@@ -252,6 +252,11 @@ alert_on_quality_degradation = true
 alert_on_pool_adjustment = true
 alert_on_batch_reduction = true
 min_alert_interval_seconds = 300  # Rate-limit: don't re-alert same subject for 5 min
+# Sprint 5.30: Escalation configuration
+# escalation_threshold = 3            # Alert N times before escalating
+# escalation_window_seconds = 3600    # Count alerts within this window
+# escalation_severity = "critical"    # Severity to escalate to
+# escalation_additional_transports = []  # Extra transports on escalation
 
 # Sprint 5.25: Configuration hot-reload.
 # When enabled, the ConfigWatcher polls aip.config.toml for changes and

@@ -143,7 +143,11 @@ class TestAlertingTransportHardening:
             message="Test",
         )
         # This will fail to deliver but should record the failure
+        # Sprint 5.30: dispatch is async, need to wait for background thread
+        # With 3 retries + exponential backoff (1s, 2s, 4s), need ~8s wait
         manager.send_alert(alert)
+        import time
+        time.sleep(10)  # Wait for background dispatch + all retries with backoff
 
         # Should have at least one failure recorded
         assert manager._total_send_failures >= 1
@@ -208,7 +212,10 @@ class TestAlertingTransportHardening:
         manager = AlertManager(config)
         alert = Alert(alert_type="batch_reduction", severity="warning", subject="test", message="Test")
 
+        # Sprint 5.30: dispatch is async, need to wait for background thread
         manager.send_alert(alert)
+        import time
+        time.sleep(3)  # Wait for background dispatch + retries
         # Should have attempted retries
         assert manager._total_webhook_retries >= 1
 
@@ -218,7 +225,10 @@ class TestAlertingTransportHardening:
         manager = AlertManager(config)
 
         alert = Alert(alert_type="pool_adjustment", severity="info", subject="test", message="Test")
+        # Sprint 5.30: dispatch is async, need to wait for background thread
         manager.send_alert(alert)
+        import time
+        time.sleep(5)  # Wait for background dispatch + retries with backoff
 
         webhook_failures = manager.get_delivery_failures(transport="webhook")
         email_failures = manager.get_delivery_failures(transport="email")

@@ -31,6 +31,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 
 from aip.adapter.api.dependencies import AipContainer, get_container
 
@@ -510,6 +511,190 @@ async def vigil_quality_health(
     }
 
 
+# ---------------------------------------------------------------------------
+# Sprint 5.30: Alert acknowledgment / dismissal
+# ---------------------------------------------------------------------------
+
+
+class AcknowledgeRequest(BaseModel):
+    """Request body for alert acknowledgment."""
+    acknowledged_by: str = "operator"
+
+
+class DismissRequest(BaseModel):
+    """Request body for alert dismissal."""
+    dismissed_by: str = "operator"
+
+
+@router.post("/vigil/quality/alerts/{alert_id}/acknowledge")
+async def vigil_alert_acknowledge(
+    alert_id: int,
+    request: AcknowledgeRequest = AcknowledgeRequest(),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.30: Acknowledge an alert.
+
+    Marks the alert as acknowledged, indicating the operator has
+    seen and accepted the alert. The acknowledgment persists across
+    restarts and is visible in the dashboard alerts panel.
+
+    Parameters
+    ----------
+    alert_id:
+        The database ID of the alert to acknowledge.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "acknowledged": False,
+        }
+
+    success = alert_manager.acknowledge_alert(alert_id, request.acknowledged_by)
+
+    if success:
+        return {
+            "status": "ok",
+            "alert_id": alert_id,
+            "acknowledged": True,
+            "acknowledged_by": request.acknowledged_by,
+        }
+    else:
+        return {
+            "status": "alert_not_found_or_no_store",
+            "alert_id": alert_id,
+            "acknowledged": False,
+        }
+
+
+@router.post("/vigil/quality/alerts/{alert_id}/dismiss")
+async def vigil_alert_dismiss(
+    alert_id: int,
+    request: DismissRequest = DismissRequest(),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.30: Dismiss an alert.
+
+    Marks the alert as dismissed, indicating the operator has resolved
+    the underlying issue or explicitly dismissed the alert. The dismissal
+    persists across restarts and is visible in the dashboard alerts panel.
+
+    Parameters
+    ----------
+    alert_id:
+        The database ID of the alert to dismiss.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "dismissed": False,
+        }
+
+    success = alert_manager.dismiss_alert(alert_id, request.dismissed_by)
+
+    if success:
+        return {
+            "status": "ok",
+            "alert_id": alert_id,
+            "dismissed": True,
+            "dismissed_by": request.dismissed_by,
+        }
+    else:
+        return {
+            "status": "alert_not_found_or_no_store",
+            "alert_id": alert_id,
+            "dismissed": False,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.30: Retention configuration API
+# ---------------------------------------------------------------------------
+
+
+class RetentionConfigUpdate(BaseModel):
+    """Request body for updating retention configuration."""
+    retention_days: int | None = None
+    rollup_age_days: int | None = None
+    weekly_rollup_age_weeks: int | None = None
+
+
+@router.get("/vigil/quality/retention/config")
+async def vigil_retention_config(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.30: View current retention and rollup configuration.
+
+    Returns the current values of retention_days, rollup_age_days,
+    weekly_rollup_age_weeks, and max_history_rows. These parameters
+    control how quality data is retained and aggregated over time.
+    """
+    quality_store = getattr(container, "_vigil_quality_store", None)
+
+    if quality_store is None:
+        return {
+            "status": "quality_store_not_configured",
+            "config": {},
+        }
+
+    try:
+        config = quality_store.get_config()
+    except Exception as exc:
+        logger.warning("vigil_retention_config_failed", error=str(exc))
+        config = {"error": str(exc)}
+
+    return {
+        "status": "ok",
+        "config": config,
+    }
+
+
+@router.patch("/vigil/quality/retention/config")
+async def vigil_retention_config_update(
+    update: RetentionConfigUpdate,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.30: Update retention and rollup configuration at runtime.
+
+    Allows operators to change retention_days, rollup_age_days, and
+    weekly_rollup_age_weeks without restarting the process. Changes
+    take effect immediately on the running VigilQualityStore instance.
+
+    All parameters are optional — only provided fields are updated.
+
+    Input validation:
+    - retention_days must be >= 0 (0 = unlimited retention)
+    - rollup_age_days must be >= 0
+    - weekly_rollup_age_weeks must be >= 0
+    """
+    quality_store = getattr(container, "_vigil_quality_store", None)
+
+    if quality_store is None:
+        return {
+            "status": "quality_store_not_configured",
+            "config": {},
+        }
+
+    try:
+        result = quality_store.update_config(
+            retention_days=update.retention_days,
+            rollup_age_days=update.rollup_age_days,
+            weekly_rollup_age_weeks=update.weekly_rollup_age_weeks,
+        )
+    except Exception as exc:
+        logger.warning("vigil_retention_config_update_failed", error=str(exc))
+        result = {"error": str(exc)}
+
+    has_errors = bool(result.get("validation_errors", []))
+    return {
+        "status": "ok" if not has_errors else "validation_error",
+        "config": result,
+    }
+
+
 @router.get("/vigil/quality/dashboard", response_class=HTMLResponse)
 async def vigil_quality_dashboard(
     container: AipContainer = Depends(get_container),
@@ -621,6 +806,20 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   .alert-item .alert-severity.critical { color: #ef4444; }
   .alert-item .alert-time { color: #64748b; font-size: 11px; margin-left: 8px; }
   .alert-item .alert-msg { color: #cbd5e1; margin-top: 4px; font-size: 12px; }
+  /* Sprint 5.30: Acknowledged/dismissed alert styling */
+  .alert-item.acknowledged { opacity: 0.6; border-left-color: #4ade80 !important; }
+  .alert-item.dismissed { opacity: 0.4; border-left-color: #64748b !important; }
+  .alert-item .ack-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px;
+                           margin-left: 8px; font-weight: 600; }
+  .alert-item .ack-badge.ack-1 { background: rgba(74,222,128,0.2); color: #4ade80; }
+  .alert-item .ack-badge.ack-2 { background: rgba(100,116,139,0.2); color: #94a3b8; }
+  .alert-item .alert-actions { display: inline; margin-left: 8px; }
+  .alert-item .alert-actions button { font-size: 10px; padding: 1px 8px; border-radius: 3px;
+                                       cursor: pointer; border: none; margin-right: 4px; }
+  .alert-item .btn-ack { background: rgba(74,222,128,0.2); color: #4ade80; }
+  .alert-item .btn-ack:hover { background: rgba(74,222,128,0.4); }
+  .alert-item .btn-dismiss { background: rgba(100,116,139,0.2); color: #94a3b8; }
+  .alert-item .btn-dismiss:hover { background: rgba(100,116,139,0.4); }
   .no-alerts { color: #64748b; font-size: 13px; font-style: italic; }
 </style>
 </head>
@@ -733,7 +932,7 @@ function renderSummary(data) {
   }).join('');
 }
 
-// Sprint 5.29: Fetch and render alerts panel
+// Sprint 5.29→5.30: Fetch and render alerts panel with acknowledgment support
 async function fetchAlerts() {
   try {
     const resp = await fetch(ALERTS_URL + '?limit=10');
@@ -752,16 +951,60 @@ async function fetchAlerts() {
       const alertType = a.alert_type || 'unknown';
       const msg = a.message || '';
       const ts = a.timestamp || '';
-      return `<div class="alert-item ${severity}">
-        <span class="alert-type">${alertType.replace(/_/g, ' ')}</span>
-        <span class="alert-severity ${severity}">${severity.toUpperCase()}</span>
-        <span class="alert-time">${formatTime(ts)}</span>
-        <div class="alert-msg">${msg}</div>
-      </div>`;
+      const ack = a.acknowledged || 0;
+      const alertId = a.id || '';
+      // Sprint 5.30: Add acknowledged/dismissed visual distinction
+      let ackClass = '';
+      let ackBadge = '';
+      let actionBtns = '';
+      if (ack === 1) {
+        ackClass = ' acknowledged';
+        ackBadge = '<span class="ack-badge ack-1">ACK</span>';
+      } else if (ack === 2) {
+        ackClass = ' dismissed';
+        ackBadge = '<span class="ack-badge ack-2">DISMISSED</span>';
+      } else if (alertId) {
+        // Only show action buttons for open alerts with an ID
+        actionBtns = '<span class="alert-actions">'
+          + '<button class="btn-ack" onclick="ackAlert(' + alertId + ')">Ack</button>'
+          + '<button class="btn-dismiss" onclick="dismissAlert(' + alertId + ')">Dismiss</button>'
+          + '</span>';
+      }
+      return '<div class="alert-item ' + severity + ackClass + '">'
+        + '<span class="alert-type">' + alertType.replace(/_/g, ' ') + '</span>'
+        + '<span class="alert-severity ' + severity + '">' + severity.toUpperCase() + '</span>'
+        + ackBadge + actionBtns
+        + '<span class="alert-time">' + formatTime(ts) + '</span>'
+        + '<div class="alert-msg">' + msg + '</div>'
+      + '</div>';
     }).join('');
   } catch (err) {
     // Silently ignore alert fetch errors
   }
+}
+
+// Sprint 5.30: Acknowledge an alert via API
+async function ackAlert(alertId) {
+  try {
+    const resp = await fetch('../vigil/quality/alerts/' + alertId + '/acknowledge', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({acknowledged_by: 'dashboard'})
+    });
+    if (resp.ok) fetchAlerts();
+  } catch (err) {}
+}
+
+// Sprint 5.30: Dismiss an alert via API
+async function dismissAlert(alertId) {
+  try {
+    const resp = await fetch('../vigil/quality/alerts/' + alertId + '/dismiss', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({dismissed_by: 'dashboard'})
+    });
+    if (resp.ok) fetchAlerts();
+  } catch (err) {}
 }
 
 function drawLineChart(canvasId, datasets, labels) {
