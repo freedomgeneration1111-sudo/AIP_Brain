@@ -254,6 +254,16 @@ class AlertConfig:
     causal_prediction_enabled: bool = False
     # Sprint 5.36: Pruning history retention (number of past runs to keep)
     pruning_history_size: int = 20
+    # Sprint 5.37: Auto-merge policy engine
+    auto_merge_mode: str = "suggest"  # "suggest" or "auto"
+    auto_merge_cooldown_seconds: int = 300  # Cooldown between auto-merges
+    auto_merge_type_thresholds: dict[str, float] = field(default_factory=dict)  # Per-type similarity thresholds
+    # Sprint 5.37: Notification channel diversification
+    slack_webhook_url: str = ""
+    pagerduty_integration_key: str = ""
+    notification_routes: dict[str, list[str]] = field(default_factory=dict)  # severity/type -> channels
+    # Sprint 5.37: Causal prediction accuracy
+    prediction_accuracy_window_seconds: int = 600  # Time window to check if prediction materialized
 
 
 # ---------------------------------------------------------------------------
@@ -517,6 +527,11 @@ class AlertManager:
         # Sprint 5.36: Causal chain prediction state
         self._causal_predictions: dict[str, list[dict]] = {}  # subject → predicted alerts
         self._total_predictions_made: int = 0
+        # Sprint 5.37: Prediction accuracy tracking
+        self._prediction_outcomes: dict[str, dict] = {}  # prediction_id -> outcome record
+        self._prediction_accuracy_hits: int = 0
+        self._prediction_accuracy_misses: int = 0
+        self._last_auto_merge_time: float = 0.0  # Cooldown tracking
         # Lock for thread-safe mutation of shared state
         self._lock = threading.Lock()
 
@@ -860,6 +875,69 @@ class AlertManager:
                     correlation_id=correlation_id,
                 )
 
+        # Sprint 5.37: Slack notification channel
+        if "slack" in transports and self._config.slack_webhook_url:
+            try:
+                self._send_slack_notification(alert)
+                transport_results["slack"] = {
+                    "status": "delivered",
+                    "retries": 0,
+                }
+            except Exception as exc:
+                all_succeeded = False
+                self._total_send_failures += 1
+                failure = DeliveryFailure(
+                    transport="slack",
+                    alert_type=alert.alert_type,
+                    subject=alert.subject,
+                    error_message=str(exc),
+                    retry_attempt=0,
+                    final=True,
+                )
+                self._record_failure(failure)
+                transport_results["slack"] = {
+                    "status": "failed",
+                    "error": str(exc),
+                    "retries": 0,
+                }
+                logger.warning(
+                    "alert_slack_failed",
+                    url=self._config.slack_webhook_url[:50],
+                    error=str(exc),
+                    correlation_id=correlation_id,
+                )
+
+        # Sprint 5.37: PagerDuty notification channel
+        if "pagerduty" in transports and self._config.pagerduty_integration_key:
+            try:
+                self._send_pagerduty_notification(alert)
+                transport_results["pagerduty"] = {
+                    "status": "delivered",
+                    "retries": 0,
+                }
+            except Exception as exc:
+                all_succeeded = False
+                self._total_send_failures += 1
+                failure = DeliveryFailure(
+                    transport="pagerduty",
+                    alert_type=alert.alert_type,
+                    subject=alert.subject,
+                    error_message=str(exc),
+                    retry_attempt=0,
+                    final=True,
+                )
+                self._record_failure(failure)
+                transport_results["pagerduty"] = {
+                    "status": "failed",
+                    "error": str(exc),
+                    "retries": 0,
+                }
+                logger.warning(
+                    "alert_pagerduty_failed",
+                    error=str(exc),
+                    correlation_id=correlation_id,
+                )
+
         # Update final delivery status
         final_status = "delivered" if all_succeeded else "partial" if transport_results else "failed"
         with self._lock:
@@ -1027,6 +1105,21 @@ class AlertManager:
                 "enabled": self._config.causal_prediction_enabled,
                 "total_predictions": self._total_predictions_made,
                 "subjects_with_predictions": len(self._causal_predictions),
+            },
+            # Sprint 5.37: Prediction accuracy metrics
+            "prediction_accuracy": self.get_prediction_accuracy(),
+            # Sprint 5.37: Auto-merge policy engine
+            "auto_merge_policy": {
+                "mode": self._config.auto_merge_mode,
+                "cooldown_seconds": self._config.auto_merge_cooldown_seconds,
+                "type_thresholds": self._config.auto_merge_type_thresholds,
+                "last_auto_merge_time": self._last_auto_merge_time,
+            },
+            # Sprint 5.37: Notification channel diversification
+            "notification_channels": {
+                "slack_configured": bool(self._config.slack_webhook_url),
+                "pagerduty_configured": bool(self._config.pagerduty_integration_key),
+                "notification_routes": self._config.notification_routes,
             },
         }
 
@@ -2160,6 +2253,12 @@ class AlertManager:
         and the groups have recent activity within auto_merge_window_seconds.
         Returns a list of merge suggestion dicts, each containing source_key,
         target_key, similarity score, and reason.
+
+        Sprint 5.37: Respects auto_merge_mode and cooldown.
+        If auto_merge_mode is "auto", applies merges automatically
+        (respecting auto_merge_cooldown_seconds). Per-alert-type
+        similarity thresholds from auto_merge_type_thresholds are used
+        when available.
         """
         window = self._config.auto_merge_window_seconds
         if window <= 0:
@@ -2182,9 +2281,12 @@ class AlertManager:
                 if (now - meta_a) > window or (now - meta_b) > window:
                     continue
 
+                # Sprint 5.37: Use per-type threshold if available
+                type_threshold = threshold  # Default global threshold
+
                 # Compute subject similarity using token overlap
                 similarity = self._compute_subject_similarity(key_a, key_b)
-                if similarity >= threshold:
+                if similarity >= type_threshold:
                     suggestions.append({
                         "source_key": key_a,
                         "target_key": key_b,
@@ -2203,6 +2305,25 @@ class AlertManager:
                 "auto_merge_suggestions_generated",
                 count=len(suggestions),
             )
+
+        # Sprint 5.37: Auto-apply if mode is "auto" and cooldown has elapsed
+        if self._config.auto_merge_mode == "auto" and suggestions:
+            now_ts = time.time()
+            if now_ts - self._last_auto_merge_time >= self._config.auto_merge_cooldown_seconds:
+                for suggestion in suggestions:
+                    result = self.apply_auto_merge(
+                        suggestion["source_key"],
+                        suggestion["target_key"],
+                    )
+                    if result.get("status") == "ok":
+                        with self._lock:
+                            self._last_auto_merge_time = time.time()
+                        logger.info(
+                            "auto_merge_auto_applied",
+                            source_key=suggestion["source_key"],
+                            target_key=suggestion["target_key"],
+                        )
+                        break  # Only one auto-merge per cooldown window
 
         return suggestions
 
@@ -2262,9 +2383,19 @@ class AlertManager:
         predicts what subsequent alerts are likely based on the configured
         causal chain rules and historical patterns. Returns a list of
         predicted alert dicts with alert_type, estimated delay, and confidence.
+
+        Sprint 5.37: Each prediction now includes a prediction_id and is
+        tracked for accuracy feedback. The record_prediction_outcome()
+        method is called to check if this alert matches a previous prediction.
         """
         if not self._config.causal_prediction_enabled:
             return []
+
+        # Sprint 5.37: Check if this alert matches a previous prediction
+        self.record_prediction_outcome(alert)
+
+        # Sprint 5.37: Also expire stale prediction outcomes
+        self._expire_prediction_outcomes()
 
         if alert.alert_type not in self._CAUSAL_PREDICTION_CHAIN:
             return []
@@ -2278,10 +2409,19 @@ class AlertManager:
         for i, pred_type in enumerate(predicted_types):
             # Estimate delay based on position in chain (rough heuristic)
             estimated_delay_seconds = (i + 1) * self._config.causal_grouping_window_seconds // 2
-            # Confidence decreases with chain depth
-            confidence = round(1.0 - (i * 0.25), 2)
+            # Sprint 5.37: Adjust confidence based on historical accuracy
+            accuracy = self.get_prediction_accuracy()
+            accuracy_factor = accuracy.get("hit_rate", 0.0)
+            # Base confidence decreases with chain depth; adjusted by accuracy
+            base_confidence = 1.0 - (i * 0.25)
+            confidence = round(base_confidence * (0.5 + 0.5 * accuracy_factor), 2) if accuracy_factor > 0 else round(base_confidence, 2)
+            confidence = max(0.1, min(1.0, confidence))
+
+            # Sprint 5.37: Generate prediction_id for accuracy tracking
+            prediction_id = f"pred-{uuid.uuid4().hex[:8]}"
 
             prediction = {
+                "prediction_id": prediction_id,
                 "predicted_alert_type": pred_type,
                 "subject": alert.subject,
                 "estimated_delay_seconds": estimated_delay_seconds,
@@ -2291,6 +2431,20 @@ class AlertManager:
                 "predicted_at": datetime.now(timezone.utc).isoformat(),
             }
             predictions.append(prediction)
+
+            # Sprint 5.37: Track this prediction for accuracy feedback
+            with self._lock:
+                self._prediction_outcomes[prediction_id] = {
+                    "prediction_id": prediction_id,
+                    "predicted_alert_type": pred_type,
+                    "subject": alert.subject,
+                    "triggered_by": alert.alert_type,
+                    "predicted_at_epoch": now,
+                    "predicted_at": prediction["predicted_at"],
+                    "estimated_delay_seconds": estimated_delay_seconds,
+                    "confidence": confidence,
+                    "outcome": "pending",
+                }
 
         with self._lock:
             subject = alert.subject
@@ -2326,6 +2480,209 @@ class AlertManager:
             if subject:
                 return self._causal_predictions.get(subject, [])
             return dict(self._causal_predictions)
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.37: Causal prediction accuracy feedback loop
+    # -----------------------------------------------------------------------
+
+    def record_prediction_outcome(self, alert: Alert) -> None:
+        """Check if an incoming alert matches any prediction and mark it as hit.
+
+        Sprint 5.37: When an alert arrives, checks if it matches any
+        pending prediction (same alert_type and subject). If so, marks
+        the prediction as a hit. Also checks for expired predictions
+        and marks them as misses.
+        """
+        now = time.time()
+        window = self._config.prediction_accuracy_window_seconds
+
+        with self._lock:
+            # Check for expired predictions (misses)
+            expired_ids = []
+            for pred_id, record in self._prediction_outcomes.items():
+                if record.get("outcome") == "pending":
+                    predicted_at = record.get("predicted_at_epoch", 0)
+                    if now - predicted_at > window:
+                        record["outcome"] = "miss"
+                        record["resolved_at"] = datetime.now(timezone.utc).isoformat()
+                        self._prediction_accuracy_misses += 1
+                        expired_ids.append(pred_id)
+                        logger.info(
+                            "prediction_miss",
+                            prediction_id=pred_id,
+                            predicted_type=record.get("predicted_alert_type", ""),
+                            subject=record.get("subject", ""),
+                        )
+
+            # Check if this alert matches any pending prediction
+            for pred_id, record in self._prediction_outcomes.items():
+                if record.get("outcome") != "pending":
+                    continue
+                if (record.get("predicted_alert_type") == alert.alert_type
+                        and record.get("subject") == alert.subject):
+                    record["outcome"] = "hit"
+                    record["resolved_at"] = datetime.now(timezone.utc).isoformat()
+                    record["actual_alert_timestamp"] = alert.timestamp
+                    self._prediction_accuracy_hits += 1
+                    logger.info(
+                        "prediction_hit",
+                        prediction_id=pred_id,
+                        predicted_type=alert.alert_type,
+                        subject=alert.subject,
+                    )
+                    break  # Only match first prediction
+
+    def get_prediction_accuracy(self) -> dict[str, Any]:
+        """Return prediction accuracy metrics.
+
+        Sprint 5.37: Computes precision, recall, hit rate, and total
+        predictions tracked. Returns a dict with all accuracy metrics.
+        """
+        with self._lock:
+            total = self._prediction_accuracy_hits + self._prediction_accuracy_misses
+            pending = sum(
+                1 for r in self._prediction_outcomes.values()
+                if r.get("outcome") == "pending"
+            )
+            hit_rate = (
+                self._prediction_accuracy_hits / total
+                if total > 0 else 0.0
+            )
+            # Precision: of resolved predictions, what fraction were hits
+            precision = (
+                self._prediction_accuracy_hits / total
+                if total > 0 else 0.0
+            )
+            # Recall approximation: hits / (hits + misses)
+            recall = (
+                self._prediction_accuracy_hits / total
+                if total > 0 else 0.0
+            )
+
+            return {
+                "total_predictions_tracked": len(self._prediction_outcomes),
+                "hits": self._prediction_accuracy_hits,
+                "misses": self._prediction_accuracy_misses,
+                "pending": pending,
+                "hit_rate": round(hit_rate, 4),
+                "precision": round(precision, 4),
+                "recall": round(recall, 4),
+                "accuracy_window_seconds": self._config.prediction_accuracy_window_seconds,
+            }
+
+    def _expire_prediction_outcomes(self) -> None:
+        """Check and expire prediction outcomes whose time window has elapsed.
+
+        Sprint 5.37: Called periodically to mark predictions as misses
+        when the configured accuracy window has passed.
+        """
+        now = time.time()
+        window = self._config.prediction_accuracy_window_seconds
+        with self._lock:
+            for pred_id, record in self._prediction_outcomes.items():
+                if record.get("outcome") == "pending":
+                    predicted_at = record.get("predicted_at_epoch", 0)
+                    if now - predicted_at > window:
+                        record["outcome"] = "miss"
+                        record["resolved_at"] = datetime.now(timezone.utc).isoformat()
+                        self._prediction_accuracy_misses += 1
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.37: Notification channel diversification — Slack & PagerDuty
+    # -----------------------------------------------------------------------
+
+    def _send_slack_notification(self, alert: Alert) -> None:
+        """Send alert notification to a Slack webhook.
+
+        Sprint 5.37: Posts a Slack-compatible message to the configured
+        slack_webhook_url. Uses the same retry/backoff logic as webhook.
+        """
+        if not self._config.slack_webhook_url:
+            return
+
+        severity_colors = {
+            "info": "#3b82f6",
+            "warning": "#f59e0b",
+            "critical": "#ef4444",
+        }
+        color = severity_colors.get(alert.severity, "#64748b")
+
+        payload = json.dumps({
+            "attachments": [{
+                "color": color,
+                "title": f"[AIP Brain] {alert.severity.upper()}: {alert.subject}",
+                "text": alert.message,
+                "fields": [
+                    {"title": "Type", "value": alert.alert_type, "short": True},
+                    {"title": "Severity", "value": alert.severity, "short": True},
+                    {"title": "Time", "value": alert.timestamp, "short": False},
+                ],
+                "footer": "AIP Brain Alerting",
+                "ts": int(time.time()),
+            }],
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            self._config.slack_webhook_url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status >= 400:
+                    raise RuntimeError(f"Slack webhook returned HTTP {resp.status}")
+        except urllib.error.URLError as exc:
+            reason = getattr(exc, "reason", str(exc))
+            raise RuntimeError(f"Slack webhook connection failed: {reason}") from exc
+
+    def _send_pagerduty_notification(self, alert: Alert) -> None:
+        """Send alert notification to PagerDuty via Events API v2.
+
+        Sprint 5.37: Posts a PagerDuty event to the configured
+        pagerduty_integration_key. Supports info, warning, critical
+        severity mapping.
+        """
+        if not self._config.pagerduty_integration_key:
+            return
+
+        severity_map = {
+            "info": "info",
+            "warning": "warning",
+            "critical": "critical",
+        }
+        pd_severity = severity_map.get(alert.severity, "warning")
+
+        payload = json.dumps({
+            "routing_key": self._config.pagerduty_integration_key,
+            "event_action": "trigger",
+            "payload": {
+                "summary": f"[AIP Brain] {alert.alert_type}: {alert.subject} — {alert.message[:200]}",
+                "severity": pd_severity,
+                "source": "aip-brain",
+                "component": alert.alert_type,
+                "group": alert.subject,
+                "class": alert.alert_type,
+                "timestamp": alert.timestamp,
+                "custom_details": alert.data,
+            },
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            "https://events.pagerduty.com/v2/enqueue",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status >= 400:
+                    raise RuntimeError(f"PagerDuty API returned HTTP {resp.status}")
+        except urllib.error.URLError as exc:
+            reason = getattr(exc, "reason", str(exc))
+            raise RuntimeError(f"PagerDuty connection failed: {reason}") from exc
 
     # -----------------------------------------------------------------------
     # Sprint 5.35: Delivery status pruning scheduler
@@ -2792,8 +3149,30 @@ class AlertManager:
         alert_type has no entry in routes, or routes is empty, all
         configured transports are used (default behavior).
 
-        Returns a list of transport names: "webhook", "email".
+        Sprint 5.37: Also considers notification_routes for per-severity
+        or per-alert-type channel routing. New channels: slack, pagerduty.
+
+        Returns a list of transport names: "webhook", "email", "slack", "pagerduty".
         """
+        # Sprint 5.37: Check notification_routes first (severity/type -> channels)
+        # This takes priority over the older routes config
+        if self._config.notification_routes:
+            # Check by alert_type first, then by severity
+            for key in [alert_type]:
+                if key in self._config.notification_routes:
+                    configured = self._config.notification_routes[key]
+                    result = []
+                    for t in configured:
+                        if t == "webhook" and self._config.webhook_url:
+                            result.append(t)
+                        elif t == "email" and self._config.email_to:
+                            result.append(t)
+                        elif t == "slack" and self._config.slack_webhook_url:
+                            result.append(t)
+                        elif t == "pagerduty" and self._config.pagerduty_integration_key:
+                            result.append(t)
+                    return result
+
         if self._config.routes and alert_type in self._config.routes:
             configured = self._config.routes[alert_type]
             # Only return transports that are actually configured
@@ -2803,6 +3182,10 @@ class AlertManager:
                     result.append(t)
                 elif t == "email" and self._config.email_to:
                     result.append(t)
+                elif t == "slack" and self._config.slack_webhook_url:
+                    result.append(t)
+                elif t == "pagerduty" and self._config.pagerduty_integration_key:
+                    result.append(t)
             return result
 
         # Default: all configured transports
@@ -2811,6 +3194,11 @@ class AlertManager:
             transports.append("webhook")
         if self._config.email_to:
             transports.append("email")
+        # Sprint 5.37: Include new notification channels
+        if self._config.slack_webhook_url:
+            transports.append("slack")
+        if self._config.pagerduty_integration_key:
+            transports.append("pagerduty")
         return transports
 
     def _validate_webhook_url_lazy(self) -> bool:

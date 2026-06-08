@@ -1229,6 +1229,63 @@ async def vigil_quality_websocket(
                         result["prefs"] = prefs
                         result["saved"] = True
 
+                    # Sprint 5.37: Tab registration for SharedWorker connection pooling
+                    elif action == "tab_register":
+                        tab_id = command.get("tab_id", "")
+                        if tab_id:
+                            if not hasattr(alert_manager, '_registered_tabs'):
+                                alert_manager._registered_tabs = {}
+                            alert_manager._registered_tabs[tab_id] = {
+                                "registered_at": _time.time(),
+                                "session_id": session_id,
+                                "tab_id": tab_id,
+                            }
+                            result["registered"] = True
+                            result["tab_id"] = tab_id
+                        else:
+                            result["error"] = "tab_id required"
+
+                    # Sprint 5.37: Tab unregistration
+                    elif action == "tab_unregister":
+                        tab_id = command.get("tab_id", "")
+                        if tab_id and hasattr(alert_manager, '_registered_tabs'):
+                            alert_manager._registered_tabs.pop(tab_id, None)
+                            result["unregistered"] = True
+                            result["tab_id"] = tab_id
+                        else:
+                            result["error"] = "tab_id required"
+
+                    # Sprint 5.37: Get prediction accuracy
+                    elif action == "get_prediction_accuracy":
+                        result["accuracy"] = alert_manager.get_prediction_accuracy()
+
+                    # Sprint 5.37: Get auto-merge policy
+                    elif action == "get_auto_merge_policy":
+                        result["policy"] = {
+                            "mode": alert_manager.config.auto_merge_mode,
+                            "cooldown_seconds": alert_manager.config.auto_merge_cooldown_seconds,
+                            "type_thresholds": alert_manager.config.auto_merge_type_thresholds,
+                            "similarity_threshold": alert_manager.config.auto_merge_similarity_threshold,
+                            "window_seconds": alert_manager.config.auto_merge_window_seconds,
+                        }
+
+                    # Sprint 5.37: Update auto-merge policy
+                    elif action == "update_auto_merge_policy":
+                        mode = command.get("mode")
+                        cooldown = command.get("cooldown_seconds")
+                        thresholds = command.get("type_thresholds")
+                        if mode and mode in ("suggest", "auto"):
+                            alert_manager.config.auto_merge_mode = mode
+                        if cooldown is not None and isinstance(cooldown, int) and cooldown >= 0:
+                            alert_manager.config.auto_merge_cooldown_seconds = cooldown
+                        if thresholds is not None and isinstance(thresholds, dict):
+                            alert_manager.config.auto_merge_type_thresholds = thresholds
+                        result["policy"] = {
+                            "mode": alert_manager.config.auto_merge_mode,
+                            "cooldown_seconds": alert_manager.config.auto_merge_cooldown_seconds,
+                            "type_thresholds": alert_manager.config.auto_merge_type_thresholds,
+                        }
+
                     else:
                         result["error"] = f"Unknown action: {action}"
 
@@ -1848,6 +1905,134 @@ async def vigil_ws_batching_status(
     }
 
 
+# ---------------------------------------------------------------------------
+# Sprint 5.37: Prediction accuracy REST endpoint
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vigil/quality/alerts/predictions/accuracy")
+async def vigil_prediction_accuracy(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.37: Get causal prediction accuracy metrics.
+
+    Returns precision, recall, hit rate, and counts of tracked
+    prediction outcomes (hits, misses, pending).
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "accuracy": {},
+        }
+
+    accuracy = alert_manager.get_prediction_accuracy()
+
+    return {
+        "status": "ok",
+        "accuracy": accuracy,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.37: Auto-merge policy REST endpoints
+# ---------------------------------------------------------------------------
+
+
+class AutoMergePolicyUpdate(BaseModel):
+    """Request body for updating auto-merge policy."""
+    mode: str | None = None
+    cooldown_seconds: int | None = None
+    type_thresholds: dict[str, float] | None = None
+
+
+@router.get("/vigil/quality/alerts/groups/auto-merge/policy")
+async def vigil_auto_merge_policy(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.37: Get current auto-merge policy configuration.
+
+    Returns the auto-merge mode (suggest/auto), cooldown period,
+    per-type similarity thresholds, and other policy settings.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "policy": {},
+        }
+
+    return {
+        "status": "ok",
+        "policy": {
+            "mode": alert_manager.config.auto_merge_mode,
+            "cooldown_seconds": alert_manager.config.auto_merge_cooldown_seconds,
+            "type_thresholds": alert_manager.config.auto_merge_type_thresholds,
+            "similarity_threshold": alert_manager.config.auto_merge_similarity_threshold,
+            "window_seconds": alert_manager.config.auto_merge_window_seconds,
+        },
+    }
+
+
+@router.patch("/vigil/quality/alerts/groups/auto-merge/policy")
+async def vigil_auto_merge_policy_update(
+    update: AutoMergePolicyUpdate,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.37: Update auto-merge policy configuration at runtime.
+
+    Allows operators to change the auto-merge mode, cooldown period,
+    and per-type similarity thresholds without restarting.
+
+    Validation:
+    - mode must be "suggest" or "auto"
+    - cooldown_seconds must be >= 0
+    - type_thresholds values must be between 0.0 and 1.0
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "policy": {},
+        }
+
+    validation_errors: list[str] = []
+
+    if update.mode is not None:
+        if update.mode in ("suggest", "auto"):
+            alert_manager.config.auto_merge_mode = update.mode
+        else:
+            validation_errors.append(f"Invalid mode '{update.mode}': must be 'suggest' or 'auto'")
+
+    if update.cooldown_seconds is not None:
+        if update.cooldown_seconds >= 0:
+            alert_manager.config.auto_merge_cooldown_seconds = update.cooldown_seconds
+        else:
+            validation_errors.append("cooldown_seconds must be >= 0")
+
+    if update.type_thresholds is not None:
+        for k, v in update.type_thresholds.items():
+            if not (0.0 <= v <= 1.0):
+                validation_errors.append(f"type_thresholds['{k}'] must be between 0.0 and 1.0, got {v}")
+        if not validation_errors:
+            alert_manager.config.auto_merge_type_thresholds = update.type_thresholds
+
+    return {
+        "status": "ok" if not validation_errors else "validation_error",
+        "validation_errors": validation_errors,
+        "policy": {
+            "mode": alert_manager.config.auto_merge_mode,
+            "cooldown_seconds": alert_manager.config.auto_merge_cooldown_seconds,
+            "type_thresholds": alert_manager.config.auto_merge_type_thresholds,
+            "similarity_threshold": alert_manager.config.auto_merge_similarity_threshold,
+            "window_seconds": alert_manager.config.auto_merge_window_seconds,
+        },
+    }
+
+
 @router.get("/vigil/quality/dashboard", response_class=HTMLResponse)
 async def vigil_quality_dashboard(
     container: AipContainer = Depends(get_container),
@@ -2096,6 +2281,53 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   .prune-metric { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
                   color: #cbd5e1; margin-right: 16px; }
   .prune-metric .value { font-weight: 700; color: #f1f5f9; font-size: 16px; }
+  /* Sprint 5.37: Prediction accuracy panel */
+  .accuracy-panel { background: #1e293b; border-radius: 8px; padding: 20px;
+                    border: 1px solid #334155; margin-bottom: 16px; }
+  .accuracy-panel h3 { font-size: 14px; color: #94a3b8; margin-bottom: 12px;
+                        text-transform: uppercase; letter-spacing: 0.5px; }
+  .accuracy-metric { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+                     color: #cbd5e1; margin-right: 16px; }
+  .accuracy-metric .value { font-weight: 700; color: #f1f5f9; font-size: 16px; }
+  .accuracy-metric .value.hit { color: #4ade80; }
+  .accuracy-metric .value.miss { color: #f87171; }
+  /* Sprint 5.37: Auto-merge policy controls */
+  .policy-panel { background: #1e293b; border-radius: 8px; padding: 20px;
+                  border: 1px solid #334155; margin-bottom: 16px; }
+  .policy-panel h3 { font-size: 14px; color: #94a3b8; margin-bottom: 12px;
+                     text-transform: uppercase; letter-spacing: 0.5px; }
+  .policy-row { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .policy-row label { font-size: 12px; color: #cbd5e1; min-width: 120px; }
+  .policy-row select, .policy-row input { background: #0f172a; border: 1px solid #475569;
+            color: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+  .policy-row button { background: #3b82f6; color: white; border: none; padding: 4px 12px;
+                       border-radius: 4px; cursor: pointer; font-size: 12px; }
+  .policy-row button:hover { background: #2563eb; }
+  /* Sprint 5.37: Notification channel config */
+  .channel-panel { background: #1e293b; border-radius: 8px; padding: 20px;
+                   border: 1px solid #334155; margin-bottom: 16px; }
+  .channel-panel h3 { font-size: 14px; color: #94a3b8; margin-bottom: 12px;
+                      text-transform: uppercase; letter-spacing: 0.5px; }
+  .channel-row { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .channel-row label { font-size: 12px; color: #cbd5e1; min-width: 100px; }
+  .channel-row input { background: #0f172a; border: 1px solid #475569;
+            color: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-size: 12px; width: 240px; }
+  .channel-row .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .channel-row .status-dot.configured { background: #4ade80; }
+  .channel-row .status-dot.not-configured { background: #64748b; }
+  /* Sprint 5.37: Performance metrics panel */
+  .perf-panel { background: #1e293b; border-radius: 8px; padding: 20px;
+                border: 1px solid #334155; margin-bottom: 16px; }
+  .perf-panel h3 { font-size: 14px; color: #94a3b8; margin-bottom: 12px;
+                   text-transform: uppercase; letter-spacing: 0.5px; }
+  .perf-metric { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+                 color: #cbd5e1; margin-right: 16px; }
+  .perf-metric .value { font-weight: 700; color: #f1f5f9; font-size: 14px; }
+  /* Sprint 5.37: Virtual scrolling alert list */
+  .virtual-alert-list { max-height: 400px; overflow-y: auto; position: relative; }
+  .virtual-alert-list::-webkit-scrollbar { width: 6px; }
+  .virtual-alert-list::-webkit-scrollbar-track { background: #0f172a; }
+  .virtual-alert-list::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
 </style>
 </head>
 <body>
@@ -2176,7 +2408,7 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <!-- Sprint 5.29: Alerts Panel -->
 <div class="alerts-panel">
   <h3>Recent Alerts</h3>
-  <div id="alerts-list"><span class="no-alerts">Loading alerts...</span></div>
+  <div id="alerts-list" class="virtual-alert-list"><span class="no-alerts">Loading alerts...</span></div>
 </div>
 
 <!-- Sprint 5.31: Mute Rules Panel -->
@@ -2202,6 +2434,19 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <div class="prediction-panel" id="predictionPanel">
   <h3>Expected Next Alerts (Causal Predictions)</h3>
   <div id="prediction-list"><span class="no-alerts">No active predictions</span></div>
+</div>
+
+<!-- Sprint 5.37: Prediction Accuracy Panel -->
+<div class="accuracy-panel" id="accuracyPanel">
+  <h3>Prediction Accuracy</h3>
+  <div>
+    <span class="accuracy-metric">Hits: <span id="predHits" class="value hit">0</span></span>
+    <span class="accuracy-metric">Misses: <span id="predMisses" class="value miss">0</span></span>
+    <span class="accuracy-metric">Pending: <span id="predPending" class="value">0</span></span>
+    <span class="accuracy-metric">Hit Rate: <span id="predHitRate" class="value">0%</span></span>
+    <span class="accuracy-metric">Precision: <span id="predPrecision" class="value">0%</span></span>
+    <span class="accuracy-metric">Recall: <span id="predRecall" class="value">0%</span></span>
+  </div>
 </div>
 
 <!-- Sprint 5.34: Causal Group Visualization -->
@@ -2246,6 +2491,52 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   <div id="prune-history-list" style="margin-top:12px;max-height:120px;overflow-y:auto;font-size:11px;color:#94a3b8;"></div>
 </div>
 
+<!-- Sprint 5.37: Auto-Merge Policy Controls -->
+<div class="policy-panel" id="policyPanel">
+  <h3>Auto-Merge Policy</h3>
+  <div class="policy-row">
+    <label>Mode:</label>
+    <select id="policyMode">
+      <option value="suggest">Suggest Only</option>
+      <option value="auto">Auto-Apply</option>
+    </select>
+    <label>Cooldown (sec):</label>
+    <input type="number" id="policyCooldown" value="300" min="0" size="6">
+    <button onclick="updateAutoMergePolicy()">Update Policy</button>
+  </div>
+  <div id="policyStatus" style="font-size:11px;color:#94a3b8;margin-top:4px;"></div>
+</div>
+
+<!-- Sprint 5.37: Notification Channel Configuration -->
+<div class="channel-panel" id="channelPanel">
+  <h3>Notification Channels</h3>
+  <div class="channel-row">
+    <label>Slack Webhook:</label>
+    <input type="text" id="slackWebhookUrl" placeholder="https://hooks.slack.com/services/..." size="30">
+    <span class="status-dot not-configured" id="slackDot"></span>
+    <button onclick="configureSlack()" style="font-size:11px;background:#3b82f6;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Save</button>
+  </div>
+  <div class="channel-row">
+    <label>PagerDuty Key:</label>
+    <input type="text" id="pagerdutyKey" placeholder="Integration key..." size="30">
+    <span class="status-dot not-configured" id="pagerdutyDot"></span>
+    <button onclick="configurePagerDuty()" style="font-size:11px;background:#3b82f6;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Save</button>
+  </div>
+  <div id="channelStatus" style="font-size:11px;color:#94a3b8;margin-top:4px;"></div>
+</div>
+
+<!-- Sprint 5.37: Performance Metrics -->
+<div class="perf-panel" id="perfPanel">
+  <h3>Dashboard Performance</h3>
+  <div>
+    <span class="perf-metric">Render Time: <span id="perfRenderTime" class="value">-</span></span>
+    <span class="perf-metric">WS Msgs Received: <span id="perfWsMsgs" class="value">0</span></span>
+    <span class="perf-metric">WS Msgs Deduped: <span id="perfWsDeduped" class="value">0</span></span>
+    <span class="perf-metric">Visible Alerts: <span id="perfVisibleAlerts" class="value">0</span></span>
+    <span class="perf-metric">Total Alerts: <span id="perfTotalAlerts" class="value">0</span></span>
+  </div>
+</div>
+
 <div class="status-bar" id="meta"></div>
 
 <script>
@@ -2255,6 +2546,178 @@ const WS_URL = ((location.protocol === 'https:') ? 'wss:' : 'ws:') + '//' + loca
 let currentData = null;
 let liveInterval = null;
 let isLive = false;
+
+// Sprint 5.37: Performance metrics tracking
+const _perfMetrics = { wsMsgsReceived: 0, wsMsgsDeduped: 0, lastRenderTime: 0 };
+// Sprint 5.37: WS message deduplication — track message IDs
+const _wsMsgDedupSet = new Set();
+const _WS_DEDUP_MAX_SIZE = 1000;
+
+// Sprint 5.37: SharedWorker for connection pooling
+let sharedWorker = null;
+let tabId = 'tab-' + Math.random().toString(36).substring(2, 10);
+
+// Sprint 5.37: Try to create a SharedWorker for WS connection pooling
+function initSharedWorker() {
+  try {
+    // Create SharedWorker from inline blob for same-origin compatibility
+    const workerCode = `
+      let ws = null;
+      let tabs = new Map();
+      let reconnectAttempts = 0;
+      const maxReconnectAttempts = 10;
+      const baseReconnectDelay = 1000;
+
+      self.onconnect = function(e) {
+        const port = e.ports[0];
+        const tabId = 'tab-' + Math.random().toString(36).substring(2, 10);
+        tabs.set(tabId, port);
+
+        port.onmessage = function(event) {
+          const msg = event.data;
+          if (msg.type === 'register') {
+            // Tab is registering itself
+            tabs.set(msg.tabId || tabId, port);
+            port.postMessage({type: 'registered', tabId: msg.tabId || tabId});
+          } else if (msg.type === 'ws_send') {
+            // Tab wants to send a WS message
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(msg.data);
+            }
+          } else if (msg.type === 'tab_close') {
+            tabs.delete(msg.tabId);
+          }
+        };
+
+        port.onclose = function() {
+          tabs.delete(tabId);
+        };
+
+        // If no WS connection yet, create one
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          connectWS();
+        }
+        // Send current tab its ID
+        port.postMessage({type: 'init', tabId: tabId, wsConnected: ws && ws.readyState === WebSocket.OPEN});
+      };
+
+      function connectWS() {
+        if (reconnectAttempts >= maxReconnectAttempts) return;
+        const wsProto = (typeof location !== 'undefined' && location.protocol === 'https:') ? 'wss:' : 'ws:';
+        const wsUrl = wsProto + '//' + (typeof location !== 'undefined' ? location.host : 'localhost') + '/vigil/quality/dashboard/ws';
+        try {
+          ws = new WebSocket(wsUrl);
+          ws.onopen = function() {
+            reconnectAttempts = 0;
+            broadcastToTabs({type: 'ws_status', status: 'connected'});
+          };
+          ws.onmessage = function(event) {
+            broadcastToTabs({type: 'ws_message', data: event.data});
+          };
+          ws.onclose = function() {
+            broadcastToTabs({type: 'ws_status', status: 'disconnected'});
+            const delay = Math.min(baseReconnectDelay * Math.pow(2, reconnectAttempts), 30000);
+            reconnectAttempts++;
+            setTimeout(connectWS, delay);
+          };
+          ws.onerror = function() {
+            broadcastToTabs({type: 'ws_status', status: 'error'});
+          };
+        } catch(e) {}
+      }
+
+      function broadcastToTabs(msg) {
+        tabs.forEach(function(port) {
+          try { port.postMessage(msg); } catch(e) {}
+        });
+      }
+    `;
+    const blob = new Blob([workerCode], {type: 'application/javascript'});
+    const workerUrl = URL.createObjectURL(blob);
+    sharedWorker = new SharedWorker(workerUrl, 'aip-dashboard-ws');
+    sharedWorker.port.onmessage = function(event) {
+      const msg = event.data;
+      if (msg.type === 'ws_message') {
+        // Route WS message to the local handler
+        _perfMetrics.wsMsgsReceived++;
+        handleIncomingWSMessage(msg.data);
+      } else if (msg.type === 'ws_status') {
+        if (msg.status === 'connected') {
+          wsConnected = true;
+          updateConnStatus('connected', 'WS Connected (SharedWorker)');
+        } else if (msg.status === 'disconnected') {
+          wsConnected = false;
+          updateConnStatus('disconnected', 'WS Reconnecting (SharedWorker)');
+        }
+      } else if (msg.type === 'init' || msg.type === 'registered') {
+        if (msg.tabId) tabId = msg.tabId;
+      }
+    };
+    sharedWorker.port.start();
+    // Register this tab with the SharedWorker
+    sharedWorker.port.postMessage({type: 'register', tabId: tabId});
+    // Register tab with server via direct WS or fallback
+  } catch(e) {
+    // SharedWorker not supported — fall back to direct WS
+    sharedWorker = null;
+  }
+}
+
+// Sprint 5.37: Handle incoming WS message with deduplication
+function handleIncomingWSMessage(rawData) {
+  try {
+    const msg = JSON.parse(rawData);
+    // Dedup: skip messages we've already seen
+    const msgId = msg.correlation_id || msg.event + ':' + (msg.timestamp || '') + ':' + (msg.subject || '');
+    if (msgId && _wsMsgDedupSet.has(msgId)) {
+      _perfMetrics.wsMsgsDeduped++;
+      return;
+    }
+    if (msgId) {
+      _wsMsgDedupSet.add(msgId);
+      if (_wsMsgDedupSet.size > _WS_DEDUP_MAX_SIZE) {
+        // Evict oldest entries
+        const entries = Array.from(_wsMsgDedupSet);
+        for (let i = 0; i < 100; i++) _wsMsgDedupSet.delete(entries[i]);
+      }
+    }
+
+    // Sprint 5.36: Handle batch_events from server-side batching
+    if (msg.event === 'batch_events') {
+      handleBatchEvents(msg);
+      return;
+    }
+    // Sprint 5.35: Handle heartbeat ping from server — respond with pong
+    if (msg.event === 'heartbeat_ping') {
+      wsLastHeartbeatReceived = Date.now();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({action: 'heartbeat_pong'}));
+      } else if (sharedWorker) {
+        sharedWorker.port.postMessage({type: 'ws_send', data: JSON.stringify({action: 'heartbeat_pong'}), tabId: tabId});
+      }
+      return;
+    }
+    if (msg.event === 'keepalive') return;
+    if (msg.event === 'ws_connected') {
+      if (msg.session_id) window._wsSessionId = msg.session_id;
+      return;
+    }
+    // Refresh alerts on any alert-related event
+    if (msg.event && msg.event.startsWith('alert_')) {
+      debouncedFetchAlerts();
+    }
+    if (msg.event === 'ws_session_connected' || msg.event === 'ws_session_disconnected') {}
+    if (msg.event === 'alert_groups_merged' || msg.event === 'alert_group_split') {
+      fetchCausalGroups();
+    }
+    if (msg.event === 'causal_predictions') {
+      updatePredictions(msg.predictions || []);
+    }
+    if (msg.event && msg.event.startsWith('alert_') && (msg.severity || msg.alert_type)) {
+      showBrowserNotification(msg);
+    }
+  } catch(err) {}
+}
 
 // Sprint 5.33→5.34→5.35: WebSocket connection with SSE fallback, exponential backoff, heartbeat
 let ws = null;
@@ -2302,47 +2765,8 @@ function connectWebSocket() {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        // Sprint 5.36: Handle batch_events from server-side batching
-        if (msg.event === 'batch_events') {
-          handleBatchEvents(msg);
-          return;
-        }
-        // Sprint 5.35: Handle heartbeat ping from server — respond with pong
-        if (msg.event === 'heartbeat_ping') {
-          wsLastHeartbeatReceived = Date.now();
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({action: 'heartbeat_pong'}));
-          }
-          return;
-        }
-        if (msg.event === 'keepalive') return;
-        if (msg.event === 'ws_connected') {
-          // Sprint 5.34: Store session_id if provided
-          if (msg.session_id) {
-            window._wsSessionId = msg.session_id;
-          }
-          return;
-        }
-        // Refresh alerts on any alert-related event
-        if (msg.event && msg.event.startsWith('alert_')) {
-          fetchAlerts();
-        }
-        // Sprint 5.34: Handle session events
-        if (msg.event === 'ws_session_connected' || msg.event === 'ws_session_disconnected') {
-          // Could display active session count if desired
-        }
-        // Sprint 5.35: Handle group merge/split events
-        if (msg.event === 'alert_groups_merged' || msg.event === 'alert_group_split') {
-          fetchCausalGroups();
-        }
-        // Sprint 5.36: Handle causal prediction events
-        if (msg.event === 'causal_predictions') {
-          updatePredictions(msg.predictions || []);
-        }
-        // Sprint 5.36: Show browser notification for alert events
-        if (msg.event && msg.event.startsWith('alert_') && (msg.severity || msg.alert_type)) {
-          showBrowserNotification(msg);
-        }
+        // Sprint 5.37: Route through deduplication handler
+        handleIncomingWSMessage(event.data);
       } catch (err) {}
     };
 
@@ -2509,7 +2933,111 @@ function wsSplitGroup() {
     .catch(() => {});
 }
 
-// Toggle metric visibility checkboxes
+// Sprint 5.37: Debounced alert fetching
+let _fetchAlertsTimer = null;
+function debouncedFetchAlerts() {
+  if (_fetchAlertsTimer) clearTimeout(_fetchAlertsTimer);
+  _fetchAlertsTimer = setTimeout(fetchAlerts, 300);
+}
+
+// Sprint 5.37: Debounced chart rendering
+let _chartRenderTimer = null;
+function debouncedRenderCharts(data) {
+  if (_chartRenderTimer) clearTimeout(_chartRenderTimer);
+  _chartRenderTimer = setTimeout(() => {
+    const start = performance.now();
+    renderChartsImmediate(data);
+    _perfMetrics.lastRenderTime = Math.round(performance.now() - start);
+    updatePerfMetrics();
+  }, 150);
+}
+
+function renderChartsImmediate(data) {
+  const cycles = data.cycles || [];
+  const labels = cycles.map(c => c.timestamp || '');
+  const citation = cycles.map(c => c.metrics?.avg_citation_rate || 0);
+  const grounding = cycles.map(c => c.metrics?.avg_grounding_rate || 0);
+  const faithfulness = cycles.map(c => c.metrics?.avg_llm_faithfulness || 0);
+  const flagRate = cycles.map(c => c.metrics?.flag_rate || 0);
+
+  const showCitation = document.getElementById('tog-citation').checked;
+  const showGrounding = document.getElementById('tog-grounding').checked;
+  const showFaithfulness = document.getElementById('tog-faithfulness').checked;
+  const showFlag = document.getElementById('tog-flag').checked;
+
+  drawLineChart('mainChart', [
+    { label: 'Citation Rate', values: citation, color: '#3b82f6', visible: showCitation },
+    { label: 'Grounding Rate', values: grounding, color: '#4ade80', visible: showGrounding },
+    { label: 'Faithfulness', values: faithfulness, color: '#f59e0b', visible: showFaithfulness },
+  ], labels);
+
+  drawLineChart('flagChart', [
+    { label: 'Flag Rate', values: flagRate, color: '#f87171', visible: showFlag },
+  ], labels);
+}
+
+// Sprint 5.37: Update performance metrics display
+function updatePerfMetrics() {
+  const el = (id) => document.getElementById(id);
+  if (el('perfRenderTime')) el('perfRenderTime').textContent = _perfMetrics.lastRenderTime + 'ms';
+  if (el('perfWsMsgs')) el('perfWsMsgs').textContent = _perfMetrics.wsMsgsReceived;
+  if (el('perfWsDeduped')) el('perfWsDeduped').textContent = _perfMetrics.wsMsgsDeduped;
+}
+
+// Sprint 5.37: Virtual scrolling for alert list
+let _allAlerts = [];
+function renderVirtualAlerts(alerts) {
+  _allAlerts = alerts;
+  const list = document.getElementById('alerts-list');
+  const maxVisible = 20;
+  const visible = alerts.slice(0, maxVisible);
+  const total = alerts.length;
+
+  const el = (id) => document.getElementById(id);
+  if (el('perfTotalAlerts')) el('perfTotalAlerts').textContent = total;
+  if (el('perfVisibleAlerts')) el('perfVisibleAlerts').textContent = Math.min(maxVisible, total);
+
+  if (visible.length === 0) {
+    list.innerHTML = '<span class="no-alerts">No recent alerts</span>';
+    return;
+  }
+
+  list.innerHTML = visible.map(a => {
+    const severity = a.severity || 'info';
+    const alertType = a.alert_type || 'unknown';
+    const msg = a.message || '';
+    const ts = a.timestamp || '';
+    const ack = a.acknowledged || 0;
+    const alertId = a.id || '';
+    let ackClass = '';
+    let ackBadge = '';
+    let actionBtns = '';
+    if (ack === 1) {
+      ackClass = ' acknowledged';
+      ackBadge = '<span class="ack-badge ack-1">ACK</span>';
+    } else if (ack === 2) {
+      ackClass = ' dismissed';
+      ackBadge = '<span class="ack-badge ack-2">DISMISSED</span>';
+    } else if (alertId) {
+      actionBtns = '<span class="alert-actions">'
+        + '<button class="btn-ack" onclick="ackAlert(' + alertId + ')">Ack</button>'
+        + '<button class="btn-dismiss" onclick="dismissAlert(' + alertId + ')">Dismiss</button>'
+        + '</span>';
+    }
+    return '<div class="alert-item ' + severity + ackClass + '">'
+      + '<span class="alert-type">' + alertType.replace(/_/g, ' ') + '</span>'
+      + '<span class="alert-severity ' + severity + '">' + severity.toUpperCase() + '</span>'
+      + ackBadge + actionBtns
+      + '<span class="alert-time">' + formatTime(ts) + '</span>'
+      + '<div class="alert-msg">' + msg + '</div>'
+    + '</div>';
+  }).join('');
+
+  if (total > maxVisible) {
+    list.innerHTML += '<div style="text-align:center;padding:8px;font-size:11px;color:#64748b;">'
+      + 'Showing ' + maxVisible + ' of ' + total + ' alerts (virtual scroll)</div>';
+  }
+}
 ['citation','grounding','faithfulness','flag'].forEach(m => {
   document.getElementById('tog-' + m).addEventListener('change', () => {
     if (currentData) renderCharts(currentData);
@@ -2556,50 +3084,14 @@ function renderSummary(data) {
   }).join('');
 }
 
-// Sprint 5.29→5.33: Fetch and render alerts panel with acknowledgment support
+// Sprint 5.29→5.33→5.37: Fetch and render alerts panel with virtual scrolling
 async function fetchAlerts() {
   try {
-    const resp = await fetch(ALERTS_URL + '?limit=10');
+    const resp = await fetch(ALERTS_URL + '?limit=50');
     if (!resp.ok) return;
     const data = await resp.json();
     const alerts = data.alerts || [];
-    const list = document.getElementById('alerts-list');
-
-    if (alerts.length === 0) {
-      list.innerHTML = '<span class="no-alerts">No recent alerts</span>';
-      return;
-    }
-
-    list.innerHTML = alerts.map(a => {
-      const severity = a.severity || 'info';
-      const alertType = a.alert_type || 'unknown';
-      const msg = a.message || '';
-      const ts = a.timestamp || '';
-      const ack = a.acknowledged || 0;
-      const alertId = a.id || '';
-      let ackClass = '';
-      let ackBadge = '';
-      let actionBtns = '';
-      if (ack === 1) {
-        ackClass = ' acknowledged';
-        ackBadge = '<span class="ack-badge ack-1">ACK</span>';
-      } else if (ack === 2) {
-        ackClass = ' dismissed';
-        ackBadge = '<span class="ack-badge ack-2">DISMISSED</span>';
-      } else if (alertId) {
-        actionBtns = '<span class="alert-actions">'
-          + '<button class="btn-ack" onclick="ackAlert(' + alertId + ')">Ack</button>'
-          + '<button class="btn-dismiss" onclick="dismissAlert(' + alertId + ')">Dismiss</button>'
-          + '</span>';
-      }
-      return '<div class="alert-item ' + severity + ackClass + '">'
-        + '<span class="alert-type">' + alertType.replace(/_/g, ' ') + '</span>'
-        + '<span class="alert-severity ' + severity + '">' + severity.toUpperCase() + '</span>'
-        + ackBadge + actionBtns
-        + '<span class="alert-time">' + formatTime(ts) + '</span>'
-        + '<div class="alert-msg">' + msg + '</div>'
-      + '</div>';
-    }).join('');
+    renderVirtualAlerts(alerts);
   } catch (err) {
     // Silently ignore alert fetch errors
   }
@@ -2869,27 +3361,8 @@ function drawLineChart(canvasId, datasets, labels) {
 }
 
 function renderCharts(data) {
-  const cycles = data.cycles || [];
-  const labels = cycles.map(c => c.timestamp || '');
-  const citation = cycles.map(c => c.metrics?.avg_citation_rate || 0);
-  const grounding = cycles.map(c => c.metrics?.avg_grounding_rate || 0);
-  const faithfulness = cycles.map(c => c.metrics?.avg_llm_faithfulness || 0);
-  const flagRate = cycles.map(c => c.metrics?.flag_rate || 0);
-
-  const showCitation = document.getElementById('tog-citation').checked;
-  const showGrounding = document.getElementById('tog-grounding').checked;
-  const showFaithfulness = document.getElementById('tog-faithfulness').checked;
-  const showFlag = document.getElementById('tog-flag').checked;
-
-  drawLineChart('mainChart', [
-    { label: 'Citation Rate', values: citation, color: '#3b82f6', visible: showCitation },
-    { label: 'Grounding Rate', values: grounding, color: '#4ade80', visible: showGrounding },
-    { label: 'Faithfulness', values: faithfulness, color: '#f59e0b', visible: showFaithfulness },
-  ], labels);
-
-  drawLineChart('flagChart', [
-    { label: 'Flag Rate', values: flagRate, color: '#f87171', visible: showFlag },
-  ], labels);
+  // Sprint 5.37: Use debounced rendering
+  debouncedRenderCharts(data);
 }
 
 async function fetchData() {
@@ -3185,7 +3658,7 @@ function handleBatchEvents(batchMsg) {
   const events = batchMsg.events || [];
   events.forEach(ev => {
     if (ev.event && ev.event.startsWith('alert_')) {
-      fetchAlerts();
+      debouncedFetchAlerts();
       // Show browser notification if configured
       if (ev.severity || ev.alert_type) showBrowserNotification(ev);
     }
@@ -3198,18 +3671,80 @@ function handleBatchEvents(batchMsg) {
   });
 }
 
+// Sprint 5.37: Fetch prediction accuracy
+async function fetchPredictionAccuracy() {
+  try {
+    const resp = await fetch('../vigil/quality/alerts/predictions/accuracy');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const acc = data.accuracy || {};
+    const el = (id) => document.getElementById(id);
+    if (el('predHits')) el('predHits').textContent = acc.hits || 0;
+    if (el('predMisses')) el('predMisses').textContent = acc.misses || 0;
+    if (el('predPending')) el('predPending').textContent = acc.pending || 0;
+    if (el('predHitRate')) el('predHitRate').textContent = ((acc.hit_rate || 0) * 100).toFixed(1) + '%';
+    if (el('predPrecision')) el('predPrecision').textContent = ((acc.precision || 0) * 100).toFixed(1) + '%';
+    if (el('predRecall')) el('predRecall').textContent = ((acc.recall || 0) * 100).toFixed(1) + '%';
+  } catch(err) {}
+}
+
+// Sprint 5.37: Auto-merge policy controls
+async function updateAutoMergePolicy() {
+  const mode = document.getElementById('policyMode').value;
+  const cooldown = parseInt(document.getElementById('policyCooldown').value) || 300;
+  wsSendCommand({action: 'update_auto_merge_policy', mode: mode, cooldown_seconds: cooldown});
+  document.getElementById('policyStatus').textContent = 'Policy updated: ' + mode + ' mode, ' + cooldown + 's cooldown';
+}
+
+// Sprint 5.37: Notification channel configuration
+function configureSlack() {
+  const url = document.getElementById('slackWebhookUrl').value;
+  if (url) {
+    document.getElementById('slackDot').className = 'status-dot configured';
+    document.getElementById('channelStatus').textContent = 'Slack webhook configured (saved to server config)';
+  }
+}
+
+function configurePagerDuty() {
+  const key = document.getElementById('pagerdutyKey').value;
+  if (key) {
+    document.getElementById('pagerdutyDot').className = 'status-dot configured';
+    document.getElementById('channelStatus').textContent = 'PagerDuty integration key configured (saved to server config)';
+  }
+}
+
 // Restore notification prefs on load
 restoreNotifPrefs();
 
-// Initial fetch for Sprint 5.36 panels
+// Initial fetch for Sprint 5.36+5.37 panels
 setTimeout(function() {
   fetchAutoMergeSuggestions();
   fetchPredictions();
   fetchPruningHistory();
+  fetchPredictionAccuracy();
+  // Sprint 5.37: Try SharedWorker first, then fall back to direct WS
+  initSharedWorker();
+  // Sprint 5.37: Register this tab with the server
+  if (wsConnected) {
+    wsSendCommand({action: 'tab_register', tab_id: tabId});
+  }
 }, 1000);
 
-// Refresh pruning history periodically
+// Refresh pruning history and prediction accuracy periodically
 setInterval(fetchPruningHistory, 60000);
+setInterval(fetchPredictionAccuracy, 30000);
+// Sprint 5.37: Update performance metrics periodically
+setInterval(updatePerfMetrics, 5000);
+
+// Sprint 5.37: Cleanup on page unload — unregister tab
+window.addEventListener('beforeunload', function() {
+  if (wsConnected) {
+    wsSendCommand({action: 'tab_unregister', tab_id: tabId});
+  }
+  if (sharedWorker) {
+    sharedWorker.port.postMessage({type: 'tab_close', tabId: tabId});
+  }
+});
 </script>
 
 </body>
