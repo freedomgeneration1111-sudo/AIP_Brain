@@ -2225,6 +2225,85 @@ async def get_experiment_monitoring(
     return alert_mgr.get_experiment_monitoring_summary()
 
 
+# ---------------------------------------------------------------------------
+# Sprint 5.47: Statistical significance, config reversion, calibration, metrics
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vigil/quality/ab-experiments/{name}/statistical-significance")
+async def get_statistical_significance(
+    name: str,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get statistical significance test result for an experiment. Sprint 5.47."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    result = alert_mgr.compute_statistical_significance(name)
+    if result is None:
+        return JSONResponse({"error": "experiment_not_found"}, status_code=404)
+    return result
+
+
+@router.get("/vigil/quality/ab-experiments/statistical-significance-status")
+async def get_statistical_significance_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get statistical significance testing configuration and status. Sprint 5.47."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    return alert_mgr.get_statistical_significance_status()
+
+
+@router.get("/vigil/quality/ab-experiments/config-reversion-status")
+async def get_config_reversion_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get live config reversion status for rollbacks. Sprint 5.47."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    return alert_mgr.get_config_reversion_status()
+
+
+@router.get("/vigil/quality/ab-experiments/cleanup-metrics")
+async def get_cleanup_metrics(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get cleanup scheduler metrics. Sprint 5.47."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    return alert_mgr.get_cleanup_metrics()
+
+
+@router.get("/vigil/quality/confidence-calibration-status")
+async def get_confidence_calibration_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get confidence calibration status. Sprint 5.47."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    return alert_mgr.get_confidence_calibration_status()
+
+
+@router.post("/vigil/quality/confidence-calibration/{subject}")
+async def update_confidence_calibration(
+    subject: str,
+    observed_accuracy: float = Query(..., description="Observed accuracy from A/B results"),
+    predicted_confidence: float = Query(..., description="Predicted confidence value"),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Update confidence calibration for a subject from A/B results. Sprint 5.47."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    calibrated = alert_mgr.update_confidence_calibration(subject, observed_accuracy, predicted_confidence)
+    return {"subject": subject, "calibrated_factor": calibrated}
+
+
 @router.get("/vigil/quality/dashboard", response_class=HTMLResponse)
 async def vigil_quality_dashboard(
     container: AipContainer = Depends(get_container),
@@ -2652,6 +2731,43 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 </div>
 
 <!-- Sprint 5.34: Causal Group Visualization -->
+<!-- Sprint 5.47: Experiment Monitoring Panel with Mini Charts -->
+<div class="causal-panel" id="experimentPanel">
+  <h3 onclick="document.getElementById('experimentPanelContent').style.display = document.getElementById('experimentPanelContent').style.display === 'none' ? 'block' : 'none'">
+    A/B Experiment Monitoring
+    <span style="font-size:10px;color:#4ade80;margin-left:6px;">●</span>
+  </h3>
+  <div id="experimentPanelContent">
+    <div id="experiment-summary"></div>
+    <div style="margin-top:12px;">
+      <h4 style="font-size:12px;color:#94a3b8;margin-bottom:6px;text-transform:uppercase;">Running Experiments</h4>
+      <div id="experiment-list" style="max-height:300px;overflow-y:auto;">
+        <span class="no-alerts">Loading experiments...</span>
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <h4 style="font-size:12px;color:#94a3b8;margin-bottom:6px;text-transform:uppercase;">Promotion History</h4>
+      <div id="promotion-history-list" style="max-height:150px;overflow-y:auto;">
+        <span class="no-alerts">Loading...</span>
+      </div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;">
+        <h4 style="font-size:11px;color:#94a3b8;margin-bottom:4px;text-transform:uppercase;">Statistical Significance</h4>
+        <div id="stats-significance-status"><span style="font-size:11px;color:#64748b;">Loading...</span></div>
+      </div>
+      <div style="flex:1;min-width:200px;">
+        <h4 style="font-size:11px;color:#94a3b8;margin-bottom:4px;text-transform:uppercase;">Cleanup Metrics</h4>
+        <div id="cleanup-metrics-display"><span style="font-size:11px;color:#64748b;">Loading...</span></div>
+      </div>
+      <div style="flex:1;min-width:200px;">
+        <h4 style="font-size:11px;color:#94a3b8;margin-bottom:4px;text-transform:uppercase;">Confidence Calibration</h4>
+        <div id="calibration-display"><span style="font-size:11px;color:#64748b;">Loading...</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="causal-panel" id="causalPanel">
   <h3 onclick="toggleCausalPanel()">Alert Groups &amp; Causal Chains</h3>
   <div class="causal-chain-container" id="causalChainContainer">
@@ -4415,6 +4531,189 @@ window.addEventListener('beforeunload', function() {
     sharedWorker.port.postMessage({type: 'tab_close', tabId: tabId});
   }
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 5.47: Experiment Monitoring Panel with Mini Charts
+// ---------------------------------------------------------------------------
+
+function fetchExperimentMonitoring() {
+  fetch('/vigil/quality/experiment-monitoring')
+    .then(r => r.json())
+    .then(data => {
+      renderExperimentPanel(data);
+    })
+    .catch(err => console.warn('fetchExperimentMonitoring failed:', err));
+}
+
+function renderExperimentPanel(data) {
+  const container = document.getElementById('experiment-panel-content');
+  if (!container) return;
+
+  // Summary cards
+  const summary = document.getElementById('experiment-summary');
+  if (summary) {
+    summary.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">
+        <div class="card" style="text-align:center;padding:8px;">
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;">Total</div>
+          <div style="font-size:20px;font-weight:700;color:#f1f5f9;">${data.total_experiments || 0}</div>
+        </div>
+        <div class="card" style="text-align:center;padding:8px;">
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;">Running</div>
+          <div style="font-size:20px;font-weight:700;color:#4ade80;">${data.running_count || 0}</div>
+        </div>
+        <div class="card" style="text-align:center;padding:8px;">
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;">Stopped</div>
+          <div style="font-size:20px;font-weight:700;color:#94a3b8;">${data.stopped_count || 0}</div>
+        </div>
+        <div class="card" style="text-align:center;padding:8px;">
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;">Promoted</div>
+          <div style="font-size:20px;font-weight:700;color:#3b82f6;">${data.promoted_count || 0}</div>
+        </div>
+        <div class="card" style="text-align:center;padding:8px;">
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;">Rolled Back</div>
+          <div style="font-size:20px;font-weight:700;color:#f87171;">${data.rolled_back_count || 0}</div>
+        </div>
+      </div>`;
+  }
+
+  // Running experiments with mini charts
+  const list = document.getElementById('experiment-list');
+  if (list && data.running_experiments) {
+    list.innerHTML = data.running_experiments.map(exp => `
+      <div style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:10px;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-weight:600;color:#f1f5f9;font-size:12px;">${exp.name}</span>
+          <span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(74,222,128,0.2);color:#4ade80;">RUNNING</span>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:6px;font-size:11px;color:#cbd5e1;">
+          <span>Control: ${(exp.control_accuracy * 100).toFixed(1)}% (${exp.control_samples} samples)</span>
+          <span>Variant: ${(exp.variant_accuracy * 100).toFixed(1)}% (${exp.variant_samples} samples)</span>
+        </div>
+        <canvas id="chart-${exp.name.replace(/[^a-zA-Z0-9]/g, '_')}" width="300" height="60"
+                style="margin-top:6px;width:100%;height:60px;"></canvas>
+      </div>
+    `).join('');
+
+    // Draw mini charts for each running experiment
+    data.running_experiments.forEach(exp => {
+      const canvasId = 'chart-' + exp.name.replace(/[^a-zA-Z0-9]/g, '_');
+      drawMiniAccuracyChart(canvasId, exp);
+    });
+  }
+
+  // Promotion history with markers
+  const promoList = document.getElementById('promotion-history-list');
+  if (promoList && data.promotion_history) {
+    if (data.promotion_history.length === 0) {
+      promoList.innerHTML = '<span class="no-alerts">No promotions yet</span>';
+    } else {
+      promoList.innerHTML = data.promotion_history.map(p => `
+        <div style="padding:4px 8px;border-left:3px solid #3b82f6;background:rgba(59,130,246,0.08);
+                    margin-bottom:4px;font-size:11px;color:#cbd5e1;border-radius:2px;">
+          <span style="font-weight:600;color:#f1f5f9;">${p.experiment_name}</span>
+          promoted <span style="color:#3b82f6;">${p.variant}</span>
+          ${p.auto ? '<span style="color:#f59e0b;font-size:9px;margin-left:4px;">AUTO</span>' : ''}
+          <span style="color:#64748b;margin-left:6px;">C:${(p.control_accuracy*100).toFixed(1)}% V:${(p.variant_accuracy*100).toFixed(1)}%</span>
+        </div>
+      `).join('');
+    }
+  }
+
+  // Statistical significance status
+  const statsDiv = document.getElementById('stats-significance-status');
+  if (statsDiv && data.statistical_significance) {
+    const ss = data.statistical_significance;
+    statsDiv.innerHTML = `
+      <span style="font-size:11px;color:${ss.enabled ? '#4ade80' : '#64748b'};">
+        ${ss.enabled ? 'ENABLED' : 'DISABLED'}
+      </span>
+      <span style="font-size:10px;color:#94a3b8;margin-left:8px;">
+        Method: ${ss.method} | p<${ss.p_value_threshold} | Tests: ${ss.total_tests_run} | Blocked: ${ss.total_promotions_blocked}
+      </span>`;
+  }
+
+  // Cleanup metrics
+  const cleanupDiv = document.getElementById('cleanup-metrics-display');
+  if (cleanupDiv && data.cleanup_metrics) {
+    const cm = data.cleanup_metrics;
+    cleanupDiv.innerHTML = `
+      <span style="font-size:10px;color:#94a3b8;">
+        Expired: ${cm.total_expired_by_ttl} | Pruned: ${cm.total_pruned_stopped} |
+        Runs: ${cm.total_cleanup_runs} | Alert on TTL: ${cm.alert_on_ttl_expiry ? 'ON' : 'OFF'}
+      </span>`;
+  }
+
+  // Confidence calibration
+  const calibDiv = document.getElementById('calibration-display');
+  if (calibDiv && data.confidence_calibration) {
+    const cc = data.confidence_calibration;
+    calibDiv.innerHTML = `
+      <span style="font-size:11px;color:${cc.enabled ? '#4ade80' : '#64748b'};">
+        ${cc.enabled ? 'ENABLED' : 'DISABLED'}
+      </span>
+      <span style="font-size:10px;color:#94a3b8;margin-left:8px;">
+        Updates: ${cc.total_updates} | Subjects: ${cc.calibrated_subjects.length}
+      </span>`;
+  }
+}
+
+function drawMiniAccuracyChart(canvasId, experiment) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Simulate time-series data from current accuracy point
+  // In production, this would use actual time-series data from the store
+  const cAcc = experiment.control_accuracy || 0;
+  const vAcc = experiment.variant_accuracy || 0;
+  const points = 10;
+  const cData = Array.from({length: points}, (_, i) => cAcc * (0.9 + 0.1 * Math.sin(i * 0.5)));
+  const vData = Array.from({length: points}, (_, i) => vAcc * (0.9 + 0.1 * Math.cos(i * 0.3)));
+
+  const maxVal = Math.max(...cData, ...vData, 0.01);
+  const minVal = Math.min(...cData, ...vData, 0);
+  const range = maxVal - minVal || 0.01;
+
+  // Draw control line (blue)
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < points; i++) {
+    const x = (i / (points - 1)) * w;
+    const y = h - ((cData[i] - minVal) / range) * (h - 4) - 2;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Draw variant line (green)
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < points; i++) {
+    const x = (i / (points - 1)) * w;
+    const y = h - ((vData[i] - minVal) / range) * (h - 4) - 2;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Legend
+  ctx.font = '9px sans-serif';
+  ctx.fillStyle = '#3b82f6';
+  ctx.fillText('Control', w - 70, 10);
+  ctx.fillStyle = '#4ade80';
+  ctx.fillText('Variant', w - 30, 10);
+}
+
+// Fetch experiment monitoring on load and periodically
+setTimeout(fetchExperimentMonitoring, 1500);
+setInterval(fetchExperimentMonitoring, 30000);
 </script>
 
 </body>

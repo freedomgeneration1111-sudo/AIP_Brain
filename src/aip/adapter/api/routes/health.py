@@ -406,6 +406,14 @@ async def health(container: AipContainer = Depends(get_container)):
         except Exception:
             pass
 
+    # Sprint 5.47: Cleanup metrics from alert manager
+    cleanup_metrics: dict[str, Any] = {}
+    if alert_manager is not None and hasattr(alert_manager, "get_cleanup_metrics"):
+        try:
+            cleanup_metrics = alert_manager.get_cleanup_metrics()
+        except Exception:
+            pass
+
     return {
         "status": status,
         "uptime_seconds": uptime_seconds,
@@ -428,4 +436,5 @@ async def health(container: AipContainer = Depends(get_container)):
         "per_batch_telemetry": per_batch_telemetry,
         "alerting_status": alerting_status,
         "config_watcher_status": config_watcher_status,
+        "cleanup_metrics": cleanup_metrics,
     }

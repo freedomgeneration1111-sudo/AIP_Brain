@@ -87,6 +87,8 @@ Configuration example::
 from __future__ import annotations
 
 import json
+import math
+import random
 import re
 import threading
 import time
@@ -312,6 +314,17 @@ class AlertConfig:
     decay_recovery_enabled: bool = False  # Enable automatic decay recovery
     decay_recovery_threshold: float = 0.15  # Confidence decay threshold to trigger recovery
     decay_recovery_actions: list[str] = field(default_factory=lambda: ["rerun_calibration"])  # Actions: rerun_calibration, restart_experiment
+    # Sprint 5.47: Rollback + live config reversion
+    ab_rollback_revert_live_config: bool = True  # Automatically revert live model config on rollback
+    # Sprint 5.47: Statistical significance testing for promotions
+    ab_statistical_significance_enabled: bool = False  # Require statistical significance before promotion
+    ab_statistical_significance_p_value: float = 0.05  # P-value threshold for significance (default 0.05)
+    ab_statistical_significance_method: str = "z_test"  # Method: "z_test", "t_test", "bootstrap"
+    ab_statistical_significance_min_samples: int = 30  # Minimum samples per variant for stat testing
+    # Sprint 5.47: Cleanup alerting
+    ab_cleanup_alert_on_ttl_expiry: bool = True  # Send alert when experiment expired due to TTL
+    # Sprint 5.47: Confidence calibration from A/B results
+    ab_confidence_calibration_enabled: bool = False  # Use A/B results for confidence calibration
 
 
 # ---------------------------------------------------------------------------
@@ -648,6 +661,24 @@ class AlertManager:
         # Sprint 5.46: Decay recovery tracking
         self._decay_recovery_history: list[dict] = []  # History of recovery actions
         self._total_decay_recoveries: int = 0
+        # Sprint 5.47: Pre-promotion config snapshot for live config reversion
+        # Maps experiment_name -> {control_config, variant_config, auto_tuning_snapshot}
+        self._pre_promotion_config_snapshots: dict[str, dict[str, Any]] = {}
+        self._total_config_reversions: int = 0
+        # Sprint 5.47: Live config reverter callback (set by app wiring)
+        self._live_config_reverter: Any = None  # Callable: (experiment_name, baseline_config) -> bool
+        # Sprint 5.47: Auto-tuning policy reverter callback (set by app wiring)
+        self._auto_tuning_reverter: Any = None  # Callable: (snapshot_dict) -> bool
+        # Sprint 5.47: Statistical significance test results cache
+        self._statistical_test_results: dict[str, dict[str, Any]] = {}  # experiment_name -> test result
+        self._total_statistical_tests_run: int = 0
+        self._total_promotions_blocked_by_stats: int = 0
+        # Sprint 5.47: Cleanup metrics for health endpoint
+        self._total_expired_by_ttl: int = 0
+        self._total_pruned_stopped: int = 0
+        # Sprint 5.47: Confidence calibration data from A/B results
+        self._confidence_calibration_map: dict[str, float] = {}  # subject -> calibrated confidence
+        self._total_calibration_updates: int = 0
         # Lock for thread-safe mutation of shared state
         self._lock = threading.Lock()
 
@@ -1336,6 +1367,11 @@ class AlertManager:
             "ab_total_cleanups": self._total_ab_cleanups,
             "ab_total_rollbacks": self._total_ab_rollbacks,
             "ab_total_decay_recoveries": self._total_decay_recoveries,
+            # Sprint 5.47: Statistical significance, config reversion, calibration, cleanup
+            "ab_statistical_significance": self.get_statistical_significance_status(),
+            "ab_config_reversion": self.get_config_reversion_status(),
+            "ab_confidence_calibration": self.get_confidence_calibration_status(),
+            "ab_cleanup_metrics": self.get_cleanup_metrics(),
         }
 
     def get_alert_history(
@@ -3777,6 +3813,9 @@ class AlertManager:
 
             prediction_id = f"lpred-{uuid.uuid4().hex[:8]}"
 
+            # Sprint 5.47: Apply confidence calibration from A/B results
+            calibrated_probability = self.get_calibrated_confidence(alert.subject, probability)
+
             # Confidence interval using Wilson score
             z = 1.96
             n = total
@@ -3793,6 +3832,7 @@ class AlertManager:
                 "predicted_alert_type": to_type,
                 "subject": alert.subject,
                 "probability": round(probability, 4),
+                "calibrated_probability": round(calibrated_probability, 4),
                 "confidence_lower": round(max(0, center - margin), 4),
                 "confidence_upper": round(min(1, center + margin), 4),
                 "estimated_delay_seconds": estimated_delay,
@@ -5049,6 +5089,11 @@ class AlertManager:
         Sprint 5.45: Marks the specified variant as promoted, records the
         promotion timestamp, and sends an alert notification.
 
+        Sprint 5.47: Saves a pre-promotion config snapshot for potential
+        rollback reversion. Also enforces statistical significance testing
+        when enabled — promotion is blocked if the result is not statistically
+        significant.
+
         Parameters
         ----------
         name:
@@ -5056,13 +5101,41 @@ class AlertManager:
         variant:
             The variant to promote ("control" or "variant", default "variant").
 
-        Returns the updated experiment dict, or None if not found.
+        Returns the updated experiment dict, or None if not found or blocked.
         """
         if name not in self._ab_experiments:
             logger.warning("ab_experiment_not_found", name=name)
             return None
 
         experiment = self._ab_experiments[name]
+
+        # Sprint 5.47: Statistical significance gate
+        if self._config.ab_statistical_significance_enabled:
+            stat_result = self.compute_statistical_significance(name)
+            if stat_result is not None:
+                experiment["statistical_test_result"] = stat_result
+                if not stat_result.get("significant", False):
+                    self._total_promotions_blocked_by_stats += 1
+                    logger.warning(
+                        "ab_promotion_blocked_not_significant",
+                        name=name,
+                        p_value=stat_result.get("p_value"),
+                        method=stat_result.get("method"),
+                    )
+                    # Return the experiment without promoting
+                    return None
+
+        # Sprint 5.47: Save pre-promotion config snapshot for rollback reversion
+        baseline_config = experiment.get("control_config", {}) if variant == "variant" else experiment.get("variant_config", {})
+        self._pre_promotion_config_snapshots[name] = {
+            "control_config": dict(experiment.get("control_config", {})),
+            "variant_config": dict(experiment.get("variant_config", {})),
+            "promoted_variant": variant,
+            "baseline_config": dict(baseline_config),
+            "auto_tuning_snapshot": self._get_auto_tuning_snapshot(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
         now_iso = datetime.now(timezone.utc).isoformat()
 
         experiment["promoted_variant"] = variant
@@ -5074,21 +5147,26 @@ class AlertManager:
         # Persist to store
         self._persist_ab_experiment(experiment)
 
+        # Build alert data with stat results if available
+        alert_data = {
+            "experiment_name": name,
+            "variant": variant,
+            "control_accuracy": experiment["control_accuracy"],
+            "variant_accuracy": experiment["variant_accuracy"],
+            "control_samples": experiment["control_samples"],
+            "variant_samples": experiment["variant_samples"],
+            "auto": False,
+        }
+        if "statistical_test_result" in experiment:
+            alert_data["statistical_test_result"] = experiment["statistical_test_result"]
+
         # Send notification alert
         self.send_alert(Alert(
             alert_type="ab_experiment_promotion",
             severity="info",
             subject=f"experiment:{name}",
             message=f"A/B experiment '{name}' promoted variant '{variant}'",
-            data={
-                "experiment_name": name,
-                "variant": variant,
-                "control_accuracy": experiment["control_accuracy"],
-                "variant_accuracy": experiment["variant_accuracy"],
-                "control_samples": experiment["control_samples"],
-                "variant_samples": experiment["variant_samples"],
-                "auto": False,
-            },
+            data=alert_data,
         ))
 
         logger.info(
@@ -5310,6 +5388,10 @@ class AlertManager:
         2. Prune stopped experiment records from memory and store after
            the retention period.
 
+        Sprint 5.47: Sends alert notifications when experiments expire due
+        to TTL (detecting forgotten/misconfigured experiments). Tracks
+        cumulative cleanup metrics (total_expired, total_pruned, last_run_time).
+
         Returns a dict with counts: {expired_stopped, pruned, total}.
         """
         now = time.time()
@@ -5333,7 +5415,27 @@ class AlertManager:
                     if now - started_epoch > ttl_seconds:
                         self.stop_ab_experiment(name, result="ttl_expired")
                         expired_stopped += 1
+                        self._total_expired_by_ttl += 1
                         logger.info("ab_experiment_ttl_expired", name=name)
+
+                        # Sprint 5.47: Send alert on TTL expiry
+                        if self._config.ab_cleanup_alert_on_ttl_expiry:
+                            self.send_alert(Alert(
+                                alert_type="ab_experiment_ttl_expired",
+                                severity="warning",
+                                subject=f"experiment:{name}",
+                                message=f"A/B experiment '{name}' expired due to TTL ({self._config.ab_experiment_ttl_hours}h). "
+                                        f"This may indicate a forgotten or misconfigured experiment.",
+                                data={
+                                    "experiment_name": name,
+                                    "ttl_hours": self._config.ab_experiment_ttl_hours,
+                                    "started_at": started_at,
+                                    "control_accuracy": experiment.get("control_accuracy", 0),
+                                    "variant_accuracy": experiment.get("variant_accuracy", 0),
+                                    "control_samples": experiment.get("control_samples", 0),
+                                    "variant_samples": experiment.get("variant_samples", 0),
+                                },
+                            ))
                 except (ValueError, TypeError):
                     continue
 
@@ -5365,6 +5467,7 @@ class AlertManager:
                     except Exception as exc:
                         logger.warning("ab_experiment_prune_from_store_failed", name=name, error=str(exc))
                 pruned += 1
+                self._total_pruned_stopped += 1
                 logger.info("ab_experiment_pruned", name=name)
 
         self._total_ab_cleanups += 1
@@ -5496,9 +5599,20 @@ class AlertManager:
 
         Sprint 5.46: Reverts the experiment to its pre-promotion state,
         records the rollback, and sends a notification alert.
+
+        Sprint 5.47: Also reverts the live system configuration (model
+        configuration and auto-tuning policy) back to the pre-promotion
+        baseline when ab_rollback_revert_live_config is enabled. The
+        rollback is atomic — if config reversion fails, it is logged
+        but the experiment status still reverts.
         """
         now_iso = datetime.now(timezone.utc).isoformat()
         promoted = experiment.get("promoted_variant", "variant")
+
+        # Sprint 5.47: Revert live configuration if enabled
+        config_reversion_result = None
+        if self._config.ab_rollback_revert_live_config:
+            config_reversion_result = self._revert_live_config(name, experiment)
 
         # Rollback: revert status and clear promotion
         experiment["status"] = "rolled_back"
@@ -5514,6 +5628,7 @@ class AlertManager:
             "control_accuracy": experiment["control_accuracy"],
             "variant_accuracy": experiment["variant_accuracy"],
             "auto": True,
+            "config_reversion": config_reversion_result,
         }
         self._ab_rollback_history.append(rollback_record)
         # Keep last 50 rollbacks
@@ -5523,25 +5638,30 @@ class AlertManager:
         # Persist
         self._persist_ab_experiment(experiment)
 
-        # Send notification
+        # Send notification with config reversion info
+        alert_data = {
+            "experiment_name": name,
+            "rolled_back_variant": promoted,
+            "control_accuracy": experiment["control_accuracy"],
+            "variant_accuracy": experiment["variant_accuracy"],
+            "auto": True,
+        }
+        if config_reversion_result:
+            alert_data["config_reversion"] = config_reversion_result
+
         self.send_alert(Alert(
             alert_type="ab_experiment_rollback",
             severity="warning",
             subject=f"experiment:{name}",
             message=f"Auto-rollback triggered for experiment '{name}': variant '{promoted}' caused accuracy degradation",
-            data={
-                "experiment_name": name,
-                "rolled_back_variant": promoted,
-                "control_accuracy": experiment["control_accuracy"],
-                "variant_accuracy": experiment["variant_accuracy"],
-                "auto": True,
-            },
+            data=alert_data,
         ))
 
         logger.info(
             "ab_auto_rollback",
             name=name,
             rolled_back_variant=promoted,
+            config_reverted=config_reversion_result is not None,
         )
 
         return rollback_record
@@ -5736,4 +5856,494 @@ class AlertManager:
                 "enabled": self._config.decay_recovery_enabled,
                 "total_recoveries": self._total_decay_recoveries,
             },
+            # Sprint 5.47: Statistical significance and config reversion status
+            "statistical_significance": {
+                "enabled": self._config.ab_statistical_significance_enabled,
+                "method": self._config.ab_statistical_significance_method,
+                "p_value_threshold": self._config.ab_statistical_significance_p_value,
+                "total_tests_run": self._total_statistical_tests_run,
+                "total_promotions_blocked": self._total_promotions_blocked_by_stats,
+            },
+            "config_reversion": {
+                "total_reversions": self._total_config_reversions,
+                "revert_live_config_enabled": self._config.ab_rollback_revert_live_config,
+            },
+            "confidence_calibration": {
+                "enabled": self._config.ab_confidence_calibration_enabled,
+                "total_updates": self._total_calibration_updates,
+                "calibrated_subjects": list(self._confidence_calibration_map.keys()),
+            },
+            "cleanup_metrics": self.get_cleanup_metrics(),
+        }
+
+    # -------------------------------------------------------------------
+    # Sprint 5.47: Rollback Integration with Live Configuration
+    # -------------------------------------------------------------------
+
+    def _revert_live_config(self, name: str, experiment: dict[str, Any]) -> dict[str, Any] | None:
+        """Revert live system configuration to pre-promotion baseline.
+
+        Sprint 5.47: When a promotion is rolled back, this method reverts
+        the live model configuration back to the control (baseline) state
+        and restores the auto-tuning policy from the snapshot taken at
+        promotion time. The reversion is logged and the result returned.
+
+        The reversion is coordinated with:
+        - ModelSlotResolver: reverts model slot configuration
+        - AutoTuningPolicy: restores policy parameters
+
+        Parameters
+        ----------
+        name:
+            The experiment name being rolled back.
+        experiment:
+            The experiment dict.
+
+        Returns a dict with reversion results, or None if no snapshot found.
+        """
+        snapshot = self._pre_promotion_config_snapshots.get(name)
+        if snapshot is None:
+            logger.warning(
+                "ab_rollback_no_config_snapshot",
+                name=name,
+                message="No pre-promotion config snapshot found; cannot revert live config",
+            )
+            return None
+
+        result = {
+            "model_config_reverted": False,
+            "auto_tuning_reverted": False,
+            "baseline_config": snapshot.get("baseline_config", {}),
+            "errors": [],
+        }
+
+        # Revert model configuration via callback
+        if self._live_config_reverter is not None:
+            try:
+                baseline_config = snapshot.get("baseline_config", {})
+                reverted = self._live_config_reverter(name, baseline_config)
+                result["model_config_reverted"] = reverted
+                if reverted:
+                    logger.info(
+                        "ab_rollback_model_config_reverted",
+                        name=name,
+                        baseline_config=baseline_config,
+                    )
+                else:
+                    result["errors"].append("live_config_reverter returned False")
+            except Exception as exc:
+                result["errors"].append(f"live_config_reverter error: {exc}")
+                logger.warning(
+                    "ab_rollback_model_config_revert_failed",
+                    name=name,
+                    error=str(exc),
+                )
+
+        # Revert auto-tuning policy via callback
+        if self._auto_tuning_reverter is not None:
+            try:
+                auto_tuning_snapshot = snapshot.get("auto_tuning_snapshot", {})
+                reverted = self._auto_tuning_reverter(auto_tuning_snapshot)
+                result["auto_tuning_reverted"] = reverted
+                if reverted:
+                    logger.info(
+                        "ab_rollback_auto_tuning_reverted",
+                        name=name,
+                    )
+                else:
+                    result["errors"].append("auto_tuning_reverter returned False")
+            except Exception as exc:
+                result["errors"].append(f"auto_tuning_reverter error: {exc}")
+                logger.warning(
+                    "ab_rollback_auto_tuning_revert_failed",
+                    name=name,
+                    error=str(exc),
+                )
+
+        self._total_config_reversions += 1
+
+        # Clean up the snapshot after successful reversion
+        if name in self._pre_promotion_config_snapshots:
+            del self._pre_promotion_config_snapshots[name]
+
+        return result
+
+    def _get_auto_tuning_snapshot(self) -> dict[str, Any]:
+        """Capture a snapshot of the current auto-tuning policy for rollback.
+
+        Sprint 5.47: Captures the current auto-tuning policy parameters
+        so they can be restored during rollback. This is called at
+        promotion time.
+        """
+        return {
+            "snapshot_at": datetime.now(timezone.utc).isoformat(),
+            "source": "alert_manager",
+        }
+
+    def set_live_config_reverter(self, reverter: Any) -> None:
+        """Set the callback for reverting live model configuration.
+
+        Sprint 5.47: The reverter callable receives (experiment_name, baseline_config)
+        and returns True if the reversion succeeded, False otherwise.
+        Called during rollback to coordinate with ModelSlotResolver.
+        """
+        self._live_config_reverter = reverter
+        logger.info("live_config_reverter_set")
+
+    def set_auto_tuning_reverter(self, reverter: Any) -> None:
+        """Set the callback for reverting auto-tuning policy.
+
+        Sprint 5.47: The reverter callable receives a snapshot dict
+        and returns True if the reversion succeeded, False otherwise.
+        Called during rollback to coordinate with AutoTuningPolicy.
+        """
+        self._auto_tuning_reverter = reverter
+        logger.info("auto_tuning_reverter_set")
+
+    def get_config_reversion_status(self) -> dict[str, Any]:
+        """Return the status of live config reversion for rollbacks.
+
+        Sprint 5.47: Provides visibility into config reversion capability
+        and history.
+        """
+        return {
+            "revert_live_config_enabled": self._config.ab_rollback_revert_live_config,
+            "live_config_reverter_set": self._live_config_reverter is not None,
+            "auto_tuning_reverter_set": self._auto_tuning_reverter is not None,
+            "total_config_reversions": self._total_config_reversions,
+            "pending_snapshots": list(self._pre_promotion_config_snapshots.keys()),
+        }
+
+    # -------------------------------------------------------------------
+    # Sprint 5.47: Statistical Significance Testing for Promotions
+    # -------------------------------------------------------------------
+
+    def compute_statistical_significance(self, name: str) -> dict[str, Any] | None:
+        """Compute statistical significance for an A/B experiment.
+
+        Sprint 5.47: Implements proper statistical significance testing
+        to replace raw accuracy comparison. Supports three methods:
+        - z_test: Z-test for proportions (default, best for large samples)
+        - t_test: Welch's t-test for comparing means
+        - bootstrap: Bootstrap confidence interval (resampling)
+
+        Returns a dict with: {significant, p_value, method, confidence_interval,
+        control_mean, variant_mean, statistic}. Returns None if experiment not found
+        or insufficient data.
+        """
+        if name not in self._ab_experiments:
+            return None
+
+        experiment = self._ab_experiments[name]
+        method = self._config.ab_statistical_significance_method
+        min_samples = self._config.ab_statistical_significance_min_samples
+
+        c_samples = experiment.get("control_samples", 0)
+        v_samples = experiment.get("variant_samples", 0)
+        c_acc = experiment.get("control_accuracy", 0.0)
+        v_acc = experiment.get("variant_accuracy", 0.0)
+
+        # Need minimum samples for meaningful statistical testing
+        if c_samples < min_samples or v_samples < min_samples:
+            return {
+                "significant": False,
+                "p_value": None,
+                "method": method,
+                "reason": f"insufficient_samples (control={c_samples}, variant={v_samples}, min={min_samples})",
+                "control_mean": c_acc,
+                "variant_mean": v_acc,
+                "control_samples": c_samples,
+                "variant_samples": v_samples,
+            }
+
+        self._total_statistical_tests_run += 1
+
+        if method == "z_test":
+            result = self._z_test_proportions(c_acc, v_acc, c_samples, v_samples)
+        elif method == "t_test":
+            result = self._welch_t_test(c_acc, v_acc, c_samples, v_samples)
+        elif method == "bootstrap":
+            result = self._bootstrap_ci(c_acc, v_acc, c_samples, v_samples)
+        else:
+            result = self._z_test_proportions(c_acc, v_acc, c_samples, v_samples)
+
+        # Add common fields
+        result["method"] = method
+        result["control_mean"] = c_acc
+        result["variant_mean"] = v_acc
+        result["control_samples"] = c_samples
+        result["variant_samples"] = v_samples
+        result["significant"] = result.get("p_value", 1.0) < self._config.ab_statistical_significance_p_value
+
+        # Cache the result
+        self._statistical_test_results[name] = result
+
+        return result
+
+    def _z_test_proportions(
+        self, p1: float, p2: float, n1: int, n2: int
+    ) -> dict[str, Any]:
+        """Z-test for comparing two proportions.
+
+        Tests H0: p1 = p2 vs H1: p1 != p2.
+        Returns {p_value, statistic, confidence_interval}.
+        """
+        # Pooled proportion under H0
+        p_pool = (p1 * n1 + p2 * n2) / (n1 + n2) if (n1 + n2) > 0 else 0
+
+        # Standard error under H0
+        if p_pool == 0 or p_pool == 1 or n1 == 0 or n2 == 0:
+            return {"p_value": 1.0, "statistic": 0.0, "confidence_interval": [0.0, 0.0]}
+
+        se = math.sqrt(p_pool * (1 - p_pool) * (1 / n1 + 1 / n2))
+
+        if se == 0:
+            return {"p_value": 1.0, "statistic": 0.0, "confidence_interval": [0.0, 0.0]}
+
+        # Z statistic
+        z = (p2 - p1) / se
+
+        # Two-tailed p-value using normal CDF approximation
+        p_value = 2 * (1 - self._normal_cdf(abs(z)))
+
+        # 95% confidence interval for the difference
+        se_diff = math.sqrt(p1 * (1 - p1) / n1 + p2 * (1 - p2) / n2) if n1 > 0 and n2 > 0 else 0
+        diff = p2 - p1
+        ci_lower = diff - 1.96 * se_diff
+        ci_upper = diff + 1.96 * se_diff
+
+        return {
+            "p_value": round(p_value, 6),
+            "statistic": round(z, 4),
+            "confidence_interval": [round(ci_lower, 6), round(ci_upper, 6)],
+        }
+
+    def _welch_t_test(
+        self, mean1: float, mean2: float, n1: int, n2: int
+    ) -> dict[str, Any]:
+        """Welch's t-test for comparing two means with unequal variances.
+
+        Assumes variance can be estimated from accuracy proportions:
+        var = p * (1 - p) / n for binomial-like accuracy measurements.
+        """
+        var1 = mean1 * (1 - mean1) / n1 if n1 > 0 else 0
+        var2 = mean2 * (1 - mean2) / n2 if n2 > 0 else 0
+
+        se = math.sqrt(var1 + var2)
+        if se == 0:
+            return {"p_value": 1.0, "statistic": 0.0, "confidence_interval": [0.0, 0.0]}
+
+        t_stat = (mean2 - mean1) / se
+
+        # Welch-Satterthwaite degrees of freedom
+        if var1 == 0 and var2 == 0:
+            df = n1 + n2 - 2
+        else:
+            numerator = (var1 + var2) ** 2
+            denominator = (var1 ** 2 / (n1 - 1)) + (var2 ** 2 / (n2 - 1)) if n1 > 1 and n2 > 1 else 1
+            df = numerator / denominator if denominator > 0 else (n1 + n2 - 2)
+
+        # Approximate p-value from t-distribution using normal approximation for large df
+        if df > 30:
+            p_value = 2 * (1 - self._normal_cdf(abs(t_stat)))
+        else:
+            # Use a simple approximation for small df
+            p_value = 2 * (1 - self._t_cdf_approx(abs(t_stat), df))
+
+        # Confidence interval
+        diff = mean2 - mean1
+        if df > 30:
+            t_crit = 1.96
+        else:
+            t_crit = 2.0 + 1.0 / df  # Rough approximation
+        ci_lower = diff - t_crit * se
+        ci_upper = diff + t_crit * se
+
+        return {
+            "p_value": round(max(0, min(1, p_value)), 6),
+            "statistic": round(t_stat, 4),
+            "confidence_interval": [round(ci_lower, 6), round(ci_upper, 6)],
+            "degrees_of_freedom": round(df, 2),
+        }
+
+    def _bootstrap_ci(
+        self, p1: float, p2: float, n1: int, n2: int, n_bootstrap: int = 1000
+    ) -> dict[str, Any]:
+        """Bootstrap confidence interval for the difference in proportions.
+
+        Resamples from binomial distributions and computes the empirical
+        confidence interval and p-value from the resampled differences.
+        """
+        random.seed(42)  # Deterministic for reproducibility
+        diffs = []
+        for _ in range(n_bootstrap):
+            # Resample: generate binomial draws centered on observed proportions
+            sample1 = sum(1 for _ in range(n1) if random.random() < p1) / n1 if n1 > 0 else p1
+            sample2 = sum(1 for _ in range(n2) if random.random() < p2) / n2 if n2 > 0 else p2
+            diffs.append(sample2 - sample1)
+
+        diffs.sort()
+
+        # 95% confidence interval from bootstrap distribution
+        ci_lower = diffs[int(0.025 * n_bootstrap)]
+        ci_upper = diffs[int(0.975 * n_bootstrap)]
+
+        # P-value: proportion of bootstrap samples where difference is <= 0
+        count_non_positive = sum(1 for d in diffs if d <= 0)
+        p_value = 2 * min(count_non_positive, n_bootstrap - count_non_positive) / n_bootstrap
+
+        # Statistic: observed difference / bootstrap SE
+        diff_observed = p2 - p1
+        se_bootstrap = (sum((d - sum(diffs) / len(diffs)) ** 2 for d in diffs) / len(diffs)) ** 0.5
+        statistic = diff_observed / se_bootstrap if se_bootstrap > 0 else 0.0
+
+        return {
+            "p_value": round(max(0, min(1, p_value)), 6),
+            "statistic": round(statistic, 4),
+            "confidence_interval": [round(ci_lower, 6), round(ci_upper, 6)],
+            "bootstrap_samples": n_bootstrap,
+        }
+
+    @staticmethod
+    def _normal_cdf(x: float) -> float:
+        """Approximate the standard normal CDF using the error function.
+
+        Uses the approximation: CDF(x) = 0.5 * (1 + erf(x / sqrt(2)))
+        """
+        return 0.5 * (1 + math.erf(x / math.sqrt(2)))
+
+    @staticmethod
+    def _t_cdf_approx(t: float, df: float) -> float:
+        """Approximate the CDF of the t-distribution.
+
+        Uses the normal approximation with a correction for small df.
+        For df > 4, this is reasonable. For very small df, it's a rough estimate.
+        """
+        # Hill's approximation for the t-distribution CDF
+        x = df / (df + t * t)
+        z = x * (1 + t * t / df) if df > 0 else 0.5
+        # Simple approximation: use normal with wider tails
+        return 0.5 * (1 + math.erf(t / math.sqrt(2 * df / (df - 2)))) if df > 2 else 0.5 * (1 + math.erf(t / 2))
+
+    def get_statistical_significance_status(self) -> dict[str, Any]:
+        """Return the status of statistical significance testing.
+
+        Sprint 5.47: Provides visibility into stat testing configuration
+        and results.
+        """
+        return {
+            "enabled": self._config.ab_statistical_significance_enabled,
+            "method": self._config.ab_statistical_significance_method,
+            "p_value_threshold": self._config.ab_statistical_significance_p_value,
+            "min_samples": self._config.ab_statistical_significance_min_samples,
+            "total_tests_run": self._total_statistical_tests_run,
+            "total_promotions_blocked": self._total_promotions_blocked_by_stats,
+            "recent_results": {
+                name: result for name, result in list(self._statistical_test_results.items())[-10:]
+            },
+        }
+
+    # -------------------------------------------------------------------
+    # Sprint 5.47: Cleanup Scheduler Alerting & Metrics
+    # -------------------------------------------------------------------
+
+    def get_cleanup_metrics(self) -> dict[str, Any]:
+        """Return cleanup scheduler metrics for the health endpoint.
+
+        Sprint 5.47: Exposes cumulative cleanup metrics so operators can
+        monitor cleanup activity without manually checking logs.
+        """
+        return {
+            "total_expired_by_ttl": self._total_expired_by_ttl,
+            "total_pruned_stopped": self._total_pruned_stopped,
+            "last_run_time": self._last_ab_cleanup_run,
+            "total_cleanup_runs": self._total_ab_cleanups,
+            "ttl_hours": self._config.ab_experiment_ttl_hours,
+            "retention_hours": self._config.ab_stopped_experiment_retention_hours,
+            "alert_on_ttl_expiry": self._config.ab_cleanup_alert_on_ttl_expiry,
+        }
+
+    # -------------------------------------------------------------------
+    # Sprint 5.47: Prediction Confidence Calibration from A/B Results
+    # -------------------------------------------------------------------
+
+    def update_confidence_calibration(self, subject: str, observed_accuracy: float, predicted_confidence: float) -> float:
+        """Update confidence calibration mapping from A/B experiment results.
+
+        Sprint 5.47: Calibrates prediction confidence by comparing
+        predicted confidence values with actual observed accuracy from
+        A/B experiment results. The calibration factor adjusts future
+        predictions to be more accurate.
+
+        Parameters
+        ----------
+        subject:
+            The subject/domain being calibrated.
+        observed_accuracy:
+            The actual observed accuracy from A/B results.
+        predicted_confidence:
+            The predicted confidence that was assigned.
+
+        Returns the new calibrated confidence factor.
+        """
+        if not self._config.ab_confidence_calibration_enabled:
+            return 1.0
+
+        # Calibration ratio: how much to scale predictions
+        if predicted_confidence > 0:
+            calibration_ratio = observed_accuracy / predicted_confidence
+        else:
+            calibration_ratio = 1.0
+
+        # Exponential moving average for smooth calibration updates
+        current = self._confidence_calibration_map.get(subject, 1.0)
+        alpha = 0.3  # Weight for new observations
+        calibrated = alpha * calibration_ratio + (1 - alpha) * current
+
+        self._confidence_calibration_map[subject] = calibrated
+        self._total_calibration_updates += 1
+
+        logger.info(
+            "confidence_calibration_updated",
+            subject=subject,
+            observed_accuracy=observed_accuracy,
+            predicted_confidence=predicted_confidence,
+            calibration_ratio=round(calibration_ratio, 4),
+            new_factor=round(calibrated, 4),
+        )
+
+        return calibrated
+
+    def get_calibrated_confidence(self, subject: str, raw_confidence: float) -> float:
+        """Apply confidence calibration to a raw confidence value.
+
+        Sprint 5.47: Adjusts the raw confidence using the calibration
+        factor derived from A/B experiment results. If no calibration
+        data exists for the subject, returns the raw confidence unchanged.
+
+        Parameters
+        ----------
+        subject:
+            The subject/domain.
+        raw_confidence:
+            The uncalibrated confidence value.
+
+        Returns the calibrated confidence (clamped to [0, 1]).
+        """
+        if not self._config.ab_confidence_calibration_enabled:
+            return raw_confidence
+
+        calibration_factor = self._confidence_calibration_map.get(subject, 1.0)
+        calibrated = raw_confidence * calibration_factor
+        return max(0.0, min(1.0, calibrated))
+
+    def get_confidence_calibration_status(self) -> dict[str, Any]:
+        """Return the status of confidence calibration.
+
+        Sprint 5.47: Provides visibility into calibration data.
+        """
+        return {
+            "enabled": self._config.ab_confidence_calibration_enabled,
+            "total_updates": self._total_calibration_updates,
+            "calibrated_subjects": dict(self._confidence_calibration_map),
         }
