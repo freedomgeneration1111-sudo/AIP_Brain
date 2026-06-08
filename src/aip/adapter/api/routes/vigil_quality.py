@@ -257,7 +257,7 @@ def _compute_series_trend(values: list[float]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Dashboard HTML (Sprint 5.26)
+# Dashboard HTML (Sprint 5.26 → Sprint 5.27 enhanced)
 # ---------------------------------------------------------------------------
 
 _DASHBOARD_HTML = """<!DOCTYPE html>
@@ -285,15 +285,25 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   .chart-container h3 { font-size: 14px; color: #94a3b8; margin-bottom: 16px;
                         text-transform: uppercase; letter-spacing: 0.5px; }
   canvas { width: 100%; height: 200px; }
-  .controls { margin-bottom: 24px; display: flex; gap: 12px; align-items: center; }
+  .controls { margin-bottom: 24px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   .controls label { font-size: 13px; color: #94a3b8; }
   .controls input, .controls select { background: #1e293b; border: 1px solid #475569;
            color: #e2e8f0; padding: 6px 10px; border-radius: 4px; font-size: 13px; }
   .controls button { background: #3b82f6; color: white; border: none; padding: 6px 16px;
                      border-radius: 4px; cursor: pointer; font-size: 13px; }
   .controls button:hover { background: #2563eb; }
+  .controls button.active { background: #1d4ed8; }
+  .controls button.danger { background: #ef4444; }
+  .controls button.danger:hover { background: #dc2626; }
+  .metric-toggles { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+  .metric-toggles label { font-size: 13px; color: #cbd5e1; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  .metric-toggles input[type=checkbox] { accent-color: #3b82f6; }
   .status-bar { font-size: 12px; color: #64748b; margin-top: 16px; }
   .error { color: #f87171; padding: 12px; background: #1e293b; border-radius: 4px; border: 1px solid #7f1d1d; }
+  .live-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+                    background: #4ade80; margin-right: 6px; animation: pulse 2s infinite; }
+  .live-indicator.off { background: #64748b; animation: none; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 </style>
 </head>
 <body>
@@ -302,6 +312,13 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <p class="subtitle">Real-time quality metrics from AIP Brain Vigil evaluation cycles</p>
 
 <div class="controls">
+  <label for="range">Range:</label>
+  <select id="range">
+    <option value="1">Last 24h</option>
+    <option value="7">Last 7d</option>
+    <option value="30">Last 30d</option>
+    <option value="0" selected>By cycles</option>
+  </select>
   <label for="cycles">Cycles:</label>
   <select id="cycles">
     <option value="10">Last 10</option>
@@ -311,7 +328,17 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     <option value="200">Last 200</option>
   </select>
   <button onclick="fetchData()">Refresh</button>
+  <button id="liveBtn" onclick="toggleLive()" title="Toggle auto-refresh">
+    <span id="liveDot" class="live-indicator off"></span>Live
+  </button>
   <span id="status" class="status-bar"></span>
+</div>
+
+<div class="metric-toggles">
+  <label><input type="checkbox" id="tog-citation" checked> Citation Rate</label>
+  <label><input type="checkbox" id="tog-grounding" checked> Grounding Rate</label>
+  <label><input type="checkbox" id="tog-faithfulness" checked> Faithfulness</label>
+  <label><input type="checkbox" id="tog-flag" checked> Flag Rate</label>
 </div>
 
 <div class="grid" id="summary-cards"></div>
@@ -331,6 +358,15 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <script>
 const API_URL = '../vigil/quality';
 let currentData = null;
+let liveInterval = null;
+let isLive = false;
+
+// Toggle metric visibility checkboxes
+['citation','grounding','faithfulness','flag'].forEach(m => {
+  document.getElementById('tog-' + m).addEventListener('change', () => {
+    if (currentData) renderCharts(currentData);
+  });
+});
 
 function trendIcon(trend) {
   if (trend === 'improving') return '▲';
@@ -375,7 +411,10 @@ function drawLineChart(canvasId, datasets, labels) {
 
   ctx.clearRect(0, 0, W, H);
 
-  if (!labels || labels.length === 0) {
+  // Filter out hidden datasets
+  const visible = datasets.filter(d => d.visible !== false);
+
+  if (!labels || labels.length === 0 || visible.length === 0) {
     ctx.fillStyle = '#64748b';
     ctx.font = '13px sans-serif';
     ctx.fillText('No data available', W/2 - 50, H/2);
@@ -383,7 +422,7 @@ function drawLineChart(canvasId, datasets, labels) {
   }
 
   // Find min/max
-  let allVals = datasets.flatMap(d => d.values);
+  let allVals = visible.flatMap(d => d.values);
   let minV = Math.min(...allVals, 0);
   let maxV = Math.max(...allVals, 1);
 
@@ -409,8 +448,8 @@ function drawLineChart(canvasId, datasets, labels) {
 
   // Draw lines
   const colors = ['#3b82f6', '#4ade80', '#f59e0b', '#f87171', '#a78bfa'];
-  datasets.forEach((ds, di) => {
-    ctx.strokeStyle = colors[di % colors.length];
+  visible.forEach((ds, di) => {
+    ctx.strokeStyle = ds.color || colors[di % colors.length];
     ctx.lineWidth = 2;
     ctx.beginPath();
     ds.values.forEach((v, i) => {
@@ -426,21 +465,21 @@ function drawLineChart(canvasId, datasets, labels) {
       const lastI = ds.values.length - 1;
       const lx = pad.left + (lastI / Math.max(1, labels.length - 1)) * plotW;
       const ly = pad.top + plotH - ((ds.values[lastI] - minV) / (maxV - minV || 1)) * plotH;
-      ctx.fillStyle = colors[di % colors.length];
+      ctx.fillStyle = ds.color || colors[di % colors.length];
       ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2); ctx.fill();
     }
   });
 
   // Legend
   ctx.font = '11px sans-serif';
-  datasets.forEach((ds, di) => {
-    const x = pad.left + di * 140;
-    const y = 12;
-    ctx.fillStyle = colors[di % colors.length];
-    ctx.fillRect(x, y - 8, 12, 8);
+  let lx = pad.left;
+  visible.forEach((ds, di) => {
+    ctx.fillStyle = ds.color || colors[di % colors.length];
+    ctx.fillRect(lx, 4, 12, 8);
     ctx.fillStyle = '#cbd5e1';
     ctx.textAlign = 'left';
-    ctx.fillText(ds.label, x + 16, y);
+    ctx.fillText(ds.label, lx + 16, 12);
+    lx += ctx.measureText(ds.label).width + 32;
   });
 }
 
@@ -452,24 +491,41 @@ function renderCharts(data) {
   const faithfulness = cycles.map(c => c.metrics?.avg_llm_faithfulness || 0);
   const flagRate = cycles.map(c => c.metrics?.flag_rate || 0);
 
+  const showCitation = document.getElementById('tog-citation').checked;
+  const showGrounding = document.getElementById('tog-grounding').checked;
+  const showFaithfulness = document.getElementById('tog-faithfulness').checked;
+  const showFlag = document.getElementById('tog-flag').checked;
+
   drawLineChart('mainChart', [
-    { label: 'Citation Rate', values: citation },
-    { label: 'Grounding Rate', values: grounding },
-    { label: 'Faithfulness', values: faithfulness },
+    { label: 'Citation Rate', values: citation, color: '#3b82f6', visible: showCitation },
+    { label: 'Grounding Rate', values: grounding, color: '#4ade80', visible: showGrounding },
+    { label: 'Faithfulness', values: faithfulness, color: '#f59e0b', visible: showFaithfulness },
   ], labels);
 
   drawLineChart('flagChart', [
-    { label: 'Flag Rate', values: flagRate },
+    { label: 'Flag Rate', values: flagRate, color: '#f87171', visible: showFlag },
   ], labels);
 }
 
 async function fetchData() {
+  const range = document.getElementById('range').value;
   const cycles = document.getElementById('cycles').value;
   const statusEl = document.getElementById('status');
   statusEl.textContent = 'Loading...';
 
   try {
-    const resp = await fetch(API_URL + '?last_n_cycles=' + cycles);
+    let url;
+    if (range && range !== '0') {
+      // Time-range mode: calculate the 'since' timestamp
+      const days = parseInt(range);
+      const since = new Date(Date.now() - days * 86400000).toISOString();
+      url = API_URL + '?since=' + encodeURIComponent(since) + '&limit=500';
+    } else {
+      // Cycle count mode
+      url = API_URL + '?last_n_cycles=' + cycles;
+    }
+
+    const resp = await fetch(url);
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const data = await resp.json();
     currentData = data;
@@ -484,6 +540,22 @@ async function fetchData() {
       `Faithfulness: ${formatRate(data.summary?.llm_faithfulness?.current || 0)}`;
   } catch (err) {
     statusEl.textContent = 'Error: ' + err.message;
+  }
+}
+
+function toggleLive() {
+  isLive = !isLive;
+  const btn = document.getElementById('liveBtn');
+  const dot = document.getElementById('liveDot');
+  if (isLive) {
+    btn.classList.add('active');
+    dot.classList.remove('off');
+    liveInterval = setInterval(fetchData, 10000); // Poll every 10s
+  } else {
+    btn.classList.remove('active');
+    dot.classList.add('off');
+    if (liveInterval) clearInterval(liveInterval);
+    liveInterval = null;
   }
 }
 

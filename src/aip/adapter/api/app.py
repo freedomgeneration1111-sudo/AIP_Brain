@@ -742,6 +742,224 @@ async def lifespan(app: FastAPI):
                 "component_failed", component="session_manager", degradation="no_trajectory_regulation", error=str(exc)
             )
 
+    # =====================================================================
+    # Sprint 5.27: OPERATIONAL COMPONENTS — alerting, persistence, policy
+    # =====================================================================
+
+    # VigilQualityStore — persistent quality history (SQLite-backed)
+    # Survives process restarts and supports longer time-range queries.
+    # When unavailable, Vigil falls back to in-memory _cycle_report_history.
+    # Sprint 5.27: Retention/rollup config driven from [vigil_quality] TOML section.
+    try:
+        from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
+
+        quality_db_path = os.path.join(os.path.dirname(db_path), "vigil_quality.db")
+        quality_cfg = config.get("vigil_quality", {})
+        container._vigil_quality_store = VigilQualityStore(
+            quality_db_path,
+            max_history_rows=int(quality_cfg.get("max_history_rows", 10000)),
+            retention_days=int(quality_cfg.get("retention_days", 90)),
+            rollup_age_days=int(quality_cfg.get("rollup_age_days", 7)),
+        )
+        container._vigil_quality_store.initialize()
+        log.info(
+            "component_initialized",
+            component="vigil_quality_store",
+            required=False,
+            db_path=quality_db_path,
+            max_history_rows=container._vigil_quality_store._max_history_rows,
+            retention_days=container._vigil_quality_store._retention_days,
+            rollup_age_days=container._vigil_quality_store._rollup_age_days,
+        )
+    except Exception as exc:
+        log.warning(
+            "component_failed",
+            component="vigil_quality_store",
+            degradation="in_memory_quality_history",
+            error=str(exc),
+        )
+
+    # AlertManager — operator notifications for quality degradation, pool
+    # adjustments, and batch reductions.  Configured via [alerting] in TOML.
+    # When disabled (default), no alerts are sent; all events are still logged.
+    try:
+        from aip.adapter.alerting import AlertConfig, AlertManager
+
+        alert_cfg_dict = config.get("alerting", {})
+        alert_config = AlertConfig(
+            enabled=alert_cfg_dict.get("enabled", False),
+            webhook_url=alert_cfg_dict.get("webhook_url", ""),
+            email_to=alert_cfg_dict.get("email_to", ""),
+            email_from=alert_cfg_dict.get("email_from", "aip-brain@localhost"),
+            smtp_host=alert_cfg_dict.get("smtp_host", ""),
+            smtp_port=int(alert_cfg_dict.get("smtp_port", 587)),
+            smtp_username=alert_cfg_dict.get("smtp_username", ""),
+            smtp_password=alert_cfg_dict.get("smtp_password", ""),
+            smtp_use_tls=bool(alert_cfg_dict.get("smtp_use_tls", True)),
+            alert_on_quality_degradation=bool(alert_cfg_dict.get("alert_on_quality_degradation", True)),
+            alert_on_pool_adjustment=bool(alert_cfg_dict.get("alert_on_pool_adjustment", True)),
+            alert_on_batch_reduction=bool(alert_cfg_dict.get("alert_on_batch_reduction", True)),
+            min_alert_interval_seconds=int(alert_cfg_dict.get("min_alert_interval_seconds", 300)),
+            webhook_max_retries=int(alert_cfg_dict.get("webhook_max_retries", 3)),
+            webhook_retry_base_delay_seconds=float(alert_cfg_dict.get("webhook_retry_base_delay_seconds", 1.0)),
+        )
+        container._alert_manager = AlertManager(alert_config)
+        # Validate config at startup and log any warnings
+        warnings = container._alert_manager.validate_config()
+        if warnings:
+            for w in warnings:
+                log.warning("alerting_config_warning", warning=w)
+        log.info(
+            "component_initialized",
+            component="alert_manager",
+            required=False,
+            enabled=alert_config.enabled,
+        )
+    except Exception as exc:
+        log.warning(
+            "component_failed",
+            component="alert_manager",
+            degradation="no_operator_alerts",
+            error=str(exc),
+        )
+
+    # ReadPoolAutoSizer — monitors pool exhaustion and auto-applies changes.
+    # The auto-sizer is not attached to any background scheduler; instead,
+    # the Sexton actor observes pool health on each cycle and triggers
+    # adjustments when sustained high/low exhaustion is detected.
+    try:
+        from aip.adapter.read_pool import ReadPoolAutoSizer
+
+        container._read_pool_auto_sizer = ReadPoolAutoSizer(
+            auto_apply_enabled=bool(config.get("read_pool", {}).get("auto_apply_enabled", True)),
+        )
+        log.info(
+            "component_initialized",
+            component="read_pool_auto_sizer",
+            required=False,
+        )
+    except Exception as exc:
+        log.warning(
+            "component_failed",
+            component="read_pool_auto_sizer",
+            degradation="no_auto_pool_sizing",
+            error=str(exc),
+        )
+
+    # AutoTuningPolicy — configurable thresholds for auto-tuning behavior.
+    # Loaded from [auto_tuning_policy] section and applied to the auto-sizer
+    # and Sexton actor at startup.  The policy can be hot-reloaded later.
+    try:
+        from aip.adapter.auto_tuning_policy import (
+            AutoTuningPolicy,
+            load_policy_from_config,
+            apply_policy_to_auto_sizer,
+            apply_policy_to_sexton,
+        )
+
+        policy = load_policy_from_config(config)
+        container._auto_tuning_policy = policy
+
+        # Apply policy to auto-sizer
+        if container._read_pool_auto_sizer is not None and policy.is_valid():
+            applied = apply_policy_to_auto_sizer(policy, container._read_pool_auto_sizer)
+            log.info(
+                "auto_tuning_policy_applied_to_sizer",
+                applied_params=applied,
+            )
+
+        # Apply policy to Sexton actor
+        if container.sexton_actor is not None and policy.is_valid():
+            applied = apply_policy_to_sexton(policy, container.sexton_actor)
+            log.info(
+                "auto_tuning_policy_applied_to_sexton",
+                applied_params=applied,
+            )
+
+        log.info(
+            "component_initialized",
+            component="auto_tuning_policy",
+            required=False,
+            valid=policy.is_valid(),
+        )
+    except Exception as exc:
+        log.warning(
+            "component_failed",
+            component="auto_tuning_policy",
+            degradation="default_thresholds",
+            error=str(exc),
+        )
+
+    # Wire alert_manager and quality_store into Vigil actor (if initialized)
+    if container.vigil is not None:
+        if container._alert_manager is not None:
+            container.vigil._alert_manager = container._alert_manager
+            log.info("vigil_wired", component="alert_manager")
+        if container._vigil_quality_store is not None:
+            container.vigil._quality_store = container._vigil_quality_store
+            # Pre-populate in-memory history from persistent store
+            try:
+                persisted = container._vigil_quality_store.get_cycles(last_n_cycles=10)
+                if persisted:
+                    container.vigil._cycle_report_history = persisted
+            except Exception:
+                pass
+            log.info("vigil_wired", component="quality_store")
+
+    # Wire alert_manager into Sexton actor (if initialized)
+    if container.sexton_actor is not None:
+        if container._alert_manager is not None:
+            container.sexton_actor._alert_manager = container._alert_manager
+            log.info("sexton_actor_wired", component="alert_manager")
+
+    # Wire alert_manager into ReadPoolAutoSizer (if initialized)
+    if container._read_pool_auto_sizer is not None and container._alert_manager is not None:
+        container._read_pool_auto_sizer._alert_manager = container._alert_manager
+        log.info("read_pool_auto_sizer_wired", component="alert_manager")
+
+    # ConfigWatcher — hot-reload for safe config changes without restart.
+    # Monitors aip.config.toml for changes to [read_pool], [sexton],
+    # and [auto_tuning_policy] sections.  Runs as a background task.
+    config_watcher_task: asyncio.Task | None = None
+    try:
+        from aip.adapter.config_watcher import ConfigWatcher
+
+        # Resolve the config file path (same logic as _load_toml_config)
+        config_path_str = os.environ.get("AIP_CONFIG_PATH", "")
+        if config_path_str:
+            config_file_path = Path(config_path_str)
+        else:
+            candidates = [
+                Path.cwd() / "config" / "aip.config.toml",
+                Path(__file__).resolve().parent.parent.parent.parent / "config" / "aip.config.toml",
+            ]
+            config_file_path = None
+            for candidate in candidates:
+                if candidate.is_file():
+                    config_file_path = candidate
+                    break
+
+        if config_file_path is not None:
+            container._config_watcher = ConfigWatcher(
+                config_path=config_file_path,
+                container=container,
+            )
+            log.info(
+                "component_initialized",
+                component="config_watcher",
+                required=False,
+                config_path=str(config_file_path),
+            )
+        else:
+            log.info("component_skipped", component="config_watcher", reason="no_config_file_found")
+    except Exception as exc:
+        log.warning(
+            "component_failed",
+            component="config_watcher",
+            degradation="no_hot_reload",
+            error=str(exc),
+        )
+
     app.state.container = container
     app.state.start_time = time.time()
     container._app_start_time = time.time()
@@ -915,6 +1133,73 @@ async def lifespan(app: FastAPI):
         _vigil_startup_task = asyncio.create_task(_vigil_startup_run(), name="vigil-startup")
         log.info("vigil_startup_run_scheduled")
 
+    # --- ConfigWatcher background scheduler (Sprint 5.27) ---
+    if container._config_watcher is not None:
+
+        async def _config_watcher_scheduler():
+            """Background loop that checks for config file changes.
+
+            Polls the config file periodically and applies hot-reload
+            when changes are detected.  Uses the ConfigWatcher's built-in
+            rate-limiting and debounce.
+            """
+            poll_interval = 5.0  # Check every 5 seconds
+            log.info("config_watcher_scheduler_starting", interval_s=poll_interval)
+            while True:
+                try:
+                    events = container._config_watcher.check_and_reload()
+                    if events:
+                        log.info(
+                            "config_watcher_reloaded",
+                            changes=len(events),
+                            keys=[e.key for e in events],
+                        )
+                except asyncio.CancelledError:
+                    log.info("config_watcher_scheduler_cancelled")
+                    raise
+                except Exception as exc:
+                    log.warning("config_watcher_check_failed", error=str(exc))
+                await asyncio.sleep(poll_interval)
+
+        config_watcher_task = asyncio.create_task(_config_watcher_scheduler(), name="config-watcher-scheduler")
+        log.info("config_watcher_scheduler_created")
+
+    # --- Quality Store Rollup scheduler (Sprint 5.27) ---
+    # Runs rollup once per day to aggregate older quality data, keeping
+    # the vigil_quality_history table from growing indefinitely while
+    # preserving long-term trend data.
+    quality_rollup_task: asyncio.Task | None = None
+    if container._vigil_quality_store is not None:
+
+        async def _quality_rollup_scheduler():
+            """Background loop that runs daily rollup on the quality store.
+
+            Aggregates individual cycle rows that are older than
+            ``rollup_age_days`` into daily summary rows.  Runs once
+            every 24 hours.
+            """
+            rollup_interval = 86400  # 24 hours
+            log.info("quality_rollup_scheduler_starting", interval_s=rollup_interval)
+            while True:
+                try:
+                    result = container._vigil_quality_store.run_rollup()
+                    if result.get("rolled_up_days", 0) > 0:
+                        log.info(
+                            "quality_rollup_completed",
+                            days=result.get("rolled_up_days", 0),
+                            aggregated=result.get("rows_aggregated", 0),
+                            deleted=result.get("rows_deleted", 0),
+                        )
+                except asyncio.CancelledError:
+                    log.info("quality_rollup_scheduler_cancelled")
+                    raise
+                except Exception as exc:
+                    log.warning("quality_rollup_failed", error=str(exc))
+                await asyncio.sleep(rollup_interval)
+
+        quality_rollup_task = asyncio.create_task(_quality_rollup_scheduler(), name="quality-rollup-scheduler")
+        log.info("quality_rollup_scheduler_created")
+
     log.info(
         "startup_complete",
         required_initialized=5,
@@ -932,6 +1217,12 @@ async def lifespan(app: FastAPI):
         session_store=container.session_store is not None,
         session_manager=container.session_manager is not None,
         corpus_turn_store=getattr(container, "corpus_turn_store", None) is not None,
+        # Sprint 5.27: Operational components
+        quality_store=getattr(container, "_vigil_quality_store", None) is not None,
+        alert_manager=getattr(container, "_alert_manager", None) is not None,
+        config_watcher=getattr(container, "_config_watcher", None) is not None,
+        auto_sizer=getattr(container, "_read_pool_auto_sizer", None) is not None,
+        auto_tuning_policy=getattr(container, "_auto_tuning_policy", None) is not None,
     )
 
     yield
@@ -941,6 +1232,8 @@ async def lifespan(app: FastAPI):
         ("beast", beast_task),
         ("vigil", vigil_task),
         ("sexton_actor", sexton_actor_task),
+        ("config_watcher", config_watcher_task),
+        ("quality_rollup", quality_rollup_task),
     ]:
         if task is not None:
             log.info(f"{task_name}_scheduler_cancelling")

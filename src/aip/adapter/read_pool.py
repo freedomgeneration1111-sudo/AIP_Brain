@@ -537,6 +537,7 @@ class ReadPoolAutoSizer:
         auto_rollback_enabled: bool = True,
         auto_rollback_consecutive_threshold: int = _AUTO_ROLLBACK_CONSECUTIVE_THRESHOLD,
         auto_rollback_healthy_threshold: float = _AUTO_ROLLBACK_HEALTHY_THRESHOLD,
+        exhaustion_threshold: float = 0.3,
     ) -> None:
         self._consecutive_threshold = consecutive_threshold
         self.auto_apply_enabled = auto_apply_enabled
@@ -548,6 +549,9 @@ class ReadPoolAutoSizer:
         self.auto_rollback_enabled = auto_rollback_enabled
         self._auto_rollback_consecutive_threshold = auto_rollback_consecutive_threshold
         self._auto_rollback_healthy_threshold = auto_rollback_healthy_threshold
+
+        # Sprint 5.27: Configurable exhaustion threshold (driven by AutoTuningPolicy)
+        self._exhaustion_threshold: float = exhaustion_threshold
 
         # store_name -> list of recent exhaustion_rate observations
         self._observations: dict[str, list[float]] = {}
@@ -618,9 +622,9 @@ class ReadPoolAutoSizer:
         suggestion = None
 
         if len(obs) >= self._consecutive_threshold:
-            # Check if the last N observations are all above 0.3
+            # Sprint 5.27: Use policy-driven exhaustion threshold instead of hardcoded 0.3
             recent = obs[-self._consecutive_threshold:]
-            if all(rate > 0.3 for rate in recent):
+            if all(rate > self._exhaustion_threshold for rate in recent):
                 # Sustained high exhaustion -- generate a suggestion
                 avg_rate = sum(recent) / len(recent)
                 suggested_size = self._compute_suggested_size(pool_size, avg_rate)
@@ -632,7 +636,7 @@ class ReadPoolAutoSizer:
                         suggested_pool_size=suggested_size,
                         exhaustion_rate=avg_rate,
                         reason=(
-                            f"Exhaustion rate has been > 30% for "
+                            f"Exhaustion rate has been > {self._exhaustion_threshold:.0%} for "
                             f"{self._consecutive_threshold} consecutive observations "
                             f"(avg={avg_rate:.2%}). "
                             f"Consider increasing pool_size from {pool_size} to "
@@ -662,7 +666,7 @@ class ReadPoolAutoSizer:
             and len(obs) >= self._auto_apply_consecutive_threshold
         ):
             apply_recent = obs[-self._auto_apply_consecutive_threshold:]
-            if all(rate > 0.3 for rate in apply_recent):
+            if all(rate > self._exhaustion_threshold for rate in apply_recent):
                 avg_rate = sum(apply_recent) / len(apply_recent)
                 applied = self._auto_apply_pool_size(
                     store_name=store_name,
@@ -674,7 +678,8 @@ class ReadPoolAutoSizer:
                     suggestion.auto_applied = True
 
         # If exhaustion has recovered, clear the suggestion for this store
-        if exhaustion_rate <= 0.3:
+        # Sprint 5.27: Use policy-driven threshold instead of hardcoded 0.3
+        if exhaustion_rate <= self._exhaustion_threshold:
             prev_suggestions = len(self._suggestions)
             self._suggestions = [
                 s for s in self._suggestions if s.store_name != store_name
@@ -683,7 +688,7 @@ class ReadPoolAutoSizer:
                 log.info(
                     "read_pool_auto_size_cleared",
                     store=store_name,
-                    note="exhaustion_rate recovered to <= 0.3",
+                    note=f"exhaustion_rate recovered to <= {self._exhaustion_threshold:.0%}",
                 )
 
         # Sprint 5.25: Auto-rollback check
@@ -959,6 +964,8 @@ class ReadPoolAutoSizer:
             "auto_rollback_enabled": self.auto_rollback_enabled,
             "auto_rollback_consecutive_threshold": self._auto_rollback_consecutive_threshold,
             "auto_rollback_healthy_threshold": self._auto_rollback_healthy_threshold,
+            # Sprint 5.27: Policy-driven exhaustion threshold
+            "exhaustion_threshold": self._exhaustion_threshold,
             "stores": stores_status,
             "recent_adjustments": [a.to_dict() for a in self._adjustment_history[-5:]],
         }

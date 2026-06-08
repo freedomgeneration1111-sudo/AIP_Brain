@@ -239,7 +239,8 @@ class TestVigilQualityStore:
         """Helper to create a VigilQualityStore in a temp directory."""
         from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
         db_path = os.path.join(tmp_path, "vigil_quality.db")
-        store = VigilQualityStore(db_path)
+        # Use retention_days=0 so test timestamps from 2025 are not pruned
+        store = VigilQualityStore(db_path, retention_days=0)
         store.initialize()
         return store
 
@@ -551,7 +552,7 @@ class TestVigilQualityDashboard:
 
         # Create a store with data
         with tempfile.TemporaryDirectory() as tmp_dir:
-            store = VigilQualityStore(os.path.join(tmp_dir, "quality.db"))
+            store = VigilQualityStore(os.path.join(tmp_dir, "quality.db"), retention_days=0)
             store.initialize()
             store.record_cycle({
                 "timestamp": "2025-06-01T00:00:00Z",

@@ -332,6 +332,10 @@ def apply_policy_to_auto_sizer(
     auto_sizer._auto_rollback_healthy_threshold = policy.read_pool_auto_rollback_healthy
     applied.append("auto_rollback_healthy_threshold")
 
+    # Sprint 5.27: Apply exhaustion threshold to auto-sizer
+    auto_sizer._exhaustion_threshold = policy.read_pool_exhaustion_threshold
+    applied.append("exhaustion_threshold")
+
     logger.info(
         "auto_tuning_policy_applied_to_sizer",
         applied_params=applied,
