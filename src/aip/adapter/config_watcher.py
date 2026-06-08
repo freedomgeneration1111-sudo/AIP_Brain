@@ -54,6 +54,7 @@ _HOT_RELOADABLE_KEYS = frozenset({
     "read_pool",
     "sexton",
     "auto_tuning_policy",  # Sprint 5.26
+    "vigil_quality",       # Sprint 5.31
 })
 
 # ---------------------------------------------------------------------------
@@ -83,6 +84,14 @@ _POLICY_RANGES: dict[str, tuple[float, float, str]] = {
     "auto_tuning_policy.graph_batch_min_size": (1, 4, "must be 1-4"),
     "auto_tuning_policy.graph_batch_max_size": (2, 16, "must be 2-16"),
     "auto_tuning_policy.cooldown_seconds": (0, 3600, "must be 0-3600"),
+}
+
+# Sprint 5.31: Vigil quality retention config validation ranges
+_VIGIL_QUALITY_RANGES: dict[str, tuple[float, float, str]] = {
+    "vigil_quality.retention_days": (0, 365, "must be 0-365"),
+    "vigil_quality.rollup_age_days": (0, 365, "must be 0-365"),
+    "vigil_quality.weekly_rollup_age_weeks": (0, 52, "must be 0-52"),
+    "vigil_quality.max_history_rows": (100, 100000, "must be 100-100000"),
 }
 
 
@@ -262,6 +271,14 @@ class ConfigWatcher:
                     return False, desc
             return True, ""
 
+        # Sprint 5.31: Check vigil quality retention ranges
+        if dotted_key in _VIGIL_QUALITY_RANGES:
+            min_val, max_val, desc = _VIGIL_QUALITY_RANGES[dotted_key]
+            if isinstance(value, (int, float)):
+                if not (min_val <= value <= max_val):
+                    return False, desc
+            return True, ""
+
         # No specific validation rule — allow (but log)
         return True, ""
 
@@ -419,6 +436,8 @@ class ConfigWatcher:
             self._apply_sexton_change(dotted_key, value)
         elif section == "auto_tuning_policy":
             self._apply_policy_change(dotted_key, value)
+        elif section == "vigil_quality":
+            self._apply_vigil_quality_change(dotted_key, value)
 
     def _apply_read_pool_change(self, dotted_key: str, value: Any) -> None:
         """Apply read pool config changes to live stores."""
@@ -518,6 +537,66 @@ class ConfigWatcher:
             self._total_reload_errors += 1
             logger.warning(
                 "config_hot_reload_policy_apply_failed",
+                key=dotted_key,
+                value=value,
+                error=str(exc),
+            )
+
+    def _apply_vigil_quality_change(self, dotted_key: str, value: Any) -> None:
+        """Apply vigil quality retention config changes to the live store.
+
+        Sprint 5.31: When retention_days, rollup_age_days, or
+        weekly_rollup_age_weeks are changed via config file hot-reload,
+        applies the changes to the running VigilQualityStore and triggers
+        appropriate pruning/rollup behavior.
+        """
+        try:
+            quality_store = getattr(self._container, "_vigil_quality_store", None)
+            if quality_store is None:
+                return
+
+            # Map config keys to update_config parameters
+            update_params: dict[str, int] = {}
+            if dotted_key == "vigil_quality.retention_days":
+                update_params["retention_days"] = int(value)
+            elif dotted_key == "vigil_quality.rollup_age_days":
+                update_params["rollup_age_days"] = int(value)
+            elif dotted_key == "vigil_quality.weekly_rollup_age_weeks":
+                update_params["weekly_rollup_age_weeks"] = int(value)
+            elif dotted_key == "vigil_quality.max_history_rows":
+                # max_history_rows is not updatable via update_config,
+                # but we can update the internal attribute directly
+                quality_store._max_history_rows = int(value)
+                logger.info(
+                    "config_hot_reload_vigil_quality",
+                    key=dotted_key,
+                    new_value=int(value),
+                )
+                return
+
+            if update_params:
+                result = quality_store.update_config(**update_params)
+                has_errors = bool(result.get("validation_errors", []))
+                if has_errors:
+                    logger.warning(
+                        "config_hot_reload_vigil_quality_validation_failed",
+                        errors=result.get("validation_errors", []),
+                    )
+                else:
+                    logger.info(
+                        "config_hot_reload_vigil_quality_applied",
+                        changed_key=dotted_key,
+                        new_config=result,
+                    )
+                    # Trigger immediate pruning with new retention settings
+                    try:
+                        quality_store._prune_if_needed()
+                    except Exception:
+                        pass  # Pruning failure is not critical
+        except Exception as exc:
+            self._total_reload_errors += 1
+            logger.warning(
+                "config_hot_reload_vigil_quality_apply_failed",
                 key=dotted_key,
                 value=value,
                 error=str(exc),

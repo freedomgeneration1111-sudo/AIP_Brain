@@ -8,31 +8,59 @@ Sprint 5.30: Added alert acknowledgment/dismissal support with schema v2.
 Alerts can be acknowledged or dismissed via API, and the status persists
 across restarts. Added correlation_id for async dispatch tracking.
 
+Sprint 5.31: Added mute rules table for persistent alert silencing.
+Added delivery status tracking table for per-correlation-ID transport outcomes.
+Schema v3 adds alert_mute_rules and alert_delivery_status tables.
+
 Schema:
     alert_history
         id              INTEGER PRIMARY KEY AUTOINCREMENT
-        alert_type      TEXT NOT NULL           -- quality_degradation, pool_adjustment, batch_reduction
-        severity        TEXT NOT NULL           -- info, warning, critical
+        alert_type      TEXT NOT NULL
+        severity        TEXT NOT NULL
         subject         TEXT NOT NULL
         message         TEXT NOT NULL
         data            TEXT NOT NULL DEFAULT '{}'  -- JSON
         timestamp       TEXT NOT NULL           -- ISO 8601 UTC
         created_at      TEXT NOT NULL           -- Row insertion time
-        correlation_id  TEXT NOT NULL DEFAULT ''  -- Sprint 5.30: correlation ID for async dispatch
+        correlation_id  TEXT NOT NULL DEFAULT ''  -- Sprint 5.30: correlation ID
         acknowledged    INTEGER NOT NULL DEFAULT 0  -- Sprint 5.30: 0=open, 1=acknowledged, 2=dismissed
-        acknowledged_at TEXT NOT NULL DEFAULT ''     -- Sprint 5.30: when acknowledged
-        acknowledged_by TEXT NOT NULL DEFAULT ''     -- Sprint 5.30: who acknowledged
+        acknowledged_at TEXT NOT NULL DEFAULT ''     -- Sprint 5.30
+        acknowledged_by TEXT NOT NULL DEFAULT ''     -- Sprint 5.30
 
     alert_delivery_failures
         id              INTEGER PRIMARY KEY AUTOINCREMENT
-        transport       TEXT NOT NULL           -- webhook, email
+        transport       TEXT NOT NULL
         alert_type      TEXT NOT NULL
         subject         TEXT NOT NULL
         error_message   TEXT NOT NULL
-        timestamp       TEXT NOT NULL           -- ISO 8601 UTC
+        timestamp       TEXT NOT NULL
         retry_attempt   INTEGER NOT NULL DEFAULT 0
         final           INTEGER NOT NULL DEFAULT 1
-        created_at      TEXT NOT NULL           -- Row insertion time
+        created_at      TEXT NOT NULL
+
+    alert_mute_rules (Sprint 5.31)
+        id              INTEGER PRIMARY KEY AUTOINCREMENT
+        alert_type      TEXT NOT NULL
+        subject         TEXT NOT NULL
+        muted_at        TEXT NOT NULL
+        muted_by        TEXT NOT NULL DEFAULT 'operator'
+        duration_seconds INTEGER NOT NULL DEFAULT 3600
+        expires_at      REAL NOT NULL DEFAULT 0     -- epoch float, 0=indefinite
+        auto_mute_on_ack INTEGER NOT NULL DEFAULT 0
+        created_at      TEXT NOT NULL
+
+    alert_delivery_status (Sprint 5.31)
+        id              INTEGER PRIMARY KEY AUTOINCREMENT
+        correlation_id  TEXT NOT NULL
+        status          TEXT NOT NULL           -- dispatching, delivered, partial, failed, buffered_for_digest
+        alert_type      TEXT NOT NULL
+        severity        TEXT NOT NULL
+        subject         TEXT NOT NULL
+        transports      TEXT NOT NULL DEFAULT '[]'  -- JSON list
+        transport_results TEXT NOT NULL DEFAULT '{}' -- JSON dict
+        dispatched_at   TEXT NOT NULL
+        completed_at    TEXT NOT NULL DEFAULT ''
+        created_at      TEXT NOT NULL
 
 Design:
     - Lightweight SQLite table — no ORM, stdlib sqlite3
@@ -61,8 +89,8 @@ _DEFAULT_MAX_ALERT_ROWS = 5000
 # Default maximum number of delivery failure rows to retain
 _DEFAULT_MAX_FAILURE_ROWS = 1000
 
-# Schema version for migrations (Sprint 5.30: v2 adds correlation_id, acknowledged columns)
-_SCHEMA_VERSION = 2
+# Schema version for migrations (Sprint 5.31: v3 adds mute_rules, delivery_status)
+_SCHEMA_VERSION = 3
 
 
 class AlertHistoryStore:
@@ -230,6 +258,53 @@ class AlertHistoryStore:
                     INSERT OR REPLACE INTO alert_meta (key, value)
                     VALUES ('schema_version', ?)
                 """, (str(_SCHEMA_VERSION),))
+
+                # Sprint 5.31: Schema migration v2 -> v3
+                # Add alert_mute_rules and alert_delivery_status tables
+                if current_version < 3:
+                    # Mute rules table
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS alert_mute_rules (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            alert_type TEXT NOT NULL,
+                            subject TEXT NOT NULL,
+                            muted_at TEXT NOT NULL,
+                            muted_by TEXT NOT NULL DEFAULT 'operator',
+                            duration_seconds INTEGER NOT NULL DEFAULT 3600,
+                            expires_at REAL NOT NULL DEFAULT 0,
+                            auto_mute_on_ack INTEGER NOT NULL DEFAULT 0,
+                            created_at TEXT NOT NULL
+                        )
+                    """)
+
+                    # Index for mute rule lookups
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_mute_rules_type_subject
+                        ON alert_mute_rules (alert_type, subject)
+                    """)
+
+                    # Delivery status tracking table
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS alert_delivery_status (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            correlation_id TEXT NOT NULL,
+                            status TEXT NOT NULL,
+                            alert_type TEXT NOT NULL,
+                            severity TEXT NOT NULL,
+                            subject TEXT NOT NULL,
+                            transports TEXT NOT NULL DEFAULT '[]',
+                            transport_results TEXT NOT NULL DEFAULT '{}',
+                            dispatched_at TEXT NOT NULL,
+                            completed_at TEXT NOT NULL DEFAULT '',
+                            created_at TEXT NOT NULL
+                        )
+                    """)
+
+                    # Index for correlation_id lookups
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_delivery_status_correlation_id
+                        ON alert_delivery_status (correlation_id)
+                    """)
 
             self._initialized = True
             logger.info(
@@ -709,6 +784,213 @@ class AlertHistoryStore:
                 error=str(exc),
             )
             return {}
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.31: Mute rules
+    # -----------------------------------------------------------------------
+
+    def record_mute_rule(self, rule: dict) -> int:
+        """Record a mute rule to persistent storage.
+
+        Sprint 5.31: Persists mute rules so they survive process restarts.
+
+        Returns the database ID of the created rule.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                cursor = conn.execute("""
+                    INSERT INTO alert_mute_rules (
+                        alert_type, subject, muted_at, muted_by,
+                        duration_seconds, expires_at, auto_mute_on_ack, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    rule.get("alert_type", ""),
+                    rule.get("subject", ""),
+                    rule.get("muted_at", now),
+                    rule.get("muted_by", "operator"),
+                    rule.get("duration_seconds", 3600),
+                    rule.get("expires_at", 0),
+                    1 if rule.get("auto_mute_on_ack", False) else 0,
+                    now,
+                ))
+                rule_id = cursor.lastrowid
+
+            logger.info(
+                "alert_mute_rule_recorded",
+                rule_id=rule_id,
+                alert_type=rule.get("alert_type", ""),
+                subject=rule.get("subject", ""),
+            )
+            return rule_id or 0
+        except Exception as exc:
+            logger.warning(
+                "alert_mute_rule_record_failed",
+                error=str(exc),
+            )
+            return 0
+
+    def delete_mute_rule(self, alert_type: str, subject: str) -> bool:
+        """Delete a mute rule by alert_type and subject.
+
+        Sprint 5.31: Removes the mute rule from persistent storage.
+
+        Returns True if a rule was deleted, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                cursor = conn.execute("""
+                    DELETE FROM alert_mute_rules
+                    WHERE alert_type = ? AND subject = ?
+                """, (alert_type, subject))
+                return cursor.rowcount > 0
+        except Exception as exc:
+            logger.warning(
+                "alert_mute_rule_delete_failed",
+                error=str(exc),
+            )
+            return False
+
+    def get_active_mute_rules(self) -> list[dict]:
+        """Return all mute rules (active and possibly expired).
+
+        Sprint 5.31: Used by AlertManager to rebuild in-memory mute
+        rules on startup. Expired rules are filtered out by the
+        AlertManager after reading.
+
+        Returns a list of mute rule dicts.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT id, alert_type, subject, muted_at, muted_by,
+                           duration_seconds, expires_at, auto_mute_on_ack
+                    FROM alert_mute_rules
+                    ORDER BY created_at DESC
+                """)
+                rows = cursor.fetchall()
+
+            result = []
+            for row in rows:
+                result.append({
+                    "id": row["id"],
+                    "alert_type": row["alert_type"],
+                    "subject": row["subject"],
+                    "muted_at": row["muted_at"],
+                    "muted_by": row["muted_by"],
+                    "duration_seconds": row["duration_seconds"],
+                    "expires_at": row["expires_at"],
+                    "auto_mute_on_ack": bool(row["auto_mute_on_ack"]),
+                })
+
+            return result
+        except Exception as exc:
+            logger.warning(
+                "alert_mute_rules_query_failed",
+                error=str(exc),
+            )
+            return []
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.31: Delivery status tracking
+    # -----------------------------------------------------------------------
+
+    def record_delivery_status(self, status_dict: dict) -> bool:
+        """Record delivery status for a correlation ID.
+
+        Sprint 5.31: Persists the per-transport delivery outcomes so
+        operators can query the status of any alert by correlation ID,
+        even after a process restart.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("""
+                    INSERT INTO alert_delivery_status (
+                        correlation_id, status, alert_type, severity, subject,
+                        transports, transport_results, dispatched_at,
+                        completed_at, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    status_dict.get("correlation_id", ""),
+                    status_dict.get("status", ""),
+                    status_dict.get("alert_type", ""),
+                    status_dict.get("severity", ""),
+                    status_dict.get("subject", ""),
+                    json.dumps(status_dict.get("transports", [])),
+                    json.dumps(status_dict.get("transport_results", {})),
+                    status_dict.get("dispatched_at", now),
+                    status_dict.get("completed_at", ""),
+                    now,
+                ))
+
+            return True
+        except Exception as exc:
+            logger.warning(
+                "alert_delivery_status_record_failed",
+                error=str(exc),
+            )
+            return False
+
+    def get_delivery_status_by_correlation_id(self, correlation_id: str) -> dict | None:
+        """Return delivery status for a given correlation ID.
+
+        Sprint 5.31: Queries the persistent store for delivery status
+        information associated with a specific correlation ID.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT correlation_id, status, alert_type, severity, subject,
+                           transports, transport_results, dispatched_at, completed_at
+                    FROM alert_delivery_status
+                    WHERE correlation_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """, (correlation_id,))
+                row = cursor.fetchone()
+
+            if row is None:
+                return None
+
+            return {
+                "correlation_id": row["correlation_id"],
+                "status": row["status"],
+                "alert_type": row["alert_type"],
+                "severity": row["severity"],
+                "subject": row["subject"],
+                "transports": json.loads(row["transports"]) if row["transports"] else [],
+                "transport_results": json.loads(row["transport_results"]) if row["transport_results"] else {},
+                "dispatched_at": row["dispatched_at"],
+                "completed_at": row["completed_at"],
+            }
+        except Exception as exc:
+            logger.warning(
+                "alert_delivery_status_query_failed",
+                correlation_id=correlation_id,
+                error=str(exc),
+            )
+            return None
 
     def get_alert_count(self) -> int:
         """Return the total number of stored alert history rows."""

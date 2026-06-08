@@ -26,11 +26,12 @@ Returns time-series data for:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from aip.adapter.api.dependencies import AipContainer, get_container
@@ -695,6 +696,212 @@ async def vigil_retention_config_update(
     }
 
 
+# ---------------------------------------------------------------------------
+# Sprint 5.31: Alert delivery status tracking
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vigil/quality/alerts/{correlation_id}/status")
+async def vigil_alert_delivery_status(
+    correlation_id: str,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.31: Get delivery status for an alert by its correlation ID.
+
+    Returns whether async delivery completed, which transports
+    succeeded/failed, retry counts, and the final delivery status.
+    This gives operators visibility into what happened after
+    send_alert() returned.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "delivery_status": None,
+        }
+
+    status = alert_manager.get_delivery_status(correlation_id)
+
+    if status is None:
+        return {
+            "status": "not_found",
+            "correlation_id": correlation_id,
+            "delivery_status": None,
+        }
+
+    return {
+        "status": "ok",
+        "correlation_id": correlation_id,
+        "delivery_status": status,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.31: Alert silencing / muting rules
+# ---------------------------------------------------------------------------
+
+
+class MuteRuleRequest(BaseModel):
+    """Request body for creating a mute rule."""
+    alert_type: str
+    subject: str
+    duration_seconds: int = 3600
+    muted_by: str = "operator"
+    auto_mute_on_ack: bool = False
+
+
+@router.post("/vigil/quality/alerts/mute")
+async def vigil_alert_mute(
+    request: MuteRuleRequest,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.31: Create a mute rule for a specific (alert_type, subject) pair.
+
+    Temporarily suppresses alerts matching the specified pair for the
+    given duration. Mute rules persist across restarts and can be
+    removed via the DELETE endpoint.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "muted": False,
+        }
+
+    rule = alert_manager.add_mute_rule(
+        alert_type=request.alert_type,
+        subject=request.subject,
+        duration_seconds=request.duration_seconds,
+        muted_by=request.muted_by,
+        auto_mute_on_ack=request.auto_mute_on_ack,
+    )
+
+    return {
+        "status": "ok",
+        "mute_rule": rule,
+    }
+
+
+@router.delete("/vigil/quality/alerts/mute")
+async def vigil_alert_unmute(
+    alert_type: str = Query(..., description="Alert type to unmute"),
+    subject: str = Query(..., description="Subject to unmute"),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.31: Remove a mute rule for a specific (alert_type, subject) pair.
+
+    Un-mutes the alert pair so that future alerts are no longer
+    suppressed.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "unmuted": False,
+        }
+
+    removed = alert_manager.remove_mute_rule(alert_type, subject)
+
+    return {
+        "status": "ok" if removed else "rule_not_found",
+        "alert_type": alert_type,
+        "subject": subject,
+        "unmuted": removed,
+    }
+
+
+@router.get("/vigil/quality/alerts/mute")
+async def vigil_alert_mute_rules(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Sprint 5.31: List all active mute rules.
+
+    Returns a list of currently active mute rules, showing which
+    (alert_type, subject) pairs are suppressed and when the rules
+    expire.
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    if alert_manager is None:
+        return {
+            "status": "alerting_not_configured",
+            "mute_rules": [],
+        }
+
+    rules = alert_manager.get_mute_rules()
+
+    return {
+        "status": "ok",
+        "mute_rules": rules,
+        "total_rules": len(rules),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.31: Dashboard real-time updates (SSE)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vigil/quality/dashboard/stream")
+async def vigil_quality_sse(
+    container: AipContainer = Depends(get_container),
+) -> StreamingResponse:
+    """Sprint 5.31: Server-Sent Events stream for real-time alert notifications.
+
+    Replaces or supplements the 10-second polling on the dashboard
+    with SSE for alerts and key quality metrics. Reduces unnecessary
+    load while providing near real-time updates.
+
+    Event types:
+    - alert_delivered: Alert was successfully delivered to all transports
+    - alert_delivery_failed: Alert delivery failed on one or more transports
+    - alert_buffered: Alert was buffered for digest aggregation
+    """
+    alert_manager = getattr(container, "_alert_manager", None)
+
+    async def event_generator():
+        """Generate SSE events from the alert manager subscriber queue."""
+        queue: asyncio.Queue = asyncio.Queue()
+
+        if alert_manager is not None:
+            alert_manager.add_sse_subscriber(queue)
+
+        try:
+            # Send initial connection event
+            yield f"event: connected\ndata: {{}}\n\n"
+
+            while True:
+                try:
+                    # Wait for events with a 30-second timeout
+                    # This sends keepalive comments to prevent connection drops
+                    event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    import json as _json
+                    event_type = event.get("event", "update")
+                    event_data = _json.dumps(event)
+                    yield f"event: {event_type}\ndata: {event_data}\n\n"
+                except asyncio.TimeoutError:
+                    # Send keepalive comment
+                    yield f": keepalive\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            if alert_manager is not None:
+                alert_manager.remove_sse_subscriber(queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/vigil/quality/dashboard", response_class=HTMLResponse)
 async def vigil_quality_dashboard(
     container: AipContainer = Depends(get_container),
@@ -821,6 +1028,30 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   .alert-item .btn-dismiss { background: rgba(100,116,139,0.2); color: #94a3b8; }
   .alert-item .btn-dismiss:hover { background: rgba(100,116,139,0.4); }
   .no-alerts { color: #64748b; font-size: 13px; font-style: italic; }
+  /* Sprint 5.31: Mute rules panel */
+  .mute-panel { background: #1e293b; border-radius: 8px; padding: 20px;
+                border: 1px solid #334155; margin-bottom: 16px; }
+  .mute-panel h3 { font-size: 14px; color: #94a3b8; margin-bottom: 12px;
+                    text-transform: uppercase; letter-spacing: 0.5px; }
+  .mute-item { padding: 6px 12px; border-radius: 4px; margin-bottom: 4px;
+               background: rgba(245,158,11,0.08); border-left: 3px solid #f59e0b;
+               font-size: 12px; color: #cbd5e1; display: flex; align-items: center; gap: 8px; }
+  .mute-item .mute-label { font-weight: 600; color: #f59e0b; }
+  .mute-item button { font-size: 10px; padding: 1px 8px; border-radius: 3px;
+                      cursor: pointer; border: none; background: rgba(239,68,68,0.2);
+                      color: #f87171; }
+  .mute-item button:hover { background: rgba(239,68,68,0.4); }
+  .mute-form { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .mute-form input, .mute-form select { background: #1e293b; border: 1px solid #475569;
+           color: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+  .mute-form button { background: #f59e0b; color: #0f172a; border: none; padding: 4px 12px;
+                      border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; }
+  .mute-form button:hover { background: #d97706; }
+  /* Sprint 5.31: SSE indicator */
+  .sse-indicator { display: inline-flex; align-items: center; gap: 4px; font-size: 11px;
+                   color: #94a3b8; margin-left: 12px; }
+  .sse-dot { width: 6px; height: 6px; border-radius: 50%; background: #4ade80; }
+  .sse-dot.disconnected { background: #f87171; }
 </style>
 </head>
 <body>
@@ -848,6 +1079,9 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   <button id="liveBtn" onclick="toggleLive()" title="Toggle auto-refresh">
     <span id="liveDot" class="live-indicator off"></span>Live
   </button>
+  <span id="sseStatus" class="sse-indicator" style="display:none">
+    <span id="sseDot" class="sse-dot"></span>SSE
+  </span>
   <span id="status" class="status-bar"></span>
 </div>
 
@@ -874,6 +1108,18 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <div class="alerts-panel">
   <h3>Recent Alerts</h3>
   <div id="alerts-list"><span class="no-alerts">Loading alerts...</span></div>
+</div>
+
+<!-- Sprint 5.31: Mute Rules Panel -->
+<div class="mute-panel">
+  <h3>Mute Rules</h3>
+  <div id="mute-list"><span class="no-alerts">No active mute rules</span></div>
+  <div class="mute-form">
+    <input type="text" id="mute-type" placeholder="Alert type" size="16">
+    <input type="text" id="mute-subject" placeholder="Subject" size="16">
+    <input type="number" id="mute-duration" placeholder="Seconds" value="3600" size="8">
+    <button onclick="addMuteRule()">Mute</button>
+  </div>
 </div>
 
 <div class="status-bar" id="meta"></div>
@@ -1005,6 +1251,90 @@ async function dismissAlert(alertId) {
     });
     if (resp.ok) fetchAlerts();
   } catch (err) {}
+}
+
+// Sprint 5.31: Mute rules management
+async function fetchMuteRules() {
+  try {
+    const resp = await fetch('../vigil/quality/alerts/mute');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const rules = data.mute_rules || [];
+    const list = document.getElementById('mute-list');
+
+    if (rules.length === 0) {
+      list.innerHTML = '<span class="no-alerts">No active mute rules</span>';
+      return;
+    }
+
+    list.innerHTML = rules.map(r => {
+      const expires = r.expires_at > 0 ? new Date(r.expires_at * 1000).toLocaleTimeString() : 'indefinite';
+      return '<div class="mute-item">'
+        + '<span class="mute-label">' + r.alert_type + ' / ' + r.subject + '</span>'
+        + '<span>by ' + r.muted_by + ' until ' + expires + '</span>'
+        + '<button onclick="removeMuteRule(\'' + r.alert_type + '\',\'' + r.subject + '\')">Remove</button>'
+      + '</div>';
+    }).join('');
+  } catch (err) {}
+}
+
+async function addMuteRule() {
+  try {
+    const type = document.getElementById('mute-type').value;
+    const subject = document.getElementById('mute-subject').value;
+    const duration = parseInt(document.getElementById('mute-duration').value) || 3600;
+    if (!type || !subject) return;
+    const resp = await fetch('../vigil/quality/alerts/mute', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({alert_type: type, subject: subject, duration_seconds: duration, muted_by: 'dashboard'})
+    });
+    if (resp.ok) { fetchMuteRules(); document.getElementById('mute-type').value = ''; document.getElementById('mute-subject').value = ''; }
+  } catch (err) {}
+}
+
+async function removeMuteRule(type, subject) {
+  try {
+    const resp = await fetch('../vigil/quality/alerts/mute?alert_type=' + encodeURIComponent(type) + '&subject=' + encodeURIComponent(subject), {
+      method: 'DELETE'
+    });
+    if (resp.ok) fetchMuteRules();
+  } catch (err) {}
+}
+
+// Sprint 5.31: SSE (Server-Sent Events) for real-time updates
+let sseConnected = false;
+function connectSSE() {
+  try {
+    const sseStatus = document.getElementById('sseStatus');
+    const sseDot = document.getElementById('sseDot');
+    const es = new EventSource('../vigil/quality/dashboard/stream');
+
+    es.addEventListener('connected', () => {
+      sseConnected = true;
+      sseStatus.style.display = 'inline-flex';
+      sseDot.className = 'sse-dot';
+    });
+
+    es.addEventListener('alert_delivered', (e) => {
+      fetchAlerts();
+    });
+
+    es.addEventListener('alert_delivery_failed', (e) => {
+      fetchAlerts();
+    });
+
+    es.addEventListener('alert_buffered', (e) => {
+      fetchAlerts();
+    });
+
+    es.onerror = () => {
+      sseConnected = false;
+      sseDot.className = 'sse-dot disconnected';
+    };
+  } catch (err) {
+    // SSE not supported or connection failed — fall back to polling
+  }
 }
 
 function drawLineChart(canvasId, datasets, labels) {
@@ -1169,6 +1499,8 @@ function toggleLive() {
 // Auto-load on page load
 fetchData();
 fetchAlerts();
+fetchMuteRules();
+connectSSE();
 </script>
 
 </body>

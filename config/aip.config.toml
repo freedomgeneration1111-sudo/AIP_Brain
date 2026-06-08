@@ -258,6 +258,11 @@ min_alert_interval_seconds = 300  # Rate-limit: don't re-alert same subject for 
 # escalation_severity = "critical"    # Severity to escalate to
 # escalation_additional_transports = []  # Extra transports on escalation
 
+# Sprint 5.31: Alert digest/aggregation
+# digest_enabled = false              # Enable digest for info-severity alerts
+# digest_interval_minutes = 15        # Flush digest every N minutes
+# digest_min_alerts = 3               # Flush digest when N alerts are buffered
+
 # Sprint 5.25: Configuration hot-reload.
 # When enabled, the ConfigWatcher polls aip.config.toml for changes and
 # applies safe values (read_pool.pool_size, sexton.batch_size) without
