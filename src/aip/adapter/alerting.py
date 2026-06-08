@@ -295,6 +295,23 @@ class AlertConfig:
     email_delivery_webhook_url: str = ""  # Webhook URL for email delivery callbacks
     # Sprint 5.39: Native WebSocket permessage-deflate
     ws_native_permessage_deflate_enabled: bool = False  # Use protocol-level permessage-deflate instead of app-level
+    # Sprint 5.45: A/B experiment configuration
+    ab_experiment_enabled: bool = False  # Enable A/B experiment tracking
+    ab_auto_promote_interval_seconds: int = 300  # Auto-promotion check interval (0=disabled)
+    ab_auto_promote_confidence_threshold: float = 0.95  # Confidence threshold for auto-promotion
+    ab_auto_promote_min_samples: int = 50  # Minimum samples before auto-promotion
+    # Sprint 5.46: Experiment expiry/cleanup configuration
+    ab_experiment_ttl_hours: int = 168  # Max running time for experiments (0=disabled, default 7 days)
+    ab_stopped_experiment_retention_hours: int = 72  # Retain stopped experiments for N hours (0=prune immediately)
+    ab_cleanup_interval_seconds: int = 3600  # Cleanup checker interval (0=disabled)
+    # Sprint 5.46: Promotion rollback configuration
+    ab_rollback_enabled: bool = False  # Enable automatic rollback on accuracy degradation
+    ab_rollback_observation_window_seconds: int = 1800  # Window to observe after promotion
+    ab_rollback_accuracy_drop_threshold: float = 0.05  # Accuracy drop threshold to trigger rollback
+    # Sprint 5.46: Decay recovery configuration
+    decay_recovery_enabled: bool = False  # Enable automatic decay recovery
+    decay_recovery_threshold: float = 0.15  # Confidence decay threshold to trigger recovery
+    decay_recovery_actions: list[str] = field(default_factory=lambda: ["rerun_calibration"])  # Actions: rerun_calibration, restart_experiment
 
 
 # ---------------------------------------------------------------------------
@@ -607,6 +624,30 @@ class AlertManager:
         # Sprint 5.39: Native WebSocket permessage-deflate
         self._ws_permessage_deflate_negotiated: bool = False
         self._ws_native_deflate_bytes_saved: int = 0
+        # Sprint 5.45: A/B experiment tracking
+        # _ab_experiments: experiment_name -> experiment dict
+        # Each experiment dict: {name, control_config, variant_config, status, started_at,
+        #   stopped_at, result, control_samples, variant_samples, control_accuracy,
+        #   variant_accuracy, promoted_variant, promotion_timestamp, metadata}
+        self._ab_experiments: dict[str, dict[str, Any]] = {}
+        self._ab_promotion_checker_thread: threading.Thread | None = None
+        self._ab_promotion_checker_running: bool = False
+        self._total_ab_promotions: int = 0
+        self._total_ab_auto_promotions: int = 0
+        # Sprint 5.45: Decay event tracking
+        self._decay_events: list[dict] = []  # Recent decay events
+        self._total_decay_events: int = 0
+        # Sprint 5.46: Cleanup checker state
+        self._ab_cleanup_checker_thread: threading.Thread | None = None
+        self._ab_cleanup_checker_running: bool = False
+        self._total_ab_cleanups: int = 0
+        self._last_ab_cleanup_run: float = 0.0
+        # Sprint 5.46: Rollback tracking
+        self._ab_rollback_history: list[dict] = []  # History of automatic rollbacks
+        self._total_ab_rollbacks: int = 0
+        # Sprint 5.46: Decay recovery tracking
+        self._decay_recovery_history: list[dict] = []  # History of recovery actions
+        self._total_decay_recoveries: int = 0
         # Lock for thread-safe mutation of shared state
         self._lock = threading.Lock()
 
@@ -1283,6 +1324,18 @@ class AlertManager:
                 "negotiated": self._ws_permessage_deflate_negotiated,
                 "mode": "native" if self._ws_permessage_deflate_negotiated else "application_level",
             },
+            # Sprint 5.45: A/B experiment metrics
+            "ab_experiments_total": len(self._ab_experiments),
+            "ab_experiments_running": len([e for e in self._ab_experiments.values() if e.get("status") == "running"]),
+            "ab_promotion_checker_running": self._ab_promotion_checker_running,
+            "ab_total_promotions": self._total_ab_promotions,
+            "ab_total_auto_promotions": self._total_ab_auto_promotions,
+            "ab_total_decay_events": self._total_decay_events,
+            # Sprint 5.46: Cleanup, rollback, and recovery metrics
+            "ab_cleanup_checker_running": self._ab_cleanup_checker_running,
+            "ab_total_cleanups": self._total_ab_cleanups,
+            "ab_total_rollbacks": self._total_ab_rollbacks,
+            "ab_total_decay_recoveries": self._total_decay_recoveries,
         }
 
     def get_alert_history(
@@ -3052,7 +3105,19 @@ class AlertManager:
             "pool_adjustment": self._config.alert_on_pool_adjustment,
             "batch_reduction": self._config.alert_on_batch_reduction,
         }
-        return mapping.get(alert_type, True)
+        result = mapping.get(alert_type)
+        if result is not None:
+            return result
+        # Sprint 5.45/5.46: New alert types
+        if alert_type == "ab_experiment_promotion":
+            return True  # A/B experiment promotions are always sent when alerting is enabled
+        if alert_type == "ab_experiment_rollback":
+            return True  # A/B experiment rollbacks are always sent when alerting is enabled
+        if alert_type == "confidence_decay":
+            return self._config.alert_on_quality_degradation  # Decay uses quality degradation flag
+        if alert_type == "decay_recovery":
+            return True  # Decay recovery notifications are always sent
+        return True
 
     # Sprint 5.30: Severity escalation logic
 
@@ -4799,4 +4864,876 @@ class AlertManager:
             "app_level_enabled": self._config.ws_compression_enabled,
             "mode": mode,
             "bytes_saved_estimate": self._ws_compression_bytes_saved_estimate,
+        }
+
+    # -------------------------------------------------------------------
+    # Sprint 5.45: A/B Experiment Management
+    # -------------------------------------------------------------------
+
+    def start_ab_experiment(
+        self,
+        name: str,
+        control_config: dict[str, Any],
+        variant_config: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Start a new A/B experiment.
+
+        Sprint 5.45: Creates an experiment with control and variant configurations.
+        The experiment runs until manually stopped, auto-promoted, or expired by TTL.
+
+        Parameters
+        ----------
+        name:
+            Unique experiment name.
+        control_config:
+            Configuration dict for the control (baseline) variant.
+        variant_config:
+            Configuration dict for the experimental variant.
+        metadata:
+            Optional metadata dict for the experiment.
+
+        Returns the experiment dict.
+        """
+        now = time.time()
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        if name in self._ab_experiments:
+            existing = self._ab_experiments[name]
+            if existing.get("status") == "running":
+                logger.warning("ab_experiment_already_running", name=name)
+                return existing
+
+        experiment = {
+            "name": name,
+            "control_config": control_config,
+            "variant_config": variant_config,
+            "status": "running",
+            "started_at": now_iso,
+            "stopped_at": None,
+            "result": None,
+            "control_samples": 0,
+            "variant_samples": 0,
+            "control_accuracy": 0.0,
+            "variant_accuracy": 0.0,
+            "promoted_variant": None,
+            "promotion_timestamp": None,
+            "metadata": metadata or {},
+            "created_at": now_iso,
+        }
+
+        self._ab_experiments[name] = experiment
+
+        # Persist to store
+        self._persist_ab_experiment(experiment)
+
+        logger.info(
+            "ab_experiment_started",
+            name=name,
+            control_config=control_config,
+            variant_config=variant_config,
+        )
+
+        return experiment
+
+    def stop_ab_experiment(self, name: str, result: str | None = None) -> dict[str, Any] | None:
+        """Stop a running A/B experiment.
+
+        Sprint 5.45: Marks the experiment as stopped with an optional result.
+        The experiment record is retained for the configured retention period.
+
+        Parameters
+        ----------
+        name:
+            The experiment name to stop.
+        result:
+            Optional result string (e.g., "variant_wins", "control_wins", "inconclusive").
+
+        Returns the updated experiment dict, or None if not found.
+        """
+        if name not in self._ab_experiments:
+            logger.warning("ab_experiment_not_found", name=name)
+            return None
+
+        experiment = self._ab_experiments[name]
+        if experiment.get("status") != "running":
+            logger.warning("ab_experiment_not_running", name=name, status=experiment.get("status"))
+            return experiment
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        experiment["status"] = "stopped"
+        experiment["stopped_at"] = now_iso
+        experiment["result"] = result
+
+        # Persist to store
+        self._persist_ab_experiment(experiment)
+
+        logger.info(
+            "ab_experiment_stopped",
+            name=name,
+            result=result,
+        )
+
+        return experiment
+
+    def record_ab_result(
+        self,
+        name: str,
+        variant: str,
+        accuracy: float,
+        samples: int = 1,
+    ) -> dict[str, Any] | None:
+        """Record a result for an A/B experiment variant.
+
+        Sprint 5.45: Accumulates accuracy and sample count for a variant.
+        Accuracy is tracked as a running average weighted by samples.
+
+        Parameters
+        ----------
+        name:
+            The experiment name.
+        variant:
+            Either "control" or "variant".
+        accuracy:
+            The accuracy measurement for this sample batch.
+        samples:
+            Number of samples in this batch (default 1).
+
+        Returns the updated experiment dict, or None if not found.
+        """
+        if name not in self._ab_experiments:
+            logger.warning("ab_experiment_not_found", name=name)
+            return None
+
+        experiment = self._ab_experiments[name]
+        if experiment.get("status") != "running":
+            logger.warning("ab_experiment_not_running", name=name)
+            return experiment
+
+        if variant == "control":
+            old_samples = experiment["control_samples"]
+            new_samples = old_samples + samples
+            if new_samples > 0:
+                experiment["control_accuracy"] = (
+                    (experiment["control_accuracy"] * old_samples + accuracy * samples) / new_samples
+                )
+            experiment["control_samples"] = new_samples
+        elif variant == "variant":
+            old_samples = experiment["variant_samples"]
+            new_samples = old_samples + samples
+            if new_samples > 0:
+                experiment["variant_accuracy"] = (
+                    (experiment["variant_accuracy"] * old_samples + accuracy * samples) / new_samples
+                )
+            experiment["variant_samples"] = new_samples
+        else:
+            logger.warning("ab_experiment_invalid_variant", name=name, variant=variant)
+            return experiment
+
+        # Persist to store
+        self._persist_ab_experiment(experiment)
+
+        logger.info(
+            "ab_result_recorded",
+            name=name,
+            variant=variant,
+            accuracy=accuracy,
+            samples=samples,
+        )
+
+        return experiment
+
+    def promote_variant(self, name: str, variant: str = "variant") -> dict[str, Any] | None:
+        """Promote a variant in an A/B experiment.
+
+        Sprint 5.45: Marks the specified variant as promoted, records the
+        promotion timestamp, and sends an alert notification.
+
+        Parameters
+        ----------
+        name:
+            The experiment name.
+        variant:
+            The variant to promote ("control" or "variant", default "variant").
+
+        Returns the updated experiment dict, or None if not found.
+        """
+        if name not in self._ab_experiments:
+            logger.warning("ab_experiment_not_found", name=name)
+            return None
+
+        experiment = self._ab_experiments[name]
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        experiment["promoted_variant"] = variant
+        experiment["promotion_timestamp"] = now_iso
+        experiment["status"] = "promoted"
+
+        self._total_ab_promotions += 1
+
+        # Persist to store
+        self._persist_ab_experiment(experiment)
+
+        # Send notification alert
+        self.send_alert(Alert(
+            alert_type="ab_experiment_promotion",
+            severity="info",
+            subject=f"experiment:{name}",
+            message=f"A/B experiment '{name}' promoted variant '{variant}'",
+            data={
+                "experiment_name": name,
+                "variant": variant,
+                "control_accuracy": experiment["control_accuracy"],
+                "variant_accuracy": experiment["variant_accuracy"],
+                "control_samples": experiment["control_samples"],
+                "variant_samples": experiment["variant_samples"],
+                "auto": False,
+            },
+        ))
+
+        logger.info(
+            "ab_variant_promoted",
+            name=name,
+            variant=variant,
+        )
+
+        return experiment
+
+    def get_ab_experiment(self, name: str) -> dict[str, Any] | None:
+        """Return a single A/B experiment by name.
+
+        Sprint 5.45: Returns the experiment dict or None if not found.
+        """
+        return self._ab_experiments.get(name)
+
+    def get_ab_experiments(self, status: str | None = None) -> list[dict[str, Any]]:
+        """Return all A/B experiments, optionally filtered by status.
+
+        Sprint 5.45: Returns a list of experiment dicts.
+        """
+        experiments = list(self._ab_experiments.values())
+        if status:
+            experiments = [e for e in experiments if e.get("status") == status]
+        return experiments
+
+    def start_ab_promotion_checker(self) -> None:
+        """Start the auto-promotion checker background thread.
+
+        Sprint 5.45: Periodically checks running experiments to see if any
+        variant meets the auto-promotion criteria (sufficient samples and
+        confidence threshold).
+        """
+        interval = self._config.ab_auto_promote_interval_seconds
+        if interval <= 0:
+            logger.info("ab_promotion_checker_disabled")
+            return
+
+        if self._ab_promotion_checker_running:
+            logger.warning("ab_promotion_checker_already_running")
+            return
+
+        self._ab_promotion_checker_running = True
+
+        def _checker_loop():
+            logger.info("ab_promotion_checker_started", interval_seconds=interval)
+            while self._ab_promotion_checker_running:
+                try:
+                    self._check_auto_promotion()
+                except Exception as exc:
+                    logger.warning("ab_promotion_checker_error", error=str(exc))
+                time.sleep(interval)
+
+        self._ab_promotion_checker_thread = threading.Thread(
+            target=_checker_loop,
+            daemon=True,
+            name="ab-promotion-checker",
+        )
+        self._ab_promotion_checker_thread.start()
+
+    def stop_ab_promotion_checker(self) -> None:
+        """Stop the auto-promotion checker background thread."""
+        self._ab_promotion_checker_running = False
+        logger.info("ab_promotion_checker_stopped")
+
+    def _check_auto_promotion(self) -> None:
+        """Check all running experiments for auto-promotion eligibility.
+
+        Sprint 5.45: An experiment is eligible for auto-promotion when:
+        1. Both variants have >= ab_auto_promote_min_samples
+        2. One variant's accuracy exceeds the other by >= ab_auto_promote_confidence_threshold
+        """
+        threshold = self._config.ab_auto_promote_confidence_threshold
+        min_samples = self._config.ab_auto_promote_min_samples
+
+        for name, experiment in list(self._ab_experiments.items()):
+            if experiment.get("status") != "running":
+                continue
+
+            c_samples = experiment["control_samples"]
+            v_samples = experiment["variant_samples"]
+
+            if c_samples < min_samples or v_samples < min_samples:
+                continue
+
+            c_acc = experiment["control_accuracy"]
+            v_acc = experiment["variant_accuracy"]
+
+            winner = None
+            if v_acc >= threshold and v_acc - c_acc >= (1.0 - threshold):
+                winner = "variant"
+            elif c_acc >= threshold and c_acc - v_acc >= (1.0 - threshold):
+                winner = "control"
+
+            if winner:
+                self._total_ab_auto_promotions += 1
+                self.promote_variant(name, variant=winner)
+                # Mark as auto-promoted in the data
+                experiment["auto_promoted"] = True
+                logger.info(
+                    "ab_auto_promoted",
+                    name=name,
+                    winner=winner,
+                    control_accuracy=c_acc,
+                    variant_accuracy=v_acc,
+                )
+
+    def get_ab_promotion_checker_status(self) -> dict[str, Any]:
+        """Return the status of the auto-promotion checker.
+
+        Sprint 5.45: Provides visibility into the checker's running state and metrics.
+        """
+        return {
+            "running": self._ab_promotion_checker_running,
+            "interval_seconds": self._config.ab_auto_promote_interval_seconds,
+            "confidence_threshold": self._config.ab_auto_promote_confidence_threshold,
+            "min_samples": self._config.ab_auto_promote_min_samples,
+            "total_promotions": self._total_ab_promotions,
+            "total_auto_promotions": self._total_ab_auto_promotions,
+            "running_experiments": len([e for e in self._ab_experiments.values() if e.get("status") == "running"]),
+        }
+
+    def notify_decay_event(self, subject: str, decay_amount: float, current_confidence: float) -> str:
+        """Record and notify a significant confidence decay event.
+
+        Sprint 5.45: Tracks decay events and sends an alert notification.
+        Returns the correlation ID of the alert, or empty string if alerting disabled.
+
+        Parameters
+        ----------
+        subject:
+            The subject that experienced decay (e.g., "vigil_faithfulness").
+        decay_amount:
+            The magnitude of the confidence decay (0.0-1.0).
+        current_confidence:
+            The current confidence score after decay.
+        """
+        event = {
+            "subject": subject,
+            "decay_amount": decay_amount,
+            "current_confidence": current_confidence,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        self._decay_events.append(event)
+        self._total_decay_events += 1
+
+        # Keep only last 100 decay events
+        if len(self._decay_events) > 100:
+            self._decay_events = self._decay_events[-100:]
+
+        # Send alert
+        return self.send_alert(Alert(
+            alert_type="confidence_decay",
+            severity="warning" if decay_amount < 0.2 else "critical",
+            subject=subject,
+            message=f"Confidence decay of {decay_amount:.3f} detected for {subject} (current: {current_confidence:.3f})",
+            data={
+                "subject": subject,
+                "decay_amount": decay_amount,
+                "current_confidence": current_confidence,
+            },
+        ))
+
+    def get_decay_events(self, limit: int = 50) -> list[dict]:
+        """Return recent decay events.
+
+        Sprint 5.45: Returns the most recent decay events, up to the limit.
+        """
+        return self._decay_events[-limit:]
+
+    def restore_ab_experiments_from_store(self) -> int:
+        """Restore A/B experiment state from the persistent store.
+
+        Sprint 5.45: Called on startup to restore experiment state.
+        Returns the number of experiments restored.
+        """
+        if self._history_store is None:
+            return 0
+
+        try:
+            experiments = self._history_store.get_ab_experiments()
+            count = 0
+            for exp in experiments:
+                name = exp.get("name", "")
+                if name and name not in self._ab_experiments:
+                    self._ab_experiments[name] = exp
+                    count += 1
+
+            logger.info(
+                "ab_experiments_restored",
+                count=count,
+                total=len(self._ab_experiments),
+            )
+            return count
+        except Exception as exc:
+            logger.warning("ab_experiments_restore_failed", error=str(exc))
+            return 0
+
+    def _persist_ab_experiment(self, experiment: dict[str, Any]) -> None:
+        """Persist an A/B experiment to the history store."""
+        if self._history_store is None:
+            return
+        try:
+            self._history_store.record_ab_experiment(experiment)
+        except Exception as exc:
+            logger.warning("ab_experiment_persist_failed", error=str(exc))
+
+    # -------------------------------------------------------------------
+    # Sprint 5.46: Experiment Result Expiry & Cleanup
+    # -------------------------------------------------------------------
+
+    def cleanup_expired_experiments(self) -> dict[str, int]:
+        """Clean up old/stopped A/B experiments.
+
+        Sprint 5.46: Performs two types of cleanup:
+        1. Stop experiments that have been running beyond the configured TTL.
+        2. Prune stopped experiment records from memory and store after
+           the retention period.
+
+        Returns a dict with counts: {expired_stopped, pruned, total}.
+        """
+        now = time.time()
+        ttl_seconds = self._config.ab_experiment_ttl_hours * 3600
+        retention_seconds = self._config.ab_stopped_experiment_retention_hours * 3600
+
+        expired_stopped = 0
+        pruned = 0
+
+        # 1. Stop experiments that exceeded TTL
+        if ttl_seconds > 0:
+            for name, experiment in list(self._ab_experiments.items()):
+                if experiment.get("status") != "running":
+                    continue
+                started_at = experiment.get("started_at", "")
+                if not started_at:
+                    continue
+                try:
+                    started_dt = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+                    started_epoch = started_dt.timestamp()
+                    if now - started_epoch > ttl_seconds:
+                        self.stop_ab_experiment(name, result="ttl_expired")
+                        expired_stopped += 1
+                        logger.info("ab_experiment_ttl_expired", name=name)
+                except (ValueError, TypeError):
+                    continue
+
+        # 2. Prune stopped experiments past retention period
+        if retention_seconds > 0:
+            to_prune = []
+            for name, experiment in list(self._ab_experiments.items()):
+                if experiment.get("status") == "running":
+                    continue
+                stopped_at = experiment.get("stopped_at", "")
+                if not stopped_at:
+                    # No stopped_at but not running — prune immediately
+                    to_prune.append(name)
+                    continue
+                try:
+                    stopped_dt = datetime.fromisoformat(stopped_at.replace("Z", "+00:00"))
+                    stopped_epoch = stopped_dt.timestamp()
+                    if now - stopped_epoch > retention_seconds:
+                        to_prune.append(name)
+                except (ValueError, TypeError):
+                    to_prune.append(name)
+
+            for name in to_prune:
+                del self._ab_experiments[name]
+                # Also delete from persistent store
+                if self._history_store is not None:
+                    try:
+                        self._history_store.delete_ab_experiment(name)
+                    except Exception as exc:
+                        logger.warning("ab_experiment_prune_from_store_failed", name=name, error=str(exc))
+                pruned += 1
+                logger.info("ab_experiment_pruned", name=name)
+
+        self._total_ab_cleanups += 1
+        self._last_ab_cleanup_run = now
+
+        result_counts = {
+            "expired_stopped": expired_stopped,
+            "pruned": pruned,
+            "total": expired_stopped + pruned,
+        }
+
+        logger.info(
+            "ab_cleanup_complete",
+            **result_counts,
+        )
+
+        return result_counts
+
+    def start_ab_cleanup_checker(self) -> None:
+        """Start the cleanup checker background thread.
+
+        Sprint 5.46: Periodically runs cleanup_expired_experiments()
+        based on the configured interval.
+        """
+        interval = self._config.ab_cleanup_interval_seconds
+        if interval <= 0:
+            logger.info("ab_cleanup_checker_disabled")
+            return
+
+        if self._ab_cleanup_checker_running:
+            logger.warning("ab_cleanup_checker_already_running")
+            return
+
+        self._ab_cleanup_checker_running = True
+
+        def _cleanup_loop():
+            logger.info("ab_cleanup_checker_started", interval_seconds=interval)
+            while self._ab_cleanup_checker_running:
+                try:
+                    self.cleanup_expired_experiments()
+                except Exception as exc:
+                    logger.warning("ab_cleanup_checker_error", error=str(exc))
+                time.sleep(interval)
+
+        self._ab_cleanup_checker_thread = threading.Thread(
+            target=_cleanup_loop,
+            daemon=True,
+            name="ab-cleanup-checker",
+        )
+        self._ab_cleanup_checker_thread.start()
+
+    def stop_ab_cleanup_checker(self) -> None:
+        """Stop the cleanup checker background thread."""
+        self._ab_cleanup_checker_running = False
+        logger.info("ab_cleanup_checker_stopped")
+
+    def get_ab_cleanup_status(self) -> dict[str, Any]:
+        """Return the status of the cleanup checker.
+
+        Sprint 5.46: Provides visibility into the cleanup checker's running
+        state, metrics, and configuration.
+        """
+        return {
+            "running": self._ab_cleanup_checker_running,
+            "interval_seconds": self._config.ab_cleanup_interval_seconds,
+            "ttl_hours": self._config.ab_experiment_ttl_hours,
+            "retention_hours": self._config.ab_stopped_experiment_retention_hours,
+            "total_cleanups": self._total_ab_cleanups,
+            "last_cleanup_run": self._last_ab_cleanup_run,
+            "running_experiments": len([e for e in self._ab_experiments.values() if e.get("status") == "running"]),
+            "stopped_experiments": len([e for e in self._ab_experiments.values() if e.get("status") != "running"]),
+        }
+
+    # -------------------------------------------------------------------
+    # Sprint 5.46: Promotion Rollback Automation
+    # -------------------------------------------------------------------
+
+    def check_promotion_rollback(self) -> list[dict[str, Any]]:
+        """Check promoted experiments for accuracy degradation.
+
+        Sprint 5.46: Examines recently promoted experiments to see if
+        the promoted variant is causing accuracy degradation within the
+        observation window. If so, triggers automatic rollback.
+
+        Returns a list of rollback dicts for experiments that were rolled back.
+        """
+        if not self._config.ab_rollback_enabled:
+            return []
+
+        now = time.time()
+        observation_window = self._config.ab_rollback_observation_window_seconds
+        drop_threshold = self._config.ab_rollback_accuracy_drop_threshold
+        rollbacks = []
+
+        for name, experiment in list(self._ab_experiments.items()):
+            if experiment.get("status") != "promoted":
+                continue
+
+            promo_ts = experiment.get("promotion_timestamp", "")
+            if not promo_ts:
+                continue
+
+            try:
+                promo_dt = datetime.fromisoformat(promo_ts.replace("Z", "+00:00"))
+                promo_epoch = promo_dt.timestamp()
+                if now - promo_epoch > observation_window:
+                    continue  # Outside observation window
+            except (ValueError, TypeError):
+                continue
+
+            # Check if the promoted variant has degraded
+            promoted = experiment.get("promoted_variant", "variant")
+            if promoted == "variant":
+                promoted_acc = experiment["variant_accuracy"]
+                baseline_acc = experiment["control_accuracy"]
+            else:
+                promoted_acc = experiment["control_accuracy"]
+                baseline_acc = experiment["variant_accuracy"]
+
+            if baseline_acc - promoted_acc > drop_threshold:
+                rollback_info = self._auto_rollback_promotion(name, experiment)
+                if rollback_info:
+                    rollbacks.append(rollback_info)
+
+        return rollbacks
+
+    def _auto_rollback_promotion(self, name: str, experiment: dict[str, Any]) -> dict[str, Any] | None:
+        """Perform automatic rollback of a promoted experiment.
+
+        Sprint 5.46: Reverts the experiment to its pre-promotion state,
+        records the rollback, and sends a notification alert.
+        """
+        now_iso = datetime.now(timezone.utc).isoformat()
+        promoted = experiment.get("promoted_variant", "variant")
+
+        # Rollback: revert status and clear promotion
+        experiment["status"] = "rolled_back"
+        experiment["rolled_back_at"] = now_iso
+        experiment["rolled_back_from"] = promoted
+
+        self._total_ab_rollbacks += 1
+
+        rollback_record = {
+            "experiment_name": name,
+            "rolled_back_variant": promoted,
+            "rolled_back_at": now_iso,
+            "control_accuracy": experiment["control_accuracy"],
+            "variant_accuracy": experiment["variant_accuracy"],
+            "auto": True,
+        }
+        self._ab_rollback_history.append(rollback_record)
+        # Keep last 50 rollbacks
+        if len(self._ab_rollback_history) > 50:
+            self._ab_rollback_history = self._ab_rollback_history[-50:]
+
+        # Persist
+        self._persist_ab_experiment(experiment)
+
+        # Send notification
+        self.send_alert(Alert(
+            alert_type="ab_experiment_rollback",
+            severity="warning",
+            subject=f"experiment:{name}",
+            message=f"Auto-rollback triggered for experiment '{name}': variant '{promoted}' caused accuracy degradation",
+            data={
+                "experiment_name": name,
+                "rolled_back_variant": promoted,
+                "control_accuracy": experiment["control_accuracy"],
+                "variant_accuracy": experiment["variant_accuracy"],
+                "auto": True,
+            },
+        ))
+
+        logger.info(
+            "ab_auto_rollback",
+            name=name,
+            rolled_back_variant=promoted,
+        )
+
+        return rollback_record
+
+    def get_promotion_rollback_status(self) -> dict[str, Any]:
+        """Return the status of promotion rollback automation.
+
+        Sprint 5.46: Provides visibility into rollback configuration and history.
+        """
+        return {
+            "enabled": self._config.ab_rollback_enabled,
+            "observation_window_seconds": self._config.ab_rollback_observation_window_seconds,
+            "accuracy_drop_threshold": self._config.ab_rollback_accuracy_drop_threshold,
+            "total_rollbacks": self._total_ab_rollbacks,
+            "rollback_history": self._ab_rollback_history[-20:],
+            "promoted_experiments": [
+                e for e in self._ab_experiments.values() if e.get("status") == "promoted"
+            ],
+        }
+
+    # -------------------------------------------------------------------
+    # Sprint 5.46: Decay Recovery Orchestrator
+    # -------------------------------------------------------------------
+
+    def run_decay_recovery_orchestrator(self) -> list[dict[str, Any]]:
+        """Check for significant confidence decay and trigger recovery actions.
+
+        Sprint 5.46: When confidence decay exceeds the configured threshold,
+        automatically triggers actions such as re-running calibration or
+        restarting relevant experiments.
+
+        Returns a list of recovery action dicts.
+        """
+        if not self._config.decay_recovery_enabled:
+            return []
+
+        threshold = self._config.decay_recovery_threshold
+        actions = self._config.decay_recovery_actions
+        recoveries = []
+
+        # Check recent decay events
+        for event in self._decay_events:
+            if event.get("decay_amount", 0) < threshold:
+                continue
+
+            subject = event.get("subject", "")
+            current_confidence = event.get("current_confidence", 0)
+
+            recovery_actions_taken = []
+            for action in actions:
+                if action == "rerun_calibration":
+                    # Mark all experiments for the subject for re-calibration
+                    for name, experiment in self._ab_experiments.items():
+                        if subject in name and experiment.get("status") == "running":
+                            experiment["needs_recalibration"] = True
+                            self._persist_ab_experiment(experiment)
+                            recovery_actions_taken.append({
+                                "action": "rerun_calibration",
+                                "experiment": name,
+                            })
+
+                elif action == "restart_experiment":
+                    # Restart stopped experiments related to the subject
+                    for name, experiment in list(self._ab_experiments.items()):
+                        if subject in name and experiment.get("status") in ("stopped", "rolled_back"):
+                            # Reset and restart
+                            experiment["status"] = "running"
+                            experiment["stopped_at"] = None
+                            experiment["result"] = None
+                            experiment["started_at"] = datetime.now(timezone.utc).isoformat()
+                            self._persist_ab_experiment(experiment)
+                            recovery_actions_taken.append({
+                                "action": "restart_experiment",
+                                "experiment": name,
+                            })
+
+            if recovery_actions_taken:
+                recovery_record = {
+                    "subject": subject,
+                    "decay_amount": event.get("decay_amount", 0),
+                    "current_confidence": current_confidence,
+                    "actions_taken": recovery_actions_taken,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                recoveries.append(recovery_record)
+                self._decay_recovery_history.append(recovery_record)
+                self._total_decay_recoveries += 1
+
+                # Send notification
+                self.send_alert(Alert(
+                    alert_type="decay_recovery",
+                    severity="info",
+                    subject=subject,
+                    message=f"Decay recovery triggered for {subject}: {len(recovery_actions_taken)} actions taken",
+                    data=recovery_record,
+                ))
+
+        # Keep last 50 recovery records
+        if len(self._decay_recovery_history) > 50:
+            self._decay_recovery_history = self._decay_recovery_history[-50:]
+
+        return recoveries
+
+    def get_decay_recovery_status(self) -> dict[str, Any]:
+        """Return the status of the decay recovery orchestrator.
+
+        Sprint 5.46: Provides visibility into recovery configuration and history.
+        """
+        return {
+            "enabled": self._config.decay_recovery_enabled,
+            "threshold": self._config.decay_recovery_threshold,
+            "actions": self._config.decay_recovery_actions,
+            "total_recoveries": self._total_decay_recoveries,
+            "recovery_history": self._decay_recovery_history[-20:],
+            "recent_decay_events": self._decay_events[-10:],
+        }
+
+    # -------------------------------------------------------------------
+    # Sprint 5.46: Graceful Shutdown Persistence
+    # -------------------------------------------------------------------
+
+    def persist_all_ab_experiments(self) -> int:
+        """Persist all running A/B experiments and stop background checkers.
+
+        Sprint 5.46: Called during graceful shutdown to ensure all experiment
+        state is safely persisted. Also stops the auto-promotion checker and
+        cleanup checker threads.
+
+        Returns the number of experiments persisted.
+        """
+        count = 0
+
+        # Stop background checkers
+        self.stop_ab_promotion_checker()
+        self.stop_ab_cleanup_checker()
+
+        # Persist all experiments
+        for name, experiment in self._ab_experiments.items():
+            self._persist_ab_experiment(experiment)
+            count += 1
+
+        logger.info(
+            "ab_experiments_persisted_on_shutdown",
+            count=count,
+        )
+
+        return count
+
+    # -------------------------------------------------------------------
+    # Sprint 5.46: Dashboard Experiment Monitoring
+    # -------------------------------------------------------------------
+
+    def get_experiment_monitoring_summary(self) -> dict[str, Any]:
+        """Return a comprehensive experiment monitoring summary.
+
+        Sprint 5.46: Aggregates experiment data for the dashboard panel,
+        including running experiments, variant metrics, promotion history,
+        and auto-promotion checker status.
+        """
+        running = []
+        for name, exp in self._ab_experiments.items():
+            if exp.get("status") == "running":
+                running.append(exp)
+
+        promotions = []
+        for name, exp in self._ab_experiments.items():
+            if exp.get("promoted_variant"):
+                promotions.append({
+                    "experiment_name": name,
+                    "variant": exp["promoted_variant"],
+                    "timestamp": exp.get("promotion_timestamp", ""),
+                    "auto": exp.get("auto_promoted", False),
+                    "control_accuracy": exp["control_accuracy"],
+                    "variant_accuracy": exp["variant_accuracy"],
+                })
+
+        return {
+            "total_experiments": len(self._ab_experiments),
+            "running_experiments": running,
+            "running_count": len(running),
+            "stopped_count": len([e for e in self._ab_experiments.values() if e.get("status") == "stopped"]),
+            "promoted_count": len([e for e in self._ab_experiments.values() if e.get("status") == "promoted"]),
+            "rolled_back_count": len([e for e in self._ab_experiments.values() if e.get("status") == "rolled_back"]),
+            "promotion_history": promotions,
+            "auto_promotion_checker": self.get_ab_promotion_checker_status(),
+            "cleanup_status": self.get_ab_cleanup_status(),
+            "rollback_status": {
+                "enabled": self._config.ab_rollback_enabled,
+                "total_rollbacks": self._total_ab_rollbacks,
+            },
+            "decay_recovery_status": {
+                "enabled": self._config.decay_recovery_enabled,
+                "total_recoveries": self._total_decay_recoveries,
+            },
         }

@@ -32,7 +32,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from aip.adapter.api.dependencies import AipContainer, get_container
@@ -2059,6 +2059,170 @@ async def vigil_auto_merge_policy_update(
             "window_seconds": alert_manager.config.auto_merge_window_seconds,
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.45: A/B experiment endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/vigil/quality/ab-experiments")
+async def start_ab_experiment(
+    name: str = Query(..., description="Unique experiment name"),
+    control_config: str = Query("{}", description="JSON control config"),
+    variant_config: str = Query("{}", description="JSON variant config"),
+    metadata: str = Query("{}", description="Optional JSON metadata"),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Start a new A/B experiment. Sprint 5.45."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    try:
+        cc = _json.loads(control_config)
+        vc = _json.loads(variant_config)
+        md = _json.loads(metadata)
+    except Exception:
+        return JSONResponse({"error": "invalid_json_config"}, status_code=400)
+    experiment = alert_mgr.start_ab_experiment(name, cc, vc, md)
+    return {"experiment": experiment}
+
+
+@router.get("/vigil/quality/ab-experiments")
+async def get_ab_experiments(
+    status: str | None = Query(None, description="Filter by status"),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """List A/B experiments. Sprint 5.45."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    experiments = alert_mgr.get_ab_experiments(status=status)
+    return {"experiments": experiments, "total": len(experiments)}
+
+
+@router.post("/vigil/quality/ab-experiments/{name}/result")
+async def record_ab_result(
+    name: str,
+    variant: str = Query(..., description="control or variant"),
+    accuracy: float = Query(..., description="Accuracy measurement"),
+    samples: int = Query(1, description="Sample count"),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Record a result for an A/B experiment variant. Sprint 5.45."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    result = alert_mgr.record_ab_result(name, variant, accuracy, samples)
+    if result is None:
+        return JSONResponse({"error": "experiment_not_found"}, status_code=404)
+    return {"experiment": result}
+
+
+@router.post("/vigil/quality/ab-experiments/{name}/promote")
+async def promote_variant(
+    name: str,
+    variant: str = Query("variant", description="Variant to promote"),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Promote a variant in an A/B experiment. Sprint 5.45."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    result = alert_mgr.promote_variant(name, variant)
+    if result is None:
+        return JSONResponse({"error": "experiment_not_found"}, status_code=404)
+    return {"experiment": result}
+
+
+@router.post("/vigil/quality/ab-experiments/{name}/stop")
+async def stop_ab_experiment(
+    name: str,
+    result: str | None = Query(None, description="Optional result string"),
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Stop a running A/B experiment. Sprint 5.45."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    exp = alert_mgr.stop_ab_experiment(name, result)
+    if exp is None:
+        return JSONResponse({"error": "experiment_not_found"}, status_code=404)
+    return {"experiment": exp}
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.46: Experiment cleanup, rollback & recovery, monitoring
+# ---------------------------------------------------------------------------
+
+
+@router.post("/vigil/quality/ab-experiments/cleanup")
+async def cleanup_ab_experiments(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Trigger manual cleanup of expired/stopped A/B experiments. Sprint 5.46."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    cleanup_result = alert_mgr.cleanup_expired_experiments()
+    return {"cleanup_result": cleanup_result, "status": alert_mgr.get_ab_cleanup_status()}
+
+
+@router.get("/vigil/quality/ab-experiments/rollback-status")
+async def get_rollback_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get promotion rollback automation status. Sprint 5.46."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    return alert_mgr.get_promotion_rollback_status()
+
+
+@router.post("/vigil/quality/ab-experiments/check-rollback")
+async def check_promotion_rollback(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Check for and trigger automatic rollback of degraded promotions. Sprint 5.46."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    rollbacks = alert_mgr.check_promotion_rollback()
+    return {"rollbacks": rollbacks, "total": len(rollbacks)}
+
+
+@router.get("/vigil/quality/decay-recovery-status")
+async def get_decay_recovery_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get decay recovery orchestrator status. Sprint 5.46."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    return alert_mgr.get_decay_recovery_status()
+
+
+@router.post("/vigil/quality/decay-recovery")
+async def run_decay_recovery(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Trigger manual decay recovery check. Sprint 5.46."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    recoveries = alert_mgr.run_decay_recovery_orchestrator()
+    return {"recoveries": recoveries, "total": len(recoveries)}
+
+
+@router.get("/vigil/quality/experiment-monitoring")
+async def get_experiment_monitoring(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get comprehensive experiment monitoring summary for dashboard. Sprint 5.46."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    return alert_mgr.get_experiment_monitoring_summary()
 
 
 @router.get("/vigil/quality/dashboard", response_class=HTMLResponse)

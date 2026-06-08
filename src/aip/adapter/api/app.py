@@ -1320,6 +1320,14 @@ async def lifespan(app: FastAPI):
             except asyncio.CancelledError:
                 pass
 
+    # Sprint 5.46: Graceful shutdown persistence — persist all A/B experiments and stop checkers
+    if hasattr(container, "_alert_manager") and container._alert_manager is not None:
+        try:
+            count = container._alert_manager.persist_all_ab_experiments()
+            log.info("ab_experiments_persisted_on_shutdown", count=count)
+        except Exception as exc:
+            log.warning("ab_experiments_persist_failed", error=str(exc))
+
     # shutdown: close any open connections (the individual stores implement close())
     for store_name, store in [
         ("knowledge_store", container.knowledge_store),

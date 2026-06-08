@@ -97,8 +97,8 @@ _DEFAULT_MAX_FAILURE_ROWS = 1000
 # Default maximum number of delivery status rows to retain (Sprint 5.33)
 _DEFAULT_MAX_DELIVERY_STATUS_ROWS = 2000
 
-# Schema version for migrations (Sprint 5.39: v7 adds model_retraining_events table)
-_SCHEMA_VERSION = 7
+# Schema version for migrations (Sprint 5.45: v8 adds ab_experiments; Sprint 5.46: v9 adds rollback/recovery)
+_SCHEMA_VERSION = 9
 
 
 class AlertHistoryStore:
@@ -388,6 +388,79 @@ class AlertHistoryStore:
                     conn.execute("""
                         CREATE INDEX IF NOT EXISTS idx_retraining_events_trained_at
                         ON model_retraining_events (trained_at)
+                    """)
+
+                # Sprint 5.45: Schema migration v7 -> v8
+                # Add ab_experiments table for A/B experiment persistence
+                if current_version < 8:
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS ab_experiments (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            name TEXT NOT NULL UNIQUE,
+                            control_config TEXT NOT NULL DEFAULT '{}',
+                            variant_config TEXT NOT NULL DEFAULT '{}',
+                            status TEXT NOT NULL DEFAULT 'running',
+                            started_at TEXT NOT NULL,
+                            stopped_at TEXT NOT NULL DEFAULT '',
+                            result TEXT NOT NULL DEFAULT '',
+                            control_samples INTEGER NOT NULL DEFAULT 0,
+                            variant_samples INTEGER NOT NULL DEFAULT 0,
+                            control_accuracy REAL NOT NULL DEFAULT 0.0,
+                            variant_accuracy REAL NOT NULL DEFAULT 0.0,
+                            promoted_variant TEXT NOT NULL DEFAULT '',
+                            promotion_timestamp TEXT NOT NULL DEFAULT '',
+                            auto_promoted INTEGER NOT NULL DEFAULT 0,
+                            metadata TEXT NOT NULL DEFAULT '{}',
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL DEFAULT ''
+                        )
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_ab_experiments_name
+                        ON ab_experiments (name)
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_ab_experiments_status
+                        ON ab_experiments (status)
+                    """)
+
+                # Sprint 5.46: Schema migration v8 -> v9
+                # Add ab_rollback_history and decay_recovery_history tables
+                if current_version < 9:
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS ab_rollback_history (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            experiment_name TEXT NOT NULL,
+                            rolled_back_variant TEXT NOT NULL,
+                            rolled_back_at TEXT NOT NULL,
+                            control_accuracy REAL NOT NULL DEFAULT 0.0,
+                            variant_accuracy REAL NOT NULL DEFAULT 0.0,
+                            auto INTEGER NOT NULL DEFAULT 1,
+                            created_at TEXT NOT NULL
+                        )
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_ab_rollback_experiment
+                        ON ab_rollback_history (experiment_name)
+                    """)
+
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS decay_recovery_history (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            subject TEXT NOT NULL,
+                            decay_amount REAL NOT NULL DEFAULT 0.0,
+                            current_confidence REAL NOT NULL DEFAULT 0.0,
+                            actions_taken TEXT NOT NULL DEFAULT '[]',
+                            created_at TEXT NOT NULL
+                        )
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_decay_recovery_subject
+                        ON decay_recovery_history (subject)
                     """)
 
             self._initialized = True
@@ -1683,4 +1756,354 @@ class AlertHistoryStore:
                 "retraining_events_query_failed",
                 error=str(exc),
             )
+            return []
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.45: A/B Experiment persistence
+    # -----------------------------------------------------------------------
+
+    def record_ab_experiment(self, experiment: dict) -> bool:
+        """Record or update an A/B experiment in persistent storage.
+
+        Sprint 5.45: Uses INSERT OR REPLACE to handle both creation and updates.
+        The experiment name is the unique key.
+
+        Returns True if successfully recorded, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("""
+                    INSERT OR REPLACE INTO ab_experiments (
+                        name, control_config, variant_config, status,
+                        started_at, stopped_at, result,
+                        control_samples, variant_samples,
+                        control_accuracy, variant_accuracy,
+                        promoted_variant, promotion_timestamp, auto_promoted,
+                        metadata, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    experiment.get("name", ""),
+                    json.dumps(experiment.get("control_config", {}), default=str),
+                    json.dumps(experiment.get("variant_config", {}), default=str),
+                    experiment.get("status", "running"),
+                    experiment.get("started_at", now),
+                    experiment.get("stopped_at", ""),
+                    experiment.get("result", ""),
+                    experiment.get("control_samples", 0),
+                    experiment.get("variant_samples", 0),
+                    experiment.get("control_accuracy", 0.0),
+                    experiment.get("variant_accuracy", 0.0),
+                    experiment.get("promoted_variant", ""),
+                    experiment.get("promotion_timestamp", ""),
+                    1 if experiment.get("auto_promoted", False) else 0,
+                    json.dumps(experiment.get("metadata", {}), default=str),
+                    experiment.get("created_at", now),
+                    now,
+                ))
+
+            return True
+        except Exception as exc:
+            logger.warning(
+                "ab_experiment_record_failed",
+                error=str(exc),
+            )
+            return False
+
+    def get_ab_experiments(self, status: str | None = None) -> list[dict]:
+        """Return A/B experiments from persistent storage.
+
+        Sprint 5.45: Used by AlertManager to restore experiment state on startup.
+
+        Returns a list of experiment dicts.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            conditions: list[str] = []
+            params: list[Any] = []
+
+            if status:
+                conditions.append("status = ?")
+                params.append(status)
+
+            where_clause = ""
+            if conditions:
+                where_clause = "WHERE " + " AND ".join(conditions)
+
+            query = f"""
+                SELECT name, control_config, variant_config, status,
+                       started_at, stopped_at, result,
+                       control_samples, variant_samples,
+                       control_accuracy, variant_accuracy,
+                       promoted_variant, promotion_timestamp, auto_promoted,
+                       metadata, created_at, updated_at
+                FROM ab_experiments
+                {where_clause}
+                ORDER BY created_at DESC
+            """
+
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute(query, params)
+                rows = cursor.fetchall()
+
+            result = []
+            for row in rows:
+                try:
+                    control_config = json.loads(row["control_config"]) if row["control_config"] else {}
+                except (json.JSONDecodeError, TypeError):
+                    control_config = {}
+                try:
+                    variant_config = json.loads(row["variant_config"]) if row["variant_config"] else {}
+                except (json.JSONDecodeError, TypeError):
+                    variant_config = {}
+                try:
+                    metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+                except (json.JSONDecodeError, TypeError):
+                    metadata = {}
+
+                result.append({
+                    "name": row["name"],
+                    "control_config": control_config,
+                    "variant_config": variant_config,
+                    "status": row["status"],
+                    "started_at": row["started_at"],
+                    "stopped_at": row["stopped_at"],
+                    "result": row["result"],
+                    "control_samples": row["control_samples"],
+                    "variant_samples": row["variant_samples"],
+                    "control_accuracy": row["control_accuracy"],
+                    "variant_accuracy": row["variant_accuracy"],
+                    "promoted_variant": row["promoted_variant"],
+                    "promotion_timestamp": row["promotion_timestamp"],
+                    "auto_promoted": bool(row["auto_promoted"]),
+                    "metadata": metadata,
+                    "created_at": row["created_at"],
+                })
+
+            return result
+        except Exception as exc:
+            logger.warning(
+                "ab_experiments_query_failed",
+                error=str(exc),
+            )
+            return []
+
+    def delete_ab_experiment(self, name: str) -> bool:
+        """Delete an A/B experiment by name.
+
+        Sprint 5.46: Used by the cleanup checker to prune stopped experiments.
+
+        Returns True if the experiment was deleted, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                cursor = conn.execute("""
+                    DELETE FROM ab_experiments WHERE name = ?
+                """, (name,))
+                deleted = cursor.rowcount > 0
+
+            if deleted:
+                logger.info("ab_experiment_deleted_from_store", name=name)
+            return deleted
+        except Exception as exc:
+            logger.warning(
+                "ab_experiment_delete_failed",
+                name=name,
+                error=str(exc),
+            )
+            return False
+
+    def prune_stopped_ab_experiments(self, retention_hours: int) -> int:
+        """Prune stopped A/B experiments older than the retention period.
+
+        Sprint 5.46: Removes experiments that have been stopped for longer
+        than the specified retention period.
+
+        Returns the number of experiments pruned.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        if retention_hours <= 0:
+            return 0
+
+        try:
+            import time as _time
+            cutoff = datetime.fromtimestamp(
+                _time.time() - (retention_hours * 3600), tz=timezone.utc
+            ).isoformat()
+
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                cursor = conn.execute("""
+                    DELETE FROM ab_experiments
+                    WHERE status != 'running' AND stopped_at != '' AND stopped_at < ?
+                """, (cutoff,))
+                pruned = cursor.rowcount
+
+            if pruned > 0:
+                logger.info(
+                    "ab_experiments_pruned",
+                    pruned=pruned,
+                    retention_hours=retention_hours,
+                )
+            return pruned
+        except Exception as exc:
+            logger.warning(
+                "ab_experiments_prune_failed",
+                error=str(exc),
+            )
+            return 0
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.46: Rollback and recovery history persistence
+    # -----------------------------------------------------------------------
+
+    def record_ab_rollback(self, rollback: dict) -> bool:
+        """Record an A/B experiment rollback event.
+
+        Sprint 5.46: Persists rollback events for audit trail.
+
+        Returns True if successfully recorded, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("""
+                    INSERT INTO ab_rollback_history (
+                        experiment_name, rolled_back_variant, rolled_back_at,
+                        control_accuracy, variant_accuracy, auto, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    rollback.get("experiment_name", ""),
+                    rollback.get("rolled_back_variant", ""),
+                    rollback.get("rolled_back_at", now),
+                    rollback.get("control_accuracy", 0.0),
+                    rollback.get("variant_accuracy", 0.0),
+                    1 if rollback.get("auto", True) else 0,
+                    now,
+                ))
+            return True
+        except Exception as exc:
+            logger.warning("ab_rollback_record_failed", error=str(exc))
+            return False
+
+    def get_ab_rollback_history(self, limit: int = 50) -> list[dict]:
+        """Return A/B experiment rollback history.
+
+        Sprint 5.46: Returns rollback events, most recent first.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT experiment_name, rolled_back_variant, rolled_back_at,
+                           control_accuracy, variant_accuracy, auto
+                    FROM ab_rollback_history
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """, (limit,))
+                rows = cursor.fetchall()
+
+            return [
+                {
+                    "experiment_name": row["experiment_name"],
+                    "rolled_back_variant": row["rolled_back_variant"],
+                    "rolled_back_at": row["rolled_back_at"],
+                    "control_accuracy": row["control_accuracy"],
+                    "variant_accuracy": row["variant_accuracy"],
+                    "auto": bool(row["auto"]),
+                }
+                for row in rows
+            ]
+        except Exception as exc:
+            logger.warning("ab_rollback_history_query_failed", error=str(exc))
+            return []
+
+    def record_decay_recovery(self, recovery: dict) -> bool:
+        """Record a decay recovery event.
+
+        Sprint 5.46: Persists recovery events for audit trail.
+
+        Returns True if successfully recorded, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("""
+                    INSERT INTO decay_recovery_history (
+                        subject, decay_amount, current_confidence,
+                        actions_taken, created_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                """, (
+                    recovery.get("subject", ""),
+                    recovery.get("decay_amount", 0.0),
+                    recovery.get("current_confidence", 0.0),
+                    json.dumps(recovery.get("actions_taken", []), default=str),
+                    now,
+                ))
+            return True
+        except Exception as exc:
+            logger.warning("decay_recovery_record_failed", error=str(exc))
+            return False
+
+    def get_decay_recovery_history(self, limit: int = 50) -> list[dict]:
+        """Return decay recovery history.
+
+        Sprint 5.46: Returns recovery events, most recent first.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT subject, decay_amount, current_confidence,
+                           actions_taken, created_at
+                    FROM decay_recovery_history
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """, (limit,))
+                rows = cursor.fetchall()
+
+            result = []
+            for row in rows:
+                try:
+                    actions = json.loads(row["actions_taken"]) if row["actions_taken"] else []
+                except (json.JSONDecodeError, TypeError):
+                    actions = []
+                result.append({
+                    "subject": row["subject"],
+                    "decay_amount": row["decay_amount"],
+                    "current_confidence": row["current_confidence"],
+                    "actions_taken": actions,
+                    "timestamp": row["created_at"],
+                })
+
+            return result
+        except Exception as exc:
+            logger.warning("decay_recovery_history_query_failed", error=str(exc))
             return []
