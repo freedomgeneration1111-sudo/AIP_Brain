@@ -223,6 +223,8 @@ db_path = "db/state.db"
 # maintains.  Default is 3 (adequate for single-process with moderate concurrency).
 # Increase to 5-7 when serving multiple concurrent ask requests.
 # Per-store overrides take precedence over the global default.
+# Sprint 5.25: pool_size and per-store overrides are hot-reloadable
+# (changes take effect without process restart via ConfigWatcher).
 [read_pool]
 pool_size = 3                    # global default for all pool-enabled stores
 
@@ -232,6 +234,32 @@ pool_size = 3                    # global default for all pool-enabled stores
 # vector_store = { pool_size = 5 }
 # graph_store = { pool_size = 3 }
 # corpus_turn_store = { pool_size = 4 }
+
+# Sprint 5.25: Operator alerting — lightweight webhook/email notifications.
+# Alerting is opt-in and disabled by default. Enable and configure at least
+# one transport (webhook_url or email_to) to receive notifications for:
+# - Vigil quality degradation (faithfulness score dropping over cycles)
+# - Read pool auto-sizing adjustments (increases and rollbacks)
+# - Graph extraction batch size reductions due to high parse failure rate
+[alerting]
+enabled = false
+# webhook_url = ""              # HTTP(S) URL for JSON POST alerts (Slack, etc.)
+# email_to = ""                 # Comma-separated recipient addresses
+# email_from = "aip-brain@localhost"
+# smtp_host = ""                # SMTP server hostname
+# smtp_port = 587               # SMTP server port
+alert_on_quality_degradation = true
+alert_on_pool_adjustment = true
+alert_on_batch_reduction = true
+min_alert_interval_seconds = 300  # Rate-limit: don't re-alert same subject for 5 min
+
+# Sprint 5.25: Configuration hot-reload.
+# When enabled, the ConfigWatcher polls aip.config.toml for changes and
+# applies safe values (read_pool.pool_size, sexton.batch_size) without
+# a full process restart. Only specific low-risk keys are hot-reloadable.
+[config_hot_reload]
+enabled = true                   # Enable config file change detection
+poll_interval_seconds = 5        # How often to check for config file changes
 
 
 [vector_backend]

@@ -141,6 +141,7 @@ Be strict: if a specific number, date, or factual claim appears in the response 
         ecs_store: Any = None,  # for ECS transitions on evaluation artifacts
         event_store: Any = None,  # for emitting vigil events
         corpus_turn_store: Any = None,  # for reading augmented chat turns
+        alert_manager: Any = None,  # Sprint 5.25: AlertManager for quality degradation alerts
     ) -> None:
         self.config = config
         self.vigil_store = vigil_store
@@ -167,6 +168,9 @@ Be strict: if a specific number, date, or factual claim appears in the response 
         # Sprint 5.24: Per-cycle quality report history for trend tracking.
         # Stores the last 10 cycle summaries for trend computation.
         self._cycle_report_history: list[dict] = []
+
+        # Sprint 5.25: Alert manager for operator notifications
+        self._alert_manager = alert_manager
 
     # ------------------------------------------------------------------
     # ADR-011 Quality Evaluation Cycle
@@ -392,6 +396,39 @@ Be strict: if a specific number, date, or factual claim appears in the response 
             avg_grounding_rate=avg_grounding_rate,
             avg_llm_faithfulness=avg_llm_faithfulness,
         )
+
+        # Sprint 5.25: Alert on quality degradation
+        if self._alert_manager is not None and any(
+            v == "degrading" for v in trend_indicators.values() if isinstance(v, str)
+        ):
+            try:
+                from aip.adapter.alerting import Alert
+                degrading_metrics = [
+                    k.replace("_trend", "")
+                    for k, v in trend_indicators.items()
+                    if isinstance(v, str) and v == "degrading"
+                ]
+                self._alert_manager.send_alert(Alert(
+                    alert_type="quality_degradation",
+                    severity="warning",
+                    subject="vigil_quality",
+                    message=(
+                        f"Vigil detected degrading quality trend in: "
+                        f"{', '.join(degrading_metrics)}. "
+                        f"Current scores — citation: {avg_citation_rate:.1%}, "
+                        f"grounding: {avg_grounding_rate:.1%}, "
+                        f"faithfulness: {avg_llm_faithfulness:.1%}."
+                    ),
+                    data={
+                        "degrading_metrics": degrading_metrics,
+                        "avg_citation_rate": avg_citation_rate,
+                        "avg_grounding_rate": avg_grounding_rate,
+                        "avg_llm_faithfulness": avg_llm_faithfulness,
+                        "trend_indicators": trend_indicators,
+                    },
+                ))
+            except Exception as exc:
+                logger.warning("vigil_alert_failed", error=str(exc))
 
         await self._write_cycle_quality_report(
             evaluated_count=evaluated_count,

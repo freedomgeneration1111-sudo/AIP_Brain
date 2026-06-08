@@ -1100,6 +1100,10 @@ def create_app(config: dict | None = None) -> "FastAPI":
     # Retrieval dashboard — lightweight observability
     app.include_router(retrieval_dashboard.router, tags=["retrieval"])
 
+    # Sprint 5.25: Vigil quality dashboard
+    from aip.adapter.api.routes import vigil_quality
+    app.include_router(vigil_quality.router, prefix="/api/v1", tags=["vigil"])
+
     # Web UI static (HTMX dashboard)
     import pathlib
 

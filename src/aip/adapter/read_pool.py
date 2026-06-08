@@ -500,6 +500,14 @@ class ReadPoolAutoSizer:
     - All changes are logged and recorded in ``adjustment_history``.
     - ``rollback()`` can restore the configured pool size.
 
+    Sprint 5.25: Automatic rollback. When ``auto_rollback_enabled`` is True
+    and exhaustion_rate drops below the healthy threshold (0.15) for
+    ``auto_rollback_consecutive_threshold`` (default 5) consecutive
+    observations AFTER an auto-increase, the pool size is automatically
+    restored to its configured value. This prevents over-provisioning
+    when load patterns change. All rollback events are logged and
+    recorded in adjustment_history.
+
     Usage::
 
         auto_sizer = ReadPoolAutoSizer(auto_apply_enabled=True)
@@ -513,6 +521,12 @@ class ReadPoolAutoSizer:
         auto_sizer.rollback("graph_store", store=store_instance)
     """
 
+    # Sprint 5.25: Auto-rollback configuration
+    # When exhaustion_rate drops below this threshold for sustained period,
+    # auto-rollback kicks in to reduce over-provisioning.
+    _AUTO_ROLLBACK_HEALTHY_THRESHOLD = 0.15
+    _AUTO_ROLLBACK_CONSECUTIVE_THRESHOLD = 5
+
     def __init__(
         self,
         consecutive_threshold: int = _AUTO_SIZE_CONSECUTIVE_THRESHOLD,
@@ -520,12 +534,20 @@ class ReadPoolAutoSizer:
         auto_apply_consecutive_threshold: int = _AUTO_APPLY_CONSECUTIVE_THRESHOLD,
         auto_apply_max_increase: int = _AUTO_APPLY_MAX_INCREASE,
         auto_apply_max_pool: int = _AUTO_APPLY_MAX_POOL,
+        auto_rollback_enabled: bool = True,
+        auto_rollback_consecutive_threshold: int = _AUTO_ROLLBACK_CONSECUTIVE_THRESHOLD,
+        auto_rollback_healthy_threshold: float = _AUTO_ROLLBACK_HEALTHY_THRESHOLD,
     ) -> None:
         self._consecutive_threshold = consecutive_threshold
         self.auto_apply_enabled = auto_apply_enabled
         self._auto_apply_consecutive_threshold = auto_apply_consecutive_threshold
         self._auto_apply_max_increase = auto_apply_max_increase
         self._auto_apply_max_pool = auto_apply_max_pool
+
+        # Sprint 5.25: Auto-rollback settings
+        self.auto_rollback_enabled = auto_rollback_enabled
+        self._auto_rollback_consecutive_threshold = auto_rollback_consecutive_threshold
+        self._auto_rollback_healthy_threshold = auto_rollback_healthy_threshold
 
         # store_name -> list of recent exhaustion_rate observations
         self._observations: dict[str, list[float]] = {}
@@ -539,6 +561,11 @@ class ReadPoolAutoSizer:
         self._suggestions: list[PoolSizeSuggestion] = []
         # Auto-apply adjustment history (last 20 per store)
         self._adjustment_history: list[PoolSizeAdjustment] = []
+        # Sprint 5.25: store_name -> consecutive low-exhaustion observations
+        # after an auto-increase (for auto-rollback detection)
+        self._post_increase_low_obs: dict[str, int] = {}
+        # Sprint 5.25: Optional alert manager for pool adjustment notifications
+        self._alert_manager: Any = None
 
     def observe(
         self,
@@ -659,6 +686,34 @@ class ReadPoolAutoSizer:
                     note="exhaustion_rate recovered to <= 0.3",
                 )
 
+        # Sprint 5.25: Auto-rollback check
+        # When auto-increased and exhaustion drops below the healthy threshold
+        # for sustained observations, automatically roll back to configured size.
+        if (
+            self.auto_rollback_enabled
+            and store is not None
+            and self._auto_applied_increase.get(store_name, 0) > 0
+        ):
+            if exhaustion_rate < self._auto_rollback_healthy_threshold:
+                # Track consecutive low-exhaustion observations after increase
+                current_low = self._post_increase_low_obs.get(store_name, 0)
+                self._post_increase_low_obs[store_name] = current_low + 1
+
+                if self._post_increase_low_obs[store_name] >= self._auto_rollback_consecutive_threshold:
+                    log.info(
+                        "read_pool_auto_rollback_triggering",
+                        store=store_name,
+                        consecutive_low=self._post_increase_low_obs[store_name],
+                        exhaustion_rate=round(exhaustion_rate, 4),
+                        threshold=self._auto_rollback_healthy_threshold,
+                    )
+                    self.rollback(store_name, store)
+                    # Reset counter after rollback
+                    self._post_increase_low_obs[store_name] = 0
+            else:
+                # Reset counter if exhaustion goes back above threshold
+                self._post_increase_low_obs[store_name] = 0
+
         return suggestion
 
     def _auto_apply_pool_size(
@@ -733,6 +788,31 @@ class ReadPoolAutoSizer:
             exhaustion_rate=round(exhaustion_rate, 4),
         )
 
+        # Sprint 5.25: Alert on significant pool size adjustment
+        if self._alert_manager is not None:
+            try:
+                from aip.adapter.alerting import Alert
+                severity = "warning" if exhaustion_rate > 0.6 else "info"
+                self._alert_manager.send_alert(Alert(
+                    alert_type="pool_adjustment",
+                    severity=severity,
+                    subject=f"read_pool.{store_name}",
+                    message=(
+                        f"Read pool auto-sized {store_name} from {old_size} to {target} connections "
+                        f"(configured={configured_size}, exhaustion_rate={exhaustion_rate:.1%}). "
+                        f"Sustained high exhaustion for {self._auto_apply_consecutive_threshold}+ observations."
+                    ),
+                    data={
+                        "store_name": store_name,
+                        "previous_pool_size": old_size,
+                        "new_pool_size": target,
+                        "configured_pool_size": configured_size,
+                        "exhaustion_rate": round(exhaustion_rate, 4),
+                    },
+                ))
+            except Exception:
+                pass  # Alerting is fire-and-forget
+
         return adjustment
 
     def rollback(self, store_name: str, store: ReadPoolMixin) -> bool:
@@ -776,6 +856,29 @@ class ReadPoolAutoSizer:
             from_size=old_size,
             to_size=configured_size,
         )
+
+        # Sprint 5.25: Alert on rollback
+        if self._alert_manager is not None:
+            try:
+                from aip.adapter.alerting import Alert
+                self._alert_manager.send_alert(Alert(
+                    alert_type="pool_adjustment",
+                    severity="info",
+                    subject=f"read_pool.{store_name}.rollback",
+                    message=(
+                        f"Read pool for {store_name} rolled back from {old_size} to "
+                        f"configured value {configured_size}. Exhaustion has recovered."
+                    ),
+                    data={
+                        "store_name": store_name,
+                        "previous_pool_size": old_size,
+                        "new_pool_size": configured_size,
+                        "configured_pool_size": configured_size,
+                        "rollback": True,
+                    },
+                ))
+            except Exception:
+                pass  # Alerting is fire-and-forget
         return True
 
     @staticmethod
@@ -820,7 +923,7 @@ class ReadPoolAutoSizer:
 
         Suitable for inclusion in the /health endpoint response.
         Shows current vs. configured pool sizes, auto-applied increases,
-        and recent adjustment history.
+        auto-rollback status, and recent adjustment history.
         """
         stores_status = {}
         for store_name in self._current_pool_sizes:
@@ -829,6 +932,7 @@ class ReadPoolAutoSizer:
             increase = self._auto_applied_increase.get(store_name, 0)
             obs = self._observations.get(store_name, [])
             recent_rate = obs[-1] if obs else 0.0
+            low_obs_count = self._post_increase_low_obs.get(store_name, 0)
 
             stores_status[store_name] = {
                 "configured_pool_size": configured,
@@ -839,6 +943,12 @@ class ReadPoolAutoSizer:
                 "adjustments": len([
                     a for a in self._adjustment_history if a.store_name == store_name
                 ]),
+                # Sprint 5.25: Auto-rollback status
+                "consecutive_low_exhaustion_obs": low_obs_count,
+                "pending_auto_rollback": (
+                    increase > 0
+                    and low_obs_count >= self._auto_rollback_consecutive_threshold
+                ),
             }
 
         return {
@@ -846,6 +956,9 @@ class ReadPoolAutoSizer:
             "auto_apply_consecutive_threshold": self._auto_apply_consecutive_threshold,
             "auto_apply_max_increase": self._auto_apply_max_increase,
             "auto_apply_max_pool": self._auto_apply_max_pool,
+            "auto_rollback_enabled": self.auto_rollback_enabled,
+            "auto_rollback_consecutive_threshold": self._auto_rollback_consecutive_threshold,
+            "auto_rollback_healthy_threshold": self._auto_rollback_healthy_threshold,
             "stores": stores_status,
             "recent_adjustments": [a.to_dict() for a in self._adjustment_history[-5:]],
         }

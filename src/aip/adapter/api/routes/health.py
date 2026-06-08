@@ -4,6 +4,11 @@ Computes real uptime from container._app_start_time, returns "degraded"
 when optional components are missing, includes budget status and
 component availability summary, and checks database write connectivity
 for critical stores.
+
+Sprint 5.25 additions:
+- Alerting status section (if AlertManager is wired)
+- Per-batch graph extraction telemetry (from Sexton)
+- Config watcher status (if ConfigWatcher is wired)
 """
 
 import logging
@@ -355,6 +360,52 @@ async def health(container: AipContainer = Depends(get_container)):
         except Exception:
             pass
 
+    # Sprint 5.25: Per-batch graph extraction telemetry
+    per_batch_telemetry: dict[str, Any] = {
+        "total_batch_successes": 0,
+        "total_batch_failures": 0,
+        "recent_batches": [],
+        "failure_rate": 0.0,
+    }
+    if container.sexton_actor is not None:
+        try:
+            per_batch_telemetry["total_batch_successes"] = getattr(
+                container.sexton_actor, "_total_batch_successes", 0
+            )
+            per_batch_telemetry["total_batch_failures"] = getattr(
+                container.sexton_actor, "_total_batch_failures", 0
+            )
+            per_batch_telemetry["recent_batches"] = getattr(
+                container.sexton_actor, "_per_batch_telemetry", []
+            )[-10:]
+            total = per_batch_telemetry["total_batch_successes"] + per_batch_telemetry["total_batch_failures"]
+            per_batch_telemetry["failure_rate"] = (
+                round(per_batch_telemetry["total_batch_failures"] / total, 3) if total > 0 else 0.0
+            )
+        except Exception:
+            pass
+
+    # Sprint 5.25: Alerting status
+    alerting_status: dict[str, Any] = {"enabled": False}
+    alert_manager = getattr(container, "_alert_manager", None)
+    if alert_manager is not None and hasattr(alert_manager, "get_status"):
+        try:
+            alerting_status = alert_manager.get_status()
+        except Exception:
+            pass
+
+    # Sprint 5.25: Config watcher status
+    config_watcher_status: dict[str, Any] = {"enabled": False}
+    config_watcher = getattr(container, "_config_watcher", None)
+    if config_watcher is not None and hasattr(config_watcher, "get_status"):
+        try:
+            config_watcher_status = config_watcher.get_status()
+            # Also trigger a check while we're here (health endpoint is a
+            # natural polling point for config file changes)
+            config_watcher.check_and_reload()
+        except Exception:
+            pass
+
     return {
         "status": status,
         "uptime_seconds": uptime_seconds,
@@ -374,4 +425,7 @@ async def health(container: AipContainer = Depends(get_container)):
         "batch_telemetry_summary": batch_telemetry_summary,
         "vigil_llm_telemetry": vigil_llm_telemetry,
         "auto_tuning_status": auto_tuning_status,
+        "per_batch_telemetry": per_batch_telemetry,
+        "alerting_status": alerting_status,
+        "config_watcher_status": config_watcher_status,
     }

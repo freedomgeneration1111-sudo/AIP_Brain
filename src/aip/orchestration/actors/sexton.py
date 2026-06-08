@@ -97,6 +97,7 @@ class Sexton:
         trace_store: Any = None,  # TraceStore for failure classification
         lexical_store: Any = None,  # for sampling chunks (optional)
         config: SextonConfig | None = None,
+        alert_manager: Any = None,  # Sprint 5.25: AlertManager for batch reduction alerts
     ) -> None:
         self._sexton_provider = sexton_provider
         self._corpus_turns = corpus_turn_store
@@ -124,6 +125,15 @@ class Sexton:
         self._batch_parse_results: list[bool] = []  # True=success, False=failure
         self._current_batch_size: int = self._config.graph_extraction_batch_size
         self._auto_tune_adjustments: list[dict] = []  # History of auto-tune adjustments
+
+        # Sprint 5.25: Per-batch telemetry for operator visibility
+        # Each entry records a single batch's outcome with detail.
+        self._per_batch_telemetry: list[dict] = []  # Last 30 batches
+        self._total_batch_successes = 0
+        self._total_batch_failures = 0
+
+        # Sprint 5.25: Alert manager for batch reduction notifications
+        self._alert_manager = alert_manager
 
         # Import existing Sexton for failure classification delegation
         self._failure_classifier: Any = None
@@ -1371,6 +1381,19 @@ Output format:
                     )
                     # Track batch parse failure for auto-tuning (Sprint 5.23)
                     self._batch_parse_results.append(False)
+                    # Sprint 5.25: Per-batch telemetry — record failure
+                    self._total_batch_failures += 1
+                    self._per_batch_telemetry.append({
+                        "batch_idx": batch_idx,
+                        "batch_size": len(batch),
+                        "success": False,
+                        "error_reason": str(exc)[:200],
+                        "turn_ids": [t["turn_id"] for t in batch][:5],
+                        "fell_back_to_per_turn": True,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                    if len(self._per_batch_telemetry) > 30:
+                        self._per_batch_telemetry = self._per_batch_telemetry[-30:]
                     # Fallback: process each turn individually
                     for turn in batch:
                         ents, rels = await _extract_single_turn(turn)
@@ -1398,6 +1421,18 @@ Output format:
 
                 # Track batch parse success for auto-tuning (Sprint 5.23)
                 self._batch_parse_results.append(True)
+                # Sprint 5.25: Per-batch telemetry — record success
+                self._total_batch_successes += 1
+                self._per_batch_telemetry.append({
+                    "batch_idx": batch_idx,
+                    "batch_size": len(batch),
+                    "success": True,
+                    "items_extracted": len(parsed),
+                    "has_turn_id_mapping": has_turn_id_mapping,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+                if len(self._per_batch_telemetry) > 30:
+                    self._per_batch_telemetry = self._per_batch_telemetry[-30:]
 
                 if not has_turn_id_mapping:
                     # Batch response didn't include turn_id — fall back to per-turn
@@ -1540,6 +1575,30 @@ Output format:
                     to_size=new_size,
                     failure_rate=round(failure_rate, 3),
                 )
+                # Sprint 5.25: Alert on batch size reduction
+                if self._alert_manager is not None:
+                    try:
+                        from aip.adapter.alerting import Alert
+                        self._alert_manager.send_alert(Alert(
+                            alert_type="batch_reduction",
+                            severity="warning",
+                            subject="graph_extraction_batch_size",
+                            message=(
+                                f"Graph extraction batch size reduced from {old_size} to {new_size} "
+                                f"due to high parse failure rate ({failure_rate:.1%} over last "
+                                f"{len(recent)} batches). Operators should investigate LLM parse errors."
+                            ),
+                            data={
+                                "old_batch_size": old_size,
+                                "new_batch_size": new_size,
+                                "failure_rate": round(failure_rate, 3),
+                                "window_size": len(recent),
+                                "min_batch_size": min_size,
+                                "max_batch_size": max_size,
+                            },
+                        ))
+                    except Exception as exc:
+                        log.warning("sexton_alert_failed", error=str(exc))
 
         elif failure_rate < self._config.graph_extraction_auto_tune_increase_threshold:
             # Low failure rate — can increase batch size
