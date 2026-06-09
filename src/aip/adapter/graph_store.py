@@ -29,6 +29,7 @@ import aiosqlite
 
 from aip.adapter.read_pool import ReadPoolMixin
 from aip.adapter.store_health import StoreHealthMixin
+from aip.foundation.protocols import GraphStore as GraphStoreProtocol
 
 log = logging.getLogger(__name__)
 
@@ -127,7 +128,7 @@ class GraphEdge:
     created_at: str | None = None
 
 
-class GraphStore(StoreHealthMixin, ReadPoolMixin):
+class GraphStore(GraphStoreProtocol, StoreHealthMixin, ReadPoolMixin):
     """SQLite-backed knowledge graph store with async initialization.
 
     All tables live in the main state.db alongside artifacts, events, etc.

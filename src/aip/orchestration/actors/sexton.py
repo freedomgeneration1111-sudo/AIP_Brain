@@ -98,6 +98,7 @@ class Sexton:
         lexical_store: Any = None,  # for sampling chunks (optional)
         config: SextonConfig | None = None,
         alert_manager: Any = None,  # Sprint 5.25: AlertManager for batch reduction alerts
+        graph_store: Any = None,  # GraphStore for graph extraction (BUG-004: wired through container)
     ) -> None:
         self._sexton_provider = sexton_provider
         self._corpus_turns = corpus_turn_store
@@ -109,6 +110,7 @@ class Sexton:
         self._trace_store = trace_store
         self._lexical = lexical_store
         self._config = config or SextonConfig()
+        self._graph_store = graph_store  # BUG-004: use container's graph_store instead of creating new one
         self._last_cycle_time: float | None = None
 
         # LLM batching telemetry — accumulates across cycles
@@ -221,6 +223,45 @@ class Sexton:
         )
 
         return summary
+
+    # ------------------------------------------------------------------
+    # Status summary for operator visibility
+    # ------------------------------------------------------------------
+
+    def get_status_summary(self) -> dict:
+        """Return a summary of Sexton's current state for operator visibility.
+
+        Includes dependency availability, last cycle time, batch telemetry,
+        and auto-tuning state. This method is synchronous and never raises.
+        Called by /actors/status and /actors/sexton endpoints.
+        """
+        return {
+            "dependencies": {
+                "sexton_provider": self._sexton_provider is not None,
+                "corpus_turn_store": self._corpus_turns is not None,
+                "embedding_provider": self._embed is not None,
+                "vector_store": self._vector is not None,
+                "artifact_store": self._artifacts is not None,
+                "ecs_store": self._ecs is not None,
+                "event_store": self._events is not None,
+                "trace_store": self._trace_store is not None,
+                "lexical_store": self._lexical is not None,
+                "graph_store": self._graph_store is not None,
+                "alert_manager": self._alert_manager is not None,
+            },
+            "last_cycle_time": self._last_cycle_time,
+            "batch_telemetry": dict(self._batch_telemetry),
+            "current_batch_size": self._current_batch_size,
+            "total_batch_successes": self._total_batch_successes,
+            "total_batch_failures": self._total_batch_failures,
+            "config": {
+                "classification_interval_seconds": self._config.classification_interval_seconds,
+                "classification_batch_size": self._config.classification_batch_size,
+                "graph_extraction_batch_enabled": self._config.graph_extraction_batch_enabled,
+                "graph_extraction_batch_size": self._config.graph_extraction_batch_size,
+                "max_unclassified_before_alert": self._config.max_unclassified_before_alert,
+            },
+        }
 
     # ------------------------------------------------------------------
     # Bridge-tagged turn detection
@@ -1016,19 +1057,29 @@ CRITICAL CONSTRAINTS:
         if self._sexton_provider is None or self._corpus_turns is None:
             return {"skipped": "missing_provider_or_corpus_turns"}
 
-        db_path = getattr(self._corpus_turns, "_db_path", None)
-        if not db_path:
-            return {"skipped": "no_db_path"}
+        # BUG-004: Use the injected graph_store from the container instead of
+        # creating a new GraphStore instance. Falls back to creating one only
+        # when graph_store was not wired (e.g. during tests or partial startup).
+        graph_store = self._graph_store
+        if graph_store is None:
+            db_path = getattr(self._corpus_turns, "_db_path", None)
+            if not db_path:
+                return {"skipped": "no_db_path_and_no_graph_store"}
+            try:
+                from aip.adapter.graph_store import GraphStore as _GraphStoreImpl
+            except Exception as exc:
+                log.warning("sexton_graph_import_failed", error=str(exc))
+                return {"skipped": "import_error", "error": str(exc)}
+            graph_store = _GraphStoreImpl(db_path)
+            await graph_store.initialize()
+            log.info("sexton_graph_extraction_fallback_create", reason="no_container_graph_store")
 
         try:
-            from aip.adapter.graph_store import GraphStore, GraphNode, GraphEdge
+            from aip.adapter.graph_store import GraphNode, GraphEdge
             from aip.adapter.entity_alias_loader import EntityAliasRegistry
         except Exception as exc:
             log.warning("sexton_graph_import_failed", error=str(exc))
             return {"skipped": "import_error", "error": str(exc)}
-
-        graph_store = GraphStore(db_path)
-        await graph_store.initialize()
         try:
             registry = EntityAliasRegistry("docs/entity_aliases.md")
         except Exception as exc:

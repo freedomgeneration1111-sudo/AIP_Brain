@@ -23,6 +23,7 @@ from aip.foundation.protocols import (
     EmbeddingProvider,
     EntityStore,
     EventStore,
+    GraphStore,
     KnowledgeStore,
     LexicalStore,
     ModelProvider,
@@ -83,7 +84,7 @@ class AipContainer:
         # CorpusTurnStore — None when not initialized (degrades to no corpus search in augmented chat)
         self.corpus_turn_store: Any = None
         # GraphStore — knowledge graph nodes and edges (degrades to no graph retrieval)
-        self.graph_store: Any = None
+        self.graph_store: GraphStore | None = None
         # Sprint 5.27: Operational components wired into the running application
         self._vigil_quality_store: Any = None  # VigilQualityStore for persistent quality history
         self._alert_manager: Any = None  # AlertManager for operator notifications

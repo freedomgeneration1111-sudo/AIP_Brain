@@ -116,16 +116,14 @@ async def get_actor_detail(actor_name: str, container: AipContainer = Depends(ge
         try:
             fc = getattr(container.sexton_actor, "_failure_classifier", None)
             unclassified = await fc.count_unclassified() if fc else 0
+            status = container.sexton_actor.get_status_summary()
             return {
                 "actor": "sexton",
                 "initialized": True,
                 "unclassified_count": unclassified,
-                "config": {
-                    "classification_batch_size": container.sexton_actor._config.classification_batch_size,
-                    "classification_interval_seconds": container.sexton_actor._config.classification_interval_seconds,
-                    "audit_on_slot_change": container.sexton_actor._config.audit_on_slot_change,
-                    "max_unclassified_before_alert": container.sexton_actor._config.max_unclassified_before_alert,
-                },
+                "status": status,
+                "config": status.get("config", {}),
+                "dependencies": status.get("dependencies", {}),
             }
         except Exception as exc:
             return {"actor": "sexton", "initialized": True, "error": str(exc)}

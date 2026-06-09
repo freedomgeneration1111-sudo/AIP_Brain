@@ -7,7 +7,7 @@ entity management, and project state.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from aip.foundation.schemas import Chunk, Event
@@ -360,6 +360,106 @@ class SessionStore(Protocol):
         ...
 
 
+@runtime_checkable
+class GraphStore(Protocol):
+    """Knowledge graph store for nodes and edges.
+
+    Stores knowledge graph entities (GraphNode) and relationships (GraphEdge)
+    for AIP's corpus intelligence. Populated from bridge tags (approved
+    DEFINER connections) and enriched via Beast/Sexton entity extraction
+    on high-importance turns.
+
+    All tables live in the main state.db alongside artifacts, events, etc.
+    Uses a persistent aiosqlite connection per instance with error recovery.
+    WAL mode enabled for concurrent reads from API endpoints while
+    Sexton/Beast actors write graph extraction results.
+    """
+
+    async def initialize(self) -> None:
+        """Idempotent table creation (called by lifespan / DI container)."""
+        ...
+
+    async def close(self) -> None:
+        """Close the persistent connection and read pool."""
+        ...
+
+    async def upsert_node(self, node: Any) -> None:
+        """Insert or update a graph node."""
+        ...
+
+    async def upsert_edge(self, edge: Any) -> None:
+        """Insert or update a graph edge."""
+        ...
+
+    async def upsert_nodes_batch(self, nodes: list[Any]) -> int:
+        """Insert or update multiple nodes in a single transaction. Returns count."""
+        ...
+
+    async def upsert_edges_batch(self, edges: list[Any]) -> int:
+        """Insert or update multiple edges in a single transaction. Returns count."""
+        ...
+
+    async def get_node(self, node_id: str) -> Any | None:
+        """Return a single node by ID, or None."""
+        ...
+
+    async def get_neighbors(self, node_id: str, min_confidence: float = 0.4) -> list[Any]:
+        """Return all nodes directly connected to node_id."""
+        ...
+
+    async def get_edges_for_node(self, node_id: str) -> list[Any]:
+        """Return all edges where node is source or target."""
+        ...
+
+    async def search_nodes(
+        self,
+        query: str,
+        entity_type: str | None = None,
+        domain: str | None = None,
+        limit: int = 20,
+    ) -> list[Any]:
+        """Search nodes by canonical_name substring."""
+        ...
+
+    async def node_count(self) -> int:
+        """Return total number of nodes."""
+        ...
+
+    async def edge_count(self) -> int:
+        """Return total number of edges."""
+        ...
+
+    async def get_all_nodes(self, min_confidence: float = 0.0) -> list[Any]:
+        """Return all nodes above min_confidence."""
+        ...
+
+    async def get_all_edges(self, min_confidence: float = 0.0) -> list[Any]:
+        """Return all edges above min_confidence."""
+        ...
+
+    async def is_turn_extracted(self, turn_id: str) -> bool:
+        """Check whether a turn has already been graph-extracted."""
+        ...
+
+    async def log_turn_extracted(self, turn_id: str, entities: int, relationships: int) -> None:
+        """Record that a turn has been graph-extracted (dedup guard)."""
+        ...
+
+    async def get_unextracted_high_importance_turns(
+        self, min_importance: float = 0.7, limit: int = 50
+    ) -> list[dict]:
+        """Return high-importance corpus turns not yet graph-extracted."""
+        ...
+
+    async def delete_node(self, node_id: str) -> None:
+        """Delete a node and all its edges."""
+        ...
+
+    async def health_check(self) -> dict:
+        """Return basic health info."""
+        ...
+
+
 __all__ = [
     "VectorStore",
     "LexicalStore",
@@ -371,4 +471,5 @@ __all__ = [
     "ProjectStore",
     "EcsStore",
     "SessionStore",
+    "GraphStore",
 ]

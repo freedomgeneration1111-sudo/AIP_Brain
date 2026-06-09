@@ -428,6 +428,17 @@ async def lifespan(app: FastAPI):
 
         container.project_store = SqliteProjectStore(db_path)
         await container.project_store.initialize()
+
+        # BUG-001: Ensure a default project exists after initialization so that
+        # the system has at least one project after a fresh start or restart.
+        # create_project() is idempotent (returns existing if already present),
+        # so this is safe to call on every startup.
+        try:
+            await container.project_store.create_project("default", "Default", "")
+            log.info("default_project_ensured", project_id="default")
+        except Exception as dp_exc:
+            log.warning("default_project_creation_failed", error=str(dp_exc))
+
         log.info("component_initialized", component="project_store", required=False)
     except Exception as exc:
         log.warning("component_failed", component="project_store", degradation="empty_projects", error=str(exc))
@@ -673,6 +684,7 @@ async def lifespan(app: FastAPI):
                 trace_store=getattr(container, "trace_store", None) or container.event_store,
                 lexical_store=getattr(container, "lexical_store", None),
                 config=sexton_actor_config,
+                graph_store=getattr(container, "graph_store", None),
             )
             # BUG-003 safety net: backfill _ecs if actor was created before
             # ECS store was available (shouldn't happen now, but defensive)

@@ -51,6 +51,7 @@ from .storage import (
     EcsStore,
     EntityStore,
     EventStore,
+    GraphStore,
     LexicalStore,
     ProjectStore,
     SessionStore,
@@ -70,6 +71,7 @@ __all__ = [
     "ProjectStore",
     "EcsStore",
     "SessionStore",
+    "GraphStore",
     # model
     "ModelProvider",
     "EmbeddingProvider",

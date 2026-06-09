@@ -36,7 +36,7 @@ async def _get_graph_store(container: AipContainer):
             db_path = get_default_db_path()
         except Exception:
             db_path = "db/state.db"
-    store = GraphStore(db_path)
+    store = GraphStore(db_path, config=container.config)
     await store.initialize()
     return store
 

@@ -37,7 +37,14 @@ async def _get_graph_neighbors(domain: str, container: Any = None) -> list[str]:
     """Return domain neighbors from the knowledge graph.
 
     Uses the container's graph_store when available. Falls back to
-    creating one from db_path for CLI contexts.
+    creating one from container config db_path (matching the pattern
+    in routes/graph.py). This ensures consistent path resolution
+    across all graph-accessing routes.
+
+    BUG-002: Previously used a separate db_path resolution that could
+    diverge from the one used in routes/graph.py. Now reuses the same
+    container.config.get("db_path") pattern with get_default_db_path()
+    fallback.
     """
     try:
         store = getattr(container, "graph_store", None) if container is not None else None
@@ -46,7 +53,7 @@ async def _get_graph_neighbors(domain: str, container: Any = None) -> list[str]:
 
             db_path = ""
             if container is not None:
-                db_path = getattr(container, "config", {}).get("db_path", "") or ""
+                db_path = container.config.get("db_path", "")
             if not db_path:
                 try:
                     from aip.cli._db_path import get_default_db_path
@@ -54,7 +61,7 @@ async def _get_graph_neighbors(domain: str, container: Any = None) -> list[str]:
                     db_path = get_default_db_path()
                 except Exception:
                     db_path = "db/state.db"
-            store = GraphStore(db_path)
+            store = GraphStore(db_path, config=getattr(container, "config", None))
             await store.initialize()
         neighbors = await store.get_neighbors(domain, min_confidence=0.4)
         return [n.canonical_name for n in neighbors if n.id != domain]
