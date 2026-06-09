@@ -335,7 +335,7 @@ class TestAlertManagerWithHistoryStore:
             ))
 
             # Check in-memory (still maintained as buffer)
-            assert len(mgr._alert_history) == 1
+            assert len(mgr.lifecycle_mgr._alert_history) == 1
 
             # Check persistent store
             assert store.get_alert_count() == 1
@@ -362,7 +362,7 @@ class TestAlertManagerWithHistoryStore:
 
             # The manager's in-memory history is empty, but the persistent
             # store has the pre-restart alert
-            assert len(mgr._alert_history) == 0
+            assert len(mgr.lifecycle_mgr._alert_history) == 0
             history = mgr.get_alert_history()
             assert len(history) == 1
             assert history[0]["message"] == "Pre-restart alert"
@@ -862,7 +862,7 @@ class TestHealthEndpoint:
 
         alert_mgr = AlertManager(AlertConfig(enabled=True))
         # Simulate many send failures
-        alert_mgr._total_send_failures = 15
+        alert_mgr.delivery_mgr._total_send_failures = 15
 
         container = MagicMock()
         container._alert_manager = alert_mgr

@@ -64,10 +64,10 @@ class TestWebSocketBatching:
     def test_batch_buffer_initialized(self):
         """AlertManager initializes batch buffer and counters."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        assert mgr._ws_batch_buffer == []
-        assert mgr._ws_batch_flush_scheduled is False
-        assert mgr._ws_batch_total_flushes == 0
-        assert mgr._ws_batch_total_events_sent == 0
+        assert mgr.realtime_bus._ws_batch_buffer == []
+        assert mgr.realtime_bus._ws_batch_flush_scheduled is False
+        assert mgr.realtime_bus._ws_batch_total_flushes == 0
+        assert mgr.realtime_bus._ws_batch_total_events_sent == 0
 
     def test_events_are_buffered_when_batching_enabled(self):
         """Events are buffered instead of sent immediately when batching is on."""
@@ -83,7 +83,7 @@ class TestWebSocketBatching:
             def put_nowait(self, item):
                 events_received.append(item)
 
-        mgr.add_ws_subscriber(MockWS())
+        mgr.realtime_bus.add_ws_subscriber(MockWS())
 
         # Send an alert — event should be buffered, not sent immediately
         cid = mgr.send_alert(Alert(
@@ -91,7 +91,7 @@ class TestWebSocketBatching:
             subject="batch_test", message="Test",
         ))
         assert cid  # Alert was sent
-        assert len(mgr._ws_batch_buffer) > 0  # Event was buffered
+        assert len(mgr.realtime_bus._ws_batch_buffer) > 0  # Event was buffered
 
     def test_flush_ws_batch_sends_batch_message(self):
         """_flush_ws_batch() sends a batch_events message with all buffered events."""
@@ -102,8 +102,8 @@ class TestWebSocketBatching:
         ))
 
         # Manually buffer events
-        with mgr._lock:
-            mgr._ws_batch_buffer = [
+        with mgr.realtime_bus._lock:
+            mgr.realtime_bus._ws_batch_buffer = [
                 {"event": "alert_delivered", "correlation_id": "cid-1"},
                 {"event": "alert_delivered", "correlation_id": "cid-2"},
             ]
@@ -114,23 +114,23 @@ class TestWebSocketBatching:
             def put_nowait(self, item):
                 batch_messages.append(item)
 
-        mgr.add_ws_subscriber(MockWS())
+        mgr.realtime_bus.add_ws_subscriber(MockWS())
 
-        mgr._flush_ws_batch()
+        mgr.realtime_bus._flush_ws_batch()
 
         assert len(batch_messages) == 1
         msg = batch_messages[0]
         assert msg["event"] == "batch_events"
         assert msg["count"] == 2
         assert len(msg["events"]) == 2
-        assert mgr._ws_batch_total_flushes == 1
-        assert mgr._ws_batch_total_events_sent == 2
+        assert mgr.realtime_bus._ws_batch_total_flushes == 1
+        assert mgr.realtime_bus._ws_batch_total_events_sent == 2
 
     def test_flush_empty_buffer_is_noop(self):
         """_flush_ws_batch() with empty buffer is a no-op."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        mgr._flush_ws_batch()
-        assert mgr._ws_batch_total_flushes == 0
+        mgr.realtime_bus._flush_ws_batch()
+        assert mgr.realtime_bus._ws_batch_total_flushes == 0
 
     def test_batching_disabled_sends_immediately(self):
         """When ws_batch_window_seconds is 0, events are sent immediately."""
@@ -145,7 +145,7 @@ class TestWebSocketBatching:
             def put_nowait(self, item):
                 events_received.append(item)
 
-        mgr.add_ws_subscriber(MockWS())
+        mgr.realtime_bus.add_ws_subscriber(MockWS())
 
         mgr.send_alert(Alert(
             alert_type="batch_reduction", severity="warning",
@@ -153,7 +153,7 @@ class TestWebSocketBatching:
         ))
 
         # With batching disabled, event should be sent directly (not buffered)
-        assert len(mgr._ws_batch_buffer) == 0
+        assert len(mgr.realtime_bus._ws_batch_buffer) == 0
         assert len(events_received) > 0
 
     def test_get_status_includes_batching_info(self):
@@ -392,7 +392,7 @@ class TestPruningObservability:
     def test_pruning_history_initialized_empty(self):
         """AlertManager initializes pruning history as empty."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        assert mgr._pruning_history == []
+        assert mgr.pruning_mgr._pruning_history == []
 
     def test_run_scheduled_prune_records_history(self):
         """_run_scheduled_prune() records a history entry."""
@@ -609,7 +609,7 @@ class TestCausalChainPrediction:
             subject="counter_test", message="Test",
         )
         mgr.predict_causal_chain(alert)
-        assert mgr._total_predictions_made == 2  # 2 predictions for pool_adjustment
+        assert mgr.prediction_mgr._total_predictions_made == 2  # 2 predictions for pool_adjustment
 
     def test_prediction_broadcasts_event(self):
         """predict_causal_chain() broadcasts causal_predictions event."""
@@ -623,7 +623,7 @@ class TestCausalChainPrediction:
             def put_nowait(self, item):
                 events.append(item)
 
-        mgr.add_sse_subscriber(MockQueue())
+        mgr.realtime_bus.add_sse_subscriber(MockQueue())
 
         alert = Alert(
             alert_type="pool_adjustment", severity="warning",

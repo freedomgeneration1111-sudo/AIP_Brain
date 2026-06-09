@@ -133,7 +133,7 @@ class TestLLMEntityFn:
                 }
 
         llm_fn = create_llm_entity_fn(MockModelProvider(), slot_name="fast")
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             llm_fn("How does Knowledge Graph connect to AIP?")
         )
 
@@ -150,7 +150,7 @@ class TestLLMEntityFn:
                 raise RuntimeError("Model unavailable")
 
         llm_fn = create_llm_entity_fn(FailingModelProvider(), slot_name="fast")
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             llm_fn("test query")
         )
 
@@ -170,7 +170,7 @@ class TestLLMEntityFn:
                 }
 
         llm_fn = create_llm_entity_fn(PartialFailProvider(), slot_name="fast")
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             llm_fn("test query")
         )
 
@@ -230,7 +230,7 @@ class TestEntityExtractorModes:
             llm_fn=fake_llm,
         )
         # "simple query" has no capitalized words → local finds 0 entities
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             ext.extract_async("simple query with no caps")
         )
         assert "LLMEntity1" in result
@@ -247,7 +247,7 @@ class TestEntityExtractorModes:
             ),
             llm_fn=fake_llm,
         )
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             ext.extract_async("How does Knowledge Graph work?")
         )
         # LLM primary should return LLM entities directly
@@ -266,7 +266,7 @@ class TestEntityExtractorModes:
             ),
             llm_fn=failing_llm,
         )
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             ext.extract_async("How does Knowledge Graph work?")
         )
         # Should fall back to noun_phrase extraction
@@ -288,7 +288,7 @@ class TestEntityExtractorModes:
             ),
             llm_fn=tracking_llm,
         )
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             ext.extract_async("simple query")
         )
         assert llm_called is False
@@ -533,7 +533,7 @@ class TestEvalHarnessChannelContributions:
         ]
 
         harness = RetrievalEvalHarness(k=10)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             harness.run(golden, _mock_retriever_with_trace)
         )
 

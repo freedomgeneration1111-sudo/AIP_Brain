@@ -146,7 +146,7 @@ class TestSextonBatchReductionAlert:
 
         # Verify alert was dispatched
         batch_alerts = [
-            a for a in alert_mgr._alert_history
+            a for a in alert_mgr.lifecycle_mgr._alert_history
             if a["alert_type"] == "batch_reduction"
         ]
         assert len(batch_alerts) == 1
@@ -167,7 +167,7 @@ class TestSextonBatchReductionAlert:
         sexton._auto_tune_batch_size()
 
         batch_alerts = [
-            a for a in alert_mgr._alert_history
+            a for a in alert_mgr.lifecycle_mgr._alert_history
             if a["alert_type"] == "batch_reduction"
         ]
         assert len(batch_alerts) == 1
@@ -194,7 +194,7 @@ class TestSextonBatchReductionAlert:
         assert result["action"] in ("none", "increased")
 
         batch_alerts = [
-            a for a in alert_mgr._alert_history
+            a for a in alert_mgr.lifecycle_mgr._alert_history
             if a["alert_type"] == "batch_reduction"
         ]
         assert len(batch_alerts) == 0

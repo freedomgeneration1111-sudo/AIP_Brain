@@ -113,7 +113,7 @@ class TestWebSocketHeartbeat:
         mgr = AlertManager(AlertConfig(enabled=True, ws_heartbeat_missed_limit=2))
         mock_ws = MagicMock()
         mgr.register_ws_session("sess-dead", mock_ws, "10.0.0.1")
-        mgr.add_ws_subscriber(mock_ws)
+        mgr.realtime_bus.add_ws_subscriber(mock_ws)
 
         # Simulate missed heartbeats past limit
         cleaned = mgr.cleanup_dead_ws_sessions()
@@ -357,7 +357,7 @@ class TestAlertGroupMergeSplit:
             def put_nowait(self, item):
                 events.append(item)
 
-        mgr.add_sse_subscriber(MockQueue())
+        mgr.realtime_bus.add_sse_subscriber(MockQueue())
 
         mgr._alert_groups["src"] = ["cid-1"]
         mgr._alert_groups_metadata["src"] = time.time()
@@ -378,7 +378,7 @@ class TestAlertGroupMergeSplit:
             def put_nowait(self, item):
                 events.append(item)
 
-        mgr.add_sse_subscriber(MockQueue())
+        mgr.realtime_bus.add_sse_subscriber(MockQueue())
 
         mgr._alert_groups["orig"] = ["cid-1", "cid-2"]
         mgr._alert_groups_metadata["orig"] = time.time()
@@ -483,7 +483,7 @@ class TestPruningScheduler:
         ))
         result = mgr.start_prune_scheduler()
         assert result is True
-        assert mgr._prune_scheduler_running is True
+        assert mgr.pruning_mgr._prune_scheduler_running is True
 
         # Cleanup
         mgr.stop_prune_scheduler()
@@ -506,7 +506,7 @@ class TestPruningScheduler:
         ))
         mgr.start_prune_scheduler()
         mgr.stop_prune_scheduler()
-        assert mgr._prune_scheduler_running is False
+        assert mgr.pruning_mgr._prune_scheduler_running is False
 
     def test_get_prune_scheduler_status(self):
         """get_prune_scheduler_status() returns scheduler state."""
@@ -547,8 +547,8 @@ class TestPruningScheduler:
             after = time.time()
 
             assert deleted == 0  # Nothing to prune
-            assert before <= mgr._last_prune_run <= after
-            assert mgr._total_scheduled_prunes == 1
+            assert before <= mgr.pruning_mgr._last_prune_run <= after
+            assert mgr.pruning_mgr._total_scheduled_prunes == 1
 
     def test_scheduler_status_in_health(self):
         """get_status() includes prune_scheduler info."""

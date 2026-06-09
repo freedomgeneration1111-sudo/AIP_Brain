@@ -150,7 +150,7 @@ class TestAlertingTransportHardening:
         time.sleep(10)  # Wait for background dispatch + all retries with backoff
 
         # Should have at least one failure recorded
-        assert manager._total_send_failures >= 1
+        assert manager.delivery_mgr._total_send_failures >= 1
         failures = manager.get_delivery_failures()
         assert len(failures) >= 1
 
@@ -217,7 +217,7 @@ class TestAlertingTransportHardening:
         import time
         time.sleep(3)  # Wait for background dispatch + retries
         # Should have attempted retries
-        assert manager._total_webhook_retries >= 1
+        assert manager.delivery_mgr._total_webhook_retries >= 1
 
     def test_get_delivery_failures_with_filter(self):
         """get_delivery_failures supports transport filtering."""
@@ -728,7 +728,7 @@ class TestConfigHotReloadSafety:
 
         # This is an async function, need to run it
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             get_hot_reload_status(container=container)
         )
 

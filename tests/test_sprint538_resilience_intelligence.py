@@ -130,53 +130,53 @@ class TestLearnedPredictionModel:
         mgr = AlertManager(AlertConfig(enabled=True))
         # Simulate a sequence of alerts for same subject
         now = time.time()
-        mgr._record_alert_for_transition_learning(
+        mgr.prediction_mgr.record_alert_for_transition_learning(
             Alert(alert_type="pool_adjustment", severity="warning", subject="test_subj", message="1"), now
         )
-        mgr._record_alert_for_transition_learning(
+        mgr.prediction_mgr.record_alert_for_transition_learning(
             Alert(alert_type="quality_degradation", severity="info", subject="test_subj", message="2"), now + 10
         )
-        mgr._record_alert_for_transition_learning(
+        mgr.prediction_mgr.record_alert_for_transition_learning(
             Alert(alert_type="batch_reduction", severity="warning", subject="test_subj", message="3"), now + 20
         )
 
         # Should have recorded transitions
-        assert mgr._transition_counts.get(("pool_adjustment", "quality_degradation"), 0) >= 1
-        assert mgr._transition_counts.get(("quality_degradation", "batch_reduction"), 0) >= 1
-        assert mgr._transition_totals.get("pool_adjustment", 0) >= 1
+        assert mgr.prediction_mgr._transition_counts.get(("pool_adjustment", "quality_degradation"), 0) >= 1
+        assert mgr.prediction_mgr._transition_counts.get(("quality_degradation", "batch_reduction"), 0) >= 1
+        assert mgr.prediction_mgr._transition_totals.get("pool_adjustment", 0) >= 1
 
     def test_transition_learning_different_subjects(self):
         """Transitions are only recorded within same subject."""
         mgr = AlertManager(AlertConfig(enabled=True))
         now = time.time()
-        mgr._record_alert_for_transition_learning(
+        mgr.prediction_mgr.record_alert_for_transition_learning(
             Alert(alert_type="pool_adjustment", severity="warning", subject="subj_a", message="1"), now
         )
-        mgr._record_alert_for_transition_learning(
+        mgr.prediction_mgr.record_alert_for_transition_learning(
             Alert(alert_type="quality_degradation", severity="info", subject="subj_b", message="2"), now + 10
         )
         # No transition should be recorded because subjects differ
-        assert ("pool_adjustment", "quality_degradation") not in mgr._transition_counts
+        assert ("pool_adjustment", "quality_degradation") not in mgr.prediction_mgr._transition_counts
 
     def test_transition_learning_bounds_memory(self):
         """Alert sequence is bounded to prevent unbounded memory growth."""
         mgr = AlertManager(AlertConfig(enabled=True))
         now = time.time()
         for i in range(1500):
-            mgr._record_alert_for_transition_learning(
+            mgr.prediction_mgr.record_alert_for_transition_learning(
                 Alert(alert_type="pool_adjustment", severity="info", subject="test", message=f"alert-{i}"), now + i
             )
-        assert len(mgr._alert_type_sequence) <= 1000
+        assert len(mgr.prediction_mgr._alert_type_sequence) <= 1000
 
     def test_get_transition_probabilities(self):
         """get_transition_probabilities returns computed probabilities."""
         mgr = AlertManager(AlertConfig(enabled=True))
         # Manually populate transition data
-        mgr._transition_counts = {
+        mgr.prediction_mgr._transition_counts = {
             ("pool_adjustment", "quality_degradation"): 7,
             ("pool_adjustment", "batch_reduction"): 3,
         }
-        mgr._transition_totals = {"pool_adjustment": 10}
+        mgr.prediction_mgr._transition_totals = {"pool_adjustment": 10}
 
         result = mgr.get_transition_probabilities("pool_adjustment")
         assert result["from_type"] == "pool_adjustment"
@@ -200,11 +200,11 @@ class TestLearnedPredictionModel:
     def test_get_transition_probabilities_all_types(self):
         """get_transition_probabilities without from_type returns all."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        mgr._transition_counts = {
+        mgr.prediction_mgr._transition_counts = {
             ("pool_adjustment", "quality_degradation"): 8,
             ("quality_degradation", "batch_reduction"): 5,
         }
-        mgr._transition_totals = {"pool_adjustment": 8, "quality_degradation": 5}
+        mgr.prediction_mgr._transition_totals = {"pool_adjustment": 8, "quality_degradation": 5}
 
         result = mgr.get_transition_probabilities()
         assert "pool_adjustment" in result
@@ -226,7 +226,7 @@ class TestLearnedPredictionModel:
             causal_prediction_enabled=True,
         ))
         # Add minimal data (not enough for learned model)
-        mgr._transition_totals = {"pool_adjustment": 5}
+        mgr.prediction_mgr._transition_totals = {"pool_adjustment": 5}
         alert = Alert(alert_type="pool_adjustment", severity="warning", subject="test", message="test")
         # Should fall back to static chain
         result = mgr.predict_causal_chain_learned(alert)
@@ -242,12 +242,12 @@ class TestLearnedPredictionModel:
             learned_prediction_confidence_threshold=0.05,
         ))
         # Populate with sufficient transition data
-        mgr._transition_counts = {
+        mgr.prediction_mgr._transition_counts = {
             ("pool_adjustment", "quality_degradation"): 15,
             ("pool_adjustment", "batch_reduction"): 5,
         }
-        mgr._transition_totals = {"pool_adjustment": 20}
-        mgr._alert_type_sequence = [
+        mgr.prediction_mgr._transition_totals = {"pool_adjustment": 20}
+        mgr.prediction_mgr._alert_type_sequence = [
             ("pool_adjustment", "test", time.time() - 60),
             ("quality_degradation", "test", time.time() - 30),
         ]
@@ -267,8 +267,8 @@ class TestLearnedPredictionModel:
             assert pred["sample_size"] == 20
 
         # Verify predictions are tracked
-        assert len(mgr._prediction_outcomes) == 2
-        assert mgr._total_learned_predictions_made == 2
+        assert len(mgr.prediction_mgr._prediction_outcomes) == 2
+        assert mgr.prediction_mgr._total_learned_predictions_made == 2
 
     def test_predict_causal_chain_learned_threshold_filtering(self):
         """predict_causal_chain_learned filters below confidence threshold."""
@@ -278,11 +278,11 @@ class TestLearnedPredictionModel:
             learned_prediction_min_samples=5,
             learned_prediction_confidence_threshold=0.5,  # High threshold
         ))
-        mgr._transition_counts = {
+        mgr.prediction_mgr._transition_counts = {
             ("pool_adjustment", "quality_degradation"): 15,  # 75%
             ("pool_adjustment", "batch_reduction"): 5,  # 25% — below threshold
         }
-        mgr._transition_totals = {"pool_adjustment": 20}
+        mgr.prediction_mgr._transition_totals = {"pool_adjustment": 20}
 
         alert = Alert(alert_type="pool_adjustment", severity="warning", subject="test", message="test")
         predictions = mgr.predict_causal_chain_learned(alert)
@@ -298,19 +298,19 @@ class TestLearnedPredictionModel:
             learned_prediction_enabled=True,
             learned_prediction_min_samples=5,
         ))
-        mgr._transition_counts = {
+        mgr.prediction_mgr._transition_counts = {
             ("pool_adjustment", "quality_degradation"): 10,
         }
-        mgr._transition_totals = {"pool_adjustment": 10}
+        mgr.prediction_mgr._transition_totals = {"pool_adjustment": 10}
 
         alert = Alert(alert_type="pool_adjustment", severity="warning", subject="test", message="test")
         predictions = mgr.predict_causal_chain_learned(alert)
 
         for pred in predictions:
             pred_id = pred["prediction_id"]
-            assert pred_id in mgr._prediction_outcomes
-            assert mgr._prediction_outcomes[pred_id]["model"] == "learned"
-            assert mgr._prediction_outcomes[pred_id]["outcome"] == "pending"
+            assert pred_id in mgr.prediction_mgr._prediction_outcomes
+            assert mgr.prediction_mgr._prediction_outcomes[pred_id]["model"] == "learned"
+            assert mgr.prediction_mgr._prediction_outcomes[pred_id]["outcome"] == "pending"
 
     def test_learned_prediction_in_status(self):
         """get_status() includes learned prediction model info."""
@@ -358,8 +358,8 @@ class TestAlertThrottlingCircuitBreaker:
         ))
         now = time.time()
         # Even with many timestamps, should not activate
-        mgr._throttle_alert_timestamps = [now] * 200
-        assert mgr._check_circuit_breaker(now) is False
+        mgr.throttle_mgr._throttle_alert_timestamps = [now] * 200
+        assert mgr.throttle_mgr.check_circuit_breaker(now) is False
 
     def test_circuit_breaker_activates_on_high_rate(self):
         """Circuit breaker activates when alert rate exceeds threshold."""
@@ -370,10 +370,10 @@ class TestAlertThrottlingCircuitBreaker:
         ))
         now = time.time()
         # Simulate 60 alerts in the last minute
-        mgr._throttle_alert_timestamps = [now - i * 0.5 for i in range(60)]
-        assert mgr._check_circuit_breaker(now) is True
-        assert mgr._circuit_breaker_active is True
-        assert mgr._total_circuit_breaker_activations == 1
+        mgr.throttle_mgr._throttle_alert_timestamps = [now - i * 0.5 for i in range(60)]
+        assert mgr.throttle_mgr.check_circuit_breaker(now) is True
+        assert mgr.throttle_mgr._circuit_breaker_active is True
+        assert mgr.throttle_mgr._total_circuit_breaker_activations == 1
 
     def test_circuit_breaker_does_not_activate_below_threshold(self):
         """Circuit breaker stays inactive below threshold."""
@@ -383,8 +383,8 @@ class TestAlertThrottlingCircuitBreaker:
             throttle_threshold_per_minute=100,
         ))
         now = time.time()
-        mgr._throttle_alert_timestamps = [now - i for i in range(50)]
-        assert mgr._check_circuit_breaker(now) is False
+        mgr.throttle_mgr._throttle_alert_timestamps = [now - i for i in range(50)]
+        assert mgr.throttle_mgr.check_circuit_breaker(now) is False
 
     def test_circuit_breaker_stays_active_during_cooldown(self):
         """Circuit breaker stays active during cooldown period."""
@@ -395,12 +395,12 @@ class TestAlertThrottlingCircuitBreaker:
             circuit_breaker_cooldown_seconds=300,
         ))
         now = time.time()
-        mgr._circuit_breaker_active = True
-        mgr._circuit_breaker_activated_at = now - 10  # Activated 10s ago
-        mgr._throttle_alert_timestamps = [now] * 5  # Rate is now low
+        mgr.throttle_mgr._circuit_breaker_active = True
+        mgr.throttle_mgr._circuit_breaker_activated_at = now - 10  # Activated 10s ago
+        mgr.throttle_mgr._throttle_alert_timestamps = [now] * 5  # Rate is now low
 
         # Should stay active because cooldown hasn't elapsed
-        assert mgr._check_circuit_breaker(now) is True
+        assert mgr.throttle_mgr.check_circuit_breaker(now) is True
 
     def test_circuit_breaker_deactivates_after_cooldown(self):
         """Circuit breaker deactivates when cooldown expires and rate drops."""
@@ -411,12 +411,12 @@ class TestAlertThrottlingCircuitBreaker:
             circuit_breaker_cooldown_seconds=10,
         ))
         now = time.time()
-        mgr._circuit_breaker_active = True
-        mgr._circuit_breaker_activated_at = now - 20  # 20s ago, past cooldown
-        mgr._throttle_alert_timestamps = [now] * 5  # Low rate now
+        mgr.throttle_mgr._circuit_breaker_active = True
+        mgr.throttle_mgr._circuit_breaker_activated_at = now - 20  # 20s ago, past cooldown
+        mgr.throttle_mgr._throttle_alert_timestamps = [now] * 5  # Low rate now
 
-        assert mgr._check_circuit_breaker(now) is False
-        assert mgr._circuit_breaker_active is False
+        assert mgr.throttle_mgr.check_circuit_breaker(now) is False
+        assert mgr.throttle_mgr._circuit_breaker_active is False
 
     def test_circuit_breaker_reactivates_if_still_high(self):
         """Circuit breaker reactivates after cooldown if rate is still high."""
@@ -427,12 +427,12 @@ class TestAlertThrottlingCircuitBreaker:
             circuit_breaker_cooldown_seconds=5,
         ))
         now = time.time()
-        mgr._circuit_breaker_active = True
-        mgr._circuit_breaker_activated_at = now - 10  # Past cooldown
-        mgr._throttle_alert_timestamps = [now - i * 0.1 for i in range(50)]  # Still high
+        mgr.throttle_mgr._circuit_breaker_active = True
+        mgr.throttle_mgr._circuit_breaker_activated_at = now - 10  # Past cooldown
+        mgr.throttle_mgr._throttle_alert_timestamps = [now - i * 0.1 for i in range(50)]  # Still high
 
-        assert mgr._check_circuit_breaker(now) is True
-        assert mgr._circuit_breaker_active is True
+        assert mgr.throttle_mgr.check_circuit_breaker(now) is True
+        assert mgr.throttle_mgr._circuit_breaker_active is True
 
     def test_send_alert_throttles_non_critical_during_storm(self):
         """send_alert throttles non-critical alerts during circuit breaker."""
@@ -445,16 +445,16 @@ class TestAlertThrottlingCircuitBreaker:
             ws_batch_window_seconds=0,
         ))
         now = time.time()
-        mgr._throttle_alert_timestamps = [now] * 10
-        mgr._circuit_breaker_active = True
-        mgr._circuit_breaker_activated_at = now
+        mgr.throttle_mgr._throttle_alert_timestamps = [now] * 10
+        mgr.throttle_mgr._circuit_breaker_active = True
+        mgr.throttle_mgr._circuit_breaker_activated_at = now
 
         alert = Alert(alert_type="pool_adjustment", severity="info", subject="test", message="throttled")
-        with patch.object(mgr, '_notify_realtime_subscribers'):
+        with patch.object(mgr.realtime_bus, 'notify_realtime_subscribers'):
             result = mgr.send_alert(alert)
 
         assert result.startswith("throttled:")
-        assert mgr._total_throttled_alerts >= 1
+        assert mgr.throttle_mgr._total_throttled_alerts >= 1
 
     def test_send_alert_passes_critical_during_storm(self):
         """send_alert allows critical alerts through circuit breaker."""
@@ -468,10 +468,10 @@ class TestAlertThrottlingCircuitBreaker:
         ))
         # Simulate high alert rate
         now = time.time()
-        mgr._throttle_alert_timestamps = [now] * 10
+        mgr.throttle_mgr._throttle_alert_timestamps = [now] * 10
         # Pre-activate circuit breaker
-        mgr._circuit_breaker_active = True
-        mgr._circuit_breaker_activated_at = now
+        mgr.throttle_mgr._circuit_breaker_active = True
+        mgr.throttle_mgr._circuit_breaker_activated_at = now
 
         # Critical alert should NOT be throttled
         alert = Alert(alert_type="quality_degradation", severity="critical", subject="test", message="critical!")
@@ -487,10 +487,10 @@ class TestAlertThrottlingCircuitBreaker:
             throttle_threshold_per_minute=50,
             circuit_breaker_cooldown_seconds=300,
         ))
-        mgr._circuit_breaker_active = True
-        mgr._circuit_breaker_activated_at = time.time()
-        mgr._total_circuit_breaker_activations = 3
-        mgr._total_throttled_alerts = 25
+        mgr.throttle_mgr._circuit_breaker_active = True
+        mgr.throttle_mgr._circuit_breaker_activated_at = time.time()
+        mgr.throttle_mgr._total_circuit_breaker_activations = 3
+        mgr.throttle_mgr._total_throttled_alerts = 25
 
         status = mgr.get_circuit_breaker_status()
         assert status["enabled"] is True
@@ -514,10 +514,10 @@ class TestAlertThrottlingCircuitBreaker:
         """_record_throttle_window prunes entries older than 60 seconds."""
         mgr = AlertManager(AlertConfig(enabled=True))
         now = time.time()
-        mgr._throttle_alert_timestamps = [now - 120, now - 90, now - 30, now - 10]
-        mgr._record_throttle_window(now)
+        mgr.throttle_mgr._throttle_alert_timestamps = [now - 120, now - 90, now - 30, now - 10]
+        mgr.throttle_mgr.record_throttle_window(now)
         # Only entries within 60s should remain (plus the new one)
-        assert all(ts > now - 60 for ts in mgr._throttle_alert_timestamps)
+        assert all(ts > now - 60 for ts in mgr.throttle_mgr._throttle_alert_timestamps)
 
 
 # ============================================================================
@@ -592,7 +592,7 @@ class TestMultiChannelDeliveryReceipts:
     def test_get_all_delivery_receipts(self):
         """get_all_delivery_receipts returns all receipt records."""
         mgr = AlertManager(AlertConfig(enabled=True, delivery_receipts_enabled=True))
-        mgr._delivery_receipts = {
+        mgr.delivery_mgr._delivery_receipts = {
             "cid-1": {"slack": {"message_ts": "ts1"}},
             "cid-2": {"pagerduty": {"dedup_key": "dk1"}},
         }
@@ -605,7 +605,7 @@ class TestMultiChannelDeliveryReceipts:
         """get_all_delivery_receipts respects limit parameter."""
         mgr = AlertManager(AlertConfig(enabled=True))
         for i in range(10):
-            mgr._delivery_receipts[f"cid-{i}"] = {"slack": {"message_ts": f"ts{i}"}}
+            mgr.delivery_mgr._delivery_receipts[f"cid-{i}"] = {"slack": {"message_ts": f"ts{i}"}}
         result = mgr.get_all_delivery_receipts(limit=3)
         assert len(result) <= 3
 
@@ -743,12 +743,12 @@ class TestWebSocketCompression:
         mgr = AlertManager(AlertConfig(enabled=True, ws_compression_enabled=True))
         data = '{"event":"batch_events","alerts":' + str(["type_x"] * 50) + '}'
         mgr.compress_ws_message(data)
-        assert mgr._ws_compression_bytes_saved_estimate > 0
+        assert mgr.realtime_bus._ws_compression_bytes_saved_estimate > 0
 
     def test_compression_status(self):
         """get_compression_status returns metrics."""
         mgr = AlertManager(AlertConfig(enabled=True, ws_compression_enabled=True))
-        mgr._ws_compression_bytes_saved_estimate = 5000
+        mgr.realtime_bus._ws_compression_bytes_saved_estimate = 5000
         status = mgr.get_compression_status()
         assert status["enabled"] is True
         assert status["bytes_saved_estimate"] == 5000
@@ -782,18 +782,18 @@ class TestSprint538Integration:
 
         # Simulate a sequence of alerts
         for i in range(20):
-            mgr._record_alert_for_transition_learning(
+            mgr.prediction_mgr.record_alert_for_transition_learning(
                 Alert(alert_type="pool_adjustment", severity="warning", subject="integration", message="pool"),
                 now + i * 30,
             )
-            mgr._record_alert_for_transition_learning(
+            mgr.prediction_mgr.record_alert_for_transition_learning(
                 Alert(alert_type="quality_degradation", severity="info", subject="integration", message="quality"),
                 now + i * 30 + 10,
             )
 
         # Now predict using the learned model
         alert = Alert(alert_type="pool_adjustment", severity="warning", subject="integration", message="trigger")
-        with patch.object(mgr, '_notify_realtime_subscribers'):
+        with patch.object(mgr.realtime_bus, 'notify_realtime_subscribers'):
             predictions = mgr.predict_causal_chain_learned(alert)
 
         assert len(predictions) > 0
@@ -816,19 +816,19 @@ class TestSprint538Integration:
 
         # Trigger circuit breaker
         now = time.time()
-        mgr._throttle_alert_timestamps = [now] * 10
-        mgr._circuit_breaker_active = True
-        mgr._circuit_breaker_activated_at = now
+        mgr.throttle_mgr._throttle_alert_timestamps = [now] * 10
+        mgr.throttle_mgr._circuit_breaker_active = True
+        mgr.throttle_mgr._circuit_breaker_activated_at = now
 
         # Non-critical alert should be throttled
         info_alert = Alert(alert_type="pool_adjustment", severity="info", subject="test", message="info alert")
-        with patch.object(mgr, '_notify_realtime_subscribers'):
+        with patch.object(mgr.realtime_bus, 'notify_realtime_subscribers'):
             result = mgr.send_alert(info_alert)
         assert result.startswith("throttled:")
 
         # Critical alert should pass through
         critical_alert = Alert(alert_type="quality_degradation", severity="critical", subject="test", message="critical!")
-        with patch.object(mgr, '_dispatch_to_transports'), patch.object(mgr, '_notify_realtime_subscribers'):
+        with patch.object(mgr, '_dispatch_to_transports'), patch.object(mgr.realtime_bus, 'notify_realtime_subscribers'):
             result = mgr.send_alert(critical_alert)
         assert not result.startswith("throttled:")
 

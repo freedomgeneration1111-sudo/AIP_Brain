@@ -187,9 +187,9 @@ class TestTransitionProbabilityPersistence:
                 enabled=True,
                 transition_persistence_enabled=True,
             ))
-            mgr._history_store = store
-            mgr._transition_counts = {("a", "b"): 10}
-            mgr._transition_totals = {"a": 10}
+            mgr.attach_history_store(store)
+            mgr.prediction_mgr._transition_counts = {("a", "b"): 10}
+            mgr.prediction_mgr._transition_totals = {"a": 10}
 
             result = mgr.persist_transition_model()
             assert result is True
@@ -222,12 +222,12 @@ class TestTransitionProbabilityPersistence:
                 enabled=True,
                 transition_persistence_enabled=True,
             ))
-            mgr._history_store = store
+            mgr.attach_history_store(store)
 
             result = mgr.load_transition_model()
             assert result is True
-            assert mgr._transition_counts == {("x", "y"): 7}
-            assert mgr._transition_totals == {"x": 7}
+            assert mgr.prediction_mgr._transition_counts == {("x", "y"): 7}
+            assert mgr.prediction_mgr._transition_totals == {"x": 7}
 
     def test_load_transition_model_no_store(self):
         """AlertManager.load_transition_model returns False without store."""
@@ -272,7 +272,7 @@ class TestTransitionProbabilityPersistence:
     def test_check_retrain_needed_disabled(self):
         """check_retrain_needed returns False when persistence disabled."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        mgr._alerts_since_last_retrain = 500
+        mgr.prediction_mgr._alerts_since_last_retrain = 500
         assert mgr.check_retrain_needed() is False
 
     def test_check_retrain_needed_by_alert_count(self):
@@ -282,7 +282,7 @@ class TestTransitionProbabilityPersistence:
             transition_persistence_enabled=True,
             retrain_after_n_alerts=50,
         ))
-        mgr._alerts_since_last_retrain = 60
+        mgr.prediction_mgr._alerts_since_last_retrain = 60
         assert mgr.check_retrain_needed() is True
 
     def test_check_retrain_needed_by_interval(self):
@@ -292,7 +292,7 @@ class TestTransitionProbabilityPersistence:
             transition_persistence_enabled=True,
             retrain_interval_seconds=60,
         ))
-        mgr._last_retrain_time = time.time() - 120  # 2 minutes ago
+        mgr.prediction_mgr._last_retrain_time = time.time() - 120  # 2 minutes ago
         assert mgr.check_retrain_needed() is True
 
     def test_check_retrain_needed_not_yet(self):
@@ -303,8 +303,8 @@ class TestTransitionProbabilityPersistence:
             retrain_interval_seconds=3600,
             retrain_after_n_alerts=100,
         ))
-        mgr._alerts_since_last_retrain = 10
-        mgr._last_retrain_time = time.time() - 60
+        mgr.prediction_mgr._alerts_since_last_retrain = 10
+        mgr.prediction_mgr._last_retrain_time = time.time() - 60
         assert mgr.check_retrain_needed() is False
 
     def test_schema_v7_migration(self):
@@ -386,7 +386,7 @@ class TestCircuitBreakerAutoTuning:
             enabled=True,
             throttle_threshold_per_minute=100,
         ))
-        mgr._cb_effective_threshold = 150
+        mgr.throttle_mgr._cb_effective_threshold = 150
         assert mgr.get_cb_effective_threshold() == 150
 
     def test_auto_tune_status(self):
@@ -421,8 +421,8 @@ class TestCircuitBreakerAutoTuning:
             throttle_threshold_per_minute=100,
         ))
         # Set baseline rate so low that computed threshold would be below min
-        mgr._cb_baseline_rates = {"test_slot": 1.0}
-        mgr._cb_auto_tune_last_computed = time.time()
+        mgr.throttle_mgr._cb_baseline_rates = {"test_slot": 1.0}
+        mgr.throttle_mgr._cb_auto_tune_last_computed = time.time()
 
         # Without a store, it should return config threshold
         threshold = mgr.compute_cb_auto_tune_threshold()
@@ -451,8 +451,8 @@ class TestCircuitBreakerAutoTuning:
                 circuit_breaker_auto_tune_enabled=True,
                 throttle_threshold_per_minute=100,
             ))
-            mgr._history_store = store
-            mgr._cb_auto_tune_last_computed = 0  # Force recomputation
+            mgr.attach_history_store(store)
+            mgr.throttle_mgr._cb_auto_tune_last_computed = 0  # Force recomputation
 
             result = mgr.update_cb_auto_tune()
             assert "old_threshold" in result
@@ -540,7 +540,7 @@ class TestDeliveryReceiptPolling:
             delivery_receipt_polling_enabled=True,
         ))
         # Pre-populate a delivery receipt with email
-        mgr._delivery_receipts["cid-2"] = {
+        mgr.delivery_mgr._delivery_receipts["cid-2"] = {
             "email": {"delivery_status": "sent", "confirmed_at": "2026-01-01T00:00:00Z"},
         }
 
@@ -548,7 +548,7 @@ class TestDeliveryReceiptPolling:
             "read_at": "2026-01-01T00:05:00Z",
         })
 
-        assert mgr._delivery_receipts["cid-2"]["email"]["delivery_status"] == "read"
+        assert mgr.delivery_mgr._delivery_receipts["cid-2"]["email"]["delivery_status"] == "read"
 
     def test_get_enhanced_delivery_receipts(self):
         """get_enhanced_delivery_receipts merges email polling status."""
@@ -557,7 +557,7 @@ class TestDeliveryReceiptPolling:
             delivery_receipts_enabled=True,
             delivery_receipt_polling_enabled=True,
         ))
-        mgr._delivery_receipts["cid-3"] = {
+        mgr.delivery_mgr._delivery_receipts["cid-3"] = {
             "slack": {"message_ts": "1234.5678", "delivery_status": "delivered"},
         }
         mgr._email_delivery_statuses["cid-3"] = {
@@ -597,7 +597,7 @@ class TestDeliveryReceiptPolling:
             delivery_receipt_polling_enabled=True,
         ))
         # Simulate email receipt with "sent" status
-        mgr._delivery_receipts["cid-4"] = {
+        mgr.delivery_mgr._delivery_receipts["cid-4"] = {
             "email": {"delivery_status": "sent"},
         }
 
@@ -649,7 +649,7 @@ class TestDeliveryReceiptPolling:
             delivery_receipt_polling_enabled=True,
             email_delivery_webhook_url="https://webhook.example.com/delivery",
         ))
-        mgr._delivery_receipts["cid-6"] = {
+        mgr.delivery_mgr._delivery_receipts["cid-6"] = {
             "email": {"delivery_status": "sent"},
         }
 
@@ -687,13 +687,13 @@ class TestNativeWebSocketPerMessageDeflate:
     def test_set_ws_permessage_deflate_negotiated(self):
         """set_ws_permessage_deflate_negotiated sets the negotiation state."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        assert mgr._ws_permessage_deflate_negotiated is False
+        assert mgr.realtime_bus._ws_permessage_deflate_negotiated is False
 
         mgr.set_ws_permessage_deflate_negotiated(True)
-        assert mgr._ws_permessage_deflate_negotiated is True
+        assert mgr.realtime_bus._ws_permessage_deflate_negotiated is True
 
         mgr.set_ws_permessage_deflate_negotiated(False)
-        assert mgr._ws_permessage_deflate_negotiated is False
+        assert mgr.realtime_bus._ws_permessage_deflate_negotiated is False
 
     def test_compress_native_aware_no_compression(self):
         """compress_ws_message_native_aware returns original when compression disabled."""
@@ -713,7 +713,7 @@ class TestNativeWebSocketPerMessageDeflate:
             ws_compression_enabled=True,
             ws_native_permessage_deflate_enabled=True,
         ))
-        mgr._ws_permessage_deflate_negotiated = True
+        mgr.realtime_bus._ws_permessage_deflate_negotiated = True
 
         data = '{"event":"test","alerts":' + str(["a"] * 100) + '}'
         result, compressed = mgr.compress_ws_message_native_aware(data)
@@ -728,7 +728,7 @@ class TestNativeWebSocketPerMessageDeflate:
             ws_native_permessage_deflate_enabled=True,
         ))
         # Native enabled but NOT negotiated — should fall back to app-level
-        mgr._ws_permessage_deflate_negotiated = False
+        mgr.realtime_bus._ws_permessage_deflate_negotiated = False
 
         data = '{"event":"batch_events","alerts":' + str(["type_x"] * 100) + '}'
         result, compressed = mgr.compress_ws_message_native_aware(data)
@@ -755,7 +755,7 @@ class TestNativeWebSocketPerMessageDeflate:
             ws_compression_enabled=True,
             ws_native_permessage_deflate_enabled=True,
         ))
-        mgr._ws_permessage_deflate_negotiated = True
+        mgr.realtime_bus._ws_permessage_deflate_negotiated = True
 
         data = '{"event":"test"}'
         result = mgr.decompress_ws_message_native_aware(data)
@@ -768,7 +768,7 @@ class TestNativeWebSocketPerMessageDeflate:
             ws_compression_enabled=True,
             ws_native_permessage_deflate_enabled=True,
         ))
-        mgr._ws_permessage_deflate_negotiated = False
+        mgr.realtime_bus._ws_permessage_deflate_negotiated = False
 
         # Compress then decompress using app-level
         original = '{"event":"batch_events","alerts":["a1","a2","a3","a4","a5"]}'
@@ -792,7 +792,7 @@ class TestNativeWebSocketPerMessageDeflate:
             ws_compression_enabled=True,
             ws_native_permessage_deflate_enabled=True,
         ))
-        mgr._ws_permessage_deflate_negotiated = True
+        mgr.realtime_bus._ws_permessage_deflate_negotiated = True
 
         status = mgr.get_native_deflate_status()
         assert status["mode"] == "native"
@@ -861,15 +861,15 @@ class TestSprint539Integration:
                 delivery_receipts_enabled=True,
                 min_alert_interval_seconds=0,
             ))
-            mgr._history_store = store
+            mgr.attach_history_store(store)
 
             now = time.time()
             for i in range(20):
-                mgr._record_alert_for_transition_learning(
+                mgr.prediction_mgr.record_alert_for_transition_learning(
                     Alert(alert_type="pool_adjustment", severity="warning", subject="subj1", message="pool"),
                     now + i * 30,
                 )
-                mgr._record_alert_for_transition_learning(
+                mgr.prediction_mgr.record_alert_for_transition_learning(
                     Alert(alert_type="quality_degradation", severity="info", subject="subj1", message="quality"),
                     now + i * 30 + 10,
                 )
@@ -884,15 +884,15 @@ class TestSprint539Integration:
                 learned_prediction_min_samples=5,
                 transition_persistence_enabled=True,
             ))
-            mgr2._history_store = store
+            mgr2.attach_history_store(store)
 
             # Load persisted model
             assert mgr2.load_transition_model() is True
-            assert len(mgr2._transition_counts) > 0
+            assert len(mgr2.prediction_mgr._transition_counts) > 0
 
             # Predictions should work with loaded data
             alert = Alert(alert_type="pool_adjustment", severity="warning", subject="subj1", message="trigger")
-            predictions = mgr2.predict_causal_chain_learned(alert)
+            predictions = mgr2.prediction_mgr.predict_causal_chain_learned(alert)
             assert len(predictions) > 0
             for pred in predictions:
                 assert pred["model"] == "learned"
@@ -906,7 +906,7 @@ class TestSprint539Integration:
         ))
 
         # Record initial delivery receipt with email
-        mgr._delivery_receipts["cid-int"] = {
+        mgr.delivery_mgr._delivery_receipts["cid-int"] = {
             "slack": {"message_ts": "ts1", "delivery_status": "delivered"},
             "email": {"delivery_status": "sent"},
         }

@@ -40,8 +40,8 @@ class TestDeliveryStatusTracking:
     def test_delivery_status_tracking_init(self):
         """AlertManager initializes with empty delivery status tracking."""
         mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-        assert hasattr(mgr, "_delivery_status")
-        assert len(mgr._delivery_status) == 0
+        assert hasattr(mgr.lifecycle_mgr, "_delivery_status")
+        assert len(mgr.lifecycle_mgr._delivery_status) == 0
 
     def test_send_alert_creates_delivery_status(self):
         """send_alert() creates a delivery status entry for the correlation ID."""
@@ -485,11 +485,11 @@ class TestDashboardSSE:
 
         # Add a mock queue
         mock_queue = MagicMock()
-        mgr.add_sse_subscriber(mock_queue)
-        assert len(mgr._sse_subscribers) == 1
+        mgr.realtime_bus.add_sse_subscriber(mock_queue)
+        assert len(mgr.realtime_bus._sse_subscribers) == 1
 
-        mgr.remove_sse_subscriber(mock_queue)
-        assert len(mgr._sse_subscribers) == 0
+        mgr.realtime_bus.remove_sse_subscriber(mock_queue)
+        assert len(mgr.realtime_bus._sse_subscribers) == 0
 
     def test_sse_subscriber_notified_on_dispatch(self):
         """SSE subscribers receive events when alerts are dispatched."""
@@ -502,7 +502,7 @@ class TestDashboardSSE:
         ))
 
         queue = asyncio.Queue()
-        mgr.add_sse_subscriber(queue)
+        mgr.realtime_bus.add_sse_subscriber(queue)
 
         mgr.send_alert(Alert(
             alert_type="batch_reduction",
@@ -604,7 +604,7 @@ class TestAlertDigest:
         assert result.startswith("alert-") or result.startswith("digest-")
 
         # Check the buffer
-        assert len(mgr._digest_buffer) >= 1
+        assert len(mgr.digest_mgr._digest_buffer) >= 1
 
     def test_warning_alerts_not_buffered(self):
         """Warning/critical alerts are NOT buffered even when digest is enabled."""
@@ -625,7 +625,7 @@ class TestAlertDigest:
 
         assert result.startswith("alert-")
         # Buffer should remain empty (warning not buffered)
-        assert len(mgr._digest_buffer) == 0
+        assert len(mgr.digest_mgr._digest_buffer) == 0
 
     def test_digest_flush_on_threshold(self):
         """Digest buffer is flushed when min_alerts threshold is reached."""
@@ -648,7 +648,7 @@ class TestAlertDigest:
 
         # After 3 alerts, the buffer should have been flushed
         # The buffer should be empty after flush
-        assert len(mgr._digest_buffer) == 0
+        assert len(mgr.digest_mgr._digest_buffer) == 0
 
         # A digest alert should be in the history
         history = mgr.get_alert_history(limit=5)
@@ -666,19 +666,19 @@ class TestAlertDigest:
         ))
 
         # Add an alert to the buffer manually
-        mgr._digest_buffer.append({
+        mgr.digest_mgr._digest_buffer.append({
             "alert_type": "test",
             "severity": "info",
             "subject": "test",
             "message": "Buffered alert",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
-        mgr._digest_last_flush = time.time() - 100  # Simulate elapsed time
+        mgr.digest_mgr._digest_last_flush = time.time() - 100  # Simulate elapsed time
 
         mgr.check_digest_flush()
 
         # Buffer should be flushed
-        assert len(mgr._digest_buffer) == 0
+        assert len(mgr.digest_mgr._digest_buffer) == 0
 
     def test_check_digest_flush_disabled(self):
         """check_digest_flush() does nothing when digest is disabled."""

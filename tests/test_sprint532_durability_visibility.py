@@ -237,18 +237,18 @@ class TestWebSocketDashboard:
         mgr = AlertManager(AlertConfig(enabled=True))
 
         mock_ws = MagicMock()
-        mgr.add_ws_subscriber(mock_ws)
-        assert len(mgr._ws_subscribers) == 1
+        mgr.realtime_bus.add_ws_subscriber(mock_ws)
+        assert len(mgr.realtime_bus._ws_subscribers) == 1
 
-        mgr.remove_ws_subscriber(mock_ws)
-        assert len(mgr._ws_subscribers) == 0
+        mgr.realtime_bus.remove_ws_subscriber(mock_ws)
+        assert len(mgr.realtime_bus._ws_subscribers) == 0
 
     def test_ws_subscriber_not_duplicated_on_removal(self):
         """Removing a non-existent WebSocket subscriber doesn't raise."""
         mgr = AlertManager(AlertConfig(enabled=True))
 
         # Should not raise
-        mgr.remove_ws_subscriber(MagicMock())
+        mgr.realtime_bus.remove_ws_subscriber(MagicMock())
 
     def test_notify_realtime_subscribers_pushes_to_ws(self):
         """_notify_realtime_subscribers pushes events to WS subscribers."""
@@ -257,10 +257,10 @@ class TestWebSocketDashboard:
         mock_queue = MagicMock()
         mock_ws = MagicMock()
 
-        mgr.add_sse_subscriber(mock_queue)
-        mgr.add_ws_subscriber(mock_ws)
+        mgr.realtime_bus.add_sse_subscriber(mock_queue)
+        mgr.realtime_bus.add_ws_subscriber(mock_ws)
 
-        mgr._notify_realtime_subscribers({"event": "test_event"})
+        mgr.realtime_bus.notify_realtime_subscribers({"event": "test_event"})
 
         # SSE queue should have been called
         mock_queue.put_nowait.assert_called_once_with({"event": "test_event"})
@@ -335,7 +335,7 @@ class TestAlertCorrelationGrouping:
             message="Pool exhaustion",
         ))
         # Reset rate limit
-        mgr._last_alert_time.clear()
+        mgr.lifecycle_mgr._last_alert_time.clear()
         mgr.send_alert(Alert(
             alert_type="quality_degradation",
             severity="critical",
@@ -392,7 +392,7 @@ class TestAlertCorrelationGrouping:
                 subject="shared_store",
                 message="Pool alert",
             ))
-            mgr._last_alert_time.clear()
+            mgr.lifecycle_mgr._last_alert_time.clear()
             mgr.send_alert(Alert(
                 alert_type="quality_degradation",
                 severity="critical",
@@ -423,7 +423,7 @@ class TestAlertCorrelationGrouping:
                 subject="dismiss_group",
                 message="To be dismissed",
             ))
-            mgr._last_alert_time.clear()
+            mgr.lifecycle_mgr._last_alert_time.clear()
             mgr.send_alert(Alert(
                 alert_type="quality_degradation",
                 severity="info",
@@ -603,7 +603,7 @@ class TestDigestCustomization:
             ))
 
         # Buffer should be empty after flush (triggered by per-type override)
-        assert len(mgr._digest_buffer) == 0
+        assert len(mgr.digest_mgr._digest_buffer) == 0
 
         # A digest alert should be in the history
         history = mgr.get_alert_history(limit=10)

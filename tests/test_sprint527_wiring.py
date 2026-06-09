@@ -186,11 +186,11 @@ class TestAlertingIntegration:
 
         result = manager.send_alert(alert)
         assert result
-        assert manager._total_alerts_sent == 1
+        assert manager.delivery_mgr._total_alerts_sent == 1
         # Verify the alert was recorded in history
-        assert len(manager._alert_history) == 1
-        assert manager._alert_history[0]["alert_type"] == "quality_degradation"
-        assert manager._alert_history[0]["severity"] == "warning"
+        assert len(manager.lifecycle_mgr._alert_history) == 1
+        assert manager.lifecycle_mgr._alert_history[0]["alert_type"] == "quality_degradation"
+        assert manager.lifecycle_mgr._alert_history[0]["severity"] == "warning"
 
     def test_read_pool_auto_adjustment_triggers_alert(self):
         """ReadPoolAutoSizer pool adjustment sends an alert through AlertManager.
@@ -223,9 +223,9 @@ class TestAlertingIntegration:
         # Pool should have been auto-increased
         assert store._read_pool_size > 3
         # Alert should have been sent
-        assert manager._total_alerts_sent >= 1
+        assert manager.delivery_mgr._total_alerts_sent >= 1
         pool_alerts = [
-            h for h in manager._alert_history
+            h for h in manager.lifecycle_mgr._alert_history
             if h["alert_type"] == "pool_adjustment"
         ]
         assert len(pool_alerts) >= 1
@@ -281,9 +281,9 @@ class TestAlertingIntegration:
         assert store._read_pool_size == 3
 
         # Should have at least 2 alerts: increase + rollback
-        assert manager._total_alerts_sent >= 2
+        assert manager.delivery_mgr._total_alerts_sent >= 2
         rollback_alerts = [
-            h for h in manager._alert_history
+            h for h in manager.lifecycle_mgr._alert_history
             if "rollback" in h.get("subject", "")
         ]
         assert len(rollback_alerts) >= 1
@@ -316,7 +316,7 @@ class TestAlertingIntegration:
         result = manager.send_alert(alert)
         assert result
         batch_alerts = [
-            h for h in manager._alert_history
+            h for h in manager.lifecycle_mgr._alert_history
             if h["alert_type"] == "batch_reduction"
         ]
         assert len(batch_alerts) == 1
@@ -343,7 +343,7 @@ class TestAlertingIntegration:
         # Returns empty string (type disabled, not an error)
         assert result == ""
         # But no alert should be in history (it was skipped)
-        assert len(manager._alert_history) == 0
+        assert len(manager.lifecycle_mgr._alert_history) == 0
 
     def test_rate_limiting_prevents_duplicate_alerts(self):
         """Rate-limiting prevents the same alert from being sent too frequently."""
@@ -371,8 +371,8 @@ class TestAlertingIntegration:
 
         assert result1
         assert result2 == "rate_limited"  # Rate-limited
-        assert manager._total_alerts_rate_limited == 1
-        assert len(manager._alert_history) == 1  # Only first recorded
+        assert manager.delivery_mgr._total_alerts_rate_limited == 1
+        assert len(manager.lifecycle_mgr._alert_history) == 1  # Only first recorded
 
 
 # ============================================================================
@@ -900,7 +900,7 @@ class TestCrossComponentIntegration:
 
         # Verify alert was dispatched through the wired manager
         pool_alerts = [
-            h for h in alert_mgr._alert_history
+            h for h in alert_mgr.lifecycle_mgr._alert_history
             if h["alert_type"] == "pool_adjustment"
         ]
         assert len(pool_alerts) >= 1

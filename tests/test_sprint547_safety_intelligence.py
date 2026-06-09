@@ -104,8 +104,8 @@ class TestRollbackLiveConfigReversion:
         mgr.promote_variant("config_snap", variant="variant")
 
         # Verify snapshot was saved
-        assert "config_snap" in mgr._pre_promotion_config_snapshots
-        snapshot = mgr._pre_promotion_config_snapshots["config_snap"]
+        assert "config_snap" in mgr.ab_experiment_mgr._pre_promotion_config_snapshots
+        snapshot = mgr.ab_experiment_mgr._pre_promotion_config_snapshots["config_snap"]
         assert snapshot["control_config"] == {"model": "gpt-4", "temperature": 0.7}
         assert snapshot["variant_config"] == {"model": "gpt-4o", "temperature": 0.5}
         assert snapshot["promoted_variant"] == "variant"
@@ -182,7 +182,7 @@ class TestRollbackLiveConfigReversion:
         mgr.promote_variant("no_snap", variant="variant")
 
         # Manually clear the snapshot to simulate missing data
-        mgr._pre_promotion_config_snapshots.pop("no_snap", None)
+        mgr.ab_experiment_mgr._pre_promotion_config_snapshots.pop("no_snap", None)
 
         # Simulate degradation
         exp = mgr.get_ab_experiment("no_snap")
@@ -350,7 +350,7 @@ class TestStatisticalSignificance:
         assert exp["status"] == "running"
 
         # Verify blocked counter
-        assert mgr._total_promotions_blocked_by_stats == 1
+        assert mgr.ab_experiment_mgr._total_promotions_blocked_by_stats == 1
 
     def test_promotion_allowed_when_significant(self):
         """Promotion should proceed when stat testing shows significance."""
@@ -408,17 +408,17 @@ class TestCleanupAlertingAndMetrics:
         exp["started_at"] = _old_iso(hours_ago=2)
 
         # Track alert history before cleanup
-        history_before = len(mgr._alert_history)
+        history_before = len(mgr.lifecycle_mgr._alert_history)
 
         mgr.cleanup_expired_experiments()
 
         # Verify an alert was sent
-        history_after = len(mgr._alert_history)
+        history_after = len(mgr.lifecycle_mgr._alert_history)
         assert history_after > history_before
 
         # Find the TTL expiry alert
         ttl_alerts = [
-            a for a in mgr._alert_history
+            a for a in mgr.lifecycle_mgr._alert_history
             if a.get("alert_type") == "ab_experiment_ttl_expired"
         ]
         assert len(ttl_alerts) >= 1
@@ -434,13 +434,13 @@ class TestCleanupAlertingAndMetrics:
         exp = mgr.start_ab_experiment("no_ttl_alert", {"model": "a"}, {"model": "b"})
         exp["started_at"] = _old_iso(hours_ago=2)
 
-        history_before = len(mgr._alert_history)
+        history_before = len(mgr.lifecycle_mgr._alert_history)
         mgr.cleanup_expired_experiments()
-        history_after = len(mgr._alert_history)
+        history_after = len(mgr.lifecycle_mgr._alert_history)
 
         # Should NOT send a TTL expiry alert (but may send other alerts)
         ttl_alerts = [
-            a for a in mgr._alert_history[history_before:]
+            a for a in mgr.lifecycle_mgr._alert_history[history_before:]
             if a.get("alert_type") == "ab_experiment_ttl_expired"
         ]
         assert len(ttl_alerts) == 0
@@ -526,7 +526,7 @@ class TestConfidenceCalibration:
             mgr.update_confidence_calibration("vigil", 0.80, 0.90)
 
         # After many updates, calibration factor should converge toward 0.80/0.90 ≈ 0.889
-        factor = mgr._confidence_calibration_map.get("vigil", 1.0)
+        factor = mgr.ab_experiment_mgr._confidence_calibration_map.get("vigil", 1.0)
         assert factor < 0.95  # Should have drifted down from 1.0
 
     def test_calibration_clamped(self):
@@ -535,12 +535,12 @@ class TestConfidenceCalibration:
         mgr = _make_manager(config=cfg)
 
         # Set an extreme calibration factor
-        mgr._confidence_calibration_map["extreme"] = 2.0
+        mgr.ab_experiment_mgr._confidence_calibration_map["extreme"] = 2.0
 
         calibrated = mgr.get_calibrated_confidence("extreme", 0.90)
         assert calibrated <= 1.0
 
-        mgr._confidence_calibration_map["extreme"] = 0.01
+        mgr.ab_experiment_mgr._confidence_calibration_map["extreme"] = 0.01
         calibrated = mgr.get_calibrated_confidence("extreme", 0.90)
         assert calibrated >= 0.0
 
@@ -576,11 +576,11 @@ class TestConfidenceCalibration:
         mgr = _make_manager(config=cfg)
 
         # Seed transition data
-        mgr._transition_counts[("quality_degradation", "pool_adjustment")] = 10
-        mgr._transition_totals["quality_degradation"] = 15
+        mgr.prediction_mgr._transition_counts[("quality_degradation", "pool_adjustment")] = 10
+        mgr.prediction_mgr._transition_totals["quality_degradation"] = 15
 
         # Set calibration
-        mgr._confidence_calibration_map["vigil_faithfulness"] = 0.9
+        mgr.ab_experiment_mgr._confidence_calibration_map["vigil_faithfulness"] = 0.9
 
         alert = Alert(
             alert_type="quality_degradation",

@@ -275,7 +275,7 @@ class TestDashboardEvalIntegration:
         class MockContainer:
             event_store = None
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             _compute_channel_contribution_summary(MockContainer(), limit=10)
         )
         assert isinstance(result, dict)
@@ -287,7 +287,7 @@ class TestDashboardEvalIntegration:
         class MockContainer:
             event_store = None
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             _compute_llm_extraction_summary(MockContainer(), limit=10)
         )
         assert isinstance(result, dict)

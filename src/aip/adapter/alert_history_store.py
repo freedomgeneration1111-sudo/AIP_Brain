@@ -97,8 +97,8 @@ _DEFAULT_MAX_FAILURE_ROWS = 1000
 # Default maximum number of delivery status rows to retain (Sprint 5.33)
 _DEFAULT_MAX_DELIVERY_STATUS_ROWS = 2000
 
-# Schema version for migrations (Sprint 5.45: v8 adds ab_experiments; Sprint 5.46: v9 adds rollback/recovery)
-_SCHEMA_VERSION = 9
+# Schema version for migrations (Sprint 5.45: v8 adds ab_experiments; Sprint 5.46: v9 adds rollback/recovery; Sprint 5.48: v10 adds stat results + timeseries; Sprint 5.49: v11 adds confidence_calibration + pre_promotion_snapshots; Sprint 5.50: v12 adds bandit_decision_log)
+_SCHEMA_VERSION = 12
 
 
 class AlertHistoryStore:
@@ -461,6 +461,130 @@ class AlertHistoryStore:
                     conn.execute("""
                         CREATE INDEX IF NOT EXISTS idx_decay_recovery_subject
                         ON decay_recovery_history (subject)
+                    """)
+
+                # Sprint 5.48: Schema migration v9 -> v10
+                # Add statistical_test_results and ab_accuracy_timeseries tables
+                if current_version < 10:
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS statistical_test_results (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            experiment_name TEXT NOT NULL,
+                            p_value REAL,
+                            confidence_interval_lower REAL,
+                            confidence_interval_upper REAL,
+                            method TEXT NOT NULL DEFAULT '',
+                            significant INTEGER NOT NULL DEFAULT 0,
+                            statistic REAL,
+                            control_mean REAL,
+                            variant_mean REAL,
+                            control_samples INTEGER,
+                            variant_samples INTEGER,
+                            reason TEXT NOT NULL DEFAULT '',
+                            test_result_json TEXT NOT NULL DEFAULT '{}',
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL DEFAULT '',
+                            UNIQUE(experiment_name)
+                        )
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_stat_test_experiment
+                        ON statistical_test_results (experiment_name)
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_stat_test_significant
+                        ON statistical_test_results (significant)
+                    """)
+
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS ab_accuracy_timeseries (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            experiment_name TEXT NOT NULL,
+                            timestamp TEXT NOT NULL,
+                            control_accuracy REAL NOT NULL DEFAULT 0.0,
+                            variant_accuracy REAL NOT NULL DEFAULT 0.0,
+                            control_samples INTEGER NOT NULL DEFAULT 0,
+                            variant_samples INTEGER NOT NULL DEFAULT 0,
+                            status TEXT NOT NULL DEFAULT 'running',
+                            created_at TEXT NOT NULL
+                        )
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_accuracy_ts_experiment
+                        ON ab_accuracy_timeseries (experiment_name)
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_accuracy_ts_timestamp
+                        ON ab_accuracy_timeseries (timestamp)
+                    """)
+
+                # Sprint 5.49: Schema migration v10 -> v11
+                # Add confidence_calibration and pre_promotion_snapshots tables
+                if current_version < 11:
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS confidence_calibration (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            subject TEXT NOT NULL UNIQUE,
+                            calibration_factor REAL NOT NULL DEFAULT 1.0,
+                            updated_at TEXT NOT NULL,
+                            created_at TEXT NOT NULL
+                        )
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_confidence_calibration_subject
+                        ON confidence_calibration (subject)
+                    """)
+
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS pre_promotion_snapshots (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            experiment_name TEXT NOT NULL UNIQUE,
+                            snapshot_data TEXT NOT NULL DEFAULT '{}',
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL DEFAULT ''
+                        )
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_pre_promotion_snapshot_name
+                        ON pre_promotion_snapshots (experiment_name)
+                    """)
+
+                # Sprint 5.50: Schema migration v11 -> v12
+                # Add bandit_decision_log table for logging every bandit allocation decision
+                if current_version < 12:
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS bandit_decision_log (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            experiment_name TEXT NOT NULL,
+                            method TEXT NOT NULL DEFAULT '',
+                            allocation TEXT NOT NULL DEFAULT '{}',
+                            confidence REAL,
+                            context_features TEXT NOT NULL DEFAULT '{}',
+                            sample_sizes TEXT NOT NULL DEFAULT '{}',
+                            timestamp TEXT NOT NULL,
+                            created_at TEXT NOT NULL
+                        )
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_bandit_decision_experiment
+                        ON bandit_decision_log (experiment_name)
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_bandit_decision_timestamp
+                        ON bandit_decision_log (timestamp)
+                    """)
+
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_bandit_decision_method
+                        ON bandit_decision_log (method)
                     """)
 
             self._initialized = True
@@ -2107,3 +2231,824 @@ class AlertHistoryStore:
         except Exception as exc:
             logger.warning("decay_recovery_history_query_failed", error=str(exc))
             return []
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.48: Statistical test results and accuracy timeseries persistence
+    # -----------------------------------------------------------------------
+
+    def record_statistical_test_result(self, experiment_name: str, result: dict) -> bool:
+        """Record or update a statistical test result for an experiment.
+
+        Sprint 5.48: Persists p-values, confidence intervals, and test method
+        so that statistical test outcomes survive restarts and are visible
+        in the dashboard and APIs.
+
+        Returns True if successfully recorded, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            ci = result.get("confidence_interval", [None, None])
+            if ci is None:
+                ci = [None, None]
+
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("""
+                    INSERT OR REPLACE INTO statistical_test_results (
+                        experiment_name, p_value,
+                        confidence_interval_lower, confidence_interval_upper,
+                        method, significant, statistic,
+                        control_mean, variant_mean,
+                        control_samples, variant_samples,
+                        reason, test_result_json,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    experiment_name,
+                    result.get("p_value"),
+                    ci[0] if len(ci) > 0 else None,
+                    ci[1] if len(ci) > 1 else None,
+                    result.get("method", ""),
+                    1 if result.get("significant", False) else 0,
+                    result.get("statistic"),
+                    result.get("control_mean"),
+                    result.get("variant_mean"),
+                    result.get("control_samples"),
+                    result.get("variant_samples"),
+                    result.get("reason", ""),
+                    json.dumps(result, default=str),
+                    result.get("created_at", now),
+                    now,
+                ))
+
+            return True
+        except Exception as exc:
+            logger.warning("statistical_test_result_record_failed", error=str(exc))
+            return False
+
+    def get_statistical_test_results(self, experiment_name: str | None = None) -> list[dict]:
+        """Return statistical test results from persistent storage.
+
+        Sprint 5.48: Used to restore statistical test state on startup
+        and to surface test outcomes in the dashboard/APIs.
+
+        Parameters
+        ----------
+        experiment_name:
+            If provided, return results for this experiment only.
+
+        Returns a list of statistical test result dicts.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            conditions: list[str] = []
+            params: list[Any] = []
+
+            if experiment_name:
+                conditions.append("experiment_name = ?")
+                params.append(experiment_name)
+
+            where_clause = ""
+            if conditions:
+                where_clause = "WHERE " + " AND ".join(conditions)
+
+            query = f"""
+                SELECT experiment_name, p_value,
+                       confidence_interval_lower, confidence_interval_upper,
+                       method, significant, statistic,
+                       control_mean, variant_mean,
+                       control_samples, variant_samples,
+                       reason, test_result_json,
+                       created_at, updated_at
+                FROM statistical_test_results
+                {where_clause}
+                ORDER BY updated_at DESC
+            """
+
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute(query, params)
+                rows = cursor.fetchall()
+
+            result = []
+            for row in rows:
+                # Try to reconstruct from full JSON first
+                try:
+                    full_result = json.loads(row["test_result_json"]) if row["test_result_json"] else {}
+                except (json.JSONDecodeError, TypeError):
+                    full_result = {}
+
+                # Merge structured columns into the result
+                full_result.update({
+                    "experiment_name": row["experiment_name"],
+                    "p_value": row["p_value"],
+                    "method": row["method"],
+                    "significant": bool(row["significant"]),
+                    "statistic": row["statistic"],
+                    "control_mean": row["control_mean"],
+                    "variant_mean": row["variant_mean"],
+                    "control_samples": row["control_samples"],
+                    "variant_samples": row["variant_samples"],
+                    "confidence_interval": [row["confidence_interval_lower"], row["confidence_interval_upper"]],
+                    "reason": row["reason"],
+                    "persisted_at": row["updated_at"],
+                })
+                result.append(full_result)
+
+            return result
+        except Exception as exc:
+            logger.warning("statistical_test_results_query_failed", error=str(exc))
+            return []
+
+    def record_accuracy_timeseries(self, snapshot: dict) -> bool:
+        """Record an accuracy timeseries snapshot for an experiment.
+
+        Sprint 5.48: Persists per-variant accuracy snapshots over time
+        for dashboard mini charts to render real historical data.
+
+        Returns True if successfully recorded, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("""
+                    INSERT INTO ab_accuracy_timeseries (
+                        experiment_name, timestamp,
+                        control_accuracy, variant_accuracy,
+                        control_samples, variant_samples,
+                        status, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    snapshot.get("experiment_name", ""),
+                    snapshot.get("timestamp", now),
+                    snapshot.get("control_accuracy", 0.0),
+                    snapshot.get("variant_accuracy", 0.0),
+                    snapshot.get("control_samples", 0),
+                    snapshot.get("variant_samples", 0),
+                    snapshot.get("status", "running"),
+                    now,
+                ))
+
+            return True
+        except Exception as exc:
+            logger.warning("accuracy_timeseries_record_failed", error=str(exc))
+            return False
+
+    def get_accuracy_timeseries(self, experiment_name: str, limit: int = 200) -> list[dict]:
+        """Return accuracy timeseries data for an experiment.
+
+        Sprint 5.48: Used by dashboard mini charts to render real historical
+        accuracy data instead of synthesized oscillation.
+
+        Returns a list of snapshot dicts sorted by timestamp ascending.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT experiment_name, timestamp,
+                           control_accuracy, variant_accuracy,
+                           control_samples, variant_samples,
+                           status, created_at
+                    FROM ab_accuracy_timeseries
+                    WHERE experiment_name = ?
+                    ORDER BY timestamp ASC
+                    LIMIT ?
+                """, (experiment_name, limit))
+                rows = cursor.fetchall()
+
+            result = []
+            for row in rows:
+                result.append({
+                    "experiment_name": row["experiment_name"],
+                    "timestamp": row["timestamp"],
+                    "control_accuracy": row["control_accuracy"],
+                    "variant_accuracy": row["variant_accuracy"],
+                    "control_samples": row["control_samples"],
+                    "variant_samples": row["variant_samples"],
+                    "status": row["status"],
+                })
+
+            return result
+        except Exception as exc:
+            logger.warning("accuracy_timeseries_query_failed", error=str(exc))
+            return []
+
+    def prune_accuracy_timeseries(self, experiment_name: str | None = None, max_age_hours: int = 168) -> int:
+        """Prune old accuracy timeseries data.
+
+        Sprint 5.48: Removes timeseries snapshots older than the specified
+        retention period to prevent unbounded table growth.
+
+        Returns the number of rows pruned.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        if max_age_hours <= 0:
+            return 0
+
+        try:
+            import time as _time
+            cutoff = datetime.fromtimestamp(
+                _time.time() - (max_age_hours * 3600), tz=timezone.utc
+            ).isoformat()
+
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                if experiment_name:
+                    cursor = conn.execute("""
+                        DELETE FROM ab_accuracy_timeseries
+                        WHERE experiment_name = ? AND timestamp < ?
+                    """, (experiment_name, cutoff))
+                else:
+                    cursor = conn.execute("""
+                        DELETE FROM ab_accuracy_timeseries
+                        WHERE timestamp < ?
+                    """, (cutoff,))
+                pruned = cursor.rowcount
+
+            if pruned > 0:
+                logger.info("accuracy_timeseries_pruned", pruned=pruned, max_age_hours=max_age_hours)
+            return pruned
+        except Exception as exc:
+            logger.warning("accuracy_timeseries_prune_failed", error=str(exc))
+            return 0
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.49: Confidence calibration persistence
+    # -----------------------------------------------------------------------
+
+    def record_confidence_calibration(self, subject: str, calibration_factor: float, updated_at: str) -> bool:
+        """Record or update a confidence calibration entry.
+
+        Sprint 5.49: Persists the calibration factor for a subject so that
+        calibrated confidence values survive restarts.
+
+        Returns True if successfully recorded, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("""
+                    INSERT OR REPLACE INTO confidence_calibration (
+                        subject, calibration_factor, updated_at, created_at
+                    ) VALUES (?, ?, ?, COALESCE(
+                        (SELECT created_at FROM confidence_calibration WHERE subject = ?),
+                        ?
+                    ))
+                """, (subject, calibration_factor, updated_at, subject, now))
+
+            return True
+        except Exception as exc:
+            logger.warning("confidence_calibration_record_failed", error=str(exc))
+            return False
+
+    def get_confidence_calibrations(self) -> list[dict]:
+        """Return all confidence calibration entries.
+
+        Sprint 5.49: Used by AlertManager to restore calibration state on startup.
+
+        Returns a list of calibration dicts.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT subject, calibration_factor, updated_at, created_at
+                    FROM confidence_calibration
+                    ORDER BY updated_at DESC
+                """)
+                rows = cursor.fetchall()
+
+            return [
+                {
+                    "subject": row["subject"],
+                    "calibration_factor": row["calibration_factor"],
+                    "updated_at": row["updated_at"],
+                    "created_at": row["created_at"],
+                }
+                for row in rows
+            ]
+        except Exception as exc:
+            logger.warning("confidence_calibrations_query_failed", error=str(exc))
+            return []
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.49: Pre-promotion config snapshot persistence
+    # -----------------------------------------------------------------------
+
+    def record_pre_promotion_snapshot(self, experiment_name: str, snapshot: dict) -> bool:
+        """Record or update a pre-promotion config snapshot.
+
+        Sprint 5.49: Persists the snapshot so that config reversion can
+        still function after a process restart.
+
+        Returns True if successfully recorded, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            snapshot_json = json.dumps(snapshot, default=str)
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("""
+                    INSERT OR REPLACE INTO pre_promotion_snapshots (
+                        experiment_name, snapshot_data, created_at, updated_at
+                    ) VALUES (?, ?, COALESCE(
+                        (SELECT created_at FROM pre_promotion_snapshots WHERE experiment_name = ?),
+                        ?
+                    ), ?)
+                """, (experiment_name, snapshot_json, experiment_name, now, now))
+
+            return True
+        except Exception as exc:
+            logger.warning("pre_promotion_snapshot_record_failed", error=str(exc))
+            return False
+
+    def get_pre_promotion_snapshots(self) -> list[dict]:
+        """Return all pre-promotion config snapshots.
+
+        Sprint 5.49: Used by AlertManager to restore snapshots on startup
+        so rollback can revert to the correct pre-promotion state even
+        after a process restart.
+
+        Returns a list of snapshot dicts.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT experiment_name, snapshot_data, created_at, updated_at
+                    FROM pre_promotion_snapshots
+                    ORDER BY updated_at DESC
+                """)
+                rows = cursor.fetchall()
+
+            result = []
+            for row in rows:
+                try:
+                    snapshot_data = json.loads(row["snapshot_data"]) if row["snapshot_data"] else {}
+                except (json.JSONDecodeError, TypeError):
+                    snapshot_data = {}
+                result.append({
+                    "experiment_name": row["experiment_name"],
+                    "snapshot_data": snapshot_data,
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                })
+
+            return result
+        except Exception as exc:
+            logger.warning("pre_promotion_snapshots_query_failed", error=str(exc))
+            return []
+
+    def delete_pre_promotion_snapshot(self, experiment_name: str) -> bool:
+        """Delete a pre-promotion config snapshot after rollback is complete.
+
+        Sprint 5.49: Called after a successful config reversion to clean up
+        the persisted snapshot.
+
+        Returns True if the snapshot was deleted, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                cursor = conn.execute("""
+                    DELETE FROM pre_promotion_snapshots WHERE experiment_name = ?
+                """, (experiment_name,))
+                return cursor.rowcount > 0
+        except Exception as exc:
+            logger.warning("pre_promotion_snapshot_delete_failed", error=str(exc))
+            return False
+
+    # -----------------------------------------------------------------------
+    # Sprint 5.50: Bandit Decision Logging
+    # -----------------------------------------------------------------------
+
+    def record_bandit_decision(self, decision: dict) -> bool:
+        """Record a bandit allocation decision to the log.
+
+        Sprint 5.50: Persists every bandit allocation decision with full
+        context (method, allocation, confidence, context features, sample
+        sizes) for debugging, auditing, and replay.
+
+        Parameters
+        ----------
+        decision:
+            Dict with fields: experiment_name, method, allocation,
+            confidence, context_features, sample_sizes, timestamp.
+
+        Returns True if successfully recorded, False otherwise.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            allocation_json = json.dumps(decision.get("allocation", {}), default=str)
+            context_json = json.dumps(decision.get("context_features", {}), default=str)
+            sample_sizes_json = json.dumps(decision.get("sample_sizes", {}), default=str)
+
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("""
+                    INSERT INTO bandit_decision_log (
+                        experiment_name, method, allocation, confidence,
+                        context_features, sample_sizes, timestamp, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    decision.get("experiment_name", ""),
+                    decision.get("method", ""),
+                    allocation_json,
+                    decision.get("confidence"),
+                    context_json,
+                    sample_sizes_json,
+                    decision.get("timestamp", now),
+                    now,
+                ))
+
+            return True
+        except Exception as exc:
+            logger.warning("bandit_decision_log_record_failed", error=str(exc))
+            return False
+
+    def get_bandit_decisions(
+        self,
+        experiment_name: str | None = None,
+        method: str | None = None,
+        since: str | None = None,
+        before: str | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Query bandit decision log with optional filters.
+
+        Sprint 5.50: Supports filtering by experiment name, method, and
+        date range for debugging and auditing.
+
+        Parameters
+        ----------
+        experiment_name:
+            Filter by experiment name.
+        method:
+            Filter by bandit method (thompson, ucb, epsilon_greedy).
+        since:
+            ISO 8601 datetime — only return decisions after this time.
+        before:
+            ISO 8601 datetime — only return decisions before this time.
+        limit:
+            Maximum number of decisions to return (most recent first).
+
+        Returns a list of decision dicts, most recent first.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            conditions: list[str] = []
+            params: list[Any] = []
+
+            if experiment_name:
+                conditions.append("experiment_name = ?")
+                params.append(experiment_name)
+            if method:
+                conditions.append("method = ?")
+                params.append(method)
+            if since:
+                conditions.append("timestamp > ?")
+                params.append(since)
+            if before:
+                conditions.append("timestamp < ?")
+                params.append(before)
+
+            where_clause = ""
+            if conditions:
+                where_clause = "WHERE " + " AND ".join(conditions)
+
+            query = f"""
+                SELECT id, experiment_name, method, allocation, confidence,
+                       context_features, sample_sizes, timestamp, created_at
+                FROM bandit_decision_log
+                {where_clause}
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """
+            params.append(limit)
+
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute(query, params)
+                rows = cursor.fetchall()
+
+            result = []
+            for row in rows:
+                try:
+                    allocation = json.loads(row["allocation"]) if row["allocation"] else {}
+                except (json.JSONDecodeError, TypeError):
+                    allocation = {}
+                try:
+                    context_features = json.loads(row["context_features"]) if row["context_features"] else {}
+                except (json.JSONDecodeError, TypeError):
+                    context_features = {}
+                try:
+                    sample_sizes = json.loads(row["sample_sizes"]) if row["sample_sizes"] else {}
+                except (json.JSONDecodeError, TypeError):
+                    sample_sizes = {}
+
+                result.append({
+                    "id": row["id"],
+                    "experiment_name": row["experiment_name"],
+                    "method": row["method"],
+                    "allocation": allocation,
+                    "confidence": row["confidence"],
+                    "context_features": context_features,
+                    "sample_sizes": sample_sizes,
+                    "timestamp": row["timestamp"],
+                    "created_at": row["created_at"],
+                })
+
+            return result
+        except Exception as exc:
+            logger.warning("bandit_decisions_query_failed", error=str(exc))
+            return []
+
+    def get_experiment_event_timeline(
+        self,
+        experiment_name: str | None = None,
+        event_type: str | None = None,
+        since: str | None = None,
+        before: str | None = None,
+        limit: int = 200,
+    ) -> list[dict]:
+        """Query a unified timeline of experimentation events.
+
+        Sprint 5.50: Aggregates events from multiple tables (promotions,
+        rollbacks, decay recovery, cleanup) into a single chronological
+        timeline. This provides operators with a system-level view of all
+        experimentation events instead of requiring them to check individual
+        experiment panels.
+
+        Parameters
+        ----------
+        experiment_name:
+            Filter by experiment name (applies to all event types).
+        event_type:
+            Filter by event type: "promotion", "rollback", "decay_recovery",
+            "cleanup", "bandit_decision". None returns all types.
+        since:
+            ISO 8601 datetime — only return events after this time.
+        before:
+            ISO 8601 datetime — only return events before this time.
+        limit:
+            Maximum number of events to return (most recent first).
+
+        Returns a list of event dicts sorted by timestamp descending.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        events: list[dict] = []
+
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+
+                # Promotion events from ab_experiments
+                if event_type is None or event_type == "promotion":
+                    conditions = ["promoted_variant != ''", "promotion_timestamp != ''"]
+                    params: list[Any] = []
+                    if experiment_name:
+                        conditions.append("name = ?")
+                        params.append(experiment_name)
+                    if since:
+                        conditions.append("promotion_timestamp > ?")
+                        params.append(since)
+                    if before:
+                        conditions.append("promotion_timestamp < ?")
+                        params.append(before)
+                    where = "WHERE " + " AND ".join(conditions)
+                    cursor = conn.execute(f"""
+                        SELECT name, promoted_variant, promotion_timestamp,
+                               control_accuracy, variant_accuracy, auto_promoted
+                        FROM ab_experiments {where}
+                        ORDER BY promotion_timestamp DESC LIMIT ?
+                    """, params + [limit])
+                    for row in cursor.fetchall():
+                        events.append({
+                            "event_type": "promotion",
+                            "experiment_name": row["name"],
+                            "timestamp": row["promotion_timestamp"],
+                            "variant": row["promoted_variant"],
+                            "auto_promoted": bool(row["auto_promoted"]),
+                            "control_accuracy": row["control_accuracy"],
+                            "variant_accuracy": row["variant_accuracy"],
+                        })
+
+                # Rollback events
+                if event_type is None or event_type == "rollback":
+                    conditions = []
+                    params = []
+                    if experiment_name:
+                        conditions.append("experiment_name = ?")
+                        params.append(experiment_name)
+                    if since:
+                        conditions.append("rolled_back_at > ?")
+                        params.append(since)
+                    if before:
+                        conditions.append("rolled_back_at < ?")
+                        params.append(before)
+                    where = "WHERE " + " AND ".join(conditions) if conditions else ""
+                    cursor = conn.execute(f"""
+                        SELECT experiment_name, rolled_back_variant, rolled_back_at,
+                               control_accuracy, variant_accuracy, auto
+                        FROM ab_rollback_history {where}
+                        ORDER BY rolled_back_at DESC LIMIT ?
+                    """, params + [limit])
+                    for row in cursor.fetchall():
+                        events.append({
+                            "event_type": "rollback",
+                            "experiment_name": row["experiment_name"],
+                            "timestamp": row["rolled_back_at"],
+                            "rolled_back_variant": row["rolled_back_variant"],
+                            "control_accuracy": row["control_accuracy"],
+                            "variant_accuracy": row["variant_accuracy"],
+                            "auto": bool(row["auto"]),
+                        })
+
+                # Decay recovery events
+                if event_type is None or event_type == "decay_recovery":
+                    conditions = []
+                    params = []
+                    if experiment_name:
+                        conditions.append("subject = ?")
+                        params.append(experiment_name)
+                    if since:
+                        conditions.append("created_at > ?")
+                        params.append(since)
+                    if before:
+                        conditions.append("created_at < ?")
+                        params.append(before)
+                    where = "WHERE " + " AND ".join(conditions) if conditions else ""
+                    cursor = conn.execute(f"""
+                        SELECT subject, decay_amount, current_confidence, actions_taken, created_at
+                        FROM decay_recovery_history {where}
+                        ORDER BY created_at DESC LIMIT ?
+                    """, params + [limit])
+                    for row in cursor.fetchall():
+                        events.append({
+                            "event_type": "decay_recovery",
+                            "experiment_name": row["subject"],
+                            "timestamp": row["created_at"],
+                            "decay_amount": row["decay_amount"],
+                            "current_confidence": row["current_confidence"],
+                            "actions_taken": json.loads(row["actions_taken"]) if row["actions_taken"] else [],
+                        })
+
+                # Bandit decision events (most recent per experiment)
+                if event_type is None or event_type == "bandit_decision":
+                    conditions = []
+                    params = []
+                    if experiment_name:
+                        conditions.append("experiment_name = ?")
+                        params.append(experiment_name)
+                    if since:
+                        conditions.append("timestamp > ?")
+                        params.append(since)
+                    if before:
+                        conditions.append("timestamp < ?")
+                        params.append(before)
+                    where = "WHERE " + " AND ".join(conditions) if conditions else ""
+                    cursor = conn.execute(f"""
+                        SELECT experiment_name, method, allocation, confidence, timestamp
+                        FROM bandit_decision_log {where}
+                        ORDER BY timestamp DESC LIMIT ?
+                    """, params + [limit])
+                    for row in cursor.fetchall():
+                        events.append({
+                            "event_type": "bandit_decision",
+                            "experiment_name": row["experiment_name"],
+                            "timestamp": row["timestamp"],
+                            "method": row["method"],
+                            "allocation": json.loads(row["allocation"]) if row["allocation"] else {},
+                            "confidence": row["confidence"],
+                        })
+
+            # Sort all events by timestamp descending
+            events.sort(key=lambda e: e.get("timestamp", ""), reverse=True)
+            return events[:limit]
+        except Exception as exc:
+            logger.warning("experiment_event_timeline_query_failed", error=str(exc))
+            return []
+
+    def cleanup_stale_pre_promotion_snapshots(
+        self,
+        active_experiment_names: set[str] | None = None,
+        max_age_hours: int = 72,
+    ) -> int:
+        """Remove stale pre-promotion snapshots.
+
+        Sprint 5.50: Cleans up snapshots for experiments that have been
+        stopped, rolled back, or whose promotion window has expired.
+        Snapshots for experiments still in the active set are retained.
+
+        Parameters
+        ----------
+        active_experiment_names:
+            Set of currently active (running or promoted) experiment names.
+            Snapshots for experiments NOT in this set are candidates for
+            removal. If None, only age-based cleanup is performed.
+        max_age_hours:
+            Maximum age in hours for snapshots. Snapshots older than this
+            are removed regardless of active status. Default 72 hours.
+
+        Returns the number of snapshots removed.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        try:
+            now_epoch = datetime.now(timezone.utc).timestamp()
+            cutoff_epoch = now_epoch - (max_age_hours * 3600)
+
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.row_factory = sqlite3.Row
+
+                # Get all snapshots
+                cursor = conn.execute("""
+                    SELECT experiment_name, created_at FROM pre_promotion_snapshots
+                """)
+                rows = cursor.fetchall()
+
+                removed = 0
+                for row in rows:
+                    exp_name = row["experiment_name"]
+                    created_at = row["created_at"]
+
+                    # Check if experiment is still active
+                    if active_experiment_names is not None and exp_name in active_experiment_names:
+                        continue  # Keep snapshots for active experiments
+
+                    # Check age-based expiry
+                    try:
+                        created_dt = datetime.fromisoformat(created_at)
+                        if created_dt.timestamp() < cutoff_epoch:
+                            conn.execute(
+                                "DELETE FROM pre_promotion_snapshots WHERE experiment_name = ?",
+                                (exp_name,),
+                            )
+                            removed += 1
+                    except (ValueError, TypeError):
+                        # If we can't parse the date and the experiment isn't active, remove it
+                        if active_experiment_names is None or exp_name not in active_experiment_names:
+                            conn.execute(
+                                "DELETE FROM pre_promotion_snapshots WHERE experiment_name = ?",
+                                (exp_name,),
+                            )
+                            removed += 1
+
+                # Also remove snapshots for inactive experiments (not in active set)
+                if active_experiment_names is not None:
+                    cursor2 = conn.execute("SELECT experiment_name FROM pre_promotion_snapshots")
+                    for row in cursor2.fetchall():
+                        if row["experiment_name"] not in active_experiment_names:
+                            conn.execute(
+                                "DELETE FROM pre_promotion_snapshots WHERE experiment_name = ?",
+                                (row["experiment_name"],),
+                            )
+                            removed += 1
+
+            if removed > 0:
+                logger.info("stale_snapshots_cleaned_up", removed=removed)
+
+            return removed
+        except Exception as exc:
+            logger.warning("stale_snapshot_cleanup_failed", error=str(exc))
+            return 0

@@ -523,7 +523,40 @@ async def vigil_quality_health(
             "auto_tuning_policy": auto_tuning_policy is not None,
             "read_pool_auto_sizer": auto_sizer is not None,
         },
+        # Sprint 5.48: A/B experiment health summary
+        "ab_experiments": _get_ab_health_summary(alert_manager),
     }
+
+
+def _get_ab_health_summary(alert_manager: Any) -> dict[str, Any]:
+    """Extract A/B experiment health data for the health endpoint.
+
+    Sprint 5.48: Surfaces key experiment metrics, cleanup metrics,
+    statistical test results, bandit status, and rollback dry-run info
+    in the health endpoint for operator visibility.
+    """
+    if alert_manager is None:
+        return {"available": False}
+
+    try:
+        monitoring = alert_manager.get_experiment_monitoring_summary()
+        return {
+            "available": True,
+            "total_experiments": monitoring.get("total_experiments", 0),
+            "running_count": monitoring.get("running_count", 0),
+            "promoted_count": monitoring.get("promoted_count", 0),
+            "rolled_back_count": monitoring.get("rolled_back_count", 0),
+            "cleanup_metrics": monitoring.get("cleanup_metrics", {}),
+            "statistical_significance": monitoring.get("statistical_significance", {}),
+            "config_reversion": monitoring.get("config_reversion", {}),
+            "bandit": monitoring.get("bandit", {}),
+            "rollback_dry_run": monitoring.get("rollback_dry_run", {}),
+            # Sprint 5.49: Calibration persistence and snapshot status
+            "confidence_calibration": monitoring.get("confidence_calibration", {}),
+            "pre_promotion_snapshots": monitoring.get("pre_promotion_snapshots", {}),
+        }
+    except Exception as exc:
+        return {"available": False, "error": str(exc)}
 
 
 # ---------------------------------------------------------------------------
@@ -920,7 +953,7 @@ async def vigil_quality_sse(
         queue: asyncio.Queue = asyncio.Queue()
 
         if alert_manager is not None:
-            alert_manager.add_sse_subscriber(queue)
+            alert_manager.realtime_bus.add_sse_subscriber(queue)
 
         try:
             # Send initial connection event
@@ -942,7 +975,7 @@ async def vigil_quality_sse(
             pass
         finally:
             if alert_manager is not None:
-                alert_manager.remove_sse_subscriber(queue)
+                alert_manager.realtime_bus.remove_sse_subscriber(queue)
 
     return StreamingResponse(
         event_generator(),
@@ -1029,7 +1062,7 @@ async def vigil_quality_websocket(
 
     # Register as a WebSocket subscriber for real-time events
     if alert_manager is not None:
-        alert_manager.add_ws_subscriber(websocket)
+        alert_manager.realtime_bus.add_ws_subscriber(websocket)
 
     # Sprint 5.34: Register WS session with unique ID
     import uuid as _uuid
@@ -1041,7 +1074,7 @@ async def vigil_quality_websocket(
     # Also create an SSE-style queue for event push
     event_queue: asyncio.Queue = asyncio.Queue()
     if alert_manager is not None:
-        alert_manager.add_sse_subscriber(event_queue)
+        alert_manager.realtime_bus.add_sse_subscriber(event_queue)
 
     try:
         # Send initial connection confirmation
@@ -1346,8 +1379,8 @@ async def vigil_quality_websocket(
     finally:
         # Clean up subscribers
         if alert_manager is not None:
-            alert_manager.remove_ws_subscriber(websocket)
-            alert_manager.remove_sse_subscriber(event_queue)
+            alert_manager.realtime_bus.remove_ws_subscriber(websocket)
+            alert_manager.realtime_bus.remove_sse_subscriber(event_queue)
             # Sprint 5.34: Unregister WS session
             alert_manager.unregister_ws_session(session_id)
 
@@ -2304,6 +2337,247 @@ async def update_confidence_calibration(
     return {"subject": subject, "calibrated_factor": calibrated}
 
 
+# ---------------------------------------------------------------------------
+# Sprint 5.48: Accuracy timeseries, bandit allocation, rollback dry-run
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vigil/quality/ab-experiments/{name}/accuracy-timeseries")
+async def get_accuracy_timeseries(
+    name: str,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get accuracy time-series data for dashboard mini charts. Sprint 5.48."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    timeseries = alert_mgr.get_accuracy_timeseries(name)
+    return {"experiment_name": name, "timeseries": timeseries}
+
+
+@router.post("/vigil/quality/ab-experiments/{name}/accuracy-snapshot")
+async def record_accuracy_snapshot(
+    name: str,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Record an accuracy snapshot for time-series tracking. Sprint 5.48."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    snapshot = alert_mgr.record_accuracy_snapshot(name)
+    if snapshot is None:
+        return JSONResponse({"error": "experiment_not_found"}, status_code=404)
+    return snapshot
+
+
+@router.get("/vigil/quality/ab-experiments/{name}/bandit-allocation")
+async def get_bandit_allocation(
+    name: str,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get multi-armed bandit traffic allocation for an experiment. Sprint 5.48."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    allocation = alert_mgr.get_bandit_allocation(name)
+    return {"experiment_name": name, "allocation": allocation}
+
+
+@router.get("/vigil/quality/ab-experiments/bandit-status")
+async def get_bandit_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get multi-armed bandit configuration and status. Sprint 5.48."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    return alert_mgr.get_bandit_status()
+
+
+@router.get("/vigil/quality/ab-experiments/rollback-dry-run-status")
+async def get_rollback_dry_run_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get rollback dry-run mode status. Sprint 5.48."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    return alert_mgr.get_rollback_dry_run_status()
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.49: Contextual bandit and persistence API endpoints
+# ---------------------------------------------------------------------------
+
+
+class BanditContextRewardRequest(BaseModel):
+    """Request body for recording a contextual bandit reward."""
+    variant: str = "variant"
+    reward: float = 0.0
+    context: dict[str, str] | None = None
+
+
+@router.post("/vigil/quality/ab-experiments/{name}/bandit-context-reward")
+async def record_bandit_context_reward(
+    name: str,
+    request: BanditContextRewardRequest,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Record a contextual bandit reward observation. Sprint 5.49."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    if name not in alert_mgr._ab_experiments:
+        return JSONResponse({"error": "experiment_not_found"}, status_code=404)
+    alert_mgr.record_bandit_context_reward(name, request.variant, request.reward, request.context)
+    return {"experiment_name": name, "recorded": True}
+
+
+@router.get("/vigil/quality/confidence-calibration-persist-status")
+async def get_confidence_calibration_persist_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get confidence calibration persistence status. Sprint 5.49."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    return alert_mgr.get_confidence_calibration_status()
+
+
+@router.get("/vigil/quality/pre-promotion-snapshot-status")
+async def get_pre_promotion_snapshot_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get pre-promotion config snapshot persistence status. Sprint 5.49."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    return alert_mgr.get_config_reversion_status()
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5.50: Bandit decision logging, event timeline, adaptive method,
+#              snapshot GC, calibration drift
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vigil/quality/bandit-decisions")
+async def query_bandit_decisions(
+    experiment_name: str | None = None,
+    method: str | None = None,
+    since: str | None = None,
+    before: str | None = None,
+    limit: int = 100,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Query bandit decision log for debugging and auditing. Sprint 5.50."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    decisions = alert_mgr.get_bandit_decisions(
+        experiment_name=experiment_name,
+        method=method,
+        since=since,
+        before=before,
+        limit=limit,
+    )
+    return {"decisions": decisions, "count": len(decisions)}
+
+
+@router.get("/vigil/quality/bandit-decisions/{experiment_name}/replay")
+async def replay_bandit_decisions(
+    experiment_name: str,
+    limit: int = 50,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Replay historical bandit decisions for an experiment. Sprint 5.50."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    decisions = alert_mgr.replay_bandit_decisions(experiment_name, limit=limit)
+    return {"experiment_name": experiment_name, "decisions": decisions, "count": len(decisions)}
+
+
+@router.get("/vigil/quality/experiment-event-timeline")
+async def get_experiment_event_timeline(
+    experiment_name: str | None = None,
+    event_type: str | None = None,
+    since: str | None = None,
+    before: str | None = None,
+    limit: int = 200,
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get unified timeline of experimentation events. Sprint 5.50."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    events = alert_mgr.get_experiment_event_timeline(
+        experiment_name=experiment_name,
+        event_type=event_type,
+        since=since,
+        before=before,
+        limit=limit,
+    )
+    return {"events": events, "count": len(events)}
+
+
+@router.get("/vigil/quality/adaptive-bandit-status")
+async def get_adaptive_bandit_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get adaptive bandit method selection status. Sprint 5.50."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    return alert_mgr.get_adaptive_bandit_status()
+
+
+@router.get("/vigil/quality/snapshot-gc-status")
+async def get_snapshot_gc_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get snapshot garbage collection status. Sprint 5.50."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    return alert_mgr.get_snapshot_gc_status()
+
+
+@router.post("/vigil/quality/snapshot-gc-run")
+async def run_snapshot_gc(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Manually trigger a snapshot garbage collection pass. Sprint 5.50."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    removed = alert_mgr._run_snapshot_gc()
+    return {"removed": removed, "status": alert_mgr.get_snapshot_gc_status()}
+
+
+@router.get("/vigil/quality/calibration-drift-status")
+async def get_calibration_drift_status(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Get calibration drift detection status. Sprint 5.50."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    return alert_mgr.get_calibration_drift_status()
+
+
+@router.post("/vigil/quality/calibration-drift-check")
+async def check_calibration_drift(
+    container: AipContainer = Depends(get_container),
+) -> dict[str, Any]:
+    """Manually trigger a calibration drift check. Sprint 5.50."""
+    alert_mgr = getattr(container, "_alert_manager", None)
+    if alert_mgr is None:
+        return JSONResponse({"error": "alert_manager_not_configured"}, status_code=503)
+    drifted = alert_mgr.check_calibration_drift()
+    return {"drifted_subjects": drifted, "count": len(drifted)}
+
+
 @router.get("/vigil/quality/dashboard", response_class=HTMLResponse)
 async def vigil_quality_dashboard(
     container: AipContainer = Depends(get_container),
@@ -2763,6 +3037,23 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
       <div style="flex:1;min-width:200px;">
         <h4 style="font-size:11px;color:#94a3b8;margin-bottom:4px;text-transform:uppercase;">Confidence Calibration</h4>
         <div id="calibration-display"><span style="font-size:11px;color:#64748b;">Loading...</span></div>
+      </div>
+    </div>
+    <!-- Sprint 5.50: Historical Promotion Timeline -->
+    <div style="margin-top:12px;">
+      <h4 style="font-size:12px;color:#94a3b8;margin-bottom:6px;text-transform:uppercase;">Event Timeline</h4>
+      <div style="margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap;">
+        <select id="timeline-filter-type" style="font-size:10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:3px;padding:2px 4px;">
+          <option value="">All Types</option>
+          <option value="promotion">Promotion</option>
+          <option value="rollback">Rollback</option>
+          <option value="decay_recovery">Decay Recovery</option>
+          <option value="bandit_decision">Bandit Decision</option>
+        </select>
+        <input id="timeline-filter-name" type="text" placeholder="Filter by name..." style="font-size:10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:3px;padding:2px 6px;width:140px;">
+      </div>
+      <div id="event-timeline-list" style="max-height:250px;overflow-y:auto;">
+        <span class="no-alerts">Loading timeline...</span>
       </div>
     </div>
   </div>
@@ -4656,7 +4947,88 @@ function renderExperimentPanel(data) {
         Updates: ${cc.total_updates} | Subjects: ${cc.calibrated_subjects.length}
       </span>`;
   }
+
+  // Sprint 5.50: Fetch and render the event timeline
+  loadEventTimeline();
 }
+
+// Sprint 5.50: Load the unified event timeline from the API
+function loadEventTimeline(filterType, filterName) {
+  const timelineDiv = document.getElementById('event-timeline-list');
+  if (!timelineDiv) return;
+
+  let url = '/api/v1/vigil/quality/experiment-event-timeline?limit=50';
+  if (filterType) url += '&event_type=' + encodeURIComponent(filterType);
+  if (filterName) url += '&experiment_name=' + encodeURIComponent(filterName);
+
+  fetch(url)
+    .then(r => r.ok ? r.json() : Promise.reject('API error'))
+    .then(data => {
+      const events = data.events || [];
+      if (events.length === 0) {
+        timelineDiv.innerHTML = '<span class="no-alerts">No events yet</span>';
+        return;
+      }
+
+      timelineDiv.innerHTML = events.map(e => {
+        const typeColors = {
+          'promotion': '#3b82f6',
+          'rollback': '#f87171',
+          'decay_recovery': '#f59e0b',
+          'bandit_decision': '#8b5cf6',
+        };
+        const typeIcons = {
+          'promotion': '&#9650;',
+          'rollback': '&#9660;',
+          'decay_recovery': '&#9888;',
+          'bandit_decision': '&#9670;',
+        };
+        const color = typeColors[e.event_type] || '#64748b';
+        const icon = typeIcons[e.event_type] || '&#9679;';
+        const ts = e.timestamp ? e.timestamp.substring(11, 19) : '';
+        let detail = '';
+        if (e.event_type === 'promotion') {
+          detail = `promoted <span style="color:${color};">${e.variant || ''}</span> ${e.auto_promoted ? '<span style="color:#f59e0b;font-size:9px;">AUTO</span>' : ''}`;
+        } else if (e.event_type === 'rollback') {
+          detail = `rolled back <span style="color:${color};">${e.rolled_back_variant || ''}</span>`;
+        } else if (e.event_type === 'decay_recovery') {
+          detail = `decay: ${((e.decay_amount || 0) * 100).toFixed(1)}%`;
+        } else if (e.event_type === 'bandit_decision') {
+          const alloc = e.allocation || {};
+          detail = `method: ${e.method || ''} | C:${((alloc.control || 0) * 100).toFixed(0)}% V:${((alloc.variant || 0) * 100).toFixed(0)}%`;
+        }
+        return `<div style="padding:3px 8px;border-left:3px solid ${color};background:${color}11;margin-bottom:3px;font-size:10px;color:#cbd5e1;border-radius:2px;">
+          <span style="color:${color};">${icon}</span>
+          <span style="color:#64748b;">${ts}</span>
+          <span style="font-weight:600;color:#f1f5f9;">${e.experiment_name || ''}</span>
+          ${detail}
+        </div>`;
+      }).join('');
+    })
+    .catch(() => {
+      timelineDiv.innerHTML = '<span class="no-alerts">Timeline unavailable</span>';
+    });
+}
+
+// Sprint 5.50: Wire up timeline filter controls
+document.addEventListener('DOMContentLoaded', function() {
+  const typeFilter = document.getElementById('timeline-filter-type');
+  const nameFilter = document.getElementById('timeline-filter-name');
+  if (typeFilter) {
+    typeFilter.addEventListener('change', function() {
+      loadEventTimeline(this.value, nameFilter ? nameFilter.value : '');
+    });
+  }
+  if (nameFilter) {
+    let debounce;
+    nameFilter.addEventListener('input', function() {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        loadEventTimeline(typeFilter ? typeFilter.value : '', this.value);
+      }, 300);
+    });
+  }
+});
 
 function drawMiniAccuracyChart(canvasId, experiment) {
   const canvas = document.getElementById(canvasId);
@@ -4667,8 +5039,105 @@ function drawMiniAccuracyChart(canvasId, experiment) {
 
   ctx.clearRect(0, 0, w, h);
 
-  // Simulate time-series data from current accuracy point
-  // In production, this would use actual time-series data from the store
+  // Sprint 5.49: Fetch real accuracy timeseries data from the API.
+  // Falls back to simulated data if the API call fails.
+  const expName = experiment.name || '';
+  const apiUrl = '/api/v1/vigil/quality/ab-experiments/' + encodeURIComponent(expName) + '/accuracy-timeseries';
+
+  fetch(apiUrl)
+    .then(r => r.ok ? r.json() : Promise.reject('API error'))
+    .then(data => {
+      const ts = (data && data.timeseries && data.timeseries.length > 0) ? data.timeseries : null;
+      if (ts) {
+        drawRealTimeseriesChart(ctx, w, h, ts, experiment);
+      } else {
+        drawSimulatedChart(ctx, w, h, experiment);
+      }
+    })
+    .catch(() => {
+      drawSimulatedChart(ctx, w, h, experiment);
+    });
+}
+
+function drawRealTimeseriesChart(ctx, w, h, timeseries, experiment) {
+  // Sprint 5.49: Render real historical accuracy data on the mini chart.
+  // Includes promotion event markers and decay event highlighting.
+  const points = timeseries.length;
+  if (points === 0) return;
+
+  const cData = timeseries.map(d => d.control_accuracy || 0);
+  const vData = timeseries.map(d => d.variant_accuracy || 0);
+
+  const maxVal = Math.max(...cData, ...vData, 0.01);
+  const minVal = Math.min(...cData, ...vData, 0);
+  const range = maxVal - minVal || 0.01;
+
+  // Draw decay-highlighted regions (status == 'rolled_back')
+  for (let i = 0; i < points; i++) {
+    const status = timeseries[i].status || '';
+    if (status === 'rolled_back' || status === 'stopped') {
+      const x = (i / Math.max(points - 1, 1)) * w;
+      const regionWidth = w / Math.max(points - 1, 1);
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.12)';
+      ctx.fillRect(x - regionWidth / 2, 0, regionWidth, h);
+    }
+  }
+
+  // Draw promotion event vertical markers
+  const promoTimestamp = experiment.promotion_timestamp || '';
+  for (let i = 0; i < points; i++) {
+    const ts = timeseries[i].timestamp || '';
+    const status = timeseries[i].status || '';
+    // Mark the point where status changed to 'promoted'
+    if (status === 'promoted' && i > 0 && (timeseries[i-1].status || '') !== 'promoted') {
+      const x = (i / Math.max(points - 1, 1)) * w;
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // Draw control line (blue)
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < points; i++) {
+    const x = (i / Math.max(points - 1, 1)) * w;
+    const y = h - ((cData[i] - minVal) / range) * (h - 4) - 2;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Draw variant line (green)
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < points; i++) {
+    const x = (i / Math.max(points - 1, 1)) * w;
+    const y = h - ((vData[i] - minVal) / range) * (h - 4) - 2;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Legend with data point count
+  ctx.font = '9px sans-serif';
+  ctx.fillStyle = '#3b82f6';
+  ctx.fillText('Control', w - 75, 10);
+  ctx.fillStyle = '#4ade80';
+  ctx.fillText('Variant', w - 35, 10);
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(points + 'pts', 2, 10);
+}
+
+function drawSimulatedChart(ctx, w, h, experiment) {
+  // Fallback: Simulate time-series data from current accuracy point
   const cAcc = experiment.control_accuracy || 0;
   const vAcc = experiment.variant_accuracy || 0;
   const points = 10;
@@ -4709,6 +5178,8 @@ function drawMiniAccuracyChart(canvasId, experiment) {
   ctx.fillText('Control', w - 70, 10);
   ctx.fillStyle = '#4ade80';
   ctx.fillText('Variant', w - 30, 10);
+  ctx.fillStyle = '#64748b';
+  ctx.fillText('sim', 2, 10);
 }
 
 // Fetch experiment monitoring on load and periodically

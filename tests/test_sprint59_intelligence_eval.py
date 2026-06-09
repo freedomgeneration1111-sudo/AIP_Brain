@@ -607,7 +607,7 @@ class TestRetrievalEvalHarness:
         ]
 
         harness = RetrievalEvalHarness(k=10)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             harness.run(golden, _mock_retriever)
         )
 
@@ -674,7 +674,7 @@ class TestRetrievalEvalHarness:
         golden = [GoldenQuery(query="test query", relevant_ids=["doc:1"])]
 
         harness = RetrievalEvalHarness(k=10)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             harness.run(golden, _failing_retriever)
         )
 

@@ -515,7 +515,7 @@ class TestRestartDeduplication:
             mgr.attach_history_store(store1)
 
             # The rate-limit state should be rebuilt from the store
-            assert len(mgr._last_alert_time) > 0
+            assert len(mgr.lifecycle_mgr._last_alert_time) > 0
 
     def test_no_duplicate_storm_after_restart(self):
         """After restart, alerts within the rate-limit window are suppressed."""

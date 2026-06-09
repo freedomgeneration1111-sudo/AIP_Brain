@@ -414,6 +414,21 @@ async def health(container: AipContainer = Depends(get_container)):
         except Exception:
             pass
 
+    # Sprint 5.50: Calibration drift and snapshot GC status
+    calibration_drift_status: dict[str, Any] = {}
+    if alert_manager is not None and hasattr(alert_manager, "get_calibration_drift_status"):
+        try:
+            calibration_drift_status = alert_manager.get_calibration_drift_status()
+        except Exception:
+            pass
+
+    snapshot_gc_status: dict[str, Any] = {}
+    if alert_manager is not None and hasattr(alert_manager, "get_snapshot_gc_status"):
+        try:
+            snapshot_gc_status = alert_manager.get_snapshot_gc_status()
+        except Exception:
+            pass
+
     return {
         "status": status,
         "uptime_seconds": uptime_seconds,
@@ -437,4 +452,6 @@ async def health(container: AipContainer = Depends(get_container)):
         "alerting_status": alerting_status,
         "config_watcher_status": config_watcher_status,
         "cleanup_metrics": cleanup_metrics,
+        "calibration_drift": calibration_drift_status,
+        "snapshot_gc": snapshot_gc_status,
     }

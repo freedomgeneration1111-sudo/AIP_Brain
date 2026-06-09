@@ -220,7 +220,7 @@ class TestAlertManager:
         result2 = manager.send_alert(alert2)
         assert result2 == "rate_limited"  # Rate limited
 
-        assert manager._total_alerts_rate_limited == 1
+        assert manager.delivery_mgr._total_alerts_rate_limited == 1
 
     def test_alert_manager_allows_different_subjects(self):
         """AlertManager allows different subjects for the same alert type."""
@@ -249,8 +249,8 @@ class TestAlertManager:
             )
             manager.send_alert(alert)
 
-        assert len(manager._alert_history) == 5
-        assert manager._total_alerts_sent == 5
+        assert len(manager.lifecycle_mgr._alert_history) == 5
+        assert manager.delivery_mgr._total_alerts_sent == 5
 
     def test_alert_manager_history_capped_at_50(self):
         """AlertManager caps alert history at 50 entries."""
@@ -266,7 +266,7 @@ class TestAlertManager:
             )
             manager.send_alert(alert)
 
-        assert len(manager._alert_history) <= 50
+        assert len(manager.lifecycle_mgr._alert_history) <= 50
 
     def test_alert_manager_get_status(self):
         """AlertManager.get_status returns expected structure."""
@@ -368,9 +368,9 @@ class TestAlertManager:
         result = await vigil.run_cycle()
 
         # An alert should have been dispatched
-        assert alert_mgr._total_alerts_sent >= 1
+        assert alert_mgr.delivery_mgr._total_alerts_sent >= 1
         quality_alerts = [
-            a for a in alert_mgr._alert_history
+            a for a in alert_mgr.lifecycle_mgr._alert_history
             if a["alert_type"] == "quality_degradation"
         ]
         assert len(quality_alerts) >= 1
@@ -713,7 +713,7 @@ class TestPerBatchTelemetry:
 
         # Alert should have been dispatched
         batch_alerts = [
-            a for a in alert_mgr._alert_history
+            a for a in alert_mgr.lifecycle_mgr._alert_history
             if a["alert_type"] == "batch_reduction"
         ]
         assert len(batch_alerts) >= 1
@@ -873,7 +873,7 @@ class TestPoolAdjustmentAlerting:
 
         # Alert should have been sent
         pool_alerts = [
-            a for a in alert_mgr._alert_history
+            a for a in alert_mgr.lifecycle_mgr._alert_history
             if a["alert_type"] == "pool_adjustment"
         ]
         assert len(pool_alerts) >= 1
@@ -904,7 +904,7 @@ class TestPoolAdjustmentAlerting:
 
         # Check for rollback alert
         rollback_alerts = [
-            a for a in alert_mgr._alert_history
+            a for a in alert_mgr.lifecycle_mgr._alert_history
             if a["alert_type"] == "pool_adjustment" and "rollback" in a.get("subject", "")
         ]
         assert len(rollback_alerts) >= 1

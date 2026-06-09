@@ -813,6 +813,38 @@ async def lifespan(app: FastAPI):
             webhook_max_retries=int(alert_cfg_dict.get("webhook_max_retries", 3)),
             webhook_retry_base_delay_seconds=float(alert_cfg_dict.get("webhook_retry_base_delay_seconds", 1.0)),
             routes=routes,
+            # Sprint 5.45: A/B experiment configuration
+            ab_experiment_enabled=bool(alert_cfg_dict.get("ab_experiment_enabled", False)),
+            ab_auto_promote_interval_seconds=int(alert_cfg_dict.get("ab_auto_promote_interval_seconds", 300)),
+            ab_auto_promote_confidence_threshold=float(alert_cfg_dict.get("ab_auto_promote_confidence_threshold", 0.95)),
+            ab_auto_promote_min_samples=int(alert_cfg_dict.get("ab_auto_promote_min_samples", 50)),
+            # Sprint 5.46: Experiment expiry/cleanup
+            ab_experiment_ttl_hours=int(alert_cfg_dict.get("ab_experiment_ttl_hours", 168)),
+            ab_stopped_experiment_retention_hours=int(alert_cfg_dict.get("ab_stopped_experiment_retention_hours", 72)),
+            ab_cleanup_interval_seconds=int(alert_cfg_dict.get("ab_cleanup_interval_seconds", 3600)),
+            # Sprint 5.46: Promotion rollback
+            ab_rollback_enabled=bool(alert_cfg_dict.get("ab_rollback_enabled", False)),
+            ab_rollback_observation_window_seconds=int(alert_cfg_dict.get("ab_rollback_observation_window_seconds", 1800)),
+            ab_rollback_accuracy_drop_threshold=float(alert_cfg_dict.get("ab_rollback_accuracy_drop_threshold", 0.05)),
+            # Sprint 5.46: Decay recovery
+            decay_recovery_enabled=bool(alert_cfg_dict.get("decay_recovery_enabled", False)),
+            decay_recovery_threshold=float(alert_cfg_dict.get("decay_recovery_threshold", 0.15)),
+            # Sprint 5.47: Rollback + live config reversion
+            ab_rollback_revert_live_config=bool(alert_cfg_dict.get("ab_rollback_revert_live_config", True)),
+            # Sprint 5.47: Statistical significance testing
+            ab_statistical_significance_enabled=bool(alert_cfg_dict.get("ab_statistical_significance_enabled", False)),
+            ab_statistical_significance_p_value=float(alert_cfg_dict.get("ab_statistical_significance_p_value", 0.05)),
+            ab_statistical_significance_method=alert_cfg_dict.get("ab_statistical_significance_method", "z_test"),
+            ab_statistical_significance_min_samples=int(alert_cfg_dict.get("ab_statistical_significance_min_samples", 30)),
+            # Sprint 5.47: Cleanup alerting
+            ab_cleanup_alert_on_ttl_expiry=bool(alert_cfg_dict.get("ab_cleanup_alert_on_ttl_expiry", True)),
+            # Sprint 5.47: Confidence calibration
+            ab_confidence_calibration_enabled=bool(alert_cfg_dict.get("ab_confidence_calibration_enabled", False)),
+            # Sprint 5.48: Rollback dry-run mode
+            ab_rollback_dry_run=bool(alert_cfg_dict.get("ab_rollback_dry_run", False)),
+            # Sprint 5.48: Multi-armed bandit
+            ab_bandit_enabled=bool(alert_cfg_dict.get("ab_bandit_enabled", False)),
+            ab_bandit_method=alert_cfg_dict.get("ab_bandit_method", "thompson"),
         )
         container._alert_manager = AlertManager(alert_config)
         # Validate config at startup and log any warnings
@@ -928,6 +960,139 @@ async def lifespan(app: FastAPI):
             degradation="default_thresholds",
             error=str(exc),
         )
+
+    # Sprint 5.48: Wire live config reverter callbacks into AlertManager.
+    # Connects rollback to ModelSlotResolver (model config) and
+    # AutoTuningPolicy (tuning parameters) so that rollback automatically
+    # reverts live system configuration to the pre-promotion baseline.
+    if container._alert_manager is not None:
+        # Wire ModelSlotResolver reverter — reverts model slot configuration
+        # on rollback by restoring the pre-promotion baseline config.
+        _model_resolver = getattr(container, "model_provider", None)
+        if _model_resolver is not None and hasattr(_model_resolver, "resolve"):
+            def _make_live_config_reverter(resolver):
+                """Create a closure that reverts model slot config via the resolver."""
+                def _revert_model_config(experiment_name: str, baseline_config: dict) -> bool:
+                    try:
+                        # Apply baseline config to the resolver's slot configuration
+                        if hasattr(resolver, "_models_config"):
+                            for slot_name, slot_cfg in baseline_config.items():
+                                if isinstance(slot_cfg, dict) and slot_name in (resolver._models_config or {}):
+                                    resolver._models_config[slot_name].update(slot_cfg)
+                                    log.info(
+                                        "model_slot_config_reverted",
+                                        experiment=experiment_name,
+                                        slot=slot_name,
+                                    )
+                        log.info("live_config_reverted", experiment=experiment_name)
+                        return True
+                    except Exception as exc:
+                        log.warning("live_config_revert_failed", experiment=experiment_name, error=str(exc))
+                        return False
+                return _revert_model_config
+
+            container._alert_manager.set_live_config_reverter(_make_live_config_reverter(_model_resolver))
+            log.info("alert_manager_wired", component="live_config_reverter")
+
+        # Wire AutoTuningPolicy reverter — restores auto-tuning policy parameters
+        # on rollback from the snapshot captured at promotion time.
+        _tuning_policy = getattr(container, "_auto_tuning_policy", None)
+        if _tuning_policy is not None and hasattr(_tuning_policy, "to_dict"):
+            def _make_auto_tuning_reverter(policy):
+                """Create a closure that reverts auto-tuning policy from a snapshot."""
+                def _revert_auto_tuning(snapshot_dict: dict) -> bool:
+                    try:
+                        # Restore policy fields from the snapshot
+                        if hasattr(policy, "__dataclass_fields__"):
+                            for field_name in policy.__dataclass_fields__:
+                                if field_name.startswith("_"):
+                                    continue
+                                if field_name in snapshot_dict:
+                                    try:
+                                        setattr(policy, field_name, snapshot_dict[field_name])
+                                    except (TypeError, AttributeError):
+                                        pass
+                        # Re-apply to auto-sizer and sexton
+                        if hasattr(container, "_read_pool_auto_sizer") and container._read_pool_auto_sizer is not None:
+                            try:
+                                from aip.adapter.auto_tuning_policy import apply_policy_to_auto_sizer
+                                apply_policy_to_auto_sizer(policy, container._read_pool_auto_sizer)
+                            except Exception:
+                                pass
+                        if hasattr(container, "sexton_actor") and container.sexton_actor is not None:
+                            try:
+                                from aip.adapter.auto_tuning_policy import apply_policy_to_sexton
+                                apply_policy_to_sexton(policy, container.sexton_actor)
+                            except Exception:
+                                pass
+                        log.info("auto_tuning_policy_reverted")
+                        return True
+                    except Exception as exc:
+                        log.warning("auto_tuning_revert_failed", error=str(exc))
+                        return False
+                return _revert_auto_tuning
+
+            container._alert_manager.set_auto_tuning_reverter(_make_auto_tuning_reverter(_tuning_policy))
+            log.info("alert_manager_wired", component="auto_tuning_reverter")
+
+    # Sprint 5.48: Restore A/B experiments from persistent store on startup,
+    # and start the auto-promotion and cleanup checkers if configured.
+    if container._alert_manager is not None and container._alert_history_store is not None:
+        try:
+            stored_experiments = container._alert_history_store.get_ab_experiments()
+            if stored_experiments:
+                for exp in stored_experiments:
+                    name = exp.get("name", "")
+                    if name and name not in container._alert_manager.ab_experiment_mgr._ab_experiments:
+                        container._alert_manager.ab_experiment_mgr._ab_experiments[name] = exp
+                log.info("ab_experiments_restored", count=len(stored_experiments))
+
+            # Restore statistical test results
+            if hasattr(container._alert_history_store, "get_statistical_test_results"):
+                stored_stats = container._alert_history_store.get_statistical_test_results()
+                for result in stored_stats:
+                    exp_name = result.get("experiment_name", "")
+                    if exp_name:
+                        container._alert_manager.ab_experiment_mgr._statistical_test_results[exp_name] = result
+
+            # Restore accuracy timeseries
+            if hasattr(container._alert_history_store, "get_accuracy_timeseries"):
+                for exp in container._alert_manager.ab_experiment_mgr._ab_experiments.values():
+                    ts = container._alert_history_store.get_accuracy_timeseries(exp.get("name", ""))
+                    if ts:
+                        exp["accuracy_timeseries"] = ts
+
+            # Sprint 5.49: Restore confidence calibration
+            calib_count = container._alert_manager.restore_confidence_calibration(container._alert_history_store)
+            if calib_count > 0:
+                log.info("confidence_calibration_restored_on_startup", count=calib_count)
+
+            # Sprint 5.49: Restore pre-promotion config snapshots
+            snapshot_count = container._alert_manager.restore_pre_promotion_snapshots(container._alert_history_store)
+            if snapshot_count > 0:
+                log.info("pre_promotion_snapshots_restored_on_startup", count=snapshot_count)
+
+            # Sprint 5.50: Start snapshot GC if configured
+            if hasattr(container._alert_manager, "start_snapshot_gc"):
+                container._alert_manager.start_snapshot_gc()
+                log.info("snapshot_gc_started")
+
+            # Sprint 5.50: Run initial calibration drift check
+            if hasattr(container._alert_manager, "check_calibration_drift"):
+                try:
+                    drifted = container._alert_manager.check_calibration_drift()
+                    if drifted:
+                        log.info("calibration_drift_detected_on_startup", count=len(drifted))
+                except Exception as exc:
+                    log.warning("calibration_drift_check_failed_on_startup", error=str(exc))
+
+            # Start auto-promotion checker
+            container._alert_manager.start_ab_promotion_checker()
+            # Start cleanup checker
+            container._alert_manager.start_ab_cleanup_checker()
+            log.info("ab_experiment_checkers_started")
+        except Exception as exc:
+            log.warning("ab_experiment_restore_failed", error=str(exc))
 
     # Wire alert_manager and quality_store into Vigil actor (if initialized)
     if container.vigil is not None:
@@ -1321,12 +1486,42 @@ async def lifespan(app: FastAPI):
                 pass
 
     # Sprint 5.46: Graceful shutdown persistence — persist all A/B experiments and stop checkers
+    # Sprint 5.48: Also persist statistical test results and accuracy timeseries
     if hasattr(container, "_alert_manager") and container._alert_manager is not None:
         try:
             count = container._alert_manager.persist_all_ab_experiments()
             log.info("ab_experiments_persisted_on_shutdown", count=count)
         except Exception as exc:
             log.warning("ab_experiments_persist_failed", error=str(exc))
+
+        # Sprint 5.48: Persist statistical test results
+        if hasattr(container, "_alert_history_store") and container._alert_history_store is not None:
+            try:
+                stat_count = container._alert_manager.persist_statistical_test_results(container._alert_history_store)
+                log.info("statistical_test_results_persisted_on_shutdown", count=stat_count)
+            except Exception as exc:
+                log.warning("statistical_test_results_persist_failed", error=str(exc))
+
+        # Sprint 5.50: Persist confidence calibration and snapshots on shutdown
+        if hasattr(container, "_alert_history_store") and container._alert_history_store is not None:
+            try:
+                calib_count = container._alert_manager.persist_confidence_calibration(container._alert_history_store)
+                log.info("confidence_calibration_persisted_on_shutdown", count=calib_count)
+            except Exception as exc:
+                log.warning("confidence_calibration_persist_failed", error=str(exc))
+
+            try:
+                snap_count = container._alert_manager.persist_pre_promotion_snapshots(container._alert_history_store)
+                log.info("pre_promotion_snapshots_persisted_on_shutdown", count=snap_count)
+            except Exception as exc:
+                log.warning("pre_promotion_snapshots_persist_failed", error=str(exc))
+
+        # Sprint 5.50: Stop snapshot GC thread
+        if hasattr(container._alert_manager, "stop_snapshot_gc"):
+            try:
+                container._alert_manager.stop_snapshot_gc()
+            except Exception:
+                pass
 
     # shutdown: close any open connections (the individual stores implement close())
     for store_name, store in [

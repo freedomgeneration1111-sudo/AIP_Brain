@@ -384,17 +384,17 @@ class TestPromotionRollback:
         exp["variant_accuracy"] = 0.60
 
         # Track alert history before rollback
-        history_before = len(mgr._alert_history)
+        history_before = len(mgr.lifecycle_mgr._alert_history)
 
         mgr.check_promotion_rollback()
 
         # Verify an alert was sent (alert history should have grown)
-        history_after = len(mgr._alert_history)
+        history_after = len(mgr.lifecycle_mgr._alert_history)
         assert history_after > history_before
 
         # Find the rollback alert
         rollback_alerts = [
-            a for a in mgr._alert_history
+            a for a in mgr.lifecycle_mgr._alert_history
             if a.get("alert_type") == "ab_experiment_rollback"
         ]
         assert len(rollback_alerts) >= 1
@@ -516,8 +516,8 @@ class TestGracefulShutdown:
         # Start the checkers
         mgr.start_ab_promotion_checker()
         mgr.start_ab_cleanup_checker()
-        assert mgr._ab_promotion_checker_running is True
-        assert mgr._ab_cleanup_checker_running is True
+        assert mgr.ab_experiment_mgr._ab_promotion_checker_running is True
+        assert mgr.ab_experiment_mgr._ab_cleanup_checker_running is True
 
         # persist_all_ab_experiments should stop them
         mgr.start_ab_experiment("shutdown_exp", {"model": "a"}, {"model": "b"})
@@ -525,8 +525,8 @@ class TestGracefulShutdown:
 
         # Allow a brief moment for thread loop to notice the flag
         time.sleep(0.1)
-        assert mgr._ab_promotion_checker_running is False
-        assert mgr._ab_cleanup_checker_running is False
+        assert mgr.ab_experiment_mgr._ab_promotion_checker_running is False
+        assert mgr.ab_experiment_mgr._ab_cleanup_checker_running is False
 
     def test_persist_with_store(self, tmp_path):
         store = _make_store(tmp_path)

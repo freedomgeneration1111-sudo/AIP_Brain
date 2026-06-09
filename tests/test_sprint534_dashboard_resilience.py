@@ -289,7 +289,7 @@ class TestWebSocketSessionManagement:
             def put_nowait(self, item):
                 events.append(item)
 
-        mgr.add_sse_subscriber(MockQueue())
+        mgr.realtime_bus.add_sse_subscriber(MockQueue())
         mgr.register_ws_session("sess-broadcast", MagicMock(), "10.0.0.1")
 
         # Check that a ws_session_connected event was broadcast
@@ -306,7 +306,7 @@ class TestWebSocketSessionManagement:
             def put_nowait(self, item):
                 events.append(item)
 
-        mgr.add_sse_subscriber(MockQueue())
+        mgr.realtime_bus.add_sse_subscriber(MockQueue())
         mgr.register_ws_session("sess-broadcast", MagicMock(), "10.0.0.1")
         # Clear events from the register call
         events.clear()

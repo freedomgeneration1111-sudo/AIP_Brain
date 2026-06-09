@@ -123,9 +123,9 @@ class TestPredictionAccuracy:
     def test_prediction_outcomes_initialized(self):
         """AlertManager initializes prediction accuracy tracking state."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        assert mgr._prediction_outcomes == {}
-        assert mgr._prediction_accuracy_hits == 0
-        assert mgr._prediction_accuracy_misses == 0
+        assert mgr.prediction_mgr._prediction_outcomes == {}
+        assert mgr.prediction_mgr._prediction_accuracy_hits == 0
+        assert mgr.prediction_mgr._prediction_accuracy_misses == 0
 
     def test_record_prediction_outcome_hit(self):
         """record_prediction_outcome marks a hit when alert matches prediction."""
@@ -136,7 +136,7 @@ class TestPredictionAccuracy:
         ))
         # Simulate a pending prediction
         pred_id = "pred-test123"
-        mgr._prediction_outcomes[pred_id] = {
+        mgr.prediction_mgr._prediction_outcomes[pred_id] = {
             "prediction_id": pred_id,
             "predicted_alert_type": "quality_degradation",
             "subject": "vigil_test",
@@ -154,9 +154,9 @@ class TestPredictionAccuracy:
         )
         mgr.record_prediction_outcome(alert)
 
-        assert mgr._prediction_accuracy_hits == 1
-        assert mgr._prediction_accuracy_misses == 0
-        assert mgr._prediction_outcomes[pred_id]["outcome"] == "hit"
+        assert mgr.prediction_mgr._prediction_accuracy_hits == 1
+        assert mgr.prediction_mgr._prediction_accuracy_misses == 0
+        assert mgr.prediction_mgr._prediction_outcomes[pred_id]["outcome"] == "hit"
 
     def test_record_prediction_outcome_miss(self):
         """record_prediction_outcome marks a miss when time window expires."""
@@ -167,7 +167,7 @@ class TestPredictionAccuracy:
         ))
         # Simulate an old pending prediction
         pred_id = "pred-old123"
-        mgr._prediction_outcomes[pred_id] = {
+        mgr.prediction_mgr._prediction_outcomes[pred_id] = {
             "prediction_id": pred_id,
             "predicted_alert_type": "batch_reduction",
             "subject": "old_subject",
@@ -185,15 +185,15 @@ class TestPredictionAccuracy:
         )
         mgr.record_prediction_outcome(alert)
 
-        assert mgr._prediction_accuracy_misses == 1
-        assert mgr._prediction_outcomes[pred_id]["outcome"] == "miss"
+        assert mgr.prediction_mgr._prediction_accuracy_misses == 1
+        assert mgr.prediction_mgr._prediction_outcomes[pred_id]["outcome"] == "miss"
 
     def test_get_prediction_accuracy(self):
         """get_prediction_accuracy returns computed metrics."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        mgr._prediction_accuracy_hits = 7
-        mgr._prediction_accuracy_misses = 3
-        mgr._prediction_outcomes = {
+        mgr.prediction_mgr._prediction_accuracy_hits = 7
+        mgr.prediction_mgr._prediction_accuracy_misses = 3
+        mgr.prediction_mgr._prediction_outcomes = {
             "p1": {"outcome": "hit"},
             "p2": {"outcome": "hit"},
             "p3": {"outcome": "miss"},
@@ -253,17 +253,17 @@ class TestPredictionAccuracy:
             message="Test",
         )
         predictions = mgr.predict_causal_chain(alert)
-        assert len(mgr._prediction_outcomes) > 0
+        assert len(mgr.prediction_mgr._prediction_outcomes) > 0
         for pred in predictions:
             pred_id = pred["prediction_id"]
-            assert pred_id in mgr._prediction_outcomes
-            assert mgr._prediction_outcomes[pred_id]["outcome"] == "pending"
+            assert pred_id in mgr.prediction_mgr._prediction_outcomes
+            assert mgr.prediction_mgr._prediction_outcomes[pred_id]["outcome"] == "pending"
 
     def test_prediction_accuracy_in_status(self):
         """get_status() includes prediction accuracy metrics."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        mgr._prediction_accuracy_hits = 5
-        mgr._prediction_accuracy_misses = 2
+        mgr.prediction_mgr._prediction_accuracy_hits = 5
+        mgr.prediction_mgr._prediction_accuracy_misses = 2
         status = mgr.get_status()
         assert "prediction_accuracy" in status
         assert status["prediction_accuracy"]["hits"] == 5
@@ -275,7 +275,7 @@ class TestPredictionAccuracy:
             enabled=True,
             prediction_accuracy_window_seconds=1,
         ))
-        mgr._prediction_outcomes = {
+        mgr.prediction_mgr._prediction_outcomes = {
             "old_pred": {
                 "prediction_id": "old_pred",
                 "predicted_alert_type": "quality_degradation",
@@ -291,10 +291,10 @@ class TestPredictionAccuracy:
                 "outcome": "pending",
             },
         }
-        mgr._expire_prediction_outcomes()
-        assert mgr._prediction_outcomes["old_pred"]["outcome"] == "miss"
-        assert mgr._prediction_outcomes["fresh_pred"]["outcome"] == "pending"
-        assert mgr._prediction_accuracy_misses == 1
+        mgr.prediction_mgr._expire_prediction_outcomes()
+        assert mgr.prediction_mgr._prediction_outcomes["old_pred"]["outcome"] == "miss"
+        assert mgr.prediction_mgr._prediction_outcomes["fresh_pred"]["outcome"] == "pending"
+        assert mgr.prediction_mgr._prediction_accuracy_misses == 1
 
 
 # ============================================================================
