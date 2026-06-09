@@ -104,6 +104,10 @@ class SextonConfig:
     graph_extraction_auto_tune_decrease_threshold: float = 0.3  # Failure rate above this → decrease
     graph_extraction_auto_tune_increase_threshold: float = 0.1  # Failure rate below this → increase
 
+    # Sprint 6.1: Embedding pipeline configuration
+    embed_delay_seconds: float = 0.5  # Rate-limit pause between embed() calls (429 prevention)
+    embed_batch_limit: int = 200  # Max turns to embed per Sexton cycle
+
 
 @dataclass
 class AcePlaybookEntry:

@@ -48,6 +48,10 @@ _DDL_CORPUS_TURNS = """
         searchable_text TEXT NOT NULL,
         word_count INTEGER NOT NULL DEFAULT 0,
         embedded INTEGER NOT NULL DEFAULT 0,
+        embedding_model TEXT DEFAULT '',
+        needs_reembed INTEGER NOT NULL DEFAULT 0,
+        last_embed_at TEXT DEFAULT NULL,
+        metadata_json TEXT DEFAULT '{}',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )
@@ -59,11 +63,16 @@ _DDL_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_turns_primary_domain ON corpus_turns(primary_domain)",
     "CREATE INDEX IF NOT EXISTS idx_turns_tagging_version ON corpus_turns(tagging_version)",
     "CREATE INDEX IF NOT EXISTS idx_turns_importance ON corpus_turns(importance DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_turns_embedded ON corpus_turns(embedded)",
+    "CREATE INDEX IF NOT EXISTS idx_turns_needs_reembed ON corpus_turns(needs_reembed)",
 ]
 
 _DDL_MIGRATIONS = [
     "ALTER TABLE corpus_turns ADD COLUMN embedded INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE corpus_turns ADD COLUMN metadata_json TEXT DEFAULT '{}'",
+    "ALTER TABLE corpus_turns ADD COLUMN embedding_model TEXT DEFAULT ''",
+    "ALTER TABLE corpus_turns ADD COLUMN needs_reembed INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE corpus_turns ADD COLUMN last_embed_at TEXT DEFAULT NULL",
 ]
 
 _DDL_FTS = """
@@ -219,9 +228,9 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
                     domains, primary_domain, tags, importance, bridges,
                     beast_confidence, tagging_version,
                     searchable_text, word_count,
-                    embedded, metadata_json,
+                    embedded, metadata_json, embedding_model, needs_reembed, last_embed_at,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     turn.turn_id,
@@ -246,6 +255,9 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
                     int(turn.word_count or 0),
                     int(getattr(turn, "embedded", 0) or 0),
                     getattr(turn, "metadata_json", "{}") or "{}",
+                    getattr(turn, "embedding_model", "") or "",
+                    int(getattr(turn, "needs_reembed", 0) or 0),
+                    getattr(turn, "last_embed_at", None),
                     created_at,
                     now,
                 ),
@@ -313,14 +325,20 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
             await self._reset_conn()
             raise
 
-    async def mark_embedded(self, turn_id: str) -> None:
-        """Mark a turn as embedded (embedded=1). Called by Sexton after vector upsert."""
+    async def mark_embedded(self, turn_id: str, embedding_model: str = "") -> None:
+        """Mark a turn as embedded (embedded=1). Called by Sexton after vector upsert.
+
+        Args:
+            turn_id: The turn to mark.
+            embedding_model: Name of the model used for embedding (for re-embed detection).
+        """
         conn = await self._get_conn()
         try:
             now = datetime.now(timezone.utc).isoformat() + "Z"
             await conn.execute(
-                "UPDATE corpus_turns SET embedded = 1, updated_at = ? WHERE turn_id = ?",
-                (now, turn_id),
+                "UPDATE corpus_turns SET embedded = 1, embedding_model = ?, "
+                "needs_reembed = 0, last_embed_at = ?, updated_at = ? WHERE turn_id = ?",
+                (embedding_model, now, now, turn_id),
             )
             await conn.commit()
         except Exception:
@@ -383,11 +401,16 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
             raise
 
     async def get_unembedded_turns(self, limit: int = 50) -> list[CorpusTurn]:
-        """Turns with embedded == 0 (not yet in vector store)."""
+        """Turns needing embedding: embedded == 0 OR needs_reembed == 1.
+
+        Prioritises needs_reembed (model-change re-embedding) over first-time embeds,
+        then sorts by importance DESC so high-value content is embedded first.
+        """
         conn = await self._get_conn()
         try:
             cursor = await conn.execute(
-                "SELECT * FROM corpus_turns WHERE embedded = 0 ORDER BY importance DESC, created_at ASC LIMIT ?",
+                "SELECT * FROM corpus_turns WHERE embedded = 0 OR needs_reembed = 1 "
+                "ORDER BY needs_reembed DESC, importance DESC, created_at ASC LIMIT ?",
                 (int(limit),),
             )
             rows = await cursor.fetchall()
@@ -397,12 +420,120 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
             raise
 
     async def count_unembedded(self) -> int:
-        """Count of turns not yet embedded."""
+        """Count of turns not yet embedded (embedded == 0)."""
         conn = await self._get_conn()
         try:
             cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE embedded = 0")
             row = await cursor.fetchone()
             return int(row["c"]) if row else 0
+        except Exception:
+            await self._reset_conn()
+            raise
+
+    async def count_tagged(self) -> int:
+        """Count of turns with a non-empty primary_domain (domain-assigned)."""
+        conn = await self._get_conn()
+        try:
+            cursor = await conn.execute(
+                'SELECT COUNT(*) as c FROM corpus_turns WHERE primary_domain IS NOT NULL AND primary_domain != ""'
+            )
+            row = await cursor.fetchone()
+            return int(row["c"]) if row else 0
+        except Exception:
+            await self._reset_conn()
+            raise
+
+    async def count_needs_reembed(self) -> int:
+        """Count of turns flagged for re-embedding (needs_reembed == 1)."""
+        conn = await self._get_conn()
+        try:
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE needs_reembed = 1")
+            row = await cursor.fetchone()
+            return int(row["c"]) if row else 0
+        except Exception:
+            await self._reset_conn()
+            raise
+
+    async def get_embedding_progress(self) -> dict:
+        """Return embedding progress statistics for the /corpus/embedding-progress endpoint.
+
+        Returns dict with: total, embedded, unembedded, needs_reembed, percentage,
+        last_embed_at, embedding_model distribution.
+        """
+        conn = await self._get_conn()
+        try:
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns")
+            row = await cursor.fetchone()
+            total = int(row["c"]) if row else 0
+
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE embedded = 1")
+            row = await cursor.fetchone()
+            embedded = int(row["c"]) if row else 0
+
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE needs_reembed = 1")
+            row = await cursor.fetchone()
+            needs_reembed = int(row["c"]) if row else 0
+
+            last_embed_at = None
+            cursor = await conn.execute(
+                "SELECT MAX(last_embed_at) as le FROM corpus_turns WHERE last_embed_at IS NOT NULL"
+            )
+            row = await cursor.fetchone()
+            if row and row["le"]:
+                last_embed_at = row["le"]
+
+            # Embedding model distribution
+            cursor = await conn.execute(
+                "SELECT embedding_model, COUNT(*) as c FROM corpus_turns "
+                "WHERE embedded = 1 GROUP BY embedding_model ORDER BY c DESC"
+            )
+            rows = await cursor.fetchall()
+            model_distribution = {row["embedding_model"] or "unknown": int(row["c"]) for row in rows}
+
+            percentage = round(embedded / total * 100, 2) if total > 0 else 0.0
+
+            return {
+                "total": total,
+                "embedded": embedded,
+                "unembedded": total - embedded,
+                "needs_reembed": needs_reembed,
+                "percentage": percentage,
+                "last_embed_at": last_embed_at,
+                "embedding_models": model_distribution,
+            }
+        except Exception:
+            await self._reset_conn()
+            raise
+
+    async def mark_all_for_reembed(self, except_model: str = "") -> int:
+        """Flag all currently-embedded turns for re-embedding.
+
+        Called when the embedding model changes. Turns embedded with a different
+        model are marked needs_reembed=1 and embedded=0 so the Sexton embedding
+        pass will re-process them.
+
+        Args:
+            except_model: If provided, only mark turns whose embedding_model
+                differs from this value. Empty string marks all.
+
+        Returns:
+            Number of turns marked for re-embedding.
+        """
+        conn = await self._get_conn()
+        try:
+            if except_model:
+                cursor = await conn.execute(
+                    "UPDATE corpus_turns SET needs_reembed = 1, embedded = 0 "
+                    "WHERE embedded = 1 AND (embedding_model IS NULL OR embedding_model = '' "
+                    "OR embedding_model != ?)",
+                    (except_model,)
+                )
+            else:
+                cursor = await conn.execute(
+                    "UPDATE corpus_turns SET needs_reembed = 1, embedded = 0 WHERE embedded = 1"
+                )
+            await conn.commit()
+            return cursor.rowcount
         except Exception:
             await self._reset_conn()
             raise
@@ -682,6 +813,9 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
             tagging_version=int(row["tagging_version"] or 0),
             embedded=int(row["embedded"] or 0) if "embedded" in row.keys() else 0,
             metadata_json=row["metadata_json"] if "metadata_json" in row.keys() else "{}",
+            embedding_model=row["embedding_model"] if "embedding_model" in row.keys() else "",
+            needs_reembed=int(row["needs_reembed"] or 0) if "needs_reembed" in row.keys() else 0,
+            last_embed_at=row["last_embed_at"] if "last_embed_at" in row.keys() else None,
             searchable_text=row["searchable_text"] or "",
             word_count=int(row["word_count"] or 0),
         )

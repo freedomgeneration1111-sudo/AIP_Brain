@@ -86,6 +86,16 @@ class CorpusTurn:
     embedded: int = 0
     # 0 = not embedded, 1 = has vector in vector store (for embedding pipeline)
 
+    embedding_model: str = ""
+    # Name of the model used to produce this turn's embedding (e.g. "nomic-embed-text").
+    # Used to detect stale embeddings when the model slot changes.
+
+    needs_reembed: int = 0
+    # 0 = current, 1 = flagged for re-embedding (embedding model changed)
+
+    last_embed_at: str | None = None
+    # ISO timestamp of when this turn was last embedded. None = never embedded.
+
     metadata_json: str = "{}"
     # Arbitrary JSON metadata for Vigil provenance tracking and future extensions.
     # Stored as a TEXT column in SQLite (default '{}'). Vigil can write

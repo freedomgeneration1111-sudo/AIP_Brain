@@ -37,28 +37,37 @@ RetrieverChannel = Callable[[str], Awaitable[list[RetrievalHit]]]
 def rrf_fuse(
     channel_results: dict[str, list[RetrievalHit]],
     k: int = 60,
+    channel_weights: dict[str, float] | None = None,
 ) -> list[RetrievalHit]:
-    """Merge per-channel hit lists using Reciprocal Rank Fusion.
+    """Merge per-channel hit lists using weighted Reciprocal Rank Fusion.
 
-    Each hit's RRF contribution from a channel is ``1 / (k + rank)``
-    where rank is 1-based.  Hits appearing in multiple channels accumulate
-    scores.  The merged list is sorted by total RRF score descending.
+    Each hit's RRF contribution from a channel is
+    ``weight * 1 / (k + rank)`` where rank is 1-based.  Hits appearing
+    in multiple channels accumulate weighted scores.  The merged list
+    is sorted by total RRF score descending.
 
     Args:
         channel_results: Mapping of channel name → ordered hit list.
         k: RRF constant (default 60 per the original RRF paper).
+        channel_weights: Optional per-channel weight multipliers.
+            Keys are channel names (e.g. "fts", "vector", "corpus").
+            Channels not in the dict default to weight 1.0.
+            Typical values: semantic=0.6, lexical=0.4 maps to
+            {"vector": 0.6, "fts": 0.4, "corpus": 0.4}.
 
     Returns:
         Deduplicated, RRF-scored, descending list of RetrievalHit.
         Each hit's ``rrf_score`` is populated.
     """
+    weights = channel_weights or {}
     rrf_accum: dict[str, float] = {}
     hit_registry: dict[str, RetrievalHit] = {}
 
     for channel_name, hits in channel_results.items():
+        weight = weights.get(channel_name, 1.0)
         for rank_idx, hit in enumerate(hits):
             rank = rank_idx + 1  # 1-based
-            contribution = 1.0 / (k + rank)
+            contribution = weight / (k + rank)
             if hit.id not in rrf_accum:
                 rrf_accum[hit.id] = 0.0
                 hit_registry[hit.id] = hit
@@ -158,7 +167,7 @@ class OrchestratorConfig:
     enable_all_registered: bool = False  # dispatch all registered channels
     max_retrieval_rounds: int = 2  # 0 = first attempt, 1 = first retry
     rrf_k: int = 60
-    quality_gate_min_rrf: float = 0.01
+    quality_gate_min_rrf: float = 0.005  # Lowered from 0.01 for weighted RRF (Sprint 6.1)
     quality_gate_min_hits: int = 1
     max_hits: int = 50
 
@@ -177,6 +186,25 @@ class OrchestratorConfig:
     wiki_max_hits: int = 8
     procedural_max_hits: int = 5
     corpus_max_hits: int = 15
+
+    # Sprint 6.1: Per-channel RRF weights for hybrid retrieval tuning.
+    # Higher weight = channel contributes more to the final RRF score.
+    # Default: semantic (vector) = 0.6, lexical (fts+corpus) = 0.4.
+    # Channels not listed default to 1.0.
+    # When vector coverage is insufficient, these weights are ignored
+    # and FTS5-only mode is used (see min_vector_coverage).
+    channel_weights: dict[str, float] = field(default_factory=lambda: {
+        "vector": 0.6,
+        "fts": 0.4,
+        "corpus": 0.4,
+    })
+
+    # Sprint 6.1: Minimum embedding coverage to enable hybrid retrieval.
+    # If the percentage of embedded corpus turns is below this threshold,
+    # vector channel is disabled and FTS5-only retrieval is used.
+    # Set to 0.0 to always enable vector (even with 0% coverage).
+    # Set to 1.0 to require 100% coverage before enabling vector.
+    min_vector_coverage: float = 0.10  # 10% — conservative default
 
     def get_channel_max_hits(self, channel_name: str) -> int:
         """Return the per-channel hit limit for a given channel.
@@ -450,7 +478,34 @@ class RetrievalOrchestrator:
         trace.hits_before_fusion = sum(len(h) for h in channel_results.values())
 
         # -- RRF fusion -----------------------------------------------------
-        fused = rrf_fuse(channel_results, k=config.rrf_k)
+        # Use channel weights for hybrid retrieval tuning (Sprint 6.1).
+        # When vector coverage is too low, disable vector channel before fusion.
+        effective_results = dict(channel_results)
+        if config.min_vector_coverage > 0 and "vector" in effective_results:
+            vector_hits = effective_results.get("vector", [])
+            # If vector returned 0 results, coverage is effectively insufficient.
+            # The ask pipeline handles coverage gating before dispatch;
+            # this is a safety net for empty vector results at fusion time.
+            if not vector_hits:
+                logger.debug("vector_channel_empty_fallback_fts5")
+                effective_results.pop("vector", None)
+
+        # Determine effective channel weights:
+        # Only apply weights when both semantic and lexical channels are present.
+        # If only one type is active, weights are unnecessary and would distort scores.
+        effective_weights = None
+        if config.channel_weights and len(effective_results) > 1:
+            # Check if both semantic (vector) and lexical (fts/corpus) channels exist
+            has_semantic = "vector" in effective_results
+            has_lexical = any(ch in effective_results for ch in ("fts", "corpus"))
+            if has_semantic and has_lexical:
+                effective_weights = config.channel_weights
+
+        fused = rrf_fuse(
+            effective_results,
+            k=config.rrf_k,
+            channel_weights=effective_weights,
+        )
         trace.hits_after_fusion = len(fused)
 
         # -- Quality gate ---------------------------------------------------

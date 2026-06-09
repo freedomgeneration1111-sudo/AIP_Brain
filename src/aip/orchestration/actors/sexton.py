@@ -113,6 +113,18 @@ class Sexton:
         self._graph_store = graph_store  # BUG-004: use container's graph_store instead of creating new one
         self._last_cycle_time: float | None = None
 
+        # Sprint 6.1: Embedding pipeline state tracking
+        self._embedding_failures: list[str] = []  # Last 100 failed turn IDs for retry
+        self._embedding_pass_state: dict = {  # In-progress / last-batch state
+            "running": False,
+            "last_completed_at": None,
+            "last_batch_embedded": 0,
+            "last_batch_failed": 0,
+            "last_batch_skipped": 0,
+            "last_batch_re_embedded": 0,
+            "current_model": "",
+        }
+
         # LLM batching telemetry — accumulates across cycles
         self._batch_telemetry = {
             "total_batch_extractions": 0,   # number of batch-mode LLM calls
@@ -178,8 +190,8 @@ class Sexton:
         # 1. Turn tagging
         tagging_result = await self._run_turn_tagging(limit=200)
 
-        # 2. Embedding pass
-        embedding_result = await self._run_embedding_pass(limit=50)
+        # 2. Embedding pass (configurable limit for faster corpus coverage)
+        embedding_result = await self._run_embedding_pass(limit=self._config.embed_batch_limit)
 
         # 3. Wiki generation
         wiki_result = await self._run_wiki_generation(max_per_cycle=3)
@@ -261,7 +273,31 @@ class Sexton:
                 "graph_extraction_batch_size": self._config.graph_extraction_batch_size,
                 "max_unclassified_before_alert": self._config.max_unclassified_before_alert,
             },
+            "embedding_pass": dict(self._embedding_pass_state),
+            "embedding_failure_count": len(self._embedding_failures),
         }
+
+    # ------------------------------------------------------------------
+    # Embedding model name resolution
+    # ------------------------------------------------------------------
+
+    def _get_embedding_model_name(self) -> str:
+        """Determine the current embedding model name for tracking.
+
+        Inspects the embedding_provider for model metadata. Used to:
+        - Record which model produced each embedding
+        - Detect when the model changes (triggering re-embedding)
+        - Report in the embedding-progress endpoint
+        """
+        if self._embed is None:
+            return ""
+        # Check common attribute names for the model identifier
+        for attr in ("model", "_model", "model_name", "_model_name"):
+            val = getattr(self._embed, attr, None)
+            if val and isinstance(val, str):
+                return val
+        # Fallback: class name as identifier
+        return self._embed.__class__.__name__
 
     # ------------------------------------------------------------------
     # Bridge-tagged turn detection
@@ -627,24 +663,44 @@ Example response structure:
     # Embedding pass — from Beast
     # ------------------------------------------------------------------
 
-    async def _run_embedding_pass(self, limit: int = 50, reembed: bool = False) -> dict:
+    async def _run_embedding_pass(self, limit: int = 200, reembed: bool = False) -> dict:
         """Embed corpus turns' searchable_text into vector store, keyed by turn_id.
 
-        Batch size 32 for efficiency (cheaper than chat).
-        Truncates text to 8000 chars.
-        Sets embedded=1 on success in corpus_turns.
+        Processes turns in batches of 32 with rate limiting between API calls.
+        Truncates text to 8000 chars. Sets embedded=1 on success in corpus_turns.
+        Tracks embedding model name for re-embedding detection.
+
+        When reembed=True, marks all embedded turns with a different model
+        for re-embedding before processing.
+
+        Rate limiting: configurable via SextonConfig.embed_delay_seconds (default 0.5s).
+        Failed embeddings are tracked in _embedding_failures for later retry analysis
+        rather than silently dropped.
         """
         if self._corpus_turns is None or self._embed is None:
             return {"skipped": "missing_corpus_turn_store_or_embedding_provider"}
 
-        # Query unembedded
+        # Determine current embedding model name for tracking
+        embedding_model = self._get_embedding_model_name()
+
+        # Re-embed trigger: when reembed=True, mark stale turns
+        reembed_marked = 0
+        if reembed and hasattr(self._corpus_turns, "mark_all_for_reembed"):
+            try:
+                reembed_marked = await self._corpus_turns.mark_all_for_reembed(
+                    except_model=embedding_model
+                )
+                log.info("sexton_reembed_marked", count=reembed_marked, current_model=embedding_model)
+            except Exception as exc:
+                log.warning("sexton_reembed_mark_failed", error=str(exc))
+
+        # Query turns needing embedding (includes needs_reembed=1)
         try:
-            if reembed:
-                turns = await self._corpus_turns.get_unembedded_turns(limit=limit)
-                to_embed = [(t.turn_id, t.searchable_text) for t in turns]
-            else:
-                turns = await self._corpus_turns.get_unembedded_turns(limit=limit)
-                to_embed = [(t.turn_id, t.searchable_text) for t in turns]
+            turns = await self._corpus_turns.get_unembedded_turns(limit=limit)
+            to_embed = [
+                (t.turn_id, t.searchable_text, getattr(t, "needs_reembed", 0))
+                for t in turns
+            ]
         except Exception as exc:
             log.error("sexton_get_unembedded_failed", error=str(exc))
             return {"embedded": 0, "failed": 0, "skipped": 0, "error": str(exc)}
@@ -652,20 +708,38 @@ Example response structure:
         if not to_embed:
             return {"embedded": 0, "failed": 0, "skipped": 0, "note": "nothing_to_embed"}
 
+        # Update in-progress state for the embedding-progress endpoint
+        self._embedding_pass_state = {
+            "running": True,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "total_to_embed": len(to_embed),
+            "embedded_so_far": 0,
+            "failed_so_far": 0,
+            "current_model": embedding_model,
+        }
+
         BATCH_SIZE = 32
+        embed_delay = getattr(self._config, "embed_delay_seconds", 0.5)
         total = len(to_embed)
         embedded = 0
         failed = 0
         skipped = 0
+        re_embedded = 0
+        failed_ids: list[str] = []  # Track failed turn IDs for retry
 
         for b_start in range(0, total, BATCH_SIZE):
             batch = to_embed[b_start : b_start + BATCH_SIZE]
             batch_idx = (b_start // BATCH_SIZE) + 1
 
             if batch_idx % 5 == 1 or batch_idx == (total + BATCH_SIZE - 1) // BATCH_SIZE:
-                log.info("sexton_embedding_progress", batch=batch_idx, of=(total + BATCH_SIZE - 1) // BATCH_SIZE, turns=f"{b_start+1}-{min(b_start+BATCH_SIZE, total)}/{total}")
+                log.info(
+                    "sexton_embedding_progress",
+                    batch=batch_idx,
+                    of=(total + BATCH_SIZE - 1) // BATCH_SIZE,
+                    turns=f"{b_start+1}-{min(b_start+BATCH_SIZE, total)}/{total}",
+                )
 
-            for tid, stext in batch:
+            for tid, stext, needs_re in batch:
                 try:
                     text = (stext or "")[:8000]
                     if not text.strip():
@@ -674,33 +748,78 @@ Example response structure:
                     vec = await self._embed.embed(text)
                     if not vec or len(vec) == 0:
                         failed += 1
+                        failed_ids.append(tid)
                         continue
-                    # Store keyed by turn_id
+                    # Store keyed by turn_id — only mark embedded if upsert succeeds
                     if self._vector is not None:
                         await self._vector.upsert(
                             id=tid,
                             embedding=vec,
                             content=text[:500],  # snippet
-                            metadata={"type": "corpus_turn", "turn_id": tid},
+                            metadata={
+                                "type": "corpus_turn",
+                                "turn_id": tid,
+                                "embedding_model": embedding_model,
+                            },
                             domain=None,
                         )
-                    # Mark embedded via CorpusTurnStore async method
-                    try:
-                        if hasattr(self._corpus_turns, "mark_embedded"):
-                            await self._corpus_turns.mark_embedded(tid)
-                    except Exception:
-                        pass
-                    embedded += 1
+                        # Mark embedded with model name for re-embed detection
+                        try:
+                            if hasattr(self._corpus_turns, "mark_embedded"):
+                                await self._corpus_turns.mark_embedded(tid, embedding_model=embedding_model)
+                        except Exception:
+                            pass
+                        embedded += 1
+                        if needs_re:
+                            re_embedded += 1
+                    else:
+                        # No vector store available — don't mark as embedded
+                        # (previous bug: marking embedded without vector upsert)
+                        failed += 1
+                        failed_ids.append(tid)
+                        log.warning("sexton_embedding_no_vector_store", turn_id=tid)
                 except Exception as exc:
                     log.warning("sexton_embedding_failed", turn_id=tid, error=str(exc))
                     failed += 1
+                    failed_ids.append(tid)
 
-        log.info("sexton_embedding_complete", embedded=embedded, failed=failed, skipped=skipped)
+                # Rate limiting: pause between individual embed calls
+                # to stay under embedding API per-minute limits
+                await asyncio.sleep(embed_delay)
+
+        # Update failure tracking for retry analysis
+        if failed_ids:
+            self._embedding_failures.extend(failed_ids[-50:])  # Keep last 50
+            self._embedding_failures = self._embedding_failures[-100:]  # Cap at 100
+
+        # Clear in-progress state
+        self._embedding_pass_state = {
+            "running": False,
+            "last_completed_at": datetime.now(timezone.utc).isoformat(),
+            "last_batch_embedded": embedded,
+            "last_batch_failed": failed,
+            "last_batch_skipped": skipped,
+            "last_batch_re_embedded": re_embedded,
+            "current_model": embedding_model,
+        }
+
+        log.info(
+            "sexton_embedding_complete",
+            embedded=embedded,
+            failed=failed,
+            skipped=skipped,
+            re_embedded=re_embedded,
+            reembed_marked=reembed_marked,
+            model=embedding_model,
+        )
 
         return {
             "embedded": embedded,
             "failed": failed,
             "skipped": skipped,
+            "re_embedded": re_embedded,
+            "reembed_marked": reembed_marked,
+            "model": embedding_model,
         }
 
     # ------------------------------------------------------------------

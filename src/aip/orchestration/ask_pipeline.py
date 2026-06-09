@@ -598,9 +598,29 @@ async def _search_sources_with_trace(
     )
 
     # Build per-call config (supports per-call enable_* toggles)
+    # Sprint 6.1: coverage-aware vector enablement and hybrid channel weights.
+    vector_available = enable_vector and stores.vector_store is not None and stores.embedding_provider is not None
+
+    # Check embedding coverage to decide whether to enable hybrid retrieval
+    vector_enabled = vector_available
+    if vector_available and stores.corpus_turn_store is not None:
+        try:
+            progress = await stores.corpus_turn_store.get_embedding_progress()
+            coverage = progress.get("percentage", 0.0) / 100.0
+            min_coverage = 0.10  # 10% minimum for hybrid mode
+            if coverage < min_coverage:
+                logger.debug(
+                    "vector_disabled_low_coverage",
+                    coverage_percent=progress.get("percentage", 0.0),
+                    min_coverage_percent=min_coverage * 100,
+                )
+                vector_enabled = False
+        except Exception as exc:
+            logger.debug("embedding_progress_check_failed (non-fatal): %s", exc)
+
     orch_config = OrchestratorConfig(
         enable_fts=enable_fts,
-        enable_vector=enable_vector and stores.vector_store is not None and stores.embedding_provider is not None,
+        enable_vector=vector_enabled,
         enable_graph=enable_graph,
         enable_wiki=enable_wiki,
         enable_procedural=enable_procedural,

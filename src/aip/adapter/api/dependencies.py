@@ -100,11 +100,13 @@ class AipContainer:
         """Safely replace the embedding provider.
 
         Updates the container reference and pokes private attributes on
-        dependent components (vector_store, beast, knowledge_store) so that
-        runtime changes (e.g. from PATCH /models/slots/embedding/model) take
-        effect without requiring a full restart.
+        dependent components (vector_store, beast, knowledge_store, sexton_actor)
+        so that runtime changes (e.g. from PATCH /models/slots/embedding/model)
+        take effect without requiring a full restart.
 
-        This centralizes the previously duplicated fragile poking logic.
+        Sprint 6.1: Also triggers re-embedding of all corpus turns whose
+        embedding_model differs from the new provider's model, so that
+        the Sexton actor will re-embed them on its next cycle.
         """
         old_provider = self.embedding_provider
         if old_provider is not None and hasattr(old_provider, "close"):
@@ -127,6 +129,52 @@ class AipContainer:
             self.beast._embed = provider
         if self.knowledge_store is not None and hasattr(self.knowledge_store, "_embedding_provider"):
             self.knowledge_store._embedding_provider = provider
+
+        # Sprint 6.1: Update Sexton's embedding provider reference
+        if self.sexton_actor is not None and hasattr(self.sexton_actor, "_embed"):
+            self.sexton_actor._embed = provider
+
+        # Sprint 6.1: Trigger re-embedding when the embedding model changes
+        if provider is not None and self.corpus_turn_store is not None:
+            try:
+                # Determine new model name
+                new_model = ""
+                for attr in ("model", "_model", "model_name", "_model_name"):
+                    val = getattr(provider, attr, None)
+                    if val and isinstance(val, str):
+                        new_model = val
+                        break
+                if not new_model:
+                    new_model = provider.__class__.__name__
+
+                # Mark turns with different model for re-embedding
+                if hasattr(self.corpus_turn_store, "mark_all_for_reembed"):
+                    import asyncio
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(self._trigger_reembed(new_model))
+                    except RuntimeError:
+                        # No running loop — create one
+                        try:
+                            asyncio.run(self._trigger_reembed(new_model))
+                        except Exception:
+                            pass
+            except Exception:
+                pass  # Non-critical: re-embedding will happen on next Sexton cycle
+
+    async def _trigger_reembed(self, new_model: str) -> None:
+        """Mark corpus turns for re-embedding and log the trigger."""
+        try:
+            count = await self.corpus_turn_store.mark_all_for_reembed(except_model=new_model)
+            import logging
+            logging.getLogger(__name__).info(
+                "reembed_triggered",
+                new_model=new_model,
+                turns_marked=count,
+            )
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("reembed_trigger_failed", error=str(exc))
 
 
 def get_container(request: "Request") -> AipContainer:
