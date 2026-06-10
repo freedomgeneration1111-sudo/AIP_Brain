@@ -93,6 +93,8 @@ class AipContainer:
         self._auto_tuning_policy: Any = None  # AutoTuningPolicy for configurable thresholds
         # Sprint 5.29: Persistent alert history store
         self._alert_history_store: Any = None  # AlertHistoryStore for SQLite-backed alert history
+        # SyncAlertHistoryBridge for AlertManager compatibility (wraps async store)
+        self._alert_history_bridge: Any = None
         # Backfill status for async backfill tracking (simple in-memory for now)
         self.backfill_status: dict = {"running": False, "last_result": None, "progress": {}}
         # Startup background tasks — stored on container so shutdown can cancel them
@@ -107,6 +109,69 @@ class AipContainer:
         self._sanitize_fts_query_fn: Any = None  # ask_pipeline._sanitize_fts_query
         self._ingest_conversation_fn: Any = None  # ingestion.pipeline.ingest_conversation
         self._ingest_file_fn: Any = None  # ingestion.pipeline.ingest_file
+        # Store registry — maps store_name → db_path for datastore truth.
+        # Populated during lifespan startup as each store is initialized.
+        # Used by startup validation, backup, and the /health/datastore endpoint.
+        self._store_registry: dict[str, str] = {}
+
+    def register_store(self, name: str, db_path: str) -> None:
+        """Register a store's database path in the datastore registry.
+
+        Called during lifespan startup for each initialized store so that
+        ``datastore_summary()`` can report exactly where every store lives.
+        """
+        self._store_registry[name] = db_path
+
+    def datastore_summary(self) -> dict[str, Any]:
+        """Return a summary of all registered stores and their locations.
+
+        This is the honest datastore truth: which files exist, which are
+        shared, and what the backup story is for each.
+
+        AIP_Brain uses an honest multi-file local datastore (Option B):
+          - state.db:     Core entity/canonical/event/artifact/budget/project/
+                         ECS/review/graph/corpus/session/autonomy data
+          - lexical.db:   FTS5 full-text search index
+          - vectors.db:   Vector embeddings (VSS or brute-force)
+          - vigil_quality.db: Vigil quality cycle history
+          - alert_history.db: Alert/delivery/experiment/mute rule persistence
+        """
+        from pathlib import Path
+
+        stores: dict[str, Any] = {}
+        shared_dbs: dict[str, list[str]] = {}
+
+        for name, db_path in sorted(self._store_registry.items()):
+            p = Path(db_path)
+            exists = p.exists()
+            size_mb = round(p.stat().st_size / (1024 * 1024), 2) if exists else 0
+            stores[name] = {
+                "db_path": db_path,
+                "exists": exists,
+                "size_mb": size_mb,
+            }
+            # Track which stores share a DB file
+            shared_dbs.setdefault(db_path, []).append(name)
+
+        # Identify shared databases
+        shared_info = {
+            db_path: names
+            for db_path, names in shared_dbs.items()
+            if len(names) > 1
+        }
+
+        return {
+            "architecture": "multi-file local datastore (Option B)",
+            "stores": stores,
+            "shared_databases": shared_info,
+            "backup_story": (
+                "Each .db file can be backed up via 'aip backup' (uses VACUUM INTO "
+                "for consistent snapshots) or file-level tar (deploy/backup.sh). "
+                "WAL mode ensures read consistency during backup."
+            ),
+            "total_stores": len(stores),
+            "total_db_files": len(set(self._store_registry.values())),
+        }
 
     def set_embedding_provider(self, provider: "EmbeddingProvider | None") -> None:
         """Safely replace the embedding provider.

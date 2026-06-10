@@ -590,7 +590,12 @@ class ConfigWatcher:
                     )
                     # Trigger immediate pruning with new retention settings
                     try:
-                        quality_store._prune_if_needed()
+                        import asyncio
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.create_task(quality_store._prune_if_needed())
+                        except RuntimeError:
+                            asyncio.run(quality_store._prune_if_needed())
                     except Exception:
                         pass  # Pruning failure is not critical
         except Exception as exc:

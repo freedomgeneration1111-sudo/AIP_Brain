@@ -68,22 +68,30 @@ Schema:
         created_at      TEXT NOT NULL
 
 Design:
-    - Lightweight SQLite table — no ORM, stdlib sqlite3
-    - Auto-creates tables on first use
+    - Lightweight SQLite table — no ORM, aiosqlite async access
+    - Auto-creates tables on first use via lazy _get_conn()
     - Graceful degradation: if DB operations fail, AlertManager falls back
       to in-memory history (existing Sprint 5.25 behavior)
     - Maximum practical history: configurable (default 5000 rows, auto-pruned)
     - WAL mode for concurrent read/write
+    - Uses StoreHealthMixin for connection health observability
+    - Uses ReadPoolMixin for concurrent read access in WAL mode
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import aiosqlite
+
+from aip.adapter.read_pool import ReadPoolMixin
+from aip.adapter.store_health import StoreHealthMixin
 from aip.logging import get_logger
 
 logger = get_logger(__name__)
@@ -101,7 +109,7 @@ _DEFAULT_MAX_DELIVERY_STATUS_ROWS = 2000
 _SCHEMA_VERSION = 12
 
 
-class AlertHistoryStore:
+class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
     """SQLite-backed persistence for alert history and delivery failures.
 
     Sprint 5.29: Provides durable storage so that alert history survives
@@ -114,13 +122,17 @@ class AlertHistoryStore:
     or dismissed (operator has resolved the underlying issue). Both states
     persist across restarts and are visible in the dashboard and API.
 
+    Uses a persistent aiosqlite connection per instance with error recovery.
+    Read operations use a connection pool (ReadPoolMixin) for concurrent
+    access in WAL mode.
+
     Usage::
 
         store = AlertHistoryStore(db_path="db/alert_history.db")
-        store.initialize()
+        await store.initialize()
 
         # Record an alert
-        store.record_alert({
+        await store.record_alert({
             "alert_type": "batch_reduction",
             "severity": "warning",
             "subject": "graph_extraction",
@@ -130,10 +142,10 @@ class AlertHistoryStore:
         })
 
         # Query history
-        alerts = store.get_alert_history(alert_type="batch_reduction", limit=50)
+        alerts = await store.get_alert_history(alert_type="batch_reduction", limit=50)
 
         # Acknowledge an alert (Sprint 5.30)
-        store.acknowledge_alert(alert_id=1, acknowledged_by="operator")
+        await store.acknowledge_alert(alert_id=1, acknowledged_by="operator")
     """
 
     def __init__(
@@ -145,449 +157,482 @@ class AlertHistoryStore:
         self._db_path = str(db_path)
         self._max_alert_rows = max_alert_rows
         self._max_failure_rows = max_failure_rows
-        self._initialized = False
+        self._conn: aiosqlite.Connection | None = None
+        self._tables_ready = False
+        self._init_read_pool()
 
-    def initialize(self) -> None:
-        """Create the alert history tables if they don't exist.
+    async def _get_conn(self) -> aiosqlite.Connection:
+        """Return a persistent connection, creating one if needed.
 
-        Safe to call multiple times — uses IF NOT EXISTS.
+        Lazily ensures tables on first connection so that callers
+        who bypass ``initialize()`` still get a working schema.
+        """
+        if self._conn is None:
+            self._conn = await aiosqlite.connect(self._db_path)
+            self._conn.row_factory = sqlite3.Row
+            await self._conn.execute("PRAGMA journal_mode=WAL")
+            await self._conn.execute("PRAGMA busy_timeout=5000")
+            self._health_track_connect()
+            if not self._tables_ready:
+                await self._create_tables(self._conn)
+                self._tables_ready = True
+        return self._conn
+
+    async def _create_tables(self, conn: aiosqlite.Connection) -> None:
+        """Create all alert history tables and run schema migrations.
+
+        Safe to call multiple times — uses IF NOT EXISTS and
+        ALTER TABLE with OperationalError catch for idempotent migrations.
+        """
+        await conn.execute("PRAGMA journal_mode=WAL")
+
+        # Schema metadata table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS alert_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
+
+        # Alert history table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS alert_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                alert_type TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                message TEXT NOT NULL,
+                data TEXT NOT NULL DEFAULT '{}',
+                timestamp TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+
+        # Indexes for common queries
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_alert_history_type
+            ON alert_history (alert_type)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_alert_history_severity
+            ON alert_history (severity)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_alert_history_timestamp
+            ON alert_history (timestamp)
+        """)
+
+        # Delivery failures table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS alert_delivery_failures (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                transport TEXT NOT NULL,
+                alert_type TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                error_message TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                retry_attempt INTEGER NOT NULL DEFAULT 0,
+                final INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            )
+        """)
+
+        # Indexes for delivery failures
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_alert_failures_transport
+            ON alert_delivery_failures (transport)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_alert_failures_timestamp
+            ON alert_delivery_failures (timestamp)
+        """)
+
+        # Sprint 5.30: Schema migration v1 -> v2
+        # Add correlation_id, acknowledged, acknowledged_at, acknowledged_by columns
+        current_version = 0
+        try:
+            cursor = await conn.execute(
+                "SELECT value FROM alert_meta WHERE key = 'schema_version'"
+            )
+            row = await cursor.fetchone()
+            if row:
+                current_version = int(row[0])
+        except Exception:
+            pass
+
+        if current_version < 2:
+            for col_spec in [
+                "ALTER TABLE alert_history ADD COLUMN correlation_id TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE alert_history ADD COLUMN acknowledged INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE alert_history ADD COLUMN acknowledged_at TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE alert_history ADD COLUMN acknowledged_by TEXT NOT NULL DEFAULT ''",
+            ]:
+                try:
+                    await conn.execute(col_spec)
+                except sqlite3.OperationalError:
+                    pass  # Column already exists
+
+        # Index for acknowledged queries
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_alert_history_acknowledged
+            ON alert_history (acknowledged)
+        """)
+
+        # Index for correlation_id lookups
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_alert_history_correlation_id
+            ON alert_history (correlation_id)
+        """)
+
+        # Record schema version
+        await conn.execute("""
+            INSERT OR REPLACE INTO alert_meta (key, value)
+            VALUES ('schema_version', ?)
+        """, (str(_SCHEMA_VERSION),))
+
+        # Sprint 5.31: Schema migration v2 -> v3
+        # Add alert_mute_rules and alert_delivery_status tables
+        if current_version < 3:
+            # Mute rules table
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS alert_mute_rules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    alert_type TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    muted_at TEXT NOT NULL,
+                    muted_by TEXT NOT NULL DEFAULT 'operator',
+                    duration_seconds INTEGER NOT NULL DEFAULT 3600,
+                    expires_at REAL NOT NULL DEFAULT 0,
+                    auto_mute_on_ack INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            # Index for mute rule lookups
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_mute_rules_type_subject
+                ON alert_mute_rules (alert_type, subject)
+            """)
+
+            # Delivery status tracking table
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS alert_delivery_status (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    correlation_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    alert_type TEXT NOT NULL,
+                    severity TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    transports TEXT NOT NULL DEFAULT '[]',
+                    transport_results TEXT NOT NULL DEFAULT '{}',
+                    dispatched_at TEXT NOT NULL,
+                    completed_at TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            # Index for correlation_id lookups
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_delivery_status_correlation_id
+                ON alert_delivery_status (correlation_id)
+            """)
+
+        # Sprint 5.33: Schema migration v4 -> v5
+        # Add alert_groups table for persistent alert grouping
+        if current_version < 5:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS alert_groups (
+                    group_key TEXT NOT NULL,
+                    correlation_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (group_key, correlation_id)
+                )
+            """)
+
+            # Index for group_key lookups
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_alert_groups_group_key
+                ON alert_groups (group_key)
+            """)
+
+        # Sprint 5.38: Schema migration v5 -> v6
+        # Add transition_probabilities table for learned prediction model persistence
+        if current_version < 6:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS transition_probabilities (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    from_type TEXT NOT NULL,
+                    to_type TEXT NOT NULL,
+                    count INTEGER NOT NULL DEFAULT 0,
+                    total_from INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(from_type, to_type)
+                )
+            """)
+
+            # Index for from_type lookups
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_transition_from_type
+                ON transition_probabilities (from_type)
+            """)
+
+            # Add delivery_receipts table for multi-channel receipt tracking
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS delivery_receipts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    correlation_id TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    receipt_data TEXT NOT NULL DEFAULT '{}',
+                    confirmed_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_delivery_receipts_cid
+                ON delivery_receipts (correlation_id)
+            """)
+
+        # Sprint 5.39: Schema migration v6 -> v7
+        # Add model_retraining_events table for tracking model retraining
+        if current_version < 7:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS model_retraining_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    trigger_reason TEXT NOT NULL,
+                    alerts_since_last_train INTEGER NOT NULL DEFAULT 0,
+                    transition_count INTEGER NOT NULL DEFAULT 0,
+                    total_types INTEGER NOT NULL DEFAULT 0,
+                    trained_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_retraining_events_trained_at
+                ON model_retraining_events (trained_at)
+            """)
+
+        # Sprint 5.45: Schema migration v7 -> v8
+        # Add ab_experiments table for A/B experiment persistence
+        if current_version < 8:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS ab_experiments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    control_config TEXT NOT NULL DEFAULT '{}',
+                    variant_config TEXT NOT NULL DEFAULT '{}',
+                    status TEXT NOT NULL DEFAULT 'running',
+                    started_at TEXT NOT NULL,
+                    stopped_at TEXT NOT NULL DEFAULT '',
+                    result TEXT NOT NULL DEFAULT '',
+                    control_samples INTEGER NOT NULL DEFAULT 0,
+                    variant_samples INTEGER NOT NULL DEFAULT 0,
+                    control_accuracy REAL NOT NULL DEFAULT 0.0,
+                    variant_accuracy REAL NOT NULL DEFAULT 0.0,
+                    promoted_variant TEXT NOT NULL DEFAULT '',
+                    promotion_timestamp TEXT NOT NULL DEFAULT '',
+                    auto_promoted INTEGER NOT NULL DEFAULT 0,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT ''
+                )
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_ab_experiments_name
+                ON ab_experiments (name)
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_ab_experiments_status
+                ON ab_experiments (status)
+            """)
+
+        # Sprint 5.46: Schema migration v8 -> v9
+        # Add ab_rollback_history and decay_recovery_history tables
+        if current_version < 9:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS ab_rollback_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    experiment_name TEXT NOT NULL,
+                    rolled_back_variant TEXT NOT NULL,
+                    rolled_back_at TEXT NOT NULL,
+                    control_accuracy REAL NOT NULL DEFAULT 0.0,
+                    variant_accuracy REAL NOT NULL DEFAULT 0.0,
+                    auto INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_ab_rollback_experiment
+                ON ab_rollback_history (experiment_name)
+            """)
+
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS decay_recovery_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    subject TEXT NOT NULL,
+                    decay_amount REAL NOT NULL DEFAULT 0.0,
+                    current_confidence REAL NOT NULL DEFAULT 0.0,
+                    actions_taken TEXT NOT NULL DEFAULT '[]',
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_decay_recovery_subject
+                ON decay_recovery_history (subject)
+            """)
+
+        # Sprint 5.48: Schema migration v9 -> v10
+        # Add statistical_test_results and ab_accuracy_timeseries tables
+        if current_version < 10:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS statistical_test_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    experiment_name TEXT NOT NULL,
+                    p_value REAL,
+                    confidence_interval_lower REAL,
+                    confidence_interval_upper REAL,
+                    method TEXT NOT NULL DEFAULT '',
+                    significant INTEGER NOT NULL DEFAULT 0,
+                    statistic REAL,
+                    control_mean REAL,
+                    variant_mean REAL,
+                    control_samples INTEGER,
+                    variant_samples INTEGER,
+                    reason TEXT NOT NULL DEFAULT '',
+                    test_result_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    UNIQUE(experiment_name)
+                )
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_stat_test_experiment
+                ON statistical_test_results (experiment_name)
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_stat_test_significant
+                ON statistical_test_results (significant)
+            """)
+
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS ab_accuracy_timeseries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    experiment_name TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    control_accuracy REAL NOT NULL DEFAULT 0.0,
+                    variant_accuracy REAL NOT NULL DEFAULT 0.0,
+                    control_samples INTEGER NOT NULL DEFAULT 0,
+                    variant_samples INTEGER NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT 'running',
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_accuracy_ts_experiment
+                ON ab_accuracy_timeseries (experiment_name)
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_accuracy_ts_timestamp
+                ON ab_accuracy_timeseries (timestamp)
+            """)
+
+        # Sprint 5.49: Schema migration v10 -> v11
+        # Add confidence_calibration and pre_promotion_snapshots tables
+        if current_version < 11:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS confidence_calibration (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    subject TEXT NOT NULL UNIQUE,
+                    calibration_factor REAL NOT NULL DEFAULT 1.0,
+                    updated_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_confidence_calibration_subject
+                ON confidence_calibration (subject)
+            """)
+
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS pre_promotion_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    experiment_name TEXT NOT NULL UNIQUE,
+                    snapshot_data TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT ''
+                )
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_pre_promotion_snapshot_name
+                ON pre_promotion_snapshots (experiment_name)
+            """)
+
+        # Sprint 5.50: Schema migration v11 -> v12
+        # Add bandit_decision_log table for logging every bandit allocation decision
+        if current_version < 12:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS bandit_decision_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    experiment_name TEXT NOT NULL,
+                    method TEXT NOT NULL DEFAULT '',
+                    allocation TEXT NOT NULL DEFAULT '{}',
+                    confidence REAL,
+                    context_features TEXT NOT NULL DEFAULT '{}',
+                    sample_sizes TEXT NOT NULL DEFAULT '{}',
+                    timestamp TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_bandit_decision_experiment
+                ON bandit_decision_log (experiment_name)
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_bandit_decision_timestamp
+                ON bandit_decision_log (timestamp)
+            """)
+
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_bandit_decision_method
+                ON bandit_decision_log (method)
+            """)
+
+        await conn.commit()
+
+    async def initialize(self) -> None:
+        """Idempotent table creation (called by lifespan / DI container).
+
+        Uses a short-lived connection to create tables, then discards it.
+        Subsequent operations use the persistent connection from _get_conn().
 
         Sprint 5.30: Runs schema migration from v1 to v2 if needed,
         adding correlation_id, acknowledged, acknowledged_at, and
         acknowledged_by columns.
         """
-        if self._initialized:
+        if self._tables_ready:
             return
 
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
+            conn = await aiosqlite.connect(self._db_path)
+            try:
+                await self._create_tables(conn)
+                self._tables_ready = True
+            finally:
+                await conn.close()
 
-                # Schema metadata table
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS alert_meta (
-                        key TEXT PRIMARY KEY,
-                        value TEXT NOT NULL
-                    )
-                """)
-
-                # Alert history table
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS alert_history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        alert_type TEXT NOT NULL,
-                        severity TEXT NOT NULL,
-                        subject TEXT NOT NULL,
-                        message TEXT NOT NULL,
-                        data TEXT NOT NULL DEFAULT '{}',
-                        timestamp TEXT NOT NULL,
-                        created_at TEXT NOT NULL
-                    )
-                """)
-
-                # Indexes for common queries
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_alert_history_type
-                    ON alert_history (alert_type)
-                """)
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_alert_history_severity
-                    ON alert_history (severity)
-                """)
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_alert_history_timestamp
-                    ON alert_history (timestamp)
-                """)
-
-                # Delivery failures table
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS alert_delivery_failures (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        transport TEXT NOT NULL,
-                        alert_type TEXT NOT NULL,
-                        subject TEXT NOT NULL,
-                        error_message TEXT NOT NULL,
-                        timestamp TEXT NOT NULL,
-                        retry_attempt INTEGER NOT NULL DEFAULT 0,
-                        final INTEGER NOT NULL DEFAULT 1,
-                        created_at TEXT NOT NULL
-                    )
-                """)
-
-                # Indexes for delivery failures
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_alert_failures_transport
-                    ON alert_delivery_failures (transport)
-                """)
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_alert_failures_timestamp
-                    ON alert_delivery_failures (timestamp)
-                """)
-
-                # Sprint 5.30: Schema migration v1 -> v2
-                # Add correlation_id, acknowledged, acknowledged_at, acknowledged_by columns
-                current_version = 0
-                try:
-                    cursor = conn.execute(
-                        "SELECT value FROM alert_meta WHERE key = 'schema_version'"
-                    )
-                    row = cursor.fetchone()
-                    if row:
-                        current_version = int(row[0])
-                except Exception:
-                    pass
-
-                if current_version < 2:
-                    for col_spec in [
-                        "ALTER TABLE alert_history ADD COLUMN correlation_id TEXT NOT NULL DEFAULT ''",
-                        "ALTER TABLE alert_history ADD COLUMN acknowledged INTEGER NOT NULL DEFAULT 0",
-                        "ALTER TABLE alert_history ADD COLUMN acknowledged_at TEXT NOT NULL DEFAULT ''",
-                        "ALTER TABLE alert_history ADD COLUMN acknowledged_by TEXT NOT NULL DEFAULT ''",
-                    ]:
-                        try:
-                            conn.execute(col_spec)
-                        except sqlite3.OperationalError:
-                            pass  # Column already exists
-
-                # Index for acknowledged queries
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_alert_history_acknowledged
-                    ON alert_history (acknowledged)
-                """)
-
-                # Index for correlation_id lookups
-                conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_alert_history_correlation_id
-                    ON alert_history (correlation_id)
-                """)
-
-                # Record schema version
-                conn.execute("""
-                    INSERT OR REPLACE INTO alert_meta (key, value)
-                    VALUES ('schema_version', ?)
-                """, (str(_SCHEMA_VERSION),))
-
-                # Sprint 5.31: Schema migration v2 -> v3
-                # Add alert_mute_rules and alert_delivery_status tables
-                if current_version < 3:
-                    # Mute rules table
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS alert_mute_rules (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            alert_type TEXT NOT NULL,
-                            subject TEXT NOT NULL,
-                            muted_at TEXT NOT NULL,
-                            muted_by TEXT NOT NULL DEFAULT 'operator',
-                            duration_seconds INTEGER NOT NULL DEFAULT 3600,
-                            expires_at REAL NOT NULL DEFAULT 0,
-                            auto_mute_on_ack INTEGER NOT NULL DEFAULT 0,
-                            created_at TEXT NOT NULL
-                        )
-                    """)
-
-                    # Index for mute rule lookups
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_mute_rules_type_subject
-                        ON alert_mute_rules (alert_type, subject)
-                    """)
-
-                    # Delivery status tracking table
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS alert_delivery_status (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            correlation_id TEXT NOT NULL,
-                            status TEXT NOT NULL,
-                            alert_type TEXT NOT NULL,
-                            severity TEXT NOT NULL,
-                            subject TEXT NOT NULL,
-                            transports TEXT NOT NULL DEFAULT '[]',
-                            transport_results TEXT NOT NULL DEFAULT '{}',
-                            dispatched_at TEXT NOT NULL,
-                            completed_at TEXT NOT NULL DEFAULT '',
-                            created_at TEXT NOT NULL
-                        )
-                    """)
-
-                    # Index for correlation_id lookups
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_delivery_status_correlation_id
-                        ON alert_delivery_status (correlation_id)
-                    """)
-
-                # Sprint 5.33: Schema migration v4 -> v5
-                # Add alert_groups table for persistent alert grouping
-                if current_version < 5:
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS alert_groups (
-                            group_key TEXT NOT NULL,
-                            correlation_id TEXT NOT NULL,
-                            created_at TEXT NOT NULL,
-                            PRIMARY KEY (group_key, correlation_id)
-                        )
-                    """)
-
-                    # Index for group_key lookups
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_alert_groups_group_key
-                        ON alert_groups (group_key)
-                    """)
-
-                # Sprint 5.38: Schema migration v5 -> v6
-                # Add transition_probabilities table for learned prediction model persistence
-                if current_version < 6:
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS transition_probabilities (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            from_type TEXT NOT NULL,
-                            to_type TEXT NOT NULL,
-                            count INTEGER NOT NULL DEFAULT 0,
-                            total_from INTEGER NOT NULL DEFAULT 0,
-                            updated_at TEXT NOT NULL,
-                            UNIQUE(from_type, to_type)
-                        )
-                    """)
-
-                    # Index for from_type lookups
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_transition_from_type
-                        ON transition_probabilities (from_type)
-                    """)
-
-                    # Add delivery_receipts table for multi-channel receipt tracking
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS delivery_receipts (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            correlation_id TEXT NOT NULL,
-                            channel TEXT NOT NULL,
-                            receipt_data TEXT NOT NULL DEFAULT '{}',
-                            confirmed_at TEXT NOT NULL,
-                            created_at TEXT NOT NULL
-                        )
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_delivery_receipts_cid
-                        ON delivery_receipts (correlation_id)
-                    """)
-
-                # Sprint 5.39: Schema migration v6 -> v7
-                # Add model_retraining_events table for tracking model retraining
-                if current_version < 7:
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS model_retraining_events (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            trigger_reason TEXT NOT NULL,
-                            alerts_since_last_train INTEGER NOT NULL DEFAULT 0,
-                            transition_count INTEGER NOT NULL DEFAULT 0,
-                            total_types INTEGER NOT NULL DEFAULT 0,
-                            trained_at TEXT NOT NULL,
-                            created_at TEXT NOT NULL
-                        )
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_retraining_events_trained_at
-                        ON model_retraining_events (trained_at)
-                    """)
-
-                # Sprint 5.45: Schema migration v7 -> v8
-                # Add ab_experiments table for A/B experiment persistence
-                if current_version < 8:
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS ab_experiments (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            name TEXT NOT NULL UNIQUE,
-                            control_config TEXT NOT NULL DEFAULT '{}',
-                            variant_config TEXT NOT NULL DEFAULT '{}',
-                            status TEXT NOT NULL DEFAULT 'running',
-                            started_at TEXT NOT NULL,
-                            stopped_at TEXT NOT NULL DEFAULT '',
-                            result TEXT NOT NULL DEFAULT '',
-                            control_samples INTEGER NOT NULL DEFAULT 0,
-                            variant_samples INTEGER NOT NULL DEFAULT 0,
-                            control_accuracy REAL NOT NULL DEFAULT 0.0,
-                            variant_accuracy REAL NOT NULL DEFAULT 0.0,
-                            promoted_variant TEXT NOT NULL DEFAULT '',
-                            promotion_timestamp TEXT NOT NULL DEFAULT '',
-                            auto_promoted INTEGER NOT NULL DEFAULT 0,
-                            metadata TEXT NOT NULL DEFAULT '{}',
-                            created_at TEXT NOT NULL,
-                            updated_at TEXT NOT NULL DEFAULT ''
-                        )
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_ab_experiments_name
-                        ON ab_experiments (name)
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_ab_experiments_status
-                        ON ab_experiments (status)
-                    """)
-
-                # Sprint 5.46: Schema migration v8 -> v9
-                # Add ab_rollback_history and decay_recovery_history tables
-                if current_version < 9:
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS ab_rollback_history (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            experiment_name TEXT NOT NULL,
-                            rolled_back_variant TEXT NOT NULL,
-                            rolled_back_at TEXT NOT NULL,
-                            control_accuracy REAL NOT NULL DEFAULT 0.0,
-                            variant_accuracy REAL NOT NULL DEFAULT 0.0,
-                            auto INTEGER NOT NULL DEFAULT 1,
-                            created_at TEXT NOT NULL
-                        )
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_ab_rollback_experiment
-                        ON ab_rollback_history (experiment_name)
-                    """)
-
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS decay_recovery_history (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            subject TEXT NOT NULL,
-                            decay_amount REAL NOT NULL DEFAULT 0.0,
-                            current_confidence REAL NOT NULL DEFAULT 0.0,
-                            actions_taken TEXT NOT NULL DEFAULT '[]',
-                            created_at TEXT NOT NULL
-                        )
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_decay_recovery_subject
-                        ON decay_recovery_history (subject)
-                    """)
-
-                # Sprint 5.48: Schema migration v9 -> v10
-                # Add statistical_test_results and ab_accuracy_timeseries tables
-                if current_version < 10:
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS statistical_test_results (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            experiment_name TEXT NOT NULL,
-                            p_value REAL,
-                            confidence_interval_lower REAL,
-                            confidence_interval_upper REAL,
-                            method TEXT NOT NULL DEFAULT '',
-                            significant INTEGER NOT NULL DEFAULT 0,
-                            statistic REAL,
-                            control_mean REAL,
-                            variant_mean REAL,
-                            control_samples INTEGER,
-                            variant_samples INTEGER,
-                            reason TEXT NOT NULL DEFAULT '',
-                            test_result_json TEXT NOT NULL DEFAULT '{}',
-                            created_at TEXT NOT NULL,
-                            updated_at TEXT NOT NULL DEFAULT '',
-                            UNIQUE(experiment_name)
-                        )
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_stat_test_experiment
-                        ON statistical_test_results (experiment_name)
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_stat_test_significant
-                        ON statistical_test_results (significant)
-                    """)
-
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS ab_accuracy_timeseries (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            experiment_name TEXT NOT NULL,
-                            timestamp TEXT NOT NULL,
-                            control_accuracy REAL NOT NULL DEFAULT 0.0,
-                            variant_accuracy REAL NOT NULL DEFAULT 0.0,
-                            control_samples INTEGER NOT NULL DEFAULT 0,
-                            variant_samples INTEGER NOT NULL DEFAULT 0,
-                            status TEXT NOT NULL DEFAULT 'running',
-                            created_at TEXT NOT NULL
-                        )
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_accuracy_ts_experiment
-                        ON ab_accuracy_timeseries (experiment_name)
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_accuracy_ts_timestamp
-                        ON ab_accuracy_timeseries (timestamp)
-                    """)
-
-                # Sprint 5.49: Schema migration v10 -> v11
-                # Add confidence_calibration and pre_promotion_snapshots tables
-                if current_version < 11:
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS confidence_calibration (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            subject TEXT NOT NULL UNIQUE,
-                            calibration_factor REAL NOT NULL DEFAULT 1.0,
-                            updated_at TEXT NOT NULL,
-                            created_at TEXT NOT NULL
-                        )
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_confidence_calibration_subject
-                        ON confidence_calibration (subject)
-                    """)
-
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS pre_promotion_snapshots (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            experiment_name TEXT NOT NULL UNIQUE,
-                            snapshot_data TEXT NOT NULL DEFAULT '{}',
-                            created_at TEXT NOT NULL,
-                            updated_at TEXT NOT NULL DEFAULT ''
-                        )
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_pre_promotion_snapshot_name
-                        ON pre_promotion_snapshots (experiment_name)
-                    """)
-
-                # Sprint 5.50: Schema migration v11 -> v12
-                # Add bandit_decision_log table for logging every bandit allocation decision
-                if current_version < 12:
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS bandit_decision_log (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            experiment_name TEXT NOT NULL,
-                            method TEXT NOT NULL DEFAULT '',
-                            allocation TEXT NOT NULL DEFAULT '{}',
-                            confidence REAL,
-                            context_features TEXT NOT NULL DEFAULT '{}',
-                            sample_sizes TEXT NOT NULL DEFAULT '{}',
-                            timestamp TEXT NOT NULL,
-                            created_at TEXT NOT NULL
-                        )
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_bandit_decision_experiment
-                        ON bandit_decision_log (experiment_name)
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_bandit_decision_timestamp
-                        ON bandit_decision_log (timestamp)
-                    """)
-
-                    conn.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_bandit_decision_method
-                        ON bandit_decision_log (method)
-                    """)
-
-            self._initialized = True
             logger.info(
                 "alert_history_store_initialized",
                 db_path=self._db_path,
@@ -602,7 +647,27 @@ class AlertHistoryStore:
                 error=str(exc),
             )
 
-    def record_alert(self, alert_dict: dict) -> bool:
+    async def close(self) -> None:
+        """Close the persistent connection and read pool."""
+        await self._close_read_pool()
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+
+    async def _reset_conn(self) -> None:
+        """Reset the persistent connection (called on errors)."""
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+            self._health_track_reset()
+
+    async def record_alert(self, alert_dict: dict) -> bool:
         """Record a sent alert to persistent storage.
 
         Parameters
@@ -613,37 +678,34 @@ class AlertHistoryStore:
 
         Returns True if successfully recorded, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
             ts = alert_dict.get("timestamp", now)
             data_json = json.dumps(alert_dict.get("data", {}), default=str)
             correlation_id = alert_dict.get("correlation_id", "")
 
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
-                    INSERT INTO alert_history (
-                        alert_type, severity, subject, message, data,
-                        timestamp, created_at, correlation_id,
-                        acknowledged, acknowledged_at, acknowledged_by
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '', '')
-                """, (
-                    alert_dict.get("alert_type", ""),
-                    alert_dict.get("severity", ""),
-                    alert_dict.get("subject", ""),
-                    alert_dict.get("message", ""),
-                    data_json,
-                    ts,
-                    now,
-                    correlation_id,
-                ))
+            await conn.execute("""
+                INSERT INTO alert_history (
+                    alert_type, severity, subject, message, data,
+                    timestamp, created_at, correlation_id,
+                    acknowledged, acknowledged_at, acknowledged_by
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '', '')
+            """, (
+                alert_dict.get("alert_type", ""),
+                alert_dict.get("severity", ""),
+                alert_dict.get("subject", ""),
+                alert_dict.get("message", ""),
+                data_json,
+                ts,
+                now,
+                correlation_id,
+            ))
+            await conn.commit()
 
             # Auto-prune if needed
-            self._prune_alerts_if_needed()
+            await self._prune_alerts_if_needed()
             return True
         except Exception as exc:
             logger.warning(
@@ -652,7 +714,7 @@ class AlertHistoryStore:
             )
             return False
 
-    def record_delivery_failure(self, failure_dict: dict) -> bool:
+    async def record_delivery_failure(self, failure_dict: dict) -> bool:
         """Record a delivery failure to persistent storage.
 
         Parameters
@@ -664,33 +726,30 @@ class AlertHistoryStore:
 
         Returns True if successfully recorded, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
             ts = failure_dict.get("timestamp", now)
 
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
-                    INSERT INTO alert_delivery_failures (
-                        transport, alert_type, subject, error_message,
-                        timestamp, retry_attempt, final, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    failure_dict.get("transport", ""),
-                    failure_dict.get("alert_type", ""),
-                    failure_dict.get("subject", ""),
-                    failure_dict.get("error_message", ""),
-                    ts,
-                    failure_dict.get("retry_attempt", 0),
-                    1 if failure_dict.get("final", True) else 0,
-                    now,
-                ))
+            await conn.execute("""
+                INSERT INTO alert_delivery_failures (
+                    transport, alert_type, subject, error_message,
+                    timestamp, retry_attempt, final, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                failure_dict.get("transport", ""),
+                failure_dict.get("alert_type", ""),
+                failure_dict.get("subject", ""),
+                failure_dict.get("error_message", ""),
+                ts,
+                failure_dict.get("retry_attempt", 0),
+                1 if failure_dict.get("final", True) else 0,
+                now,
+            ))
+            await conn.commit()
 
             # Auto-prune if needed
-            self._prune_failures_if_needed()
+            await self._prune_failures_if_needed()
             return True
         except Exception as exc:
             logger.warning(
@@ -699,7 +758,7 @@ class AlertHistoryStore:
             )
             return False
 
-    def get_alert_history(
+    async def get_alert_history(
         self,
         alert_type: str | None = None,
         severity: str | None = None,
@@ -721,9 +780,7 @@ class AlertHistoryStore:
 
         Returns a list of alert dicts, most recent first.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
             conditions: list[str] = []
             params: list[Any] = []
@@ -752,10 +809,8 @@ class AlertHistoryStore:
             """
             params.append(limit)
 
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute(query, params)
-                rows = cursor.fetchall()
+            cursor = await conn.execute(query, params)
+            rows = await cursor.fetchall()
 
             result = []
             for row in rows:
@@ -795,8 +850,10 @@ class AlertHistoryStore:
                 error=str(exc),
             )
             return []
+        finally:
+            self._return_read_conn(conn)
 
-    def get_delivery_failures(
+    async def get_delivery_failures(
         self,
         transport: str | None = None,
         limit: int = 20,
@@ -812,9 +869,7 @@ class AlertHistoryStore:
 
         Returns a list of failure dicts, most recent first.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
             conditions: list[str] = []
             params: list[Any] = []
@@ -837,10 +892,8 @@ class AlertHistoryStore:
             """
             params.append(limit)
 
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute(query, params)
-                rows = cursor.fetchall()
+            cursor = await conn.execute(query, params)
+            rows = await cursor.fetchall()
 
             result = []
             for row in rows:
@@ -862,12 +915,14 @@ class AlertHistoryStore:
                 error=str(exc),
             )
             return []
+        finally:
+            self._return_read_conn(conn)
 
     # -----------------------------------------------------------------------
     # Sprint 5.30: Acknowledgment / Dismissal
     # -----------------------------------------------------------------------
 
-    def acknowledge_alert(self, alert_id: int, acknowledged_by: str = "operator") -> bool:
+    async def acknowledge_alert(self, alert_id: int, acknowledged_by: str = "operator") -> bool:
         """Mark an alert as acknowledged.
 
         Sprint 5.30: Sets the acknowledged status to 1 (acknowledged),
@@ -882,20 +937,17 @@ class AlertHistoryStore:
 
         Returns True if the alert was found and updated, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                cursor = conn.execute("""
-                    UPDATE alert_history
-                    SET acknowledged = 1, acknowledged_at = ?, acknowledged_by = ?
-                    WHERE id = ?
-                """, (now, acknowledged_by, alert_id))
-                if cursor.rowcount == 0:
-                    return False
+            cursor = await conn.execute("""
+                UPDATE alert_history
+                SET acknowledged = 1, acknowledged_at = ?, acknowledged_by = ?
+                WHERE id = ?
+            """, (now, acknowledged_by, alert_id))
+            await conn.commit()
+            if cursor.rowcount == 0:
+                return False
 
             logger.info(
                 "alert_acknowledged",
@@ -911,7 +963,7 @@ class AlertHistoryStore:
             )
             return False
 
-    def dismiss_alert(self, alert_id: int, dismissed_by: str = "operator") -> bool:
+    async def dismiss_alert(self, alert_id: int, dismissed_by: str = "operator") -> bool:
         """Mark an alert as dismissed.
 
         Sprint 5.30: Sets the acknowledged status to 2 (dismissed),
@@ -927,20 +979,17 @@ class AlertHistoryStore:
 
         Returns True if the alert was found and updated, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                cursor = conn.execute("""
-                    UPDATE alert_history
-                    SET acknowledged = 2, acknowledged_at = ?, acknowledged_by = ?
-                    WHERE id = ?
-                """, (now, dismissed_by, alert_id))
-                if cursor.rowcount == 0:
-                    return False
+            cursor = await conn.execute("""
+                UPDATE alert_history
+                SET acknowledged = 2, acknowledged_at = ?, acknowledged_by = ?
+                WHERE id = ?
+            """, (now, dismissed_by, alert_id))
+            await conn.commit()
+            if cursor.rowcount == 0:
+                return False
 
             logger.info(
                 "alert_dismissed",
@@ -956,7 +1005,7 @@ class AlertHistoryStore:
             )
             return False
 
-    def get_alert_by_id(self, alert_id: int) -> dict | None:
+    async def get_alert_by_id(self, alert_id: int) -> dict | None:
         """Return a single alert by its database ID.
 
         Sprint 5.30: Used by the acknowledge/dismiss endpoints to verify
@@ -969,19 +1018,15 @@ class AlertHistoryStore:
 
         Returns the alert dict or None if not found.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT id, alert_type, severity, subject, message, data, timestamp,
-                           correlation_id, acknowledged, acknowledged_at, acknowledged_by
-                    FROM alert_history
-                    WHERE id = ?
-                """, (alert_id,))
-                row = cursor.fetchone()
+            cursor = await conn.execute("""
+                SELECT id, alert_type, severity, subject, message, data, timestamp,
+                       correlation_id, acknowledged, acknowledged_at, acknowledged_by
+                FROM alert_history
+                WHERE id = ?
+            """, (alert_id,))
+            row = await cursor.fetchone()
 
             if row is None:
                 return None
@@ -1011,8 +1056,10 @@ class AlertHistoryStore:
                 error=str(exc),
             )
             return None
+        finally:
+            self._return_read_conn(conn)
 
-    def get_recent_alerts_for_dedup(self, window_seconds: int) -> dict[tuple[str, str], float]:
+    async def get_recent_alerts_for_dedup(self, window_seconds: int) -> dict[tuple[str, str], float]:
         """Return recent alerts within the rate-limit window for deduplication.
 
         Sprint 5.30: Used by AlertManager to rebuild its in-memory
@@ -1028,24 +1075,20 @@ class AlertHistoryStore:
 
         Returns a dict mapping (alert_type, subject) -> timestamp (epoch float).
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
             import time as _time
             cutoff = datetime.fromtimestamp(
                 _time.time() - window_seconds, tz=timezone.utc
             ).isoformat()
 
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT alert_type, subject, MAX(timestamp) as latest_ts
-                    FROM alert_history
-                    WHERE timestamp > ?
-                    GROUP BY alert_type, subject
-                """, (cutoff,))
-                rows = cursor.fetchall()
+            cursor = await conn.execute("""
+                SELECT alert_type, subject, MAX(timestamp) as latest_ts
+                FROM alert_history
+                WHERE timestamp > ?
+                GROUP BY alert_type, subject
+            """, (cutoff,))
+            rows = await cursor.fetchall()
 
             result: dict[tuple[str, str], float] = {}
             for row in rows:
@@ -1065,41 +1108,40 @@ class AlertHistoryStore:
                 error=str(exc),
             )
             return {}
+        finally:
+            self._return_read_conn(conn)
 
     # -----------------------------------------------------------------------
     # Sprint 5.31: Mute rules
     # -----------------------------------------------------------------------
 
-    def record_mute_rule(self, rule: dict) -> int:
+    async def record_mute_rule(self, rule: dict) -> int:
         """Record a mute rule to persistent storage.
 
         Sprint 5.31: Persists mute rules so they survive process restarts.
 
         Returns the database ID of the created rule.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                cursor = conn.execute("""
-                    INSERT INTO alert_mute_rules (
-                        alert_type, subject, muted_at, muted_by,
-                        duration_seconds, expires_at, auto_mute_on_ack, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    rule.get("alert_type", ""),
-                    rule.get("subject", ""),
-                    rule.get("muted_at", now),
-                    rule.get("muted_by", "operator"),
-                    rule.get("duration_seconds", 3600),
-                    rule.get("expires_at", 0),
-                    1 if rule.get("auto_mute_on_ack", False) else 0,
-                    now,
-                ))
-                rule_id = cursor.lastrowid
+            cursor = await conn.execute("""
+                INSERT INTO alert_mute_rules (
+                    alert_type, subject, muted_at, muted_by,
+                    duration_seconds, expires_at, auto_mute_on_ack, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                rule.get("alert_type", ""),
+                rule.get("subject", ""),
+                rule.get("muted_at", now),
+                rule.get("muted_by", "operator"),
+                rule.get("duration_seconds", 3600),
+                rule.get("expires_at", 0),
+                1 if rule.get("auto_mute_on_ack", False) else 0,
+                now,
+            ))
+            await conn.commit()
+            rule_id = cursor.lastrowid
 
             logger.info(
                 "alert_mute_rule_recorded",
@@ -1115,24 +1157,21 @@ class AlertHistoryStore:
             )
             return 0
 
-    def delete_mute_rule(self, alert_type: str, subject: str) -> bool:
+    async def delete_mute_rule(self, alert_type: str, subject: str) -> bool:
         """Delete a mute rule by alert_type and subject.
 
         Sprint 5.31: Removes the mute rule from persistent storage.
 
         Returns True if a rule was deleted, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                cursor = conn.execute("""
-                    DELETE FROM alert_mute_rules
-                    WHERE alert_type = ? AND subject = ?
-                """, (alert_type, subject))
-                return cursor.rowcount > 0
+            conn = await self._get_conn()
+            cursor = await conn.execute("""
+                DELETE FROM alert_mute_rules
+                WHERE alert_type = ? AND subject = ?
+            """, (alert_type, subject))
+            await conn.commit()
+            return cursor.rowcount > 0
         except Exception as exc:
             logger.warning(
                 "alert_mute_rule_delete_failed",
@@ -1140,7 +1179,7 @@ class AlertHistoryStore:
             )
             return False
 
-    def get_active_mute_rules(self) -> list[dict]:
+    async def get_active_mute_rules(self) -> list[dict]:
         """Return all mute rules (active and possibly expired).
 
         Sprint 5.31: Used by AlertManager to rebuild in-memory mute
@@ -1149,19 +1188,15 @@ class AlertHistoryStore:
 
         Returns a list of mute rule dicts.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT id, alert_type, subject, muted_at, muted_by,
-                           duration_seconds, expires_at, auto_mute_on_ack
-                    FROM alert_mute_rules
-                    ORDER BY created_at DESC
-                """)
-                rows = cursor.fetchall()
+            cursor = await conn.execute("""
+                SELECT id, alert_type, subject, muted_at, muted_by,
+                       duration_seconds, expires_at, auto_mute_on_ack
+                FROM alert_mute_rules
+                ORDER BY created_at DESC
+            """)
+            rows = await cursor.fetchall()
 
             result = []
             for row in rows:
@@ -1183,12 +1218,14 @@ class AlertHistoryStore:
                 error=str(exc),
             )
             return []
+        finally:
+            self._return_read_conn(conn)
 
     # -----------------------------------------------------------------------
     # Sprint 5.31: Delivery status tracking
     # -----------------------------------------------------------------------
 
-    def record_delivery_status(self, status_dict: dict) -> bool:
+    async def record_delivery_status(self, status_dict: dict) -> bool:
         """Record delivery status for a correlation ID.
 
         Sprint 5.31: Persists the per-transport delivery outcomes so
@@ -1197,34 +1234,31 @@ class AlertHistoryStore:
 
         Sprint 5.33: Auto-prunes delivery status after recording.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
-                    INSERT INTO alert_delivery_status (
-                        correlation_id, status, alert_type, severity, subject,
-                        transports, transport_results, dispatched_at,
-                        completed_at, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    status_dict.get("correlation_id", ""),
-                    status_dict.get("status", ""),
-                    status_dict.get("alert_type", ""),
-                    status_dict.get("severity", ""),
-                    status_dict.get("subject", ""),
-                    json.dumps(status_dict.get("transports", [])),
-                    json.dumps(status_dict.get("transport_results", {})),
-                    status_dict.get("dispatched_at", now),
-                    status_dict.get("completed_at", ""),
-                    now,
-                ))
+            await conn.execute("""
+                INSERT INTO alert_delivery_status (
+                    correlation_id, status, alert_type, severity, subject,
+                    transports, transport_results, dispatched_at,
+                    completed_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                status_dict.get("correlation_id", ""),
+                status_dict.get("status", ""),
+                status_dict.get("alert_type", ""),
+                status_dict.get("severity", ""),
+                status_dict.get("subject", ""),
+                json.dumps(status_dict.get("transports", [])),
+                json.dumps(status_dict.get("transport_results", {})),
+                status_dict.get("dispatched_at", now),
+                status_dict.get("completed_at", ""),
+                now,
+            ))
+            await conn.commit()
 
             # Sprint 5.33: Auto-prune delivery status after recording
-            self.prune_delivery_status()
+            await self.prune_delivery_status()
 
             return True
         except Exception as exc:
@@ -1234,27 +1268,23 @@ class AlertHistoryStore:
             )
             return False
 
-    def get_delivery_status_by_correlation_id(self, correlation_id: str) -> dict | None:
+    async def get_delivery_status_by_correlation_id(self, correlation_id: str) -> dict | None:
         """Return delivery status for a given correlation ID.
 
         Sprint 5.31: Queries the persistent store for delivery status
         information associated with a specific correlation ID.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT correlation_id, status, alert_type, severity, subject,
-                           transports, transport_results, dispatched_at, completed_at
-                    FROM alert_delivery_status
-                    WHERE correlation_id = ?
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                """, (correlation_id,))
-                row = cursor.fetchone()
+            cursor = await conn.execute("""
+                SELECT correlation_id, status, alert_type, severity, subject,
+                       transports, transport_results, dispatched_at, completed_at
+                FROM alert_delivery_status
+                WHERE correlation_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+            """, (correlation_id,))
+            row = await cursor.fetchone()
 
             if row is None:
                 return None
@@ -1277,12 +1307,14 @@ class AlertHistoryStore:
                 error=str(exc),
             )
             return None
+        finally:
+            self._return_read_conn(conn)
 
     # -----------------------------------------------------------------------
     # Sprint 5.32: Delivery status persistence enhancements
     # -----------------------------------------------------------------------
 
-    def update_delivery_status(
+    async def update_delivery_status(
         self,
         correlation_id: str,
         status: str,
@@ -1296,18 +1328,15 @@ class AlertHistoryStore:
 
         Returns True if the record was updated, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                cursor = conn.execute("""
-                    UPDATE alert_delivery_status
-                    SET status = ?, completed_at = ?
-                    WHERE correlation_id = ?
-                """, (status, completed_at, correlation_id))
-                return cursor.rowcount > 0
+            conn = await self._get_conn()
+            cursor = await conn.execute("""
+                UPDATE alert_delivery_status
+                SET status = ?, completed_at = ?
+                WHERE correlation_id = ?
+            """, (status, completed_at, correlation_id))
+            await conn.commit()
+            return cursor.rowcount > 0
         except Exception as exc:
             logger.warning(
                 "alert_delivery_status_update_failed",
@@ -1316,7 +1345,7 @@ class AlertHistoryStore:
             )
             return False
 
-    def get_recent_delivery_statuses(self, limit: int = 100) -> list[dict]:
+    async def get_recent_delivery_statuses(self, limit: int = 100) -> list[dict]:
         """Return recent delivery status records.
 
         Sprint 5.32: Used by AlertManager to rebuild its in-memory
@@ -1325,20 +1354,16 @@ class AlertHistoryStore:
 
         Returns a list of delivery status dicts, most recent first.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT correlation_id, status, alert_type, severity, subject,
-                           transports, transport_results, dispatched_at, completed_at
-                    FROM alert_delivery_status
-                    ORDER BY created_at DESC
-                    LIMIT ?
-                """, (limit,))
-                rows = cursor.fetchall()
+            cursor = await conn.execute("""
+                SELECT correlation_id, status, alert_type, severity, subject,
+                       transports, transport_results, dispatched_at, completed_at
+                FROM alert_delivery_status
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (limit,))
+            rows = await cursor.fetchall()
 
             result = []
             for row in rows:
@@ -1361,8 +1386,10 @@ class AlertHistoryStore:
                 error=str(exc),
             )
             return []
+        finally:
+            self._return_read_conn(conn)
 
-    def get_alert_by_correlation_id(self, correlation_id: str) -> dict | None:
+    async def get_alert_by_correlation_id(self, correlation_id: str) -> dict | None:
         """Return a single alert by its correlation ID.
 
         Sprint 5.32: Used by bulk acknowledge/dismiss operations to
@@ -1370,21 +1397,17 @@ class AlertHistoryStore:
 
         Returns the alert dict or None if not found.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT id, alert_type, severity, subject, message, data, timestamp,
-                           correlation_id, acknowledged, acknowledged_at, acknowledged_by
-                    FROM alert_history
-                    WHERE correlation_id = ?
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                """, (correlation_id,))
-                row = cursor.fetchone()
+            cursor = await conn.execute("""
+                SELECT id, alert_type, severity, subject, message, data, timestamp,
+                       correlation_id, acknowledged, acknowledged_at, acknowledged_by
+                FROM alert_history
+                WHERE correlation_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+            """, (correlation_id,))
+            row = await cursor.fetchone()
 
             if row is None:
                 return None
@@ -1414,52 +1437,51 @@ class AlertHistoryStore:
                 error=str(exc),
             )
             return None
+        finally:
+            self._return_read_conn(conn)
 
-    def get_alert_count(self) -> int:
+    async def get_alert_count(self) -> int:
         """Return the total number of stored alert history rows."""
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                cursor = conn.execute("SELECT COUNT(*) FROM alert_history")
-                return cursor.fetchone()[0]
+            cursor = await conn.execute("SELECT COUNT(*) FROM alert_history")
+            row = await cursor.fetchone()
+            return row[0] if row else 0
         except Exception:
             return 0
+        finally:
+            self._return_read_conn(conn)
 
-    def get_failure_count(self) -> int:
+    async def get_failure_count(self) -> int:
         """Return the total number of stored delivery failure rows."""
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                cursor = conn.execute("SELECT COUNT(*) FROM alert_delivery_failures")
-                return cursor.fetchone()[0]
+            cursor = await conn.execute("SELECT COUNT(*) FROM alert_delivery_failures")
+            row = await cursor.fetchone()
+            return row[0] if row else 0
         except Exception:
             return 0
+        finally:
+            self._return_read_conn(conn)
 
-    def get_status(self) -> dict:
+    async def get_status(self) -> dict:
         """Return status information about the alert history store."""
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                alert_count = conn.execute("SELECT COUNT(*) FROM alert_history").fetchone()[0]
-                failure_count = conn.execute("SELECT COUNT(*) FROM alert_delivery_failures").fetchone()[0]
+            alert_count = (await (await conn.execute("SELECT COUNT(*) FROM alert_history")).fetchone())[0]
+            failure_count = (await (await conn.execute("SELECT COUNT(*) FROM alert_delivery_failures")).fetchone())[0]
 
-                oldest_alert = None
-                newest_alert = None
-                if alert_count > 0:
-                    row = conn.execute(
-                        "SELECT MIN(timestamp) as oldest, MAX(timestamp) as newest FROM alert_history"
-                    ).fetchone()
-                    oldest_alert = row[0]
-                    newest_alert = row[1]
+            oldest_alert = None
+            newest_alert = None
+            if alert_count > 0:
+                row = await (await conn.execute(
+                    "SELECT MIN(timestamp) as oldest, MAX(timestamp) as newest FROM alert_history"
+                )).fetchone()
+                oldest_alert = row[0]
+                newest_alert = row[1]
 
             return {
-                "initialized": self._initialized,
+                "initialized": self._tables_ready,
                 "db_path": self._db_path,
                 "total_alerts": alert_count,
                 "total_delivery_failures": failure_count,
@@ -1470,42 +1492,46 @@ class AlertHistoryStore:
             }
         except Exception as exc:
             return {
-                "initialized": self._initialized,
+                "initialized": self._tables_ready,
                 "db_path": self._db_path,
                 "error": str(exc),
             }
+        finally:
+            self._return_read_conn(conn)
 
-    def _prune_alerts_if_needed(self) -> None:
+    async def _prune_alerts_if_needed(self) -> None:
         """Prune old alert history rows if exceeding max_alert_rows."""
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                count = conn.execute("SELECT COUNT(*) FROM alert_history").fetchone()[0]
-                if count > self._max_alert_rows:
-                    conn.execute("""
-                        DELETE FROM alert_history
-                        WHERE id NOT IN (
-                            SELECT id FROM alert_history
-                            ORDER BY timestamp DESC
-                            LIMIT ?
-                        )
-                    """, (self._max_alert_rows,))
+            conn = await self._get_conn()
+            count = (await (await conn.execute("SELECT COUNT(*) FROM alert_history")).fetchone())[0]
+            if count > self._max_alert_rows:
+                await conn.execute("""
+                    DELETE FROM alert_history
+                    WHERE id NOT IN (
+                        SELECT id FROM alert_history
+                        ORDER BY timestamp DESC
+                        LIMIT ?
+                    )
+                """, (self._max_alert_rows,))
+                await conn.commit()
         except Exception as exc:
             logger.warning("alert_history_store_prune_failed", error=str(exc))
 
-    def _prune_failures_if_needed(self) -> None:
+    async def _prune_failures_if_needed(self) -> None:
         """Prune old delivery failure rows if exceeding max_failure_rows."""
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                count = conn.execute("SELECT COUNT(*) FROM alert_delivery_failures").fetchone()[0]
-                if count > self._max_failure_rows:
-                    conn.execute("""
-                        DELETE FROM alert_delivery_failures
-                        WHERE id NOT IN (
-                            SELECT id FROM alert_delivery_failures
-                            ORDER BY timestamp DESC
-                            LIMIT ?
-                        )
-                    """, (self._max_failure_rows,))
+            conn = await self._get_conn()
+            count = (await (await conn.execute("SELECT COUNT(*) FROM alert_delivery_failures")).fetchone())[0]
+            if count > self._max_failure_rows:
+                await conn.execute("""
+                    DELETE FROM alert_delivery_failures
+                    WHERE id NOT IN (
+                        SELECT id FROM alert_delivery_failures
+                        ORDER BY timestamp DESC
+                        LIMIT ?
+                    )
+                """, (self._max_failure_rows,))
+                await conn.commit()
         except Exception as exc:
             logger.warning("alert_failure_store_prune_failed", error=str(exc))
 
@@ -1513,7 +1539,7 @@ class AlertHistoryStore:
     # Sprint 5.33: Alert group persistence
     # -----------------------------------------------------------------------
 
-    def record_alert_group(self, group_key: str, correlation_id: str) -> bool:
+    async def record_alert_group(self, group_key: str, correlation_id: str) -> bool:
         """Persist an alert group membership to SQLite.
 
         Sprint 5.33: Records that a correlation_id belongs to a group_key
@@ -1521,17 +1547,14 @@ class AlertHistoryStore:
 
         Returns True if successfully recorded, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
-                    INSERT OR IGNORE INTO alert_groups (group_key, correlation_id, created_at)
-                    VALUES (?, ?, ?)
-                """, (group_key, correlation_id, now))
+            await conn.execute("""
+                INSERT OR IGNORE INTO alert_groups (group_key, correlation_id, created_at)
+                VALUES (?, ?, ?)
+            """, (group_key, correlation_id, now))
+            await conn.commit()
             return True
         except Exception as exc:
             logger.warning(
@@ -1542,7 +1565,7 @@ class AlertHistoryStore:
             )
             return False
 
-    def get_alert_groups(self) -> dict[str, list[str]]:
+    async def get_alert_groups(self) -> dict[str, list[str]]:
         """Load all alert groups from SQLite.
 
         Sprint 5.33: Rebuilds the in-memory _alert_groups dict from
@@ -1550,18 +1573,14 @@ class AlertHistoryStore:
 
         Returns a dict mapping group_key -> list of correlation_ids.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT group_key, correlation_id
-                    FROM alert_groups
-                    ORDER BY created_at ASC
-                """)
-                rows = cursor.fetchall()
+            cursor = await conn.execute("""
+                SELECT group_key, correlation_id
+                FROM alert_groups
+                ORDER BY created_at ASC
+            """)
+            rows = await cursor.fetchall()
 
             result: dict[str, list[str]] = {}
             for row in rows:
@@ -1575,24 +1594,23 @@ class AlertHistoryStore:
         except Exception as exc:
             logger.warning("alert_groups_load_failed", error=str(exc))
             return {}
+        finally:
+            self._return_read_conn(conn)
 
-    def delete_alert_group(self, group_key: str) -> bool:
+    async def delete_alert_group(self, group_key: str) -> bool:
         """Delete a group from persistent storage.
 
         Sprint 5.33: Used for cleanup when a group is removed.
 
         Returns True if any rows were deleted, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                cursor = conn.execute("""
-                    DELETE FROM alert_groups WHERE group_key = ?
-                """, (group_key,))
-                return cursor.rowcount > 0
+            conn = await self._get_conn()
+            cursor = await conn.execute("""
+                DELETE FROM alert_groups WHERE group_key = ?
+            """, (group_key,))
+            await conn.commit()
+            return cursor.rowcount > 0
         except Exception as exc:
             logger.warning(
                 "alert_group_delete_failed",
@@ -1605,7 +1623,7 @@ class AlertHistoryStore:
     # Sprint 5.33: Delivery status auto-pruning
     # -----------------------------------------------------------------------
 
-    def prune_delivery_status(
+    async def prune_delivery_status(
         self,
         max_rows: int = _DEFAULT_MAX_DELIVERY_STATUS_ROWS,
         max_age_days: int = 30,
@@ -1618,73 +1636,70 @@ class AlertHistoryStore:
 
         Returns the number of deleted records.
         """
-        if not self._initialized:
-            self.initialize()
-
         deleted = 0
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
+            conn = await self._get_conn()
 
-                # Delete records older than max_age_days
-                if max_age_days > 0:
-                    import time as _time
-                    cutoff = datetime.fromtimestamp(
-                        _time.time() - (max_age_days * 86400),
-                        tz=timezone.utc,
-                    ).isoformat()
-                    cursor = conn.execute("""
-                        DELETE FROM alert_delivery_status
-                        WHERE created_at < ?
-                    """, (cutoff,))
-                    deleted += cursor.rowcount
+            # Delete records older than max_age_days
+            if max_age_days > 0:
+                import time as _time
+                cutoff = datetime.fromtimestamp(
+                    _time.time() - (max_age_days * 86400),
+                    tz=timezone.utc,
+                ).isoformat()
+                cursor = await conn.execute("""
+                    DELETE FROM alert_delivery_status
+                    WHERE created_at < ?
+                """, (cutoff,))
+                deleted += cursor.rowcount
 
-                # If still over max_rows, delete oldest records
-                count = conn.execute("SELECT COUNT(*) FROM alert_delivery_status").fetchone()[0]
-                if count > max_rows:
-                    cursor = conn.execute("""
-                        DELETE FROM alert_delivery_status
-                        WHERE id NOT IN (
-                            SELECT id FROM alert_delivery_status
-                            ORDER BY created_at DESC
-                            LIMIT ?
-                        )
-                    """, (max_rows,))
-                    deleted += cursor.rowcount
+            # If still over max_rows, delete oldest records
+            count = (await (await conn.execute("SELECT COUNT(*) FROM alert_delivery_status")).fetchone())[0]
+            if count > max_rows:
+                cursor = await conn.execute("""
+                    DELETE FROM alert_delivery_status
+                    WHERE id NOT IN (
+                        SELECT id FROM alert_delivery_status
+                        ORDER BY created_at DESC
+                        LIMIT ?
+                    )
+                """, (max_rows,))
+                deleted += cursor.rowcount
+
+            await conn.commit()
 
             if deleted > 0:
                 logger.info(
                     "delivery_status_pruned",
                     deleted=deleted,
                     max_rows=max_rows,
-                    max_age_days=max_age_days,
                 )
 
             return deleted
         except Exception as exc:
             logger.warning("delivery_status_prune_failed", error=str(exc))
-            return 0
+            return deleted
 
-    def get_delivery_status_count(self) -> int:
+    async def get_delivery_status_count(self) -> int:
         """Return the total number of delivery status rows.
 
         Sprint 5.33: Used by the stats endpoint to report row counts.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                cursor = conn.execute("SELECT COUNT(*) FROM alert_delivery_status")
-                return cursor.fetchone()[0]
+            cursor = await conn.execute("SELECT COUNT(*) FROM alert_delivery_status")
+            row = await cursor.fetchone()
+            return row[0] if row else 0
         except Exception:
             return 0
+        finally:
+            self._return_read_conn(conn)
 
     # -----------------------------------------------------------------------
     # Sprint 5.39: Transition probability persistence
     # -----------------------------------------------------------------------
 
-    def save_transition_probabilities(
+    async def save_transition_probabilities(
         self,
         transition_counts: dict[tuple[str, str], int],
         transition_totals: dict[str, int],
@@ -1704,20 +1719,17 @@ class AlertHistoryStore:
 
         Returns True if successfully saved, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                for (from_type, to_type), count in transition_counts.items():
-                    total_from = transition_totals.get(from_type, 0)
-                    conn.execute("""
-                        INSERT OR REPLACE INTO transition_probabilities
-                            (from_type, to_type, count, total_from, updated_at)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (from_type, to_type, count, total_from, now))
+            for (from_type, to_type), count in transition_counts.items():
+                total_from = transition_totals.get(from_type, 0)
+                await conn.execute("""
+                    INSERT OR REPLACE INTO transition_probabilities
+                        (from_type, to_type, count, total_from, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (from_type, to_type, count, total_from, now))
+            await conn.commit()
 
             logger.info(
                 "transition_probabilities_saved",
@@ -1732,7 +1744,7 @@ class AlertHistoryStore:
             )
             return False
 
-    def load_transition_probabilities(
+    async def load_transition_probabilities(
         self,
     ) -> tuple[dict[tuple[str, str], int], dict[str, int]]:
         """Load all transition probabilities from the table.
@@ -1747,17 +1759,13 @@ class AlertHistoryStore:
         transition_totals : dict[str, int]
             Dict mapping from_type -> total outgoing transitions.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT from_type, to_type, count, total_from
-                    FROM transition_probabilities
-                """)
-                rows = cursor.fetchall()
+            cursor = await conn.execute("""
+                SELECT from_type, to_type, count, total_from
+                FROM transition_probabilities
+            """)
+            rows = await cursor.fetchall()
 
             transition_counts: dict[tuple[str, str], int] = {}
             transition_totals: dict[str, int] = {}
@@ -1784,8 +1792,10 @@ class AlertHistoryStore:
                 error=str(exc),
             )
             return {}, {}
+        finally:
+            self._return_read_conn(conn)
 
-    def record_retraining_event(self, event: dict) -> bool:
+    async def record_retraining_event(self, event: dict) -> bool:
         """Record when a model retraining occurred.
 
         Sprint 5.39: Persists a retraining event to the
@@ -1800,26 +1810,23 @@ class AlertHistoryStore:
 
         Returns True if successfully recorded, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
-                    INSERT INTO model_retraining_events (
-                        trigger_reason, alerts_since_last_train,
-                        transition_count, total_types, trained_at, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?)
-                """, (
-                    event.get("trigger_reason", "unknown"),
-                    event.get("alerts_since_last_train", 0),
-                    event.get("transition_count", 0),
-                    event.get("total_types", 0),
-                    event.get("trained_at", now),
-                    now,
-                ))
+            await conn.execute("""
+                INSERT INTO model_retraining_events (
+                    trigger_reason, alerts_since_last_train,
+                    transition_count, total_types, trained_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                event.get("trigger_reason", "unknown"),
+                event.get("alerts_since_last_train", 0),
+                event.get("transition_count", 0),
+                event.get("total_types", 0),
+                event.get("trained_at", now),
+                now,
+            ))
+            await conn.commit()
 
             logger.info(
                 "retraining_event_recorded",
@@ -1834,7 +1841,7 @@ class AlertHistoryStore:
             )
             return False
 
-    def get_retraining_events(self, limit: int = 20) -> list[dict]:
+    async def get_retraining_events(self, limit: int = 20) -> list[dict]:
         """Get recent retraining events.
 
         Sprint 5.39: Returns the most recent model retraining events
@@ -1847,20 +1854,16 @@ class AlertHistoryStore:
 
         Returns a list of retraining event dicts, most recent first.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT id, trigger_reason, alerts_since_last_train,
-                           transition_count, total_types, trained_at, created_at
-                    FROM model_retraining_events
-                    ORDER BY created_at DESC
-                    LIMIT ?
-                """, (limit,))
-                rows = cursor.fetchall()
+            cursor = await conn.execute("""
+                SELECT id, trigger_reason, alerts_since_last_train,
+                       transition_count, total_types, trained_at, created_at
+                FROM model_retraining_events
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (limit,))
+            rows = await cursor.fetchall()
 
             result = []
             for row in rows:
@@ -1881,12 +1884,14 @@ class AlertHistoryStore:
                 error=str(exc),
             )
             return []
+        finally:
+            self._return_read_conn(conn)
 
     # -----------------------------------------------------------------------
     # Sprint 5.45: A/B Experiment persistence
     # -----------------------------------------------------------------------
 
-    def record_ab_experiment(self, experiment: dict) -> bool:
+    async def record_ab_experiment(self, experiment: dict) -> bool:
         """Record or update an A/B experiment in persistent storage.
 
         Sprint 5.45: Uses INSERT OR REPLACE to handle both creation and updates.
@@ -1894,41 +1899,38 @@ class AlertHistoryStore:
 
         Returns True if successfully recorded, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
-                    INSERT OR REPLACE INTO ab_experiments (
-                        name, control_config, variant_config, status,
-                        started_at, stopped_at, result,
-                        control_samples, variant_samples,
-                        control_accuracy, variant_accuracy,
-                        promoted_variant, promotion_timestamp, auto_promoted,
-                        metadata, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    experiment.get("name", ""),
-                    json.dumps(experiment.get("control_config", {}), default=str),
-                    json.dumps(experiment.get("variant_config", {}), default=str),
-                    experiment.get("status", "running"),
-                    experiment.get("started_at", now),
-                    experiment.get("stopped_at", ""),
-                    experiment.get("result", ""),
-                    experiment.get("control_samples", 0),
-                    experiment.get("variant_samples", 0),
-                    experiment.get("control_accuracy", 0.0),
-                    experiment.get("variant_accuracy", 0.0),
-                    experiment.get("promoted_variant", ""),
-                    experiment.get("promotion_timestamp", ""),
-                    1 if experiment.get("auto_promoted", False) else 0,
-                    json.dumps(experiment.get("metadata", {}), default=str),
-                    experiment.get("created_at", now),
-                    now,
-                ))
+            await conn.execute("""
+                INSERT OR REPLACE INTO ab_experiments (
+                    name, control_config, variant_config, status,
+                    started_at, stopped_at, result,
+                    control_samples, variant_samples,
+                    control_accuracy, variant_accuracy,
+                    promoted_variant, promotion_timestamp, auto_promoted,
+                    metadata, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                experiment.get("name", ""),
+                json.dumps(experiment.get("control_config", {}), default=str),
+                json.dumps(experiment.get("variant_config", {}), default=str),
+                experiment.get("status", "running"),
+                experiment.get("started_at", now),
+                experiment.get("stopped_at", ""),
+                experiment.get("result", ""),
+                experiment.get("control_samples", 0),
+                experiment.get("variant_samples", 0),
+                experiment.get("control_accuracy", 0.0),
+                experiment.get("variant_accuracy", 0.0),
+                experiment.get("promoted_variant", ""),
+                experiment.get("promotion_timestamp", ""),
+                1 if experiment.get("auto_promoted", False) else 0,
+                json.dumps(experiment.get("metadata", {}), default=str),
+                experiment.get("created_at", now),
+                now,
+            ))
+            await conn.commit()
 
             return True
         except Exception as exc:
@@ -1938,16 +1940,14 @@ class AlertHistoryStore:
             )
             return False
 
-    def get_ab_experiments(self, status: str | None = None) -> list[dict]:
+    async def get_ab_experiments(self, status: str | None = None) -> list[dict]:
         """Return A/B experiments from persistent storage.
 
         Sprint 5.45: Used by AlertManager to restore experiment state on startup.
 
         Returns a list of experiment dicts.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
             conditions: list[str] = []
             params: list[Any] = []
@@ -1972,10 +1972,8 @@ class AlertHistoryStore:
                 ORDER BY created_at DESC
             """
 
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute(query, params)
-                rows = cursor.fetchall()
+            cursor = await conn.execute(query, params)
+            rows = await cursor.fetchall()
 
             result = []
             for row in rows:
@@ -2018,24 +2016,23 @@ class AlertHistoryStore:
                 error=str(exc),
             )
             return []
+        finally:
+            self._return_read_conn(conn)
 
-    def delete_ab_experiment(self, name: str) -> bool:
+    async def delete_ab_experiment(self, name: str) -> bool:
         """Delete an A/B experiment by name.
 
         Sprint 5.46: Used by the cleanup checker to prune stopped experiments.
 
         Returns True if the experiment was deleted, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                cursor = conn.execute("""
-                    DELETE FROM ab_experiments WHERE name = ?
-                """, (name,))
-                deleted = cursor.rowcount > 0
+            conn = await self._get_conn()
+            cursor = await conn.execute("""
+                DELETE FROM ab_experiments WHERE name = ?
+            """, (name,))
+            await conn.commit()
+            deleted = cursor.rowcount > 0
 
             if deleted:
                 logger.info("ab_experiment_deleted_from_store", name=name)
@@ -2048,7 +2045,7 @@ class AlertHistoryStore:
             )
             return False
 
-    def prune_stopped_ab_experiments(self, retention_hours: int) -> int:
+    async def prune_stopped_ab_experiments(self, retention_hours: int) -> int:
         """Prune stopped A/B experiments older than the retention period.
 
         Sprint 5.46: Removes experiments that have been stopped for longer
@@ -2056,9 +2053,6 @@ class AlertHistoryStore:
 
         Returns the number of experiments pruned.
         """
-        if not self._initialized:
-            self.initialize()
-
         if retention_hours <= 0:
             return 0
 
@@ -2068,13 +2062,13 @@ class AlertHistoryStore:
                 _time.time() - (retention_hours * 3600), tz=timezone.utc
             ).isoformat()
 
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                cursor = conn.execute("""
-                    DELETE FROM ab_experiments
-                    WHERE status != 'running' AND stopped_at != '' AND stopped_at < ?
-                """, (cutoff,))
-                pruned = cursor.rowcount
+            conn = await self._get_conn()
+            cursor = await conn.execute("""
+                DELETE FROM ab_experiments
+                WHERE status != 'running' AND stopped_at != '' AND stopped_at < ?
+            """, (cutoff,))
+            pruned = cursor.rowcount
+            await conn.commit()
 
             if pruned > 0:
                 logger.info(
@@ -2094,58 +2088,51 @@ class AlertHistoryStore:
     # Sprint 5.46: Rollback and recovery history persistence
     # -----------------------------------------------------------------------
 
-    def record_ab_rollback(self, rollback: dict) -> bool:
+    async def record_ab_rollback(self, rollback: dict) -> bool:
         """Record an A/B experiment rollback event.
 
         Sprint 5.46: Persists rollback events for audit trail.
 
         Returns True if successfully recorded, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
-                    INSERT INTO ab_rollback_history (
-                        experiment_name, rolled_back_variant, rolled_back_at,
-                        control_accuracy, variant_accuracy, auto, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    rollback.get("experiment_name", ""),
-                    rollback.get("rolled_back_variant", ""),
-                    rollback.get("rolled_back_at", now),
-                    rollback.get("control_accuracy", 0.0),
-                    rollback.get("variant_accuracy", 0.0),
-                    1 if rollback.get("auto", True) else 0,
-                    now,
-                ))
+            await conn.execute("""
+                INSERT INTO ab_rollback_history (
+                    experiment_name, rolled_back_variant, rolled_back_at,
+                    control_accuracy, variant_accuracy, auto, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                rollback.get("experiment_name", ""),
+                rollback.get("rolled_back_variant", ""),
+                rollback.get("rolled_back_at", now),
+                rollback.get("control_accuracy", 0.0),
+                rollback.get("variant_accuracy", 0.0),
+                1 if rollback.get("auto", True) else 0,
+                now,
+            ))
+            await conn.commit()
             return True
         except Exception as exc:
             logger.warning("ab_rollback_record_failed", error=str(exc))
             return False
 
-    def get_ab_rollback_history(self, limit: int = 50) -> list[dict]:
+    async def get_ab_rollback_history(self, limit: int = 50) -> list[dict]:
         """Return A/B experiment rollback history.
 
         Sprint 5.46: Returns rollback events, most recent first.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT experiment_name, rolled_back_variant, rolled_back_at,
-                           control_accuracy, variant_accuracy, auto
-                    FROM ab_rollback_history
-                    ORDER BY created_at DESC
-                    LIMIT ?
-                """, (limit,))
-                rows = cursor.fetchall()
+            cursor = await conn.execute("""
+                SELECT experiment_name, rolled_back_variant, rolled_back_at,
+                       control_accuracy, variant_accuracy, auto
+                FROM ab_rollback_history
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (limit,))
+            rows = await cursor.fetchall()
 
             return [
                 {
@@ -2161,57 +2148,52 @@ class AlertHistoryStore:
         except Exception as exc:
             logger.warning("ab_rollback_history_query_failed", error=str(exc))
             return []
+        finally:
+            self._return_read_conn(conn)
 
-    def record_decay_recovery(self, recovery: dict) -> bool:
+    async def record_decay_recovery(self, recovery: dict) -> bool:
         """Record a decay recovery event.
 
         Sprint 5.46: Persists recovery events for audit trail.
 
         Returns True if successfully recorded, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
-                    INSERT INTO decay_recovery_history (
-                        subject, decay_amount, current_confidence,
-                        actions_taken, created_at
-                    ) VALUES (?, ?, ?, ?, ?)
-                """, (
-                    recovery.get("subject", ""),
-                    recovery.get("decay_amount", 0.0),
-                    recovery.get("current_confidence", 0.0),
-                    json.dumps(recovery.get("actions_taken", []), default=str),
-                    now,
-                ))
+            await conn.execute("""
+                INSERT INTO decay_recovery_history (
+                    subject, decay_amount, current_confidence,
+                    actions_taken, created_at
+                ) VALUES (?, ?, ?, ?, ?)
+            """, (
+                recovery.get("subject", ""),
+                recovery.get("decay_amount", 0.0),
+                recovery.get("current_confidence", 0.0),
+                json.dumps(recovery.get("actions_taken", []), default=str),
+                now,
+            ))
+            await conn.commit()
             return True
         except Exception as exc:
             logger.warning("decay_recovery_record_failed", error=str(exc))
             return False
 
-    def get_decay_recovery_history(self, limit: int = 50) -> list[dict]:
+    async def get_decay_recovery_history(self, limit: int = 50) -> list[dict]:
         """Return decay recovery history.
 
         Sprint 5.46: Returns recovery events, most recent first.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT subject, decay_amount, current_confidence,
-                           actions_taken, created_at
-                    FROM decay_recovery_history
-                    ORDER BY created_at DESC
-                    LIMIT ?
-                """, (limit,))
-                rows = cursor.fetchall()
+            cursor = await conn.execute("""
+                SELECT subject, decay_amount, current_confidence,
+                       actions_taken, created_at
+                FROM decay_recovery_history
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (limit,))
+            rows = await cursor.fetchall()
 
             result = []
             for row in rows:
@@ -2231,12 +2213,14 @@ class AlertHistoryStore:
         except Exception as exc:
             logger.warning("decay_recovery_history_query_failed", error=str(exc))
             return []
+        finally:
+            self._return_read_conn(conn)
 
     # -----------------------------------------------------------------------
     # Sprint 5.48: Statistical test results and accuracy timeseries persistence
     # -----------------------------------------------------------------------
 
-    def record_statistical_test_result(self, experiment_name: str, result: dict) -> bool:
+    async def record_statistical_test_result(self, experiment_name: str, result: dict) -> bool:
         """Record or update a statistical test result for an experiment.
 
         Sprint 5.48: Persists p-values, confidence intervals, and test method
@@ -2245,51 +2229,48 @@ class AlertHistoryStore:
 
         Returns True if successfully recorded, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
             ci = result.get("confidence_interval", [None, None])
             if ci is None:
                 ci = [None, None]
 
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
-                    INSERT OR REPLACE INTO statistical_test_results (
-                        experiment_name, p_value,
-                        confidence_interval_lower, confidence_interval_upper,
-                        method, significant, statistic,
-                        control_mean, variant_mean,
-                        control_samples, variant_samples,
-                        reason, test_result_json,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    experiment_name,
-                    result.get("p_value"),
-                    ci[0] if len(ci) > 0 else None,
-                    ci[1] if len(ci) > 1 else None,
-                    result.get("method", ""),
-                    1 if result.get("significant", False) else 0,
-                    result.get("statistic"),
-                    result.get("control_mean"),
-                    result.get("variant_mean"),
-                    result.get("control_samples"),
-                    result.get("variant_samples"),
-                    result.get("reason", ""),
-                    json.dumps(result, default=str),
-                    result.get("created_at", now),
-                    now,
-                ))
+            await conn.execute("""
+                INSERT OR REPLACE INTO statistical_test_results (
+                    experiment_name, p_value,
+                    confidence_interval_lower, confidence_interval_upper,
+                    method, significant, statistic,
+                    control_mean, variant_mean,
+                    control_samples, variant_samples,
+                    reason, test_result_json,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                experiment_name,
+                result.get("p_value"),
+                ci[0] if len(ci) > 0 else None,
+                ci[1] if len(ci) > 1 else None,
+                result.get("method", ""),
+                1 if result.get("significant", False) else 0,
+                result.get("statistic"),
+                result.get("control_mean"),
+                result.get("variant_mean"),
+                result.get("control_samples"),
+                result.get("variant_samples"),
+                result.get("reason", ""),
+                json.dumps(result, default=str),
+                result.get("created_at", now),
+                now,
+            ))
+            await conn.commit()
 
             return True
         except Exception as exc:
             logger.warning("statistical_test_result_record_failed", error=str(exc))
             return False
 
-    def get_statistical_test_results(self, experiment_name: str | None = None) -> list[dict]:
+    async def get_statistical_test_results(self, experiment_name: str | None = None) -> list[dict]:
         """Return statistical test results from persistent storage.
 
         Sprint 5.48: Used to restore statistical test state on startup
@@ -2302,9 +2283,7 @@ class AlertHistoryStore:
 
         Returns a list of statistical test result dicts.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
             conditions: list[str] = []
             params: list[Any] = []
@@ -2330,10 +2309,8 @@ class AlertHistoryStore:
                 ORDER BY updated_at DESC
             """
 
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute(query, params)
-                rows = cursor.fetchall()
+            cursor = await conn.execute(query, params)
+            rows = await cursor.fetchall()
 
             result = []
             for row in rows:
@@ -2364,8 +2341,10 @@ class AlertHistoryStore:
         except Exception as exc:
             logger.warning("statistical_test_results_query_failed", error=str(exc))
             return []
+        finally:
+            self._return_read_conn(conn)
 
-    def record_accuracy_timeseries(self, snapshot: dict) -> bool:
+    async def record_accuracy_timeseries(self, snapshot: dict) -> bool:
         """Record an accuracy timeseries snapshot for an experiment.
 
         Sprint 5.48: Persists per-variant accuracy snapshots over time
@@ -2373,37 +2352,34 @@ class AlertHistoryStore:
 
         Returns True if successfully recorded, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
-                    INSERT INTO ab_accuracy_timeseries (
-                        experiment_name, timestamp,
-                        control_accuracy, variant_accuracy,
-                        control_samples, variant_samples,
-                        status, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    snapshot.get("experiment_name", ""),
-                    snapshot.get("timestamp", now),
-                    snapshot.get("control_accuracy", 0.0),
-                    snapshot.get("variant_accuracy", 0.0),
-                    snapshot.get("control_samples", 0),
-                    snapshot.get("variant_samples", 0),
-                    snapshot.get("status", "running"),
-                    now,
-                ))
+            await conn.execute("""
+                INSERT INTO ab_accuracy_timeseries (
+                    experiment_name, timestamp,
+                    control_accuracy, variant_accuracy,
+                    control_samples, variant_samples,
+                    status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                snapshot.get("experiment_name", ""),
+                snapshot.get("timestamp", now),
+                snapshot.get("control_accuracy", 0.0),
+                snapshot.get("variant_accuracy", 0.0),
+                snapshot.get("control_samples", 0),
+                snapshot.get("variant_samples", 0),
+                snapshot.get("status", "running"),
+                now,
+            ))
+            await conn.commit()
 
             return True
         except Exception as exc:
             logger.warning("accuracy_timeseries_record_failed", error=str(exc))
             return False
 
-    def get_accuracy_timeseries(self, experiment_name: str, limit: int = 200) -> list[dict]:
+    async def get_accuracy_timeseries(self, experiment_name: str, limit: int = 200) -> list[dict]:
         """Return accuracy timeseries data for an experiment.
 
         Sprint 5.48: Used by dashboard mini charts to render real historical
@@ -2411,23 +2387,19 @@ class AlertHistoryStore:
 
         Returns a list of snapshot dicts sorted by timestamp ascending.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT experiment_name, timestamp,
-                           control_accuracy, variant_accuracy,
-                           control_samples, variant_samples,
-                           status, created_at
-                    FROM ab_accuracy_timeseries
-                    WHERE experiment_name = ?
-                    ORDER BY timestamp ASC
-                    LIMIT ?
-                """, (experiment_name, limit))
-                rows = cursor.fetchall()
+            cursor = await conn.execute("""
+                SELECT experiment_name, timestamp,
+                       control_accuracy, variant_accuracy,
+                       control_samples, variant_samples,
+                       status, created_at
+                FROM ab_accuracy_timeseries
+                WHERE experiment_name = ?
+                ORDER BY timestamp ASC
+                LIMIT ?
+            """, (experiment_name, limit))
+            rows = await cursor.fetchall()
 
             result = []
             for row in rows:
@@ -2445,8 +2417,10 @@ class AlertHistoryStore:
         except Exception as exc:
             logger.warning("accuracy_timeseries_query_failed", error=str(exc))
             return []
+        finally:
+            self._return_read_conn(conn)
 
-    def prune_accuracy_timeseries(self, experiment_name: str | None = None, max_age_hours: int = 168) -> int:
+    async def prune_accuracy_timeseries(self, experiment_name: str | None = None, max_age_hours: int = 168) -> int:
         """Prune old accuracy timeseries data.
 
         Sprint 5.48: Removes timeseries snapshots older than the specified
@@ -2454,9 +2428,6 @@ class AlertHistoryStore:
 
         Returns the number of rows pruned.
         """
-        if not self._initialized:
-            self.initialize()
-
         if max_age_hours <= 0:
             return 0
 
@@ -2466,19 +2437,19 @@ class AlertHistoryStore:
                 _time.time() - (max_age_hours * 3600), tz=timezone.utc
             ).isoformat()
 
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                if experiment_name:
-                    cursor = conn.execute("""
-                        DELETE FROM ab_accuracy_timeseries
-                        WHERE experiment_name = ? AND timestamp < ?
-                    """, (experiment_name, cutoff))
-                else:
-                    cursor = conn.execute("""
-                        DELETE FROM ab_accuracy_timeseries
-                        WHERE timestamp < ?
-                    """, (cutoff,))
-                pruned = cursor.rowcount
+            conn = await self._get_conn()
+            if experiment_name:
+                cursor = await conn.execute("""
+                    DELETE FROM ab_accuracy_timeseries
+                    WHERE experiment_name = ? AND timestamp < ?
+                """, (experiment_name, cutoff))
+            else:
+                cursor = await conn.execute("""
+                    DELETE FROM ab_accuracy_timeseries
+                    WHERE timestamp < ?
+                """, (cutoff,))
+            pruned = cursor.rowcount
+            await conn.commit()
 
             if pruned > 0:
                 logger.info("accuracy_timeseries_pruned", pruned=pruned, max_age_hours=max_age_hours)
@@ -2491,7 +2462,7 @@ class AlertHistoryStore:
     # Sprint 5.49: Confidence calibration persistence
     # -----------------------------------------------------------------------
 
-    def record_confidence_calibration(self, subject: str, calibration_factor: float, updated_at: str) -> bool:
+    async def record_confidence_calibration(self, subject: str, calibration_factor: float, updated_at: str) -> bool:
         """Record or update a confidence calibration entry.
 
         Sprint 5.49: Persists the calibration factor for a subject so that
@@ -2499,46 +2470,39 @@ class AlertHistoryStore:
 
         Returns True if successfully recorded, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
-                    INSERT OR REPLACE INTO confidence_calibration (
-                        subject, calibration_factor, updated_at, created_at
-                    ) VALUES (?, ?, ?, COALESCE(
-                        (SELECT created_at FROM confidence_calibration WHERE subject = ?),
-                        ?
-                    ))
-                """, (subject, calibration_factor, updated_at, subject, now))
+            await conn.execute("""
+                INSERT OR REPLACE INTO confidence_calibration (
+                    subject, calibration_factor, updated_at, created_at
+                ) VALUES (?, ?, ?, COALESCE(
+                    (SELECT created_at FROM confidence_calibration WHERE subject = ?),
+                    ?
+                ))
+            """, (subject, calibration_factor, updated_at, subject, now))
+            await conn.commit()
 
             return True
         except Exception as exc:
             logger.warning("confidence_calibration_record_failed", error=str(exc))
             return False
 
-    def get_confidence_calibrations(self) -> list[dict]:
+    async def get_confidence_calibrations(self) -> list[dict]:
         """Return all confidence calibration entries.
 
         Sprint 5.49: Used by AlertManager to restore calibration state on startup.
 
         Returns a list of calibration dicts.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT subject, calibration_factor, updated_at, created_at
-                    FROM confidence_calibration
-                    ORDER BY updated_at DESC
-                """)
-                rows = cursor.fetchall()
+            cursor = await conn.execute("""
+                SELECT subject, calibration_factor, updated_at, created_at
+                FROM confidence_calibration
+                ORDER BY updated_at DESC
+            """)
+            rows = await cursor.fetchall()
 
             return [
                 {
@@ -2552,12 +2516,14 @@ class AlertHistoryStore:
         except Exception as exc:
             logger.warning("confidence_calibrations_query_failed", error=str(exc))
             return []
+        finally:
+            self._return_read_conn(conn)
 
     # -----------------------------------------------------------------------
     # Sprint 5.49: Pre-promotion config snapshot persistence
     # -----------------------------------------------------------------------
 
-    def record_pre_promotion_snapshot(self, experiment_name: str, snapshot: dict) -> bool:
+    async def record_pre_promotion_snapshot(self, experiment_name: str, snapshot: dict) -> bool:
         """Record or update a pre-promotion config snapshot.
 
         Sprint 5.49: Persists the snapshot so that config reversion can
@@ -2565,29 +2531,26 @@ class AlertHistoryStore:
 
         Returns True if successfully recorded, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
             snapshot_json = json.dumps(snapshot, default=str)
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
-                    INSERT OR REPLACE INTO pre_promotion_snapshots (
-                        experiment_name, snapshot_data, created_at, updated_at
-                    ) VALUES (?, ?, COALESCE(
-                        (SELECT created_at FROM pre_promotion_snapshots WHERE experiment_name = ?),
-                        ?
-                    ), ?)
-                """, (experiment_name, snapshot_json, experiment_name, now, now))
+            await conn.execute("""
+                INSERT OR REPLACE INTO pre_promotion_snapshots (
+                    experiment_name, snapshot_data, created_at, updated_at
+                ) VALUES (?, ?, COALESCE(
+                    (SELECT created_at FROM pre_promotion_snapshots WHERE experiment_name = ?),
+                    ?
+                ), ?)
+            """, (experiment_name, snapshot_json, experiment_name, now, now))
+            await conn.commit()
 
             return True
         except Exception as exc:
             logger.warning("pre_promotion_snapshot_record_failed", error=str(exc))
             return False
 
-    def get_pre_promotion_snapshots(self) -> list[dict]:
+    async def get_pre_promotion_snapshots(self) -> list[dict]:
         """Return all pre-promotion config snapshots.
 
         Sprint 5.49: Used by AlertManager to restore snapshots on startup
@@ -2596,18 +2559,14 @@ class AlertHistoryStore:
 
         Returns a list of snapshot dicts.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute("""
-                    SELECT experiment_name, snapshot_data, created_at, updated_at
-                    FROM pre_promotion_snapshots
-                    ORDER BY updated_at DESC
-                """)
-                rows = cursor.fetchall()
+            cursor = await conn.execute("""
+                SELECT experiment_name, snapshot_data, created_at, updated_at
+                FROM pre_promotion_snapshots
+                ORDER BY updated_at DESC
+            """)
+            rows = await cursor.fetchall()
 
             result = []
             for row in rows:
@@ -2626,8 +2585,10 @@ class AlertHistoryStore:
         except Exception as exc:
             logger.warning("pre_promotion_snapshots_query_failed", error=str(exc))
             return []
+        finally:
+            self._return_read_conn(conn)
 
-    def delete_pre_promotion_snapshot(self, experiment_name: str) -> bool:
+    async def delete_pre_promotion_snapshot(self, experiment_name: str) -> bool:
         """Delete a pre-promotion config snapshot after rollback is complete.
 
         Sprint 5.49: Called after a successful config reversion to clean up
@@ -2635,16 +2596,13 @@ class AlertHistoryStore:
 
         Returns True if the snapshot was deleted, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                cursor = conn.execute("""
-                    DELETE FROM pre_promotion_snapshots WHERE experiment_name = ?
-                """, (experiment_name,))
-                return cursor.rowcount > 0
+            conn = await self._get_conn()
+            cursor = await conn.execute("""
+                DELETE FROM pre_promotion_snapshots WHERE experiment_name = ?
+            """, (experiment_name,))
+            await conn.commit()
+            return cursor.rowcount > 0
         except Exception as exc:
             logger.warning("pre_promotion_snapshot_delete_failed", error=str(exc))
             return False
@@ -2653,7 +2611,7 @@ class AlertHistoryStore:
     # Sprint 5.50: Bandit Decision Logging
     # -----------------------------------------------------------------------
 
-    def record_bandit_decision(self, decision: dict) -> bool:
+    async def record_bandit_decision(self, decision: dict) -> bool:
         """Record a bandit allocation decision to the log.
 
         Sprint 5.50: Persists every bandit allocation decision with full
@@ -2668,39 +2626,36 @@ class AlertHistoryStore:
 
         Returns True if successfully recorded, False otherwise.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
+            conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
             allocation_json = json.dumps(decision.get("allocation", {}), default=str)
             context_json = json.dumps(decision.get("context_features", {}), default=str)
             sample_sizes_json = json.dumps(decision.get("sample_sizes", {}), default=str)
 
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
-                    INSERT INTO bandit_decision_log (
-                        experiment_name, method, allocation, confidence,
-                        context_features, sample_sizes, timestamp, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    decision.get("experiment_name", ""),
-                    decision.get("method", ""),
-                    allocation_json,
-                    decision.get("confidence"),
-                    context_json,
-                    sample_sizes_json,
-                    decision.get("timestamp", now),
-                    now,
-                ))
+            await conn.execute("""
+                INSERT INTO bandit_decision_log (
+                    experiment_name, method, allocation, confidence,
+                    context_features, sample_sizes, timestamp, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                decision.get("experiment_name", ""),
+                decision.get("method", ""),
+                allocation_json,
+                decision.get("confidence"),
+                context_json,
+                sample_sizes_json,
+                decision.get("timestamp", now),
+                now,
+            ))
+            await conn.commit()
 
             return True
         except Exception as exc:
             logger.warning("bandit_decision_log_record_failed", error=str(exc))
             return False
 
-    def get_bandit_decisions(
+    async def get_bandit_decisions(
         self,
         experiment_name: str | None = None,
         method: str | None = None,
@@ -2728,9 +2683,7 @@ class AlertHistoryStore:
 
         Returns a list of decision dicts, most recent first.
         """
-        if not self._initialized:
-            self.initialize()
-
+        conn = await self._checkout_read_conn()
         try:
             conditions: list[str] = []
             params: list[Any] = []
@@ -2762,10 +2715,8 @@ class AlertHistoryStore:
             """
             params.append(limit)
 
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.execute(query, params)
-                rows = cursor.fetchall()
+            cursor = await conn.execute(query, params)
+            rows = await cursor.fetchall()
 
             result = []
             for row in rows:
@@ -2798,8 +2749,10 @@ class AlertHistoryStore:
         except Exception as exc:
             logger.warning("bandit_decisions_query_failed", error=str(exc))
             return []
+        finally:
+            self._return_read_conn(conn)
 
-    def get_experiment_event_timeline(
+    async def get_experiment_event_timeline(
         self,
         experiment_name: str | None = None,
         event_type: str | None = None,
@@ -2831,134 +2784,129 @@ class AlertHistoryStore:
 
         Returns a list of event dicts sorted by timestamp descending.
         """
-        if not self._initialized:
-            self.initialize()
-
         events: list[dict] = []
 
+        conn = await self._checkout_read_conn()
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
+            # Promotion events from ab_experiments
+            if event_type is None or event_type == "promotion":
+                conditions = ["promoted_variant != ''", "promotion_timestamp != ''"]
+                params: list[Any] = []
+                if experiment_name:
+                    conditions.append("name = ?")
+                    params.append(experiment_name)
+                if since:
+                    conditions.append("promotion_timestamp > ?")
+                    params.append(since)
+                if before:
+                    conditions.append("promotion_timestamp < ?")
+                    params.append(before)
+                where = "WHERE " + " AND ".join(conditions)
+                cursor = await conn.execute(f"""
+                    SELECT name, promoted_variant, promotion_timestamp,
+                           control_accuracy, variant_accuracy, auto_promoted
+                    FROM ab_experiments {where}
+                    ORDER BY promotion_timestamp DESC LIMIT ?
+                """, params + [limit])
+                for row in await cursor.fetchall():
+                    events.append({
+                        "event_type": "promotion",
+                        "experiment_name": row["name"],
+                        "timestamp": row["promotion_timestamp"],
+                        "variant": row["promoted_variant"],
+                        "auto_promoted": bool(row["auto_promoted"]),
+                        "control_accuracy": row["control_accuracy"],
+                        "variant_accuracy": row["variant_accuracy"],
+                    })
 
-                # Promotion events from ab_experiments
-                if event_type is None or event_type == "promotion":
-                    conditions = ["promoted_variant != ''", "promotion_timestamp != ''"]
-                    params: list[Any] = []
-                    if experiment_name:
-                        conditions.append("name = ?")
-                        params.append(experiment_name)
-                    if since:
-                        conditions.append("promotion_timestamp > ?")
-                        params.append(since)
-                    if before:
-                        conditions.append("promotion_timestamp < ?")
-                        params.append(before)
-                    where = "WHERE " + " AND ".join(conditions)
-                    cursor = conn.execute(f"""
-                        SELECT name, promoted_variant, promotion_timestamp,
-                               control_accuracy, variant_accuracy, auto_promoted
-                        FROM ab_experiments {where}
-                        ORDER BY promotion_timestamp DESC LIMIT ?
-                    """, params + [limit])
-                    for row in cursor.fetchall():
-                        events.append({
-                            "event_type": "promotion",
-                            "experiment_name": row["name"],
-                            "timestamp": row["promotion_timestamp"],
-                            "variant": row["promoted_variant"],
-                            "auto_promoted": bool(row["auto_promoted"]),
-                            "control_accuracy": row["control_accuracy"],
-                            "variant_accuracy": row["variant_accuracy"],
-                        })
+            # Rollback events
+            if event_type is None or event_type == "rollback":
+                conditions = []
+                params = []
+                if experiment_name:
+                    conditions.append("experiment_name = ?")
+                    params.append(experiment_name)
+                if since:
+                    conditions.append("rolled_back_at > ?")
+                    params.append(since)
+                if before:
+                    conditions.append("rolled_back_at < ?")
+                    params.append(before)
+                where = "WHERE " + " AND ".join(conditions) if conditions else ""
+                cursor = await conn.execute(f"""
+                    SELECT experiment_name, rolled_back_variant, rolled_back_at,
+                           control_accuracy, variant_accuracy, auto
+                    FROM ab_rollback_history {where}
+                    ORDER BY rolled_back_at DESC LIMIT ?
+                """, params + [limit])
+                for row in await cursor.fetchall():
+                    events.append({
+                        "event_type": "rollback",
+                        "experiment_name": row["experiment_name"],
+                        "timestamp": row["rolled_back_at"],
+                        "rolled_back_variant": row["rolled_back_variant"],
+                        "control_accuracy": row["control_accuracy"],
+                        "variant_accuracy": row["variant_accuracy"],
+                        "auto": bool(row["auto"]),
+                    })
 
-                # Rollback events
-                if event_type is None or event_type == "rollback":
-                    conditions = []
-                    params = []
-                    if experiment_name:
-                        conditions.append("experiment_name = ?")
-                        params.append(experiment_name)
-                    if since:
-                        conditions.append("rolled_back_at > ?")
-                        params.append(since)
-                    if before:
-                        conditions.append("rolled_back_at < ?")
-                        params.append(before)
-                    where = "WHERE " + " AND ".join(conditions) if conditions else ""
-                    cursor = conn.execute(f"""
-                        SELECT experiment_name, rolled_back_variant, rolled_back_at,
-                               control_accuracy, variant_accuracy, auto
-                        FROM ab_rollback_history {where}
-                        ORDER BY rolled_back_at DESC LIMIT ?
-                    """, params + [limit])
-                    for row in cursor.fetchall():
-                        events.append({
-                            "event_type": "rollback",
-                            "experiment_name": row["experiment_name"],
-                            "timestamp": row["rolled_back_at"],
-                            "rolled_back_variant": row["rolled_back_variant"],
-                            "control_accuracy": row["control_accuracy"],
-                            "variant_accuracy": row["variant_accuracy"],
-                            "auto": bool(row["auto"]),
-                        })
+            # Decay recovery events
+            if event_type is None or event_type == "decay_recovery":
+                conditions = []
+                params = []
+                if experiment_name:
+                    conditions.append("subject = ?")
+                    params.append(experiment_name)
+                if since:
+                    conditions.append("created_at > ?")
+                    params.append(since)
+                if before:
+                    conditions.append("created_at < ?")
+                    params.append(before)
+                where = "WHERE " + " AND ".join(conditions) if conditions else ""
+                cursor = await conn.execute(f"""
+                    SELECT subject, decay_amount, current_confidence, actions_taken, created_at
+                    FROM decay_recovery_history {where}
+                    ORDER BY created_at DESC LIMIT ?
+                """, params + [limit])
+                for row in await cursor.fetchall():
+                    events.append({
+                        "event_type": "decay_recovery",
+                        "experiment_name": row["subject"],
+                        "timestamp": row["created_at"],
+                        "decay_amount": row["decay_amount"],
+                        "current_confidence": row["current_confidence"],
+                        "actions_taken": json.loads(row["actions_taken"]) if row["actions_taken"] else [],
+                    })
 
-                # Decay recovery events
-                if event_type is None or event_type == "decay_recovery":
-                    conditions = []
-                    params = []
-                    if experiment_name:
-                        conditions.append("subject = ?")
-                        params.append(experiment_name)
-                    if since:
-                        conditions.append("created_at > ?")
-                        params.append(since)
-                    if before:
-                        conditions.append("created_at < ?")
-                        params.append(before)
-                    where = "WHERE " + " AND ".join(conditions) if conditions else ""
-                    cursor = conn.execute(f"""
-                        SELECT subject, decay_amount, current_confidence, actions_taken, created_at
-                        FROM decay_recovery_history {where}
-                        ORDER BY created_at DESC LIMIT ?
-                    """, params + [limit])
-                    for row in cursor.fetchall():
-                        events.append({
-                            "event_type": "decay_recovery",
-                            "experiment_name": row["subject"],
-                            "timestamp": row["created_at"],
-                            "decay_amount": row["decay_amount"],
-                            "current_confidence": row["current_confidence"],
-                            "actions_taken": json.loads(row["actions_taken"]) if row["actions_taken"] else [],
-                        })
-
-                # Bandit decision events (most recent per experiment)
-                if event_type is None or event_type == "bandit_decision":
-                    conditions = []
-                    params = []
-                    if experiment_name:
-                        conditions.append("experiment_name = ?")
-                        params.append(experiment_name)
-                    if since:
-                        conditions.append("timestamp > ?")
-                        params.append(since)
-                    if before:
-                        conditions.append("timestamp < ?")
-                        params.append(before)
-                    where = "WHERE " + " AND ".join(conditions) if conditions else ""
-                    cursor = conn.execute(f"""
-                        SELECT experiment_name, method, allocation, confidence, timestamp
-                        FROM bandit_decision_log {where}
-                        ORDER BY timestamp DESC LIMIT ?
-                    """, params + [limit])
-                    for row in cursor.fetchall():
-                        events.append({
-                            "event_type": "bandit_decision",
-                            "experiment_name": row["experiment_name"],
-                            "timestamp": row["timestamp"],
-                            "method": row["method"],
-                            "allocation": json.loads(row["allocation"]) if row["allocation"] else {},
-                            "confidence": row["confidence"],
-                        })
+            # Bandit decision events (most recent per experiment)
+            if event_type is None or event_type == "bandit_decision":
+                conditions = []
+                params = []
+                if experiment_name:
+                    conditions.append("experiment_name = ?")
+                    params.append(experiment_name)
+                if since:
+                    conditions.append("timestamp > ?")
+                    params.append(since)
+                if before:
+                    conditions.append("timestamp < ?")
+                    params.append(before)
+                where = "WHERE " + " AND ".join(conditions) if conditions else ""
+                cursor = await conn.execute(f"""
+                    SELECT experiment_name, method, allocation, confidence, timestamp
+                    FROM bandit_decision_log {where}
+                    ORDER BY timestamp DESC LIMIT ?
+                """, params + [limit])
+                for row in await cursor.fetchall():
+                    events.append({
+                        "event_type": "bandit_decision",
+                        "experiment_name": row["experiment_name"],
+                        "timestamp": row["timestamp"],
+                        "method": row["method"],
+                        "allocation": json.loads(row["allocation"]) if row["allocation"] else {},
+                        "confidence": row["confidence"],
+                    })
 
             # Sort all events by timestamp descending
             events.sort(key=lambda e: e.get("timestamp", ""), reverse=True)
@@ -2966,8 +2914,10 @@ class AlertHistoryStore:
         except Exception as exc:
             logger.warning("experiment_event_timeline_query_failed", error=str(exc))
             return []
+        finally:
+            self._return_read_conn(conn)
 
-    def cleanup_stale_pre_promotion_snapshots(
+    async def cleanup_stale_pre_promotion_snapshots(
         self,
         active_experiment_names: set[str] | None = None,
         max_age_hours: int = 72,
@@ -2990,60 +2940,57 @@ class AlertHistoryStore:
 
         Returns the number of snapshots removed.
         """
-        if not self._initialized:
-            self.initialize()
-
         try:
             now_epoch = datetime.now(timezone.utc).timestamp()
             cutoff_epoch = now_epoch - (max_age_hours * 3600)
 
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.row_factory = sqlite3.Row
+            conn = await self._get_conn()
 
-                # Get all snapshots
-                cursor = conn.execute("""
-                    SELECT experiment_name, created_at FROM pre_promotion_snapshots
-                """)
-                rows = cursor.fetchall()
+            # Get all snapshots
+            cursor = await conn.execute("""
+                SELECT experiment_name, created_at FROM pre_promotion_snapshots
+            """)
+            rows = await cursor.fetchall()
 
-                removed = 0
-                for row in rows:
-                    exp_name = row["experiment_name"]
-                    created_at = row["created_at"]
+            removed = 0
+            for row in rows:
+                exp_name = row["experiment_name"]
+                created_at = row["created_at"]
 
-                    # Check if experiment is still active
-                    if active_experiment_names is not None and exp_name in active_experiment_names:
-                        continue  # Keep snapshots for active experiments
+                # Check if experiment is still active
+                if active_experiment_names is not None and exp_name in active_experiment_names:
+                    continue  # Keep snapshots for active experiments
 
-                    # Check age-based expiry
-                    try:
-                        created_dt = datetime.fromisoformat(created_at)
-                        if created_dt.timestamp() < cutoff_epoch:
-                            conn.execute(
-                                "DELETE FROM pre_promotion_snapshots WHERE experiment_name = ?",
-                                (exp_name,),
-                            )
-                            removed += 1
-                    except (ValueError, TypeError):
-                        # If we can't parse the date and the experiment isn't active, remove it
-                        if active_experiment_names is None or exp_name not in active_experiment_names:
-                            conn.execute(
-                                "DELETE FROM pre_promotion_snapshots WHERE experiment_name = ?",
-                                (exp_name,),
-                            )
-                            removed += 1
+                # Check age-based expiry
+                try:
+                    created_dt = datetime.fromisoformat(created_at)
+                    if created_dt.timestamp() < cutoff_epoch:
+                        await conn.execute(
+                            "DELETE FROM pre_promotion_snapshots WHERE experiment_name = ?",
+                            (exp_name,),
+                        )
+                        removed += 1
+                except (ValueError, TypeError):
+                    # If we can't parse the date and the experiment isn't active, remove it
+                    if active_experiment_names is None or exp_name not in active_experiment_names:
+                        await conn.execute(
+                            "DELETE FROM pre_promotion_snapshots WHERE experiment_name = ?",
+                            (exp_name,),
+                        )
+                        removed += 1
 
-                # Also remove snapshots for inactive experiments (not in active set)
-                if active_experiment_names is not None:
-                    cursor2 = conn.execute("SELECT experiment_name FROM pre_promotion_snapshots")
-                    for row in cursor2.fetchall():
-                        if row["experiment_name"] not in active_experiment_names:
-                            conn.execute(
-                                "DELETE FROM pre_promotion_snapshots WHERE experiment_name = ?",
-                                (row["experiment_name"],),
-                            )
-                            removed += 1
+            # Also remove snapshots for inactive experiments (not in active set)
+            if active_experiment_names is not None:
+                cursor2 = await conn.execute("SELECT experiment_name FROM pre_promotion_snapshots")
+                for row in await cursor2.fetchall():
+                    if row["experiment_name"] not in active_experiment_names:
+                        await conn.execute(
+                            "DELETE FROM pre_promotion_snapshots WHERE experiment_name = ?",
+                            (row["experiment_name"],),
+                        )
+                        removed += 1
+
+            await conn.commit()
 
             if removed > 0:
                 logger.info("stale_snapshots_cleaned_up", removed=removed)
@@ -3052,3 +2999,161 @@ class AlertHistoryStore:
         except Exception as exc:
             logger.warning("stale_snapshot_cleanup_failed", error=str(exc))
             return 0
+
+
+class SyncAlertHistoryBridge:
+    """Synchronous bridge to AlertHistoryStore for legacy callers (AlertManager).
+
+    Wraps async AlertHistoryStore methods so they can be called from synchronous
+    code. Uses a dedicated event loop thread for execution.
+
+    This bridge exists because the AlertManager is deeply synchronous (8000+ lines,
+    60+ call sites) and cannot be easily converted to async. New code should use
+    AlertHistoryStore directly with await instead of this bridge.
+    """
+
+    def __init__(self, store: AlertHistoryStore) -> None:
+        self._store = store
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._thread.start()
+
+    def _run_loop(self) -> None:
+        """Run the event loop in a background thread."""
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_forever()
+
+    def _call(self, coro):
+        """Submit a coroutine and block until result."""
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result(timeout=10.0)
+
+    def _call_fire_and_forget(self, coro):
+        """Submit a coroutine without waiting for result."""
+        asyncio.run_coroutine_threadsafe(coro, self._loop)
+
+    def close(self) -> None:
+        """Stop the background event loop."""
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join(timeout=5.0)
+
+    # Delegate all methods that AlertManager calls
+    def record_alert(self, alert_dict: dict) -> bool:
+        return self._call(self._store.record_alert(alert_dict))
+
+    def get_alert_history(self, **kwargs) -> list[dict]:
+        return self._call(self._store.get_alert_history(**kwargs))
+
+    def record_delivery_failure(self, failure_dict: dict) -> bool:
+        return self._call(self._store.record_delivery_failure(failure_dict))
+
+    def get_delivery_failures(self, **kwargs) -> list[dict]:
+        return self._call(self._store.get_delivery_failures(**kwargs))
+
+    def acknowledge_alert(self, alert_id: int, acknowledged_by: str = "operator") -> bool:
+        return self._call(self._store.acknowledge_alert(alert_id, acknowledged_by))
+
+    def dismiss_alert(self, alert_id: int, dismissed_by: str = "operator") -> bool:
+        return self._call(self._store.dismiss_alert(alert_id, dismissed_by))
+
+    def get_alert_by_id(self, alert_id: int) -> dict | None:
+        return self._call(self._store.get_alert_by_id(alert_id))
+
+    def get_alert_by_correlation_id(self, correlation_id: str) -> dict | None:
+        return self._call(self._store.get_alert_by_correlation_id(correlation_id))
+
+    def record_mute_rule(self, rule: dict) -> int:
+        return self._call(self._store.record_mute_rule(rule))
+
+    def delete_mute_rule(self, alert_type: str, subject: str) -> bool:
+        return self._call(self._store.delete_mute_rule(alert_type, subject))
+
+    def get_active_mute_rules(self) -> list[dict]:
+        return self._call(self._store.get_active_mute_rules())
+
+    def get_recent_alerts_for_dedup(self, **kwargs) -> list[dict]:
+        return self._call(self._store.get_recent_alerts_for_dedup(**kwargs))
+
+    def record_delivery_status(self, status_dict: dict) -> bool:
+        return self._call(self._store.record_delivery_status(status_dict))
+
+    def update_delivery_status(self, correlation_id: str, status: str, completed_at: str = "") -> bool:
+        return self._call(self._store.update_delivery_status(correlation_id, status, completed_at))
+
+    def get_recent_delivery_statuses(self, limit: int = 100) -> list[dict]:
+        return self._call(self._store.get_recent_delivery_statuses(limit))
+
+    def get_delivery_status_by_correlation_id(self, correlation_id: str) -> dict | None:
+        return self._call(self._store.get_delivery_status_by_correlation_id(correlation_id))
+
+    def record_alert_group(self, group_key: str, correlation_id: str) -> bool:
+        return self._call(self._store.record_alert_group(group_key, correlation_id))
+
+    def delete_alert_group(self, group_key: str) -> bool:
+        return self._call(self._store.delete_alert_group(group_key))
+
+    def get_alert_groups(self, **kwargs) -> list[dict]:
+        return self._call(self._store.get_alert_groups(**kwargs))
+
+    def prune_delivery_status(self, **kwargs) -> int:
+        return self._call(self._store.prune_delivery_status(**kwargs))
+
+    def save_transition_probabilities(self, **kwargs) -> bool:
+        return self._call(self._store.save_transition_probabilities(**kwargs))
+
+    def load_transition_probabilities(self):
+        return self._call(self._store.load_transition_probabilities())
+
+    def record_retraining_event(self, event_dict: dict) -> bool:
+        return self._call(self._store.record_retraining_event(event_dict))
+
+    def get_ab_experiments(self, **kwargs) -> list[dict]:
+        return self._call(self._store.get_ab_experiments(**kwargs))
+
+    def record_ab_experiment(self, experiment: dict) -> bool:
+        return self._call(self._store.record_ab_experiment(experiment))
+
+    def delete_ab_experiment(self, name: str) -> bool:
+        return self._call(self._store.delete_ab_experiment(name))
+
+    def record_accuracy_timeseries(self, snapshot: dict) -> bool:
+        return self._call(self._store.record_accuracy_timeseries(snapshot))
+
+    def get_accuracy_timeseries(self, name: str) -> list[dict]:
+        return self._call(self._store.get_accuracy_timeseries(name))
+
+    def record_bandit_decision(self, decision: dict) -> bool:
+        return self._call(self._store.record_bandit_decision(decision))
+
+    def get_bandit_decisions(self, **kwargs) -> list[dict]:
+        return self._call(self._store.get_bandit_decisions(**kwargs))
+
+    def cleanup_stale_pre_promotion_snapshots(self, **kwargs) -> int:
+        return self._call(self._store.cleanup_stale_pre_promotion_snapshots(**kwargs))
+
+    def get_experiment_event_timeline(self, **kwargs) -> list[dict]:
+        return self._call(self._store.get_experiment_event_timeline(**kwargs))
+
+    def delete_pre_promotion_snapshot(self, name: str) -> bool:
+        return self._call(self._store.delete_pre_promotion_snapshot(name))
+
+    def persist_confidence_calibration(self, store):
+        return self._call(self._store.persist_confidence_calibration(store))
+
+    def persist_pre_promotion_snapshots(self, store):
+        return self._call(self._store.persist_pre_promotion_snapshots(store))
+
+    def persist_statistical_test_results(self, store):
+        return self._call(self._store.persist_statistical_test_results(store))
+
+    def get_alert_history_since(self, **kwargs) -> list[dict]:
+        return self._call(self._store.get_alert_history_since(**kwargs))
+
+    def query_alerts(self, **kwargs) -> list[dict]:
+        return self._call(self._store.query_alerts(**kwargs))
+
+    def get_alerts(self, **kwargs) -> list[dict]:
+        return self._call(self._store.get_alerts(**kwargs))
+
+    def get_status(self) -> dict:
+        return self._call(self._store.get_status())

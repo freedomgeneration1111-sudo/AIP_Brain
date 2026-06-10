@@ -634,7 +634,7 @@ async def lifespan(app: FastAPI):
             rollup_age_days=int(quality_cfg.get("rollup_age_days", 7)),
             weekly_rollup_age_weeks=int(quality_cfg.get("weekly_rollup_age_weeks", 4)),
         )
-        container._vigil_quality_store.initialize()
+        await container._vigil_quality_store.initialize()
         log.info(
             "component_initialized",
             component="vigil_quality_store",
@@ -746,11 +746,15 @@ async def lifespan(app: FastAPI):
 
         alert_db_path = os.path.join(os.path.dirname(db_path), "alert_history.db")
         container._alert_history_store = AlertHistoryStore(alert_db_path)
-        container._alert_history_store.initialize()
+        await container._alert_history_store.initialize()
+        
+        # Wrap in SyncAlertHistoryBridge for AlertManager compatibility
+        from aip.adapter.alert_history_store import SyncAlertHistoryBridge
+        container._alert_history_bridge = SyncAlertHistoryBridge(container._alert_history_store)
 
         # Attach to AlertManager if initialized
         if container._alert_manager is not None:
-            container._alert_manager.attach_history_store(container._alert_history_store)
+            container._alert_manager.attach_history_store(container._alert_history_bridge)
 
         log.info(
             "component_initialized",
@@ -1034,6 +1038,68 @@ async def lifespan(app: FastAPI):
             component="config_watcher",
             degradation="no_hot_reload",
             error=str(exc),
+        )
+
+    # --- Store registry: register all initialized stores with their db_path ---
+    # This is the honest datastore truth. Each store tells us where it lives.
+    lexical_db = os.path.join(os.path.dirname(db_path), "lexical.db")
+    vector_db = os.path.join(os.path.dirname(db_path), "vectors.db")
+    quality_db = os.path.join(os.path.dirname(db_path), "vigil_quality.db")
+    alert_db = os.path.join(os.path.dirname(db_path), "alert_history.db")
+
+    if container.entity_store is not None:
+        container.register_store("entity_store", db_path)
+    if container.canonical_store is not None:
+        container.register_store("canonical_store", db_path)
+    if container.event_store is not None:
+        container.register_store("event_store", db_path)
+    if container.autonomy_gate is not None:
+        container.register_store("autonomy_gate", db_path)
+    if container.artifact_store is not None:
+        container.register_store("artifact_store", db_path)
+    if container.lexical_store is not None:
+        container.register_store("lexical_store", lexical_db)
+    if container.corpus_turn_store is not None:
+        container.register_store("corpus_turn_store", db_path)
+    if container.vector_store is not None:
+        container.register_store("vector_store", vector_db)
+    if container.project_store is not None:
+        container.register_store("project_store", db_path)
+    if container.budget_store is not None:
+        container.register_store("budget_store", db_path)
+    if container.vigil_store is not None:
+        container.register_store("vigil_store", db_path)
+    if container.knowledge_store is not None:
+        container.register_store("knowledge_store", db_path)
+    if container.ecs_store is not None:
+        container.register_store("ecs_store", db_path)
+    if container.review_queue_store is not None:
+        container.register_store("review_queue_store", db_path)
+    if container.graph_store is not None:
+        container.register_store("graph_store", db_path)
+    if container.session_store is not None:
+        container.register_store("session_store", db_path)
+    if container._vigil_quality_store is not None:
+        container.register_store("vigil_quality_store", quality_db)
+    if container._alert_history_store is not None:
+        container.register_store("alert_history_store", alert_db)
+
+    # Log the datastore summary at startup — the honest truth about where data lives
+    ds_summary = container.datastore_summary()
+    log.info(
+        "datastore_summary",
+        architecture=ds_summary["architecture"],
+        total_stores=ds_summary["total_stores"],
+        total_db_files=ds_summary["total_db_files"],
+        shared_databases=ds_summary["shared_databases"],
+    )
+    for store_name, store_info in ds_summary["stores"].items():
+        log.info(
+            "datastore_store",
+            store=store_name,
+            db_path=store_info["db_path"],
+            exists=store_info["exists"],
+            size_mb=store_info["size_mb"],
         )
 
     app.state.container = container
@@ -1431,6 +1497,13 @@ async def lifespan(app: FastAPI):
                 container._alert_manager.stop_snapshot_gc()
             except Exception:
                 pass
+
+    # Close SyncAlertHistoryBridge (stops background thread)
+    if getattr(container, '_alert_history_bridge', None) is not None:
+        try:
+            container._alert_history_bridge.close()
+        except Exception:
+            pass
 
     # shutdown: close any open connections (the individual stores implement close())
     for store_name, store in [

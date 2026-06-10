@@ -153,7 +153,8 @@ max_parallel_nodes = 3
 context_reset_turn_threshold = 40
 
 [ecs]
-db_path = "db/ecs.db"
+# db_path removed — ECS data lives in state.db alongside other core stores.
+# This was vestigial; the PersistentEcsStore uses [database].db_path.
 transition_audit_enabled = true
 
 [trajectory]

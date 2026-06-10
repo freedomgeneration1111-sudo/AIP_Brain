@@ -93,7 +93,7 @@ async def vigil_quality(
     if has_persistent_store:
         try:
             # Use persistent store — supports longer time ranges
-            cycle_history = quality_store.get_cycles(
+            cycle_history = await quality_store.get_cycles(
                 last_n_cycles=last_n_cycles,
                 since=since,
                 limit=last_n_cycles,
@@ -198,7 +198,7 @@ async def vigil_quality(
     total_persisted = 0
     if has_persistent_store:
         try:
-            total_persisted = quality_store.get_cycle_count()
+            total_persisted = await quality_store.get_cycle_count()
         except Exception:
             total_persisted = 0
 
@@ -310,7 +310,7 @@ async def vigil_retention_status(
         }
 
     try:
-        retention_status = quality_store.get_retention_status()
+        retention_status = await quality_store.get_retention_status()
     except Exception as exc:
         logger.warning("vigil_retention_status_failed", error=str(exc))
         retention_status = {"error": str(exc)}
@@ -349,9 +349,9 @@ async def vigil_retention_rollup(
 
     try:
         if period == "weekly":
-            result = quality_store.run_weekly_rollup()
+            result = await quality_store.run_weekly_rollup()
         else:
-            result = quality_store.run_rollup()
+            result = await quality_store.run_rollup()
     except Exception as exc:
         logger.warning("vigil_retention_rollup_failed", error=str(exc))
         result = {"error": str(exc), "rolled_up_days": 0}
@@ -381,7 +381,7 @@ async def vigil_rollup_stats(
         }
 
     try:
-        stats = quality_store.get_rollup_stats()
+        stats = await quality_store.get_rollup_stats()
     except Exception as exc:
         logger.warning("vigil_rollup_stats_failed", error=str(exc))
         stats = {"error": str(exc)}
@@ -410,7 +410,7 @@ async def vigil_rollup_verify(
         }
 
     try:
-        verification = quality_store.verify_rollup_integrity()
+        verification = await quality_store.verify_rollup_integrity()
     except Exception as exc:
         logger.warning("vigil_rollup_verify_failed", error=str(exc))
         verification = {"valid": False, "error": str(exc), "issues": []}
@@ -477,7 +477,7 @@ async def vigil_quality_health(
     }
     if quality_store is not None:
         try:
-            ret = quality_store.get_retention_status()
+            ret = await quality_store.get_retention_status()
             retention_status = {
                 "available": True,
                 "total_rows": ret.get("total_rows", 0),

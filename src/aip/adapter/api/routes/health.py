@@ -545,3 +545,16 @@ async def health(container: AipContainer = Depends(get_container)):
         "store_sizes": store_sizes,
         "alerting_health": alerting_health,
     }
+
+
+@router.get("/health/datastore")
+async def datastore_health(container: AipContainer = Depends(get_container)):
+    """Datastore truth endpoint — where every store lives and its status.
+
+    Returns the honest multi-file local datastore summary: which DB files
+    exist, which stores share files, file sizes, and the backup story.
+    This endpoint satisfies the Chunk 4 dogfood gate: startup validation
+    can print exactly where each store lives, and a backup/export story
+    exists for all of them.
+    """
+    return container.datastore_summary()

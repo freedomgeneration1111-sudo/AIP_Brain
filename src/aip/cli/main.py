@@ -11,6 +11,7 @@ from pathlib import Path
 import click
 
 from aip.cli import ask as ask_cmd
+from aip.cli import backup as backup_cmd
 from aip.cli import config as config_cmd
 from aip.cli import corpus as corpus_cmd
 from aip.cli import eval as eval_cmd
@@ -45,6 +46,7 @@ def cli() -> None:
       aip corpus    Manage turn-level corpus (new atomic CorpusTurn unit)
       aip eval      Run retrieval quality evaluation
       aip export    Export artifacts to markdown
+      aip backup    Create consistent backup of all stores
     """
     pass
 
@@ -89,6 +91,7 @@ cli.add_command(history_cmd.history)
 cli.add_command(corpus_cmd.corpus)
 cli.add_command(eval_cmd.eval_cmd)
 cli.add_command(export_cmd.export)
+cli.add_command(backup_cmd.backup)
 cli.add_command(validate)
 
 
