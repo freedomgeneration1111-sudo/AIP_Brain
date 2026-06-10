@@ -202,3 +202,40 @@ Stage Summary:
 - Missing sections added to CONFIGURATION.md: channel weights, vigil quality, model slots, read pool, alerting, hot-reload, database
 - New API endpoint sections added: Graph, Corpus, Vigil Quality, Retrieval Dashboard, Embeddings Backfill
 - Alpha tester guidance added to DOGFOOD_READY.md, CONTRIBUTING.md, Maintenance_Protocol.md, STATUS.md
+---
+Task ID: sprint-10
+Agent: main
+Task: Sprint 10 — Retrieval Quality and Trace Sprint
+
+Work Log:
+- Explored codebase: retrieval trace schema, channels, ask pipeline, CLI, eval infrastructure
+- Added ChannelHealthState enum (active/degraded/failed/disabled) to retrieval.py
+- Added ChannelHealthReport dataclass with format_warnings() and to_dict()
+- Enhanced RetrievalTrace with 8 new Sprint 10 fields: channel_health, channel_health_reasons, query_expansion, entities_extracted, documents_retrieved_ids, top_scores, final_context_token_count, final_context_source_ids, degradation_warnings
+- Added get_active_channels(), get_failed_channels(), get_degraded_channels(), to_diagnostic_dict() methods to RetrievalTrace
+- Updated degradation_summary() to include channel health warnings
+- Updated RetrievalOrchestrator._execute_retrieval_round() to compute and populate channel health per channel on every round
+- Added degradation warning generation in orchestrator (failed channels, degraded channels, primary evidence identification)
+- Populated documents_retrieved_ids and top_scores on trace after quality gate
+- Added retrieval_warnings field to AskResult schema
+- Implemented _build_retrieval_warnings() in ask_pipeline with 5-step warning generation
+- Enhanced _build_degradation_dict() to include channel_health, active/failed/degraded channels, query_expansion, entities, documents count, top_scores, verdict
+- Updated _record_trace() to persist all Sprint 10 trace fields to EventStore
+- Populated final_context_token_count and final_context_source_ids in _search_sources_with_trace()
+- Added retrieval warnings display to CLI ask command output
+- Enhanced TraceStoreAdapter.get_dashboard_summary() with: recent_asks, low_context_answers, empty_retrieval_events, vector_fallback_events, slow_channels, channel_health_summary, degradation_warning_counts
+- Created docs/evals/aip_alpha_gold.yaml with 40 gold evaluation questions from AIP docs
+- Added YAML loading support to retrieval_eval.py (load_golden_queries detects .yaml/.yml extension)
+- Added --gold option to eval CLI as shortcut for YAML evaluation files
+- Added --diagnostic flag to eval CLI for per-query channel health and blame assignment
+- Wrote 47 comprehensive tests in test_sprint10_retrieval_quality.py
+- All 141 tests pass (47 sprint 10 + 94 existing)
+
+Stage Summary:
+- Unified RetrievalTrace: Every ask returns active/failed/degraded channels, query expansion, entities, documents, scores, final context
+- Channel health states: Per-channel active/degraded/failed/disabled with reasons
+- Visible retrieval warnings: Human-readable warnings surfaced on AskResult and CLI
+- Retrieval quality dashboard: Enhanced with recent asks, low-context answers, empty retrieval events, vector fallbacks, slow channels, channel health summary, degradation warning counts
+- Gold question eval set: 40 YAML questions covering architecture, ingestion, vector, review, quality gate, channels, configuration, monitoring
+- Eval command: --gold for YAML, --diagnostic for blame assignment (ingestion/embedding/retrieval/ranking/synthesis/missing)
+- Gate achieved: When AIP gives a weak answer, you can diagnose whether the problem was ingestion, embedding, retrieval, ranking, synthesis, or missing source material

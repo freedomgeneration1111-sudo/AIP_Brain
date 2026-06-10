@@ -59,6 +59,11 @@ class AskResult:
     errors: list[str] = field(default_factory=list)
     # Chunk 5: Retrieval honesty — honest degradation metadata
     retrieval_degradation: dict = field(default_factory=dict)
+    # Sprint 10: Visible retrieval warnings — human-readable list of
+    # retrieval problems surfaced to the user.  Example:
+    #   ["Vector channel unavailable", "Graph channel returned 0 results",
+    #    "Lexical channel supplied primary evidence"]
+    retrieval_warnings: list[str] = field(default_factory=list)
 
 
 __all__ = [

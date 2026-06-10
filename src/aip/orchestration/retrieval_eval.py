@@ -355,17 +355,24 @@ class EvalResult:
 # ---------------------------------------------------------------------------
 
 def load_golden_queries(path: str | None = None) -> list[GoldenQuery]:
-    """Load golden queries from a JSON file.
+    """Load golden queries from a JSON or YAML file.
 
-    The JSON file should contain a list of objects with:
+    The file should contain a list of objects (JSON) or a dict with a
+    ``questions`` key (YAML), each with:
     - ``query`` (required): The query string.
     - ``relevant_ids`` (optional): List of relevant document IDs.
     - ``expected_entities`` (optional): List of expected entity names.
     - ``domain`` (optional): Domain hint.
     - ``tags`` (optional): Categorisation tags.
+    - ``diagnosis_hint`` (optional): Which pipeline stage to blame if
+      this question fails (ingestion/embedding/retrieval/ranking/
+      synthesis/missing).
+
+    YAML files use the ``questions:`` key to hold the list of query
+    objects, matching the format in ``docs/evals/aip_alpha_gold.yaml``.
 
     Args:
-        path: Path to the golden queries JSON file.  Defaults to
+        path: Path to the golden queries file.  Defaults to
             ``tests/retrieval_goldens/golden_queries.json`` relative to
             the project root.
 
@@ -381,11 +388,54 @@ def load_golden_queries(path: str | None = None) -> list[GoldenQuery]:
         logger.warning("Golden queries file not found: %s", path)
         return []
 
+    # Detect format by extension
+    if path.endswith((".yaml", ".yml")):
+        return _load_golden_queries_yaml(path)
+    else:
+        return _load_golden_queries_json(path)
+
+
+def _load_golden_queries_json(path: str) -> list[GoldenQuery]:
+    """Load golden queries from a JSON file."""
     with open(path) as f:
         data = json.load(f)
 
     queries: list[GoldenQuery] = []
     for item in data:
+        if not isinstance(item, dict) or "query" not in item:
+            continue
+        queries.append(GoldenQuery(
+            query=item["query"],
+            relevant_ids=item.get("relevant_ids", []),
+            expected_entities=item.get("expected_entities", []),
+            domain=item.get("domain", ""),
+            tags=item.get("tags", []),
+        ))
+    return queries
+
+
+def _load_golden_queries_yaml(path: str) -> list[GoldenQuery]:
+    """Load golden queries from a YAML file.
+
+    YAML format expects a top-level ``questions`` key containing a list
+    of query objects.  This matches the format in
+    ``docs/evals/aip_alpha_gold.yaml``.
+    """
+    try:
+        import yaml
+    except ImportError:
+        logger.warning("PyYAML not installed; cannot load YAML golden queries from %s", path)
+        return []
+
+    with open(path) as f:
+        data = yaml.safe_load(f)
+
+    if not isinstance(data, dict) or "questions" not in data:
+        logger.warning("YAML golden queries file must have a 'questions' key: %s", path)
+        return []
+
+    queries: list[GoldenQuery] = []
+    for item in data["questions"]:
         if not isinstance(item, dict) or "query" not in item:
             continue
         queries.append(GoldenQuery(

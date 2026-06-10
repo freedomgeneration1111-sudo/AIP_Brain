@@ -22,7 +22,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
-from aip.foundation.schemas.retrieval import RetrievalHit, RetrievalTrace
+from aip.foundation.schemas.retrieval import ChannelHealthState, RetrievalHit, RetrievalTrace
 
 logger = logging.getLogger(__name__)
 
@@ -381,6 +381,10 @@ class RetrievalOrchestrator:
             all_hits = hits
             final_trace = trace
 
+            # Sprint 10: Carry over query expansion terms to the trace
+            if all_expanded:
+                final_trace.query_expansion = all_expanded
+
             if trace.verdict == "OK":
                 break
             if trace.verdict == "NO_RESULTS":
@@ -396,7 +400,12 @@ class RetrievalOrchestrator:
         session_id: str = "",
         round_number: int = 0,
     ) -> tuple[list[RetrievalHit], RetrievalTrace]:
-        """Execute one retrieval round: dispatch channels, fuse, quality-gate."""
+        """Execute one retrieval round: dispatch channels, fuse, quality-gate.
+
+        Sprint 10: Populates ``channel_health`` and ``channel_health_reasons``
+        on the trace so every retrieval round carries an honest per-channel
+        health state.
+        """
         trace = RetrievalTrace(
             session_id=session_id,
             query=query,
@@ -427,21 +436,43 @@ class RetrievalOrchestrator:
 
         trace.channels_queried = list(active_channels.keys())
 
+        # Sprint 10: Initialize channel health — all enabled channels start
+        # as "active" and are updated based on dispatch results.
+        # Channels that were disabled (not in channel_flags or flag=False)
+        # get the "disabled" health state.
+        channel_health: dict[str, str] = {}
+        channel_health_reasons: dict[str, str] = {}
+
+        for ch_name, enabled in channel_flags.items():
+            if not enabled:
+                channel_health[ch_name] = ChannelHealthState.DISABLED.value
+                channel_health_reasons[ch_name] = "Channel not enabled for this query"
+            elif ch_name not in self._channels:
+                channel_health[ch_name] = ChannelHealthState.FAILED.value
+                channel_health_reasons[ch_name] = "Channel not registered (missing store dependency)"
+            # Active channels will be updated after dispatch
+
         if not active_channels:
             trace.verdict = "NO_RESULTS"
+            trace.channel_health = channel_health
+            trace.channel_health_reasons = channel_health_reasons
             return [], trace
 
         round_start = time.monotonic()
 
+        # Track per-channel failures from safe_retriever wrappers
+        channel_failures: dict[str, Any] = {}
+
         async def _dispatch_one(
             name: str, retriever: RetrieverChannel, q: str
         ) -> tuple[str, list[RetrievalHit], float]:
-            """Dispatch one channel and capture timing."""
+            """Dispatch one channel and capture timing + health."""
             ch_start = time.monotonic()
             try:
                 hits = await retriever(q)
             except Exception as exc:
                 logger.warning("retriever_channel_failed", extra={"channel": name, "error": str(exc)})
+                channel_failures[name] = exc
                 hits = []
             ch_elapsed = (time.monotonic() - ch_start) * 1000.0
             # Stamp per-hit timing and channel
@@ -458,11 +489,59 @@ class RetrievalOrchestrator:
         ]
         results = await asyncio.gather(*tasks)
 
-        # Collect results
+        # Collect results and determine channel health
         channel_results: dict[str, list[RetrievalHit]] = {}
         for name, hits, elapsed_ms in results:
             channel_results[name] = hits
             trace.per_channel_elapsed_ms[name] = elapsed_ms
+
+            # Sprint 10: Determine channel health from dispatch results
+            if name in channel_failures:
+                channel_health[name] = ChannelHealthState.FAILED.value
+                channel_health_reasons[name] = str(channel_failures[name])[:200]
+            elif not hits:
+                # Check if the safe_retriever recorded a failure
+                retriever_fn = active_channels.get(name)
+                last_failure = getattr(retriever_fn, 'get_last_failure', lambda: None)()
+                if last_failure is not None:
+                    channel_health[name] = ChannelHealthState.FAILED.value
+                    channel_health_reasons[name] = last_failure.message[:200]
+                else:
+                    # Channel succeeded but returned 0 results
+                    channel_health[name] = ChannelHealthState.ACTIVE.value
+                    channel_health_reasons[name] = "Channel returned 0 results"
+            else:
+                # Channel returned results — check if it's degraded
+                # Vector channel can be degraded (brute-force fallback)
+                if name == "vector" and hasattr(self, '_vector_degraded') and self._vector_degraded:
+                    channel_health[name] = ChannelHealthState.DEGRADED.value
+                    channel_health_reasons[name] = "Vector search using brute-force fallback (no VSS index)"
+                else:
+                    channel_health[name] = ChannelHealthState.ACTIVE.value
+                    channel_health_reasons[name] = ""
+
+        # Sprint 10: Build degradation warnings from channel health
+        degradation_warnings: list[str] = []
+        failed_channels = [ch for ch, h in channel_health.items() if h == ChannelHealthState.FAILED.value]
+        degraded_channels = [ch for ch, h in channel_health.items() if h == ChannelHealthState.DEGRADED.value]
+
+        if failed_channels:
+            for ch in failed_channels:
+                reason = channel_health_reasons.get(ch, "")
+                degradation_warnings.append(f"{ch.capitalize()} channel unavailable")
+        if degraded_channels:
+            for ch in degraded_channels:
+                degradation_warnings.append(f"{ch.capitalize()} channel degraded")
+
+        # Identify primary evidence channel (channel that contributed the most)
+        # This will be set after quality gate, but we can set a preliminary version
+        if channel_results:
+            best_channel = max(channel_results.keys(), key=lambda ch: len(channel_results[ch]))
+            if channel_health.get(best_channel) == ChannelHealthState.ACTIVE.value:
+                if degraded_channels or failed_channels:
+                    degradation_warnings.append(
+                        f"{best_channel.capitalize()} channel supplied primary evidence"
+                    )
 
         # Per-channel budget enforcement before fusion
         for ch_name in list(channel_results.keys()):
@@ -543,6 +622,16 @@ class RetrievalOrchestrator:
                 if llm_count is not None:
                     trace.llm_entity_count = int(llm_count)
                 break  # Only check the first graph hit
+
+        # Sprint 10: Set unified trace fields
+        trace.channel_health = channel_health
+        trace.channel_health_reasons = channel_health_reasons
+        trace.degradation_warnings = degradation_warnings
+        trace.documents_retrieved_ids = [h.id for h in filtered]
+        trace.top_scores = [
+            {"id": h.id, "rrf_score": round(h.rrf_score, 6), "raw_score": round(h.score, 6)}
+            for h in filtered[:10]
+        ]
 
         return filtered, trace
 

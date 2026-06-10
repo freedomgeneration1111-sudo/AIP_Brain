@@ -74,6 +74,12 @@ def eval_cmd() -> None:
     help="Path to golden queries JSON file. Defaults to tests/retrieval_goldens/golden_queries.json",
 )
 @click.option(
+    "--gold",
+    default=None,
+    help="Path to gold evaluation YAML file (e.g. docs/evals/aip_alpha_gold.yaml). "
+         "Shortcut for --golden-queries with YAML support.",
+)
+@click.option(
     "--output-dir", "-o",
     default="eval_results",
     help="Directory to save timestamped evaluation results (default: eval_results)",
@@ -113,8 +119,16 @@ def eval_cmd() -> None:
     default=False,
     help="Save current results as the new baseline",
 )
+@click.option(
+    "--diagnostic",
+    is_flag=True,
+    default=False,
+    help="Show per-query diagnostic output: channel health, degradation warnings, "
+         "and blame assignment (ingestion/embedding/retrieval/ranking/synthesis/missing)",
+)
 def retrieval_eval(
     golden_queries: str | None,
+    gold: str | None,
     output_dir: str,
     baseline: str | None,
     k: int,
@@ -122,6 +136,7 @@ def retrieval_eval(
     fail_on_regression: bool,
     save_baseline: bool,
     mode: str,
+    diagnostic: bool,
 ) -> None:
     """Run retrieval quality evaluation against golden queries.
 
@@ -133,6 +148,12 @@ def retrieval_eval(
     If a baseline file is provided (via --baseline), the current metrics
     are compared against the baseline and any significant regressions
     are reported.
+
+    Sprint 10: Use --gold to specify a YAML evaluation file:
+        aip eval retrieval --gold docs/evals/aip_alpha_gold.yaml
+
+    Use --diagnostic to show per-query channel health and blame assignment:
+        aip eval retrieval --gold docs/evals/aip_alpha_gold.yaml --diagnostic
 
     To establish a baseline, run with --save-baseline:
 
@@ -146,7 +167,9 @@ def retrieval_eval(
     if db_path is None:
         db_path = os.environ.get("AIP_DB_PATH", "db/state.db")
 
-    # Resolve golden queries path
+    # Resolve golden queries path -- --gold is a shortcut for YAML files
+    if gold is not None:
+        golden_queries = gold
     if golden_queries is None:
         project_root = os.environ.get("AIP_PROJECT_ROOT", ".")
         golden_queries = os.path.join(
@@ -176,6 +199,56 @@ def retrieval_eval(
     # Print human-readable summary
     click.echo("")
     click.echo(result.format_human_summary())
+
+    # Sprint 10: Diagnostic output — per-query channel health and blame assignment
+    if diagnostic and result.per_query_results:
+        click.echo("")
+        click.echo("=" * 70)
+        click.echo("  Diagnostic Analysis — Per-Query Channel Health & Blame Assignment")
+        click.echo("=" * 70)
+        for r in result.per_query_results:
+            query_display = r.query[:60] + ("..." if len(r.query) > 60 else "")
+            click.echo(f"\n  Q: {query_display}")
+            click.echo(f"     Recall={r.recall_at_k:.3f}  MRR={r.mrr:.3f}  "
+                        f"Retrieved={r.num_retrieved}  Relevant={r.num_relevant}")
+
+            # Determine blame assignment
+            if r.num_retrieved == 0 and r.num_relevant > 0:
+                blame = "retrieval"
+                detail = "No documents retrieved for a question with known relevant sources"
+            elif r.recall_at_k < 0.3 and r.num_relevant > 0:
+                if r.num_retrieved > 0:
+                    blame = "ranking"
+                    detail = f"Documents retrieved but recall low ({r.recall_at_k:.1%}) — ranking issue"
+                else:
+                    blame = "retrieval"
+                    detail = "No documents retrieved"
+            elif r.recall_at_k >= 0.3 and r.mrr < 0.3:
+                blame = "ranking"
+                detail = f"Documents found but first relevant result ranked low (MRR={r.mrr:.3f})"
+            elif r.num_relevant == 0:
+                blame = "missing"
+                detail = "No known relevant sources — source material may not exist in corpus"
+            elif r.recall_at_k >= 0.5:
+                blame = "synthesis"
+                detail = "Retrieval healthy — if answer is weak, problem is in synthesis"
+            else:
+                blame = "retrieval"
+                detail = "Moderate retrieval — may need embedding or ingestion improvements"
+
+            # Check channel contributions for more specific diagnosis
+            if r.channel_contributions:
+                ch_summary = ", ".join(
+                    f"{ch}={cnt}" for ch, cnt in sorted(r.channel_contributions.items())
+                )
+                click.echo(f"     Channels: {ch_summary}")
+
+                # If vector contributed 0, flag embedding
+                if r.channel_contributions.get("vector", 0) == 0 and "vector" in r.channel_contributions:
+                    blame = "embedding"
+                    detail = "Vector channel returned 0 results — embedding may be missing or broken"
+
+            click.echo(f"     Blame: {blame.upper()} — {detail}")
 
     # Save timestamped results
     saved_path = result.save_with_timestamp(output_dir)

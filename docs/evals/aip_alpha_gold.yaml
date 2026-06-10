@@ -1,0 +1,527 @@
+# AIP Alpha Gold Evaluation Set
+# Sprint 10 — 40 known-answer questions from AIP's own docs and architecture.
+#
+# Each question has:
+#   query: The natural-language question
+#   relevant_ids: Document/chunk IDs that should be retrieved (partial match OK)
+#   expected_entities: Named entities that should appear in results
+#   domain: Knowledge domain hint
+#   tags: Categorisation tags
+#   diagnosis_hint: Which pipeline stage to blame if this fails
+#     ingestion = source material not in corpus
+#     embedding = source in corpus but not embedded
+#     retrieval = source embedded but not retrieved
+#     ranking = source retrieved but ranked too low
+#     synthesis = source retrieved and ranked but not used in answer
+#     missing = source material does not exist in AIP
+
+questions:
+  # ---- Architecture & Core Concepts ----
+  - query: "What is the role of Sexton?"
+    relevant_ids:
+      - "sexton"
+      - "maintenance"
+      - "vigil_cycle"
+    expected_entities:
+      - "Sexton"
+      - "Vigil"
+    domain: "architecture"
+    tags: ["definitional", "core"]
+    diagnosis_hint: "retrieval"
+
+  - query: "What is full dogfood mode?"
+    relevant_ids:
+      - "dogfood"
+      - "DOGFOOD_READY"
+    expected_entities:
+      - "dogfood"
+      - "Sexton"
+    domain: "configuration"
+    tags: ["definitional", "dogfood"]
+    diagnosis_hint: "ingestion"
+
+  - query: "What does ADR-011 change?"
+    relevant_ids:
+      - "ADR-011"
+      - "adr"
+    expected_entities:
+      - "ADR-011"
+    domain: "decisions"
+    tags: ["definitional", "adr"]
+    diagnosis_hint: "missing"
+
+  - query: "What are the current known alpha limitations?"
+    relevant_ids:
+      - "alpha_limitations"
+      - "DOGFOOD_READY"
+      - "DEBT"
+    expected_entities:
+      - "alpha"
+      - "DEBT"
+    domain: "status"
+    tags: ["definitional", "alpha"]
+    diagnosis_hint: "ingestion"
+
+  - query: "What are the retrieval channels?"
+    relevant_ids:
+      - "retrieval_channels"
+      - "channel"
+      - "fts"
+      - "vector"
+      - "graph"
+    expected_entities:
+      - "FTS"
+      - "Vector"
+      - "Graph"
+      - "Wiki"
+      - "Procedural"
+      - "Corpus"
+    domain: "architecture"
+    tags: ["definitional", "retrieval"]
+    diagnosis_hint: "retrieval"
+
+  - query: "How does the RetrievalOrchestrator dispatch channels?"
+    relevant_ids:
+      - "RetrievalOrchestrator"
+      - "orchestrator"
+      - "asyncio.gather"
+    expected_entities:
+      - "RetrievalOrchestrator"
+      - "RRF"
+    domain: "architecture"
+    tags: ["definitional", "retrieval"]
+    diagnosis_hint: "retrieval"
+
+  - query: "What is RRF fusion and how does it weight channels?"
+    relevant_ids:
+      - "rrf_fusion"
+      - "channel_weights"
+      - "Reciprocal Rank Fusion"
+    expected_entities:
+      - "RRF"
+      - "channel_weights"
+    domain: "retrieval"
+    tags: ["definitional", "retrieval"]
+    diagnosis_hint: "retrieval"
+
+  - query: "Explain the ECS artifact lifecycle"
+    relevant_ids:
+      - "ECS"
+      - "GENERATED"
+      - "REVIEWED"
+      - "APPROVED"
+    expected_entities:
+      - "ECS"
+      - "GENERATED"
+      - "APPROVED"
+    domain: "architecture"
+    tags: ["definitional", "ecs"]
+    diagnosis_hint: "retrieval"
+
+  # ---- Ingestion & Corpus ----
+  - query: "How do I ingest a conversation export file?"
+    relevant_ids:
+      - "ingest"
+      - "ingestion_pipeline"
+      - "conversation"
+    expected_entities:
+      - "ingest"
+      - "CorpusTurn"
+    domain: "ingestion"
+    tags: ["procedural", "ingestion"]
+    diagnosis_hint: "retrieval"
+
+  - query: "What is a CorpusTurn and how is it created?"
+    relevant_ids:
+      - "CorpusTurn"
+      - "turn_id"
+      - "content_hash"
+    expected_entities:
+      - "CorpusTurn"
+      - "content_hash"
+    domain: "ingestion"
+    tags: ["definitional", "corpus"]
+    diagnosis_hint: "retrieval"
+
+  - query: "How does document deduplication work during ingestion?"
+    relevant_ids:
+      - "content_hash"
+      - "dedup"
+      - "re-ingest"
+      - "doc_version"
+    expected_entities:
+      - "content_hash"
+      - "doc_version"
+    domain: "ingestion"
+    tags: ["definitional", "dedup"]
+    diagnosis_hint: "retrieval"
+
+  - query: "What provenance information is tracked per chunk?"
+    relevant_ids:
+      - "provenance"
+      - "source_path"
+      - "doc_version"
+      - "section_heading"
+    expected_entities:
+      - "provenance"
+      - "source_path"
+    domain: "ingestion"
+    tags: ["definitional", "provenance"]
+    diagnosis_hint: "retrieval"
+
+  - query: "How do I run embedding backfill for unembedded documents?"
+    relevant_ids:
+      - "backfill"
+      - "embedding"
+      - "unembedded"
+    expected_entities:
+      - "backfill"
+      - "embedding"
+    domain: "ingestion"
+    tags: ["procedural", "embedding"]
+    diagnosis_hint: "retrieval"
+
+  # ---- Vector & Embedding ----
+  - query: "What happens when the vector backend is unavailable?"
+    relevant_ids:
+      - "VectorBackendStatus"
+      - "degraded"
+      - "brute_force"
+    expected_entities:
+      - "VectorBackendStatus"
+      - "DEGRADED_BRUTEFORCE"
+    domain: "retrieval"
+    tags: ["definitional", "vector"]
+    diagnosis_hint: "retrieval"
+
+  - query: "How does the SmartContextPacker assemble context?"
+    relevant_ids:
+      - "SmartContextPacker"
+      - "context"
+      - "budget"
+    expected_entities:
+      - "SmartContextPacker"
+    domain: "retrieval"
+    tags: ["definitional", "retrieval"]
+    diagnosis_hint: "retrieval"
+
+  - query: "What is the minimum embedding coverage for hybrid retrieval?"
+    relevant_ids:
+      - "min_vector_coverage"
+      - "embedding_progress"
+    expected_entities:
+      - "min_vector_coverage"
+    domain: "retrieval"
+    tags: ["definitional", "vector"]
+    diagnosis_hint: "retrieval"
+
+  # ---- Review & Export ----
+  - query: "What is the DEFINER sovereignty gate?"
+    relevant_ids:
+      - "DEFINER"
+      - "sovereignty"
+      - "force_export"
+    expected_entities:
+      - "DEFINER"
+      - "force_export"
+    domain: "review"
+    tags: ["definitional", "review"]
+    diagnosis_hint: "retrieval"
+
+  - query: "How do I force-export an unreviewed artifact?"
+    relevant_ids:
+      - "force_export"
+      - "export"
+      - "unreviewed"
+    expected_entities:
+      - "force_export"
+      - "sovereign_override"
+    domain: "review"
+    tags: ["procedural", "export"]
+    diagnosis_hint: "retrieval"
+
+  - query: "What audit trail is created when force-exporting?"
+    relevant_ids:
+      - "force_export"
+      - "audit"
+      - "EventStore"
+    expected_entities:
+      - "force_export"
+      - "EventStore"
+    domain: "review"
+    tags: ["definitional", "audit"]
+    diagnosis_hint: "retrieval"
+
+  # ---- Quality Gate & Evaluation ----
+  - query: "How does the quality gate work in the retrieval orchestrator?"
+    relevant_ids:
+      - "quality_gate"
+      - "min_rrf_score"
+      - "NEEDS_MORE_CONTEXT"
+    expected_entities:
+      - "quality_gate"
+      - "NEEDS_MORE_CONTEXT"
+    domain: "retrieval"
+    tags: ["definitional", "retrieval"]
+    diagnosis_hint: "retrieval"
+
+  - query: "What metrics does the retrieval eval harness compute?"
+    relevant_ids:
+      - "eval"
+      - "Recall"
+      - "Precision"
+      - "MRR"
+    expected_entities:
+      - "Recall"
+      - "MRR"
+      - "Precision"
+    domain: "evaluation"
+    tags: ["definitional", "eval"]
+    diagnosis_hint: "retrieval"
+
+  - query: "How do I run a retrieval A/B comparison?"
+    relevant_ids:
+      - "retrieval-ab"
+      - "A/B"
+      - "comparison"
+    expected_entities:
+      - "A/B"
+    domain: "evaluation"
+    tags: ["procedural", "eval"]
+    diagnosis_hint: "retrieval"
+
+  # ---- Channel Details ----
+  - query: "How does the graph channel use PersonalizedPageRank?"
+    relevant_ids:
+      - "graph"
+      - "PersonalizedPageRank"
+      - "PPR"
+    expected_entities:
+      - "PersonalizedPageRank"
+      - "Graph"
+    domain: "retrieval"
+    tags: ["definitional", "graph"]
+    diagnosis_hint: "retrieval"
+
+  - query: "What is the wiki retrieval channel and when is it useful?"
+    relevant_ids:
+      - "wiki"
+      - "wiki_channel"
+      - "artifact"
+    expected_entities:
+      - "Wiki"
+    domain: "retrieval"
+    tags: ["definitional", "wiki"]
+    diagnosis_hint: "retrieval"
+
+  - query: "How does the procedural channel surface how-to guides?"
+    relevant_ids:
+      - "procedural"
+      - "procedural_guide"
+      - "compiled_knowledge"
+    expected_entities:
+      - "Procedural"
+    domain: "retrieval"
+    tags: ["definitional", "procedural"]
+    diagnosis_hint: "retrieval"
+
+  - query: "What is the corpus channel and how does it search?"
+    relevant_ids:
+      - "corpus_channel"
+      - "CorpusTurnStore"
+      - "FTS5"
+    expected_entities:
+      - "Corpus"
+      - "FTS5"
+    domain: "retrieval"
+    tags: ["definitional", "corpus"]
+    diagnosis_hint: "retrieval"
+
+  # ---- Configuration & Deployment ----
+  - query: "How do I configure channel weights in aip.config.toml?"
+    relevant_ids:
+      - "channel_weights"
+      - "config"
+      - "toml"
+    expected_entities:
+      - "channel_weights"
+    domain: "configuration"
+    tags: ["procedural", "config"]
+    diagnosis_hint: "retrieval"
+
+  - query: "What is the OrchestratorCache and when is it invalidated?"
+    relevant_ids:
+      - "OrchestratorCache"
+      - "cache"
+      - "invalidate"
+    expected_entities:
+      - "OrchestratorCache"
+    domain: "architecture"
+    tags: ["definitional", "cache"]
+    diagnosis_hint: "retrieval"
+
+  - query: "How do I set up the AIP database for the first time?"
+    relevant_ids:
+      - "init"
+      - "database"
+      - "aip init"
+    expected_entities:
+      - "init"
+    domain: "configuration"
+    tags: ["procedural", "setup"]
+    diagnosis_hint: "ingestion"
+
+  # ---- Failure Classification ----
+  - query: "How does Sexton classify failures?"
+    relevant_ids:
+      - "Sexton"
+      - "failure_classification"
+      - "Appendix E"
+    expected_entities:
+      - "Sexton"
+      - "Appendix E"
+    domain: "architecture"
+    tags: ["definitional", "sexton"]
+    diagnosis_hint: "retrieval"
+
+  - query: "What is the ACE playbook and how are intervention rules derived?"
+    relevant_ids:
+      - "ACE"
+      - "playbook"
+      - "intervention_rule"
+    expected_entities:
+      - "ACE"
+      - "playbook"
+    domain: "architecture"
+    tags: ["definitional", "sexton"]
+    diagnosis_hint: "retrieval"
+
+  # ---- L4 Monitoring ----
+  - query: "What is L4 monitoring and how does it detect anxiety?"
+    relevant_ids:
+      - "L4"
+      - "anxiety_detector"
+      - "monitoring"
+    expected_entities:
+      - "L4"
+      - "anxiety_detector"
+    domain: "monitoring"
+    tags: ["definitional", "l4"]
+    diagnosis_hint: "retrieval"
+
+  - query: "How does the failure streak detector work?"
+    relevant_ids:
+      - "failure_streak"
+      - "L4"
+      - "detector"
+    expected_entities:
+      - "failure_streak"
+    domain: "monitoring"
+    tags: ["definitional", "l4"]
+    diagnosis_hint: "retrieval"
+
+  # ---- Sessions & Projects ----
+  - query: "How do I create a new AIP project?"
+    relevant_ids:
+      - "project"
+      - "create"
+      - "SqliteProjectStore"
+    expected_entities:
+      - "project"
+    domain: "configuration"
+    tags: ["procedural", "project"]
+    diagnosis_hint: "retrieval"
+
+  - query: "What is a session and how does it track conversations?"
+    relevant_ids:
+      - "session"
+      - "SessionStore"
+      - "conversation"
+    expected_entities:
+      - "session"
+    domain: "configuration"
+    tags: ["definitional", "session"]
+    diagnosis_hint: "retrieval"
+
+  # ---- Sprint 10 Specific ----
+  - query: "What is the ChannelHealthState enum?"
+    relevant_ids:
+      - "ChannelHealthState"
+      - "active"
+      - "degraded"
+      - "failed"
+    expected_entities:
+      - "ChannelHealthState"
+    domain: "retrieval"
+    tags: ["definitional", "sprint10"]
+    diagnosis_hint: "retrieval"
+
+  - query: "How does AIP surface retrieval degradation warnings?"
+    relevant_ids:
+      - "retrieval_warnings"
+      - "degradation"
+      - "AskResult"
+    expected_entities:
+      - "retrieval_warnings"
+      - "AskResult"
+    domain: "retrieval"
+    tags: ["definitional", "sprint10"]
+    diagnosis_hint: "retrieval"
+
+  - query: "What information does the unified RetrievalTrace carry?"
+    relevant_ids:
+      - "RetrievalTrace"
+      - "channel_health"
+      - "query_expansion"
+      - "documents_retrieved"
+    expected_entities:
+      - "RetrievalTrace"
+    domain: "retrieval"
+    tags: ["definitional", "sprint10"]
+    diagnosis_hint: "retrieval"
+
+  - query: "How do I diagnose a weak answer from AIP?"
+    relevant_ids:
+      - "diagnostic"
+      - "retrieval_warnings"
+      - "channel_health"
+      - "eval"
+    expected_entities:
+      - "retrieval_warnings"
+    domain: "retrieval"
+    tags: ["procedural", "sprint10"]
+    diagnosis_hint: "retrieval"
+
+  # ---- Edge Cases ----
+  - query: "What happens when all retrieval channels return zero results?"
+    relevant_ids:
+      - "NO_RESULTS"
+      - "quality_gate"
+      - "verdict"
+    expected_entities:
+      - "NO_RESULTS"
+    domain: "retrieval"
+    tags: ["definitional", "edge-case"]
+    diagnosis_hint: "retrieval"
+
+  - query: "How does the channel selector auto-enable channels?"
+    relevant_ids:
+      - "ChannelSelector"
+      - "auto_channel_selection"
+      - "entity_signals"
+    expected_entities:
+      - "ChannelSelector"
+    domain: "retrieval"
+    tags: ["definitional", "channel-selector"]
+    diagnosis_hint: "retrieval"
+
+  - query: "What is the VectorDegradationInfo structure?"
+    relevant_ids:
+      - "VectorDegradationInfo"
+      - "brute_force"
+      - "embed_failures"
+    expected_entities:
+      - "VectorDegradationInfo"
+    domain: "retrieval"
+    tags: ["definitional", "vector"]
+    diagnosis_hint: "retrieval"

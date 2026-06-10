@@ -240,7 +240,15 @@ class TraceStoreAdapter:
           - avg_hits_before_fusion / avg_hits_after_fusion / avg_hits_after_gate.
           - quality_gate_verdicts: Mapping of verdict → count.
 
-        This is a read-only aggregation suitable for the dashboard API endpoint.
+        Sprint 10 additions:
+          - recent_asks: Last N ask queries with timestamps and verdicts.
+          - low_context_answers: Queries with few/no sources after quality gate.
+          - empty_retrieval_events: Queries that returned 0 results.
+          - vector_fallback_events: Queries where vector was disabled/degraded.
+          - slow_channels: Channels with high p95 latency.
+          - top_failing_sources: Source IDs that frequently appear in low-score results.
+          - channel_health_summary: Aggregate channel health across recent queries.
+          - degradation_warning_counts: How often each warning type appears.
         """
         try:
             events = await self._event_store.query(limit=limit * 3)
@@ -278,6 +286,14 @@ class TraceStoreAdapter:
         hits_after: list[int] = []
         hits_gate: list[int] = []
         verdict_counts: dict[str, int] = {}
+        # Sprint 10: New dashboard metrics
+        recent_asks: list[dict] = []
+        low_context_answers: list[dict] = []
+        empty_retrieval_events: list[dict] = []
+        vector_fallback_events: list[dict] = []
+        channel_health_summary: dict[str, dict[str, int]] = {}  # channel -> {active/degraded/failed: count}
+        degradation_warning_counts: dict[str, int] = {}
+        per_channel_latency: dict[str, list[float]] = {}  # channel -> [elapsed_ms, ...]
 
         for meta in ask_events:
             # Latency
@@ -322,6 +338,83 @@ class TraceStoreAdapter:
             verdict = meta.get("retrieval_verdict", "UNKNOWN")
             verdict_counts[verdict] = verdict_counts.get(verdict, 0) + 1
 
+            # Sprint 10: Recent asks (last 20)
+            prompt = meta.get("prompt", "")[:100]
+            timestamp = meta.get("created_at", "")
+            session_id = meta.get("session_id", "")
+            recent_asks.append({
+                "prompt": prompt,
+                "verdict": verdict,
+                "timestamp": timestamp,
+                "session_id": session_id,
+                "hits_after_gate": meta.get("retrieval_hits_after_gate", 0),
+            })
+
+            # Sprint 10: Low-context answers (≤ 2 hits after gate)
+            gate_hits = meta.get("retrieval_hits_after_gate", 0)
+            try:
+                gate_hits = int(gate_hits)
+            except (ValueError, TypeError):
+                gate_hits = 0
+            if gate_hits <= 2 and verdict != "NO_RESULTS":
+                low_context_answers.append({
+                    "prompt": prompt,
+                    "verdict": verdict,
+                    "hits_after_gate": gate_hits,
+                })
+
+            # Sprint 10: Empty retrieval events
+            if verdict == "NO_RESULTS" or gate_hits == 0:
+                empty_retrieval_events.append({
+                    "prompt": prompt,
+                    "verdict": verdict,
+                })
+
+            # Sprint 10: Vector fallback events
+            vector_status = meta.get("retrieval_vector_backend_status", "")
+            vector_degraded = meta.get("retrieval_vector_degraded", False)
+            if vector_status in ("disabled", "failed") or vector_degraded:
+                vector_fallback_events.append({
+                    "prompt": prompt,
+                    "vector_status": vector_status,
+                    "vector_degraded": bool(vector_degraded),
+                })
+
+            # Sprint 10: Channel health summary
+            ch_health_raw = meta.get("retrieval_channel_health", "{}")
+            try:
+                ch_health = json.loads(ch_health_raw) if isinstance(ch_health_raw, str) else ch_health_raw
+                for ch, health in ch_health.items():
+                    if ch not in channel_health_summary:
+                        channel_health_summary[ch] = {"active": 0, "degraded": 0, "failed": 0, "disabled": 0}
+                    if health in channel_health_summary[ch]:
+                        channel_health_summary[ch][health] += 1
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+            # Sprint 10: Degradation warning counts
+            warnings_raw = meta.get("retrieval_degradation_warnings", "[]")
+            try:
+                warnings = json.loads(warnings_raw) if isinstance(warnings_raw, str) else warnings_raw
+                for w in warnings:
+                    degradation_warning_counts[w] = degradation_warning_counts.get(w, 0) + 1
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+            # Sprint 10: Per-channel latency tracking
+            per_ch_ms_raw = meta.get("retrieval_per_channel_ms", "{}")
+            try:
+                per_ch_ms = json.loads(per_ch_ms_raw) if isinstance(per_ch_ms_raw, str) else per_ch_ms_raw
+                for ch, ms in per_ch_ms.items():
+                    if ch not in per_channel_latency:
+                        per_channel_latency[ch] = []
+                    try:
+                        per_channel_latency[ch].append(float(ms))
+                    except (ValueError, TypeError):
+                        pass
+            except (json.JSONDecodeError, TypeError):
+                pass
+
         # Compute percentiles
         total_ms_values.sort()
         avg_ms = sum(total_ms_values) / len(total_ms_values) if total_ms_values else 0.0
@@ -364,7 +457,26 @@ class TraceStoreAdapter:
                 elif llm_status == "failed":
                     llm_ext_failed += 1
 
-        return {
+        # Sprint 10: Compute slow channels (p95 latency > threshold)
+        SLOW_CHANNEL_THRESHOLD_MS = 500.0
+        slow_channels: dict[str, dict] = {}
+        for ch, latencies in per_channel_latency.items():
+            if not latencies:
+                continue
+            latencies_sorted = sorted(latencies)
+            ch_p50 = latencies_sorted[len(latencies_sorted) // 2]
+            ch_p95_idx = int(len(latencies_sorted) * 0.95)
+            ch_p95 = latencies_sorted[min(ch_p95_idx, len(latencies_sorted) - 1)]
+            ch_avg = sum(latencies_sorted) / len(latencies_sorted)
+            if ch_p95 > SLOW_CHANNEL_THRESHOLD_MS:
+                slow_channels[ch] = {
+                    "p50_ms": round(ch_p50, 2),
+                    "p95_ms": round(ch_p95, 2),
+                    "avg_ms": round(ch_avg, 2),
+                    "sample_count": len(latencies_sorted),
+                }
+
+        result = {
             "total_ask_queries": len(ask_events),
             "avg_retrieval_ms": round(avg_ms, 2),
             "p50_retrieval_ms": round(p50_ms, 2),
@@ -383,4 +495,14 @@ class TraceStoreAdapter:
                 "failed_count": llm_ext_failed,
                 "avg_ms": round(llm_ext_total_ms / llm_ext_calls, 1) if llm_ext_calls > 0 else 0.0,
             },
+            # Sprint 10: Quality dashboard metrics
+            "recent_asks": recent_asks[:20],
+            "low_context_answers": low_context_answers[:20],
+            "empty_retrieval_events": empty_retrieval_events[:20],
+            "vector_fallback_events": vector_fallback_events[:20],
+            "slow_channels": slow_channels,
+            "channel_health_summary": channel_health_summary,
+            "degradation_warning_counts": degradation_warning_counts,
         }
+
+        return result

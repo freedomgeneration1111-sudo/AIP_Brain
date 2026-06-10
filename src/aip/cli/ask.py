@@ -200,6 +200,14 @@ def _print_result(result, show_context: bool, project_name: str = "") -> None:
         for err in result.errors:
             click.echo(f"  - {err}")
 
+    # Sprint 10: Retrieval warnings — visible degradation diagnostics
+    if result.retrieval_warnings:
+        click.echo()
+        click.echo("--- Retrieval Warnings ---")
+        click.echo("  Answer generated with degraded retrieval:")
+        for warning in result.retrieval_warnings:
+            click.echo(f"  - {warning}")
+
     # Exit code
     if result.status not in ("OK",):
         sys.exit(1)

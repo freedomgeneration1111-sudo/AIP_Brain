@@ -294,6 +294,11 @@ async def _search_sources_with_trace(
             reason="No vector store configured",
         )
 
+    # Sprint 10: Populate final context info on the trace
+    if trace is not None and packed is not None:
+        trace.final_context_token_count = packed.token_count if hasattr(packed, 'token_count') else 0
+        trace.final_context_source_ids = [h.id for h in hits]
+
     return sources, trace, packed
 
 
@@ -751,7 +756,64 @@ async def ask(
         prompt=question,
         errors=artifact_errors,
         retrieval_degradation=_build_degradation_dict(retrieval_trace),
+        retrieval_warnings=_build_retrieval_warnings(retrieval_trace),
     )
+
+
+def _build_retrieval_warnings(retrieval_trace: RetrievalTrace | None) -> list[str]:
+    """Build visible retrieval warnings for AskResult.
+
+    Sprint 10: Every answer can explain where its context came from and
+    whether retrieval was degraded.  These warnings are surfaced to the
+    user so they know when an answer may be unreliable due to retrieval
+    issues.
+
+    Example output:
+        ["Vector channel unavailable",
+         "Graph channel returned 0 results",
+         "Lexical channel supplied primary evidence"]
+    """
+    if retrieval_trace is None:
+        return ["No retrieval trace available — retrieval may not have executed"]
+
+    warnings: list[str] = []
+
+    # 1. Channel health warnings
+    for channel, health in retrieval_trace.channel_health.items():
+        if health == "failed":
+            reason = retrieval_trace.channel_health_reasons.get(channel, "")
+            warnings.append(f"{channel.capitalize()} channel unavailable")
+        elif health == "degraded":
+            warnings.append(f"{channel.capitalize()} channel degraded")
+
+    # 2. Empty result warnings
+    if retrieval_trace.hits_after_quality_gate == 0:
+        warnings.append("No documents passed the quality gate")
+    elif retrieval_trace.verdict == "NEEDS_MORE_CONTEXT":
+        warnings.append("Retrieval quality gate returned insufficient context")
+
+    # 3. Primary evidence identification
+    if retrieval_trace.channel_contributions and (warnings or retrieval_trace.get_degraded_channels()):
+        # Find which channel contributed the most hits
+        best_channel = max(
+            retrieval_trace.channel_contributions.keys(),
+            key=lambda ch: retrieval_trace.channel_contributions[ch],
+        )
+        if best_channel:
+            warnings.append(f"{best_channel.capitalize()} channel supplied primary evidence")
+
+    # 4. Vector-specific warnings
+    vdi = retrieval_trace.vector_degradation
+    if vdi.backend_status.value in ("disabled", "failed"):
+        if not any("Vector" in w for w in warnings):
+            warnings.append("Vector channel unavailable")
+
+    # 5. Add any pre-computed degradation warnings
+    for w in retrieval_trace.degradation_warnings:
+        if w not in warnings:
+            warnings.append(w)
+
+    return warnings
 
 
 def _build_degradation_dict(retrieval_trace: RetrievalTrace | None) -> dict:
@@ -761,6 +823,9 @@ def _build_degradation_dict(retrieval_trace: RetrievalTrace | None) -> dict:
     backends were available, degraded, or absent.  Also includes any
     channel registration failures from the most recent orchestrator
     creation, so operators can see which channels were skipped.
+
+    Sprint 10: Now includes channel health, query expansion, entities,
+    documents retrieved, top scores, and final context info.
     """
     if retrieval_trace is None:
         result = {
@@ -774,6 +839,20 @@ def _build_degradation_dict(retrieval_trace: RetrievalTrace | None) -> dict:
         summary = retrieval_trace.degradation_summary()
         if summary:
             result["degradation_summary"] = summary
+
+        # Sprint 10: Include unified trace diagnostic info
+        result["channel_health"] = retrieval_trace.channel_health
+        result["channel_health_reasons"] = retrieval_trace.channel_health_reasons
+        result["active_channels"] = retrieval_trace.get_active_channels()
+        result["failed_channels"] = retrieval_trace.get_failed_channels()
+        result["degraded_channels"] = retrieval_trace.get_degraded_channels()
+        result["query_expansion"] = retrieval_trace.query_expansion
+        result["entities_extracted"] = retrieval_trace.entities_extracted
+        result["documents_retrieved_count"] = len(retrieval_trace.documents_retrieved_ids)
+        result["top_scores"] = retrieval_trace.top_scores[:5]
+        result["final_context_token_count"] = retrieval_trace.final_context_token_count
+        result["verdict"] = retrieval_trace.verdict
+        result["channel_contributions"] = retrieval_trace.channel_contributions
 
     # Include channel registration failures for visibility
     if _last_registration_failures:
@@ -828,6 +907,15 @@ async def _record_trace(
             "retrieval_vector_embed_failures": retrieval_trace.vector_degradation.embed_failures,
             "retrieval_vector_metadata_only": retrieval_trace.vector_degradation.metadata_only_stored,
             "retrieval_degradation_summary": retrieval_trace.degradation_summary(),
+            # Sprint 10: Unified trace fields
+            "retrieval_channel_health": json.dumps(retrieval_trace.channel_health),
+            "retrieval_channel_health_reasons": json.dumps(retrieval_trace.channel_health_reasons),
+            "retrieval_query_expansion": json.dumps(retrieval_trace.query_expansion),
+            "retrieval_entities_extracted": json.dumps(retrieval_trace.entities_extracted),
+            "retrieval_documents_retrieved_count": len(retrieval_trace.documents_retrieved_ids),
+            "retrieval_top_scores": json.dumps(retrieval_trace.top_scores[:5]),
+            "retrieval_final_context_token_count": retrieval_trace.final_context_token_count,
+            "retrieval_degradation_warnings": json.dumps(retrieval_trace.degradation_warnings),
         }
 
     # Include channel registration failures in the trace for dashboard visibility
