@@ -224,7 +224,10 @@ class AipContainer:
             self.knowledge_store._embedding_provider = provider
 
         # Sprint 6.1: Update Sexton's embedding provider reference
-        if self.sexton_actor is not None and hasattr(self.sexton_actor, "_embed"):
+        if self.sexton_actor is not None and hasattr(self.sexton_actor, "update_embedding_provider"):
+            self.sexton_actor.update_embedding_provider(provider)
+        elif self.sexton_actor is not None and hasattr(self.sexton_actor, "_embed"):
+            # Fallback for actors that don't have the update method yet
             self.sexton_actor._embed = provider
 
         # Sprint 6.1: Trigger re-embedding when the embedding model changes

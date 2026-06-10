@@ -205,6 +205,7 @@ class DogfoodReadinessCheck:
     required_actors: dict[str, bool] = field(default_factory=dict)
     embedding_provider_active: bool = False
     embedding_provider_type: str = "unknown"
+    embedding_backfill_state: str = "not_configured"
     retrieval_channels: dict[str, bool] = field(default_factory=dict)
     db_paths_valid: bool = True
     db_path_details: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -257,6 +258,7 @@ class DogfoodReadinessCheck:
         lines.append(f"Actors: {actor_ok}/{actor_total} active")
 
         lines.append(f"Embedding provider: {'active' if self.embedding_provider_active else 'INACTIVE'} ({self.embedding_provider_type})")
+        lines.append(f"Embedding backfill: {self.embedding_backfill_state}")
 
         ch_ok = sum(1 for v in self.retrieval_channels.values() if v)
         ch_total = len(self.retrieval_channels)
@@ -399,6 +401,15 @@ def validate_dogfood_readiness(
     embedding_provider_active = required_components.get("embedding_provider", False)
     embedding_provider_type = _detect_embedding_provider_type(config, container)
 
+    # Chunk 4: Detect embedding backfill state from Sexton actor
+    embedding_backfill_state = "not_configured"
+    sexton_actor = getattr(container, "sexton_actor", None)
+    if sexton_actor is not None and hasattr(sexton_actor, "_embedding_backfill_state"):
+        try:
+            embedding_backfill_state = sexton_actor._embedding_backfill_state
+        except Exception:
+            pass
+
     # --- Retrieval channels ---
     # Six built-in channels: lexical (fts), vector, corpus, graph, wiki, procedural.
     # Each channel is available when its backing store is initialized.
@@ -421,6 +432,7 @@ def validate_dogfood_readiness(
         required_actors=required_actors,
         embedding_provider_active=embedding_provider_active,
         embedding_provider_type=embedding_provider_type,
+        embedding_backfill_state=embedding_backfill_state,
         retrieval_channels=retrieval_channels,
         db_paths_valid=db_paths_valid,
         db_path_details=db_path_details,
@@ -452,6 +464,13 @@ def validate_dogfood_readiness(
                 "Dogfood FULL mode: embedding_provider is using a "
                 "fixture/mock provider ('%s'). Real embeddings will not be generated.",
                 embedding_provider_type,
+            )
+        # Chunk 4: Warn on degraded backfill states
+        if embedding_backfill_state in ("not_configured", "degraded", "failed"):
+            logger.warning(
+                "Dogfood FULL mode: embedding backfill state is '%s'. "
+                "Vector retrieval will be limited or unavailable.",
+                embedding_backfill_state,
             )
         for name, ok in retrieval_channels.items():
             if not ok:

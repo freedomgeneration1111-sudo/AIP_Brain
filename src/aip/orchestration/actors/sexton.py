@@ -185,6 +185,13 @@ class Sexton:
         self._provider_outage_detected: bool = False
         self._consecutive_embed_failures: int = 0
 
+        # Chunk 4: Explicit embedding backfill state machine
+        # States: not_configured, configured_idle, backfill_pending,
+        #         backfill_running, partially_embedded, embedded, degraded, failed
+        self._embedding_backfill_state: str = "not_configured"
+        self._last_backfill_error: str | None = None
+        self._last_unembedded_count: int | None = None
+
         # LLM batching telemetry — accumulates across cycles
         self._batch_telemetry = {
             "total_batch_extractions": 0,   # number of batch-mode LLM calls
@@ -423,6 +430,101 @@ class Sexton:
         return summary
 
     # ------------------------------------------------------------------
+    # Embedding backfill state machine (Chunk 4)
+    # ------------------------------------------------------------------
+
+    def _compute_embedding_backfill_state(self) -> str:
+        """Compute the current embedding backfill state from available data.
+
+        States:
+          not_configured  — no embedding provider available
+          configured_idle — provider available but no cycle has run yet
+          backfill_pending — provider available, unembedded items exist, no pass running
+          backfill_running — embedding pass is actively processing turns
+          partially_embedded — some turns embedded, unembedded remain
+          embedded — all turns are embedded
+          degraded — provider is a mock/fake (not a real embedding backend)
+          failed — embedding pass failed with errors
+        """
+        if self._embed is None:
+            return "not_configured"
+
+        # Detect mock/fake providers
+        class_name = type(self._embed).__name__
+        if "Mock" in class_name or "Fake" in class_name:
+            return "degraded"
+
+        # Check if an embedding pass is currently running
+        if self._embedding_pass_state.get("running", False):
+            return "backfill_running"
+
+        # Check for recent failures
+        if self._provider_outage_detected and self._consecutive_embed_failures >= 5:
+            return "failed"
+
+        # No cycle has run yet — provider is configured but idle
+        if self._last_cycle_time is None:
+            return "configured_idle"
+
+        # Check unembedded count from last known state
+        unembedded = self._last_unembedded_count
+        if unembedded is None:
+            last_failed = self._embedding_pass_state.get("last_batch_failed", 0)
+            last_embedded = self._embedding_pass_state.get("last_batch_embedded", 0)
+            if last_failed > 0 and last_embedded == 0:
+                return "failed"
+            return "partially_embedded" if last_embedded > 0 else "backfill_pending"
+
+        if unembedded == 0:
+            return "embedded"
+
+        # There are unembedded items
+        if self._embedding_pass_state.get("last_batch_failed", 0) > 0:
+            if self._embedding_pass_state.get("last_batch_embedded", 0) == 0:
+                return "failed"
+            return "partially_embedded"
+
+        return "partially_embedded" if self._cycle_count > 0 else "backfill_pending"
+
+    def update_embedding_provider(self, provider: Any) -> None:
+        """Receive an updated embedding provider at runtime.
+
+        Called by container.set_embedding_provider() when the embedding
+        model is changed at runtime. Updates the internal provider reference
+        and recomputes the embedding backfill state.
+        """
+        old_provider = self._embed
+        self._embed = provider
+
+        # Reset outage tracking since we have a new provider
+        self._provider_outage_detected = False
+        self._consecutive_embed_failures = 0
+        self._last_backfill_error = None
+
+        # Recompute backfill state
+        self._embedding_backfill_state = self._compute_embedding_backfill_state()
+
+        log.info(
+            "sexton_embedding_provider_updated",
+            had_provider=old_provider is not None,
+            has_provider=provider is not None,
+            backfill_state=self._embedding_backfill_state,
+        )
+
+    async def refresh_embedding_backfill_state(self) -> None:
+        """Refresh the embedding backfill state by querying actual unembedded count.
+
+        Called after a cycle completes and by status endpoints to ensure
+        the state reflects reality rather than stale cached data.
+        """
+        if self._corpus_turns is not None:
+            try:
+                self._last_unembedded_count = await self._corpus_turns.count_unembedded()
+            except Exception as exc:
+                log.warning("sexton_backfill_state_refresh_failed", error=str(exc))
+        self._embedding_backfill_state = self._compute_embedding_backfill_state()
+
+    # ------------------------------------------------------------------
     # Status summary for operator visibility
     # ------------------------------------------------------------------
 
@@ -437,8 +539,9 @@ class Sexton:
           failed   — last cycle raised an unhandled error
 
         Also includes dependency availability, last cycle time, batch telemetry,
-        and auto-tuning state. This method is synchronous and never raises.
-        Called by /actors/status and /actors/sexton endpoints.
+        auto-tuning state, and explicit embedding backfill state. This method
+        is synchronous and never raises. Called by /actors/status and
+        /actors/sexton endpoints.
         """
         deps = {
             "sexton_provider": self._sexton_provider is not None,
@@ -471,6 +574,9 @@ class Sexton:
             # Instantiated but no cycle has run yet — degraded until proven active
             state = "degraded"
 
+        # Refresh backfill state from computed data
+        self._embedding_backfill_state = self._compute_embedding_backfill_state()
+
         return {
             "state": state,
             "missing_core_dependencies": missing_core,
@@ -494,6 +600,9 @@ class Sexton:
             "current_cycle_id": self._current_cycle_id,
             "provider_outage_detected": self._provider_outage_detected,
             "consecutive_embed_failures": self._consecutive_embed_failures,
+            "embedding_backfill_state": self._embedding_backfill_state,
+            "embedding_provider_type": type(self._embed).__name__ if self._embed is not None else None,
+            "last_backfill_error": self._last_backfill_error,
         }
 
     # ------------------------------------------------------------------
@@ -1094,6 +1203,17 @@ Example response structure:
             "last_batch_re_embedded": re_embedded,
             "current_model": embedding_model,
         }
+
+        # Chunk 4: Refresh backfill state after embedding pass completes
+        if failed > 0 and embedded == 0:
+            self._last_backfill_error = f"All {failed} turns failed in embedding pass"
+        elif failed > 0:
+            self._last_backfill_error = f"{failed} turns failed in embedding pass"
+        else:
+            self._last_backfill_error = None
+
+        # Refresh the backfill state from the corpus turn store
+        await self.refresh_embedding_backfill_state()
 
         log.info(
             "sexton_embedding_complete",

@@ -16,6 +16,11 @@ that guide was written, and there are important caveats for alpha testers:
 - **Embedding coverage is low (~1.8%)** — Sexton will automatically embed turns when an
   embedding provider is configured and the server is running, but this requires sustained
   uptime. Use `aip corpus tag` and `aip embed` manually to accelerate the process.
+  The embedding backfill state is reported at `/health` (field: `embedding_coverage.backfill_state`)
+  and `/health/dogfood` (field: `embedding_backfill_state`). States are: not_configured,
+  configured_idle, backfill_pending, backfill_running, partially_embedded, embedded, degraded,
+  failed. Runtime model assignment via `PATCH /models/slots/embedding/model` propagates to
+  Sexton and triggers re-embedding for turns with a different model.
 - **MCP dispatch is built but not runtime-wired** — no MCP operations are reachable via API/CLI today
 - **No review queue web UI** — use `aip review list/approve/reject` via CLI
 

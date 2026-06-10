@@ -6,7 +6,7 @@
 **Release:** Alpha Test Release
 **Project Mode:** MAINTENANCE — active development phase complete; see docs/Maintenance_Protocol.md
 
-> This document reflects the state at the close of Sprint 6.4 and the alpha test release.
+> This document reflects the state after Chunk 4 (embedding backfill hardening).
 > The project has entered maintenance mode. No further feature sprints are planned.
 > See ROADMAP.md for the maintenance mode section and docs/Maintenance_Protocol.md for operational procedures.
 
@@ -58,7 +58,7 @@ were stale. Chunk 3 (2026-06-11) added honest state reporting and fixed an L4 si
 | Actor | Role (ADR-011) | Code State | Wired in app.py | Notes |
 |-------|---------------|------------|-----------------|-------|
 | Beast | Active synthesis support — context advisory, on-demand wiki draft | ✅ Refactored | ✅ Scheduled (heartbeat only) | Maintenance ops removed per ADR-011 |
-| Sexton | Background maintenance — tagging, embedding, wiki, graph, classification | ✅ Built (actors/sexton.py, 2,100+ lines, all 5 ops) | ✅ Scheduled (300s) | All 5 vigil ops wired and running. Reports honest state (active/degraded/disabled/failed) |
+| Sexton | Background maintenance — tagging, embedding, wiki, graph, classification | ✅ Built (actors/sexton.py, 2,100+ lines, all 5 ops) | ✅ Scheduled (300s) | All 5 vigil ops wired and running. Reports honest state (active/degraded/disabled/failed). Embedding backfill state machine added (Chunk 4) |
 | Vigil | Quality evaluation — synthesis citation quality, retrieval quality gate | ✅ Refactored + retrieval quality gate (Sprint 6.4) | ✅ Scheduled (hourly) | Now includes retrieval quality sampling with alerting |
 
 ## Retrieval Quality (Sprint 6.4)
@@ -78,6 +78,10 @@ were stale. Chunk 3 (2026-06-11) added honest state reporting and fixed an L4 si
 **Embedding coverage:** ~1.8% (50/2766 turns). Hybrid improvement over FTS5-only will be
 measurable after full embedding pass completes (requires embedding provider configuration and
 sustained server uptime for Sexton cycles to process the backlog).
+**Embedding backfill state:** Sexton now tracks explicit backfill state (not_configured,
+configured_idle, backfill_pending, backfill_running, partially_embedded, embedded, degraded,
+failed). Runtime model assignment propagates to Sexton and triggers re-embedding.
+Mock/fake providers are reported as "degraded" rather than "healthy".
 
 ## Runtime Gap Closure (P9)
 
@@ -199,3 +203,5 @@ via `aip ask` to ground future design work in prior decisions.
 
 All known bugs have been documented. See TECH_DEBT.md for the full debt register including
 bug cross-references. DEBT-006/BUG-003 (Sexton not wired) is resolved as of Chunk 3.
+Chunk 4 resolved: fake "healthy" embedding status in adapter/health.py now reports honest
+not_configured/degraded/failed states based on actual provider type.

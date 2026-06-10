@@ -116,6 +116,7 @@ async def health(container: AipContainer = Depends(get_container)):
         "embedded": 0,
         "unembedded": 0,
         "sexton_pass_state": None,
+        "backfill_state": None,
     }
     cts = getattr(container, "corpus_turn_store", None)
     if cts is not None:
@@ -129,9 +130,14 @@ async def health(container: AipContainer = Depends(get_container)):
             embedding_coverage["percentage"] = round(embedded / total * 100, 2) if total > 0 else 0.0
         except Exception:
             pass
-    if container.sexton_actor is not None:
+    if container.sexton_actor is not None and hasattr(container.sexton_actor, "_embedding_pass_state"):
         try:
             embedding_coverage["sexton_pass_state"] = dict(container.sexton_actor._embedding_pass_state)
+        except Exception:
+            pass
+    if container.sexton_actor is not None and hasattr(container.sexton_actor, "_embedding_backfill_state"):
+        try:
+            embedding_coverage["backfill_state"] = container.sexton_actor._embedding_backfill_state
         except Exception:
             pass
 
@@ -638,6 +644,7 @@ async def dogfood_health(request: Any, container: AipContainer = Depends(get_con
         "required_actors": readiness.required_actors,
         "embedding_provider_active": readiness.embedding_provider_active,
         "embedding_provider_type": readiness.embedding_provider_type,
+        "embedding_backfill_state": readiness.embedding_backfill_state,
         "retrieval_channels": readiness.retrieval_channels,
         "degraded_components": readiness.degraded_components,
         "db_paths_valid": readiness.db_paths_valid,
@@ -678,6 +685,10 @@ async def dogfood_health(request: Any, container: AipContainer = Depends(get_con
             try:
                 sexton_deps = container.sexton_actor.get_status_summary().get("dependencies", {})
                 response["sexton_dependencies"] = sexton_deps
+                # Chunk 4: Include embedding backfill state in dogfood response
+                backfill_state = container.sexton_actor.get_status_summary().get("embedding_backfill_state")
+                if backfill_state:
+                    response["embedding_backfill_state"] = backfill_state
             except Exception:
                 pass
 

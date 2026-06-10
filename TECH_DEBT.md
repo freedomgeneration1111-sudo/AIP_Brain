@@ -1,7 +1,7 @@
 # AIP Technical Debt Register
 
 **Owner:** B. Moses Jorgensen  
-**Last Updated:** 2026-06-11 (Chunk 3: Sexton full-mode wiring preflight)
+**Last Updated:** 2026-06-11 (Chunk 4: Embedding backfill hardening)
 
 Each entry records a deliberate deferral — what was skipped, why, and what triggers remediation.
 
