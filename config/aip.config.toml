@@ -143,6 +143,15 @@ sqlite_busy_timeout_ms = 5000
 vector_query_limit = 50
 fts5_query_limit = 50
 
+# Sprint 8: Dogfood mode — controls how aggressively the system validates
+# that all components and actors are initialized before accepting workloads.
+#   "minimal"    — only core stores must be present; degraded operation is fine.
+#   "full"       — all stores, actors, embedding, and retrieval channels must be up.
+#   "diagnostic" — same checks as FULL but logs detail without blocking startup.
+# Can also be set via AIP_DOGFOOD_MODE environment variable.
+[alpha]
+dogfood_mode = "minimal"           # Change to "full" for full dogfood wiring
+
 [release]
 release_version = "0.1.0"
 release_date = ""  # set by 10.7

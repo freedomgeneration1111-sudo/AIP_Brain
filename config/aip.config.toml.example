@@ -338,3 +338,22 @@ graph_batch_max_size = 8
 
 # Cooldown between auto-tuning adjustments (seconds)
 cooldown_seconds = 60
+
+# ---------------------------------------------------------------------------
+# Sprint 8: Dogfood Mode
+# Controls how aggressively the system validates that all components and
+# actors are initialized before accepting real workloads.
+#
+# Modes:
+#   minimal    — Only core stores must be present; degraded operation is fine.
+#   full       — All stores, actors, and embedding/retrieval channels must be up.
+#                Startup emits loud warnings for any missing component.
+#                Dashboard shows "Dogfood Mode: FULL" with per-actor status.
+#   diagnostic — Same checks as FULL but logs detailed diagnostics at INFO
+#                level without blocking startup; useful for pre-flight inspection.
+#
+# Can also be set via AIP_DOGFOOD_MODE environment variable.
+# Full dogfood mode is not a slogan — it is a boot-validated operating state.
+# ---------------------------------------------------------------------------
+[alpha]
+dogfood_mode = "minimal"   # Change to "full" when all components are wired

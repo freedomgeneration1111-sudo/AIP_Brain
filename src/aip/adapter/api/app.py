@@ -460,6 +460,11 @@ async def lifespan(app: FastAPI):
                 event_store=container.event_store,
                 entity_store=container.entity_store,
                 canonical_store=container.canonical_store,
+                beast_provider=container.model_provider,  # Sprint 8: "beast" model slot for domain summaries
+                artifact_store=container.artifact_store,  # Sprint 8: for writing domain summary artifacts
+                ecs_store=container.ecs_store,  # Sprint 8: for ECS transitions on artifacts
+                lexical_store=getattr(container, "lexical_store", None),  # Sprint 8: for sampling chunks
+                corpus_turn_store=getattr(container, "corpus_turn_store", None),  # Sprint 8: for turn tagging
             )
             log.info("component_initialized", component="beast", required=False)
         except Exception as exc:
@@ -499,6 +504,12 @@ async def lifespan(app: FastAPI):
                 entity_store=container.entity_store,
                 model_provider=container.model_provider,
                 trace_store=container.trace_store or trace_store,
+                artifact_store=container.artifact_store,  # Sprint 8: for writing evaluation artifacts
+                ecs_store=container.ecs_store,  # Sprint 8: for ECS transitions on evaluation artifacts
+                event_store=container.event_store,  # Sprint 8: for emitting vigil events
+                corpus_turn_store=getattr(container, "corpus_turn_store", None),  # Sprint 8: for augmented chat turns
+                alert_manager=getattr(container, "_alert_manager", None),  # Sprint 8: for quality degradation alerts
+                quality_store=getattr(container, "_vigil_quality_store", None),  # Sprint 8: for persistent quality history
             )
             log.info("component_initialized", component="vigil", required=False)
         except Exception as exc:
@@ -532,6 +543,7 @@ async def lifespan(app: FastAPI):
                 lexical_store=getattr(container, "lexical_store", None),
                 config=sexton_actor_config,
                 graph_store=getattr(container, "graph_store", None),
+                alert_manager=getattr(container, "_alert_manager", None),  # Sprint 8: for batch reduction alerts
             )
             # BUG-003 safety net: backfill _ecs if actor was created before
             # ECS store was available (shouldn't happen now, but defensive)
@@ -1122,6 +1134,45 @@ async def lifespan(app: FastAPI):
     app.state.start_time = time.time()
     container._app_start_time = time.time()
 
+    # =====================================================================
+    # Sprint 8: Dogfood mode startup validation
+    # =====================================================================
+    # After all components are initialized but before schedulers start,
+    # validate dogfood readiness and log the results. If FULL mode is
+    # requested but components are missing, enter loud degraded mode
+    # (warnings, not fatal — the system still starts).
+    # Full dogfood mode is not a slogan — it is a boot-validated operating state.
+    try:
+        from aip.config import DogfoodMode, get_dogfood_mode, validate_dogfood_readiness
+
+        dogfood_mode = get_dogfood_mode(config)
+        readiness = validate_dogfood_readiness(config, container)
+
+        log.info(
+            "dogfood_readiness",
+            mode=dogfood_mode.value,
+            is_ready=readiness.is_ready,
+            degraded=readiness.degraded_components,
+        )
+
+        # For FULL mode: log the full readiness summary
+        if dogfood_mode == DogfoodMode.FULL:
+            log.info("dogfood_full_mode_summary\n%s", readiness.summary)
+
+            if not readiness.is_ready:
+                log.warning(
+                    "dogfood_FULL_mode_degraded",
+                    degraded_components=readiness.degraded_components,
+                    note="System started in degraded mode. Missing components: %s",
+                    missing=", ".join(readiness.degraded_components),
+                )
+
+        # For DIAGNOSTIC mode: always log the full summary
+        if dogfood_mode == DogfoodMode.DIAGNOSTIC:
+            log.info("dogfood_diagnostic_summary\n%s", readiness.summary)
+    except Exception as exc:
+        log.warning("dogfood_readiness_check_failed", error=str(exc))
+
     # --- Beast background scheduler ---
     beast_task: asyncio.Task | None = None
     if container.beast is not None:
@@ -1441,6 +1492,8 @@ async def lifespan(app: FastAPI):
         config_watcher=getattr(container, "_config_watcher", None) is not None,
         auto_sizer=getattr(container, "_read_pool_auto_sizer", None) is not None,
         auto_tuning_policy=getattr(container, "_auto_tuning_policy", None) is not None,
+        # Sprint 8: Dogfood mode
+        dogfood_mode=getattr(dogfood_mode, "value", "unknown") if "dogfood_mode" in dir() else "unknown",
     )
 
     yield

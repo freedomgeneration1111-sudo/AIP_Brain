@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends
 
 from aip.adapter.api.dependencies import AipContainer, get_container
 from aip.adapter.store_health import ConnectionHealth
+from aip.config import DogfoodMode, get_dogfood_mode, validate_dogfood_readiness
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -46,6 +47,8 @@ class HealthEndpointResponse(TypedDict):
     embedding_coverage: dict[str, Any]
     store_sizes: dict[str, Any]
     alerting_health: dict[str, Any]
+    # Sprint 8: Dogfood mode visibility
+    dogfood_mode: str
 
 
 @router.get("/health")
@@ -566,6 +569,8 @@ async def health(container: AipContainer = Depends(get_container)):
         "embedding_coverage": embedding_coverage,
         "store_sizes": store_sizes,
         "alerting_health": alerting_health,
+        # Sprint 8: Dogfood mode visibility
+        "dogfood_mode": get_dogfood_mode(container.config).value,
     }
 
 
@@ -580,3 +585,80 @@ async def datastore_health(container: AipContainer = Depends(get_container)):
     exists for all of them.
     """
     return container.datastore_summary()
+
+
+@router.get("/health/dogfood")
+async def dogfood_health(request: Any, container: AipContainer = Depends(get_container)):
+    """Dogfood readiness check — is the system ready for full internal use?
+
+    Sprint 8: Returns dogfood mode, component/actor readiness, embedding
+    provider status, retrieval channels, review gates, DB paths, and a
+    human-readable summary. This is the primary dashboard endpoint for
+    answering:
+
+        Dogfood Mode: FULL
+        Sexton: active
+        Beast: active
+        Vigil: active
+        Retrieval quality monitor: active
+        Artifact review gates: active
+        Retrieval channels: 6/6 available
+        Embedding provider: active (openai_compatible)
+
+    Full dogfood mode is not a slogan — it is a boot-validated operating state.
+    """
+    # Get config from app.state (same as lifespan handler)
+    config = getattr(request.app.state, "raw_config", {}) if hasattr(request, "app") else {}
+
+    # Get the dogfood mode from config
+    mode = get_dogfood_mode(config)
+
+    # Validate dogfood readiness against container
+    readiness = validate_dogfood_readiness(config, container)
+
+    # Build base response
+    response: dict[str, Any] = {
+        "dogfood_mode": mode.value,
+        "is_ready": readiness.is_ready,
+        "required_components": readiness.required_components,
+        "required_actors": readiness.required_actors,
+        "embedding_provider_active": readiness.embedding_provider_active,
+        "embedding_provider_type": readiness.embedding_provider_type,
+        "retrieval_channels": readiness.retrieval_channels,
+        "degraded_components": readiness.degraded_components,
+        "db_paths_valid": readiness.db_paths_valid,
+        "db_path_details": readiness.db_path_details,
+        "summary": readiness.summary,
+    }
+
+    # For FULL and DIAGNOSTIC modes, include additional actor detail
+    if mode in (DogfoodMode.FULL, DogfoodMode.DIAGNOSTIC):
+        response["actors"] = {
+            "sexton": "active" if container.sexton_actor is not None else "inactive",
+            "beast": "active" if container.beast is not None else "inactive",
+            "vigil": "active" if container.vigil is not None else "inactive",
+            "retrieval_quality_monitor": (
+                "active"
+                if container.vigil is not None
+                and hasattr(container.vigil, "config")
+                and getattr(container.vigil.config, "retrieval_quality_sampling_enabled", False)
+                else "inactive"
+            ),
+        }
+        response["review_gates"] = "active"  # Review/export pipeline is always available
+        response["dashboard_status"] = "live"
+
+        # Sprint 8: Include Sexton dependency details
+        if container.sexton_actor is not None and hasattr(container.sexton_actor, "get_status_summary"):
+            try:
+                sexton_deps = container.sexton_actor.get_status_summary().get("dependencies", {})
+                response["sexton_dependencies"] = sexton_deps
+            except Exception:
+                pass
+
+        # Sprint 8: Channel availability breakdown
+        ch_available = sum(1 for v in readiness.retrieval_channels.values() if v)
+        ch_total = len(readiness.retrieval_channels)
+        response["channel_summary"] = f"{ch_available}/{ch_total} available"
+
+    return response

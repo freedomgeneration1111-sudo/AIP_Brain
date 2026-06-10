@@ -477,6 +477,38 @@ def init(force: bool) -> None:
     click.echo("\n=== Init complete ===")
     click.echo(f"Profile: {profile}")
     click.echo(f"Config: {config_path}")
+
+    # Sprint 8: Dogfood mode validation
+    try:
+        from aip.config import DogfoodMode, get_dogfood_mode
+
+        # Load config for dogfood mode detection
+        config = {}
+        if config_path.exists():
+            try:
+                import tomllib
+                with open(config_path, "rb") as f:
+                    config = tomllib.load(f)
+            except Exception:
+                pass
+
+        dogfood_mode = get_dogfood_mode(config)
+        click.echo(f"\nDogfood Mode: {dogfood_mode.value.upper()}")
+
+        if dogfood_mode == DogfoodMode.FULL:
+            click.echo("  All stores, actors, and embedding/retrieval channels must be up.")
+            click.echo("  Run `aip status` or start the API and check /health/dogfood.")
+        elif dogfood_mode == DogfoodMode.DIAGNOSTIC:
+            click.echo("  Diagnostic mode: detailed readiness checks logged at startup.")
+            click.echo("  Start the API and check /health/dogfood for full diagnostics.")
+        else:
+            click.echo("  Minimal mode: core stores only; degraded operation is fine.")
+            click.echo("  Set [alpha] dogfood_mode = \"full\" in config for full validation.")
+
+        click.echo("  (Can also set AIP_DOGFOOD_MODE environment variable)")
+    except Exception as e:
+        click.echo(f"\nDogfood mode check skipped: {e}")
+
     click.echo("\nDatastore layout (honest multi-file local datastore — Option B):")
     click.echo("  ┌─────────────────────┬──────────────────────────────────────────────────┐")
     click.echo("  │ DB File             │ Stores / Contents                                │")

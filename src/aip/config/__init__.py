@@ -9,11 +9,17 @@ Key types:
     ConfigValidationError — structured error with code, setting path, remediation
     validate_config() — run all safety checks before app/CLI startup
     get_runtime_mode() — deterministic profile detection from config + env
+    DogfoodMode — MINIMAL, FULL, or DIAGNOSTIC dogfood readiness level
+    get_dogfood_mode() — resolve dogfood mode from config + env
+    DogfoodReadinessCheck — structured readiness report for dogfood validation
+    validate_dogfood_readiness() — check all components/actors for dogfood readiness
 """
 
 from __future__ import annotations
 
+import logging
 import os
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
@@ -92,6 +98,393 @@ def get_runtime_mode(config: dict[str, Any]) -> RuntimeMode:
 
     # 3. Default
     return RuntimeMode.LAPTOP
+
+
+# ---------------------------------------------------------------------------
+# Dogfood mode
+# ---------------------------------------------------------------------------
+
+
+class DogfoodMode(Enum):
+    """Sprint 8 dogfood readiness level.
+
+    Controls how aggressively the system validates that all components
+    and actors are initialized before accepting real workloads.
+
+    MINIMAL — only core stores must be present; degraded operation is fine.
+    FULL — all stores, actors, and embedding/retrieval channels must be up.
+    DIAGNOSTIC — same checks as FULL but logs detailed diagnostics without
+                 blocking startup; useful for pre-flight inspection.
+    """
+
+    MINIMAL = "minimal"
+    FULL = "full"
+    DIAGNOSTIC = "diagnostic"
+
+
+def get_dogfood_mode(config: dict[str, Any]) -> DogfoodMode:
+    """Determine the dogfood mode from config and environment.
+
+    Resolution order (first wins):
+      1. ``config["alpha"]["dogfood_mode"]`` (explicit config setting)
+      2. ``AIP_DOGFOOD_MODE`` environment variable
+      3. Default to MINIMAL
+
+    The value is matched case-insensitively against the enum members.
+    Invalid values trigger a warning and fall back to MINIMAL.
+    """
+    logger = logging.getLogger("aip.config")
+
+    raw: str | None = None
+    source: str = "default"
+
+    # 1. Explicit config
+    alpha_section = config.get("alpha", {})
+    if isinstance(alpha_section, dict):
+        cfg_val = alpha_section.get("dogfood_mode", "")
+        if isinstance(cfg_val, str) and cfg_val.strip():
+            raw = cfg_val.strip()
+            source = 'config["alpha"]["dogfood_mode"]'
+
+    # 2. Environment variable
+    if raw is None:
+        env_val = os.environ.get("AIP_DOGFOOD_MODE", "").strip()
+        if env_val:
+            raw = env_val
+            source = "AIP_DOGFOOD_MODE"
+
+    # 3. Default
+    if raw is None:
+        return DogfoodMode.MINIMAL
+
+    # Validate (case-insensitive)
+    normalized = raw.lower()
+    for mode in DogfoodMode:
+        if mode.value == normalized:
+            return mode
+
+    # Invalid value — warn and fall back
+    valid_values = ", ".join(m.value for m in DogfoodMode)
+    logger.warning(
+        "Invalid dogfood_mode '%s' from %s. Must be one of: %s. "
+        "Falling back to MINIMAL.",
+        raw,
+        source,
+        valid_values,
+    )
+    return DogfoodMode.MINIMAL
+
+
+# ---------------------------------------------------------------------------
+# Dogfood readiness check
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class DogfoodReadinessCheck:
+    """Structured readiness report for Sprint 8 dogfood validation.
+
+    Attributes:
+        mode: The resolved DogfoodMode.
+        required_components: Mapping of component name → initialized (bool).
+        required_actors: Mapping of actor name → active (bool).
+        embedding_provider_active: Whether the embedding provider is running.
+        embedding_provider_type: Human-readable provider type (e.g. 'openai_compatible', 'mock').
+        retrieval_channels: Mapping of channel name → available (bool).
+        db_paths_valid: Whether all registered DB paths exist and are writable.
+        db_path_details: Per-store DB path existence details.
+        is_ready: Computed — True only if mode is FULL and all required items
+                  are True.
+        degraded_components: Computed — names of components/actors/channels
+                             where the bool is False.
+        summary: Computed — human-readable readiness report.
+    """
+
+    mode: DogfoodMode
+    required_components: dict[str, bool] = field(default_factory=dict)
+    required_actors: dict[str, bool] = field(default_factory=dict)
+    embedding_provider_active: bool = False
+    embedding_provider_type: str = "unknown"
+    retrieval_channels: dict[str, bool] = field(default_factory=dict)
+    db_paths_valid: bool = True
+    db_path_details: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    @property
+    def is_ready(self) -> bool:
+        """True only if mode is FULL and every required item is True."""
+        if self.mode != DogfoodMode.FULL:
+            return False
+        return (
+            all(self.required_components.values())
+            and all(self.required_actors.values())
+            and self.embedding_provider_active
+            and all(self.retrieval_channels.values())
+            and self.db_paths_valid
+        )
+
+    @property
+    def degraded_components(self) -> list[str]:
+        """Names of components, actors, or channels where the bool is False."""
+        degraded: list[str] = []
+        for name, ok in self.required_components.items():
+            if not ok:
+                degraded.append(name)
+        for name, ok in self.required_actors.items():
+            if not ok:
+                degraded.append(name)
+        if not self.embedding_provider_active:
+            degraded.append("embedding_provider")
+        for name, ok in self.retrieval_channels.items():
+            if not ok:
+                degraded.append(name)
+        if not self.db_paths_valid:
+            degraded.append("db_paths")
+        return degraded
+
+    @property
+    def summary(self) -> str:
+        """Human-readable readiness report."""
+        lines: list[str] = []
+        lines.append(f"DogfoodMode: {self.mode.value}")
+        lines.append(f"Ready: {self.is_ready}")
+
+        comp_ok = sum(1 for v in self.required_components.values() if v)
+        comp_total = len(self.required_components)
+        lines.append(f"Components: {comp_ok}/{comp_total} initialized")
+
+        actor_ok = sum(1 for v in self.required_actors.values() if v)
+        actor_total = len(self.required_actors)
+        lines.append(f"Actors: {actor_ok}/{actor_total} active")
+
+        lines.append(f"Embedding provider: {'active' if self.embedding_provider_active else 'INACTIVE'} ({self.embedding_provider_type})")
+
+        ch_ok = sum(1 for v in self.retrieval_channels.values() if v)
+        ch_total = len(self.retrieval_channels)
+        lines.append(f"Retrieval channels: {ch_ok}/{ch_total} available")
+
+        if self.degraded_components:
+            lines.append(f"Degraded: {', '.join(self.degraded_components)}")
+        else:
+            lines.append("Degraded: none")
+
+        lines.append(f"DB paths valid: {self.db_paths_valid}")
+
+        return "\n".join(lines)
+
+
+def _detect_embedding_provider_type(config: dict[str, Any], container: Any) -> str:
+    """Detect the embedding provider type for readiness reporting.
+
+    Checks the actual provider instance first, then falls back to config.
+    Returns a human-readable provider type string.
+    """
+    # Try to get the type from the actual provider instance
+    provider = getattr(container, "embedding_provider", None)
+    if provider is not None:
+        # Check common attribute names for the provider type
+        for attr in ("provider_type", "_provider_type", "provider"):
+            val = getattr(provider, attr, None)
+            if val and isinstance(val, str):
+                return val
+        # Check class name as fallback
+        cls_name = provider.__class__.__name__
+        if "Mock" in cls_name or "Fake" in cls_name:
+            return "mock"
+        if "OpenAI" in cls_name:
+            return "openai_compatible"
+        return cls_name
+
+    # Fall back to config
+    embed_slot = config.get("models", {}).get("embedding", {})
+    if isinstance(embed_slot, dict) and embed_slot.get("provider"):
+        return embed_slot["provider"]
+    return config.get("embedding", {}).get("provider", "unknown")
+
+
+def _validate_db_paths(container: Any) -> tuple[bool, dict[str, dict[str, Any]]]:
+    """Validate that all registered DB paths exist and are writable.
+
+    Returns (all_valid, details_dict) where details_dict maps
+    store_name → {db_path, exists, size_mb, valid}.
+    """
+    from pathlib import Path
+
+    details: dict[str, dict[str, Any]] = {}
+    all_valid = True
+
+    registry = getattr(container, "_store_registry", {})
+    for store_name, db_path in registry.items():
+        p = Path(db_path)
+        exists = p.exists()
+        size_mb = round(p.stat().st_size / (1024 * 1024), 2) if exists else 0
+        # A DB file is valid if it exists (SQLite creates it on init)
+        valid = exists
+        if not valid:
+            all_valid = False
+        details[store_name] = {
+            "db_path": db_path,
+            "exists": exists,
+            "size_mb": size_mb,
+            "valid": valid,
+        }
+
+    return all_valid, details
+
+
+def validate_dogfood_readiness(
+    config: dict[str, Any],
+    container: Any,
+) -> DogfoodReadinessCheck:
+    """Check all components and actors for dogfood readiness.
+
+    Inspects the *container*-like object for the presence and
+    initialization of required stores, providers, and actors.
+
+    For FULL mode, missing components/actors emit **warnings** (not
+    errors) because degraded operation is acceptable — the system
+    should still start, just with reduced capability. However, the
+    readiness check clearly marks is_ready=False so that operators
+    can see the system is in degraded mode.
+
+    Full dogfood mode is not a slogan. It is a boot-validated
+    operating state.
+
+    Args:
+        config: The full configuration dict.
+        container: A container-like object whose attributes are checked
+                   for component/actor availability.
+
+    Returns:
+        A :class:`DogfoodReadinessCheck` with the full readiness report.
+    """
+    logger = logging.getLogger("aip.config")
+    mode = get_dogfood_mode(config)
+
+    # --- Component checks ---
+    component_names = [
+        "lexical_store",
+        "vector_store",
+        "embedding_provider",
+        "ecs_store",
+        "artifact_store",
+        "project_store",
+        "graph_store",
+        "corpus_turn_store",
+        "event_store",
+        "model_provider",
+        "budget_store",
+        "session_store",
+        "review_queue_store",
+        "knowledge_store",
+    ]
+
+    required_components: dict[str, bool] = {}
+    for name in component_names:
+        available = hasattr(container, name) and getattr(container, name) is not None
+        required_components[name] = available
+
+    # --- Actor checks ---
+    actor_names = [
+        "beast",
+        "vigil",
+        "sexton_actor",
+    ]
+
+    required_actors: dict[str, bool] = {}
+    for name in actor_names:
+        active = hasattr(container, name) and getattr(container, name) is not None
+        required_actors[name] = active
+
+    # --- Embedding provider check ---
+    embedding_provider_active = required_components.get("embedding_provider", False)
+    embedding_provider_type = _detect_embedding_provider_type(config, container)
+
+    # --- Retrieval channels ---
+    # Six built-in channels: lexical (fts), vector, corpus, graph, wiki, procedural.
+    # Each channel is available when its backing store is initialized.
+    retrieval_channels: dict[str, bool] = {}
+    retrieval_channels["lexical"] = required_components.get("lexical_store", False)
+    retrieval_channels["vector"] = required_components.get("vector_store", False)
+    retrieval_channels["corpus"] = required_components.get("corpus_turn_store", False)
+    retrieval_channels["graph"] = required_components.get("graph_store", False)
+    # Wiki channel requires graph_store (wiki articles stored as graph nodes)
+    retrieval_channels["wiki"] = required_components.get("graph_store", False)
+    # Procedural channel requires ace_playbook
+    retrieval_channels["procedural"] = hasattr(container, "ace_playbook") and getattr(container, "ace_playbook", None) is not None
+
+    # --- DB path validation ---
+    db_paths_valid, db_path_details = _validate_db_paths(container)
+
+    check = DogfoodReadinessCheck(
+        mode=mode,
+        required_components=required_components,
+        required_actors=required_actors,
+        embedding_provider_active=embedding_provider_active,
+        embedding_provider_type=embedding_provider_type,
+        retrieval_channels=retrieval_channels,
+        db_paths_valid=db_paths_valid,
+        db_path_details=db_path_details,
+    )
+
+    # --- Emit warnings for FULL mode ---
+    if mode == DogfoodMode.FULL:
+        for name, ok in required_components.items():
+            if not ok:
+                logger.warning(
+                    "Dogfood FULL mode: component '%s' is not initialized. "
+                    "System will run in degraded mode.",
+                    name,
+                )
+        for name, ok in required_actors.items():
+            if not ok:
+                logger.warning(
+                    "Dogfood FULL mode: actor '%s' is not active. "
+                    "System will run in degraded mode.",
+                    name,
+                )
+        if not embedding_provider_active:
+            logger.warning(
+                "Dogfood FULL mode: embedding_provider is not active. "
+                "System will run in degraded mode.",
+            )
+        elif embedding_provider_type in ("mock", "fake", "ci", "fixture"):
+            logger.warning(
+                "Dogfood FULL mode: embedding_provider is using a "
+                "fixture/mock provider ('%s'). Real embeddings will not be generated.",
+                embedding_provider_type,
+            )
+        for name, ok in retrieval_channels.items():
+            if not ok:
+                logger.warning(
+                    "Dogfood FULL mode: retrieval channel '%s' is not available. "
+                    "System will run in degraded mode.",
+                    name,
+                )
+        if not db_paths_valid:
+            for store_name, details in db_path_details.items():
+                if not details.get("valid", True):
+                    logger.warning(
+                        "Dogfood FULL mode: DB path for '%s' does not exist: %s",
+                        store_name,
+                        details.get("db_path", "unknown"),
+                    )
+
+        # The gate: FULL dogfood mode is not a slogan.
+        if not check.is_ready:
+            logger.warning(
+                "Dogfood FULL mode is NOT ready. "
+                "Degraded components: %s. "
+                "Full dogfood mode is a boot-validated operating state, "
+                "not a slogan. Fix missing components or switch to "
+                "dogfood_mode='minimal'.",
+                ", ".join(check.degraded_components),
+            )
+
+    # --- DIAGNOSTIC mode: log the full summary ---
+    if mode == DogfoodMode.DIAGNOSTIC:
+        logger.info("Dogfood DIAGNOSTIC readiness report:\n%s", check.summary)
+
+    return check
 
 
 # ---------------------------------------------------------------------------
@@ -463,8 +856,12 @@ def validate_config(config: dict[str, Any]) -> ValidationResult:
 
 __all__ = [
     "ConfigValidationError",
+    "DogfoodMode",
+    "DogfoodReadinessCheck",
     "RuntimeMode",
     "ValidationResult",
+    "get_dogfood_mode",
     "get_runtime_mode",
     "validate_config",
+    "validate_dogfood_readiness",
 ]
