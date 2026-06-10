@@ -214,7 +214,7 @@ async def run_l4_and_sexton_check(
     if also_run_sexton:
         trace_store = context.get_protocol("trace_store")
         if trace_store is not None:
-            sexton = Sexton(trace_store)
+            sexton = Sexton(trace_store=trace_store)
             try:
                 sexton_classifications = await sexton.classify_recent_failures(limit=50)
             except Exception as exc:

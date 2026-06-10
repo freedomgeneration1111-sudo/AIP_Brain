@@ -71,12 +71,26 @@ async def health(container: AipContainer = Depends(get_container)):
             logger.warning("Health check: model provider list_slots failed", exc_info=True)
             model_slots = []
 
-    # Actor status (lightweight — just initialized yes/no)
+    # Actor status (lightweight — state-aware for Sexton, initialized for others)
     actors_status = {
         "beast": {"initialized": container.beast is not None},
         "vigil": {"initialized": container.vigil is not None},
-        "sexton": {"initialized": container.sexton_actor is not None},
     }
+    # Sexton reports its honest state rather than just initialized=True/False
+    if container.sexton_actor is not None and hasattr(container.sexton_actor, "get_status_summary"):
+        try:
+            sexton_summary = container.sexton_actor.get_status_summary()
+            actors_status["sexton"] = {
+                "initialized": True,
+                "state": sexton_summary.get("state", "unknown"),
+                "missing_core_dependencies": sexton_summary.get("missing_core_dependencies", []),
+            }
+        except Exception:
+            actors_status["sexton"] = {"initialized": True, "state": "unknown"}
+    elif container.sexton_actor is not None:
+        actors_status["sexton"] = {"initialized": True, "state": "instantiated"}
+    else:
+        actors_status["sexton"] = {"initialized": False, "state": "not_configured"}
 
     # Sprint 6.2: Detailed actor status from get_status_summary()
     actor_details: dict[str, dict[str, Any]] = {}
@@ -546,7 +560,7 @@ async def health(container: AipContainer = Depends(get_container)):
         "optional_components": optional_components,
         "optional_available": optional_count,
         "optional_total": optional_total,
-        "vector_backend": "placeholder" if container.vector_store is None else "configured",
+        "vector_backend": "not_configured" if container.vector_store is None else "configured",
         "vector_backend_status": vector_backend_status,
         "model_slots": model_slots,
         "actors": actors_status,
@@ -633,8 +647,19 @@ async def dogfood_health(request: Any, container: AipContainer = Depends(get_con
 
     # For FULL and DIAGNOSTIC modes, include additional actor detail
     if mode in (DogfoodMode.FULL, DogfoodMode.DIAGNOSTIC):
+        # Sexton state: report honest state from get_status_summary() instead
+        # of just "active"/"inactive" based on container.sexton_actor is not None.
+        sexton_state = "not_configured"
+        if container.sexton_actor is not None and hasattr(container.sexton_actor, "get_status_summary"):
+            try:
+                sexton_state = container.sexton_actor.get_status_summary().get("state", "unknown")
+            except Exception:
+                sexton_state = "unknown"
+        elif container.sexton_actor is not None:
+            sexton_state = "instantiated"
+
         response["actors"] = {
-            "sexton": "active" if container.sexton_actor is not None else "inactive",
+            "sexton": sexton_state,
             "beast": "active" if container.beast is not None else "inactive",
             "vigil": "active" if container.vigil is not None else "inactive",
             "retrieval_quality_monitor": (

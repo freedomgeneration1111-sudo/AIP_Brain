@@ -137,9 +137,10 @@ Background maintenance engine with five operations (ADR-011 refactor):
 - **Graph extraction**: Entity extraction and relationship inference from corpus
 - **Classification**: Failure classification using Appendix E taxonomy (A–F)
 
-> **Note (DEBT-006):** The new full-maintenance Sexton (`actors/sexton.py`, 1,341 lines) is built
-> but **not yet wired** into `app.py`. The old failure-classifier-only Sexton is currently active.
-> See TECH_DEBT.md#DEBT-006 for remediation steps.
+The Sexton actor is wired into `app.py` and runs on a 300s cadence. It reports honest state
+(`active`, `degraded`, `disabled`, `failed`) via `get_status_summary()`, surfaced through
+`/health`, `/health/dogfood`, and `/actors/status` endpoints. The old failure-classifier-only
+Sexton (`orchestration/sexton/sexton.py`) is used internally for classification delegation.
 
 ### Beast Actor (§3)
 

@@ -24,7 +24,7 @@ OPTIONAL (startup logs warning, service degrades gracefully):
   - Model provider: LLM dispatch (degrades to stub responses)
   - Knowledge store: compiled knowledge with embeddings (degrades to no knowledge compilation)
   - Beast actor: background health + corpus maintenance (degrades to no background tasks)
-  - ECS store: artifact lifecycle state (degrades to no ECS transitions — BUG-003: must init before actors)
+  - ECS store: artifact lifecycle state (degrades to no ECS transitions; initialized before actors per BUG-003 fix)
 """
 
 from __future__ import annotations
@@ -600,9 +600,7 @@ async def lifespan(app: FastAPI):
             error=str(exc),
         )
 
-    # ECS store and ReviewQueueStore are now initialized BEFORE actors
-    # (moved above to fix BUG-003).  This section is intentionally empty.
-    # See the initialization block after TraceStoreAdapter for the actual code.
+    # ECS store and ReviewQueueStore are initialized before actors (BUG-003 fix).
 
     # Session store — chat session persistence (degrades to in-memory)
     try:
@@ -1305,6 +1303,12 @@ async def lifespan(app: FastAPI):
                     raise
                 except Exception as exc:
                     log.error("sexton_actor_cycle_failed", cycle=cycle_num, error=str(exc), exc_info=True)
+                    # Record failure in actor state so status endpoints reflect it
+                    try:
+                        container.sexton_actor._recent_errors.append(f"cycle_{cycle_num}: {exc}")
+                        container.sexton_actor._recent_errors = container.sexton_actor._recent_errors[-10:]
+                    except Exception:
+                        pass
                 finally:
                     set_correlation_id(None)
                 await asyncio.sleep(interval)

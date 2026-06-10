@@ -2,7 +2,7 @@
 
 **Version:** 0.1.0-alpha
 **Architecture Revision:** 6.4
-**Last Updated:** 2026-06-10
+**Last Updated:** 2026-06-11
 **Release:** Alpha Test Release
 **Project Mode:** MAINTENANCE — active development phase complete; see docs/Maintenance_Protocol.md
 
@@ -52,17 +52,14 @@ Production configuration is **enforced programmatically**. Unsafe configs fail a
 ## Actor Status (post ADR-011 refactor, post Sprint 6.4)
 
 ADR-011 (2026-06-06) redefined actor role boundaries. All three actors are built and wired.
-DEBT-006 (Sexton wiring) remains as a known gap — see TECH_DEBT.md.
+DEBT-006 (Sexton wiring) is resolved — the new Sexton actor was already wired in app.py; docs
+were stale. Chunk 3 (2026-06-11) added honest state reporting and fixed an L4 signature mismatch.
 
 | Actor | Role (ADR-011) | Code State | Wired in app.py | Notes |
 |-------|---------------|------------|-----------------|-------|
 | Beast | Active synthesis support — context advisory, on-demand wiki draft | ✅ Refactored | ✅ Scheduled (heartbeat only) | Maintenance ops removed per ADR-011 |
-| Sexton | Background maintenance — tagging, embedding, wiki, graph, classification | ✅ Built (actors/sexton.py, 1,341 lines, all 5 ops) | ❌ **NOT WIRED** — DEBT-006 | Tagging, embedding, wiki, graph are NOT running until wired |
+| Sexton | Background maintenance — tagging, embedding, wiki, graph, classification | ✅ Built (actors/sexton.py, 2,100+ lines, all 5 ops) | ✅ Scheduled (300s) | All 5 vigil ops wired and running. Reports honest state (active/degraded/disabled/failed) |
 | Vigil | Quality evaluation — synthesis citation quality, retrieval quality gate | ✅ Refactored + retrieval quality gate (Sprint 6.4) | ✅ Scheduled (hourly) | Now includes retrieval quality sampling with alerting |
-
-**DEBT-006 impact:** Automatic corpus tagging, embedding, wiki generation, and graph extraction are
-not running. Only failure classification (old Sexton) fires every 300s. The new full-maintenance
-`actors/sexton.py` is dead code until wired. This is the highest-priority debt item for maintenance mode.
 
 ## Retrieval Quality (Sprint 6.4)
 
@@ -79,7 +76,8 @@ not running. Only failure classification (old Sexton) fires every 300s. The new 
 
 **Current channel weight defaults:** vector=0.6, fts=0.4, corpus=0.4
 **Embedding coverage:** ~1.8% (50/2766 turns). Hybrid improvement over FTS5-only will be
-measurable after full embedding pass completes (requires DEBT-006 fix).
+measurable after full embedding pass completes (requires embedding provider configuration and
+sustained server uptime for Sexton cycles to process the backlog).
 
 ## Runtime Gap Closure (P9)
 
@@ -111,10 +109,10 @@ Knowledge graph: 36 nodes, 17 edges (worktree)
 
 ### Embedding Gap
 
-2,716 turns remain unembedded. This is the single largest gap in the system's retrieval quality.
-Full embedding requires DEBT-006 fix (wiring the new Sexton actor). Once wired, Sexton will
-process embedding batches at ~50 turns/cycle (every 300s), completing in ~17 hours of continuous
-operation.
+2,716 turns remain unembedded. The Sexton actor is wired and will process embedding batches
+automatically when an embedding provider is configured and the server is running. At ~50 turns
+per cycle (every 300s), completing the full embedding pass requires approximately 17 hours of
+continuous operation.
 
 ## Known Scaffolding
 
@@ -160,17 +158,15 @@ AIP v0.1 is **alpha software** released for testing and evaluation. It is suitab
 development, single-user dogfood usage, and alpha tester evaluation. It is **not** production-ready
 for deployment with real user data. Known limitations that alpha testers should be aware of:
 
-1. **DEBT-006 (Critical):** Sexton actor is built but not wired — automatic tagging, embedding,
-   wiki generation, and graph extraction are **not running**. Only failure classification (old
-   Sexton) fires every 300s. This is the highest-priority fix for maintenance mode.
-2. **Embedding coverage is ~1.8%** (50/2,766 turns) — retrieval quality is limited until full
-   embedding pass completes (requires DEBT-006 fix). FTS5 search works well; hybrid retrieval
-   improvement will be measurable after full embedding.
-3. **MCP tool dispatch is built but not runtime-wired** — real search and approval dispatch exists but is not reachable via API/CLI; autonomy_gate=None fail-open risk must be hardened before wiring
-4. **Adaptive router does not adapt** — exploration/exploitation is random
-5. **No sandbox for ScriptNode execution** — production mode returns DISABLED
-6. **No review queue web UI for MANUAL mode** — CLI review works (`aip review list/approve/reject`)
-7. **Per-component performance metrics are estimated**, not measured
+1. **Embedding coverage is ~1.8%** (50/2,766 turns) — retrieval quality is limited until full
+   embedding pass completes (requires embedding provider configuration and sustained uptime).
+   FTS5 search works well; hybrid retrieval improvement will be measurable after full embedding.
+   Sexton actor is wired and will process embeddings automatically when the provider is available.
+2. **MCP tool dispatch is built but not runtime-wired** — real search and approval dispatch exists but is not reachable via API/CLI; autonomy_gate=None fail-open risk must be hardened before wiring
+3. **Adaptive router does not adapt** — exploration/exploitation is random
+4. **No sandbox for ScriptNode execution** — production mode returns DISABLED
+5. **No review queue web UI for MANUAL mode** — CLI review works (`aip review list/approve/reject`)
+6. **Per-component performance metrics are estimated**, not measured
 
 ## Pre-existing Test Failures
 
@@ -202,4 +198,4 @@ via `aip ask` to ground future design work in prior decisions.
 ## Bug Registry
 
 All known bugs have been documented. See TECH_DEBT.md for the full debt register including
-bug cross-references. The critical remaining bug is BUG-003/DEBT-006 (Sexton not wired).
+bug cross-references. DEBT-006/BUG-003 (Sexton not wired) is resolved as of Chunk 3.

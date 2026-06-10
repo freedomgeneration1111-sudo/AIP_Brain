@@ -13,8 +13,9 @@ that guide was written, and there are important caveats for alpha testers:
 - CLI evaluation tools (`aip eval retrieval`)
 
 **Known limitations:**
-- **DEBT-006 (Critical):** Automatic tagging, embedding, wiki, and graph extraction are NOT
-  running automatically. Use `aip corpus tag` and `aip embed` manually until this is fixed.
+- **Embedding coverage is low (~1.8%)** — Sexton will automatically embed turns when an
+  embedding provider is configured and the server is running, but this requires sustained
+  uptime. Use `aip corpus tag` and `aip embed` manually to accelerate the process.
 - **MCP dispatch is built but not runtime-wired** — no MCP operations are reachable via API/CLI today
 - **No review queue web UI** — use `aip review list/approve/reject` via CLI
 

@@ -1,7 +1,7 @@
 # AIP Technical Debt Register
 
 **Owner:** B. Moses Jorgensen  
-**Last Updated:** 2026-06-10 (Chunk 4: async-safe storage + datastore truth)
+**Last Updated:** 2026-06-11 (Chunk 3: Sexton full-mode wiring preflight)
 
 Each entry records a deliberate deferral — what was skipped, why, and what triggers remediation.
 
@@ -173,61 +173,55 @@ registered in the store registry.
 
 ## DEBT-006 — `actors/sexton.py` Not Wired into app.py (CRITICAL)
 
-**Status:** Active — BUG-003, highest priority for maintenance mode  
+**Status:** Resolved — Chunk 3 confirmed wiring is already in place; docs were stale  
 **Phase:** 3 Actor Intelligence  
-**Filed:** 2026-06-06
+**Filed:** 2026-06-06  
+**Resolved:** 2026-06-11
 
 **What was deferred:**  
 ADR-011 (2026-06-06) drove a code refactor that built a full-maintenance Sexton actor at
-`src/aip/orchestration/actors/sexton.py` (1,341 lines, 5 operations: tagging, embedding,
-wiki generation, graph extraction, failure classification). This was committed in `7fe15a2`.
+`src/aip/orchestration/actors/sexton.py` (2,100+ lines, 5 operations: tagging, embedding,
+wiki generation, graph extraction, failure classification).
 
-However, `app.py` was NOT updated to wire the new actor. The lifespan still:
-- Imports `orchestration/sexton/sexton.py` (the old failure-classifier-only Sexton, ~220 lines)
-- Instantiates it into `container.sexton`
-- Calls `run_classification_cycle()` every 300s
+DEBT-006 originally claimed app.py was NOT updated to wire the new actor. This was incorrect
+at the time of Chunk 3 inspection (2026-06-11): the wiring was already in place:
 
-The new `actors/sexton.py::Sexton.run_cycle()` is never called. As a result:
-- **Automatic corpus tagging is not running**
-- **Automatic embedding is not running**
-- **Automatic wiki generation is not running**
-- **Automatic graph extraction is not running**
-- Only failure classification runs (the old Sexton)
+- `app.py` lines 520-573 import `aip.orchestration.actors.sexton.Sexton` and instantiate it
+  into `container.sexton_actor` with all required stores.
+- `app.py` lines 1256-1313 create `_sexton_actor_scheduler()` that calls
+  `container.sexton_actor.run_cycle()` on a 300s cadence.
+- `app.py` lines 1319-1331 fire an immediate `run_cycle()` on startup.
 
-**Why deferred:**  
-The refactor was done in incremental commits focused on the code. The app.py wiring update
-was identified as a separate task and captured here. It was not a silent omission — the
-docstring in `actors/sexton.py` explicitly references the wiring gap.
+**What Chunk 3 actually fixed:**
 
-**Impact:**  
-This is the single highest-priority debt item. Until it is resolved:
-- The full embedding pass cannot complete (2,716 turns unembedded)
-- Hybrid retrieval quality is limited by low embedding coverage (~1.8%)
-- Wiki generation and graph extraction are not running automatically
+1. **L4 reset.py signature mismatch** — `Sexton(trace_store)` passed `trace_store` as the
+   first positional arg (`config`) instead of as `trace_store=trace_store`. Fixed to use
+   keyword arg.
 
-**Remediation steps (BUG-003):**  
-In `src/aip/adapter/api/app.py`, replace the Sexton instantiation block and scheduler block:
+2. **Honest state reporting** — `get_status_summary()` now returns a synthesized `state`
+   field: `active`, `degraded`, `disabled`, or `failed`. Previously there was no top-level
+   state; the `/health/dogfood` endpoint reported `"sexton": "active"` based solely on
+   `container.sexton_actor is not None`, which was misleading when core deps were missing.
 
-1. **Instantiation** — import `actors/sexton.Sexton` instead of `sexton/sexton.Sexton`;
-   pass the full store set: `sexton_provider`, `corpus_turn_store`, `embedding_provider`,
-   `vector_store`, `artifact_store`, `ecs_store`, `event_store`, `trace_store`,
-   `lexical_store`, `config`.
+3. **Cycle failure recording** — The scheduler's `except` block now records failures in
+   `container.sexton_actor._recent_errors` so status endpoints reflect the failure state.
 
-2. **Scheduler** — change `await container.sexton.run_classification_cycle()` to
-   `await container.sexton.run_cycle()`.
+4. **Stale docs** — STATUS.md, DOGFOOD_READY.md, and this entry all claimed Sexton was
+   "NOT WIRED" when it was already wired. Updated to reflect reality.
 
-3. **Interval** — `run_cycle()` reads `SextonConfig.classification_interval_seconds`
-   (same field, same default 300s).
-
-4. **Docstring fix** — update `actors/sexton.py` docstring to reference
-   `container.sexton` (not `container.sexton_actor`).
+**Chunk 3 status:** DEBT-006 is resolved. The Sexton actor is wired and scheduled. The
+remaining gap is embedding coverage (~1.8%), which is an operational concern requiring
+the embedding provider to be configured and the server to run long enough for Sexton
+cycles to process the backlog.
 
 **Related work:**  
-- `src/aip/orchestration/actors/sexton.py` — the full-maintenance Sexton (built, unwired)
-- `src/aip/orchestration/sexton/sexton.py` — the old failure-classifier Sexton (currently wired)
-- `src/aip/adapter/api/app.py` — the wiring location
-- `src/aip/adapter/api/dependencies.py` — `container.sexton` field (Any type)
+- `src/aip/orchestration/actors/sexton.py` — the full-maintenance Sexton (wired, running)
+- `src/aip/orchestration/sexton/sexton.py` — the old failure-classifier Sexton (delegated to by the new actor)
+- `src/aip/adapter/api/app.py` — the wiring location (lines 520-573, 1256-1331)
+- `src/aip/adapter/api/dependencies.py` — `container.sexton_actor` field (Any type)
+- `src/aip/adapter/api/routes/health.py` — honest Sexton state in /health and /health/dogfood
+- `src/aip/orchestration/l4/reset.py` — fixed signature mismatch
+- `tests/test_chunk3_sexton_wiring.py` — 19 tests for honest state, startup, signatures
 - ADR-011 — the architectural decision that drove the refactor
-- ROADMAP Phase 3.3 — Sexton status
 
 ---

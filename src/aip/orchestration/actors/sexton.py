@@ -429,24 +429,52 @@ class Sexton:
     def get_status_summary(self) -> dict:
         """Return a summary of Sexton's current state for operator visibility.
 
-        Includes dependency availability, last cycle time, batch telemetry,
+        Includes an honest synthesized ``state`` field:
+          active   — all core dependencies present, at least one cycle completed
+          degraded — actor exists but missing key dependencies (embedding_provider,
+                     corpus_turn_store, sexton_provider, vector_store)
+          disabled — no event_store (the construction-time gate failed)
+          failed   — last cycle raised an unhandled error
+
+        Also includes dependency availability, last cycle time, batch telemetry,
         and auto-tuning state. This method is synchronous and never raises.
         Called by /actors/status and /actors/sexton endpoints.
         """
+        deps = {
+            "sexton_provider": self._sexton_provider is not None,
+            "corpus_turn_store": self._corpus_turns is not None,
+            "embedding_provider": self._embed is not None,
+            "vector_store": self._vector is not None,
+            "artifact_store": self._artifacts is not None,
+            "ecs_store": self._ecs is not None,
+            "event_store": self._events is not None,
+            "trace_store": self._trace_store is not None,
+            "lexical_store": self._lexical is not None,
+            "graph_store": self._graph_store is not None,
+            "alert_manager": self._alert_manager is not None,
+        }
+
+        # Core dependencies without which Sexton's vigil cycle is largely
+        # non-functional. Missing any of these means "degraded", not "active".
+        core_deps = ["sexton_provider", "corpus_turn_store", "embedding_provider", "vector_store"]
+        missing_core = [d for d in core_deps if not deps[d]]
+
+        if not deps["event_store"]:
+            state = "disabled"
+        elif self._recent_errors and not self._last_cycle_time:
+            state = "failed"
+        elif missing_core:
+            state = "degraded"
+        elif self._last_cycle_time is not None:
+            state = "active"
+        else:
+            # Instantiated but no cycle has run yet — degraded until proven active
+            state = "degraded"
+
         return {
-            "dependencies": {
-                "sexton_provider": self._sexton_provider is not None,
-                "corpus_turn_store": self._corpus_turns is not None,
-                "embedding_provider": self._embed is not None,
-                "vector_store": self._vector is not None,
-                "artifact_store": self._artifacts is not None,
-                "ecs_store": self._ecs is not None,
-                "event_store": self._events is not None,
-                "trace_store": self._trace_store is not None,
-                "lexical_store": self._lexical is not None,
-                "graph_store": self._graph_store is not None,
-                "alert_manager": self._alert_manager is not None,
-            },
+            "state": state,
+            "missing_core_dependencies": missing_core,
+            "dependencies": deps,
             "last_cycle_time": self._last_cycle_time,
             "cycle_count": self._cycle_count,
             "recent_errors": list(self._recent_errors),
@@ -463,7 +491,6 @@ class Sexton:
             },
             "embedding_pass": dict(self._embedding_pass_state),
             "embedding_failure_count": len(self._embedding_failures),
-            # Sprint 6.3: Restart recovery and provider health
             "current_cycle_id": self._current_cycle_id,
             "provider_outage_detected": self._provider_outage_detected,
             "consecutive_embed_failures": self._consecutive_embed_failures,
