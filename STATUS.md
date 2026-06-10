@@ -6,7 +6,7 @@
 **Release:** Alpha Test Release
 **Project Mode:** MAINTENANCE — active development phase complete; see docs/Maintenance_Protocol.md
 
-> This document reflects the state after Chunk 4 (embedding backfill hardening).
+> This document reflects the state after Chunk 5 (retrieval honesty and vector health verification).
 > The project has entered maintenance mode. No further feature sprints are planned.
 > See ROADMAP.md for the maintenance mode section and docs/Maintenance_Protocol.md for operational procedures.
 
@@ -40,7 +40,7 @@ Production configuration is **enforced programmatically**. Unsafe configs fail a
 
 ## Module Status
 
-- **Tests:** 1002+ passing, 23 skipped (sqlite_vss extension + pre-existing governance), 2 pre-existing failures
+- **Tests:** 1048+ passing (incl. 46 new Chunk 5 tests), 23 skipped (sqlite_vss extension + pre-existing governance), 2 pre-existing failures
 - **Architecture:** Three-layer (foundation → orchestration → adapter)
 - **Default DB path:** `db/state.db` (SQLite, laptop profile)
 - **Scaffolding:** ~5-8% overall (MCP dispatch, adaptive router, ScriptNode sandbox)
@@ -82,6 +82,32 @@ sustained server uptime for Sexton cycles to process the backlog).
 configured_idle, backfill_pending, backfill_running, partially_embedded, embedded, degraded,
 failed). Runtime model assignment propagates to Sexton and triggers re-embedding.
 Mock/fake providers are reported as "degraded" rather than "healthy".
+
+## Retrieval Honesty (Chunk 5)
+
+Chunk 5 hardens the retrieval pipeline with honest per-channel health reporting. Previously,
+unregistered enabled channels reported "failed" and channels returning 0 results reported
+"active" with 0-result reasons — both were misleading. The system now distinguishes between
+channels that are unavailable, not configured, and genuinely empty.
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| ChannelHealthState | ✅ Extended | 3 new states: UNAVAILABLE, NOT_CONFIGURED, EMPTY |
+| ChannelHealthDetail | ✅ New | Per-channel structured detail: state, attempted, succeeded, result_count, latency_ms, degradation_reason, error_summary, backend_type, vss_available, vector_count, embedding_provider_configured |
+| RetrievalTrace extensions | ✅ Complete | channel_details, lexical_only, vector_contributed, channels_attempted, channels_used |
+| Unavailable channel detection | ✅ Wired | get_unavailable_channels(), get_not_configured_channels(), get_empty_channels() |
+| Degradation summary | ✅ Updated | Handles unavailable, not_configured, empty states |
+| /health retrieval_channel_health | ✅ New | Per-channel registration status, vector backend detail, embedding provider status |
+| /health/dogfood channel_states | ✅ New | Per-channel state dict (available, unavailable, not_configured, degraded) |
+| Ask pipeline honesty flags | ✅ Wired | lexical_only and vector_contributed flags set per retrieval round |
+
+**Key semantics:**
+- Unregistered enabled channels → `NOT_CONFIGURED` (not "failed")
+- Channels returning 0 results → `EMPTY` (not "active" with 0-result reason)
+- If embedding provider is missing, vector channel state upgraded from DISABLED to `NOT_CONFIGURED`
+- `lexical_only=true` when only FTS5 contributed results; `vector_contributed=true` when vector channel returned results
+
+**Tests:** 46 new tests in `tests/test_chunk5_retrieval_honesty_v2.py`
 
 ## Runtime Gap Closure (P9)
 
@@ -205,3 +231,6 @@ All known bugs have been documented. See TECH_DEBT.md for the full debt register
 bug cross-references. DEBT-006/BUG-003 (Sexton not wired) is resolved as of Chunk 3.
 Chunk 4 resolved: fake "healthy" embedding status in adapter/health.py now reports honest
 not_configured/degraded/failed states based on actual provider type.
+Chunk 5 resolved: unregistered channels no longer report "failed" (now "not_configured");
+channels returning 0 results no longer report "active" (now "empty"); per-channel structured
+health details surfaced in /health and /health/dogfood endpoints.

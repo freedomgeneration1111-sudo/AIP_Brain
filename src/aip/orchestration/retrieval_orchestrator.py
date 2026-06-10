@@ -22,7 +22,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
-from aip.foundation.schemas.retrieval import ChannelHealthState, RetrievalHit, RetrievalTrace
+from aip.foundation.schemas.retrieval import ChannelHealthDetail, ChannelHealthState, RetrievalHit, RetrievalTrace
 
 logger = logging.getLogger(__name__)
 
@@ -436,26 +436,48 @@ class RetrievalOrchestrator:
 
         trace.channels_queried = list(active_channels.keys())
 
-        # Sprint 10: Initialize channel health — all enabled channels start
+        # Sprint 10 + Chunk 5: Initialize channel health — all enabled channels start
         # as "active" and are updated based on dispatch results.
         # Channels that were disabled (not in channel_flags or flag=False)
         # get the "disabled" health state.
+        # Channels that were enabled but not registered (missing store) get
+        # "not_configured" (distinct from "disabled" which is operator choice).
         channel_health: dict[str, str] = {}
         channel_health_reasons: dict[str, str] = {}
+        channel_details: dict[str, ChannelHealthDetail] = {}
 
         for ch_name, enabled in channel_flags.items():
             if not enabled:
                 channel_health[ch_name] = ChannelHealthState.DISABLED.value
                 channel_health_reasons[ch_name] = "Channel not enabled for this query"
+                channel_details[ch_name] = ChannelHealthDetail(
+                    channel=ch_name,
+                    state=ChannelHealthState.DISABLED,
+                    attempted=False,
+                    succeeded=False,
+                    degradation_reason="Channel not enabled for this query",
+                )
             elif ch_name not in self._channels:
-                channel_health[ch_name] = ChannelHealthState.FAILED.value
+                channel_health[ch_name] = ChannelHealthState.NOT_CONFIGURED.value
                 channel_health_reasons[ch_name] = "Channel not registered (missing store dependency)"
+                channel_details[ch_name] = ChannelHealthDetail(
+                    channel=ch_name,
+                    state=ChannelHealthState.NOT_CONFIGURED,
+                    attempted=False,
+                    succeeded=False,
+                    degradation_reason="Channel not registered (missing store dependency)",
+                )
             # Active channels will be updated after dispatch
 
         if not active_channels:
             trace.verdict = "NO_RESULTS"
             trace.channel_health = channel_health
             trace.channel_health_reasons = channel_health_reasons
+            trace.channel_details = channel_details
+            trace.channels_attempted = []
+            trace.channels_used = []
+            trace.lexical_only = True
+            trace.vector_contributed = False
             return [], trace
 
         round_start = time.monotonic()
@@ -495,43 +517,127 @@ class RetrievalOrchestrator:
             channel_results[name] = hits
             trace.per_channel_elapsed_ms[name] = elapsed_ms
 
-            # Sprint 10: Determine channel health from dispatch results
+            # Sprint 10 + Chunk 5: Determine channel health from dispatch results
             if name in channel_failures:
                 channel_health[name] = ChannelHealthState.FAILED.value
-                channel_health_reasons[name] = str(channel_failures[name])[:200]
+                reason = str(channel_failures[name])[:200]
+                channel_health_reasons[name] = reason
+                channel_details[name] = ChannelHealthDetail(
+                    channel=name,
+                    state=ChannelHealthState.FAILED,
+                    attempted=True,
+                    succeeded=False,
+                    result_count=0,
+                    latency_ms=elapsed_ms,
+                    degradation_reason=reason,
+                    error_summary=reason,
+                )
             elif not hits:
                 # Check if the safe_retriever recorded a failure
                 retriever_fn = active_channels.get(name)
                 last_failure = getattr(retriever_fn, 'get_last_failure', lambda: None)()
                 if last_failure is not None:
+                    reason = last_failure.message[:200]
                     channel_health[name] = ChannelHealthState.FAILED.value
-                    channel_health_reasons[name] = last_failure.message[:200]
+                    channel_health_reasons[name] = reason
+                    channel_details[name] = ChannelHealthDetail(
+                        channel=name,
+                        state=ChannelHealthState.FAILED,
+                        attempted=True,
+                        succeeded=False,
+                        result_count=0,
+                        latency_ms=elapsed_ms,
+                        degradation_reason=reason,
+                        error_summary=reason,
+                    )
                 else:
-                    # Channel succeeded but returned 0 results
-                    channel_health[name] = ChannelHealthState.ACTIVE.value
+                    # Channel succeeded but returned 0 results — Chunk 5: EMPTY state
+                    channel_health[name] = ChannelHealthState.EMPTY.value
                     channel_health_reasons[name] = "Channel returned 0 results"
+                    channel_details[name] = ChannelHealthDetail(
+                        channel=name,
+                        state=ChannelHealthState.EMPTY,
+                        attempted=True,
+                        succeeded=False,
+                        result_count=0,
+                        latency_ms=elapsed_ms,
+                        degradation_reason="Channel returned 0 results",
+                    )
             else:
                 # Channel returned results — check if it's degraded
                 # Vector channel can be degraded (brute-force fallback)
                 if name == "vector" and hasattr(self, '_vector_degraded') and self._vector_degraded:
+                    reason = "Vector search using brute-force fallback (no VSS index)"
                     channel_health[name] = ChannelHealthState.DEGRADED.value
-                    channel_health_reasons[name] = "Vector search using brute-force fallback (no VSS index)"
+                    channel_health_reasons[name] = reason
+                    # Build vector-specific detail
+                    detail = ChannelHealthDetail(
+                        channel=name,
+                        state=ChannelHealthState.DEGRADED,
+                        attempted=True,
+                        succeeded=True,
+                        result_count=len(hits),
+                        latency_ms=elapsed_ms,
+                        degradation_reason=reason,
+                    )
+                    # Populate vector-specific fields from the store if available
+                    if hasattr(self, '_vector_store') and self._vector_store is not None:
+                        store = self._vector_store
+                        if hasattr(store, 'get_backend_status'):
+                            from aip.foundation.schemas.vector import VectorBackendStatus as _VecStatus
+                            _vstatus = store.get_backend_status()
+                            detail.backend_type = "brute_force" if _vstatus == _VecStatus.DEGRADED_BRUTEFORCE else (store._backend_name if hasattr(store, '_backend_name') else "unknown")
+                        if hasattr(store, '_vss_available'):
+                            detail.vss_available = store._vss_available
+                        if hasattr(store, 'count'):
+                            detail.vector_count = 0  # sync fallback; async count populated by ask_pipeline
+                    if hasattr(self, '_embedding_provider_configured'):
+                        detail.embedding_provider_configured = self._embedding_provider_configured
+                    channel_details[name] = detail
                 else:
                     channel_health[name] = ChannelHealthState.ACTIVE.value
                     channel_health_reasons[name] = ""
+                    channel_details[name] = ChannelHealthDetail(
+                        channel=name,
+                        state=ChannelHealthState.ACTIVE,
+                        attempted=True,
+                        succeeded=True,
+                        result_count=len(hits),
+                        latency_ms=elapsed_ms,
+                    )
+                    # For vector channel with results and NOT degraded, still populate vector-specific fields
+                    if name == "vector":
+                        if hasattr(self, '_vector_store') and self._vector_store is not None:
+                            store = self._vector_store
+                            if hasattr(store, 'get_backend_status'):
+                                from aip.foundation.schemas.vector import VectorBackendStatus as _VecStatus2
+                                _vstatus2 = store.get_backend_status()
+                                channel_details[name].backend_type = "sqlite_vss" if _vstatus2 == _VecStatus2.AVAILABLE else "unknown"
+                            if hasattr(store, '_vss_available'):
+                                channel_details[name].vss_available = store._vss_available
+                        if hasattr(self, '_embedding_provider_configured'):
+                            channel_details[name].embedding_provider_configured = self._embedding_provider_configured
 
-        # Sprint 10: Build degradation warnings from channel health
+        # Sprint 10 + Chunk 5: Build degradation warnings from channel health
         degradation_warnings: list[str] = []
         failed_channels = [ch for ch, h in channel_health.items() if h == ChannelHealthState.FAILED.value]
         degraded_channels = [ch for ch, h in channel_health.items() if h == ChannelHealthState.DEGRADED.value]
+        unavailable_channels = [ch for ch, h in channel_health.items() if h == ChannelHealthState.UNAVAILABLE.value]
+        not_configured_channels = [ch for ch, h in channel_health.items() if h == ChannelHealthState.NOT_CONFIGURED.value]
 
         if failed_channels:
             for ch in failed_channels:
                 reason = channel_health_reasons.get(ch, "")
-                degradation_warnings.append(f"{ch.capitalize()} channel unavailable")
+                degradation_warnings.append(f"{ch.capitalize()} channel failed")
         if degraded_channels:
             for ch in degraded_channels:
                 degradation_warnings.append(f"{ch.capitalize()} channel degraded")
+        if unavailable_channels:
+            for ch in unavailable_channels:
+                degradation_warnings.append(f"{ch.capitalize()} channel unavailable")
+        if not_configured_channels:
+            for ch in not_configured_channels:
+                degradation_warnings.append(f"{ch.capitalize()} channel not configured")
 
         # Identify primary evidence channel (channel that contributed the most)
         # This will be set after quality gate, but we can set a preliminary version
@@ -623,15 +729,23 @@ class RetrievalOrchestrator:
                     trace.llm_entity_count = int(llm_count)
                 break  # Only check the first graph hit
 
-        # Sprint 10: Set unified trace fields
+        # Sprint 10 + Chunk 5: Set unified trace fields
         trace.channel_health = channel_health
         trace.channel_health_reasons = channel_health_reasons
+        trace.channel_details = channel_details
         trace.degradation_warnings = degradation_warnings
         trace.documents_retrieved_ids = [h.id for h in filtered]
         trace.top_scores = [
             {"id": h.id, "rrf_score": round(h.rrf_score, 6), "raw_score": round(h.score, 6)}
             for h in filtered[:10]
         ]
+        # Chunk 5: Set retrieval honesty flags
+        trace.channels_attempted = list(active_channels.keys())
+        trace.channels_used = [ch for ch, h in channel_health.items() if h in ("active", "degraded")]
+        trace.lexical_only = (
+            not any(ch in ("vector", "graph", "wiki", "procedural") for ch in trace.channels_used)
+        )
+        trace.vector_contributed = "vector" in trace.channels_used
 
         return filtered, trace
 

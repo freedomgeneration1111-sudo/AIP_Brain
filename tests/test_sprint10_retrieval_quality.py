@@ -317,7 +317,8 @@ class TestOrchestratorChannelHealth:
 
         hits, trace = await orch.retrieve("test query", config=config)
 
-        assert trace.channel_health["vector"] == "failed"
+        # Chunk 5: Unregistered channels now report "not_configured" instead of "failed"
+        assert trace.channel_health["vector"] == "not_configured"
         assert "not registered" in trace.channel_health_reasons.get("vector", "").lower()
 
     @pytest.mark.asyncio

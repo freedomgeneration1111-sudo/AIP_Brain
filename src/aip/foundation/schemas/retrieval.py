@@ -42,22 +42,111 @@ class ChannelHealthState(enum.Enum):
             a structured ChannelFailure.
         disabled: Channel was not enabled for this retrieval round
             (not dispatched at all).
+        unavailable: Channel's backing store is not present or not
+            configured (e.g. graph_store is None, wiki_store missing).
+            This is distinct from "disabled" (operator chose not to
+            enable) and "failed" (store was there but errored).
+        not_configured: Channel could not register because a required
+            dependency was missing at registration time (e.g. no
+            embedding provider for the vector channel).
+        empty: Channel dispatched successfully and returned zero
+            results.  This is distinct from "active" (which implies
+            results were returned) and from "failed" (no error occurred).
     """
 
     ACTIVE = "active"
     DEGRADED = "degraded"
     FAILED = "failed"
     DISABLED = "disabled"
+    UNAVAILABLE = "unavailable"
+    NOT_CONFIGURED = "not_configured"
+    EMPTY = "empty"
 
     @property
     def is_available(self) -> bool:
         """True when the channel can contribute results (even if degraded)."""
-        return self in (ChannelHealthState.ACTIVE, ChannelHealthState.DEGRADED)
+        return self in (ChannelHealthState.ACTIVE, ChannelHealthState.DEGRADED, ChannelHealthState.EMPTY)
 
     @property
     def is_healthy(self) -> bool:
         """True only when the channel is fully active (no degradation)."""
         return self == ChannelHealthState.ACTIVE
+
+    @property
+    def was_attempted(self) -> bool:
+        """True when the channel was dispatched (even if it returned nothing or failed)."""
+        return self in (ChannelHealthState.ACTIVE, ChannelHealthState.DEGRADED, ChannelHealthState.FAILED, ChannelHealthState.EMPTY)
+
+
+@dataclass
+class ChannelHealthDetail:
+    """Per-channel health detail for retrieval honesty.
+
+    Each retrieval channel reports this structured detail on every
+    retrieval round, providing enough information for operators and
+    dashboards to diagnose exactly what happened without scraping logs.
+
+    Chunk 5 addition: This is the primary unit of retrieval honesty.
+    It replaces the raw string-only channel_health dict with structured
+    data that includes attempt status, result counts, latency, and
+    degradation reasons.
+
+    Attributes:
+        channel: Name of the channel (e.g. ``"fts"``, ``"vector"``).
+        state: Current health state.
+        attempted: Whether the channel was dispatched for this round.
+        succeeded: Whether the channel returned results without error.
+        result_count: Number of hits returned by this channel.
+        latency_ms: Wall-clock time in ms for this channel's dispatch.
+        degradation_reason: Human-readable reason for degraded/unavailable/
+            failed/not_configured state (empty string for active).
+        error_summary: Short error message if the channel failed.
+        backend_type: For vector channel: "sqlite_vss", "pgvector",
+            "brute_force", "in_memory", or empty string.
+        vss_available: For vector channel: whether sqlite-vss extension
+            is loaded.
+        vector_count: For vector channel: total number of stored vectors.
+        embedding_provider_configured: For vector channel: whether an
+            embedding provider is available.
+    """
+
+    channel: str = ""
+    state: ChannelHealthState = ChannelHealthState.DISABLED
+    attempted: bool = False
+    succeeded: bool = False
+    result_count: int = 0
+    latency_ms: float = 0.0
+    degradation_reason: str = ""
+    error_summary: str = ""
+    # Vector-specific fields
+    backend_type: str = ""
+    vss_available: bool | None = None
+    vector_count: int | None = None
+    embedding_provider_configured: bool | None = None
+
+    def to_dict(self) -> dict:
+        """Serialize for trace/dashboards/API responses."""
+        d: dict = {
+            "channel": self.channel,
+            "state": self.state.value,
+            "attempted": self.attempted,
+            "succeeded": self.succeeded,
+            "result_count": self.result_count,
+            "latency_ms": round(self.latency_ms, 2),
+            "degradation_reason": self.degradation_reason,
+        }
+        if self.error_summary:
+            d["error_summary"] = self.error_summary
+        # Vector-specific fields (only include when populated)
+        if self.backend_type:
+            d["backend_type"] = self.backend_type
+        if self.vss_available is not None:
+            d["vss_available"] = self.vss_available
+        if self.vector_count is not None:
+            d["vector_count"] = self.vector_count
+        if self.embedding_provider_configured is not None:
+            d["embedding_provider_configured"] = self.embedding_provider_configured
+        return d
 
 
 @dataclass
@@ -280,10 +369,12 @@ class RetrievalTrace:
     # Sprint 10: Unified RetrievalTrace fields
     # ------------------------------------------------------------------
 
-    # Per-channel health: channel_name → "active" | "degraded" | "failed" | "disabled"
+    # Per-channel health: channel_name → "active" | "degraded" | "failed" | "disabled" | "unavailable" | "not_configured" | "empty"
     channel_health: dict[str, str] = field(default_factory=dict)
     # Per-channel reason for degraded/failed state
     channel_health_reasons: dict[str, str] = field(default_factory=dict)
+    # Chunk 5: Per-channel structured health details
+    channel_details: dict[str, ChannelHealthDetail] = field(default_factory=dict)
     # Query expansion terms
     query_expansion: list[str] = field(default_factory=list)
     # Entities extracted from query (for graph channel / ranking signals)
@@ -298,6 +389,15 @@ class RetrievalTrace:
     final_context_source_ids: list[str] = field(default_factory=list)
     # Human-readable warnings about retrieval degradation
     degradation_warnings: list[str] = field(default_factory=list)
+    # Chunk 5: Retrieval honesty flags
+    # Whether the answer was produced using only lexical/corpus channels
+    lexical_only: bool = False
+    # Whether vector context contributed to the final answer
+    vector_contributed: bool = False
+    # Names of channels that were attempted (dispatched)
+    channels_attempted: list[str] = field(default_factory=list)
+    # Names of channels that returned results (active or degraded)
+    channels_used: list[str] = field(default_factory=list)
 
     def degradation_summary(self) -> str:
         """Return a human-readable summary of retrieval degradation.
@@ -334,7 +434,7 @@ class RetrievalTrace:
                 f"{vdi.metadata_only_stored} chunk(s) stored as metadata-only "
                 "(unsearchable by vector)."
             )
-        # Sprint 10: Add channel health warnings
+        # Sprint 10 + Chunk 5: Add channel health warnings (all non-active states)
         for channel, health in self.channel_health.items():
             if health == "failed":
                 reason = self.channel_health_reasons.get(channel, "unknown error")
@@ -342,6 +442,16 @@ class RetrievalTrace:
             elif health == "degraded":
                 reason = self.channel_health_reasons.get(channel, "degraded quality")
                 parts.append(f"{channel.capitalize()} channel degraded: {reason}")
+            elif health == "unavailable":
+                reason = self.channel_health_reasons.get(channel, "store not present")
+                parts.append(f"{channel.capitalize()} channel unavailable: {reason}")
+            elif health == "not_configured":
+                reason = self.channel_health_reasons.get(channel, "missing dependency")
+                parts.append(f"{channel.capitalize()} channel not configured: {reason}")
+            elif health == "empty":
+                reason = self.channel_health_reasons.get(channel, "")
+                if reason:
+                    parts.append(f"{channel.capitalize()} channel returned no results: {reason}")
         # Add explicit degradation warnings
         if self.degradation_warnings:
             parts.extend(self.degradation_warnings)
@@ -359,6 +469,18 @@ class RetrievalTrace:
         """Return names of channels with 'degraded' health."""
         return [ch for ch, h in self.channel_health.items() if h == "degraded"]
 
+    def get_unavailable_channels(self) -> list[str]:
+        """Return names of channels with 'unavailable' health."""
+        return [ch for ch, h in self.channel_health.items() if h == "unavailable"]
+
+    def get_not_configured_channels(self) -> list[str]:
+        """Return names of channels with 'not_configured' health."""
+        return [ch for ch, h in self.channel_health.items() if h == "not_configured"]
+
+    def get_empty_channels(self) -> list[str]:
+        """Return names of channels with 'empty' health."""
+        return [ch for ch, h in self.channel_health.items() if h == "empty"]
+
     def to_diagnostic_dict(self) -> dict:
         """Serialize the full trace for diagnostic dashboards and eval.
 
@@ -373,9 +495,17 @@ class RetrievalTrace:
             "channels_queried": self.channels_queried,
             "channel_health": self.channel_health,
             "channel_health_reasons": self.channel_health_reasons,
+            "channel_details": {ch: d.to_dict() for ch, d in self.channel_details.items()},
             "active_channels": self.get_active_channels(),
             "failed_channels": self.get_failed_channels(),
             "degraded_channels": self.get_degraded_channels(),
+            "unavailable_channels": self.get_unavailable_channels(),
+            "not_configured_channels": self.get_not_configured_channels(),
+            "empty_channels": self.get_empty_channels(),
+            "channels_attempted": self.channels_attempted,
+            "channels_used": self.channels_used,
+            "lexical_only": self.lexical_only,
+            "vector_contributed": self.vector_contributed,
             "query_expansion": self.query_expansion,
             "entities_extracted": self.entities_extracted,
             "per_channel_elapsed_ms": self.per_channel_elapsed_ms,
@@ -403,6 +533,7 @@ class RetrievalTrace:
 
 __all__ = [
     "ChannelHealthState",
+    "ChannelHealthDetail",
     "ChannelHealthReport",
     "Chunk",
     "RetrievalResult",

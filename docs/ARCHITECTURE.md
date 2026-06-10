@@ -239,3 +239,41 @@ User Query
   disabled and FTS5-only results are returned (prevents degraded hybrid quality).
 - **Evaluation**: `aip eval retrieval --mode (hybrid|fts-only|all)` measures P@5, R@10, MRR
   against golden queries. `scripts/retrieval_weight_tuning.py` does grid search over weights.
+
+#### Channel Health and Retrieval Honesty (Chunk 5)
+
+Each retrieval channel is tracked with structured health detail via `ChannelHealthDetail`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `channel` | str | Channel name (fts, vector, corpus) |
+| `state` | ChannelHealthState | Current health state |
+| `attempted` | bool | Whether the channel was queried |
+| `succeeded` | bool | Whether the query returned results |
+| `result_count` | int | Number of results returned |
+| `latency_ms` | float | Query latency in milliseconds |
+| `degradation_reason` | str | Optional reason for degraded/failed state |
+| `error_summary` | str | Optional error message |
+| `backend_type` | str | Vector backend type (e.g., "sqlite_vss") |
+| `vss_available` | bool | Whether VSS extension is available |
+| `vector_count` | int | Number of vectors in the store |
+| `embedding_provider_configured` | bool | Whether an embedding provider is wired |
+
+**ChannelHealthState** values:
+
+| State | Meaning |
+|-------|---------|
+| ACTIVE | Channel is healthy and returned results |
+| DEGRADED | Channel is operational but with reduced quality |
+| FAILED | Channel was attempted but encountered an error |
+| DISABLED | Channel is intentionally disabled |
+| UNAVAILABLE | Channel store is not present (Chunk 5) |
+| NOT_CONFIGURED | Channel is enabled but not registered/wired (Chunk 5) |
+| EMPTY | Channel was queried and returned 0 results (Chunk 5) |
+
+Key honesty semantics:
+- Unregistered enabled channels report `NOT_CONFIGURED` (not `FAILED`)
+- Channels returning 0 results report `EMPTY` (not `ACTIVE` with 0-result reason)
+- If embedding provider is missing, vector channel state is upgraded from `DISABLED` to `NOT_CONFIGURED`
+- `RetrievalTrace` includes `lexical_only` and `vector_contributed` flags for downstream consumers
+- `get_unavailable_channels()`, `get_not_configured_channels()`, `get_empty_channels()` accessors on `RetrievalTrace`

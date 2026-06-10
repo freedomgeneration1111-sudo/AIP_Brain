@@ -558,6 +558,61 @@ async def health(container: AipContainer = Depends(get_container)):
         except Exception:
             pass
 
+    # Chunk 5: Per-channel retrieval health from the orchestrator cache
+    retrieval_channel_health: dict[str, Any] = {}
+    try:
+        from aip.orchestration.retrieval_orchestrator import get_orchestrator_cache
+        from aip.orchestration.channels.registry import BUILTIN_CHANNELS
+
+        orch_cache = get_orchestrator_cache()
+        if orch_cache._orchestrator is not None:
+            orch = orch_cache._orchestrator
+            for ch_name in BUILTIN_CHANNELS:
+                is_registered = orch.is_registered(ch_name)
+                retrieval_channel_health[ch_name] = {
+                    "registered": is_registered,
+                    "state": "available" if is_registered else "not_configured",
+                }
+            # Add vector backend detail if vector store is available
+            if container.vector_store is not None:
+                try:
+                    vstatus = container.vector_store.get_backend_status()
+                    from aip.foundation.schemas.vector import VectorBackendStatus
+                    if "vector" in retrieval_channel_health:
+                        retrieval_channel_health["vector"]["backend_status"] = vstatus.value
+                        retrieval_channel_health["vector"]["backend_name"] = (
+                            container.vector_store._backend_name
+                            if hasattr(container.vector_store, "_backend_name")
+                            else "sqlite_vss"
+                        )
+                        retrieval_channel_health["vector"]["vss_available"] = (
+                            container.vector_store._vss_available
+                            if hasattr(container.vector_store, "_vss_available")
+                            else False
+                        )
+                        retrieval_channel_health["vector"]["state"] = (
+                            "active" if vstatus == VectorBackendStatus.AVAILABLE
+                            else "degraded" if vstatus == VectorBackendStatus.DEGRADED_BRUTEFORCE
+                            else "failed" if vstatus == VectorBackendStatus.FAILED
+                            else "disabled"
+                        )
+                        if vstatus == VectorBackendStatus.DEGRADED_BRUTEFORCE:
+                            retrieval_channel_health["vector"]["degradation_reason"] = (
+                                "Using brute-force fallback (sqlite-vss extension not available)"
+                            )
+                except Exception:
+                    pass
+            else:
+                if "vector" not in retrieval_channel_health:
+                    retrieval_channel_health["vector"] = {"registered": False, "state": "unavailable"}
+            # Mark embedding provider status for vector channel
+            if "vector" in retrieval_channel_health:
+                retrieval_channel_health["vector"]["embedding_provider_configured"] = (
+                    container.embedding_provider is not None
+                )
+    except Exception:
+        pass
+
     return {
         "status": status,
         "uptime_seconds": uptime_seconds,
@@ -591,6 +646,8 @@ async def health(container: AipContainer = Depends(get_container)):
         "alerting_health": alerting_health,
         # Sprint 8: Dogfood mode visibility
         "dogfood_mode": get_dogfood_mode(container.config).value,
+        # Chunk 5: Per-channel retrieval health
+        "retrieval_channel_health": retrieval_channel_health,
     }
 
 
@@ -696,5 +753,38 @@ async def dogfood_health(request: Any, container: AipContainer = Depends(get_con
         ch_available = sum(1 for v in readiness.retrieval_channels.values() if v)
         ch_total = len(readiness.retrieval_channels)
         response["channel_summary"] = f"{ch_available}/{ch_total} available"
+
+        # Chunk 5: Include per-channel state (not just bool) for honest reporting
+        channel_state_detail: dict[str, str] = {}
+        for ch_name, is_available in readiness.retrieval_channels.items():
+            if is_available:
+                channel_state_detail[ch_name] = "available"
+            else:
+                # Determine why not available
+                if ch_name == "vector":
+                    if container.vector_store is None:
+                        channel_state_detail[ch_name] = "unavailable"
+                    elif container.embedding_provider is None:
+                        channel_state_detail[ch_name] = "not_configured"
+                    else:
+                        channel_state_detail[ch_name] = "degraded"
+                elif ch_name == "graph":
+                    channel_state_detail[ch_name] = (
+                        "available" if getattr(container, "graph_store", None) is not None
+                        else "unavailable"
+                    )
+                elif ch_name == "wiki":
+                    channel_state_detail[ch_name] = (
+                        "available" if container.artifact_store is not None and getattr(container, "ecs_store", None) is not None
+                        else "unavailable"
+                    )
+                elif ch_name == "procedural":
+                    channel_state_detail[ch_name] = (
+                        "available" if container.artifact_store is not None
+                        else "unavailable"
+                    )
+                else:
+                    channel_state_detail[ch_name] = "unavailable"
+        response["channel_states"] = channel_state_detail
 
     return response

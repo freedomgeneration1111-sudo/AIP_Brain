@@ -33,7 +33,7 @@ from aip.foundation.protocols import (
     VectorStore,
 )
 from aip.foundation.schemas.ask import AskResult, AskSource, SourceReference
-from aip.foundation.schemas.retrieval import RetrievalHit, RetrievalTrace
+from aip.foundation.schemas.retrieval import ChannelHealthDetail, ChannelHealthState, RetrievalHit, RetrievalTrace
 from aip.foundation.schemas.vector import VectorBackendStatus, VectorDegradationInfo
 from aip.orchestration.channels.lexical_channel import _sanitize_fts_query
 from aip.orchestration.channels.registry import register_all_channels
@@ -294,10 +294,42 @@ async def _search_sources_with_trace(
             reason="No vector store configured",
         )
 
+    # Chunk 5: Populate vector-specific fields in channel_details
+    if trace is not None and stores.vector_store is not None and "vector" in trace.channel_details:
+        vec_detail = trace.channel_details["vector"]
+        vec_detail.embedding_provider_configured = stores.embedding_provider is not None
+        vec_detail.vss_available = getattr(stores.vector_store, '_vss_available', None)
+        if hasattr(stores.vector_store, 'get_backend_status'):
+            _vbs = stores.vector_store.get_backend_status()
+            if _vbs == VectorBackendStatus.AVAILABLE:
+                vec_detail.backend_type = "sqlite_vss"
+            elif _vbs == VectorBackendStatus.DEGRADED_BRUTEFORCE:
+                vec_detail.backend_type = "brute_force"
+            elif vec_detail.backend_type == "":
+                vec_detail.backend_type = _vbs.value
+        try:
+            vec_detail.vector_count = None  # async, populated separately if needed
+        except Exception:
+            pass
+        # Update the channel_health to reflect unavailable/not_configured if needed
+        if vec_detail.state == ChannelHealthState.DISABLED and stores.embedding_provider is None:
+            vec_detail.state = ChannelHealthState.NOT_CONFIGURED
+            vec_detail.degradation_reason = "No embedding provider configured"
+            trace.channel_health["vector"] = ChannelHealthState.NOT_CONFIGURED.value
+            trace.channel_health_reasons["vector"] = "No embedding provider configured"
+
     # Sprint 10: Populate final context info on the trace
     if trace is not None and packed is not None:
         trace.final_context_token_count = packed.token_count if hasattr(packed, 'token_count') else 0
         trace.final_context_source_ids = [h.id for h in hits]
+
+    # Chunk 5: Populate vector_count asynchronously if possible
+    if trace is not None and stores.vector_store is not None and "vector" in trace.channel_details:
+        try:
+            vec_count = await stores.vector_store.count()
+            trace.channel_details["vector"].vector_count = vec_count
+        except Exception:
+            pass
 
     return sources, trace, packed
 
@@ -785,6 +817,12 @@ def _build_retrieval_warnings(retrieval_trace: RetrievalTrace | None) -> list[st
             warnings.append(f"{channel.capitalize()} channel unavailable")
         elif health == "degraded":
             warnings.append(f"{channel.capitalize()} channel degraded")
+        elif health == "unavailable":
+            reason = retrieval_trace.channel_health_reasons.get(channel, "")
+            warnings.append(f"{channel.capitalize()} channel unavailable")
+        elif health == "not_configured":
+            reason = retrieval_trace.channel_health_reasons.get(channel, "")
+            warnings.append(f"{channel.capitalize()} channel not configured")
 
     # 2. Empty result warnings
     if retrieval_trace.hits_after_quality_gate == 0:
@@ -843,9 +881,17 @@ def _build_degradation_dict(retrieval_trace: RetrievalTrace | None) -> dict:
         # Sprint 10: Include unified trace diagnostic info
         result["channel_health"] = retrieval_trace.channel_health
         result["channel_health_reasons"] = retrieval_trace.channel_health_reasons
+        result["channel_details"] = {ch: d.to_dict() for ch, d in retrieval_trace.channel_details.items()}
         result["active_channels"] = retrieval_trace.get_active_channels()
         result["failed_channels"] = retrieval_trace.get_failed_channels()
         result["degraded_channels"] = retrieval_trace.get_degraded_channels()
+        result["unavailable_channels"] = retrieval_trace.get_unavailable_channels()
+        result["not_configured_channels"] = retrieval_trace.get_not_configured_channels()
+        result["empty_channels"] = retrieval_trace.get_empty_channels()
+        result["channels_attempted"] = retrieval_trace.channels_attempted
+        result["channels_used"] = retrieval_trace.channels_used
+        result["lexical_only"] = retrieval_trace.lexical_only
+        result["vector_contributed"] = retrieval_trace.vector_contributed
         result["query_expansion"] = retrieval_trace.query_expansion
         result["entities_extracted"] = retrieval_trace.entities_extracted
         result["documents_retrieved_count"] = len(retrieval_trace.documents_retrieved_ids)

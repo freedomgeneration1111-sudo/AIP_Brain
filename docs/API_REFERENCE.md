@@ -89,7 +89,25 @@ Computes real uptime, checks component availability, probes database write conne
     "sexton": { "initialized": true }
   },
   "budget_status": "active",
-  "db_writable": true
+  "db_writable": true,
+  "retrieval_channel_health": {
+    "fts": {
+      "registered": true,
+      "state": "active"
+    },
+    "vector": {
+      "registered": true,
+      "state": "active",
+      "backend_type": "sqlite_vss",
+      "vss_available": true,
+      "vector_count": 50,
+      "embedding_provider_configured": true
+    },
+    "corpus": {
+      "registered": true,
+      "state": "active"
+    }
+  }
 }
 ```
 
@@ -107,6 +125,30 @@ Computes real uptime, checks component availability, probes database write conne
 | `actors` | object | Beast/Vigil/Sexton initialization status |
 | `budget_status` | string | `"active"`, `"unconfigured"`, or `"error"` |
 | `db_writable` | bool | Whether a lightweight write to the event store succeeded |
+| `retrieval_channel_health` | object | **(Chunk 5)** Per-channel retrieval health. Keys are channel names (`fts`, `vector`, `corpus`). Each value contains `registered` (bool), `state` (string: active, unavailable, not_configured, degraded, failed, empty, disabled), and for the vector channel additionally: `backend_type`, `vss_available`, `vector_count`, `embedding_provider_configured` |
+
+---
+
+### `GET /api/v1/health/dogfood`
+
+Detailed health check for dogfood operators. No authentication required. Returns extended diagnostic information beyond the basic `/health` endpoint.
+
+**Response** (excerpt showing Chunk 5 additions):
+```json
+{
+  "sexton": "active",
+  "embedding_backfill_state": "not_configured",
+  "channel_states": {
+    "fts": "available",
+    "vector": "not_configured",
+    "corpus": "available"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `channel_states` | object | **(Chunk 5)** Per-channel state summary. Values: `"available"`, `"unavailable"`, `"not_configured"`, `"degraded"`. Distinguishes between channels that are present and healthy vs. channels that are absent or misconfigured. |
 
 ---
 

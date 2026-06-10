@@ -21,6 +21,13 @@ that guide was written, and there are important caveats for alpha testers:
   configured_idle, backfill_pending, backfill_running, partially_embedded, embedded, degraded,
   failed. Runtime model assignment via `PATCH /models/slots/embedding/model` propagates to
   Sexton and triggers re-embedding for turns with a different model.
+- **Per-channel retrieval health visibility** (Chunk 5) — `/health` now includes a
+  `retrieval_channel_health` section showing per-channel registration status, vector backend
+  detail, and embedding provider status. `/health/dogfood` includes `channel_states` with
+  per-channel state (available, unavailable, not_configured, degraded). Unregistered channels
+  report `not_configured` rather than `failed`; channels returning 0 results report `empty`
+  rather than `active`. The `lexical_only` flag in ask responses indicates when only FTS5
+  contributed results.
 - **MCP dispatch is built but not runtime-wired** — no MCP operations are reachable via API/CLI today
 - **No review queue web UI** — use `aip review list/approve/reject` via CLI
 

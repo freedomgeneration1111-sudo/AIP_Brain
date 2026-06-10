@@ -1,7 +1,7 @@
 # AIP Technical Debt Register
 
 **Owner:** B. Moses Jorgensen  
-**Last Updated:** 2026-06-11 (Chunk 4: Embedding backfill hardening)
+**Last Updated:** 2026-06-11 (Chunk 5: Retrieval honesty and vector health verification)
 
 Each entry records a deliberate deferral — what was skipped, why, and what triggers remediation.
 
@@ -221,6 +221,42 @@ cycles to process the backlog.
 - `src/aip/adapter/api/dependencies.py` — `container.sexton_actor` field (Any type)
 - `src/aip/adapter/api/routes/health.py` — honest Sexton state in /health and /health/dogfood
 - `src/aip/orchestration/l4/reset.py` — fixed signature mismatch
+
+---
+
+## DEBT-008 — ChannelHealthReport.format_warnings() Does Not Surface UNAVAILABLE or NOT_CONFIGURED States
+
+**Status:** Active — by design, low priority
+**Phase:** Chunk 5 (Retrieval honesty and vector health verification)
+**Filed:** 2026-06-11
+
+**What was deferred:**
+`ChannelHealthReport.format_warnings()` only surfaces warnings for FAILED and DEGRADED channel
+states. The new UNAVAILABLE and NOT_CONFIGURED states (added in Chunk 5) are not included in
+the formatted warnings output. These states are visible through the structured `channel_details`
+dict in `RetrievalTrace.to_diagnostic_dict()`, the `get_unavailable_channels()` /
+`get_not_configured_channels()` accessors, and the `/health` and `/health/dogfood` endpoints,
+but `format_warnings()` skips them.
+
+**Why deferred:**
+This is a deliberate scoping decision for Chunk 5. The `format_warnings()` method is used in
+the retrieval trace summary to alert operators to active problems. UNAVAILABLE and NOT_CONFIGURED
+are configuration/presence states, not runtime failures — they reflect missing infrastructure
+rather than degraded operation. Including them in every retrieval warning would be noisy for
+operators who already know those channels are absent. The structured data paths provide full
+visibility for monitoring tools.
+
+**Remediation trigger:**
+If operational feedback indicates that UNAVAILABLE or NOT_CONFIGURED channels should surface
+in `format_warnings()`, add them with a distinct severity (e.g., informational vs. warning).
+This would be a one-line change in `format_warnings()` but the threshold for inclusion should
+be driven by actual operational need, not speculative completeness.
+
+**Related work:**
+- `src/aip/foundation/schemas/retrieval.py` — ChannelHealthState enum, ChannelHealthDetail dataclass
+- `src/aip/foundation/schemas/retrieval.py` — ChannelHealthReport.format_warnings()
+- `src/aip/adapter/api/routes/health.py` — retrieval_channel_health and channel_states sections
+- `tests/test_chunk5_retrieval_honesty_v2.py` — 46 tests for Chunk 5 retrieval honesty
 - `tests/test_chunk3_sexton_wiring.py` — 19 tests for honest state, startup, signatures
 - ADR-011 — the architectural decision that drove the refactor
 
