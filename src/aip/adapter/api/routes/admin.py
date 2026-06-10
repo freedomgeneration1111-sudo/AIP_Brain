@@ -133,11 +133,11 @@ async def get_sexton_playbook(
     container: AipContainer = Depends(get_container),
     _auth=Depends(require_definer),
 ):
-    # From AcePlaybook (7.2)
+    # From AcePlaybook (7.2) — Chunk 4: now uses async load_playbook()
     if container.ace_playbook:
         try:
-            entries = container.ace_playbook.list_entries()
-            return {"entries": entries}
+            entries = await container.ace_playbook.load_playbook()
+            return {"entries": [e.__dict__ for e in entries]}
         except Exception:
             logger.warning("ACE playbook list failed", exc_info=True)
     return {"entries": []}

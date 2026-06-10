@@ -1,6 +1,7 @@
 """System health check — verifies all AIP components are operational.
 
 Reports vector backend status and degradation.
+Chunk 5: Uses VectorBackendStatus enum for explicit status reporting.
 """
 
 from __future__ import annotations
@@ -8,6 +9,8 @@ from __future__ import annotations
 import logging
 import time
 from typing import Any
+
+from aip.foundation.schemas.vector import VectorBackendStatus
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +36,20 @@ async def system_health_check(config: Any) -> dict:
     try:
         store = await create_vector_store(config)
         health = await store.health_check()
+        # Chunk 5: Use the explicit backend_status from health_check
+        backend_status_str = health.get("backend_status", "unknown")
+        try:
+            backend_status = VectorBackendStatus(backend_status_str)
+        except ValueError:
+            backend_status = VectorBackendStatus.FAILED
         vector_status = {
-            "status": "healthy" if health.get("connected") else "unhealthy",
+            "status": "healthy" if backend_status == VectorBackendStatus.AVAILABLE else "degraded",
             "backend": health.get("backend_name", vector_backend),
-            "degraded": False,
+            "backend_status": backend_status.value,
+            "degraded": backend_status.is_degraded,
+            "vss_available": health.get("vss_available", False),
+            "degradation": health.get("degradation", {}),
+            "human_message": backend_status.human_message(),
             **health,
         }
         # Clean up
@@ -46,8 +59,10 @@ async def system_health_check(config: Any) -> dict:
         vector_status = {
             "status": "unhealthy",
             "backend": vector_backend,
+            "backend_status": VectorBackendStatus.FAILED.value,
             "degraded": True,
             "error": str(e),
+            "human_message": VectorBackendStatus.FAILED.human_message(),
         }
 
     # Check embedding (simplified — would check Ollama in production)

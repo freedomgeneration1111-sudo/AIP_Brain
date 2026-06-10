@@ -236,6 +236,64 @@ class VersionedArtifactStore(StoreHealthMixin):
             await self._reset_conn()
             raise
 
+    async def read_metadata_batch(self, ids: list[str]) -> dict[str, dict]:
+        """Read metadata for multiple artifacts in a single query.
+
+        Returns a dict mapping artifact_id -> metadata dict.
+        Artifacts not found are silently omitted from the result.
+        Always reads the latest version of each artifact.
+        """
+        if not ids:
+            return {}
+        conn = await self._get_conn()
+        try:
+            placeholders = ",".join("?" for _ in ids)
+            sql = (
+                f"SELECT a.id, a.metadata_json FROM artifacts a "
+                f"INNER JOIN ("
+                f"  SELECT id, MAX(version) as max_ver FROM artifacts GROUP BY id"
+                f") latest ON a.id = latest.id AND a.version = latest.max_ver "
+                f"WHERE a.id IN ({placeholders})"
+            )
+            cursor = await conn.execute(sql, ids)
+            rows = await cursor.fetchall()
+            return {
+                row[0]: json.loads(row[1]) if row[1] else {}
+                for row in rows
+            }
+        except Exception:
+            await self._reset_conn()
+            raise
+
+    async def read_with_metadata_batch(self, ids: list[str]) -> dict[str, tuple[str, dict]]:
+        """Read content and metadata for multiple artifacts in a single query.
+
+        Returns a dict mapping artifact_id -> (content, metadata) tuple.
+        Artifacts not found are silently omitted from the result.
+        Always reads the latest version of each artifact.
+        """
+        if not ids:
+            return {}
+        conn = await self._get_conn()
+        try:
+            placeholders = ",".join("?" for _ in ids)
+            sql = (
+                f"SELECT a.id, a.content, a.metadata_json FROM artifacts a "
+                f"INNER JOIN ("
+                f"  SELECT id, MAX(version) as max_ver FROM artifacts GROUP BY id"
+                f") latest ON a.id = latest.id AND a.version = latest.max_ver "
+                f"WHERE a.id IN ({placeholders})"
+            )
+            cursor = await conn.execute(sql, ids)
+            rows = await cursor.fetchall()
+            return {
+                row[0]: (row[1], json.loads(row[2]) if row[2] else {})
+                for row in rows
+            }
+        except Exception:
+            await self._reset_conn()
+            raise
+
     async def list_artifacts_by_metadata(
         self,
         key: str,

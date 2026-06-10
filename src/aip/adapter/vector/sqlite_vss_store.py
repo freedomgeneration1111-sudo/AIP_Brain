@@ -8,6 +8,20 @@ brute-force mode.
 Constructor is lightweight (stores path + dimensions only).  Call
 ``initialize()`` (async) to detect VSS availability and create tables
 before first use, or rely on lazy creation via ``_get_conn()``.
+
+Chunk 5 additions:
+- VectorBackendStatus enum wired through health_check() and get_degradation_info().
+- Embedding failure tracking: metadata-only storage stamps ``_embed_failure``
+  in chunk metadata and increments ``_embed_failure_count`` /
+  ``_metadata_only_count`` counters.
+- Strict brute-force row limit: ``_BRUTE_FORCE_MAX_ROWS`` hard-caps the
+  number of rows the brute-force scan will process (default 50 000).
+  Beyond this, brute-force retrieval returns partial results with an
+  explicit truncation warning in the metadata.
+- Every brute-force result carries ``_degraded_retrieval: True`` and
+  ``_retrieval_backend: "brute_force"`` (unchanged from prior behavior),
+  plus a new ``_brute_force_scan_truncated`` flag when the row limit
+  was hit.
 """
 
 from __future__ import annotations
@@ -24,6 +38,7 @@ from aip.adapter.read_pool import ReadPoolMixin
 from aip.adapter.store_health import StoreHealthMixin
 from aip.foundation.protocols import EmbeddingProvider, VectorStore
 from aip.foundation.schemas import Chunk
+from aip.foundation.schemas.vector import VectorBackendStatus, VectorDegradationInfo
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +63,11 @@ _DDL_DOMAIN_INDEX = """
 """
 
 # ---------------------------------------------------------------------------
-# Brute-force safety cap
+# Brute-force safety caps
 # ---------------------------------------------------------------------------
 
 _BRUTE_FORCE_SCAN_LIMIT = 10_000
+_BRUTE_FORCE_MAX_ROWS = 50_000  # Hard cap: never scan more than this
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +94,10 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
     Uses a persistent aiosqlite connection per instance.  Falls back to
     brute-force cosine similarity when the VSS extension is unavailable.
     The brute-force fallback behavior is governed by ``RuntimeMode``.
+
+    Chunk 5: Exposes ``get_backend_status()`` and ``get_degradation_info()``
+    so the retrieval pipeline can honestly record whether vector search was
+    available, degraded, or absent.
     """
 
     def __init__(
@@ -96,8 +116,58 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
         self._tables_ready = False
         self._conn: aiosqlite.Connection | None = None
         self._read_pool_config = config
+        # Chunk 5: degradation counters
+        self._embed_failure_count: int = 0
+        self._metadata_only_count: int = 0
+        self._last_brute_force_rows_scanned: int = 0
+        self._last_brute_force_scan_truncated: bool = False
+        self._init_error: str = ""
         from aip.adapter.read_pool import resolve_pool_size
         self._init_read_pool(pool_size=resolve_pool_size("vector_store", config))
+
+    # ------------------------------------------------------------------
+    # Backend status and degradation info (Chunk 5)
+    # ------------------------------------------------------------------
+
+    def get_backend_status(self) -> VectorBackendStatus:
+        """Return the current VectorBackendStatus for this store.
+
+        This is the single source of truth for whether vector search is
+        available, degraded, disabled, or failed.  The retrieval pipeline
+        MUST call this (or ``get_degradation_info()``) and record the
+        result in every RetrievalTrace.
+        """
+        if not self._tables_ready and self._init_error:
+            return VectorBackendStatus.FAILED
+        if not self._tables_ready:
+            return VectorBackendStatus.DISABLED
+        if self._vss_available:
+            return VectorBackendStatus.AVAILABLE
+        return VectorBackendStatus.DEGRADED_BRUTEFORCE
+
+    def get_degradation_info(self) -> VectorDegradationInfo:
+        """Return a structured VectorDegradationInfo for trace/dashboards."""
+        status = self.get_backend_status()
+        backend_name = "sqlite_vss" if self._vss_available else "brute_force"
+
+        reason = ""
+        if status == VectorBackendStatus.DEGRADED_BRUTEFORCE:
+            reason = "sqlite-vss extension not available; falling back to brute-force cosine scan"
+        elif status == VectorBackendStatus.DISABLED:
+            reason = "Vector store not initialized or no embedding provider configured"
+        elif status == VectorBackendStatus.FAILED:
+            reason = self._init_error or "Vector store initialization failed"
+
+        return VectorDegradationInfo(
+            backend_status=status,
+            backend_name=backend_name,
+            reason=reason,
+            brute_force_scan_limit=_BRUTE_FORCE_MAX_ROWS if status.is_degraded else 0,
+            brute_force_rows_scanned=self._last_brute_force_rows_scanned,
+            embed_failures=self._embed_failure_count,
+            metadata_only_stored=self._metadata_only_count,
+            channels_degraded=["vector"] if status.is_degraded else [],
+        )
 
     # ------------------------------------------------------------------
     # Async initialization
@@ -107,31 +177,45 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
         """Detect VSS extension availability and create tables.
 
         Idempotent — safe to call multiple times.
+
+        The VSS probe runs in a thread executor to avoid blocking the
+        async event loop with synchronous sqlite3.connect().
         """
         if self._tables_ready:
             return
 
-        # Detect VSS via a synchronous probe (tiny, runs once).
-        self._vss_available = self._probe_vss_availability()
-
-        conn = await aiosqlite.connect(self._db_path)
         try:
-            await self._create_tables(conn)
-            self._tables_ready = True
-        finally:
-            await conn.close()
+            # Detect VSS via thread executor to avoid blocking the event loop.
+            import asyncio
+            loop = asyncio.get_running_loop()
+            self._vss_available = await loop.run_in_executor(None, self._probe_vss_availability)
 
-        backend = "sqlite_vss" if self._vss_available else "brute_force"
-        logger.info(
-            "SqliteVssVectorStore initialized (backend=%s, db=%s, mode=%s)",
-            backend, self._db_path, self._runtime_mode.value,
-        )
+            conn = await aiosqlite.connect(self._db_path)
+            try:
+                await self._create_tables(conn)
+                self._tables_ready = True
+            finally:
+                await conn.close()
 
-        if not self._vss_available and self._runtime_mode == RuntimeMode.PRODUCTION:
-            logger.warning(
-                "PRODUCTION mode with VSS unavailable — all vector retrieval "
-                "will use brute-force scan. Install sqlite_vss for production."
+            backend = "sqlite_vss" if self._vss_available else "brute_force"
+            logger.info(
+                "SqliteVssVectorStore initialized (backend=%s, db=%s, mode=%s, status=%s)",
+                backend, self._db_path, self._runtime_mode.value,
+                self.get_backend_status().value,
             )
+
+            if not self._vss_available and self._runtime_mode == RuntimeMode.PRODUCTION:
+                logger.warning(
+                    "PRODUCTION mode with VSS unavailable — all vector retrieval "
+                    "will use brute-force scan. Install sqlite_vss for production."
+                )
+        except Exception as e:
+            self._init_error = str(e)
+            logger.error(
+                "SqliteVssVectorStore initialization failed: %s (status=%s)",
+                e, self.get_backend_status().value,
+            )
+            raise
 
     def _probe_vss_availability(self) -> bool:
         """Test whether the sqlite_vss extension can be loaded.
@@ -304,6 +388,10 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
         - DEVELOPMENT: Proceed with scan (default).
         - PRODUCTION: Proceed but stamp degradation explicitly.
         - STRICT: Raise RuntimeError.
+
+        Chunk 5: Enforces ``_BRUTE_FORCE_MAX_ROWS`` hard cap.  If the
+        scan limit exceeds the hard cap, results are truncated and every
+        result carries ``_brute_force_scan_truncated: True`` in metadata.
         """
         if self._runtime_mode == RuntimeMode.STRICT:
             raise RuntimeError(
@@ -326,7 +414,18 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
 
         conn = await self._get_conn()
         try:
-            scan_limit = max(top_k * 100, _BRUTE_FORCE_SCAN_LIMIT)
+            # Calculate scan limit with hard cap enforcement
+            raw_scan_limit = max(top_k * 100, _BRUTE_FORCE_SCAN_LIMIT)
+            scan_limit = min(raw_scan_limit, _BRUTE_FORCE_MAX_ROWS)
+            scan_truncated = raw_scan_limit > _BRUTE_FORCE_MAX_ROWS
+
+            if scan_truncated:
+                logger.warning(
+                    "Brute-force scan limit capped at %d (requested %d). "
+                    "Results may be incomplete. Install sqlite-vss for indexed retrieval.",
+                    _BRUTE_FORCE_MAX_ROWS, raw_scan_limit,
+                )
+
             if domain:
                 cursor = await conn.execute(
                     "SELECT id, content, domain, metadata_json, embedding_json FROM vector_metadata "
@@ -342,6 +441,10 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
                     (scan_limit,),
                 )
             rows = await cursor.fetchall()
+
+            # Track for degradation info
+            self._last_brute_force_rows_scanned = len(rows)
+            self._last_brute_force_scan_truncated = scan_truncated
 
             min_score_threshold = 0.1
             candidates: list[tuple[float, str, str, str, str]] = []
@@ -366,6 +469,9 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
                 meta = json.loads(meta_json) if meta_json else {}
                 meta["_degraded_retrieval"] = True
                 meta["_retrieval_backend"] = "brute_force"
+                if scan_truncated:
+                    meta["_brute_force_scan_truncated"] = True
+                    meta["_brute_force_max_rows"] = _BRUTE_FORCE_MAX_ROWS
                 results.append(
                     Chunk(
                         id=id_,
@@ -420,7 +526,15 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
             self._return_read_conn(conn)
 
     async def store(self, chunk: Chunk) -> str:
-        """Store a Chunk, generating a real embedding via EmbeddingProvider."""
+        """Store a Chunk, generating a real embedding via EmbeddingProvider.
+
+        Chunk 5: When embedding fails, the chunk is stored metadata-only
+        BUT the metadata is stamped with ``_embed_failure: True`` and
+        ``_embed_failure_reason`` so the trace pipeline can honestly
+        record that this chunk is not searchable by vector similarity.
+        The counters ``_embed_failure_count`` and ``_metadata_only_count``
+        are incremented for aggregation in VectorDegradationInfo.
+        """
         content = chunk.content or ""
 
         if self._embedding_provider is not None:
@@ -444,16 +558,29 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
                         "EmbeddingProvider returned empty vector for chunk '%s'. "
                         "Falling back to metadata-only storage.", chunk.id,
                     )
+                    self._embed_failure_count += 1
+                    self._metadata_only_count += 1
+                    # Stamp metadata with honest failure recording
+                    chunk.metadata["_embed_failure"] = True
+                    chunk.metadata["_embed_failure_reason"] = "empty_vector"
             except Exception as exc:
                 logger.warning(
                     "Embedding generation failed for chunk '%s': %s. "
-                    "Storing metadata-only.", chunk.id, exc,
+                    "Storing metadata-only with failure trace.", chunk.id, exc,
                 )
+                self._embed_failure_count += 1
+                self._metadata_only_count += 1
+                # Stamp metadata with honest failure recording
+                chunk.metadata["_embed_failure"] = True
+                chunk.metadata["_embed_failure_reason"] = str(exc)[:200]
         else:
             logger.warning(
                 "store() called without EmbeddingProvider for chunk '%s'. "
                 "Storing metadata-only.", chunk.id,
             )
+            self._metadata_only_count += 1
+            chunk.metadata["_embed_failure"] = True
+            chunk.metadata["_embed_failure_reason"] = "no_embedding_provider"
 
         # Metadata-only fallback
         conn = await self._get_conn()
@@ -479,24 +606,32 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
         return chunk.id
 
     async def health_check(self) -> dict:
-        """Check vector store health and return status."""
+        """Check vector store health and return status.
+
+        Chunk 5: Now includes ``backend_status`` (VectorBackendStatus value)
+        and full ``degradation`` info for operator visibility.
+        """
         try:
             conn = await self._get_conn()
             cursor = await conn.execute("SELECT COUNT(*) FROM vector_metadata")
             row = await cursor.fetchone()
             count = row[0] if row else 0
+            degradation = self.get_degradation_info()
             return {
                 "connected": True,
-                "backend_name": "sqlite_vss" if self._vss_available else "sqlite_vss_fallback",
+                "backend_name": "sqlite_vss" if self._vss_available else "brute_force",
+                "backend_status": self.get_backend_status().value,
                 "vss_available": self._vss_available,
                 "degraded": not self._vss_available,
                 "runtime_mode": self._runtime_mode.value,
                 "count": count,
+                "degradation": degradation.to_dict(),
             }
         except Exception as e:
             return {
                 "connected": False,
                 "backend_name": "sqlite_vss",
+                "backend_status": VectorBackendStatus.FAILED.value,
                 "error": str(e),
             }
 

@@ -117,7 +117,9 @@ from .vector import (
     MigrationCheckpoint,
     MigrationStatus,
     PgvectorConfig,
+    VectorBackendStatus,
     VectorBackendType,
+    VectorDegradationInfo,
 )
 
 # -- workflow --
@@ -190,6 +192,8 @@ __all__ = [
     "IngestionResult",
     # vector
     "VectorBackendType",
+    "VectorBackendStatus",
+    "VectorDegradationInfo",
     "PgvectorConfig",
     "MigrationStatus",
     "MigrationCheckpoint",

@@ -1,7 +1,7 @@
 # AIP Technical Debt Register
 
 **Owner:** B. Moses Jorgensen  
-**Last Updated:** 2026-06-10
+**Last Updated:** 2026-06-10 (Chunk 4: async-safe storage + datastore truth)
 
 Each entry records a deliberate deferral — what was skipped, why, and what triggers remediation.
 
@@ -87,9 +87,39 @@ search/approval/config services.
 
 ---
 
-## DEBT-004 — GraphStore Connection Churn
+## DEBT-007 — CLI Commands Using Blocking sqlite3.connect() (Async-Path Risk)
 
 **Status:** Active — low priority  
+**Phase:** Chunk 4 (Async-safe storage)  
+**Filed:** 2026-06-10
+
+**What was deferred:**  
+Several CLI command files (`cli/init.py`, `cli/backup.py`, `cli/project.py`, `cli/ingest.py`,
+`cli/history.py`, `cli/status.py`, `cli/session.py`, `cli/corpus.py`) use synchronous
+`sqlite3.connect()` directly. This is acceptable in CLI context (no event loop to block),
+but the `admin.py` route at `src/aip/adapter/api/routes/admin.py:308` also uses a blocking
+`sqlite3.connect()` — this DOES run in the async FastAPI event loop and should be converted
+to use the store layer.
+
+**Why deferred:**  
+CLI commands run synchronously (no event loop) so blocking sqlite3.connect() is correct there.
+The admin.py route is the only remaining async-path offender and it's read-only with a short
+query duration. The risk is low but should be addressed when the admin routes are next touched.
+
+**Remediation trigger:**  
+Next time admin.py routes are modified, convert the direct sqlite3.connect() call to use
+the existing store methods (entity_store, event_store, etc.) or add a dedicated admin
+query method to the appropriate store.
+
+**Related work:**  
+- Chunk 4 — resolved the same pattern in AcePlaybook, Beast, and VSS probe
+- `src/aip/adapter/api/routes/admin.py:308` — remaining async-path blocking call
+
+---
+
+## DEBT-004 — GraphStore Connection Churn
+
+**Status:** Resolved — Chunk 4 confirmed aiosqlite conversion is already complete  
 **Phase:** 2B Knowledge Graph  
 **Filed:** 2026-06-06
 
@@ -105,19 +135,18 @@ The graph is read-heavy and small. Per-call connection overhead is microseconds 
 DEBT-005 (aiosqlite conversion) is the correct fix and subsumes this one — both will be resolved
 together in BUG-004.
 
-**Remediation trigger:**  
-Resolved as part of BUG-004 (GraphStore aiosqlite conversion). No separate action needed.
+**Chunk 4 status:** GraphStore has been converted to aiosqlite with persistent connection
+pattern (initialize() + _get_conn() + close()). This debt item is resolved.
 
 **Related work:**  
-- `src/aip/adapter/graph_store.py` — docstring explicitly notes "Synchronous (no aiosqlite)"
-- DEBT-005 below — the aiosqlite conversion resolves connection churn as a side effect
-- BUG-004 in STATUS.md bug registry
+- `src/aip/adapter/graph_store.py` — now uses aiosqlite with ReadPoolMixin
+- DEBT-005 below — also resolved by the same conversion
 
 ---
 
 ## DEBT-005 — GraphStore Protocol Missing + Synchronous sqlite3
 
-**Status:** Active — blocks BUG-004  
+**Status:** Resolved — Chunk 4 confirmed both gaps are closed  
 **Phase:** 2B Knowledge Graph  
 **Filed:** 2026-06-06
 
@@ -130,33 +159,17 @@ Two related gaps:
    without a Protocol, making it un-swappable and invisible to the DI system.
 
 2. **`adapter/graph_store.py` uses synchronous `sqlite3`** rather than `aiosqlite`. All other
-   async-path SQLite stores use aiosqlite. The graph store's docstring acknowledges this explicitly:
-   "Synchronous (no aiosqlite)". This works today because graph routes call the store in sync
-   context, but it introduces a blocking call risk in the async FastAPI event loop as graph
-   operations grow.
+   async-path SQLite stores use aiosqlite.
 
-**Why deferred:**  
-The graph was delivered as a working Phase 2B MVP. Adding the Protocol and converting to aiosqlite
-are correctness/architecture improvements, not urgent fixes. The blocking risk is low at current
-graph size. The work was captured as BUG-004 for the next bug-fix pass.
-
-**Remediation steps (BUG-004):**  
-1. Add `GraphStore` Protocol to `src/aip/foundation/protocols/storage.py` with methods:
-   `upsert_node`, `upsert_edge`, `get_node`, `get_neighbors`, `get_all_nodes`, `get_all_edges`,
-   `get_stats`, `delete_node`, `delete_edge`, `initialize`.
-2. Convert `src/aip/adapter/graph_store.py` from `sqlite3` to `aiosqlite` (all methods become
-   `async`, connection opened once in `initialize()` and reused).
-3. Add `container.graph_store` field to `AipContainer` and instantiate in app.py lifespan.
-4. Update `src/aip/adapter/api/routes/graph.py` and `routes/chat.py` to use
-   `container.graph_store` instead of constructing `GraphStore` inline.
-5. Update `__all__` in `foundation/protocols/storage.py` to include `GraphStore`.
+**Chunk 4 status:** Both gaps are resolved. GraphStore Protocol exists in
+`foundation/protocols/storage.py`, and the implementation uses aiosqlite with
+persistent connection + ReadPoolMixin. The store is wired into AipContainer and
+registered in the store registry.
 
 **Related work:**  
-- `src/aip/adapter/graph_store.py` — current synchronous implementation
-- `src/aip/foundation/protocols/storage.py` — all other store Protocols defined here
-- `src/aip/adapter/api/routes/graph.py` — currently constructs GraphStore inline
-- `src/aip/adapter/api/routes/chat.py` — also constructs GraphStore inline (see also DEBT-002, BUG-002)
-- DEBT-004 above — aiosqlite conversion resolves connection churn
+- `src/aip/adapter/graph_store.py` — now uses aiosqlite with ReadPoolMixin
+- `src/aip/foundation/protocols/storage.py` — GraphStore Protocol added
+- `src/aip/adapter/api/app.py` — GraphStore wired in lifespan startup
 
 ---
 

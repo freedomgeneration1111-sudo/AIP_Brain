@@ -614,6 +614,19 @@ async def lifespan(app: FastAPI):
                 "component_failed", component="session_manager", degradation="no_trajectory_regulation", error=str(exc)
             )
 
+    # ACE Playbook — async-safe procedural intervention rules (Chunk 4)
+    # Uses ace_playbook.db in the same directory as state.db.
+    try:
+        from aip.orchestration.ace_playbook import AcePlaybook
+
+        ace_db_path = os.path.join(os.path.dirname(db_path), "ace_playbook.db")
+        ace_cfg = config.get("ace_playbook", {})
+        container.ace_playbook = AcePlaybook(ace_db_path, config=ace_cfg)
+        await container.ace_playbook.initialize()
+        log.info("component_initialized", component="ace_playbook", required=False, db_path=ace_db_path)
+    except Exception as exc:
+        log.warning("component_failed", component="ace_playbook", degradation="no_intervention_rules", error=str(exc))
+
     # =====================================================================
     # Sprint 5.27: OPERATIONAL COMPONENTS — alerting, persistence, policy
     # =====================================================================
@@ -1083,6 +1096,9 @@ async def lifespan(app: FastAPI):
         container.register_store("vigil_quality_store", quality_db)
     if container._alert_history_store is not None:
         container.register_store("alert_history_store", alert_db)
+    if container.ace_playbook is not None:
+        ace_db_path = os.path.join(os.path.dirname(db_path), "ace_playbook.db")
+        container.register_store("ace_playbook", ace_db_path)
 
     # Log the datastore summary at startup — the honest truth about where data lives
     ds_summary = container.datastore_summary()
@@ -1524,6 +1540,9 @@ async def lifespan(app: FastAPI):
         ("session_store", container.session_store),
         ("corpus_turn_store", getattr(container, "corpus_turn_store", None)),
         ("graph_store", getattr(container, "graph_store", None)),
+        ("ace_playbook", getattr(container, "ace_playbook", None)),
+        ("vigil_quality_store", getattr(container, "_vigil_quality_store", None)),
+        ("alert_history_store", getattr(container, "_alert_history_store", None)),
     ]:
         if store and hasattr(store, "close"):
             try:

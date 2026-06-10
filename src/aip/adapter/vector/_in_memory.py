@@ -3,6 +3,9 @@
 Graceful degradation: when neither vector backend is available,
 this provides a working (but non-persistent) store so the system can still
 operate in CI and development environments.
+
+Chunk 5: health_check() now reports ``backend_status: "disabled"`` because
+in-memory storage is non-persistent and not suitable for any real retrieval.
 """
 
 from __future__ import annotations
@@ -12,14 +15,31 @@ from typing import Any
 
 from aip.foundation.protocols import VectorStore
 from aip.foundation.schemas import Chunk
+from aip.foundation.schemas.vector import VectorBackendStatus, VectorDegradationInfo
 
 
 class InMemoryVectorStore(VectorStore):
-    """In-memory VectorStore fallback. Not suitable for production."""
+    """In-memory VectorStore fallback. Not suitable for production.
+
+    Chunk 5: Reports ``VectorBackendStatus.DISABLED`` because in-memory
+    storage is non-persistent — data does not survive process restarts,
+    so it cannot honestly claim to be ``AVAILABLE``.
+    """
 
     def __init__(self) -> None:
         self._data: dict[str, dict] = {}
         self._vectors: dict[str, list[float]] = {}
+
+    def get_backend_status(self) -> VectorBackendStatus:
+        """In-memory store is non-persistent; report as DISABLED."""
+        return VectorBackendStatus.DISABLED
+
+    def get_degradation_info(self) -> VectorDegradationInfo:
+        return VectorDegradationInfo(
+            backend_status=VectorBackendStatus.DISABLED,
+            backend_name="in-memory",
+            reason="In-memory vector store: non-persistent, data does not survive restarts",
+        )
 
     async def upsert(
         self,
@@ -70,7 +90,13 @@ class InMemoryVectorStore(VectorStore):
         return len(self._data)
 
     async def health_check(self) -> dict:
-        return {"connected": True, "backend_name": "in-memory", "count": len(self._data)}
+        return {
+            "connected": True,
+            "backend_name": "in-memory",
+            "backend_status": VectorBackendStatus.DISABLED.value,
+            "count": len(self._data),
+            "degradation": self.get_degradation_info().to_dict(),
+        }
 
     async def list_stale_vectors(
         self,

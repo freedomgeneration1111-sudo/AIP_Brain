@@ -129,6 +129,27 @@ async def health(container: AipContainer = Depends(get_container)):
             store_sizes["vector_store"]["count"] = await container.vector_store.count()
         except Exception:
             pass
+    # Chunk 5: Explicit vector backend status from the store
+    vector_backend_status: dict[str, Any] = {
+        "status": "disabled",
+        "backend_name": "",
+        "degraded": False,
+        "degradation": {},
+        "human_message": "",
+    }
+    if container.vector_store is not None:
+        try:
+            health = await container.vector_store.health_check()
+            vector_backend_status = {
+                "status": health.get("backend_status", "unknown"),
+                "backend_name": health.get("backend_name", ""),
+                "degraded": health.get("degraded", False),
+                "vss_available": health.get("vss_available", False),
+                "degradation": health.get("degradation", {}),
+                "human_message": health.get("degradation", {}).get("human_message", ""),
+            }
+        except Exception:
+            vector_backend_status["status"] = "failed"
     graph_store = getattr(container, "graph_store", None)
     if graph_store is not None and hasattr(graph_store, "node_count"):
         try:
@@ -523,6 +544,7 @@ async def health(container: AipContainer = Depends(get_container)):
         "optional_available": optional_count,
         "optional_total": optional_total,
         "vector_backend": "placeholder" if container.vector_store is None else "configured",
+        "vector_backend_status": vector_backend_status,
         "model_slots": model_slots,
         "actors": actors_status,
         "budget_status": budget_status,

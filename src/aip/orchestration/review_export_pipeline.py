@@ -14,6 +14,14 @@ Lifecycle path for generated artifacts:
     GENERATED → (stays GENERATED)    (needs-revision: verdict stored as event)
 
 REJECTED → GENERATED is the re-synthesis loop in the ECS graph.
+
+Chunk 7 — Review/export gate integrity:
+    - --force export is an explicit emergency/debug path, not a casual override.
+    - Every force-export writes a ``force_export`` audit event to EventStore.
+    - Normal export only exports APPROVED artifacts; every bypass is loudly
+      recorded as a sovereign override.
+    - N+1 query patterns in review list/show/source and export_project are
+      replaced with batch reads.
 """
 
 from __future__ import annotations
@@ -93,8 +101,20 @@ async def create_review_export_stores(db_path: str) -> ReviewExportStores:
 
 
 # ---------------------------------------------------------------------------
-# Review list
+# Review list  (N+1 fixed via batch metadata read)
 # ---------------------------------------------------------------------------
+
+
+async def _collect_artifact_ids_by_states(
+    states: list[str],
+    ecs_store: PersistentEcsStore,
+) -> set[str]:
+    """Collect artifact IDs across multiple ECS states (deduplicated)."""
+    artifact_ids: set[str] = set()
+    for state in states:
+        ids = await ecs_store.list_by_state(state)
+        artifact_ids.update(ids)
+    return artifact_ids
 
 
 async def review_list(
@@ -106,6 +126,8 @@ async def review_list(
 
     Default states: GENERATED (pending DEFINER review).
     Returns dict with 'artifacts' list or 'error'.
+
+    Uses batch metadata read to avoid N+1 query pattern.
     """
     # Resolve project
     project = await _resolve_project(project_name, stores.project_store)
@@ -119,20 +141,23 @@ async def review_list(
         states = ["GENERATED"]
 
     # Collect artifact IDs in the requested states
-    artifact_ids: set[str] = set()
-    for state in states:
-        ids = await stores.ecs_store.list_by_state(state)
-        artifact_ids.update(ids)
+    artifact_ids = await _collect_artifact_ids_by_states(states, stores.ecs_store)
 
     if not artifact_ids:
         return {"artifacts": [], "project": project_name}
 
-    # Filter by project using artifact metadata
+    # Batch-read metadata for all artifacts (single query instead of N)
+    sorted_ids = sorted(artifact_ids)
+    metadata_map = await stores.artifact_store.read_metadata_batch(sorted_ids)
+
+    # Load ECS state cache once (subsequent current_state calls are cache hits)
+    await stores.ecs_store._load_state_from_db()
+
+    # Filter by project and build results
     results = []
-    for aid in sorted(artifact_ids):
-        try:
-            metadata = await stores.artifact_store.read_metadata(aid)
-        except KeyError:
+    for aid in sorted_ids:
+        metadata = metadata_map.get(aid)
+        if metadata is None:
             continue
 
         # Filter: only artifacts belonging to this project
@@ -141,10 +166,9 @@ async def review_list(
         if meta_project_id != project_id and meta_project_name != project_name:
             continue
 
-        # Get current ECS state
+        # ECS state from cache (no DB query)
         ecs_state = await stores.ecs_store.current_state(aid) or "UNKNOWN"
 
-        # Extract display fields from metadata
         source_ids = metadata.get("source_ids", [])
         results.append({
             "artifact_id": aid,
@@ -171,20 +195,25 @@ async def review_list_by_type(
 
     Used for beast_wiki, beast_domain_proposal, and other cross-project
     artifact types. Returns all artifacts matching the type from ECS states.
+
+    Uses batch metadata read to avoid N+1 query pattern.
     """
     if states is None:
         states = ["GENERATED"]
 
-    artifact_ids: set[str] = set()
-    for state in states:
-        ids = await stores.ecs_store.list_by_state(state)
-        artifact_ids.update(ids)
+    artifact_ids = await _collect_artifact_ids_by_states(states, stores.ecs_store)
+
+    # Batch-read metadata for all artifacts (single query instead of N)
+    sorted_ids = sorted(artifact_ids)
+    metadata_map = await stores.artifact_store.read_metadata_batch(sorted_ids)
+
+    # Load ECS state cache once
+    await stores.ecs_store._load_state_from_db()
 
     results = []
-    for aid in sorted(artifact_ids):
-        try:
-            metadata = await stores.artifact_store.read_metadata(aid)
-        except KeyError:
+    for aid in sorted_ids:
+        metadata = metadata_map.get(aid)
+        if metadata is None:
             continue
 
         if metadata.get("artifact_type") != artifact_type:
@@ -220,6 +249,10 @@ async def review_show(
 
     Returns dict with artifact content, metadata, lifecycle state,
     review history, source count, and export eligibility.
+
+    Export eligibility is honest: only APPROVED is truly eligible.
+    GENERATED/REVIEWED require --force (recorded as sovereign override).
+    REJECTED is blocked (requires --force with audit trail).
     """
     # Read content + metadata
     try:
@@ -258,10 +291,14 @@ async def review_show(
     # Source count
     source_ids = metadata.get("source_ids", [])
 
-    # Export eligibility
-    export_eligible = ecs_state in ("GENERATED", "REVIEWED", "APPROVED")
-    export_warn = ecs_state == "GENERATED"  # Warn for unreviewed
-    export_blocked = ecs_state == "REJECTED"
+    # Export eligibility — honest assessment (Chunk 7)
+    # Only APPROVED is truly eligible without force.
+    # GENERATED/REVIEWED require force (sovereign override with audit).
+    # REJECTED is blocked unless force is used.
+    export_eligible = ecs_state == "APPROVED"
+    export_requires_force = ecs_state in ("GENERATED", "REVIEWED", "REJECTED")
+    export_blocked = ecs_state == "REJECTED"  # Still blocked without --force
+    export_warn = ecs_state in ("GENERATED", "REVIEWED")  # Warns but allows with --force
 
     return {
         "artifact_id": artifact_id,
@@ -280,13 +317,14 @@ async def review_show(
         "review_notes": review_notes,
         "transition_history": transition_history,
         "export_eligible": export_eligible,
+        "export_requires_force": export_requires_force,
         "export_warn": export_warn,
         "export_blocked": export_blocked,
     }
 
 
 # ---------------------------------------------------------------------------
-# Review sources
+# Review sources  (N+1 fixed via batch reads)
 # ---------------------------------------------------------------------------
 
 
@@ -299,6 +337,8 @@ async def review_sources(
     Returns the source_ids and source_types stored in the artifact metadata
     (populated by ``aip ask --save-artifact``), along with snippets and
     metadata needed to trace back to the original ingested content.
+
+    Uses batch reads to avoid N+1 query pattern for source lookups.
     """
     try:
         metadata = await stores.artifact_store.read_metadata(artifact_id)
@@ -308,51 +348,63 @@ async def review_sources(
     source_ids = metadata.get("source_ids", [])
     source_types = metadata.get("source_types", [])
 
-    # Try to look up each source in the artifact store for more detail
+    if not source_ids:
+        return {
+            "artifact_id": artifact_id,
+            "source_count": 0,
+            "sources": [],
+        }
+
+    # Collect all IDs to batch-read: direct source IDs + parent IDs for chunk refs
+    ids_to_fetch: set[str] = set()
+    parent_id_map: dict[str, str] = {}  # chunk_id -> parent_id
+
+    for sid in source_ids:
+        ids_to_fetch.add(sid)
+        if ":" in sid:
+            parts = sid.split(":")
+            if len(parts) >= 2:
+                parent_id = f"{parts[0]}:{parts[1]}"
+                ids_to_fetch.add(parent_id)
+                parent_id_map[sid] = parent_id
+
+    # Batch-read content+metadata for all candidate source IDs (single query)
+    batch_data = await stores.artifact_store.read_with_metadata_batch(sorted(ids_to_fetch))
+
+    # Build source entries
     sources = []
     for i, sid in enumerate(source_ids):
         src_type = source_types[i] if i < len(source_types) else "unknown"
 
-        # Try to find source content in the lexical store or artifact store
         snippet = ""
         source_title = sid
         source_score = 0.0
         source_meta: dict[str, Any] = {}
 
-        # Try reading from artifact store (for ingested conversations)
-        try:
-            src_content = await stores.artifact_store.read(sid)
+        # Try direct lookup first
+        if sid in batch_data:
+            src_content, src_metadata = batch_data[sid]
             snippet = src_content[:200] if src_content else ""
-            try:
-                src_metadata = await stores.artifact_store.read_metadata(sid)
-                source_title = src_metadata.get("source_file", src_metadata.get("title", sid))
-                source_meta = {
-                    "conversation_id": src_metadata.get("conversation_id", ""),
-                    "source_format": src_metadata.get("source_format", ""),
-                    "domain": src_metadata.get("domain", ""),
-                }
-            except KeyError:
-                pass
-        except KeyError:
-            # Source might be a chunk ID, not a top-level artifact
-            # Try to find parent artifact
-            if ":" in sid:
-                parts = sid.split(":")
-                if len(parts) >= 2:
-                    parent_id = f"{parts[0]}:{parts[1]}"
-                    try:
-                        src_content = await stores.artifact_store.read(parent_id)
-                        snippet = src_content[:200] if src_content else ""
-                        src_metadata = await stores.artifact_store.read_metadata(parent_id)
-                        source_title = src_metadata.get("source_file", src_metadata.get("title", parent_id))
-                        source_meta = {
-                            "conversation_id": src_metadata.get("conversation_id", ""),
-                            "source_format": src_metadata.get("source_format", ""),
-                            "domain": src_metadata.get("domain", ""),
-                        }
-                    except KeyError:
-                        snippet = f"(source chunk: {sid})"
-                        source_title = sid
+            source_title = src_metadata.get("source_file", src_metadata.get("title", sid))
+            source_meta = {
+                "conversation_id": src_metadata.get("conversation_id", ""),
+                "source_format": src_metadata.get("source_format", ""),
+                "domain": src_metadata.get("domain", ""),
+            }
+        # Try parent lookup for chunk IDs
+        elif sid in parent_id_map and parent_id_map[sid] in batch_data:
+            parent_id = parent_id_map[sid]
+            src_content, src_metadata = batch_data[parent_id]
+            snippet = src_content[:200] if src_content else ""
+            source_title = src_metadata.get("source_file", src_metadata.get("title", parent_id))
+            source_meta = {
+                "conversation_id": src_metadata.get("conversation_id", ""),
+                "source_format": src_metadata.get("source_format", ""),
+                "domain": src_metadata.get("domain", ""),
+            }
+        else:
+            snippet = f"(source chunk: {sid})" if ":" in sid else ""
+            source_title = sid
 
         sources.append({
             "source_id": sid,
@@ -621,7 +673,48 @@ async def review_needs_revision(
 
 
 # ---------------------------------------------------------------------------
-# Export artifact
+# Force-export audit helper
+# ---------------------------------------------------------------------------
+
+
+async def _record_force_export_audit(
+    artifact_id: str,
+    ecs_state: str,
+    stores: ReviewExportStores,
+    reason: str = "",
+    actor: str = "definer",
+) -> None:
+    """Record a force_export audit event when an artifact bypasses the
+    APPROVED gate during export.
+
+    Every force-export is a sovereign override. This event ensures the
+    bypass is never silent — it is always discoverable in the audit trail.
+    """
+    await stores.event_store.write_event(
+        event_type="force_export",
+        actor=actor,
+        artifact_id=artifact_id,
+        from_state=ecs_state,
+        to_state="exported",
+        bypassed_state=ecs_state,
+        reason=reason or "(no explicit reason provided)",
+        detail=(
+            f"SOVEREIGN OVERRIDE: Artifact '{artifact_id}' exported from "
+            f"{ecs_state} state (not APPROVED). "
+            f"Reason: {reason or '(no explicit reason provided)'}"
+        ),
+    )
+    logger.warning(
+        "Force-export audit: artifact %s exported from %s state (not APPROVED). "
+        "Reason: %s",
+        artifact_id,
+        ecs_state,
+        reason or "(no explicit reason provided)",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Export artifact  (with force-export audit gate)
 # ---------------------------------------------------------------------------
 
 
@@ -631,11 +724,18 @@ async def export_artifact(
     stores: ReviewExportStores,
     format: str = "markdown",
     force: bool = False,
+    force_reason: str = "",
 ) -> dict:
     """Export an artifact to markdown with metadata and provenance footer.
 
-    Refuses to export REJECTED artifacts by default.
-    Warns for unapproved (GENERATED/REVIEWED) artifacts unless force=True.
+    Normal path: only APPROVED artifacts may be exported.
+    Force path: GENERATED/REVIEWED/REJECTED artifacts may be exported with
+    ``force=True``, but every such bypass is recorded as a sovereign override
+    in the audit trail (EventStore ``force_export`` event).
+
+    ``force_reason`` is strongly recommended but not required. If omitted,
+    the audit event records "(no explicit reason provided)".
+
     Creates parent directories if needed.
     Never silently writes an empty file.
     """
@@ -652,14 +752,17 @@ async def export_artifact(
     # Check lifecycle state
     ecs_state = await stores.ecs_store.current_state(artifact_id) or "UNKNOWN"
 
+    # --- Export gate integrity (Chunk 7) ---
+    # Normal path: only APPROVED
+    # Force path: any state, but with mandatory audit trail
     if ecs_state == "REJECTED" and not force:
         return {
             "error": {
                 "code": "REJECTED_ARTIFACT",
                 "message": (
                     f"Artifact '{artifact_id}' is REJECTED. "
-                    "Refusing to export rejected artifact by default. "
-                    "Use --force to override."
+                    "Refusing to export rejected artifact. "
+                    "Use --force to override (recorded as sovereign override with audit trail)."
                 ),
             },
         }
@@ -670,13 +773,24 @@ async def export_artifact(
                 "code": "UNREVIEWED_ARTIFACT",
                 "message": (
                     f"Artifact '{artifact_id}' is in {ecs_state} state (not yet approved). "
-                    "Use --force to export unapproved artifacts."
+                    "Only APPROVED artifacts can be exported normally. "
+                    "Use --force to export as a sovereign override (audit event will be recorded)."
                 ),
             },
         }
 
+    # Record force-export audit event if bypassing the APPROVED gate
+    force_bypass = ecs_state != "APPROVED"
+    if force_bypass and force:
+        await _record_force_export_audit(
+            artifact_id=artifact_id,
+            ecs_state=ecs_state,
+            stores=stores,
+            reason=force_reason,
+        )
+
     # Build markdown output
-    md = _build_artifact_markdown(artifact_id, content, metadata, ecs_state)
+    md = _build_artifact_markdown(artifact_id, content, metadata, ecs_state, force_bypass=force_bypass)
 
     # Create parent directories
     out_dir = os.path.dirname(out_path)
@@ -694,7 +808,7 @@ async def export_artifact(
     if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
         return {"error": {"code": "WRITE_FAILED", "message": f"File '{out_path}' was not written successfully"}}
 
-    return {
+    result: dict[str, Any] = {
         "artifact_id": artifact_id,
         "out_path": out_path,
         "format": format,
@@ -702,12 +816,22 @@ async def export_artifact(
         "bytes_written": os.path.getsize(out_path),
     }
 
+    # Include bypass metadata in result so callers know it was a force export
+    if force_bypass:
+        result["force_bypass"] = True
+        result["force_bypass_state"] = ecs_state
+        result["force_reason"] = force_reason or "(no explicit reason provided)"
+        result["audit_recorded"] = True
+
+    return result
+
 
 def _build_artifact_markdown(
     artifact_id: str,
     content: str,
     metadata: dict,
     ecs_state: str,
+    force_bypass: bool = False,
 ) -> str:
     """Build a markdown document from artifact content and metadata."""
     lines = []
@@ -728,6 +852,9 @@ def _build_artifact_markdown(
         lines.append(f"model_provider: {metadata['model_name']}")
     source_ids = metadata.get("source_ids", [])
     lines.append(f"source_count: {len(source_ids)}")
+    if force_bypass:
+        lines.append("force_export: true")
+        lines.append("export_note: This artifact was exported from a non-APPROVED state as a sovereign override.")
     lines.append("---")
     lines.append("")
 
@@ -748,12 +875,16 @@ def _build_artifact_markdown(
         lines.append("- No source links recorded")
     lines.append("")
     lines.append(f"Exported from AIP at {datetime.now(timezone.utc).isoformat()}")
+    if force_bypass:
+        lines.append("")
+        lines.append("> **SOVEREIGN OVERRIDE**: This artifact was exported from a non-APPROVED")
+        lines.append("> lifecycle state. The export bypass was recorded in the audit trail.")
 
     return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
-# Export project
+# Export project  (N+1 fixed, with force-export audit for unreviewed)
 # ---------------------------------------------------------------------------
 
 
@@ -763,13 +894,21 @@ async def export_project(
     stores: ReviewExportStores,
     format: str = "markdown",
     include_unreviewed: bool = False,
+    force_reason: str = "",
 ) -> dict:
     """Export approved/canonical artifacts for a project.
 
-    By default:
+    By default (dogfood gate):
     - Includes APPROVED artifacts only.
-    - Excludes REJECTED artifacts.
-    - Excludes GENERATED/unreviewed artifacts unless explicitly requested.
+    - Excludes REJECTED artifacts always.
+    - Excludes GENERATED/REVIEWED artifacts unless explicitly requested.
+
+    When ``include_unreviewed=True``, each non-APPROVED artifact that is
+    exported gets a ``force_export`` audit event recorded in EventStore.
+    This ensures every bypass of the APPROVED gate is loudly recorded as
+    a sovereign override, even in project-level exports.
+
+    Uses batch reads to avoid N+1 query pattern.
 
     Produces a single markdown bundle with an index section.
     Creates parent directories if needed.
@@ -786,20 +925,36 @@ async def export_project(
     if include_unreviewed:
         eligible_states.extend(["GENERATED", "REVIEWED"])
 
-    # Find artifacts in eligible states
-    artifact_ids: set[str] = set()
-    for state in eligible_states:
-        ids = await stores.ecs_store.list_by_state(state)
-        artifact_ids.update(ids)
+    # Find artifact IDs in eligible states
+    artifact_ids = await _collect_artifact_ids_by_states(eligible_states, stores.ecs_store)
 
-    # Filter by project
+    if not artifact_ids:
+        return {
+            "project": project_name,
+            "artifacts_exported": 0,
+            "out_path": out_path,
+            "message": f"No approved artifacts found for project '{project_name}'",
+        }
+
+    # Batch-read content + metadata for all candidates (single query)
+    sorted_ids = sorted(artifact_ids)
+    batch_data = await stores.artifact_store.read_with_metadata_batch(sorted_ids)
+
+    # Load ECS state cache once
+    await stores.ecs_store._load_state_from_db()
+
+    # Filter by project and build artifact list
     artifacts = []
-    for aid in sorted(artifact_ids):
-        try:
-            metadata = await stores.artifact_store.read_metadata(aid)
-        except KeyError:
+    bypass_count = 0
+
+    for aid in sorted_ids:
+        data = batch_data.get(aid)
+        if data is None:
             continue
 
+        content, metadata = data
+
+        # Filter: only artifacts belonging to this project
         meta_project_id = metadata.get("project_id", "")
         meta_project_name = metadata.get("project_name", "")
         if meta_project_id != project_id and meta_project_name != project_name:
@@ -808,11 +963,6 @@ async def export_project(
         # Skip REJECTED artifacts always
         ecs_state = await stores.ecs_store.current_state(aid) or "UNKNOWN"
         if ecs_state == "REJECTED":
-            continue
-
-        try:
-            content = await stores.artifact_store.read(aid)
-        except KeyError:
             continue
 
         if not content or not content.strip():
@@ -824,6 +974,18 @@ async def export_project(
             "metadata": metadata,
             "ecs_state": ecs_state,
         })
+
+    # Record audit events for non-APPROVED artifacts (sovereign override)
+    if include_unreviewed:
+        for art in artifacts:
+            if art["ecs_state"] != "APPROVED":
+                bypass_count += 1
+                await _record_force_export_audit(
+                    artifact_id=art["artifact_id"],
+                    ecs_state=art["ecs_state"],
+                    stores=stores,
+                    reason=force_reason or "project export with --include-unreviewed",
+                )
 
     if not artifacts:
         return {
@@ -839,6 +1001,8 @@ async def export_project(
     lines.append("")
     lines.append(f"Exported: {datetime.now(timezone.utc).isoformat()}")
     lines.append(f"Total artifacts: {len(artifacts)}")
+    if bypass_count > 0:
+        lines.append(f" Sovereign overrides: {bypass_count} artifact(s) exported from non-APPROVED state")
     lines.append("")
 
     # Index section
@@ -846,11 +1010,13 @@ async def export_project(
     lines.append("")
     for i, art in enumerate(artifacts, 1):
         title = art["metadata"].get("prompt", art["artifact_id"])[:80]
-        lines.append(f"{i}. `{art['artifact_id']}` — {title} [{art['ecs_state']}]")
+        override_marker = " [SOVEREIGN OVERRIDE]" if art["ecs_state"] != "APPROVED" else ""
+        lines.append(f"{i}. `{art['artifact_id']}` — {title} [{art['ecs_state']}]{override_marker}")
     lines.append("")
 
     # Each artifact
     for art in artifacts:
+        force_bypass = art["ecs_state"] != "APPROVED"
         lines.append("---")
         lines.append("")
         lines.append(f"## Artifact: {art['artifact_id']}")
@@ -860,6 +1026,7 @@ async def export_project(
             art["content"],
             art["metadata"],
             art["ecs_state"],
+            force_bypass=force_bypass,
         ))
         lines.append("")
 
@@ -880,13 +1047,20 @@ async def export_project(
     if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
         return {"error": {"code": "WRITE_FAILED", "message": f"File '{out_path}' was not written successfully"}}
 
-    return {
+    result: dict[str, Any] = {
         "project": project_name,
         "artifacts_exported": len(artifacts),
         "out_path": out_path,
         "format": format,
         "bytes_written": os.path.getsize(out_path),
     }
+
+    # Include bypass metadata
+    if bypass_count > 0:
+        result["sovereign_override_count"] = bypass_count
+        result["audit_recorded"] = True
+
+    return result
 
 
 # ---------------------------------------------------------------------------

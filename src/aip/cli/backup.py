@@ -32,11 +32,11 @@ _KNOWN_DB_FILES = [
     "vectors.db",
     "vigil_quality.db",
     "alert_history.db",
+    "ace_playbook.db",
 ]
 
 _KNOWN_OPTIONAL_DB_FILES = [
     "trace.db",
-    "ace_playbook.db",
 ]
 
 
@@ -89,10 +89,10 @@ def backup(db_dir: str, config_dir: str, output_dir: str, include_optional: bool
       - vectors.db:       Vector embeddings (VSS or brute-force)
       - vigil_quality.db: Vigil quality cycle history
       - alert_history.db: Alert/delivery/experiment/mute rule persistence
+      - ace_playbook.db:  ACE procedural intervention rules
 
     Optional (backed up with --include-optional):
       - trace.db:         Trace events and routing outcomes
-      - ace_playbook.db:  ACE playbook state
     """
     db_path = Path(db_dir)
     config_path = Path(config_dir)

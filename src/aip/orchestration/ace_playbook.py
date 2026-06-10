@@ -1,71 +1,134 @@
-"""ACE Playbook — SQLite-backed procedural intervention rules.
+"""ACE Playbook — Async-safe SQLite-backed procedural intervention rules.
 
 Procedural intervention rules, loaded at session start, curated by Sexton.
 Derive and update from Sexton FailureClassification output.
 Deprecation uses supersession, not deletion.
 Uses AcePlaybookEntry (7.0a) which carries model_gen_assumption.
+
+Chunk 4: Converted from per-call sqlite3.connect() to async persistent
+connection pattern matching the rest of the adapter layer. __init__ is
+lightweight; schema creation happens in async initialize().
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from typing import Any
+
+import aiosqlite
 
 from aip.foundation.schemas import AcePlaybookEntry, FailureClassification
 
 
+_DDL_ACE_PLAYBOOK = """
+    CREATE TABLE IF NOT EXISTS ace_playbook (
+        entry_id TEXT PRIMARY KEY,
+        domain TEXT,
+        failure_type TEXT,
+        intervention TEXT,
+        condition TEXT,
+        model_gen_assumption TEXT,
+        source_trace_ids TEXT,
+        confidence REAL,
+        created_at TEXT,
+        deprecated_at TEXT,
+        deprecated_reason TEXT
+    )
+"""
+
+
 class AcePlaybook:
-    """SQLite-backed ACE Playbook (orchestration layer).
+    """Async-safe SQLite-backed ACE Playbook (orchestration layer).
 
     All storage via its own SQLite (ace_playbook.db per config). Never
     bypasses the Protocol injection contract for other stores.
+
+    Chunk 4 changes:
+    - __init__ is lightweight (stores path + config only, no DB access)
+    - initialize() creates schema via aiosqlite (async-safe)
+    - All methods use persistent aiosqlite connection instead of
+      per-call sqlite3.connect()
+    - Connection is reused across calls; closed in close()
     """
 
     def __init__(self, db_path: str, config: dict[str, Any] | None = None) -> None:
         self._db_path = db_path
         self._config = config or {}
-        self._ensure_table()
+        self._conn: aiosqlite.Connection | None = None
+        self._tables_ready = False
 
-    def _ensure_table(self) -> None:
-        conn = sqlite3.connect(self._db_path)
+    async def initialize(self) -> None:
+        """Idempotent schema creation (called by lifespan / DI container).
+
+        Uses a short-lived connection to create tables, then discards it.
+        Subsequent operations use the persistent connection from _get_conn().
+        """
+        if self._tables_ready:
+            return
+        conn = await aiosqlite.connect(self._db_path)
         try:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS ace_playbook (
-                    entry_id TEXT PRIMARY KEY,
-                    domain TEXT,
-                    failure_type TEXT,
-                    intervention TEXT,
-                    condition TEXT,
-                    model_gen_assumption TEXT,
-                    source_trace_ids TEXT,
-                    confidence REAL,
-                    created_at TEXT,
-                    deprecated_at TEXT,
-                    deprecated_reason TEXT
-                )
-            """)
-            conn.commit()
+            await conn.execute(_DDL_ACE_PLAYBOOK)
+            await conn.commit()
+            self._tables_ready = True
         finally:
-            conn.close()
+            await conn.close()
+
+    async def _get_conn(self) -> aiosqlite.Connection:
+        """Return a persistent connection, creating one if needed.
+
+        Lazily ensures tables on first connection so that callers
+        who bypass initialize() still get a working schema.
+        """
+        if self._conn is None:
+            self._conn = await aiosqlite.connect(self._db_path)
+            self._conn.row_factory = sqlite3.Row
+            await self._conn.execute("PRAGMA journal_mode=WAL")
+            await self._conn.execute("PRAGMA busy_timeout=5000")
+            if not self._tables_ready:
+                await self._conn.execute(_DDL_ACE_PLAYBOOK)
+                await self._conn.commit()
+                self._tables_ready = True
+        return self._conn
+
+    async def _reset_conn(self) -> None:
+        """Reset the persistent connection (called on errors)."""
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+
+    async def close(self) -> None:
+        """Close the persistent connection."""
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
 
     async def load_playbook(self, domain: str | None = None) -> list[AcePlaybookEntry]:
-        conn = sqlite3.connect(self._db_path)
+        conn = await self._get_conn()
         try:
             query = "SELECT * FROM ace_playbook WHERE deprecated_at IS NULL"
             params: tuple = ()
             if domain:
                 query += " AND domain = ?"
                 params = (domain,)
-            rows = conn.execute(query, params).fetchall()
+            cursor = await conn.execute(query, params)
+            rows = await cursor.fetchall()
             return [self._row_to_entry(r) for r in rows]
-        finally:
-            conn.close()
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def add_entry(self, entry: AcePlaybookEntry) -> str:
-        conn = sqlite3.connect(self._db_path)
+        conn = await self._get_conn()
         try:
-            conn.execute(
+            await conn.execute(
                 """INSERT OR REPLACE INTO ace_playbook
                 (entry_id, domain, failure_type, intervention, condition, model_gen_assumption,
                  source_trace_ids, confidence, created_at, deprecated_at, deprecated_reason)
@@ -84,23 +147,23 @@ class AcePlaybook:
                     entry.deprecated_reason,
                 ),
             )
-            conn.commit()
+            await conn.commit()
             return entry.entry_id
-        finally:
-            conn.close()
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def deprecate_entry(self, entry_id: str, reason: str) -> None:
-        conn = sqlite3.connect(self._db_path)
+        conn = await self._get_conn()
         try:
-            from datetime import datetime, timezone
-
-            conn.execute(
+            await conn.execute(
                 "UPDATE ace_playbook SET deprecated_at = ?, deprecated_reason = ? WHERE entry_id = ?",
                 (datetime.now(timezone.utc).isoformat(), reason, entry_id),
             )
-            conn.commit()
-        finally:
-            conn.close()
+            await conn.commit()
+        except Exception:
+            await self._reset_conn()
+            raise
 
     async def derive_from_classification(
         self,
@@ -108,8 +171,6 @@ class AcePlaybook:
         trace_event: dict[str, Any],
     ) -> AcePlaybookEntry | None:
         """Bridge from Sexton output to persistent playbook entry."""
-        from datetime import datetime, timezone
-
         ft = classification.failure_type
         domain = trace_event.get("domain", "general")
         intervention = self._intervention_for(ft)
@@ -137,19 +198,21 @@ class AcePlaybook:
         return entry  # return for DEFINER review if not auto-promoted
 
     async def get_active_entries(self, domain: str, failure_type: str | None = None) -> list[AcePlaybookEntry]:
-        conn = sqlite3.connect(self._db_path)
+        conn = await self._get_conn()
         try:
             query = "SELECT * FROM ace_playbook WHERE deprecated_at IS NULL AND domain = ?"
             params: list = [domain]
             if failure_type:
                 query += " AND failure_type = ?"
                 params.append(failure_type)
-            rows = conn.execute(query, params).fetchall()
+            cursor = await conn.execute(query, params)
+            rows = await cursor.fetchall()
             return [self._row_to_entry(r) for r in rows]
-        finally:
-            conn.close()
+        except Exception:
+            await self._reset_conn()
+            raise
 
-    def _row_to_entry(self, row: tuple) -> AcePlaybookEntry:
+    def _row_to_entry(self, row: tuple | sqlite3.Row) -> AcePlaybookEntry:
         return AcePlaybookEntry(
             entry_id=row[0],
             domain=row[1],

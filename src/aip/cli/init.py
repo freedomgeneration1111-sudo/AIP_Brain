@@ -417,7 +417,7 @@ def init(force: bool) -> None:
         click.echo("lexical.db: touched (schema init failed, store will create tables on first use)")
 
     # Other DBs — create empty files; adapter stores will add schemas on first initialize()
-    other_dbs = ["events.db", "ace_playbook.db", "vectors.db"]
+    other_dbs = ["vectors.db", "vigil_quality.db", "alert_history.db", "ace_playbook.db"]
     for name in other_dbs:
         (db_dir / name).touch(exist_ok=True)
     click.echo(f"Initialized: {', '.join(other_dbs)} (schemas created on first use)")
@@ -473,21 +473,38 @@ def init(force: bool) -> None:
     except Exception as e:
         click.echo(f"Model slot validation skipped: {e}")
 
-    # 7. Summary
+    # 7. Summary — datastore truth (Chunk 4: startup validation)
     click.echo("\n=== Init complete ===")
     click.echo(f"Profile: {profile}")
     click.echo(f"Config: {config_path}")
-    click.echo("\nDatastore layout (honest multi-file local datastore):")
-    click.echo(f"  state.db          → Core entity/canonical/event/artifact/budget/")
-    click.echo(f"                       project/ECS/review/graph/corpus/session/autonomy")
-    click.echo(f"  lexical.db        → FTS5 full-text search index")
-    click.echo(f"  vectors.db        → Vector embeddings (VSS or brute-force)")
-    click.echo(f"  vigil_quality.db  → Vigil quality cycle history")
-    click.echo(f"  alert_history.db  → Alert/delivery/experiment/mute rule persistence")
-    click.echo(f"  trace.db          → Trace events and routing outcomes")
-    click.echo(f"  ace_playbook.db   → ACE playbook state")
-    click.echo(f"\n  All databases: {db_dir}/")
+    click.echo("\nDatastore layout (honest multi-file local datastore — Option B):")
+    click.echo("  ┌─────────────────────┬──────────────────────────────────────────────────┐")
+    click.echo("  │ DB File             │ Stores / Contents                                │")
+    click.echo("  ├─────────────────────┼──────────────────────────────────────────────────┤")
+    click.echo("  │ state.db            │ entity, canonical, event, artifact, budget,      │")
+    click.echo("  │                     │ project, ECS, review, graph, corpus, session,   │")
+    click.echo("  │                     │ autonomy, vigil, knowledge                       │")
+    click.echo("  │ lexical.db          │ FTS5 full-text search index                      │")
+    click.echo("  │ vectors.db          │ Vector embeddings (VSS or brute-force)           │")
+    click.echo("  │ vigil_quality.db    │ Vigil quality cycle history                      │")
+    click.echo("  │ alert_history.db    │ Alert/delivery/experiment/mute rule persistence  │")
+    click.echo("  │ trace.db            │ Trace events and routing outcomes                │")
+    click.echo("  │ ace_playbook.db     │ ACE procedural intervention rules                │")
+    click.echo("  └─────────────────────┴──────────────────────────────────────────────────┘")
+
+    # Validate: list actual DB files and their sizes
+    click.echo("\nDatastore validation:")
+    db_files_found = 0
+    for db_file in sorted(db_dir.glob("*.db")):
+        size_kb = db_file.stat().st_size / 1024
+        click.echo(f"  {db_file.name}: {size_kb:.1f} KB")
+        db_files_found += 1
+    if db_files_found == 0:
+        click.echo("  WARNING: No .db files found in db/ directory!")
+
+    click.echo(f"\n  All databases: {db_dir.resolve()}/")
     click.echo(f"  Backup: aip backup (VACUUM INTO for consistent snapshots)")
+    click.echo(f"  Restore: Copy .db files from backup/ to db/ (stop app first)")
     click.echo("\nNext steps:")
     click.echo("  1. Run `aip status` to inspect current state.")
     click.echo("  2. Run `aip project create --name <name> --domain <domain>` to create a project.")

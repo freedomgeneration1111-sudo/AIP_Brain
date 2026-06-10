@@ -39,6 +39,11 @@ class AskResult:
 
     Failure modes are explicit: status indicates the overall outcome
     and errors lists any problems encountered.
+
+    Chunk 5 addition: ``retrieval_degradation`` carries an honest
+    account of what retrieval backends were available, degraded, or
+    absent.  The system is required to surface this information
+    rather than silently pretending retrieval was healthier than it was.
     """
 
     status: str  # "OK" | "NO_PROJECT" | "NO_PROJECT_MEMORY" | "NEEDS_CONFIGURATION" | "MODEL_FAILURE" | "ARTIFACT_SAVE_FAILURE"
@@ -52,6 +57,8 @@ class AskResult:
     project_name: str = ""
     prompt: str = ""
     errors: list[str] = field(default_factory=list)
+    # Chunk 5: Retrieval honesty — honest degradation metadata
+    retrieval_degradation: dict = field(default_factory=dict)
 
 
 __all__ = [

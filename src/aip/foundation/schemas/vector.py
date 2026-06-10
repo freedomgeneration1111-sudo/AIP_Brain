@@ -1,16 +1,109 @@
 """Vector store and migration types.
 
-Vector backend selection, pgvector configuration, and migration
-status/checkpoint tracking for the sqlite_vss → pgvector migration path.
+Vector backend selection, pgvector configuration, migration
+status/checkpoint tracking for the sqlite_vss → pgvector migration path,
+and the VectorBackendStatus enum for retrieval honesty.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import enum
+from dataclasses import dataclass, field
 from typing import Literal
 
 # Type alias for vector backend selection
 VectorBackendType = Literal["pgvector", "sqlite_vss"]
+
+
+class VectorBackendStatus(enum.Enum):
+    """Explicit health status of the vector retrieval backend.
+
+    Retrieval must never silently pretend it is healthier than it is.
+    This enum is the single source of truth for vector backend status
+    across the entire retrieval pipeline.
+
+    Values:
+        available: sqlite-vss extension loaded (or pgvector connected).
+            Full vector similarity search is operational.
+        degraded_bruteforce: sqlite-vss extension is absent; the store
+            falls back to brute-force cosine similarity scans over
+            ``embedding_json``.  Results are stamped as degraded.  This
+            is honest: the system works, but quality and latency are
+            materially worse than with a proper vector index.
+        disabled: Vector store is not configured or no embedding
+            provider is wired.  No vector search is possible.
+        failed: Vector store was configured but initialization or
+            runtime operation failed.  The store may be in an
+            unrecoverable state.
+    """
+
+    AVAILABLE = "available"
+    DEGRADED_BRUTEFORCE = "degraded_bruteforce"
+    DISABLED = "disabled"
+    FAILED = "failed"
+
+    @property
+    def is_searchable(self) -> bool:
+        """True when vector search can return results (even if degraded)."""
+        return self in (VectorBackendStatus.AVAILABLE, VectorBackendStatus.DEGRADED_BRUTEFORCE)
+
+    @property
+    def is_degraded(self) -> bool:
+        """True when vector search returns results but quality is compromised."""
+        return self == VectorBackendStatus.DEGRADED_BRUTEFORCE
+
+    def human_message(self) -> str:
+        """Return a human-readable explanation of this status."""
+        messages = {
+            VectorBackendStatus.AVAILABLE:
+                "Vector search is fully operational (indexed backend active).",
+            VectorBackendStatus.DEGRADED_BRUTEFORCE:
+                "Vector search is degraded: using brute-force cosine scan "
+                "(sqlite-vss extension not available). Results may be slower "
+                "and less accurate. Install sqlite-vss for production quality.",
+            VectorBackendStatus.DISABLED:
+                "Vector search is disabled: no vector store or embedding "
+                "provider configured. Only lexical/corpus retrieval is available.",
+            VectorBackendStatus.FAILED:
+                "Vector search has failed: the backend is in an error state. "
+                "Only lexical/corpus retrieval is available.",
+        }
+        return messages.get(self, "Unknown vector backend status.")
+
+
+@dataclass
+class VectorDegradationInfo:
+    """Structured degradation metadata for retrieval honesty signaling.
+
+    Attached to RetrievalTrace and AskResult so that every retrieval
+    round carries an honest account of what backends were available,
+    what was degraded, and why.
+    """
+
+    backend_status: VectorBackendStatus = VectorBackendStatus.DISABLED
+    backend_name: str = ""
+    reason: str = ""
+    brute_force_scan_limit: int = 0
+    brute_force_rows_scanned: int = 0
+    embed_failures: int = 0
+    metadata_only_stored: int = 0
+    channels_degraded: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        """Serialize for trace/dashboards/API responses."""
+        return {
+            "backend_status": self.backend_status.value,
+            "backend_name": self.backend_name,
+            "reason": self.reason,
+            "is_degraded": self.backend_status.is_degraded,
+            "is_searchable": self.backend_status.is_searchable,
+            "brute_force_scan_limit": self.brute_force_scan_limit,
+            "brute_force_rows_scanned": self.brute_force_rows_scanned,
+            "embed_failures": self.embed_failures,
+            "metadata_only_stored": self.metadata_only_stored,
+            "channels_degraded": self.channels_degraded,
+            "human_message": self.backend_status.human_message(),
+        }
 
 
 @dataclass
@@ -67,6 +160,8 @@ class MigrationCheckpoint:
 
 __all__ = [
     "VectorBackendType",
+    "VectorBackendStatus",
+    "VectorDegradationInfo",
     "PgvectorConfig",
     "MigrationStatus",
     "MigrationCheckpoint",

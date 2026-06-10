@@ -6,10 +6,10 @@ SmartContextPacker for budget-aware context assembly → model dispatch →
 source-grounded answer with provenance references → optional ECS artifact
 save → session trace recording.
 
-Search backends: LexicalStore (persistent FTS5, primary) + VectorStore
-(semantic, supplementary). EntityExtractor supports noun-phrase + graph-fuzzy
-+ optional LLM entity extraction. ChannelSelector auto-enables channels
-based on query signals. Per-channel budgets via OrchestratorConfig.
+Retriever channels are registered via the channel registry
+(:mod:`aip.orchestration.channels.registry`).  Adding a new channel
+means creating a module in ``aip.orchestration.channels/`` — no edits
+to this file required.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -33,6 +34,10 @@ from aip.foundation.protocols import (
 )
 from aip.foundation.schemas.ask import AskResult, AskSource, SourceReference
 from aip.foundation.schemas.retrieval import RetrievalHit, RetrievalTrace
+from aip.foundation.schemas.vector import VectorBackendStatus, VectorDegradationInfo
+from aip.orchestration.channels.lexical_channel import _sanitize_fts_query
+from aip.orchestration.channels.registry import register_all_channels
+from aip.orchestration.channels.types import ChannelFailure
 from aip.orchestration.retrieval_orchestrator import (
     OrchestratorCache,
     OrchestratorConfig,
@@ -48,6 +53,10 @@ from aip.orchestration.smart_context_packer import (
 logger = logging.getLogger(__name__)
 
 _orchestrator_cache: OrchestratorCache = get_orchestrator_cache()
+
+# Channel registration failures from the most recent orchestrator creation.
+# Populated by _register_retriever_channels() for trace visibility.
+_last_registration_failures: list[ChannelFailure] = []
 
 
 def _format_source_citations(sources: list[SourceReference]) -> list[str]:
@@ -85,11 +94,6 @@ def _hit_type_matches(hit: RetrievalHit, source_filter: AskSource) -> bool:
     return True
 
 
-# ---------------------------------------------------------------------------
-# Project resolution
-# ---------------------------------------------------------------------------
-
-
 async def _resolve_project(
     project_name: str,
     project_store: ProjectStore,
@@ -105,51 +109,6 @@ async def _resolve_project(
     return None
 
 
-# ---------------------------------------------------------------------------
-# Retrieval
-# ---------------------------------------------------------------------------
-
-
-def _sanitize_fts_query(query: str) -> str:
-    """Sanitize a user query for FTS5 MATCH syntax.
-
-    FTS5 has special syntax for operators like AND, OR, NOT, NEAR, *, ^, etc.
-    Questions from users often contain ?, !, and other characters that
-    are not valid in FTS5 MATCH expressions. This function extracts
-    clean word tokens and joins them with AND for FTS5 matching.
-    """
-    import re
-
-    cleaned = re.sub(r'[?!.*+\-^(){}|~"\\]', " ", query)
-    tokens = cleaned.split()
-    stop_words = {"a", "an", "the", "is", "are", "was", "were", "be", "been",
-                  "being", "have", "has", "had", "do", "does", "did", "will",
-                  "would", "could", "should", "may", "might", "shall", "can",
-                  "of", "in", "to", "for", "with", "on", "at", "by", "from",
-                  "it", "its", "we", "our", "you", "your", "this", "that",
-                  "what", "which", "who", "whom", "how", "when", "where", "why",
-                  "about", "there", "here", "these", "those", "been", "some",
-                  "very", "also", "just", "than", "then", "so", "if", "or",
-                  "not", "no", "but", "and", "up", "out", "into", "over"}
-    meaningful = [t for t in tokens if len(t) >= 2 and t.lower() not in stop_words]
-
-    if not meaningful:
-        meaningful = [t for t in tokens if len(t) >= 1 and t.lower() not in stop_words]
-
-    if not meaningful:
-        meaningful = [t for t in tokens[:3] if t]
-
-    if not meaningful:
-        return query
-
-    return " AND ".join(meaningful)
-
-
-# ---------------------------------------------------------------------------
-# Multi-channel retrieval via RetrievalOrchestrator
-# ---------------------------------------------------------------------------
-
-
 def _register_retriever_channels(
     orchestrator: RetrievalOrchestrator,
     stores: AskStores,
@@ -157,372 +116,13 @@ def _register_retriever_channels(
 ) -> None:
     """Register all available retriever channels on an orchestrator.
 
-    Only registers channels for stores that are actually available.
-    Called once per orchestrator instance (via OrchestratorCache).
-    Channels: fts, vector, corpus, graph, wiki, procedural.
+    Delegates to the channel registry which auto-discovers all built-in
+    and custom channel modules.  Channel registration failures are stored
+    as structured ``ChannelFailure`` objects (not just log lines) so that
+    downstream consumers can inspect which channels were skipped and why.
     """
-    # FTS channel — always available (LexicalStore)
-    if not orchestrator.is_registered("fts"):
-        async def _fts_retriever(query: str) -> list[RetrievalHit]:
-            fts_query = _sanitize_fts_query(query)
-            try:
-                chunks = await stores.lexical_store.search(
-                    fts_query, domain=None, limit=30,
-                )
-            except Exception as exc:
-                logger.warning("FTS retriever failed: %s", exc)
-                return []
-            hits = []
-            for i, chunk in enumerate(chunks):
-                hits.append(RetrievalHit(
-                    id=chunk.id,
-                    content=chunk.content or "",
-                    score=chunk.score,
-                    source_channel="fts",
-                    domain=chunk.domain or "",
-                    metadata=chunk.metadata or {},
-                    rank_in_channel=i + 1,
-                ))
-            return hits
-        orchestrator.register_channel("fts", _fts_retriever)
-
-    # Vector channel — when embedding provider + vector store available
-    has_vector_deps = (
-        stores.vector_store is not None and stores.embedding_provider is not None
-    )
-    if not orchestrator.is_registered("vector") and has_vector_deps:
-        _vec_store = stores.vector_store
-        _embed_prov = stores.embedding_provider
-
-        async def _vector_retriever(query: str) -> list[RetrievalHit]:
-            try:
-                query_vec = await _embed_prov.embed(query)
-                if not query_vec or len(query_vec) == 0:
-                    return []
-                chunks = await _vec_store.retrieve(query_vec, domain=None, top_k=20)
-            except Exception as exc:
-                logger.debug("Vector retriever failed (non-fatal): %s", exc)
-                return []
-            hits = []
-            for i, chunk in enumerate(chunks):
-                hits.append(RetrievalHit(
-                    id=chunk.id,
-                    content=chunk.content or "",
-                    score=chunk.score,
-                    source_channel="vector",
-                    domain=chunk.domain or "",
-                    metadata=chunk.metadata or {},
-                    rank_in_channel=i + 1,
-                ))
-            return hits
-        orchestrator.register_channel("vector", _vector_retriever)
-
-    # Corpus (CorpusTurnStore) channel — when available
-    if not orchestrator.is_registered("corpus") and stores.corpus_turn_store is not None:
-        _cts = stores.corpus_turn_store
-
-        async def _corpus_retriever(query: str) -> list[RetrievalHit]:
-            fts_query = _sanitize_fts_query(query)
-            try:
-                corpus_turns = await _cts.search(
-                    query=fts_query,
-                    primary_domain=None,
-                    limit=30,
-                )
-            except Exception as exc:
-                logger.warning("Corpus retriever failed: %s", exc)
-                return []
-            hits = []
-            for i, turn in enumerate(corpus_turns):
-                position_score = 1.0 - (i / max(len(corpus_turns), 1)) * 0.5
-                importance_boost = float(turn.importance or 0.0) * 0.3
-                hits.append(RetrievalHit(
-                    id=turn.turn_id,
-                    content=turn.searchable_text or "",
-                    score=position_score + importance_boost,
-                    source_channel="corpus",
-                    domain=turn.primary_domain or "",
-                    metadata={
-                        "type": "conversation_chunk",
-                        "conversation_id": turn.conversation_id,
-                        "source_format": "corpus_turn",
-                        "domain": turn.primary_domain or "",
-                        "importance": float(turn.importance or 0.0),
-                    },
-                    rank_in_channel=i + 1,
-                ))
-            return hits
-        orchestrator.register_channel("corpus", _corpus_retriever)
-
-    # Graph channel — PPR-based graph retrieval with EntityExtractor
-    if not orchestrator.is_registered("graph"):
-        from aip.orchestration.entity_extractor import EntityExtractor, EntityExtractorConfig
-
-        _entity_extractor_config = EntityExtractorConfig(
-            strategy="hybrid",
-            use_graph_fuzzy=True,
-        )
-
-        # Wire LLM entity extraction if ModelProvider available
-        _llm_entity_fn = None
-        if stores.model_provider is not None:
-            try:
-                from aip.orchestration.entity_extractor import create_llm_entity_fn
-                _llm_entity_fn = create_llm_entity_fn(
-                    model_provider=stores.model_provider,
-                    slot_name=_entity_extractor_config.llm_entity_extraction_model,
-                    fallback_slot="synthesis",
-                )
-                # Enable hybrid_llm mode when model provider is available
-                _entity_extractor_config.entity_extraction_mode = "hybrid_llm"
-            except Exception as exc:
-                logger.debug("LLM entity extraction wiring failed (non-fatal): %s", exc)
-
-        async def _graph_retriever(query: str) -> list[RetrievalHit]:
-            """Graph retriever: extract entities from query, run PPR, surface related nodes.
-
-            Tracks LLM entity extraction timing and status in
-            hit metadata (``_llm_entity_extraction_ms``, ``_llm_entity_extraction_status``,
-            ``_llm_entity_count``) so the orchestrator can transfer it to the
-            RetrievalTrace for dashboard observability.
-            """
-            llm_ext_ms = 0.0
-            llm_ext_status = "not_used"
-            llm_ext_count = 0
-
-            try:
-                from aip.orchestration.graph_retrieval import GraphRetriever
-
-                _graph_store = getattr(stores, "graph_store", None)
-                if _graph_store is None:
-                    # Try to create a GraphStore from the stores' db_path
-                    _db_path = getattr(stores, "_db_path", None)
-                    if _db_path is None:
-                        # Attempt default path
-                        import os
-                        _db_path = os.environ.get("AIP_DB_PATH", "db/state.db")
-                    from aip.adapter.graph_store import GraphStore
-                    _graph_store = GraphStore(_db_path)
-                    await _graph_store.initialize()
-
-                retriever = GraphRetriever(_graph_store)
-                extractor = EntityExtractor(
-                    config=_entity_extractor_config,
-                    graph_store=_graph_store,
-                    llm_fn=_llm_entity_fn,
-                )
-
-                # Track LLM entity extraction timing
-                import time as _time
-                ext_start = _time.monotonic()
-
-                # Use EntityExtractor for robust entity extraction
-                # (noun-phrase + graph-fuzzy + optional LLM fallback)
-                seed_entities = await extractor.extract_async(
-                    query, graph_store=_graph_store,
-                )
-
-                ext_elapsed = (_time.monotonic() - ext_start) * 1000.0
-
-                # Determine LLM usage status from config and results
-                if _llm_entity_fn is not None and _entity_extractor_config.entity_extraction_mode != "local":
-                    if ext_elapsed > 0 and len(seed_entities) > 0:
-                        # If extraction took significant time and we have entities,
-                        # LLM was likely used (or at least attempted)
-                        llm_ext_status = "success"
-                        llm_ext_count = len(seed_entities)
-                    elif ext_elapsed > 5.0:
-                        # Took time but no entities — LLM likely failed
-                        llm_ext_status = "failed"
-                    else:
-                        llm_ext_status = "not_used"
-                    llm_ext_ms = ext_elapsed
-
-                if not seed_entities:
-                    return []
-
-                expanded = await retriever.expand_query_via_graph(
-                    seed_entities=seed_entities,
-                    max_hops=2,
-                    top_k=10,
-                    min_confidence=0.4,
-                )
-            except Exception as exc:
-                logger.debug("Graph retriever failed (non-fatal): %s", exc)
-                llm_ext_status = "failed"
-                llm_ext_ms = 0.0
-                return []
-
-            if not expanded:
-                return []
-
-            # Convert expanded graph entities into RetrievalHit instances.
-            # The graph channel surfaces *entity names* and their graph context,
-            # which augments the other channels rather than returning raw content.
-            #
-            # Include LLM entity extraction observability data
-            # in the first hit's metadata so the orchestrator can transfer
-            # it to the RetrievalTrace.
-            hits: list[RetrievalHit] = []
-            for i, entity_name in enumerate(expanded):
-                meta = {
-                    "type": "graph_entity",
-                    "entity_name": entity_name,
-                }
-                # Only stamp the first hit with LLM observability data
-                # to avoid duplication
-                if i == 0:
-                    meta["_llm_entity_extraction_ms"] = llm_ext_ms
-                    meta["_llm_entity_extraction_status"] = llm_ext_status
-                    meta["_llm_entity_count"] = llm_ext_count
-                hits.append(RetrievalHit(
-                    id=f"graph:{entity_name}",
-                    content=f"Graph entity: {entity_name} — connected to query entities via knowledge graph.",
-                    score=1.0 - (i / max(len(expanded), 1)) * 0.5,
-                    source_channel="graph",
-                    metadata=meta,
-                    rank_in_channel=i + 1,
-                ))
-            return hits
-        orchestrator.register_channel("graph", _graph_retriever)
-
-    # Wiki channel — retrieve approved wiki articles
-    if not orchestrator.is_registered("wiki"):
-        async def _wiki_retriever(query: str) -> list[RetrievalHit]:
-            """Wiki retriever: find approved wiki articles relevant to the query."""
-            try:
-                if stores.artifact_store is None or stores.ecs_store is None:
-                    return []
-
-                arts = await stores.artifact_store.list_artifacts_by_metadata(
-                    key="artifact_type", value="beast_wiki", limit=50,
-                )
-            except Exception as exc:
-                logger.debug("Wiki retriever failed (non-fatal): %s", exc)
-                return []
-
-            if not arts:
-                return []
-
-            # Score articles by query term overlap with content/metadata
-            query_terms = set(query.lower().split())
-            scored_arts: list[tuple[float, dict]] = []
-            for art in arts:
-                art_id = art.get("id", "")
-                if not art_id:
-                    continue
-                # Check ECS state — prefer APPROVED, accept GENERATED
-                try:
-                    state = await stores.ecs_store.current_state(art_id)
-                except Exception:
-                    state = None
-                if state not in ("APPROVED", "GENERATED"):
-                    continue
-
-                # Score by term overlap
-                content = (art.get("content", "") or "").lower()
-                meta = art.get("metadata", {}) or {}
-                domain = meta.get("domain", "")
-                overview = meta.get("overview_text", "").lower()
-
-                overlap = sum(1 for t in query_terms if t in content or t in overview)
-                domain_match = 1.0 if any(t in domain.lower() for t in query_terms) else 0.0
-                score = overlap * 0.3 + domain_match * 0.7
-                state_bonus = 0.1 if state == "APPROVED" else 0.0
-
-                if score + state_bonus > 0:
-                    scored_arts.append((score + state_bonus, art))
-
-            scored_arts.sort(key=lambda x: x[0], reverse=True)
-
-            hits: list[RetrievalHit] = []
-            for i, (score, art) in enumerate(scored_arts[:10]):
-                art_id = art.get("id", "")
-                content = art.get("content", "") or ""
-                meta = art.get("metadata", {}) or {}
-                hits.append(RetrievalHit(
-                    id=f"wiki:{art_id}",
-                    content=content[:2000],  # cap content length
-                    score=score,
-                    source_channel="wiki",
-                    domain=meta.get("domain", ""),
-                    metadata={
-                        "type": "wiki_article",
-                        "artifact_id": art_id,
-                        "domain": meta.get("domain", ""),
-                        "overview_text": meta.get("overview_text", "")[:500],
-                    },
-                    rank_in_channel=i + 1,
-                ))
-            return hits
-        orchestrator.register_channel("wiki", _wiki_retriever)
-
-    # Procedural channel — retrieve how-to guides
-    if not orchestrator.is_registered("procedural"):
-        async def _procedural_retriever(query: str) -> list[RetrievalHit]:
-            """Procedural retriever: find how-to guides and step-by-step procedures."""
-            try:
-                if stores.artifact_store is None:
-                    return []
-
-                # Search for procedural artifacts
-                procs = await stores.artifact_store.list_artifacts_by_metadata(
-                    key="artifact_type", value="procedural_guide", limit=20,
-                )
-                # Also search compiled_knowledge which may contain procedural content
-                compiled = await stores.artifact_store.list_artifacts_by_metadata(
-                    key="artifact_type", value="compiled_knowledge", limit=20,
-                )
-                all_arts = procs + compiled
-            except Exception as exc:
-                logger.debug("Procedural retriever failed (non-fatal): %s", exc)
-                return []
-
-            if not all_arts:
-                return []
-
-            query_terms = set(query.lower().split())
-            procedural_keywords = {"step", "steps", "how to", "procedure", "guide",
-                                   "instructions", "process", "method", "tutorial"}
-            hits: list[RetrievalHit] = []
-
-            for art in all_arts:
-                content = (art.get("content", "") or "").lower()
-                meta = art.get("metadata", {}) or {}
-                art_id = art.get("id", "")
-
-                # Check if content has procedural signals
-                has_procedural = any(kw in content for kw in procedural_keywords)
-                if not has_procedural and meta.get("artifact_type") != "procedural_guide":
-                    continue
-
-                # Score by query term overlap + procedural relevance
-                overlap = sum(1 for t in query_terms if t in content)
-                proc_boost = 0.3 if has_procedural else 0.0
-                score = overlap * 0.2 + proc_boost
-
-                if score > 0:
-                    hits.append(RetrievalHit(
-                        id=f"proc:{art_id}",
-                        content=(art.get("content", "") or "")[:2000],
-                        score=score,
-                        source_channel="procedural",
-                        domain=meta.get("domain", ""),
-                        metadata={
-                            "type": "procedural_guide",
-                            "artifact_id": art_id,
-                            "domain": meta.get("domain", ""),
-                        },
-                        rank_in_channel=0,  # assigned later by orchestrator
-                    ))
-
-            # Sort and assign ranks
-            hits.sort(key=lambda h: h.score, reverse=True)
-            for i, hit in enumerate(hits[:10]):
-                hit.rank_in_channel = i + 1
-
-            return hits[:10]
-        orchestrator.register_channel("procedural", _procedural_retriever)
+    global _last_registration_failures
+    _last_registration_failures = register_all_channels(orchestrator, stores, config)
 
 
 def _retrieval_hit_to_source_ref(hit: RetrievalHit) -> SourceReference:
@@ -588,20 +188,16 @@ async def _search_sources_with_trace(
     Returns:
         Tuple of (source_references, retrieval_trace, packed_context).
     """
-    # Build a fingerprint of the store identities for cache keying
     store_key = id(stores.lexical_store) ^ id(stores.vector_store) ^ id(stores.corpus_turn_store)
 
-    # Get or create a cached orchestrator
     orchestrator = _orchestrator_cache.get_or_create(
         store_key=store_key,
         register_fn=lambda orch: _register_retriever_channels(orch, stores, config),
     )
 
-    # Build per-call config (supports per-call enable_* toggles)
-    # Sprint 6.1: coverage-aware vector enablement and hybrid channel weights.
+    # Coverage-aware vector enablement and hybrid channel weights
     vector_available = enable_vector and stores.vector_store is not None and stores.embedding_provider is not None
 
-    # Check embedding coverage to decide whether to enable hybrid retrieval
     vector_enabled = vector_available
     if vector_available and stores.corpus_turn_store is not None:
         try:
@@ -627,10 +223,7 @@ async def _search_sources_with_trace(
         max_hits=max_sources * 3,
     )
 
-    # Sprint 6.4: Read channel weights from config dict (from aip.config.toml).
-    # The config dict is the parsed TOML — we look for retrieval.channel_weights.
-    # If the caller doesn't pass a config, fall back to _load_config() so we
-    # always pick up the latest operator-tuned weights.
+    # Read channel weights from config dict (from aip.config.toml).
     _effective_config = config
     if _effective_config is None:
         try:
@@ -640,7 +233,6 @@ async def _search_sources_with_trace(
     if _effective_config is not None:
         _cw = _effective_config.get("retrieval", {}).get("channel_weights", {})
         if _cw:
-            # Only override channel_weights if we have both semantic and lexical channels
             has_semantic = vector_enabled
             has_lexical = enable_fts or orch_config.enable_corpus
             if has_semantic and has_lexical:
@@ -648,7 +240,6 @@ async def _search_sources_with_trace(
                     k: float(v) for k, v in _cw.items() if isinstance(v, (int, float))
                 }
             else:
-                # No hybrid — clear weights to avoid distorting FTS-only scores
                 orch_config.channel_weights = {}
 
     # Adaptive channel selection: auto-enable channels based on query signals.
@@ -671,14 +262,11 @@ async def _search_sources_with_trace(
         logger.error("Orchestrator retrieval failed: %s", exc)
         return [], None, None
 
-    # Filter by source type
     if source_filter != "all":
         hits = [h for h in hits if _hit_type_matches(h, source_filter)]
 
-    # Limit to max_sources
     hits = hits[:max_sources]
 
-    # Pack context via SmartContextPacker
     packer_config = PackerConfig(
         max_context_tokens=4000,
         max_hits=max_sources,
@@ -687,15 +275,26 @@ async def _search_sources_with_trace(
     packer = SmartContextPacker(config=packer_config)
     packed = packer.pack(hits, query=query)
 
-    # Convert to SourceReference for backward compatibility
     sources = [_retrieval_hit_to_source_ref(h) for h in hits]
 
+    # Populate vector_degradation on the trace from the vector store.
+    # Every retrieval trace carries the vector backend status so operators
+    # and downstream consumers can see whether vector search was available,
+    # degraded, or absent.
+    if trace is not None and stores.vector_store is not None:
+        if hasattr(stores.vector_store, "get_degradation_info"):
+            try:
+                trace.vector_degradation = stores.vector_store.get_degradation_info()
+            except Exception as exc:
+                logger.debug("Failed to get vector degradation info: %s", exc)
+    elif trace is not None:
+        trace.vector_degradation = VectorDegradationInfo(
+            backend_status=VectorBackendStatus.DISABLED,
+            backend_name="none",
+            reason="No vector store configured",
+        )
+
     return sources, trace, packed
-
-
-# ---------------------------------------------------------------------------
-# Store creation
-# ---------------------------------------------------------------------------
 
 
 class AskStores:
@@ -755,8 +354,6 @@ async def create_ask_stores(db_path: str) -> AskStores:
     ask reads from the same persistent stores that ingest writes to.
     All stores (including VectorStore) are SQLite-backed and persistent.
     """
-    import os
-
     from aip.adapter.artifact_store_versioned import VersionedArtifactStore
     from aip.adapter.ecs_store_persistent import PersistentEcsStore
     from aip.adapter.event_store_queryable import QueryableEventStore
@@ -765,7 +362,6 @@ async def create_ask_stores(db_path: str) -> AskStores:
     from aip.adapter.project.sqlite_project_store import SqliteProjectStore
     from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
 
-    # Same paths as create_ingestion_stores()
     artifact_store = VersionedArtifactStore(db_path)
     await artifact_store.initialize()
 
@@ -802,10 +398,9 @@ async def create_ask_stores(db_path: str) -> AskStores:
     except Exception:
         pass  # graceful: no embedding provider — lexical-only search
 
-    # Use persistent SqliteVssVectorStore instead of InMemoryVectorStore
-    # so that vectors survive process restarts.  The VSS extension may not be
-    # available, in which case the store degrades to brute-force search over
-    # the embedding_json column — but data is still persistent.
+    # Use persistent SqliteVssVectorStore so that vectors survive process
+    # restarts.  The VSS extension may not be available, in which case the
+    # store degrades to brute-force search — but data is still persistent.
     vector_db = os.path.join(os.path.dirname(db_path), "vectors.db")
     vector_store = SqliteVssVectorStore(
         db_path=vector_db,
@@ -814,7 +409,7 @@ async def create_ask_stores(db_path: str) -> AskStores:
     )
     await vector_store.initialize()
 
-    # CorpusTurnStore — the canonical corpus of ingested turns (project-agnostic)
+    # CorpusTurnStore — the canonical corpus of ingested turns
     corpus_turn_store = None
     try:
         from aip.adapter.corpus_turn_store import CorpusTurnStore
@@ -848,8 +443,6 @@ async def create_ask_stores(db_path: str) -> AskStores:
 
 def _load_config() -> dict | None:
     """Load AIP config from default location."""
-    import os
-
     config_path = os.environ.get("AIP_CONFIG_PATH", "config/aip.config.toml")
     if not os.path.exists(config_path):
         return None
@@ -866,11 +459,6 @@ def _load_config() -> dict | None:
         return tomllib.load(f)
 
 
-# ---------------------------------------------------------------------------
-# Main ask function
-# ---------------------------------------------------------------------------
-
-
 async def ask(
     question: str,
     project_name: str,
@@ -884,23 +472,18 @@ async def ask(
 ) -> AskResult:
     """Execute a source-grounded ask query against the AIP knowledge substrate.
 
-    This is the main entry point for the ask pipeline. It:
-    1. Resolves the project by name
-    2. Searches project memory for relevant sources
-    3. Assembles context from found sources
-    4. Dispatches to the configured model
-    5. Generates a source-grounded answer
-    6. Optionally saves the answer as a draft artifact
-    7. Records the session trace
+    This is the main entry point for the ask pipeline. It resolves the
+    project, searches project memory for relevant sources via multi-channel
+    retrieval, assembles context, dispatches to the configured model, and
+    optionally saves the answer as a draft artifact.
 
     Failure modes are explicit and never silently produce fake results.
     """
-    # Generate session ID if not provided
     if session_id is None:
         session_id = f"ask:{uuid.uuid4()}"
 
-    # Step 1: Resolve project (soft — corpus is project-agnostic, so a missing
-    # project does NOT block the ask. We still search all corpus turns.)
+    # Resolve project (soft — corpus is project-agnostic, so a missing
+    # project does NOT block the ask)
     project = None
     project_id = project_name
     project_domain = project_name
@@ -913,10 +496,7 @@ async def ask(
         project_id = project.get("project_id", project_name)
         project_domain = project.get("domain") or project_name
 
-    # Step 2: Search for relevant sources (primary path: orchestrator + packer)
-    # _search_sources_with_trace() is the primary path.
-    # It uses RetrievalOrchestrator with parallel dispatch and RRF fusion,
-    # then SmartContextPacker for budget-aware context assembly.
+    # Multi-channel retrieval via RetrievalOrchestrator + SmartContextPacker
     retrieval_trace: RetrievalTrace | None = None
     packed_context: PackedContext | None = None
     try:
@@ -954,9 +534,8 @@ async def ask(
             sources=[],
         )
 
-    # Step 3: Check model provider
+    # Check model provider
     if stores.model_provider is None:
-        # No model configured — return sources but no answer
         return AskResult(
             status="NEEDS_CONFIGURATION",
             answer=(
@@ -973,12 +552,10 @@ async def ask(
             model_slot=model_slot,
         )
 
-    # Step 4: Assemble context via SmartContextPacker
-    # SmartContextPacker is the only context assembly path.
-    # packed_context is always set by _search_sources_with_trace().
+    # Assemble context from packed retrieval results
     context = packed_context.context_text if packed_context else "No relevant sources found in project memory."
 
-    # Step 5: Dispatch to model
+    # Dispatch to model
     model_provider_name = ""
     model_name = ""
     answer_content = ""
@@ -992,7 +569,6 @@ async def ask(
             "If the sources do not contain enough information, say so explicitly. "
             "Do not fabricate information not present in the sources."
         )
-        # Prepend chat mode modifier if provided (per AIP_UNIFIED_CHAT_SPEC)
         system_content = (
             f"{system_prompt_modifier}\n\n---\n\n{base_system}"
             if system_prompt_modifier
@@ -1024,9 +600,8 @@ async def ask(
         model_errors.append(str(exc))
         answer_content = ""
 
-    # Step 6: Handle model failure
+    # Handle model failure
     if model_errors:
-        # Record failure in event trace
         await _record_trace(
             stores=stores,
             session_id=session_id,
@@ -1057,12 +632,12 @@ async def ask(
             errors=model_errors,
         )
 
-    # Step 7: Append source citations if not already present
+    # Append source citations if not already present
     citations = _format_source_citations(sources)
     if citations and "[source:" not in answer_content:
         answer_content += "\n\nSources:\n" + "\n".join(citations)
 
-    # Step 8: Optionally save as artifact
+    # Optionally save as artifact
     artifact_id = ""
     artifact_errors: list[str] = []
 
@@ -1083,11 +658,9 @@ async def ask(
                 "generated_at": datetime.now(timezone.utc).isoformat(),
             }
 
-            # Write to ArtifactStore
             await stores.artifact_store.write(artifact_id, answer_content, artifact_metadata)
 
-            # ECS transition: SPECIFIED → GENERATED (draft, pending review)
-            # This follows the existing lifecycle — the artifact is NOT auto-approved
+            # ECS transition: GENERATED (draft, pending review)
             if stores.ecs_store is not None:
                 try:
                     await stores.ecs_store.transition(
@@ -1098,12 +671,10 @@ async def ask(
                         reason="Generated by ask pipeline — pending DEFINER review",
                     )
                 except Exception as exc:
-                    # ECS transition failed but artifact is saved
                     artifact_errors.append(f"ECS transition failed: {exc}")
                     logger.warning("ECS transition failed for artifact '%s': %s", artifact_id, exc)
 
-            # Also index the saved artifact in LexicalStore so future
-            # asks can find it via --source artifacts
+            # Index the saved artifact in LexicalStore for future retrieval
             try:
                 await stores.lexical_store.index_document(
                     doc_id=f"artifact:{artifact_id}",
@@ -1124,7 +695,6 @@ async def ask(
             logger.error("Artifact save failed: %s", exc)
             artifact_errors.append(f"Artifact save failed: {exc}")
 
-            # Record the failure in event trace
             await _record_trace(
                 stores=stores,
                 session_id=session_id,
@@ -1152,7 +722,7 @@ async def ask(
                 errors=artifact_errors,
             )
 
-    # Step 9: Record successful trace (includes retrieval trace data)
+    # Record successful trace
     await _record_trace(
         stores=stores,
         session_id=session_id,
@@ -1180,12 +750,38 @@ async def ask(
         project_name=project_name,
         prompt=question,
         errors=artifact_errors,
+        retrieval_degradation=_build_degradation_dict(retrieval_trace),
     )
 
 
-# ---------------------------------------------------------------------------
-# Trace recording
-# ---------------------------------------------------------------------------
+def _build_degradation_dict(retrieval_trace: RetrievalTrace | None) -> dict:
+    """Build the retrieval_degradation dict for AskResult from a RetrievalTrace.
+
+    Ensures every AskResult carries an honest account of what retrieval
+    backends were available, degraded, or absent.  Also includes any
+    channel registration failures from the most recent orchestrator
+    creation, so operators can see which channels were skipped.
+    """
+    if retrieval_trace is None:
+        result = {
+            "backend_status": VectorBackendStatus.DISABLED.value,
+            "reason": "No retrieval trace available",
+            "human_message": VectorBackendStatus.DISABLED.human_message(),
+        }
+    else:
+        vdi = retrieval_trace.vector_degradation
+        result = vdi.to_dict()
+        summary = retrieval_trace.degradation_summary()
+        if summary:
+            result["degradation_summary"] = summary
+
+    # Include channel registration failures for visibility
+    if _last_registration_failures:
+        result["channel_registration_failures"] = [
+            f.to_dict() for f in _last_registration_failures
+        ]
+
+    return result
 
 
 async def _record_trace(
@@ -1204,17 +800,12 @@ async def _record_trace(
 ) -> None:
     """Record the full ask session trace in EventStore.
 
-    This ensures that every ask query (successful or failed) leaves
-    an audit trail: what was asked, what context was used, what answer
-    was generated, and what happened.
-
-    Also records RetrievalTrace data (channel timing, RRF
-    fusion stats, quality-gate verdict) when available.
+    Records retrieval trace data (channel timing, RRF fusion stats,
+    quality-gate verdict) and channel registration failures when available.
     """
     if stores.event_store is None:
         return
 
-    # Build retrieval trace metadata
     retrieval_meta: dict[str, Any] = {}
     if retrieval_trace is not None:
         retrieval_meta = {
@@ -1226,13 +817,24 @@ async def _record_trace(
             "retrieval_hits_after_fusion": retrieval_trace.hits_after_fusion,
             "retrieval_hits_after_gate": retrieval_trace.hits_after_quality_gate,
             "retrieval_verdict": retrieval_trace.verdict,
-            # Channel contributions and LLM entity extraction
-            # observability data stored in trace for dashboard access
             "retrieval_channel_contributions": json.dumps(retrieval_trace.channel_contributions),
             "retrieval_llm_entity_extraction_ms": retrieval_trace.llm_entity_extraction_ms,
             "retrieval_llm_entity_extraction_status": retrieval_trace.llm_entity_extraction_status,
             "retrieval_llm_entity_count": retrieval_trace.llm_entity_count,
+            "retrieval_vector_backend_status": retrieval_trace.vector_degradation.backend_status.value,
+            "retrieval_vector_backend_name": retrieval_trace.vector_degradation.backend_name,
+            "retrieval_vector_degraded": retrieval_trace.vector_degradation.backend_status.is_degraded,
+            "retrieval_vector_brute_force_rows": retrieval_trace.vector_degradation.brute_force_rows_scanned,
+            "retrieval_vector_embed_failures": retrieval_trace.vector_degradation.embed_failures,
+            "retrieval_vector_metadata_only": retrieval_trace.vector_degradation.metadata_only_stored,
+            "retrieval_degradation_summary": retrieval_trace.degradation_summary(),
         }
+
+    # Include channel registration failures in the trace for dashboard visibility
+    if _last_registration_failures:
+        retrieval_meta["channel_registration_failures"] = json.dumps(
+            [f.to_dict() for f in _last_registration_failures]
+        )
 
     try:
         await stores.event_store.write_event(
@@ -1241,7 +843,6 @@ async def _record_trace(
             artifact_id=artifact_id or f"session:{session_id}",
             from_state=None,
             to_state=status,
-            # Additional trace metadata via kwargs
             session_id=session_id,
             project_id=project_id,
             prompt=question[:500],
@@ -1257,11 +858,6 @@ async def _record_trace(
         )
     except Exception as exc:
         logger.debug("Failed to record ask trace: %s", exc)
-
-
-# ---------------------------------------------------------------------------
-# Context inspection
-# ---------------------------------------------------------------------------
 
 
 def format_context_display(sources: list[SourceReference], max_sources: int = 10) -> str:

@@ -1272,23 +1272,11 @@ Example response structure:
 
         # Query unembedded
         try:
-            if reembed:
-                # to get all, use limit, then slice? but for simplicity use store search or direct
-                # since no get_all, use get_unembedded but ignore filter, or direct
-                import sqlite3
-                db_path = getattr(self._corpus_turns, "_db_path", None)
-                conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-                try:
-                    cursor = conn.execute(
-                        "SELECT turn_id, searchable_text FROM corpus_turns ORDER BY importance DESC LIMIT ?",
-                        (int(limit),),
-                    )
-                    to_embed = cursor.fetchall()
-                finally:
-                    conn.close()
-            else:
-                turns = await self._corpus_turns.get_unembedded_turns(limit=limit)
-                to_embed = [(t.turn_id, t.searchable_text) for t in turns]
+            # Chunk 4: Use async store methods instead of direct sqlite3.connect().
+            # Both reembed and normal paths use get_unembedded_turns() which
+            # is async-safe and goes through the persistent aiosqlite connection.
+            turns = await self._corpus_turns.get_unembedded_turns(limit=limit)
+            to_embed = [(t.turn_id, t.searchable_text) for t in turns]
         except Exception as exc:
             log.error("beast_get_unembedded_failed", error=str(exc))
             return {"embedded": 0, "failed": 0, "skipped": 0, "error": str(exc)}
@@ -1331,20 +1319,10 @@ Example response structure:
                         metadata={"type": "corpus_turn", "turn_id": tid},
                         domain=None,  # or from turn?
                     )
-                    # Mark embedded using direct sqlite (robust)
+                    # Chunk 4: Use async mark_embedded() instead of direct sqlite3.connect().
+                    # The store method is async-safe and uses the persistent connection.
                     try:
-                        import sqlite3
-                        dbp = getattr(self._corpus_turns, "_db_path", None)
-                        if dbp:
-                            c = sqlite3.connect(dbp)
-                            try:
-                                c.execute(
-                                    "UPDATE corpus_turns SET embedded = 1, updated_at = ? WHERE turn_id = ?",
-                                    (datetime.now(timezone.utc).isoformat() + "Z", tid),
-                                )
-                                c.commit()
-                            finally:
-                                c.close()
+                        await self._corpus_turns.mark_embedded(tid)
                     except Exception:
                         pass
                     embedded += 1
@@ -1511,23 +1489,11 @@ Example response structure:
             return True, None
 
         # Count new words since last wiki
-        if not hasattr(self._corpus_turns, "_db_path"):
+        # Chunk 4: Use async count_domain_words_since() instead of direct sqlite3.connect().
+        if not hasattr(self._corpus_turns, "count_domain_words_since"):
             return False, last_wiki_ts
         try:
-            import sqlite3
-            db_path = getattr(self._corpus_turns, "_db_path", None)
-            if not db_path:
-                return False, last_wiki_ts
-            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-            try:
-                row = conn.execute(
-                    "SELECT COALESCE(SUM(word_count), 0) FROM corpus_turns "
-                    "WHERE primary_domain = ? AND tagging_version > 0 AND updated_at >= ?",
-                    (domain_id, last_wiki_ts),
-                ).fetchone()
-                new_words = int(row[0]) if row else 0
-            finally:
-                conn.close()
+            new_words = await self._corpus_turns.count_domain_words_since(domain_id, last_wiki_ts)
             return new_words >= self._WIKI_WORD_THRESHOLD, last_wiki_ts
         except Exception as exc:
             log.warning("beast_wiki_word_count_failed", domain=domain_id, error=str(exc))
@@ -1536,7 +1502,12 @@ Example response structure:
     async def _get_wiki_domain_data(
         self, domain_id: str, db_path: str | None, last_wiki_ts: str | None
     ) -> dict:
-        """Gather domain statistics and sample turns for wiki generation."""
+        """Gather domain statistics and sample turns for wiki generation.
+
+        Chunk 4: Uses async get_domain_stats() from CorpusTurnStore instead
+        of direct sqlite3.connect(). The store method is async-safe, uses
+        the persistent aiosqlite connection, and returns the same data shape.
+        """
         data: dict = {
             "total_turns": 0,
             "avg_importance": 0.0,
@@ -1545,78 +1516,10 @@ Example response structure:
             "sample_turns": [],
             "max_tagging_version": 0,
         }
-        if not db_path:
+        if self._corpus_turns is None or not hasattr(self._corpus_turns, "get_domain_stats"):
             return data
         try:
-            import sqlite3
-            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-            try:
-                # Stats
-                row = conn.execute(
-                    "SELECT COUNT(*) as c, COALESCE(AVG(importance), 0) as ai, "
-                    "COALESCE(MAX(tagging_version), 0) as mv "
-                    "FROM corpus_turns WHERE primary_domain = ? AND tagging_version > 0",
-                    (domain_id,),
-                ).fetchone()
-                if row:
-                    data["total_turns"] = int(row[0])
-                    data["avg_importance"] = round(float(row[1]), 4)
-                    data["max_tagging_version"] = int(row[2])
-
-                # Top tags (aggregate from JSON)
-                tag_rows = conn.execute(
-                    "SELECT tags FROM corpus_turns WHERE primary_domain = ? AND tagging_version > 0 LIMIT 200",
-                    (domain_id,),
-                ).fetchall()
-                tag_counts: dict[str, int] = {}
-                for (tags_json,) in tag_rows:
-                    try:
-                        for t in json.loads(tags_json or "[]"):
-                            tag_counts[t] = tag_counts.get(t, 0) + 1
-                    except Exception:
-                        pass
-                data["top_tags"] = [t for t, _ in sorted(tag_counts.items(), key=lambda kv: -kv[1])[:10]]
-
-                # Bridge connectors mentioned
-                bridge_rows = conn.execute(
-                    "SELECT bridges FROM corpus_turns WHERE primary_domain = ? "
-                    "AND bridges != '[]' AND tagging_version > 0 LIMIT 100",
-                    (domain_id,),
-                ).fetchall()
-                bridge_counts: dict[str, int] = {}
-                for (bridges_json,) in bridge_rows:
-                    try:
-                        for b in json.loads(bridges_json or "[]"):
-                            bridge_counts[b] = bridge_counts.get(b, 0) + 1
-                    except Exception:
-                        pass
-                data["bridge_connectors"] = sorted(bridge_counts.keys())
-
-                # Sample top 20 turns by importance
-                turn_rows = conn.execute(
-                    "SELECT turn_id, importance, tags, bridges, user_text, assistant_text "
-                    "FROM corpus_turns WHERE primary_domain = ? AND tagging_version > 0 "
-                    "ORDER BY importance DESC LIMIT 20",
-                    (domain_id,),
-                ).fetchall()
-                sample_turns = []
-                for row in turn_rows:
-                    try:
-                        tags_list = json.loads(row[2] or "[]")
-                        bridges_list = json.loads(row[3] or "[]")
-                        sample_turns.append({
-                            "turn_id": row[0],
-                            "importance": float(row[1]),
-                            "tags": tags_list,
-                            "bridges": bridges_list,
-                            "user_text": (row[4] or "")[:300],
-                            "assistant_text": (row[5] or "")[:500],
-                        })
-                    except Exception:
-                        pass
-                data["sample_turns"] = sample_turns
-            finally:
-                conn.close()
+            data = await self._corpus_turns.get_domain_stats(domain_id)
         except Exception as exc:
             log.warning("beast_wiki_domain_data_failed", domain=domain_id, error=str(exc))
         return data

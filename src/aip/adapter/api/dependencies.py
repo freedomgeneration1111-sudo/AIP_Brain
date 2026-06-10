@@ -128,13 +128,29 @@ class AipContainer:
         This is the honest datastore truth: which files exist, which are
         shared, and what the backup story is for each.
 
-        AIP_Brain uses an honest multi-file local datastore (Option B):
+        Product decision: AIP_Brain uses Option B — honest multi-file
+        local datastore. This was chosen because:
+
+        1. The data has fundamentally different access patterns (state.db
+           is transactional, lexical.db is FTS5 read-heavy, vectors.db
+           may use VSS virtual tables, quality/alert DBs are append-mostly).
+        2. SQLite performance degrades with many concurrent connections to
+           a single file; separate files allow independent WAL mode and
+           connection pooling.
+        3. Backup granularity: each .db can be backed up independently
+           via VACUUM INTO without locking the others.
+        4. Disaster recovery: a corrupt FTS index doesn't take down the
+           entity store.
+
+        The 7 DB files are:
           - state.db:     Core entity/canonical/event/artifact/budget/project/
                          ECS/review/graph/corpus/session/autonomy data
           - lexical.db:   FTS5 full-text search index
           - vectors.db:   Vector embeddings (VSS or brute-force)
           - vigil_quality.db: Vigil quality cycle history
           - alert_history.db: Alert/delivery/experiment/mute rule persistence
+          - trace.db:     Trace events and routing outcomes
+          - ace_playbook.db: ACE procedural intervention rules
         """
         from pathlib import Path
 

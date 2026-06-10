@@ -8,6 +8,10 @@ RetrievalOrchestrator and consumed by SmartContextPacker.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from aip.foundation.schemas.vector import VectorDegradationInfo
 
 
 @dataclass
@@ -135,6 +139,49 @@ class RetrievalTrace:
     llm_entity_extraction_ms: float = 0.0
     llm_entity_extraction_status: str = "not_used"  # "not_used" | "success" | "failed" | "timeout"
     llm_entity_count: int = 0
+    # Vector backend degradation signaling (Chunk 5)
+    # Populated by the orchestrator / ask pipeline from the vector store's
+    # backend status so every retrieval round honestly records whether
+    # vector search was available, degraded, or absent.
+    vector_degradation: VectorDegradationInfo = field(
+        default_factory=lambda: __import__(
+            "aip.foundation.schemas.vector", fromlist=["VectorDegradationInfo"]
+        ).VectorDegradationInfo(),
+    )
+
+    def degradation_summary(self) -> str:
+        """Return a human-readable summary of retrieval degradation.
+
+        This is the honest message the system is allowed — and required —
+        to give: 'I answered from lexical/corpus memory only. Semantic vector
+        retrieval was unavailable.' That is better than a confident but
+        secretly weakened answer.
+        """
+        parts = []
+        vdi = self.vector_degradation
+        if vdi.backend_status.is_degraded:
+            parts.append(
+                f"Vector search was degraded (brute-force scan, "
+                f"{vdi.brute_force_rows_scanned} rows scanned). "
+                "Install sqlite-vss for production-quality vector retrieval."
+            )
+        elif vdi.backend_status.value == "disabled":
+            parts.append(
+                "I answered from lexical/corpus memory only. "
+                "Semantic vector retrieval was unavailable."
+            )
+        elif vdi.backend_status.value == "failed":
+            parts.append(
+                f"Vector search failed: {vdi.reason or 'unknown error'}. "
+                "I answered from lexical/corpus memory only."
+            )
+        if vdi.embed_failures > 0:
+            parts.append(
+                f"{vdi.embed_failures} embedding(s) failed during storage; "
+                f"{vdi.metadata_only_stored} chunk(s) stored as metadata-only "
+                "(unsearchable by vector)."
+            )
+        return " ".join(parts)
 
 
 __all__ = [

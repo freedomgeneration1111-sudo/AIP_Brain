@@ -307,11 +307,15 @@ def _print_show_result(result: dict) -> None:
     if result.get("session_id"):
         click.echo(f"  Session:        {result['session_id']}")
 
-    # Export eligibility
-    if result.get("export_blocked"):
-        click.echo("  Export:         BLOCKED (rejected)")
+    # Export eligibility — honest assessment (Chunk 7)
+    if result.get("export_eligible"):
+        click.echo("  Export:         Eligible (APPROVED)")
+    elif result.get("export_blocked"):
+        click.echo("  Export:         BLOCKED (rejected — requires --force with audit trail)")
+    elif result.get("export_requires_force"):
+        click.echo(f"  Export:         REQUIRES --force ({result.get('lifecycle_state', '')} — sovereign override with audit trail)")
     elif result.get("export_warn"):
-        click.echo("  Export:         WARNING (unreviewed — use --force)")
+        click.echo("  Export:         WARNING (unreviewed — requires --force with audit trail)")
     else:
         click.echo("  Export:         Eligible")
 
