@@ -97,15 +97,15 @@ def register(
                         "artifact_id": art_id,
                         "domain": meta.get("domain", ""),
                     },
-                    rank_in_channel=0,  # assigned later by orchestrator
                 ))
 
-        # Sort and assign ranks
+        # Sort by score descending and assign ranks consistently
         hits.sort(key=lambda h: h.score, reverse=True)
-        for i, hit in enumerate(hits[:10]):
+        hits = hits[:10]
+        for i, hit in enumerate(hits):
             hit.rank_in_channel = i + 1
 
-        return hits[:10]
+        return hits
 
     orchestrator.register_channel(
         CHANNEL_NAME,

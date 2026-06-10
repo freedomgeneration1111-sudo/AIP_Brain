@@ -1,7 +1,7 @@
 """Vector (semantic) retriever channel.
 
 Backed by VectorStore + EmbeddingProvider.  Requires both dependencies
-to be available; silently skips registration when either is absent.
+to be available; returns a structured ChannelFailure when either is absent.
 """
 
 from __future__ import annotations

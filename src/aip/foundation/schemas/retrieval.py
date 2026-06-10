@@ -4,7 +4,7 @@ Unified retrieval chunk, hit, and result types used across the retrieval
 pipeline.  RetrievalHit is the canonical type produced by
 RetrievalOrchestrator and consumed by SmartContextPacker.
 
-Sprint 10 additions:
+Extensions for structured retrieval channel health and trace metadata.
 - ``ChannelHealthState`` enum for per-channel health tracking.
 - ``ChannelHealthReport`` for structured health summaries.
 - Enhanced ``RetrievalTrace`` with unified channel health, query expansion,
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Sprint 10: Channel health states
+# Channel health states
 # ---------------------------------------------------------------------------
 
 
@@ -86,7 +86,7 @@ class ChannelHealthDetail:
     retrieval round, providing enough information for operators and
     dashboards to diagnose exactly what happened without scraping logs.
 
-    Chunk 5 addition: This is the primary unit of retrieval honesty.
+    This is the primary unit of retrieval honesty.
     It replaces the raw string-only channel_health dict with structured
     data that includes attempt status, result counts, latency, and
     degradation reasons.
@@ -284,7 +284,7 @@ class RetrievalTrace:
     that TraceStore analytics and the dashboard endpoint can report on
     retrieval performance without re-running queries.
 
-    Sprint 10 — Unified RetrievalTrace:
+    Unified RetrievalTrace:
     Every ask returns comprehensive diagnostic information:
 
     - **Channel health**: Per-channel active/degraded/failed status with
@@ -322,7 +322,7 @@ class RetrievalTrace:
         llm_entity_count: Number of entities returned by LLM extraction.
         vector_degradation: Vector backend degradation metadata.
 
-    Sprint 10 new fields:
+    New fields:
         channel_health: Per-channel health state mapping
             (channel_name → ChannelHealthState value).
         channel_health_reasons: Per-channel reason for degraded/failed
@@ -358,7 +358,7 @@ class RetrievalTrace:
     llm_entity_extraction_ms: float = 0.0
     llm_entity_extraction_status: str = "not_used"  # "not_used" | "success" | "failed" | "timeout"
     llm_entity_count: int = 0
-    # Vector backend degradation signaling (Chunk 5)
+    # Vector backend degradation signaling
     vector_degradation: VectorDegradationInfo = field(
         default_factory=lambda: __import__(
             "aip.foundation.schemas.vector", fromlist=["VectorDegradationInfo"]
@@ -366,14 +366,14 @@ class RetrievalTrace:
     )
 
     # ------------------------------------------------------------------
-    # Sprint 10: Unified RetrievalTrace fields
+    # Unified RetrievalTrace fields
     # ------------------------------------------------------------------
 
     # Per-channel health: channel_name → "active" | "degraded" | "failed" | "disabled" | "unavailable" | "not_configured" | "empty"
     channel_health: dict[str, str] = field(default_factory=dict)
     # Per-channel reason for degraded/failed state
     channel_health_reasons: dict[str, str] = field(default_factory=dict)
-    # Chunk 5: Per-channel structured health details
+    # Per-channel structured health details
     channel_details: dict[str, ChannelHealthDetail] = field(default_factory=dict)
     # Query expansion terms
     query_expansion: list[str] = field(default_factory=list)
@@ -389,7 +389,7 @@ class RetrievalTrace:
     final_context_source_ids: list[str] = field(default_factory=list)
     # Human-readable warnings about retrieval degradation
     degradation_warnings: list[str] = field(default_factory=list)
-    # Chunk 5: Retrieval honesty flags
+    # Retrieval honesty flags
     # Whether the answer was produced using only lexical/corpus channels
     lexical_only: bool = False
     # Whether vector context contributed to the final answer
@@ -407,7 +407,7 @@ class RetrievalTrace:
         retrieval was unavailable.' That is better than a confident but
         secretly weakened answer.
 
-        Sprint 10: Now also includes per-channel health warnings from
+        Now also includes per-channel health warnings from
         ``channel_health`` and ``degradation_warnings``.
         """
         parts = []
@@ -434,7 +434,7 @@ class RetrievalTrace:
                 f"{vdi.metadata_only_stored} chunk(s) stored as metadata-only "
                 "(unsearchable by vector)."
             )
-        # Sprint 10 + Chunk 5: Add channel health warnings (all non-active states)
+        # Add channel health warnings (all non-active states)
         for channel, health in self.channel_health.items():
             if health == "failed":
                 reason = self.channel_health_reasons.get(channel, "unknown error")

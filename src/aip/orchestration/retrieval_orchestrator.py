@@ -167,7 +167,7 @@ class OrchestratorConfig:
     enable_all_registered: bool = False  # dispatch all registered channels
     max_retrieval_rounds: int = 2  # 0 = first attempt, 1 = first retry
     rrf_k: int = 60
-    quality_gate_min_rrf: float = 0.005  # Lowered from 0.01 for weighted RRF (Sprint 6.1)
+    quality_gate_min_rrf: float = 0.005  # Lowered from 0.01 for weighted RRF
     quality_gate_min_hits: int = 1
     max_hits: int = 50
 
@@ -187,9 +187,8 @@ class OrchestratorConfig:
     procedural_max_hits: int = 5
     corpus_max_hits: int = 15
 
-    # Sprint 6.1: Per-channel RRF weights for hybrid retrieval tuning.
+    # Per-channel RRF weights for hybrid retrieval tuning.
     # Higher weight = channel contributes more to the final RRF score.
-    # Default: semantic (vector) = 0.6, lexical (fts+corpus) = 0.4.
     # Channels not listed default to 1.0.
     # When vector coverage is insufficient, these weights are ignored
     # and FTS5-only mode is used (see min_vector_coverage).
@@ -199,11 +198,9 @@ class OrchestratorConfig:
         "corpus": 0.4,
     })
 
-    # Sprint 6.1: Minimum embedding coverage to enable hybrid retrieval.
+    # Minimum embedding coverage to enable hybrid retrieval.
     # If the percentage of embedded corpus turns is below this threshold,
     # vector channel is disabled and FTS5-only retrieval is used.
-    # Set to 0.0 to always enable vector (even with 0% coverage).
-    # Set to 1.0 to require 100% coverage before enabling vector.
     min_vector_coverage: float = 0.10  # 10% — conservative default
 
     def get_channel_max_hits(self, channel_name: str) -> int:
@@ -381,7 +378,7 @@ class RetrievalOrchestrator:
             all_hits = hits
             final_trace = trace
 
-            # Sprint 10: Carry over query expansion terms to the trace
+            # Carry over query expansion terms to the trace
             if all_expanded:
                 final_trace.query_expansion = all_expanded
 
@@ -402,7 +399,7 @@ class RetrievalOrchestrator:
     ) -> tuple[list[RetrievalHit], RetrievalTrace]:
         """Execute one retrieval round: dispatch channels, fuse, quality-gate.
 
-        Sprint 10: Populates ``channel_health`` and ``channel_health_reasons``
+        Populates ``channel_health`` and ``channel_health_reasons``
         on the trace so every retrieval round carries an honest per-channel
         health state.
         """
@@ -436,12 +433,10 @@ class RetrievalOrchestrator:
 
         trace.channels_queried = list(active_channels.keys())
 
-        # Sprint 10 + Chunk 5: Initialize channel health — all enabled channels start
+        # Initialize channel health — all enabled channels start
         # as "active" and are updated based on dispatch results.
-        # Channels that were disabled (not in channel_flags or flag=False)
-        # get the "disabled" health state.
-        # Channels that were enabled but not registered (missing store) get
-        # "not_configured" (distinct from "disabled" which is operator choice).
+        # Channels that were disabled get the "disabled" health state.
+        # Channels that were enabled but not registered get "not_configured".
         channel_health: dict[str, str] = {}
         channel_health_reasons: dict[str, str] = {}
         channel_details: dict[str, ChannelHealthDetail] = {}
@@ -517,7 +512,7 @@ class RetrievalOrchestrator:
             channel_results[name] = hits
             trace.per_channel_elapsed_ms[name] = elapsed_ms
 
-            # Sprint 10 + Chunk 5: Determine channel health from dispatch results
+            # Determine channel health from dispatch results
             if name in channel_failures:
                 channel_health[name] = ChannelHealthState.FAILED.value
                 reason = str(channel_failures[name])[:200]
@@ -551,7 +546,7 @@ class RetrievalOrchestrator:
                         error_summary=reason,
                     )
                 else:
-                    # Channel succeeded but returned 0 results — Chunk 5: EMPTY state
+                    # Channel succeeded but returned 0 results — EMPTY state
                     channel_health[name] = ChannelHealthState.EMPTY.value
                     channel_health_reasons[name] = "Channel returned 0 results"
                     channel_details[name] = ChannelHealthDetail(
@@ -618,7 +613,7 @@ class RetrievalOrchestrator:
                         if hasattr(self, '_embedding_provider_configured'):
                             channel_details[name].embedding_provider_configured = self._embedding_provider_configured
 
-        # Sprint 10 + Chunk 5: Build degradation warnings from channel health
+        # Build degradation warnings from channel health
         degradation_warnings: list[str] = []
         failed_channels = [ch for ch, h in channel_health.items() if h == ChannelHealthState.FAILED.value]
         degraded_channels = [ch for ch, h in channel_health.items() if h == ChannelHealthState.DEGRADED.value]
@@ -663,7 +658,7 @@ class RetrievalOrchestrator:
         trace.hits_before_fusion = sum(len(h) for h in channel_results.values())
 
         # -- RRF fusion -----------------------------------------------------
-        # Use channel weights for hybrid retrieval tuning (Sprint 6.1).
+        # Use channel weights for hybrid retrieval tuning.
         # When vector coverage is too low, disable vector channel before fusion.
         effective_results = dict(channel_results)
         if config.min_vector_coverage > 0 and "vector" in effective_results:
@@ -729,7 +724,7 @@ class RetrievalOrchestrator:
                     trace.llm_entity_count = int(llm_count)
                 break  # Only check the first graph hit
 
-        # Sprint 10 + Chunk 5: Set unified trace fields
+        # Set unified trace fields
         trace.channel_health = channel_health
         trace.channel_health_reasons = channel_health_reasons
         trace.channel_details = channel_details
@@ -739,7 +734,7 @@ class RetrievalOrchestrator:
             {"id": h.id, "rrf_score": round(h.rrf_score, 6), "raw_score": round(h.score, 6)}
             for h in filtered[:10]
         ]
-        # Chunk 5: Set retrieval honesty flags
+        # Set retrieval honesty flags
         trace.channels_attempted = list(active_channels.keys())
         trace.channels_used = [ch for ch, h in channel_health.items() if h in ("active", "degraded")]
         trace.lexical_only = (

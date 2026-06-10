@@ -6,10 +6,20 @@ SmartContextPacker for budget-aware context assembly → model dispatch →
 source-grounded answer with provenance references → optional ECS artifact
 save → session trace recording.
 
-Retriever channels are registered via the channel registry
-(:mod:`aip.orchestration.channels.registry`).  Adding a new channel
-means creating a module in ``aip.orchestration.channels/`` — no edits
-to this file required.
+Decomposed helpers:
+
+- :mod:`aip.orchestration.channels.retrieval_config` — orchestrator config
+  construction, channel weights, coverage gating, adaptive channel selection.
+- :mod:`aip.orchestration.channels.retrieval_trace_utils` — degradation
+  dict assembly, retrieval warnings, vector trace enrichment.
+- :mod:`aip.orchestration.channels.registry` — channel auto-discovery
+  and registration.
+- :mod:`aip.orchestration.channels.types` — ``safe_retriever`` wrapper,
+  ``ChannelFailure``, ``ChannelResult``.
+
+Retriever channels are registered via the channel registry.  Adding a new
+channel means creating a module in ``aip.orchestration.channels/`` — no
+edits to this file required.
 """
 
 from __future__ import annotations
@@ -33,14 +43,16 @@ from aip.foundation.protocols import (
     VectorStore,
 )
 from aip.foundation.schemas.ask import AskResult, AskSource, SourceReference
-from aip.foundation.schemas.retrieval import ChannelHealthDetail, ChannelHealthState, RetrievalHit, RetrievalTrace
-from aip.foundation.schemas.vector import VectorBackendStatus, VectorDegradationInfo
-from aip.orchestration.channels.lexical_channel import _sanitize_fts_query
+from aip.foundation.schemas.retrieval import RetrievalHit, RetrievalTrace
 from aip.orchestration.channels.registry import register_all_channels
+from aip.orchestration.channels.retrieval_trace_utils import (
+    build_degradation_dict,
+    build_retrieval_warnings,
+    enrich_vector_trace_detail,
+)
 from aip.orchestration.channels.types import ChannelFailure
 from aip.orchestration.retrieval_orchestrator import (
     OrchestratorCache,
-    OrchestratorConfig,
     RetrievalOrchestrator,
     get_orchestrator_cache,
 )
@@ -188,6 +200,13 @@ async def _search_sources_with_trace(
     Returns:
         Tuple of (source_references, retrieval_trace, packed_context).
     """
+    from aip.orchestration.channels.retrieval_config import (
+        apply_channel_selector,
+        apply_channel_weights,
+        build_orchestrator_config,
+        check_vector_coverage,
+    )
+
     store_key = id(stores.lexical_store) ^ id(stores.vector_store) ^ id(stores.corpus_turn_store)
 
     orchestrator = _orchestrator_cache.get_or_create(
@@ -195,62 +214,39 @@ async def _search_sources_with_trace(
         register_fn=lambda orch: _register_retriever_channels(orch, stores, config),
     )
 
-    # Coverage-aware vector enablement and hybrid channel weights
-    vector_available = enable_vector and stores.vector_store is not None and stores.embedding_provider is not None
+    # Coverage-aware vector enablement
+    vector_available = (
+        enable_vector
+        and stores.vector_store is not None
+        and stores.embedding_provider is not None
+    )
+    vector_enabled = await check_vector_coverage(
+        corpus_turn_store=stores.corpus_turn_store,
+        vector_available=vector_available,
+    )
 
-    vector_enabled = vector_available
-    if vector_available and stores.corpus_turn_store is not None:
-        try:
-            progress = await stores.corpus_turn_store.get_embedding_progress()
-            coverage = progress.get("percentage", 0.0) / 100.0
-            min_coverage = 0.10  # 10% minimum for hybrid mode
-            if coverage < min_coverage:
-                logger.debug(
-                    "vector_disabled_low_coverage",
-                    coverage_percent=progress.get("percentage", 0.0),
-                    min_coverage_percent=min_coverage * 100,
-                )
-                vector_enabled = False
-        except Exception as exc:
-            logger.debug("embedding_progress_check_failed (non-fatal): %s", exc)
-
-    orch_config = OrchestratorConfig(
+    # Build orchestrator config from channel flags
+    orch_config = build_orchestrator_config(
         enable_fts=enable_fts,
-        enable_vector=vector_enabled,
+        enable_vector=enable_vector,
         enable_graph=enable_graph,
         enable_wiki=enable_wiki,
         enable_procedural=enable_procedural,
-        max_hits=max_sources * 3,
+        vector_enabled=vector_enabled,
+        max_sources=max_sources,
     )
 
-    # Read channel weights from config dict (from aip.config.toml).
+    # Apply channel weights from TOML config
     _effective_config = config
-    if _effective_config is None:
+    if not _effective_config:
         try:
             _effective_config = _load_config()
         except Exception:
-            _effective_config = None
-    if _effective_config is not None:
-        _cw = _effective_config.get("retrieval", {}).get("channel_weights", {})
-        if _cw:
-            has_semantic = vector_enabled
-            has_lexical = enable_fts or orch_config.enable_corpus
-            if has_semantic and has_lexical:
-                orch_config.channel_weights = {
-                    k: float(v) for k, v in _cw.items() if isinstance(v, (int, float))
-                }
-            else:
-                orch_config.channel_weights = {}
+            _effective_config = {}
+    apply_channel_weights(orch_config, _effective_config, vector_enabled)
 
-    # Adaptive channel selection: auto-enable channels based on query signals.
-    # Only enables (never disables). Set auto_channel_selection=False for manual control.
-    if auto_channel_selection:
-        try:
-            from aip.orchestration.channel_selector import ChannelSelector
-            _channel_selector = ChannelSelector()
-            orch_config = _channel_selector.apply_to_config(query, orch_config)
-        except Exception as exc:
-            logger.debug("Channel selector failed (non-fatal): %s", exc)
+    # Adaptive channel selection based on query signals
+    apply_channel_selector(query, orch_config, auto_channel_selection)
 
     try:
         hits, trace = await orchestrator.retrieve(
@@ -260,7 +256,17 @@ async def _search_sources_with_trace(
         )
     except Exception as exc:
         logger.error("Orchestrator retrieval failed: %s", exc)
-        return [], None, None
+        # Build a degraded trace instead of returning None — callers and
+        # dashboards can distinguish "retrieval crashed" from "no results".
+        degraded_trace = RetrievalTrace(
+            session_id=session_id,
+            query=query,
+            verdict="NO_RESULTS",
+        )
+        degraded_trace.degradation_warnings.append(
+            f"Orchestrator retrieval failed: {exc}"
+        )
+        return [], degraded_trace, None
 
     if source_filter != "all":
         hits = [h for h in hits if _hit_type_matches(h, source_filter)]
@@ -277,59 +283,17 @@ async def _search_sources_with_trace(
 
     sources = [_retrieval_hit_to_source_ref(h) for h in hits]
 
-    # Populate vector_degradation on the trace from the vector store.
-    # Every retrieval trace carries the vector backend status so operators
-    # and downstream consumers can see whether vector search was available,
-    # degraded, or absent.
-    if trace is not None and stores.vector_store is not None:
-        if hasattr(stores.vector_store, "get_degradation_info"):
-            try:
-                trace.vector_degradation = stores.vector_store.get_degradation_info()
-            except Exception as exc:
-                logger.debug("Failed to get vector degradation info: %s", exc)
-    elif trace is not None:
-        trace.vector_degradation = VectorDegradationInfo(
-            backend_status=VectorBackendStatus.DISABLED,
-            backend_name="none",
-            reason="No vector store configured",
+    # Enrich trace with vector-store detail — extracted helper keeps this
+    # concern out of the main search flow.
+    if trace is not None:
+        await enrich_vector_trace_detail(
+            trace, stores.vector_store, stores.embedding_provider,
         )
 
-    # Chunk 5: Populate vector-specific fields in channel_details
-    if trace is not None and stores.vector_store is not None and "vector" in trace.channel_details:
-        vec_detail = trace.channel_details["vector"]
-        vec_detail.embedding_provider_configured = stores.embedding_provider is not None
-        vec_detail.vss_available = getattr(stores.vector_store, '_vss_available', None)
-        if hasattr(stores.vector_store, 'get_backend_status'):
-            _vbs = stores.vector_store.get_backend_status()
-            if _vbs == VectorBackendStatus.AVAILABLE:
-                vec_detail.backend_type = "sqlite_vss"
-            elif _vbs == VectorBackendStatus.DEGRADED_BRUTEFORCE:
-                vec_detail.backend_type = "brute_force"
-            elif vec_detail.backend_type == "":
-                vec_detail.backend_type = _vbs.value
-        try:
-            vec_detail.vector_count = None  # async, populated separately if needed
-        except Exception:
-            pass
-        # Update the channel_health to reflect unavailable/not_configured if needed
-        if vec_detail.state == ChannelHealthState.DISABLED and stores.embedding_provider is None:
-            vec_detail.state = ChannelHealthState.NOT_CONFIGURED
-            vec_detail.degradation_reason = "No embedding provider configured"
-            trace.channel_health["vector"] = ChannelHealthState.NOT_CONFIGURED.value
-            trace.channel_health_reasons["vector"] = "No embedding provider configured"
-
-    # Sprint 10: Populate final context info on the trace
+    # Populate final context info on the trace
     if trace is not None and packed is not None:
         trace.final_context_token_count = packed.token_count if hasattr(packed, 'token_count') else 0
         trace.final_context_source_ids = [h.id for h in hits]
-
-    # Chunk 5: Populate vector_count asynchronously if possible
-    if trace is not None and stores.vector_store is not None and "vector" in trace.channel_details:
-        try:
-            vec_count = await stores.vector_store.count()
-            trace.channel_details["vector"].vector_count = vec_count
-        except Exception:
-            pass
 
     return sources, trace, packed
 
@@ -380,8 +344,8 @@ class AskStores:
             if store is not None and hasattr(store, "close"):
                 try:
                     await store.close()
-                except Exception:
-                    pass
+                except Exception as close_exc:
+                    logger.debug("Failed to close store: %s", close_exc)
 
 
 async def create_ask_stores(db_path: str) -> AskStores:
@@ -419,7 +383,7 @@ async def create_ask_stores(db_path: str) -> AskStores:
     model_provider = None
     try:
         config = _load_config()
-        if config is not None:
+        if config:
             model_provider = ModelSlotResolver(config)
     except Exception as exc:
         logger.info("No model provider configured: %s", exc)
@@ -429,11 +393,11 @@ async def create_ask_stores(db_path: str) -> AskStores:
     embedding_provider = None
     try:
         config = _load_config()
-        if config is not None:
+        if config:
             from aip.adapter.embedding.factory import create_embedding_provider
             embedding_provider = create_embedding_provider(config)
     except Exception:
-        pass  # graceful: no embedding provider — lexical-only search
+        logger.debug("No embedding provider configured — lexical-only search")
 
     # Use persistent SqliteVssVectorStore so that vectors survive process
     # restarts.  The VSS extension may not be available, in which case the
@@ -478,22 +442,15 @@ async def create_ask_stores(db_path: str) -> AskStores:
     )
 
 
-def _load_config() -> dict | None:
-    """Load AIP config from default location."""
-    config_path = os.environ.get("AIP_CONFIG_PATH", "config/aip.config.toml")
-    if not os.path.exists(config_path):
-        return None
+def _load_config() -> dict:
+    """Load AIP config from default location.
 
-    try:
-        import tomllib
-    except ImportError:
-        try:
-            import tomli as tomllib  # type: ignore[no-redef]
-        except ImportError:
-            return None
-
-    with open(config_path, "rb") as f:
-        return tomllib.load(f)
+    Delegates to the canonical config loader in ``aip.config.loader``
+    which handles AIP_CONFIG_PATH, CWD-relative paths, and .env loading.
+    Returns an empty dict (not None) when no config file is found.
+    """
+    from aip.config.loader import load_toml_config
+    return load_toml_config()
 
 
 async def ask(
@@ -787,126 +744,25 @@ async def ask(
         project_name=project_name,
         prompt=question,
         errors=artifact_errors,
-        retrieval_degradation=_build_degradation_dict(retrieval_trace),
-        retrieval_warnings=_build_retrieval_warnings(retrieval_trace),
+        retrieval_degradation=build_degradation_dict(
+            retrieval_trace, _last_registration_failures,
+        ),
+        retrieval_warnings=build_retrieval_warnings(retrieval_trace),
     )
 
 
-def _build_retrieval_warnings(retrieval_trace: RetrievalTrace | None) -> list[str]:
-    """Build visible retrieval warnings for AskResult.
-
-    Sprint 10: Every answer can explain where its context came from and
-    whether retrieval was degraded.  These warnings are surfaced to the
-    user so they know when an answer may be unreliable due to retrieval
-    issues.
-
-    Example output:
-        ["Vector channel unavailable",
-         "Graph channel returned 0 results",
-         "Lexical channel supplied primary evidence"]
-    """
-    if retrieval_trace is None:
-        return ["No retrieval trace available — retrieval may not have executed"]
-
-    warnings: list[str] = []
-
-    # 1. Channel health warnings
-    for channel, health in retrieval_trace.channel_health.items():
-        if health == "failed":
-            reason = retrieval_trace.channel_health_reasons.get(channel, "")
-            warnings.append(f"{channel.capitalize()} channel unavailable")
-        elif health == "degraded":
-            warnings.append(f"{channel.capitalize()} channel degraded")
-        elif health == "unavailable":
-            reason = retrieval_trace.channel_health_reasons.get(channel, "")
-            warnings.append(f"{channel.capitalize()} channel unavailable")
-        elif health == "not_configured":
-            reason = retrieval_trace.channel_health_reasons.get(channel, "")
-            warnings.append(f"{channel.capitalize()} channel not configured")
-
-    # 2. Empty result warnings
-    if retrieval_trace.hits_after_quality_gate == 0:
-        warnings.append("No documents passed the quality gate")
-    elif retrieval_trace.verdict == "NEEDS_MORE_CONTEXT":
-        warnings.append("Retrieval quality gate returned insufficient context")
-
-    # 3. Primary evidence identification
-    if retrieval_trace.channel_contributions and (warnings or retrieval_trace.get_degraded_channels()):
-        # Find which channel contributed the most hits
-        best_channel = max(
-            retrieval_trace.channel_contributions.keys(),
-            key=lambda ch: retrieval_trace.channel_contributions[ch],
-        )
-        if best_channel:
-            warnings.append(f"{best_channel.capitalize()} channel supplied primary evidence")
-
-    # 4. Vector-specific warnings
-    vdi = retrieval_trace.vector_degradation
-    if vdi.backend_status.value in ("disabled", "failed"):
-        if not any("Vector" in w for w in warnings):
-            warnings.append("Vector channel unavailable")
-
-    # 5. Add any pre-computed degradation warnings
-    for w in retrieval_trace.degradation_warnings:
-        if w not in warnings:
-            warnings.append(w)
-
-    return warnings
-
+# Backward-compatible aliases — these delegate to the extracted module
+# in ``channels.retrieval_trace_utils``.  They remain importable from
+# ``ask_pipeline`` so that existing tests and callers are not broken.
 
 def _build_degradation_dict(retrieval_trace: RetrievalTrace | None) -> dict:
-    """Build the retrieval_degradation dict for AskResult from a RetrievalTrace.
+    """Backward-compatible wrapper around build_degradation_dict."""
+    return build_degradation_dict(retrieval_trace, _last_registration_failures)
 
-    Ensures every AskResult carries an honest account of what retrieval
-    backends were available, degraded, or absent.  Also includes any
-    channel registration failures from the most recent orchestrator
-    creation, so operators can see which channels were skipped.
 
-    Sprint 10: Now includes channel health, query expansion, entities,
-    documents retrieved, top scores, and final context info.
-    """
-    if retrieval_trace is None:
-        result = {
-            "backend_status": VectorBackendStatus.DISABLED.value,
-            "reason": "No retrieval trace available",
-            "human_message": VectorBackendStatus.DISABLED.human_message(),
-        }
-    else:
-        vdi = retrieval_trace.vector_degradation
-        result = vdi.to_dict()
-        summary = retrieval_trace.degradation_summary()
-        if summary:
-            result["degradation_summary"] = summary
-
-        # Sprint 10: Include unified trace diagnostic info
-        result["channel_health"] = retrieval_trace.channel_health
-        result["channel_health_reasons"] = retrieval_trace.channel_health_reasons
-        result["channel_details"] = {ch: d.to_dict() for ch, d in retrieval_trace.channel_details.items()}
-        result["active_channels"] = retrieval_trace.get_active_channels()
-        result["failed_channels"] = retrieval_trace.get_failed_channels()
-        result["degraded_channels"] = retrieval_trace.get_degraded_channels()
-        result["unavailable_channels"] = retrieval_trace.get_unavailable_channels()
-        result["not_configured_channels"] = retrieval_trace.get_not_configured_channels()
-        result["empty_channels"] = retrieval_trace.get_empty_channels()
-        result["channels_attempted"] = retrieval_trace.channels_attempted
-        result["channels_used"] = retrieval_trace.channels_used
-        result["lexical_only"] = retrieval_trace.lexical_only
-        result["vector_contributed"] = retrieval_trace.vector_contributed
-        result["query_expansion"] = retrieval_trace.query_expansion
-        result["entities_extracted"] = retrieval_trace.entities_extracted
-        result["documents_retrieved_count"] = len(retrieval_trace.documents_retrieved_ids)
-        result["top_scores"] = retrieval_trace.top_scores[:5]
-        result["final_context_token_count"] = retrieval_trace.final_context_token_count
-        result["verdict"] = retrieval_trace.verdict
-        result["channel_contributions"] = retrieval_trace.channel_contributions
-
-    # Include channel registration failures for visibility
-    if _last_registration_failures:
-        result["channel_registration_failures"] = [
-            f.to_dict() for f in _last_registration_failures
-        ]
-
-    return result
+def _build_retrieval_warnings(retrieval_trace: RetrievalTrace | None) -> list[str]:
+    """Backward-compatible wrapper around build_retrieval_warnings."""
+    return build_retrieval_warnings(retrieval_trace)
 
 
 async def _record_trace(
@@ -953,7 +809,7 @@ async def _record_trace(
             "retrieval_vector_embed_failures": retrieval_trace.vector_degradation.embed_failures,
             "retrieval_vector_metadata_only": retrieval_trace.vector_degradation.metadata_only_stored,
             "retrieval_degradation_summary": retrieval_trace.degradation_summary(),
-            # Sprint 10: Unified trace fields
+            # Unified trace fields
             "retrieval_channel_health": json.dumps(retrieval_trace.channel_health),
             "retrieval_channel_health_reasons": json.dumps(retrieval_trace.channel_health_reasons),
             "retrieval_query_expansion": json.dumps(retrieval_trace.query_expansion),

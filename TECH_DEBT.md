@@ -1,7 +1,7 @@
 # AIP Technical Debt Register
 
 **Owner:** B. Moses Jorgensen  
-**Last Updated:** 2026-06-11 (Chunk 5: Retrieval honesty and vector health verification)
+**Last Updated:** 2026-06-11 (Chunk 7: ask_pipeline decomposition and retrieval trace cleanup)
 
 Each entry records a deliberate deferral — what was skipped, why, and what triggers remediation.
 
@@ -259,5 +259,37 @@ be driven by actual operational need, not speculative completeness.
 - `tests/test_chunk5_retrieval_honesty_v2.py` — 46 tests for Chunk 5 retrieval honesty
 - `tests/test_chunk3_sexton_wiring.py` — 19 tests for honest state, startup, signatures
 - ADR-011 — the architectural decision that drove the refactor
+
+---
+
+## DEBT-009 — Remaining Sprint/Step Scaffold Comments Outside Retrieval Scope
+
+**Status:** Active — low priority
+**Phase:** Chunk 7 (ask_pipeline decomposition and retrieval trace cleanup)
+**Filed:** 2026-06-11
+
+**What was deferred:**
+The sanitation sweep in Chunk 7 cleaned scaffold comments ("Sprint N", "Step N", "Chunk N")
+from the retrieval pipeline modules (ask_pipeline.py, retrieval_orchestrator.py, channels/*,
+schemas/retrieval.py). However, many files outside the retrieval scope still contain these
+comments: vigil.py, beast.py, sexton.py, alerting.py, config/__init__.py, cli modules,
+adapter modules, and others. These comments are documentation markers that reference the
+sprint/chunk in which a feature was added but are not misleading — they are just inconsistent
+with the preferred style of describing features by purpose rather than by sprint number.
+
+**Why deferred:**
+The blast radius is large (20+ files, 200+ comments) and the changes are cosmetic — they
+do not affect behavior, test outcomes, or operational correctness. Changing them all at once
+would create a large diff with no functional value and risk merge conflicts with ongoing work.
+The retrieval pipeline (the Chunk 7 scope) is now fully cleaned.
+
+**Remediation trigger:**
+When any of these files is next modified for functional reasons, clean up Sprint/Step/Chunk
+comments in that file as a housekeeping step. Do not create a dedicated cleanup PR.
+
+**Related work:**
+- Chunk 5 — cleaned retrieval schema and orchestrator comments
+- Chunk 6 — cleaned import boundary comments
+- Chunk 7 — cleaned ask_pipeline, channels, and retrieval_trace_utils comments
 
 ---

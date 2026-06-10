@@ -72,10 +72,15 @@ def register(
             art_id = art.get("id", "")
             if not art_id:
                 continue
-            # Check ECS state — prefer APPROVED, accept GENERATED
+            # Check ECS state — prefer APPROVED, accept GENERATED.
+            # ECS lookup failure is logged and treated as "state unknown"
+            # rather than silently swallowing the error.
             try:
                 state = await ecs_store.current_state(art_id)
-            except Exception:
+            except Exception as ecs_exc:
+                logger.debug(
+                    "ECS state lookup failed for '%s': %s", art_id, ecs_exc,
+                )
                 state = None
             if state not in ("APPROVED", "GENERATED"):
                 continue

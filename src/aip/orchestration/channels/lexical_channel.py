@@ -11,7 +11,7 @@ import re
 from typing import Any
 
 from aip.foundation.schemas.retrieval import RetrievalHit
-from aip.orchestration.channels.types import safe_retriever
+from aip.orchestration.channels.types import ChannelFailure, safe_retriever
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ def register(
     orchestrator: Any,
     stores: Any,
     config: dict | None = None,
-) -> None:
+) -> list[ChannelFailure]:
     """Register the FTS5 lexical channel on the orchestrator.
 
     This channel is always available when a LexicalStore is provided.
@@ -66,9 +66,14 @@ def register(
         orchestrator: RetrievalOrchestrator instance to register on.
         stores: AskStores container with lexical_store attribute.
         config: Optional TOML config dict (unused by this channel).
+
+    Returns:
+        List of ChannelFailure for missing dependencies (empty on success).
     """
+    failures: list[ChannelFailure] = []
+
     if orchestrator.is_registered(CHANNEL_NAME):
-        return
+        return failures
 
     lexical_store = stores.lexical_store
 
@@ -94,3 +99,4 @@ def register(
         CHANNEL_NAME,
         safe_retriever(CHANNEL_NAME, _fts_retriever, log_level="warning"),
     )
+    return failures
