@@ -726,12 +726,16 @@ async def export_artifact(
     force: bool = False,
     force_reason: str = "",
 ) -> dict:
-    """Export an artifact to markdown with metadata and provenance footer.
+    """Export an artifact to markdown or plain text.
 
     Normal path: only APPROVED artifacts may be exported.
     Force path: GENERATED/REVIEWED/REJECTED artifacts may be exported with
     ``force=True``, but every such bypass is recorded as a sovereign override
     in the audit trail (EventStore ``force_export`` event).
+
+    Sprint 11: Normal exports now record an ``artifact_exported`` event
+    so every export — normal or force — has a traceable audit trail.
+    Sprint 11: Added plain text format (format="text") alongside markdown.
 
     ``force_reason`` is strongly recommended but not required. If omitted,
     the audit event records "(no explicit reason provided)".
@@ -789,8 +793,11 @@ async def export_artifact(
             reason=force_reason,
         )
 
-    # Build markdown output
-    md = _build_artifact_markdown(artifact_id, content, metadata, ecs_state, force_bypass=force_bypass)
+    # Build output in requested format
+    if format == "text":
+        output_text = _build_artifact_plain_text(artifact_id, content, metadata, ecs_state, force_bypass=force_bypass)
+    else:
+        output_text = _build_artifact_markdown(artifact_id, content, metadata, ecs_state, force_bypass=force_bypass)
 
     # Create parent directories
     out_dir = os.path.dirname(out_path)
@@ -800,9 +807,22 @@ async def export_artifact(
     # Write file
     try:
         with open(out_path, "w", encoding="utf-8") as f:
-            f.write(md)
+            f.write(output_text)
     except OSError as exc:
         return {"error": {"code": "WRITE_FAILED", "message": f"Failed to write to '{out_path}': {exc}"}}
+
+    # Record normal export event (Sprint 11: every export has a trace)
+    if not force_bypass:
+        await stores.event_store.write_event(
+            event_type="artifact_exported",
+            actor="export_pipeline",
+            artifact_id=artifact_id,
+            from_state=ecs_state,
+            to_state=ecs_state,
+            format=format,
+            out_path=out_path,
+            detail=f"Artifact exported from {ecs_state} state in {format} format",
+        )
 
     # Verify the file was written
     if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
@@ -824,6 +844,60 @@ async def export_artifact(
         result["audit_recorded"] = True
 
     return result
+
+
+def _build_artifact_plain_text(
+    artifact_id: str,
+    content: str,
+    metadata: dict,
+    ecs_state: str,
+    force_bypass: bool = False,
+) -> str:
+    """Build a plain text document from artifact content and metadata.
+
+    Plain text format strips markdown formatting — no frontmatter,
+    no markdown headers, no bold.  Just the content with a simple
+    header and provenance footer.
+    """
+    lines = []
+
+    # Simple header
+    project = metadata.get("project_name", metadata.get("project_id", ""))
+    lines.append(f"Artifact: {artifact_id}")
+    if project:
+        lines.append(f"Project: {project}")
+    lines.append(f"State: {ecs_state}")
+    lines.append(f"Created: {metadata.get('generated_at', metadata.get('created_at', ''))}")
+    source_ids = metadata.get("source_ids", [])
+    lines.append(f"Sources: {len(source_ids)}")
+    if force_bypass:
+        lines.append("FORCE_EXPORT: true")
+    lines.append("")
+    lines.append("=" * 60)
+    lines.append("")
+
+    # Content (plain text, no markdown formatting)
+    lines.append(content)
+    lines.append("")
+
+    # Provenance footer
+    lines.append("-" * 60)
+    lines.append("Provenance:")
+    if source_ids:
+        source_types = metadata.get("source_types", [])
+        for i, sid in enumerate(source_ids):
+            stype = source_types[i] if i < len(source_types) else "unknown"
+            lines.append(f"  Source {i + 1}: {sid} (type: {stype})")
+    else:
+        lines.append("  No source links recorded")
+    lines.append("")
+    lines.append(f"Exported from AIP at {datetime.now(timezone.utc).isoformat()}")
+    if force_bypass:
+        lines.append("")
+        lines.append("SOVEREIGN OVERRIDE: This artifact was exported from a non-APPROVED")
+        lines.append("lifecycle state. The export bypass was recorded in the audit trail.")
+
+    return "\n".join(lines)
 
 
 def _build_artifact_markdown(
@@ -987,6 +1061,19 @@ async def export_project(
                     reason=force_reason or "project export with --include-unreviewed",
                 )
 
+    # Sprint 11: Record artifact_exported events for normally exported artifacts
+    for art in artifacts:
+        if art["ecs_state"] == "APPROVED":
+            await stores.event_store.write_event(
+                event_type="artifact_exported",
+                actor="export_pipeline",
+                artifact_id=art["artifact_id"],
+                from_state=art["ecs_state"],
+                to_state=art["ecs_state"],
+                format=format,
+                detail=f"Artifact exported from {art['ecs_state']} state in {format} format (project export)",
+            )
+
     if not artifacts:
         return {
             "project": project_name,
@@ -995,7 +1082,55 @@ async def export_project(
             "message": f"No approved artifacts found for project '{project_name}'",
         }
 
-    # Build markdown bundle
+    # Build output bundle in requested format
+    if format == "text":
+        output_text = _build_project_plain_text(project_name, artifacts, bypass_count)
+    else:
+        output_text = _build_project_markdown(project_name, artifacts, bypass_count)
+
+    # Create parent directories
+    out_dir = os.path.dirname(out_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    # Write file
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(output_text)
+    except OSError as exc:
+        return {"error": {"code": "WRITE_FAILED", "message": f"Failed to write to '{out_path}': {exc}"}}
+
+    # Verify
+    if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+        return {"error": {"code": "WRITE_FAILED", "message": f"File '{out_path}' was not written successfully"}}
+
+    result: dict[str, Any] = {
+        "project": project_name,
+        "artifacts_exported": len(artifacts),
+        "out_path": out_path,
+        "format": format,
+        "bytes_written": os.path.getsize(out_path),
+    }
+
+    # Include bypass metadata
+    if bypass_count > 0:
+        result["sovereign_override_count"] = bypass_count
+        result["audit_recorded"] = True
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Project export format helpers (Sprint 11: markdown + plain text)
+# ---------------------------------------------------------------------------
+
+
+def _build_project_markdown(
+    project_name: str,
+    artifacts: list[dict],
+    bypass_count: int,
+) -> str:
+    """Build a markdown bundle from a list of artifacts."""
     lines = []
     lines.append(f"# Project: {project_name}")
     lines.append("")
@@ -1030,37 +1165,49 @@ async def export_project(
         ))
         lines.append("")
 
-    # Create parent directories
-    out_dir = os.path.dirname(out_path)
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
+    return "\n".join(lines)
 
-    # Write file
-    md = "\n".join(lines)
-    try:
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(md)
-    except OSError as exc:
-        return {"error": {"code": "WRITE_FAILED", "message": f"Failed to write to '{out_path}': {exc}"}}
 
-    # Verify
-    if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
-        return {"error": {"code": "WRITE_FAILED", "message": f"File '{out_path}' was not written successfully"}}
-
-    result: dict[str, Any] = {
-        "project": project_name,
-        "artifacts_exported": len(artifacts),
-        "out_path": out_path,
-        "format": format,
-        "bytes_written": os.path.getsize(out_path),
-    }
-
-    # Include bypass metadata
+def _build_project_plain_text(
+    project_name: str,
+    artifacts: list[dict],
+    bypass_count: int,
+) -> str:
+    """Build a plain text bundle from a list of artifacts."""
+    lines = []
+    lines.append(f"Project: {project_name}")
+    lines.append("")
+    lines.append(f"Exported: {datetime.now(timezone.utc).isoformat()}")
+    lines.append(f"Total artifacts: {len(artifacts)}")
     if bypass_count > 0:
-        result["sovereign_override_count"] = bypass_count
-        result["audit_recorded"] = True
+        lines.append(f"Sovereign overrides: {bypass_count} artifact(s) exported from non-APPROVED state")
+    lines.append("")
+    lines.append("=" * 60)
 
-    return result
+    # Index
+    lines.append("")
+    lines.append("Artifact Index:")
+    for i, art in enumerate(artifacts, 1):
+        title = art["metadata"].get("prompt", art["artifact_id"])[:80]
+        override_marker = " [SOVEREIGN OVERRIDE]" if art["ecs_state"] != "APPROVED" else ""
+        lines.append(f"  {i}. {art['artifact_id']} — {title} [{art['ecs_state']}]{override_marker}")
+    lines.append("")
+
+    # Each artifact
+    for art in artifacts:
+        force_bypass = art["ecs_state"] != "APPROVED"
+        lines.append("-" * 60)
+        lines.append("")
+        lines.append(_build_artifact_plain_text(
+            art["artifact_id"],
+            art["content"],
+            art["metadata"],
+            art["ecs_state"],
+            force_bypass=force_bypass,
+        ))
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

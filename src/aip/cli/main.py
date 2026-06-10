@@ -11,7 +11,9 @@ from pathlib import Path
 import click
 
 from aip.cli import ask as ask_cmd
+from aip.cli import artifact as artifact_cmd
 from aip.cli import backup as backup_cmd
+from aip.cli import codex as codex_cmd
 from aip.cli import config as config_cmd
 from aip.cli import corpus as corpus_cmd
 from aip.cli import eval as eval_cmd
@@ -42,8 +44,10 @@ def cli() -> None:
       aip ingest    Import conversations into the knowledge substrate
       aip ask       Ask a source-grounded question about a project
       aip review    Review, approve, reject generated artifacts
+      aip artifact  Manage artifact lifecycle (create, inspect)
       aip history   Browse stored conversation turns (ingest + chat auto-save)
       aip corpus    Manage turn-level corpus (new atomic CorpusTurn unit)
+      aip codex     Manage the CODEX — internal corpus librarian
       aip eval      Run retrieval quality evaluation
       aip export    Export artifacts to markdown
       aip backup    Create consistent backup of all stores
@@ -86,9 +90,11 @@ cli.add_command(project_cmd.project)
 cli.add_command(session_cmd.session)
 cli.add_command(ingest_cmd.ingest)
 cli.add_command(ask_cmd.ask_cmd)
+cli.add_command(artifact_cmd.artifact)
 cli.add_command(review_cmd.review)
 cli.add_command(history_cmd.history)
 cli.add_command(corpus_cmd.corpus)
+cli.add_command(codex_cmd.codex)
 cli.add_command(eval_cmd.eval_cmd)
 cli.add_command(export_cmd.export)
 cli.add_command(backup_cmd.backup)

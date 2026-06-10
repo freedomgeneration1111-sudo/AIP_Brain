@@ -36,7 +36,7 @@ def export() -> None:
 
 @export.command("artifact")
 @click.argument("artifact_id")
-@click.option("--format", "fmt", type=click.Choice(["markdown"]), default="markdown", help="Export format (default: markdown).")
+@click.option("--format", "fmt", type=click.Choice(["markdown", "text"]), default="markdown", help="Export format (default: markdown).")
 @click.option("--out", required=True, help="Output file path.")
 @click.option("--force", is_flag=True, default=False, help="EMERGENCY/DEBUG: Force export of non-APPROVED artifacts. Audit event will be recorded.")
 @click.option("--reason", default="", help="Reason for force-export (recorded in audit trail). Strongly recommended with --force.")
@@ -73,7 +73,7 @@ def export_artifact(artifact_id: str, fmt: str, out: str, force: bool, reason: s
 
 @export.command("project")
 @click.argument("project_name")
-@click.option("--format", "fmt", type=click.Choice(["markdown"]), default="markdown", help="Export format (default: markdown).")
+@click.option("--format", "fmt", type=click.Choice(["markdown", "text"]), default="markdown", help="Export format (default: markdown).")
 @click.option("--out", required=True, help="Output file path.")
 @click.option("--include-unreviewed", is_flag=True, default=False, help="Include GENERATED/REVIEWED artifacts (sovereign override with audit trail). Default: APPROVED only.")
 @click.option("--reason", default="", help="Reason for including unreviewed artifacts (recorded in audit trail). Recommended with --include-unreviewed.")

@@ -8,7 +8,7 @@ continue to work unchanged.
 
 The actual definitions live in domain-specific sub-modules:
     base, retrieval, review, evaluation, trajectory,
-    workflow, vector, auth, budget, surface, config, ingestion
+    workflow, vector, auth, budget, surface, config, ingestion, artifact
 """
 
 from __future__ import annotations
@@ -137,6 +137,26 @@ from .corpus_turn import (
     make_turn_id,
 )
 
+# -- artifact --
+from .artifact import (
+    ArtifactLedgerEntry,
+    ArtifactMetadata,
+    ArtifactType,
+    ReviewQueueSummary,
+)
+
+# -- codex --
+from .codex import (
+    CodexConfig,
+    CodexContradiction,
+    CodexDashboard,
+    CodexSource,
+    CodexSourceStatus,
+    CodexTopic,
+    ContradictionSeverity,
+    ContradictionStatus,
+)
+
 __all__ = [
     # base
     "ContractTier",
@@ -220,4 +240,18 @@ __all__ = [
     "PluginStatus",
     "PluginConfig",
     "PerformanceConfig",
+    # artifact
+    "ArtifactType",
+    "ArtifactMetadata",
+    "ArtifactLedgerEntry",
+    "ReviewQueueSummary",
+    # codex
+    "CodexSourceStatus",
+    "ContradictionSeverity",
+    "ContradictionStatus",
+    "CodexSource",
+    "CodexTopic",
+    "CodexContradiction",
+    "CodexDashboard",
+    "CodexConfig",
 ]

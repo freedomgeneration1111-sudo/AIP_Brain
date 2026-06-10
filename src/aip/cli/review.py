@@ -7,6 +7,8 @@ Provides ``aip review`` with subcommands:
 - approve: Approve artifact through existing ECS lifecycle
 - reject: Reject artifact with reviewer note
 - needs-revision: Mark artifact as needing revision
+- note: Add reviewer note without changing state
+- dashboard: Show review queue summary
 """
 
 from __future__ import annotations
@@ -143,6 +145,41 @@ def review_needs_revision(artifact_id: str, note: str, db_path: str | None) -> N
         sys.exit(1)
 
 
+@review.command("note")
+@click.argument("artifact_id")
+@click.option("--text", required=True, help="Reviewer note text.")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
+def review_note(artifact_id: str, text: str, db_path: str | None) -> None:
+    """Add a reviewer note to an artifact without changing its state.
+
+    The note is recorded in the audit trail but does not change the
+    artifact's ECS state. Use this for observations, questions, or
+    context that other reviewers should see.
+    """
+    try:
+        result = asyncio.run(_review_note_async(artifact_id, text, db_path))
+        _print_note_result(result)
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@review.command("dashboard")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
+def review_dashboard(db_path: str | None) -> None:
+    """Show review queue dashboard — counts by state and recent activity.
+
+    Displays a snapshot of how many artifacts are in each lifecycle
+    state, recent review activity, and force-export exceptions.
+    """
+    try:
+        result = asyncio.run(_review_dashboard_async(db_path))
+        _print_dashboard_result(result)
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
 # ---------------------------------------------------------------------------
 # Async implementations
 # ---------------------------------------------------------------------------
@@ -234,6 +271,26 @@ async def _review_needs_revision_async(artifact_id: str, note: str, db_path: str
     stores = await create_review_export_stores(_get_db_path(db_path))
     try:
         return await review_needs_revision(artifact_id, stores, instruction=note)
+    finally:
+        await stores.close()
+
+
+async def _review_note_async(artifact_id: str, text: str, db_path: str | None):
+    from aip.orchestration.artifact_lifecycle import create_artifact_lifecycle_stores, review_add_note
+
+    stores = await create_artifact_lifecycle_stores(_get_db_path(db_path))
+    try:
+        return await review_add_note(artifact_id, stores, note=text)
+    finally:
+        await stores.close()
+
+
+async def _review_dashboard_async(db_path: str | None):
+    from aip.orchestration.artifact_lifecycle import create_artifact_lifecycle_stores, review_dashboard
+
+    stores = await create_artifact_lifecycle_stores(_get_db_path(db_path))
+    try:
+        return await review_dashboard(stores)
     finally:
         await stores.close()
 
@@ -382,3 +439,65 @@ def _print_action_result(result: dict, action: str) -> None:
         click.echo("  Artifact preserved: Yes")
     if result.get("canonical_written"):
         click.echo("  Canonical store: Written (DEFINER approved)")
+
+
+def _print_note_result(result: dict) -> None:
+    if "error" in result:
+        err = result["error"]
+        click.echo(f"Error ({err['code']}): {err['message']}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Note added: {result['artifact_id']}")
+    click.echo(f"  Lifecycle state: {result['lifecycle_state']} (unchanged)")
+    click.echo(f"  Note:            {result['note']}")
+    click.echo(f"  By:              {result['actor']}")
+
+
+def _print_dashboard_result(result: dict) -> None:
+    click.echo("=" * 60)
+    click.echo("Review Queue Dashboard")
+    click.echo("=" * 60)
+    click.echo()
+
+    # State counts
+    states = result.get("states", {})
+    click.echo("Artifact States:")
+    click.echo(f"  GENERATED (pending):  {states.get('GENERATED', 0)}")
+    click.echo(f"  REVIEWED:             {states.get('REVIEWED', 0)}")
+    click.echo(f"  APPROVED:             {states.get('APPROVED', 0)}")
+    click.echo(f"  REJECTED:             {states.get('REJECTED', 0)}")
+    click.echo(f"  SUPERSEDED:           {states.get('SUPERSEDED', 0)}")
+    click.echo(f"  FAILED:               {states.get('FAILED', 0)}")
+    click.echo()
+
+    # Summary
+    click.echo(f"Total active:          {result.get('total_active', 0)}")
+    click.echo(f"Pending review:        {result.get('total_pending_review', 0)}")
+    click.echo(f"Needs revision:        {result.get('needs_revision_count', 0)}")
+    click.echo()
+
+    # Force-export exceptions
+    force_count = result.get("force_export_count", 0)
+    if force_count > 0:
+        click.echo(f"Force-export exceptions: {force_count}")
+        for fe in result.get("force_export_events", [])[:5]:
+            click.echo(f"  - {fe.get('artifact_id', '')}: from {fe.get('bypassed_state', '')} state")
+            if fe.get("reason"):
+                click.echo(f"    Reason: {fe['reason'][:80]}")
+            click.echo(f"    At: {fe.get('timestamp', '')}")
+        click.echo()
+
+    # Recent activity
+    recent = result.get("recent_events", [])
+    if recent:
+        click.echo("Recent Activity:")
+        for ev in recent[:10]:
+            timestamp = ev.get("timestamp", "")[:19]
+            event_type = ev.get("event_type", "")
+            artifact_id = ev.get("artifact_id", "")
+            detail = ev.get("detail", "")
+            click.echo(f"  {timestamp}  {event_type}  {artifact_id}")
+            if detail:
+                click.echo(f"    {detail[:100]}")
+        if len(recent) > 10:
+            click.echo(f"  ... and {len(recent) - 10} more events")
