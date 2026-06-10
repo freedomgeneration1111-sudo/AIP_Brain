@@ -1,6 +1,6 @@
 # AIP — AI Poiesis
 
-[![CI](https://github.com/freedomgeneration1111-sudo/AIP_Brain/actions/workflows/ci.yml/badge.svg)](https://github.com/freedomgeneration1111-sudo/AIP_Brain/actions/workflows/ci.yml)
+[![CI](https://github.com/freedomgeneration1111-sudo/AIP_Brain/actions/workflows/ci.yml/badge.svg)](https://github.com/freedomgeneration1111-sudo/AIP_Brain/actions/workflows/ci.yml) [![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
 
 **Product:** AI Poiesis (AIP) v0.1
 **Status:** Alpha — dogfood-ready vertical slice (ingest → ask → review → approve → export)
@@ -244,4 +244,4 @@ matrix for this component's current status, including any open findings.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+BUSL-1.1 — see [LICENSE](LICENSE). Changes to Apache License 2.0 on 2030-06-10.

@@ -2,7 +2,11 @@
 name = "aip"
 version = "0.1.0"
 description = "AI Poiesis — local-first sovereign knowledge engine"
+license = {text = "BUSL-1.1"}
 requires-python = ">=3.11"
+classifiers = [
+    "License :: Other/Proprietary License",
+]
 dependencies = [
     "pydantic>=2.0",
     "click>=8.0",
