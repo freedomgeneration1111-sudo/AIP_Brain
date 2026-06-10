@@ -1,6 +1,35 @@
 # AIP_Brain Worklog
 
 ---
+Task ID: sprint-9
+Agent: main
+Task: Sprint 9 — Corpus Ingestion and Memory Reliability Sprint
+
+Work Log:
+- Explored codebase: found two parallel ingestion pipelines (legacy artifact+chunk vs new CorpusTurn), existing parsers (Claude, ChatGPT, Markdown, Plaintext), CorpusTurnStore with FTS5, Sexton/Beast/Vigil actors, API routes
+- Schema changes: added content_hash, source_path, doc_version, embed_fail_count, last_embed_error to CorpusTurn dataclass and CorpusTurnStore DDL
+- Added compute_content_hash(), make_document_conversation_id() helper functions
+- Added 5 new DDL migrations for Sprint 9 columns, 3 new indexes (content_hash, source_path, embed_fail_count)
+- Created document_parser.py: parse_markdown_document(), parse_text_document(), parse_document_file() — converts documents into CorpusTurns with source_model="document"
+- Created corpus_ingest_pipeline.py: unified ingestion pipeline with ingest_file_to_corpus() and ingest_directory_to_corpus()
+- Pipeline features: format auto-detection, dedup via content_hash, re-ingest detection (doc_version increment), provenance metadata, event recording
+- Added 9 new CorpusTurnStore methods: check_content_hash, find_by_source_path, increment_doc_version, record_embed_failure, clear_embed_failure, get_backfill_queue, count_embed_failures, get_corpus_audit, get_corpus_status
+- Updated corpus CLI: enhanced `aip corpus ingest` with --source-model document, --recursive, directory support; added `aip corpus status`, `aip corpus audit`, `aip corpus backfill`, `aip corpus list --unembedded/--failed/--document`
+- Added 4 new API endpoints: GET /corpus/status, GET /corpus/audit, GET /corpus/backfill-queue, POST /corpus/ingest
+- Updated Sexton: _persist_embedding_failures now records per-turn failures in CorpusTurnStore; mark_embedded now clears embed failure state
+- Created scripts/dogfood_seed_corpus.sh: ingests AIP's own docs (architecture, ADRs, governance, roadmap, config, status, API reference, tech debt)
+- Created test_corpus_ingestion_reliability.py with 60 tests across 10 test classes
+- All 180 tests pass (60 new + 120 existing)
+
+Stage Summary:
+- Canonical corpus ingest flow: CLI and API share one pipeline, supports markdown/text/PDF/conversations/directories
+- Document identity and dedup: content_hash auto-computed, re-ingest skips unchanged content, tracks doc_version for changed content
+- Provenance guarantees: every turn knows source_path, section_heading, offset, ingest_timestamp, content_hash
+- Embedding backfill reliability: failures tracked in CorpusTurnStore (embed_fail_count, last_embed_error), backfill queue prioritizes failures, clear on success
+- Corpus audit commands: `aip corpus status` (quick), `aip corpus audit` (comprehensive), `aip corpus backfill` (retry failures), `aip corpus list --unembedded/--failed`
+- Dogfood seed corpus script ready for AIP's own documentation
+
+---
 Task ID: 1
 Agent: main
 Task: Sprint 5.18 — Improve maintainability, observability, and performance of storage/graph layers

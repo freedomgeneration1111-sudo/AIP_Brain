@@ -979,6 +979,9 @@ Example response structure:
                         try:
                             if hasattr(self._corpus_turns, "mark_embedded"):
                                 await self._corpus_turns.mark_embedded(tid, embedding_model=embedding_model)
+                            # Sprint 9: Clear any previous embed failure state
+                            if hasattr(self._corpus_turns, "clear_embed_failure"):
+                                await self._corpus_turns.clear_embed_failure(tid)
                         except Exception as embed_mark_exc:
                             # Sprint 6.3: Log this clearly — vector was stored but
                             # the turn won't be marked embedded, so it'll be
@@ -2104,27 +2107,40 @@ Output format:
         self, failed_ids: list[str], embedding_model: str,
     ) -> None:
         """Sprint 6.3: Persist failed embedding turn IDs to the event store.
+        Sprint 9: Also record failures in CorpusTurnStore for backfill tracking.
 
         This ensures that failure information survives restarts and can be
-        used by `aip corpus verify` to identify turns that need retry.
-        Writes a single event listing all failed turn IDs from this pass.
+        used by `aip corpus verify` and `aip corpus backfill` to identify
+        turns that need retry. Writes a single event listing all failed turn IDs
+        from this pass and records each failure in corpus_turns.embed_fail_count.
         """
-        if not failed_ids or self._events is None:
+        if not failed_ids:
             return
-        try:
-            await self._events.write_event(
-                event_type="sexton_embedding_failures",
-                actor="sexton",
-                artifact_id="system",
-                from_state=None,
-                to_state=None,
-                failed_turn_ids=failed_ids[:100],  # Cap at 100
-                embedding_model=embedding_model,
-                failure_count=len(failed_ids),
-                timestamp=datetime.now(timezone.utc).isoformat(),
-            )
-        except Exception as exc:
-            log.warning("sexton_persist_embedding_failures_failed", error=str(exc))
+
+        # Sprint 9: Record per-turn failures in CorpusTurnStore
+        if self._corpus_turns is not None and hasattr(self._corpus_turns, "record_embed_failure"):
+            for tid in failed_ids[:100]:  # Cap at 100 per pass
+                try:
+                    await self._corpus_turns.record_embed_failure(tid, f"embedding_failed:model={embedding_model}")
+                except Exception:
+                    pass  # Best effort — don't let failure recording break the pipeline
+
+        # Legacy: Write event to EventStore
+        if self._events is not None:
+            try:
+                await self._events.write_event(
+                    event_type="sexton_embedding_failures",
+                    actor="sexton",
+                    artifact_id="system",
+                    from_state=None,
+                    to_state=None,
+                    failed_turn_ids=failed_ids[:100],  # Cap at 100
+                    embedding_model=embedding_model,
+                    failure_count=len(failed_ids),
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                )
+            except Exception as exc:
+                log.warning("sexton_persist_embedding_failures_failed", error=str(exc))
 
     async def _emit_event(
         self,

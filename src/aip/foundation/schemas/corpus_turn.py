@@ -1,15 +1,28 @@
 """CorpusTurn schema — the atomic unit of the AIP knowledge corpus.
 
 A CorpusTurn represents one complete user-assistant exchange (a "turn")
-in a conversation. This is the foundational object for all retrieval,
-Beast tagging, vector indexing, and knowledge graph work.
+in a conversation, or one section of a document. This is the foundational
+object for all retrieval, Beast tagging, vector indexing, and knowledge
+graph work.
 
 Unlike fixed-size text chunks (which split thoughts mid-sentence),
 a turn preserves semantic coherence: the full user question + full
 assistant response as a single atomic record.
 
+For documents (markdown, text, PDF sections), the mapping is:
+  user_text      → section heading or document title
+  assistant_text → section content
+  source_model   → "document"
+
 All Beast metadata (domains, tags, importance, bridges) is stored
 directly on the turn for efficient querying and re-evaluation.
+
+Sprint 9 additions:
+  content_hash   — SHA256 of searchable_text for dedup and integrity
+  source_path    — original file path for provenance
+  doc_version    — version counter for re-ingest tracking
+  embed_fail_count — number of consecutive embedding failures
+  last_embed_error — last embedding error message
 """
 
 from __future__ import annotations
@@ -49,7 +62,7 @@ class CorpusTurn:
     turn_index: int  # 0-based position within conversation
 
     # Source provenance — required
-    source_model: str  # "claude" | "gpt" | "deepseek" | "glm" | "gemini" | "grok"
+    source_model: str  # "claude" | "gpt" | "deepseek" | "glm" | "gemini" | "grok" | "document"
     source_account: str  # identifier for which export file (e.g. "claude_export_2026")
     export_date: str  # ISO date string of when export was made
 
@@ -101,6 +114,32 @@ class CorpusTurn:
     # Stored as a TEXT column in SQLite (default '{}'). Vigil can write
     # quality scores, review decisions, and classification provenance here
     # without schema changes.
+    # Sprint 9: Also used for document provenance:
+    #   section_heading — heading text for document sections
+    #   offset_page — page number or character offset
+    #   ingest_timestamp — when this turn was ingested
+    #   previous_hash — content_hash of previous version (if re-ingested)
+
+    # Sprint 9: Document identity and provenance
+    content_hash: str = ""
+    # SHA256 hex digest of searchable_text. Used for dedup detection
+    # and content integrity verification. Empty string = not yet computed.
+    source_path: str = ""
+    # Original file path or URI where this content came from.
+    # e.g. "docs/ARCHITECTURE.md" or "exports/claude/conversations.json".
+    # Empty for API-sourced turns.
+    doc_version: int = 0
+    # Version counter incremented on re-ingest when content changes.
+    # 0 = original ingest, 1+ = re-ingested with content changes.
+
+    # Sprint 9: Embedding backfill reliability
+    embed_fail_count: int = 0
+    # Number of consecutive embedding failures. Reset to 0 on success.
+    # Turns with embed_fail_count > 0 appear in the backfill queue.
+
+    last_embed_error: str = ""
+    # Last embedding error message. Empty string = no error or last embed
+    # succeeded. Useful for diagnosing systematic embedding failures.
 
     # Computed fields — populated at ingestion time
     searchable_text: str = ""
@@ -119,6 +158,11 @@ class CorpusTurn:
             ).strip()
         if not self.word_count:
             self.word_count = len(self.searchable_text.split())
+        # Compute content_hash if not provided
+        if not self.content_hash and self.searchable_text:
+            self.content_hash = hashlib.sha256(
+                self.searchable_text.encode()
+            ).hexdigest()[:32]
 
 
 def make_turn_id(conversation_id: str, turn_index: int) -> str:
@@ -128,3 +172,29 @@ def make_turn_id(conversation_id: str, turn_index: int) -> str:
     """
     key = f"{conversation_id}:{turn_index}"
     return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
+def compute_content_hash(text: str) -> str:
+    """Compute SHA256 content hash for dedup and integrity checking.
+
+    Returns first 32 hex chars of SHA256 digest (128 bits of entropy).
+    Truncated for storage efficiency while maintaining negligible collision risk
+    at corpus scales (< 1 billion turns).
+    """
+    return hashlib.sha256(text.encode()).hexdigest()[:32]
+
+
+def make_document_conversation_id(source_path: str) -> str:
+    """Generate stable conversation_id for a document source path.
+
+    Uses SHA256 of the path so the same document always maps to the same
+    conversation_id regardless of absolute path prefix. This enables
+    re-ingest detection when the same file is ingested from different
+    mount points or working directories.
+    """
+    # Use basename + parent dir for stability across path prefixes
+    import os
+    # Normalize: use relative-ish path (last 3 components)
+    parts = source_path.replace("\\", "/").split("/")
+    stable_key = "/".join(parts[-3:]) if len(parts) > 3 else source_path
+    return f"doc:{hashlib.sha256(stable_key.encode()).hexdigest()[:12]}"

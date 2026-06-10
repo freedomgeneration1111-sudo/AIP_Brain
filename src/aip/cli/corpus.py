@@ -1,7 +1,10 @@
 """CLI commands for the turn-level corpus (aip corpus ...).
 
 Provides ``aip corpus ingest`` for importing source conversation exports
-into the CorpusTurnStore (the new atomic turn-level corpus).
+and project documents into the CorpusTurnStore (the new atomic turn-level corpus).
+
+Sprint 9: Enhanced to support documents (markdown, text, PDF), directories,
+dedup detection, provenance tracking, and corpus audit commands.
 
 This command is SEPARATE from the legacy ``aip ingest`` (which continues
 to feed the old artifact + chunk pipeline for backward compat).
@@ -11,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from datetime import date
 from typing import Any
@@ -51,13 +55,13 @@ def corpus() -> None:
 @click.argument("path", type=click.Path(exists=True))
 @click.option(
     "--source-model",
-    required=True,
-    type=click.Choice(["claude", "gpt", "deepseek", "glm", "gemini", "grok"], case_sensitive=False),
-    help="Source model that produced the export (e.g. claude).",
+    default=None,
+    type=click.Choice(["claude", "gpt", "deepseek", "glm", "gemini", "grok", "document"], case_sensitive=False),
+    help="Source model that produced the export (auto-detected if not specified).",
 )
 @click.option(
     "--source-account",
-    required=True,
+    default=None,
     help="Human identifier for this export batch (e.g. claude_export_june_2026).",
 )
 @click.option(
@@ -65,99 +69,112 @@ def corpus() -> None:
     default=None,
     help="ISO date of the export (defaults to today).",
 )
+@click.option(
+    "--recursive/--no-recursive",
+    default=False,
+    help="Recurse into subdirectories (for directory ingestion).",
+)
 @click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
 def corpus_ingest_cmd(
     path: str,
-    source_model: str,
-    source_account: str,
+    source_model: str | None,
+    source_account: str | None,
     export_date: str | None,
+    recursive: bool,
     db_path: str | None,
 ) -> None:
-    """Ingest a source conversation export into the turn-level corpus."""
+    """Ingest a source file or directory into the corpus.
+
+    Sprint 9: Now supports documents (markdown, text, PDF) in addition to
+    conversation exports (Claude, ChatGPT). Directories are scanned for
+    supported files.
+
+    Dedup: If content hasn't changed (same content_hash), the turn is skipped.
+    Re-ingest: If content changed, doc_version is incremented.
+
+    Examples:
+      aip corpus ingest conversations.json --source-model claude
+      aip corpus ingest docs/ARCHITECTURE.md
+      aip corpus ingest docs/ --recursive
+    """
     try:
         if not export_date:
             export_date = date.today().isoformat()
-
-        if source_model == "claude":
-            try:
-                turns, warnings = parse_claude_export(
-                    path, source_account, export_date
-                )
-            except (FileNotFoundError, ValueError) as e:
-                click.echo(f"Parse error: {e}", err=True)
-                sys.exit(1)
-        else:
-            click.echo(
-                f"Parser for '{source_model}' not yet implemented. "
-                f"Coming in a future prompt."
-            )
-            sys.exit(0)
-
-        click.echo(f"Parsed {len(turns)} turns from {path}")
-        if warnings:
-            click.echo(f"Warnings ({len(warnings)}):")
-            for w in warnings[:10]:
-                click.echo(f"  {w}")
-            if len(warnings) > 10:
-                click.echo(f"  ... and {len(warnings) - 10} more")
+        if not source_account:
+            source_account = "cli_ingest"
 
         resolved_db_path = db_path or get_default_db_path()
 
-        async def _ingest_turns(turns_list):
-            store = CorpusTurnStore(db_path=resolved_db_path)
-            await store.initialize()
-            try:
-                ingested = 0
-                skipped = 0
-                total = len(turns_list)
-                for i, turn in enumerate(turns_list):
-                    try:
-                        existing = await store.get_turn(turn.turn_id)
-                        if existing is not None:
-                            skipped += 1
-                            continue
-                        await store.write_turn(turn)
-                        ingested += 1
-                    except Exception as e:
-                        warnings.append(f"turn {turn.turn_id}: write failed: {e}")
-                        skipped += 1
-
-                    if (i + 1) % 100 == 0 or (i + 1) == total:
-                        click.echo(f"\rWriting turns... {i+1}/{total}", nl=False)
-                click.echo("")
-                return ingested, skipped
-            finally:
-                await store.close()
-
-        ingested, skipped = asyncio.run(_ingest_turns(turns))
-        click.echo(
-            f"Ingested {ingested} turns. "
-            f"{skipped} skipped (duplicates or errors)."
+        from aip.orchestration.ingestion.corpus_ingest_pipeline import (
+            CorpusIngestConfig,
+            ingest_directory_to_corpus,
+            ingest_file_to_corpus,
         )
 
-        # Write corpus_modified event (follows existing pattern)
-        async def _write_event(turn_count: int):
-            event_store = QueryableEventStore(db_path=resolved_db_path)
-            await event_store.initialize()
-            try:
-                await event_store.write_event(
-                    event_type="corpus_modified",
-                    actor="corpus_ingest",
-                    artifact_id="corpus",
-                    from_state=None,
-                    to_state=None,
-                    metadata={
-                        "domain": "corpus",
-                        "source_model": source_model,
-                        "source_account": source_account,
-                        "turns_ingested": turn_count,
-                        "timestamp": date.today().isoformat(),
-                    },
-                )
-            finally:
-                await event_store.close()
+        config = CorpusIngestConfig(
+            source_model=source_model or "",
+            source_account=source_account,
+            export_date=export_date,
+            db_path=resolved_db_path,
+            recursive=recursive,
+        )
 
-        asyncio.run(_write_event(ingested))
+        if os.path.isdir(path):
+            # Directory ingestion
+            async def _ingest_dir():
+                store = CorpusTurnStore(db_path=resolved_db_path)
+                await store.initialize()
+                try:
+                    results = await ingest_directory_to_corpus(path, store, config)
+                    return results
+                finally:
+                    await store.close()
+
+            results = asyncio.run(_ingest_dir())
+
+            total_ingested = sum(r.turns_ingested for r in results)
+            total_skipped = sum(r.turns_skipped for r in results)
+            total_updated = sum(r.turns_updated for r in results)
+            total_failed = sum(r.turns_failed for r in results)
+            files_processed = len([r for r in results if r.source_type != "directory"])
+
+            click.echo(f"Processed {files_processed} files from {path}")
+            click.echo(f"  Ingested: {total_ingested} turns")
+            if total_skipped:
+                click.echo(f"  Skipped (unchanged): {total_skipped} turns")
+            if total_updated:
+                click.echo(f"  Updated (content changed): {total_updated} turns")
+            if total_failed:
+                click.echo(f"  Failed: {total_failed} turns")
+
+        else:
+            # Single file ingestion
+            async def _ingest_file():
+                store = CorpusTurnStore(db_path=resolved_db_path)
+                await store.initialize()
+                try:
+                    return await ingest_file_to_corpus(path, store, config)
+                finally:
+                    await store.close()
+
+            result = asyncio.run(_ingest_file())
+
+            click.echo(f"Ingested {path}:")
+            click.echo(f"  Type: {result.source_type}")
+            click.echo(f"  New turns: {result.turns_ingested}")
+            if result.turns_skipped:
+                click.echo(f"  Skipped (unchanged): {result.turns_skipped}")
+            if result.turns_updated:
+                click.echo(f"  Updated (content changed): {result.turns_updated}")
+            if result.turns_failed:
+                click.echo(f"  Failed: {result.turns_failed}")
+
+            if result.warnings:
+                for w in result.warnings[:5]:
+                    click.echo(f"  Warning: {w}")
+            if result.errors:
+                for e in result.errors[:5]:
+                    click.echo(f"  Error: {e}", err=True)
 
         # Get total
         async def _get_total():
@@ -170,11 +187,6 @@ def corpus_ingest_cmd(
 
         total = asyncio.run(_get_total())
         click.echo(f"Corpus now contains {total} turns.")
-        click.echo("Run 'aip status' to see full breakdown.")
-        click.echo(
-            "Beast will tag turns on next cycle. "
-            "Run 'aip review list' after Beast runs to see domain summaries."
-        )
 
     except Exception as exc:
         click.echo(f"Error: {exc}", err=True)
@@ -1209,4 +1221,351 @@ def corpus_verify_cmd(repair: bool, db_path: str | None) -> None:
             click.echo(f"  {issues_repaired} issue(s) repaired.")
         else:
             click.echo("  Run with --repair to fix safe-to-repair issues.")
+
+
+# ---------------------------------------------------------------------------
+# Sprint 9: Corpus status, audit, backfill, list commands
+# ---------------------------------------------------------------------------
+
+
+@corpus.command("status")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
+def corpus_status_cmd(db_path: str | None) -> None:
+    """Show corpus status summary.
+
+    Quick overview of corpus health: total turns, embedding coverage,
+    tagging coverage, documents, conversations, and any active issues.
+
+    Examples:
+      aip corpus status
+    """
+    resolved_db_path = db_path or get_default_db_path()
+
+    async def _status():
+        store = CorpusTurnStore(db_path=resolved_db_path)
+        await store.initialize()
+        try:
+            return await store.get_corpus_status()
+        finally:
+            await store.close()
+
+    status = asyncio.run(_status)
+
+    click.echo("Corpus Status:")
+    click.echo(f"  Total turns:       {status.get('total_turns', 0)}")
+    click.echo(f"  Conversations:     {status.get('conversations', 0)}")
+    click.echo(f"  Documents:         {status.get('documents', 0)}")
+    click.echo(f"  Embedded:          {status.get('embedded', 0)} ({status.get('embed_coverage', 0)}%)")
+    click.echo(f"  Tagged:            {status.get('tagged', 0)} ({status.get('tag_coverage', 0)}%)")
+    click.echo(f"  Needs re-embed:    {status.get('needs_reembed', 0)}")
+    click.echo(f"  Embed failures:    {status.get('embed_failures', 0)}")
+
+    if status.get("embed_failures", 0) > 0:
+        click.echo("")
+        click.echo("  WARNING: Embedding failures detected. Run 'aip corpus backfill' to retry.")
+    if status.get("needs_reembed", 0) > 0:
+        click.echo("")
+        click.echo("  NOTE: Some turns need re-embedding. Run 'aip corpus embed --reembed'.")
+
+
+@corpus.command("audit")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
+def corpus_audit_cmd(db_path: str | None) -> None:
+    """Run comprehensive corpus audit.
+
+    Checks for integrity issues, duplicate content, missing hashes,
+    embedding failures, and coverage gaps. Returns a detailed report
+    of the corpus state.
+
+    Examples:
+      aip corpus audit
+    """
+    resolved_db_path = db_path or get_default_db_path()
+
+    async def _audit():
+        store = CorpusTurnStore(db_path=resolved_db_path)
+        await store.initialize()
+        try:
+            return await store.get_corpus_audit()
+        finally:
+            await store.close()
+
+    audit = asyncio.run(_audit)
+
+    click.echo("Corpus Audit Report")
+    click.echo("=" * 50)
+
+    # Summary
+    click.echo(f"\nSummary:")
+    click.echo(f"  Total turns:         {audit.get('total_turns', 0)}")
+    click.echo(f"  Embedded:            {audit.get('embedded', 0)}")
+    click.echo(f"  Unembedded:          {audit.get('unembedded', 0)}")
+    click.echo(f"  Needs re-embed:      {audit.get('needs_reembed', 0)}")
+    click.echo(f"  Untagged:            {audit.get('untagged', 0)}")
+    click.echo(f"  Embed failures:      {audit.get('embed_failures', 0)}")
+    click.echo(f"  Missing content_hash:{audit.get('missing_content_hash', 0)}")
+
+    # Source model distribution
+    by_model = audit.get("by_source_model", {})
+    if by_model:
+        click.echo(f"\nBy Source Model:")
+        for model, count in sorted(by_model.items(), key=lambda x: -x[1]):
+            click.echo(f"  {model:20s} {count}")
+
+    # Domain distribution
+    by_domain = audit.get("by_domain", {})
+    if by_domain:
+        click.echo(f"\nBy Domain:")
+        for domain, count in sorted(by_domain.items(), key=lambda x: -x[1])[:15]:
+            click.echo(f"  {domain:20s} {count}")
+
+    # Source path distribution (documents)
+    by_path = audit.get("by_source_path", {})
+    if by_path:
+        click.echo(f"\nBy Source Path (top 10):")
+        for path, count in sorted(by_path.items(), key=lambda x: -x[1])[:10]:
+            click.echo(f"  {path:50s} {count} turns")
+
+    # Duplicate hashes
+    dupes = audit.get("duplicate_hashes", [])
+    if dupes:
+        click.echo(f"\nDuplicate Content Hashes ({len(dupes)}):")
+        for d in dupes:
+            click.echo(f"  {d['content_hash'][:16]}... → {d['count']} turns")
+
+    # Embed failures
+    failures = audit.get("recent_embed_failures", [])
+    if failures:
+        click.echo(f"\nEmbed Failures ({len(failures)} most recent):")
+        for f in failures:
+            click.echo(f"  {f['turn_id']}: {f['fail_count']} failures ({f['last_error'][:80]})")
+
+    # Issues
+    issues = audit.get("issues", [])
+    if issues:
+        click.echo(f"\nIssues ({len(issues)}):")
+        for issue in issues:
+            click.echo(f"  - {issue}")
+    else:
+        click.echo("\nNo issues found. Corpus is healthy.")
+
+    healthy = audit.get("healthy", False)
+    click.echo(f"\nOverall: {'HEALTHY' if healthy else 'ISSUES DETECTED'}")
+
+
+@corpus.command("backfill")
+@click.option(
+    "--limit",
+    default=100,
+    type=int,
+    help="Max turns to embed this run (default 100).",
+)
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
+def corpus_backfill_cmd(limit: int, db_path: str | None) -> None:
+    """Run embedding backfill for turns that need embedding or had failures.
+
+    Prioritizes turns with previous embedding failures, then turns needing
+    re-embedding, then first-time unembedded turns (by importance).
+
+    Examples:
+      aip corpus backfill
+      aip corpus backfill --limit 50
+    """
+    if limit < 1:
+        limit = 1
+
+    resolved_db_path = db_path or get_default_db_path()
+
+    async def _backfill():
+        import tomllib
+        from pathlib import Path
+
+        from aip.adapter.corpus_turn_store import CorpusTurnStore
+        from aip.adapter.embedding.factory import create_embedding_provider
+
+        cfg: dict = {}
+        config_p = Path("config/aip.config.toml")
+        if config_p.exists():
+            with open(config_p, "rb") as f:
+                cfg = tomllib.load(f)
+
+        # Create embedding provider
+        embedding_provider = create_embedding_provider(cfg)
+        if embedding_provider is None:
+            return None, "No embedding provider configured"
+
+        # Create vector store
+        from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
+        import os
+        vec_db = cfg.get("vector_backend", {}).get("db_path", "db/vectors.db")
+        vector_store = SqliteVssVectorStore(
+            db_path=vec_db,
+            dimensions=768,
+            embedding_provider=embedding_provider,
+        )
+        await vector_store.initialize()
+
+        store = CorpusTurnStore(db_path=resolved_db_path)
+        await store.initialize()
+
+        try:
+            # Get backfill queue
+            queue = await store.get_backfill_queue(limit=limit)
+            if not queue:
+                return [], "No turns need backfill"
+
+            embedded_count = 0
+            failed_count = 0
+            model_name = cfg.get("models", {}).get("embedding", {}).get("model", "unknown")
+
+            for turn in queue:
+                try:
+                    # Generate embedding
+                    text_to_embed = turn.searchable_text[:2000]
+                    if not text_to_embed.strip():
+                        continue
+
+                    embedding = await embedding_provider.embed(text_to_embed)
+                    if not embedding or len(embedding) == 0:
+                        raise ValueError("Empty embedding returned")
+
+                    # Upsert to vector store
+                    await vector_store.upsert(
+                        id=turn.turn_id,
+                        embedding=embedding,
+                        content=text_to_embed,
+                        metadata={
+                            "type": "corpus_turn",
+                            "conversation_id": turn.conversation_id,
+                            "domain": turn.primary_domain,
+                            "source_model": turn.source_model,
+                        },
+                        domain=turn.primary_domain or None,
+                    )
+
+                    # Mark as embedded and clear failure state
+                    await store.mark_embedded(turn.turn_id, embedding_model=model_name)
+                    await store.clear_embed_failure(turn.turn_id)
+                    embedded_count += 1
+
+                except Exception as exc:
+                    # Record failure
+                    await store.record_embed_failure(turn.turn_id, str(exc)[:500])
+                    failed_count += 1
+
+            return queue, f"Embedded {embedded_count}/{len(queue)} turns. {failed_count} failed."
+        finally:
+            await store.close()
+            await vector_store.close()
+
+    result = asyncio.run(_backfill())
+
+    if result[0] is None:
+        click.echo(f"Error: {result[1]}", err=True)
+        sys.exit(1)
+
+    queue, message = result
+    click.echo(message)
+
+    if queue and len(queue) > 0:
+        # Show remaining
+        async def _remaining():
+            store = CorpusTurnStore(db_path=resolved_db_path)
+            await store.initialize()
+            try:
+                return await store.count_unembedded()
+            finally:
+                await store.close()
+
+        remaining = asyncio.run(_remaining)
+        click.echo(f"Remaining unembedded: {remaining}")
+
+
+@corpus.command("list")
+@click.option(
+    "--unembedded",
+    is_flag=True,
+    default=False,
+    help="List only unembedded turns.",
+)
+@click.option(
+    "--failed",
+    is_flag=True,
+    default=False,
+    help="List only turns with embedding failures.",
+)
+@click.option(
+    "--document",
+    "source_path",
+    default=None,
+    help="List turns from a specific source path.",
+)
+@click.option(
+    "--limit",
+    default=20,
+    type=int,
+    help="Max turns to list (default 20).",
+)
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
+def corpus_list_cmd(
+    unembedded: bool,
+    failed: bool,
+    source_path: str | None,
+    limit: int,
+    db_path: str | None,
+) -> None:
+    """List corpus turns with optional filters.
+
+    Examples:
+      aip corpus list
+      aip corpus list --unembedded
+      aip corpus list --failed
+      aip corpus list --document docs/ARCHITECTURE.md
+    """
+    resolved_db_path = db_path or get_default_db_path()
+
+    async def _list():
+        store = CorpusTurnStore(db_path=resolved_db_path)
+        await store.initialize()
+        try:
+            turns = []
+
+            if failed:
+                # Get turns with embed failures
+                queue = await store.get_backfill_queue(limit=limit)
+                turns = [t for t in queue if t.embed_fail_count > 0]
+            elif unembedded:
+                turns = await store.get_unembedded_turns(limit=limit)
+            elif source_path:
+                turns = await store.find_by_source_path(source_path)
+            else:
+                # Default: show recent turns
+                turns = await store.get_untagged_turns(limit=limit)
+
+            return turns
+        finally:
+            await store.close()
+
+    turns = asyncio.run(_list)
+
+    if not turns:
+        click.echo("No turns found matching criteria.")
+        return
+
+    click.echo(f"Found {len(turns)} turns:")
+    click.echo("")
+
+    for t in turns:
+        # Truncate for display
+        user_preview = (t.user_text or "")[:60].replace("\n", " ")
+        path_info = f" [{t.source_path}]" if t.source_path else ""
+        embed_status = "embedded" if t.embedded else "NOT embedded"
+        fail_info = f" (fails: {t.embed_fail_count})" if t.embed_fail_count > 0 else ""
+        version_info = f" v{t.doc_version}" if t.doc_version > 0 else ""
+
+        click.echo(f"  {t.turn_id}{version_info}: {user_preview}...{path_info}")
+        click.echo(f"    model={t.source_model} domain={t.primary_domain or 'untagged'} {embed_status}{fail_info}")
+
+    if len(turns) >= limit:
+        click.echo(f"\n  (showing first {limit}; use --limit to show more)")
 

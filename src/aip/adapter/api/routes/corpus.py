@@ -1,4 +1,4 @@
-"""Corpus API route — corpus_turns statistics and embedding progress.
+"""Corpus API route — corpus_turns statistics, embedding progress, and audit.
 
 Provides aggregate statistics about the project-agnostic corpus of
 ingested conversation turns stored in CorpusTurnStore (corpus_turns
@@ -7,6 +7,9 @@ and knowledge store content.
 
 Sprint 6.1: Added /corpus/embedding-progress endpoint for real-time
 embedding pipeline visibility.
+
+Sprint 9: Added /corpus/audit, /corpus/status, /corpus/backfill-queue,
+and /corpus/ingest endpoints for corpus reliability and document ingestion.
 """
 
 from __future__ import annotations
@@ -143,3 +146,150 @@ async def get_embedding_progress(container: AipContainer = Depends(get_container
             logger.warning("Sexton embedding pass state read failed: %s", exc)
 
     return result
+
+
+@router.get("/corpus/status")
+async def get_corpus_status(container: AipContainer = Depends(get_container)):
+    """Quick corpus status summary (Sprint 9).
+
+    Returns key metrics: total turns, embedding coverage, tagging coverage,
+    documents, conversations, embed failures, and needs_reembed count.
+    """
+    cts = getattr(container, "corpus_turn_store", None)
+    if cts is None:
+        return {"total_turns": 0, "embedded": 0, "tagged": 0}
+
+    try:
+        return await cts.get_corpus_status()
+    except Exception as exc:
+        logger.warning("CorpusTurnStore get_corpus_status failed: %s", exc)
+        return {"error": str(exc)}
+
+
+@router.get("/corpus/audit")
+async def get_corpus_audit(container: AipContainer = Depends(get_container)):
+    """Comprehensive corpus audit (Sprint 9).
+
+    Returns detailed integrity check results: duplicate hashes, missing
+    content hashes, embed failures, source model distribution, domain
+    distribution, source path distribution, and computed health status.
+    """
+    cts = getattr(container, "corpus_turn_store", None)
+    if cts is None:
+        return {"total_turns": 0, "healthy": False, "issues": ["CorpusTurnStore not available"]}
+
+    try:
+        return await cts.get_corpus_audit()
+    except Exception as exc:
+        logger.warning("CorpusTurnStore get_corpus_audit failed: %s", exc)
+        return {"error": str(exc), "healthy": False}
+
+
+@router.get("/corpus/backfill-queue")
+async def get_backfill_queue(
+    limit: int = 100,
+    container: AipContainer = Depends(get_container),
+):
+    """Get the embedding backfill queue (Sprint 9).
+
+    Returns turns that need embedding: failures first, then needs_reembed,
+    then first-time unembedded. Ordered by priority.
+    """
+    cts = getattr(container, "corpus_turn_store", None)
+    if cts is None:
+        return {"turns": [], "count": 0}
+
+    try:
+        turns = await cts.get_backfill_queue(limit=limit)
+        return {
+            "count": len(turns),
+            "turns": [
+                {
+                    "turn_id": t.turn_id,
+                    "source_path": t.source_path,
+                    "source_model": t.source_model,
+                    "embed_fail_count": t.embed_fail_count,
+                    "last_embed_error": t.last_embed_error[:200] if t.last_embed_error else "",
+                    "needs_reembed": t.needs_reembed,
+                    "embedded": t.embedded,
+                    "importance": t.importance,
+                }
+                for t in turns
+            ],
+        }
+    except Exception as exc:
+        logger.warning("CorpusTurnStore get_backfill_queue failed: %s", exc)
+        return {"error": str(exc), "turns": [], "count": 0}
+
+
+@router.post("/corpus/ingest")
+async def ingest_to_corpus(
+    payload: dict,
+    container: AipContainer = Depends(get_container),
+):
+    """Ingest a file or directory into the corpus (Sprint 9).
+
+    Accepts:
+      - path: file or directory path to ingest
+      - source_model: optional (auto-detected if not specified)
+      - source_account: optional (defaults to "api_ingest")
+      - recursive: optional (for directory ingestion)
+
+    Returns CorpusIngestResult with counts of ingested, skipped, updated, failed turns.
+    """
+    from aip.orchestration.ingestion.corpus_ingest_pipeline import (
+        CorpusIngestConfig,
+        ingest_directory_to_corpus,
+        ingest_file_to_corpus,
+    )
+
+    cts = getattr(container, "corpus_turn_store", None)
+    if cts is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="CorpusTurnStore not wired")
+
+    import os
+    path = payload.get("path")
+    if not path:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="No path provided")
+
+    if not os.path.exists(path):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Path not found: {path}")
+
+    config = CorpusIngestConfig(
+        source_model=payload.get("source_model", ""),
+        source_account=payload.get("source_account", "api_ingest"),
+        export_date=payload.get("export_date", ""),
+        db_path=getattr(container, "_db_path", ""),
+        recursive=payload.get("recursive", False),
+    )
+
+    try:
+        if os.path.isdir(path):
+            results = await ingest_directory_to_corpus(path, cts, config)
+            return {
+                "type": "directory",
+                "files_processed": len([r for r in results if r.source_type != "directory"]),
+                "total_ingested": sum(r.turns_ingested for r in results),
+                "total_skipped": sum(r.turns_skipped for r in results),
+                "total_updated": sum(r.turns_updated for r in results),
+                "total_failed": sum(r.turns_failed for r in results),
+            }
+        else:
+            result = await ingest_file_to_corpus(path, cts, config)
+            return {
+                "type": "file",
+                "source_path": result.source_path,
+                "source_type": result.source_type,
+                "turns_ingested": result.turns_ingested,
+                "turns_skipped": result.turns_skipped,
+                "turns_updated": result.turns_updated,
+                "turns_failed": result.turns_failed,
+                "warnings": result.warnings,
+                "errors": result.errors,
+            }
+    except Exception as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {exc}")

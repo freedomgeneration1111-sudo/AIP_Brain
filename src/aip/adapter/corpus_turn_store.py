@@ -34,6 +34,9 @@ _DDL_CORPUS_TURNS = """
         source_model TEXT NOT NULL,
         source_account TEXT NOT NULL,
         export_date TEXT NOT NULL,
+        content_hash TEXT NOT NULL DEFAULT '',
+        source_path TEXT NOT NULL DEFAULT '',
+        doc_version INTEGER NOT NULL DEFAULT 0,
         user_text TEXT NOT NULL,
         assistant_text TEXT NOT NULL,
         turn_timestamp TEXT NOT NULL,
@@ -52,6 +55,8 @@ _DDL_CORPUS_TURNS = """
         needs_reembed INTEGER NOT NULL DEFAULT 0,
         last_embed_at TEXT DEFAULT NULL,
         metadata_json TEXT DEFAULT '{}',
+        embed_fail_count INTEGER NOT NULL DEFAULT 0,
+        last_embed_error TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )
@@ -65,6 +70,9 @@ _DDL_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_turns_importance ON corpus_turns(importance DESC)",
     "CREATE INDEX IF NOT EXISTS idx_turns_embedded ON corpus_turns(embedded)",
     "CREATE INDEX IF NOT EXISTS idx_turns_needs_reembed ON corpus_turns(needs_reembed)",
+    "CREATE INDEX IF NOT EXISTS idx_turns_content_hash ON corpus_turns(content_hash)",
+    "CREATE INDEX IF NOT EXISTS idx_turns_source_path ON corpus_turns(source_path)",
+    "CREATE INDEX IF NOT EXISTS idx_turns_embed_fail ON corpus_turns(embed_fail_count)",
 ]
 
 _DDL_MIGRATIONS = [
@@ -73,6 +81,11 @@ _DDL_MIGRATIONS = [
     "ALTER TABLE corpus_turns ADD COLUMN embedding_model TEXT DEFAULT ''",
     "ALTER TABLE corpus_turns ADD COLUMN needs_reembed INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE corpus_turns ADD COLUMN last_embed_at TEXT DEFAULT NULL",
+    "ALTER TABLE corpus_turns ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE corpus_turns ADD COLUMN source_path TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE corpus_turns ADD COLUMN doc_version INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE corpus_turns ADD COLUMN embed_fail_count INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE corpus_turns ADD COLUMN last_embed_error TEXT NOT NULL DEFAULT ''",
 ]
 
 _DDL_FTS = """
@@ -212,27 +225,35 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
             self._health_track_reset()
 
     async def write_turn(self, turn: CorpusTurn) -> None:
-        """Insert or replace a turn. Sets timestamps. Serializes lists as JSON."""
+        """Insert or replace a turn. Sets timestamps. Serializes lists as JSON.
+
+        Sprint 9: Handles content_hash, source_path, doc_version,
+        embed_fail_count, and last_embed_error fields.
+        """
         conn = await self._get_conn()
         try:
             now = datetime.now(timezone.utc).isoformat() + "Z"
 
-            cursor = await conn.execute("SELECT created_at FROM corpus_turns WHERE turn_id = ?", (turn.turn_id,))
+            cursor = await conn.execute("SELECT created_at, doc_version FROM corpus_turns WHERE turn_id = ?", (turn.turn_id,))
             row = await cursor.fetchone()
             created_at = row["created_at"] if row and row["created_at"] else now
+            # Preserve existing doc_version if not explicitly set on the new turn
+            existing_doc_version = int(row["doc_version"] or 0) if row else 0
 
             await conn.execute(
                 """
                 INSERT OR REPLACE INTO corpus_turns (
                     turn_id, conversation_id, conversation_name, turn_index,
                     source_model, source_account, export_date,
+                    content_hash, source_path, doc_version,
                     user_text, assistant_text, turn_timestamp, thinking_text,
                     domains, primary_domain, tags, importance, bridges,
                     beast_confidence, tagging_version,
                     searchable_text, word_count,
                     embedded, metadata_json, embedding_model, needs_reembed, last_embed_at,
+                    embed_fail_count, last_embed_error,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     turn.turn_id,
@@ -242,6 +263,9 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
                     turn.source_model,
                     turn.source_account,
                     turn.export_date,
+                    getattr(turn, "content_hash", "") or "",
+                    getattr(turn, "source_path", "") or "",
+                    int(getattr(turn, "doc_version", 0) or 0) or existing_doc_version,
                     turn.user_text,
                     turn.assistant_text,
                     turn.turn_timestamp,
@@ -260,6 +284,8 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
                     getattr(turn, "embedding_model", "") or "",
                     int(getattr(turn, "needs_reembed", 0) or 0),
                     getattr(turn, "last_embed_at", None),
+                    int(getattr(turn, "embed_fail_count", 0) or 0),
+                    getattr(turn, "last_embed_error", "") or "",
                     created_at,
                     now,
                 ),
@@ -839,6 +865,9 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
             source_model=row["source_model"],
             source_account=row["source_account"],
             export_date=row["export_date"],
+            content_hash=row["content_hash"] if "content_hash" in row.keys() else "",
+            source_path=row["source_path"] if "source_path" in row.keys() else "",
+            doc_version=int(row["doc_version"] or 0) if "doc_version" in row.keys() else 0,
             user_text=row["user_text"],
             assistant_text=row["assistant_text"],
             turn_timestamp=row["turn_timestamp"],
@@ -855,6 +884,310 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
             embedding_model=row["embedding_model"] if "embedding_model" in row.keys() else "",
             needs_reembed=int(row["needs_reembed"] or 0) if "needs_reembed" in row.keys() else 0,
             last_embed_at=row["last_embed_at"] if "last_embed_at" in row.keys() else None,
+            embed_fail_count=int(row["embed_fail_count"] or 0) if "embed_fail_count" in row.keys() else 0,
+            last_embed_error=row["last_embed_error"] if "last_embed_error" in row.keys() else "",
             searchable_text=row["searchable_text"] or "",
             word_count=int(row["word_count"] or 0),
         )
+
+    # ------------------------------------------------------------------
+    # Sprint 9: Document identity, dedup, provenance, backfill, audit
+    # ------------------------------------------------------------------
+
+    async def check_content_hash(self, content_hash: str) -> CorpusTurn | None:
+        """Find a turn by content_hash. Returns the first match or None.
+
+        Used for dedup detection: if a turn with the same content_hash already
+        exists, the content hasn't changed and re-ingest can skip it.
+        """
+        conn = await self._checkout_read_conn()
+        try:
+            cursor = await conn.execute(
+                "SELECT * FROM corpus_turns WHERE content_hash = ? LIMIT 1",
+                (content_hash,),
+            )
+            row = await cursor.fetchone()
+            return self._row_to_turn(row) if row else None
+        except Exception:
+            await self._reset_conn()
+            raise
+        finally:
+            self._return_read_conn(conn)
+
+    async def find_by_source_path(self, source_path: str) -> list[CorpusTurn]:
+        """Find all turns from a given source path. Used for re-ingest detection."""
+        conn = await self._checkout_read_conn()
+        try:
+            cursor = await conn.execute(
+                "SELECT * FROM corpus_turns WHERE source_path = ? ORDER BY turn_index ASC",
+                (source_path,),
+            )
+            rows = await cursor.fetchall()
+            return [self._row_to_turn(row) for row in rows]
+        except Exception:
+            await self._reset_conn()
+            raise
+        finally:
+            self._return_read_conn(conn)
+
+    async def increment_doc_version(self, conversation_id: str) -> int:
+        """Increment doc_version for all turns in a conversation. Returns max version."""
+        conn = await self._get_conn()
+        try:
+            now = datetime.now(timezone.utc).isoformat() + "Z"
+            await conn.execute(
+                "UPDATE corpus_turns SET doc_version = doc_version + 1, updated_at = ? "
+                "WHERE conversation_id = ?",
+                (now, conversation_id),
+            )
+            await conn.commit()
+            cursor = await conn.execute(
+                "SELECT MAX(doc_version) as mv FROM corpus_turns WHERE conversation_id = ?",
+                (conversation_id,),
+            )
+            row = await cursor.fetchone()
+            return int(row["mv"] or 0) if row else 0
+        except Exception:
+            await self._reset_conn()
+            raise
+
+    async def record_embed_failure(self, turn_id: str, error_message: str) -> None:
+        """Record an embedding failure for a turn. Increments fail count.
+
+        Called by the embedding pipeline when an individual turn fails to embed.
+        The turn remains in the unembedded/backfill queue.
+        """
+        conn = await self._get_conn()
+        try:
+            now = datetime.now(timezone.utc).isoformat() + "Z"
+            await conn.execute(
+                "UPDATE corpus_turns SET embed_fail_count = embed_fail_count + 1, "
+                "last_embed_error = ?, updated_at = ? WHERE turn_id = ?",
+                (error_message[:500], now, turn_id),
+            )
+            await conn.commit()
+        except Exception:
+            await self._reset_conn()
+            raise
+
+    async def clear_embed_failure(self, turn_id: str) -> None:
+        """Clear embedding failure state. Called after successful embed."""
+        conn = await self._get_conn()
+        try:
+            now = datetime.now(timezone.utc).isoformat() + "Z"
+            await conn.execute(
+                "UPDATE corpus_turns SET embed_fail_count = 0, last_embed_error = '', "
+                "updated_at = ? WHERE turn_id = ?",
+                (now, turn_id),
+            )
+            await conn.commit()
+        except Exception:
+            await self._reset_conn()
+            raise
+
+    async def get_backfill_queue(self, limit: int = 100) -> list[CorpusTurn]:
+        """Get turns needing embedding backfill.
+
+        Prioritizes: embed_fail_count > 0 first (retry failures), then
+        needs_reembed, then first-time unembedded, ordered by importance.
+        """
+        conn = await self._checkout_read_conn()
+        try:
+            cursor = await conn.execute(
+                "SELECT * FROM corpus_turns "
+                "WHERE embedded = 0 OR needs_reembed = 1 OR embed_fail_count > 0 "
+                "ORDER BY embed_fail_count DESC, needs_reembed DESC, importance DESC, created_at ASC "
+                "LIMIT ?",
+                (int(limit),),
+            )
+            rows = await cursor.fetchall()
+            return [self._row_to_turn(row) for row in rows]
+        except Exception:
+            await self._reset_conn()
+            raise
+        finally:
+            self._return_read_conn(conn)
+
+    async def count_embed_failures(self) -> int:
+        """Count of turns with embedding failures."""
+        conn = await self._get_conn()
+        try:
+            cursor = await conn.execute(
+                "SELECT COUNT(*) as c FROM corpus_turns WHERE embed_fail_count > 0"
+            )
+            row = await cursor.fetchone()
+            return int(row["c"]) if row else 0
+        except Exception:
+            await self._reset_conn()
+            raise
+
+    async def get_corpus_audit(self) -> dict:
+        """Comprehensive corpus audit for the 'aip corpus audit' command.
+
+        Returns a dict with integrity checks, coverage stats, and issue lists.
+        """
+        conn = await self._get_conn()
+        try:
+            result: dict[str, Any] = {}
+
+            # Basic counts
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns")
+            row = await cursor.fetchone()
+            result["total_turns"] = int(row["c"]) if row else 0
+
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE embedded = 1")
+            row = await cursor.fetchone()
+            result["embedded"] = int(row["c"]) if row else 0
+
+            result["unembedded"] = result["total_turns"] - result["embedded"]
+
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE needs_reembed = 1")
+            row = await cursor.fetchone()
+            result["needs_reembed"] = int(row["c"]) if row else 0
+
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE embed_fail_count > 0")
+            row = await cursor.fetchone()
+            result["embed_failures"] = int(row["c"]) if row else 0
+
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE content_hash = ''")
+            row = await cursor.fetchone()
+            result["missing_content_hash"] = int(row["c"]) if row else 0
+
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE tagging_version = 0")
+            row = await cursor.fetchone()
+            result["untagged"] = int(row["c"]) if row else 0
+
+            # Source model distribution
+            cursor = await conn.execute(
+                "SELECT source_model, COUNT(*) as c FROM corpus_turns GROUP BY source_model ORDER BY c DESC"
+            )
+            rows = await cursor.fetchall()
+            result["by_source_model"] = {row["source_model"]: int(row["c"]) for row in rows}
+
+            # Domain distribution
+            cursor = await conn.execute(
+                "SELECT primary_domain, COUNT(*) as c FROM corpus_turns "
+                "WHERE primary_domain IS NOT NULL AND primary_domain != '' "
+                "GROUP BY primary_domain ORDER BY c DESC"
+            )
+            rows = await cursor.fetchall()
+            result["by_domain"] = {row["primary_domain"]: int(row["c"]) for row in rows}
+
+            # Source path distribution (for documents)
+            cursor = await conn.execute(
+                "SELECT source_path, COUNT(*) as c FROM corpus_turns "
+                "WHERE source_path IS NOT NULL AND source_path != '' "
+                "GROUP BY source_path ORDER BY c DESC LIMIT 20"
+            )
+            rows = await cursor.fetchall()
+            result["by_source_path"] = {row["source_path"]: int(row["c"]) for row in rows}
+
+            # Duplicate content hashes (potential duplicates)
+            cursor = await conn.execute(
+                "SELECT content_hash, COUNT(*) as c FROM corpus_turns "
+                "WHERE content_hash != '' GROUP BY content_hash HAVING c > 1 "
+                "ORDER BY c DESC LIMIT 10"
+            )
+            rows = await cursor.fetchall()
+            result["duplicate_hashes"] = [
+                {"content_hash": row["content_hash"], "count": int(row["c"])}
+                for row in rows
+            ]
+
+            # Embedding model distribution
+            cursor = await conn.execute(
+                "SELECT embedding_model, COUNT(*) as c FROM corpus_turns "
+                "WHERE embedded = 1 GROUP BY embedding_model ORDER BY c DESC"
+            )
+            rows = await cursor.fetchall()
+            result["embedding_models"] = {row["embedding_model"] or "unknown": int(row["c"]) for row in rows}
+
+            # Recent embed failures
+            cursor = await conn.execute(
+                "SELECT turn_id, source_path, embed_fail_count, last_embed_error "
+                "FROM corpus_turns WHERE embed_fail_count > 0 "
+                "ORDER BY embed_fail_count DESC, updated_at DESC LIMIT 10"
+            )
+            rows = await cursor.fetchall()
+            result["recent_embed_failures"] = [
+                {
+                    "turn_id": row["turn_id"],
+                    "source_path": row["source_path"],
+                    "fail_count": int(row["embed_fail_count"]),
+                    "last_error": row["last_embed_error"][:200],
+                }
+                for row in rows
+            ]
+
+            # Computed health
+            issues = []
+            if result["missing_content_hash"] > 0:
+                issues.append(f"{result['missing_content_hash']} turns missing content_hash")
+            if result["embed_failures"] > 0:
+                issues.append(f"{result['embed_failures']} turns with embedding failures")
+            if result["duplicate_hashes"]:
+                issues.append(f"{len(result['duplicate_hashes'])} duplicate content hashes detected")
+            if result["unembedded"] > 0:
+                pct = round(result["unembedded"] / max(result["total_turns"], 1) * 100, 1)
+                issues.append(f"{result['unembedded']} turns unembedded ({pct}%)")
+
+            result["issues"] = issues
+            result["healthy"] = len(issues) == 0
+
+            return result
+        except Exception:
+            await self._reset_conn()
+            raise
+
+    async def get_corpus_status(self) -> dict:
+        """Quick corpus status summary for 'aip corpus status'.
+
+        Lighter than full audit — just the key numbers.
+        """
+        conn = await self._checkout_read_conn()
+        try:
+            result: dict[str, Any] = {}
+
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns")
+            row = await cursor.fetchone()
+            result["total_turns"] = int(row["c"]) if row else 0
+
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE embedded = 1")
+            row = await cursor.fetchone()
+            result["embedded"] = int(row["c"]) if row else 0
+
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE tagging_version > 0")
+            row = await cursor.fetchone()
+            result["tagged"] = int(row["c"]) if row else 0
+
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE embed_fail_count > 0")
+            row = await cursor.fetchone()
+            result["embed_failures"] = int(row["c"]) if row else 0
+
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE needs_reembed = 1")
+            row = await cursor.fetchone()
+            result["needs_reembed"] = int(row["c"]) if row else 0
+
+            cursor = await conn.execute(
+                "SELECT COUNT(DISTINCT source_path) as c FROM corpus_turns "
+                "WHERE source_path != ''"
+            )
+            row = await cursor.fetchone()
+            result["documents"] = int(row["c"]) if row else 0
+
+            cursor = await conn.execute(
+                "SELECT COUNT(DISTINCT conversation_id) as c FROM corpus_turns"
+            )
+            row = await cursor.fetchone()
+            result["conversations"] = int(row["c"]) if row else 0
+
+            total = result["total_turns"]
+            result["embed_coverage"] = round(result["embedded"] / total * 100, 1) if total > 0 else 0.0
+            result["tag_coverage"] = round(result["tagged"] / total * 100, 1) if total > 0 else 0.0
+
+            return result
+        except Exception:
+            await self._reset_conn()
+            raise
+        finally:
+            self._return_read_conn(conn)
