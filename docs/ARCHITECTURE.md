@@ -60,12 +60,18 @@ AIP 0.1 follows a strict three-layer architecture with dependency inversion via 
 |-------|----------------|---------------------|
 | Foundation | stdlib, pydantic | Orchestration, Adapter |
 | Orchestration | Foundation | Adapter |
-| Adapter | Foundation, Orchestration | Nothing below |
+| Adapter | Foundation, Orchestration (composition root only) | Nothing below |
 
 All cross-layer dependencies are expressed via **Protocol classes** (structural typing), not concrete imports. This enables:
 - Swap SQLite ↔ PostgreSQL without changing orchestration logic
 - Swap Ollama ↔ OpenAI without changing pipeline code
 - Test orchestration with in-memory stubs
+
+Layer discipline detail:
+- foundation: imports no AIP upper layers (stdlib/pydantic only)
+- orchestration: may import foundation/protocols, not adapter (known violations documented in AIP-G-06/07)
+- adapter composition root (app.py, dependencies.py): may wire orchestration implementations
+- adapter routes/GUI: should use container/protocol interfaces, not concrete orchestration internals where avoidable
 
 ---
 

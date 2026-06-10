@@ -43,15 +43,19 @@ from the grep scans and code review.
 | Summary | HippoRAG PPR expansion in chat path deferred. Current implementation does 1-hop domain adjacency only. Full PPR with entity extraction requires NER or Beast LLM call, which would add latency. |
 | Trigger | Phase 3: Wire entity extraction as background pre-fetch. If graph >500 nodes and extraction <200ms, promote to full PPR. |
 
-### DEBT-003 — MCP Tool Dispatch Scaffold
+### DEBT-003 — MCP Tool Dispatch (Real dispatch, not runtime-wired)
 
 | Field | Value |
 |---|---|
-| Status | Deferred |
-| Severity | **HIGH** (upgraded from original classification — see DDR-008) |
-| Filed | 2026-06-04 |
-| Summary | MCP tool dispatch returns fake success: `aip_search` returns empty, `aip_artifact_approve` returns hardcoded True. README claims it returns NOT_IMPLEMENTED but code returns fake success — this is a governance violation (AIP-G-01, AIP-G-02). |
-| Trigger | Phase 5 multi-user deployment. Fix earlier if any system starts consuming MCP dispatch. |
+| Status | Active — non-live governance debt |
+| Severity | **HIGH** (would be CRITICAL if MCP were wired) |
+| Filed | 2026-06-04 (pre-existing) |
+| Updated | 2026-06-10 (Chunk 1.5 triage corrected description) |
+| Summary | MCP tool dispatch performs **real mutations** (ECS transitions, canonical writes, search via Protocols), NOT hardcoded fake responses as originally documented. However: (1) MCP server is **not wired into app.py runtime** — no transport, no API route triggers it. (2) When `container.autonomy_gate is None`, write/admin tools bypass the gate entirely (fail-open escape hatch at `server.py:213`). The original Chunk 1 description ("returns hardcoded True") was stale — it reflected pre-`0d63e58` code. |
+| Classification | **Non-live governance debt** — the MCP server is only exercisable via direct `call_tool()` invocation from tests. The `autonomy_gate=None` fail-open is a latent vulnerability that must be hardened before MCP is wired into runtime. |
+| Trigger | Phase 5 multi-user deployment, or earlier if MCP is wired into app.py. Must harden `autonomy_gate=None` fail-closed before wiring. |
+| Chunk 2 action | Harden `server.py:213` to reject write/admin tools when `autonomy_gate is None`. Add test. |
+| Chunk 2 status | **DONE** — fail-closed behavior implemented; 3 new tests pass; 7 existing tests updated |
 
 ### DEBT-004 — GraphStore Connection Churn
 
@@ -181,14 +185,19 @@ from the grep scans and code review.
 | Summary | Both CLI commands have TODOs for wiring through AutonomyGate for admin-level write approval. Currently, CLI writes bypass the autonomy gate. |
 | Resolution | Wire CLI write paths through AutonomyGate, consistent with the API surface. |
 
-### CDR-010 — `_AlwaysApproveDialogNode` in workflow_01.py
+### CDR-010 — `_AlwaysApproveDialogNode` removed; `_ReviewGateNode` defaults to AUTO_APPROVE_STUB
 
 | Field | Value |
 |---|---|
-| Severity | **CRITICAL** (governance violation) |
+| Severity | **MEDIUM** (non-live workflow/governance debt) |
+| Original classification | **CRITICAL** (governance violation) — now superseded |
 | Discovery | From implementation_status.md (line 97) |
-| Summary | `workflow_01.py` contains `_AlwaysApproveDialogNode` that always approves. This is a 60% scaffold file that could silently bypass DEFINER gates if invoked in production. The implementation_status.md rates this as "Critical" priority. |
-| Resolution | Replace with real DialogNode. Wire real evaluation nodes. Use L4 result. |
+| Updated | 2026-06-10 (Chunk 1.5 triage corrected classification) |
+| Summary | `_AlwaysApproveDialogNode` was **removed** in commit `f66e00b`. Its replacement (`_ReviewGateNode`) exists in `workflow_01.py` but `workflow_01` itself is **not wired into app.py, CLI, or any runtime path**. The residual risk is that `_ReviewGateNode` defaults to `AUTO_APPROVE_STUB` mode (lines 262 and 518), which auto-approves when validation + eval both pass with real data. This could bypass DEFINER review if workflow_01 is ever wired into production without changing the default to MANUAL. |
+| Classification | **Non-live workflow/governance debt** — the workflow is only exercisable via `examples/run_workflow_01.py` or tests. The AUTO_APPROVE_STUB default is a latent risk that should be changed before workflow_01 is wired. |
+| Resolution | (1) Change `_ReviewGateNode` default from `AUTO_APPROVE_STUB` to `MANUAL` or make it config-driven. (2) Update `implementation_status.md:97` to remove stale "DANGEROUS: `_AlwaysApproveDialogNode`" reference. (3) Update this register to reflect resolved state of the original CDR-010 finding. |
+| Chunk 2 action | Change default mode; add test; update implementation_status.md |
+| Chunk 2 status | **DONE** — default changed to MANUAL; tests pass; implementation_status.md updated |
 
 ### CDR-011 — ECS State Lost on Process Restart
 
@@ -254,15 +263,15 @@ review, hardening scans) and their current pass/fail status against the hardenin
 | # | Issue | Source | Severity | Status | Classification |
 |---|---|---|---|---|---|
 | 1 | DEBT-006: Sexton not wired | TECH_DEBT.md | CRITICAL | **FAIL** | Active debt — highest priority |
-| 2 | DDR-008: MCP returns fake success | Doc discrepancy | CRITICAL | **FAIL** | Code + doc fix needed |
-| 3 | CDR-010: _AlwaysApproveDialogNode | impl_status.md | CRITICAL | **FAIL** | Governance violation |
+| 2 | DDR-008/DEBT-003: MCP real dispatch, not wired, autonomy_gate=None | Doc discrepancy + code debt | HIGH (non-live) | **FAIL** (latent fail-open) | Chunk 2: harden fail-closed |
+| 3 | CDR-010: _AlwaysApproveDialogNode removed; AUTO_APPROVE_STUB default | impl_status.md | MEDIUM (non-live) | **PARTIAL** (class removed, default risk remains) | Chunk 2: change default |
 | 4 | CDR-003: 21 `except Exception: pass` | Grep scan | HIGH | **FAIL** | Silent degradation |
 | 5 | CDR-006: Layer violations (21 imports) | Governance finding | HIGH | **FAIL** | Acknowledged debt |
 | 6 | CDR-012: Sexton event write signature mismatch | impl_status.md | HIGH | **FAIL** | Latent runtime crash |
 | 7 | CDR-013: Embedding health always "healthy" | impl_status.md | HIGH | **FAIL** | Fake success (AIP-G-02) |
 | 8 | CDR-014: Router not adaptive | impl_status.md | HIGH | **FAIL** | Honestly disclosed scaffold |
 | 9 | CDR-011: ECS state lost on restart | impl_status.md | HIGH | **PARTIAL** | PersistentEcsStore exists |
-| 10 | DEBT-003: MCP tool dispatch scaffold | TECH_DEBT.md | HIGH | **FAIL** | Acknowledged scaffold |
+| 10 | DEBT-003: MCP tool dispatch (real, not wired, fail-open) | TECH_DEBT.md | HIGH (non-live) | **FAIL** (latent fail-open) | Chunk 2: harden |
 | 11 | DDR-001: README "vector not built" | Doc audit | HIGH | **FAIL** | Doc stale |
 | 12 | DDR-002: README "knowledge graph not built" | Doc audit | HIGH | **FAIL** | Doc stale |
 | 13 | CDR-001: 300+ Sprint-number comments | Grep scan | MEDIUM | **FAIL** | AI fingerprints |
@@ -289,11 +298,15 @@ review, hardening scans) and their current pass/fail status against the hardenin
 | 34 | DDR-011: ADR count in README | Doc audit | LOW | **FAIL** | Stale reference |
 
 **Summary:**
-- **CRITICAL FAIL:** 3 items (DEBT-006, DDR-008/MCP fake success, CDR-010/AlwaysApprove)
-- **HIGH FAIL:** 8 items (silent exceptions, layer violations, fake health, stale docs)
-- **MEDIUM FAIL:** 11 items (broad exceptions, return [], TODOs, doc splits, test disclosure)
+- **CRITICAL FAIL:** 1 item (DEBT-006 Sexton not wired)
+- **HIGH FAIL:** 8 items (MCP fail-open, silent exceptions, layer violations, fake health, stale docs)
+- **MEDIUM FAIL:** 11 items (broad exceptions, return [], TODOs, doc splits, test disclosure, AUTO_APPROVE_STUB default)
 - **LOW FAIL:** 4 items (step comments, command confusion, ADR count, dual numbering)
 - **DEFERRED:** 3 items (graph alias, PPR, step numbering)
 - **RESOLVED:** 2 items (DEBT-004, DEBT-005)
 - **ACCEPTED:** 2 items (CLI blocking sqlite3, build spec versions)
 - **INVESTIGATE:** 2 items (definer profile, scaffolding %)
+
+**Chunk 2 reclassifications:**
+- DDR-008 / DEBT-003: Reclassified from CRITICAL to HIGH (non-live) — MCP performs real mutations but is not runtime-wired
+- CDR-010: Reclassified from CRITICAL to MEDIUM (non-live) — `_AlwaysApproveDialogNode` removed; residual AUTO_APPROVE_STUB default risk

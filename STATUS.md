@@ -120,7 +120,7 @@ operation.
 
 | Surface | What's Real | What's Scaffold |
 |---|---|---|
-| MCP tool dispatch | Tool listing, autonomy gate enforcement, layering discipline | aip_search returns empty; aip_artifact_approve returns hardcoded True |
+| MCP tool dispatch | Tool listing, autonomy gate enforcement, layering discipline, real dispatch via Protocols | MCP server not wired into runtime; autonomy_gate=None fail-open risk for write/admin tools |
 | Adaptive router | Budget enforcement, route existence | update_weights() is no-op; exploration/exploitation is random |
 | ScriptNode | Type declaration, fixture mode, YAML parsing | Production execution disabled (returns DISABLED) |
 | MCP start/stop | _running flag | No stdio/SSE transport implementation |
@@ -166,11 +166,18 @@ for deployment with real user data. Known limitations that alpha testers should 
 2. **Embedding coverage is ~1.8%** (50/2,766 turns) — retrieval quality is limited until full
    embedding pass completes (requires DEBT-006 fix). FTS5 search works well; hybrid retrieval
    improvement will be measurable after full embedding.
-3. **MCP tool dispatch is scaffold** — no real search/approval/config operations through MCP
+3. **MCP tool dispatch is built but not runtime-wired** — real search and approval dispatch exists but is not reachable via API/CLI; autonomy_gate=None fail-open risk must be hardened before wiring
 4. **Adaptive router does not adapt** — exploration/exploitation is random
 5. **No sandbox for ScriptNode execution** — production mode returns DISABLED
 6. **No review queue web UI for MANUAL mode** — CLI review works (`aip review list/approve/reject`)
 7. **Per-component performance metrics are estimated**, not measured
+
+## Pre-existing Test Failures
+
+Two test files have known failures when run in the full suite (they pass in isolation):
+
+- `test_model_slot_resolver.py`: 4 tests fail in full suite due to env var pollution (pass in isolation)
+- `test_sqlite_vss_graceful_skip.py`: fails in full suite due to global state pollution (passes in isolation)
 
 ## Dogfood Loop
 

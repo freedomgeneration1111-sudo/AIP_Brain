@@ -253,6 +253,7 @@ async def test_artifact_approve_missing_id_returns_validation_error():
     container = _make_container(
         ecs_store=_MockEcsStore(),
         canonical_store=_MockCanonicalStore(),
+        autonomy_gate=_MockAutonomyGate(),  # grant gate so dispatch is reached
     )
     server = AipMcpServer(container=container)
     result = await server.call_tool("aip_artifact_approve", {"artifact_id": ""})
@@ -262,7 +263,7 @@ async def test_artifact_approve_missing_id_returns_validation_error():
 
 @pytest.mark.asyncio
 async def test_artifact_approve_no_ecs_store_returns_backend_unavailable():
-    container = _make_container(ecs_store=None, canonical_store=_MockCanonicalStore())
+    container = _make_container(ecs_store=None, canonical_store=_MockCanonicalStore(), autonomy_gate=_MockAutonomyGate())
     server = AipMcpServer(container=container)
     result = await server.call_tool("aip_artifact_approve", {"artifact_id": "art1"})
     assert result["ok"] is False
@@ -274,6 +275,7 @@ async def test_artifact_approve_artifact_not_found():
     container = _make_container(
         ecs_store=_MockEcsStore(states={}),  # no state for art_missing
         canonical_store=_MockCanonicalStore(),
+        autonomy_gate=_MockAutonomyGate(),  # grant gate so dispatch is reached
     )
     server = AipMcpServer(container=container)
     result = await server.call_tool("aip_artifact_approve", {"artifact_id": "art_missing"})
@@ -287,6 +289,7 @@ async def test_artifact_approve_wrong_state_returns_promotion_blocked():
     container = _make_container(
         ecs_store=_MockEcsStore(states={"art1": "GENERATED"}),
         canonical_store=_MockCanonicalStore(),
+        autonomy_gate=_MockAutonomyGate(),  # grant gate so dispatch is reached
     )
     server = AipMcpServer(container=container)
     result = await server.call_tool("aip_artifact_approve", {"artifact_id": "art1"})
@@ -304,6 +307,7 @@ async def test_artifact_approve_reviewed_artifact_succeeds():
         ecs_store=ecs,
         canonical_store=canonical,
         artifact_store=_MockArtifactStore(artifacts={"art1": "some content"}),
+        autonomy_gate=_MockAutonomyGate(),  # grant gate so dispatch is reached
     )
     server = AipMcpServer(container=container)
     result = await server.call_tool("aip_artifact_approve", {"artifact_id": "art1"})
@@ -386,7 +390,7 @@ async def test_config_read_missing_section_returns_not_found():
 @pytest.mark.asyncio
 async def test_config_write_returns_not_implemented():
     """Config write through MCP is not implemented — must not fake success."""
-    container = _make_container()
+    container = _make_container(autonomy_gate=_MockAutonomyGate())
     server = AipMcpServer(container=container)
     result = await server.call_tool("aip_config_write", {"section": "test", "values": {"key": "val"}})
     assert result["ok"] is False
@@ -428,7 +432,7 @@ async def test_project_list_with_store_returns_projects():
 
 @pytest.mark.asyncio
 async def test_project_create_no_store_returns_backend_unavailable():
-    container = _make_container(project_store=None)
+    container = _make_container(project_store=None, autonomy_gate=_MockAutonomyGate())
     server = AipMcpServer(container=container)
     result = await server.call_tool("aip_project_create", {"name": "test"})
     assert result["ok"] is False
@@ -437,7 +441,7 @@ async def test_project_create_no_store_returns_backend_unavailable():
 
 @pytest.mark.asyncio
 async def test_project_create_missing_name_returns_validation_error():
-    container = _make_container(project_store=_MockProjectStore())
+    container = _make_container(project_store=_MockProjectStore(), autonomy_gate=_MockAutonomyGate())
     server = AipMcpServer(container=container)
     result = await server.call_tool("aip_project_create", {"name": ""})
     assert result["ok"] is False
@@ -519,7 +523,7 @@ async def test_no_hardcoded_approval():
     """Approval must not return hardcoded {"approved": True} without real work."""
     # When artifact doesn't exist, should return NOT_FOUND, not approved=True
     server = AipMcpServer(
-        container=_make_container(ecs_store=_MockEcsStore(states={}), canonical_store=_MockCanonicalStore())
+        container=_make_container(ecs_store=_MockEcsStore(states={}), canonical_store=_MockCanonicalStore(), autonomy_gate=_MockAutonomyGate())
     )
     result = await server.call_tool("aip_artifact_approve", {"artifact_id": "nonexistent"})
     assert result["ok"] is False, "Approval of nonexistent artifact must not return ok=true"
@@ -529,9 +533,43 @@ async def test_no_hardcoded_approval():
 async def test_no_generic_ok_true_for_unsupported_tools():
     """Unsupported tools must not return generic {"ok": True}."""
     # aip_config_write returns NOT_IMPLEMENTED, not ok=True
-    server = AipMcpServer(container=_make_container())
+    server = AipMcpServer(container=_make_container(autonomy_gate=_MockAutonomyGate()))
     result = await server.call_tool("aip_config_write", {"section": "x", "values": {}})
     assert result["ok"] is False, "Config write must not return generic ok=true"
+
+
+# ---- Fail-closed when autonomy_gate is None ----
+
+
+@pytest.mark.asyncio
+async def test_admin_tool_rejected_when_gate_is_none():
+    """Admin tools must be rejected when autonomy_gate is None (fail-closed)."""
+    container = _make_container(autonomy_gate=None)
+    server = AipMcpServer(container=container)
+    result = await server.call_tool("aip_artifact_approve", {"artifact_id": "art1"})
+    assert result["ok"] is False
+    assert result["error"]["code"] == "FORBIDDEN"
+    assert "unavailable" in result["error"]["message"].lower() or "gate" in result["error"]["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_write_tool_rejected_when_gate_is_none():
+    """Write tools must be rejected when autonomy_gate is None (fail-closed)."""
+    container = _make_container(autonomy_gate=None)
+    server = AipMcpServer(container=container)
+    result = await server.call_tool("aip_project_create", {"name": "test"})
+    assert result["ok"] is False
+    assert result["error"]["code"] == "FORBIDDEN"
+
+
+@pytest.mark.asyncio
+async def test_read_tool_not_blocked_when_gate_is_none():
+    """Read tools should NOT be blocked when autonomy_gate is None."""
+    container = _make_container(lexical_store=_MockLexicalStore(results=[]))
+    server = AipMcpServer(container=container)
+    result = await server.call_tool("aip_search", {"query": "test"})
+    # Should succeed (empty results is valid), not be blocked by missing gate
+    assert result["ok"] is True
 
 
 # ---- Server lifecycle ----

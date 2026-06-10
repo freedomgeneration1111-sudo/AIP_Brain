@@ -54,3 +54,28 @@ Stage Summary:
 - No emergency fixes needed — no runtime path can silently approve, bypass DEFINER, or consume fake success
 - Chunk 2 execution order defined in 4 phases: Doc Truth → Governance Hardening → Critical Debt → Silent Degradation
 - Created CHUNK_1_5_TRIAGE.md (272 lines)
+
+---
+Task ID: Chunk-2
+Agent: Main Agent
+Task: Chunk 2 — Documentation Truth + Governance Debt Reconciliation
+
+Work Log:
+- Read all 5 hardening docs from Chunk 1 (CHUNK_1_5_TRIAGE, DOC_DISCREPANCY_REGISTER, CODE_DEBT_REGISTER, CURRENT_STATE_BASELINE, AI_FINGERPRINT_REGISTER)
+- Read all root docs (README, STATUS, DOGFOOD_READY, TECH_DEBT, docs/TECH_DEBT, ARCHITECTURE, implementation_status)
+- Read governance code (mcp/server.py, mcp/tools/artifacts.py, mcp/tools/search.py, workflow/workflow_01.py, autonomy/autonomy_gate.py)
+- Read test files (test_mcp_server.py, test_review_node.py, test_definer_gate.py)
+- Phase 1: Updated DOC_DISCREPANCY_REGISTER DDR-008 (reclassified from CRITICAL to HIGH non-live), CODE_DEBT_REGISTER DEBT-003 (updated from scaffold to real dispatch), CDR-010 (reclassified from CRITICAL to MEDIUM non-live), CURRENT_STATE_BASELINE section 8 (corrected MCP and workflow status)
+- Phase 2: Updated README.md (vector embeddings, knowledge graph, DEFINER profile, MCP, ADR count, multi-store, test count), STATUS.md (scaffolding table, production-readiness, pre-existing test failures), DOGFOOD_READY.md (MCP language, force-export warning), TECH_DEBT.md (DEBT-003 updated), docs/ARCHITECTURE.md (layer discipline clarification), docs/implementation_status.md (workflow_01 row, MCP description, hardening summary)
+- Phase 3: Hardened mcp/server.py to fail-closed when autonomy_gate is None (3 new tests), changed _ReviewGateNode default from AUTO_APPROVE_STUB to MANUAL (2 locations + 2 docstrings), fixed 2 existing tests that relied on old default
+- Phase 4: Ran consistency checks on all required patterns, classified remaining hits
+- Sanitation: Removed AI fingerprint comments from workflow_01.py (2 history-narrative comments)
+- Ran targeted tests: 76 pass (test_mcp_server, test_workflow_engine, test_definer_gate)
+
+Stage Summary:
+- DDR-008 reclassified: MCP dispatch performs real mutations but is not runtime-wired; fail-closed hardening applied
+- CDR-010 reclassified: _AlwaysApproveDialogNode removed; AUTO_APPROVE_STUB default changed to MANUAL
+- MCP server: fail-closed when autonomy_gate is None for write/admin tools
+- _ReviewGateNode: default changed from AUTO_APPROVE_STUB to MANUAL
+- 6 primary docs updated to reflect current code reality
+- 4 hardening docs corrected from Chunk 1 stale state

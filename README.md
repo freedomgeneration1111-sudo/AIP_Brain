@@ -23,14 +23,16 @@ AIP v0.1 is alpha software in active development by a single DEFINER
 - Markdown export with provenance
 
 The following are planned but not yet built:
-- Vector embeddings (vectors.db is empty — FTS5 only for now)
 - Beast wiki generation (domain articles)
-- Knowledge graph (entity extraction + Cytoscape.js visualization)
-- DEFINER profile injection in augmented chat
 - Multi-corpus support (Branham research corpus, NBCM citations)
 
+The following are built and working (partial or limited):
+- Vector embeddings (hybrid retrieval with RRF fusion operational; ~1.8% embedding coverage — full pass requires DEBT-006 fix)
+- Knowledge graph (36 nodes, 17 edges; Cytoscape.js visualization at /graph-viz)
+- DEFINER profile injection in augmented chat (partial — profile loaded, active injection in progress)
+
 The following are scaffold (real structure, placeholder dispatch):
-- MCP tool dispatch
+- MCP tool dispatch (built but not runtime-wired; autonomy_gate=None fail-open risk)
 - Adaptive router weight learning
 - ScriptNode production execution
 
@@ -87,7 +89,7 @@ uv run aip export project <name> --format markdown --out ./out.md
 ## Running Tests
 
 ```bash
-# Full test suite (900+ tests)
+# Full test suite (1002+ tests)
 uv run pytest
 
 # Dogfood smoke test (clean-checkout verification)
@@ -119,7 +121,7 @@ flagged (`ci_fixture=True`) and blocked from production promotion. Default score
 failure.
 - **Real model dispatch**: `ModelSlotResolver` supports Ollama and OpenAI-compatible HTTP calls with environment variable configuration. No model call silently returns a placeholder.
 - **Async-safe storage**: All adapter-layer SQLite stores use `aiosqlite` — no blocking `sqlite3.connect()` inside async methods.
-- **Unified datastore**: All CLI commands use the same database path (initialized by `aip init`). No manual `--db-path` needed for the normal dogfood path.
+- **Coordinated multi-store**: All CLI commands use the same database path (initialized by `aip init`). The system coordinates state.db, lexical.db, and trace.db for different concerns. No manual `--db-path` needed for the normal dogfood path.
 - **Source-grounded answers**: Every generated answer includes provenance back to ingested sources. No fabricated information.
 - **Review and export**: Artifacts go through explicit ECS lifecycle transitions. Only APPROVED artifacts export without `--force`.
 
@@ -187,7 +189,7 @@ Environment variable overrides:
 | ECS state machine (persistent SQLite) | Working | SPECIFIED→GENERATED→REVIEWED→APPROVED→SUPERSEDED |
 | Review, approve, reject, needs-revision | Working | `aip review list/show/sources/approve/reject/needs-revision` |
 | Markdown export with metadata | Working | `aip export artifact/project` |
-| Unified datastore (single db/state.db) | Working | All CLI commands share same DB |
+| Coordinated multi-store (state.db + lexical.db + trace.db) | Working | All CLI commands share same DB path |
 | Project-domain alignment (--project on ingest) | Working | `aip ingest --project X` resolves domain |
 | Model provider dispatch (Ollama, OpenAI) | Working | Environment variable configuration |
 | DEFINER gate (AUTO_APPROVE_STUB + MANUAL) | Working | MANUAL uses ReviewQueueStore |
@@ -205,12 +207,12 @@ Environment variable overrides:
 | Domain registry (beast_domain_registry_v1.md) | Working | 26+ domains, event-driven |
 | Beast context advisory (augmented chat) | Working | Domain overview + retrieved turns |
 | Corpus turn store (FTS5 indexed) | Working | 2,700+ turns, thinking_text preserved |
-| Vector embeddings | Not built | vectors.db empty — Phase 1.4 |
+| Vector embeddings | Working | ~1.8% coverage (50/2,766 turns); full pass requires DEBT-006 fix |
 | Beast wiki articles | Not built | Phase 2A |
-| Knowledge graph | Not built | Phase 2B |
-| DEFINER profile injection | Not built | Phase 2A |
+| Knowledge graph | Working | 36 nodes, 17 edges; /graph-viz visualization |
+| DEFINER profile injection | Partial | Profile loaded; active injection in progress |
 | Dogfood smoke test | Working | `bash scripts/dogfood_smoke_test.sh` |
-| MCP tool server | Scaffold | Returns structured NOT_IMPLEMENTED |
+| MCP tool server | Built (not runtime-wired) | Real dispatch via Protocols; not wired into app.py; autonomy_gate=None fail-open risk |
 | ScriptNode execution | Disabled | Production safe |
 
 ## CI
@@ -231,7 +233,7 @@ matrix for this component's current status, including any open findings.
 - [`DOGFOOD_READY.md`](DOGFOOD_READY.md) — First-run dogfood guide (start here!)
 - `STATUS.md` — Current project status, maturity, and known issues
 - `ROADMAP.md` — Phased build plan, Phase 0 through Phase 5
-- `docs/decisions/` — Architecture Decision Records (ADR-001 through ADR-007)
+- `docs/decisions/` — Architecture Decision Records (ADR-001 through ADR-013)
 - `docs/beast_domain_registry_v1.md` — Domain taxonomy for Beast corpus tagging
 - `docs/entity_aliases.md` — Canonical entity name resolution for knowledge graph
 - `examples/seed_corpus/` — AIP self-knowledge Q&A seed corpus + ingest script

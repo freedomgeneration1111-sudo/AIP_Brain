@@ -120,11 +120,14 @@ or where code does something the docs do not mention.
 |---|---|
 | File | `README.md` capabilities table |
 | Claim | MCP tool server is scaffold that "Returns structured NOT_IMPLEMENTED" |
-| Reality | MCP server dispatch returns hardcoded success responses, NOT "NOT_IMPLEMENTED". Specifically: `aip_search` returns `{"results": []}` (empty results, not NOT_IMPLEMENTED), `aip_artifact_approve` returns `{"approved": True, "canonical": True}` (hardcoded approval — AIP-G-01 violation if actually used), other tools return `{"ok": True}`. This is worse than claimed — the docs say it returns an honest "not implemented" status, but the code returns fake success. The implementation_status.md correctly describes this. |
-| Severity | **CRITICAL** |
-| Impact | The README claims the MCP scaffold returns an honest NOT_IMPLEMENTED status (which would satisfy AIP-G-02), but the actual code returns fake success that could bypass DEFINER gates (violating AIP-G-01 and AIP-G-02). If any system actually called `aip_artifact_approve` through MCP, it would receive a silent approval. The autonomy gate enforcement in `server.py` IS real, but the tool dispatch results after the gate passes are fake. |
-| Resolution | (1) Fix MCP dispatch to return NOT_IMPLEMENTED for scaffold tools (or DISABLED), not fake success. (2) Update README to accurately describe current state. (3) This is a code fix, not just a doc fix. |
-| Assigned to | High priority for Chunk 2 or later |
+| Reality (Chunk 1, frozen) | MCP server dispatch returned hardcoded success responses. `aip_search` returned `{"results": []}`, `aip_artifact_approve` returned `{"approved": True, "canonical": True}`. |
+| Reality (Chunk 1.5, corrected) | **MCP dispatch now performs REAL mutations.** `aip_artifact_approve` calls `ecs_store.transition(REVIEWED→APPROVED)` and `canonical_store.write_canonical()` — it is NOT returning hardcoded fake approval. `aip_search` dispatches to real lexical + vector search via Protocols. However: (1) MCP server is **not wired into app.py runtime** — it is only exercisable via direct `call_tool()` invocation. (2) When `container.autonomy_gate is None`, write/admin tools bypass the gate entirely (fail-open). (3) README claim of "Returns structured NOT_IMPLEMENTED" was stale even in Chunk 1 — the code returned fake success then, and now does real work. |
+| Severity | **HIGH** (non-live governance debt; would be CRITICAL if MCP were wired) |
+| Classification | **Non-live governance debt** — MCP server is not reachable at runtime. The `autonomy_gate=None` escape hatch is a latent vulnerability that must be hardened before MCP is wired. |
+| Impact | The README claim is stale in two directions: (1) it underclaims by saying NOT_IMPLEMENTED when real dispatch exists, and (2) the `autonomy_gate=None` fail-open means that if MCP IS wired without explicit gate provision, write/admin tools will bypass DEFINER sovereignty. The code is not a runtime risk today because MCP is not wired. |
+| Resolution | (1) Update README to describe MCP as "built but not runtime-wired" with real dispatch and `autonomy_gate=None` fail-open risk. (2) Harden `server.py` to fail-closed when `autonomy_gate is None` for write/admin tools. (3) Update STATUS.md scaffolding table. |
+| Assigned to | Chunk 2 |
+| Chunk 2 status | **DONE** — MCP fail-closed hardened; README updated; STATUS.md updated |
 
 ### DDR-009 — DOGFOOD_READY.md references "aip corpus ingest" but original guide references "aip ingest file/directory"
 
@@ -186,13 +189,13 @@ or where code does something the docs do not mention.
 | DDR-005 | LOW | DOGFOOD_READY.md | Dual step numbering systems | Merge/simplify |
 | DDR-006 | MEDIUM | STATUS.md | Scaffolding 5-8% understates debt | Clarify metric scope |
 | DDR-007 | MEDIUM | STATUS.md | Test failures not named | Add failure names |
-| DDR-008 | **CRITICAL** | README.md | MCP returns fake success, NOT "NOT_IMPLEMENTED" | Code fix + doc fix |
+| DDR-008 | **HIGH** (non-live) | README.md | MCP: real dispatch, not wired, autonomy_gate=None fail-open | Hardening + doc fix (Chunk 2 IN PROGRESS) |
 | DDR-009 | LOW | DOGFOOD_READY.md | Ingest command confusion | Add explanation |
 | DDR-010 | MEDIUM | Root TECH_DEBT.md | Split debt register | Merge or delete |
 | DDR-011 | LOW | README.md | ADR count is 7 not 13+ | Update count |
 | DDR-012 | N/A | STATUS.md | NOT a discrepancy | None |
 
-**Critical:** 1 (DDR-008)
-**High:** 2 (DDR-001, DDR-002)
+**Critical:** 0 (DDR-008 reclassified to HIGH — non-live debt)
+**High:** 3 (DDR-001, DDR-002, DDR-008)
 **Medium:** 5 (DDR-003, DDR-004, DDR-006, DDR-007, DDR-010)
 **Low:** 3 (DDR-005, DDR-009, DDR-011)

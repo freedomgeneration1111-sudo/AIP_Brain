@@ -214,6 +214,7 @@ async def test_richer_data_flow_between_nodes():
 async def test_end_to_end_workflow_01_happy_path():
     """Smoke test that the high-level Workflow 0.1 executor can run a full synthesis session
     when all gates pass (using fakes)."""
+    from aip.orchestration.nodes.definer_gate import DefinerGateMode
     from aip.orchestration.workflow.workflow_01 import Workflow01Runner
 
     class FakeVectorStore:
@@ -245,6 +246,7 @@ async def test_end_to_end_workflow_01_happy_path():
         ecs_store=FakeEcsStore(),
         event_store=FakeEventStore(),
         ci_mode=True,  # CI mode allows stub auto-approve for smoke test
+        gate_mode=DefinerGateMode.AUTO_APPROVE_STUB,  # explicit for test — default is now MANUAL
     )
 
     result = await runner.run(query="Test query for Workflow 0.1", domain="test")
@@ -454,7 +456,9 @@ nodes:
     Path(path).unlink()
 
     # Workflow 0.1 convenience path (CI mode for smoke test)
-    result2 = await engine.run_workflow_01(query="Test query", domain="test", ci_mode=True)
+    from aip.orchestration.nodes.definer_gate import DefinerGateMode
+
+    result2 = await engine.run_workflow_01(query="Test query", domain="test", ci_mode=True, gate_mode=DefinerGateMode.AUTO_APPROVE_STUB)
     assert result2 is not None
 
 

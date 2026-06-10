@@ -145,10 +145,13 @@ health, chat, ask, ingest, corpus, artifacts, review, knowledge, graph, graph_vi
 
 | Surface | What's Real | What's Scaffold |
 |---|---|---|
-| MCP tool dispatch | Tool listing, autonomy gate, layering discipline | `aip_search` returns empty; `aip_artifact_approve` returns hardcoded True; `start()` is no-op |
+| MCP tool dispatch | Tool listing, autonomy gate enforcement (fail-closed when gate is None), real search dispatch, real artifact approval (ECS transition + canonical write), layering discipline | MCP server not wired into `app.py` runtime (no transport, no API route); `start()` is direct-invocation mode only |
 | Adaptive router | Budget enforcement, route existence | `update_weights()` is `pass`; exploration/exploitation is random |
 | ScriptNode | Type declaration, fixture mode, YAML parsing | Production execution returns DISABLED |
 | MCP start/stop | `_running` flag | No stdio/SSE transport |
+| Workflow 0.1 | `_ReviewGateNode` with validation + eval gates, `_CommitNode` with approval check | `workflow_01` not wired into runtime; default gate mode changed to MANUAL in Chunk 2 |
+
+> **Chunk 1.5 correction:** The original Chunk 1 baseline described MCP dispatch as "aip_search returns empty; aip_artifact_approve returns hardcoded True". This was stale — it reflected pre-`0d63e58` code. The current MCP dispatch performs real ECS transitions and canonical writes. The MCP server is not runtime-wired, so this is non-live governance debt, not a current runtime blocker.
 
 ## 9. Configuration System
 

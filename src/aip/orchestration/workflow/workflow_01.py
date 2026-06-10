@@ -179,7 +179,7 @@ async def _run_real_eval(model_resolver: Any, content: str) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Review Gate Node (replaces _AlwaysApproveDialogNode)
+# Review Gate Node
 # ---------------------------------------------------------------------------
 
 
@@ -187,10 +187,9 @@ class _ReviewGateNode(WorkflowNode):
     """Review gate that pauses the workflow for DEFINER approval.
 
     Behavior:
-    - Production mode (default): uses ``definer_gate`` with
-      ``AUTO_APPROVE_STUB`` mode if validation+eval pass, which auto-approves
-      but logs a warning.  If either fails, the gate returns 'revise' or
-      'reject' and the workflow pauses.
+    - Production mode (default): uses ``definer_gate`` with ``MANUAL`` mode,
+      which requires explicit DEFINER approval. In CI mode (``CI=true`` env var),
+      the gate falls through to auto-approve with a CI marker.
     - CI mode: uses ``AUTO_APPROVE_STUB`` which auto-approves with a CI
       marker when gates pass.
     - MANUAL mode: raises :class:`ManualReviewRequired` so the calling
@@ -259,7 +258,7 @@ class _ReviewGateNode(WorkflowNode):
         # Determine gate mode
         mode = self.mode
         if mode is None:
-            mode = DefinerGateMode.AUTO_APPROVE_STUB
+            mode = DefinerGateMode.MANUAL
 
         # Run the gate
         decision: DefinerDecision | None = None
@@ -470,9 +469,11 @@ class Workflow01Runner:
         )
         result = await runner.run(query="...", domain="...")
 
-    In production, the workflow pauses at the review gate when DEFINER
-    approval is needed.  In CI mode (``ci_mode=True`` or ``CI`` env var
-    set), the stub gate auto-approves so tests exercise the full pipeline.
+    In production, the workflow pauses at the review gate for MANUAL DEFINER
+    approval.  In CI mode (``ci_mode=True`` or ``CI`` env var set), the
+    gate auto-approves so tests exercise the full pipeline. The default
+    gate mode is MANUAL — use ``gate_mode=DefinerGateMode.AUTO_APPROVE_STUB``
+    only for testing.
 
     For MANUAL mode (human-in-the-loop), set ``gate_mode=MANUAL``.
     The runner will return a paused result with
@@ -515,7 +516,7 @@ class Workflow01Runner:
         # Determine the review gate mode
         gate_mode = self.gate_mode
         if gate_mode is None:
-            gate_mode = DefinerGateMode.AUTO_APPROVE_STUB
+            gate_mode = DefinerGateMode.MANUAL
 
         # Resolve embed function (handle both sync and async callables)
         _provided_embed = self.embed_fn
@@ -605,7 +606,7 @@ class Workflow01Runner:
 
 
 # ---------------------------------------------------------------------------
-# Synthesis Node (replaces the bare AgentNode with placeholder wiring)
+# Synthesis Node
 # ---------------------------------------------------------------------------
 
 

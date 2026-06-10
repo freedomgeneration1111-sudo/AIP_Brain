@@ -208,9 +208,16 @@ class AipMcpServer:
         if not tool_def:
             return _error(NOT_FOUND, f"Unknown tool: {name}", {"tool_name": name})
 
-        # Autonomy gate enforcement for write/admin tools
+        # Autonomy gate enforcement for write/admin tools — fail-closed
         level = tool_def["autonomy"]
-        if level in ("write", "admin") and self.container.autonomy_gate:
+        if level in ("write", "admin"):
+            if self.container.autonomy_gate is None:
+                return _error(
+                    FORBIDDEN,
+                    f"Autonomy gate unavailable: {level}-level tool '{name}' requires an active gate for DEFINER sovereignty enforcement. "
+                    f"Wire AutonomyGate into the container before using this tool.",
+                    {"tool_name": name, "required_level": level, "gate_status": "unavailable"},
+                )
             esc = await self.container.autonomy_gate.escalate(
                 action_type=f"mcp_{name}",
                 resource_id=arguments.get("artifact_id") or arguments.get("name") or "mcp",

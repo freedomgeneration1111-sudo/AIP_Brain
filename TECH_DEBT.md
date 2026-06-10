@@ -71,19 +71,17 @@ pipeline can complete in <200ms, promote to full PPR path.
 
 ---
 
-## DEBT-003 — MCP Tool Dispatch (Scaffold)
+## DEBT-003 — MCP Tool Dispatch (Not Runtime-Wired + Fail-Open Risk)
 
-**Status:** Deferred  
+**Status:** Active — non-live governance debt  
 **Phase:** 0 (scaffolded), Phase 5 (full implementation)  
 **Filed:** 2026-06-04 (pre-existing)
 
 **What was deferred:**  
-MCP tool dispatch returns scaffold responses: `aip_search` returns empty, `aip_artifact_approve`
-returns hardcoded True, other tools return `ok=True`. No real operation is dispatched.
+MCP tool dispatch performs real mutations (ECS transitions, canonical writes, search via Protocols) but is NOT wired into app.py runtime. The `autonomy_gate=None` escape hatch in `server.py:213` silently bypasses gate enforcement for write/admin tools — this must be hardened to fail-closed before MCP is wired.
 
 **Remediation trigger:**  
-Phase 5 multi-user deployment. Requires real stdio/SSE MCP transport + dispatching to live
-search/approval/config services.
+Phase 5 multi-user deployment. Must harden `autonomy_gate=None` fail-closed before MCP is wired into runtime.
 
 ---
 

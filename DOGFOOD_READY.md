@@ -17,7 +17,7 @@ that guide was written, and there are important caveats for alpha testers:
   (vector + FTS5) will show limited benefit until a full embedding pass completes.
 - **DEBT-006 (Critical):** Automatic tagging, embedding, wiki, and graph extraction are NOT
   running automatically. Use `aip corpus tag` and `aip embed` manually until this is fixed.
-- **MCP dispatch is scaffold** — no real search/approval through MCP
+- **MCP dispatch is built but not runtime-wired** — no MCP operations are reachable via API/CLI today
 - **No review queue web UI** — use `aip review list/approve/reject` via CLI
 
 The current recommended first-run sequence is:
@@ -270,6 +270,8 @@ uv run aip export artifact <artifact_id> \
   --out ./exports/draft.md \
   --force
 ```
+
+> ⚠️ **Warning:** Force export bypasses the DEFINER approval gate. This should only be used for debugging or local review, never in a shared or production context.
 
 Exported markdown includes:
 - YAML frontmatter (artifact_id, project, lifecycle_state, timestamps, model info)

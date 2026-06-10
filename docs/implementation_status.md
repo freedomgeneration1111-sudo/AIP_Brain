@@ -64,6 +64,15 @@ without provider (lexical-only, no zero vectors).
 
 Remaining high-risk areas: the Adaptive Router (no real adaptation) and review queue UI for MANUAL mode.
 
+## Post-Sprint-7 Hardening Summary (Chunk 2, 2026-06-10)
+
+Documentation truth pass and small governance hardening:
+- DDR-008 reclassified: MCP dispatch performs real mutations (not fake success) but is not runtime-wired; autonomy_gate=None fail-open risk identified
+- CDR-010 reclassified: `_AlwaysApproveDialogNode` removed; `_ReviewGateNode` defaults to AUTO_APPROVE_STUB (latent risk)
+- MCP server hardened to fail-closed when autonomy_gate is None for write/admin tools
+- `_ReviewGateNode` default changed from AUTO_APPROVE_STUB to MANUAL
+- README, STATUS, TECH_DEBT, ARCHITECTURE, implementation_status updated to reflect current code reality
+
 ## P0 Fixes Applied
 
 | # | Bug | File | Fix |
@@ -94,7 +103,7 @@ Remaining high-risk areas: the Adaptive Router (no real adaptation) and review q
 | **Workflow: loader.py** | Real/Mostly Working | 5% | Full YAML parser with all node types | None | Low |
 | **Workflow: instance.py** | Real/Mostly Working | 0% | Clean dataclasses with JSON serialization | None | Low |
 | **Workflow: instance_store.py** | Real/Mostly Working | 15% | Working FileWorkflowInstanceStore | Add SQLite-backed implementation | Medium |
-| **Workflow: workflow_01.py** | Mostly Scaffolding | 60% | **DANGEROUS**: `_AlwaysApproveDialogNode` always approves. | Replace with real DialogNode. Wire real evaluation nodes. Use L4 result. | Critical |
+| **Workflow: workflow_01.py** | Partial/Hybrid | 40% | `_AlwaysApproveDialogNode` removed; `_ReviewGateNode` defaults to MANUAL (hardened from AUTO_APPROVE_STUB). Workflow not runtime-wired. | None — default is now safe. | Medium |
 | **Evaluation: evaluation.py** | Deleted | N/A | **DELETED**: Was near-exact duplicate of `l3a_orchestrator.py`. | None (done) | Done |
 | **Evaluation: l3a_orchestrator.py** | Partial/Hybrid | 30% | Real 3-stage orchestration. Bug: duplicate failure type codes. | Fix failure type codes to be distinct. | High |
 | **Evaluation: canonical_pipeline.py** | Partial/Hybrid | 25% | **FIXED**: Default scores 0.0 on failure. Promotion blocked on eval failure. ci_fixture blocking added. | Add adversarial eval stage. | Medium |
@@ -165,7 +174,7 @@ Remaining high-risk areas: the Adaptive Router (no real adaptation) and review q
 | **Adapter: autonomy_gate.py** | Real/Mostly Working | 10% | Full SQLite-backed AutonomyGate with audit trail. aiosqlite migrated. | Fix AutonomyLevel type narrowing. | Low |
 | **Adapter: plugin_loader.py** | Real/Mostly Working | 15% | Real YAML discovery, loading, unloading. Sandbox mode works. | Strengthen container registration. | Low |
 | **Adapter: yaml_plugin_provider.py** | Partial/Hybrid | 40% | Real httpx-based API call. CI mode detection correct. | Add provider-specific dispatch. Fail-fast when httpx missing and not CI. | Medium |
-| **Adapter: mcp/server.py** | Mostly Scaffolding | 70% | Tool registry + autonomy gate real. `start()` is scaffold. Dispatch returns hardcoded results despite real tool impls existing in `tools/`. | Wire dispatch to `tools/` implementations. Implement stdio/SSE transport. | High |
+| **Adapter: mcp/server.py** | Partial/Hybrid | 30% | Tool registry + autonomy gate real. Dispatch delegates to real `tools/` implementations. `autonomy_gate=None` fail-closed hardened. Not wired into app.py. | Wire into app.py runtime. Implement stdio/SSE transport. | High |
 | **Adapter: mcp/tools/artifacts.py** | Real/Mostly Working | 10% | Real: calls `ecs_store.transition()` and `canonical_store.write_canonical()`. | None | Low |
 | **Adapter: mcp/tools/search.py** | Real/Mostly Working | 10% | Real search across lexical and vector stores. | Add logging for search failures. | Low |
 | **Adapter: health.py** | Partial/Hybrid | 40% | Vector store health check is real. Embedding status hardcoded healthy. | Implement real embedding health check. Add uptime tracking. | High |
@@ -363,7 +372,7 @@ measured.
 Only supports OpenAI-compatible endpoint.
 
 #### Adapter: mcp/server.py
-Autonomy gate enforcement is real. Tool listing with `McpToolDef` is real. However, `call_tool()` dispatch returns hardcoded scaffold responses (`{"results": []}`, `{"approved": True, "canonical": True}`, `{"ok": True}`) instead of delegating to the real tool implementations in `tools/artifacts.py` and `tools/search.py`. `start()` is a no-op. All tools declare `input_schema={}`.
+`call_tool()` dispatches to real tool implementations in `tools/artifacts.py` and `tools/search.py`. MCP server is not wired into `app.py` runtime — only exercisable via direct `call_tool()` invocation. `autonomy_gate=None` is a fail-open risk for write/admin tools. `start()` is direct-invocation mode only. All tools have real `input_schema`.
 
 #### Adapter: mcp/tools/search.py
 Falls back to fake_embed. Silent exception swallowing.
