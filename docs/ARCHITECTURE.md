@@ -70,8 +70,33 @@ All cross-layer dependencies are expressed via **Protocol classes** (structural 
 Layer discipline detail:
 - foundation: imports no AIP upper layers (stdlib/pydantic only)
 - orchestration: may import foundation/protocols, not adapter (known violations documented in AIP-G-06/07)
-- adapter composition root (app.py, dependencies.py): may wire orchestration implementations
-- adapter routes/GUI: should use container/protocol interfaces, not concrete orchestration internals where avoidable
+- adapter composition root (app.py, dependencies.py): may wire orchestration implementations via importlib.import_module()
+- adapter routes: MUST use container/protocol interfaces (AipContainer._xxx_fn attributes), not concrete orchestration internals. Route modules must not import from aip.orchestration — neither statically nor via importlib
+- GUI: MUST remain API-first, communicating with backend exclusively through REST/WebSocket (gui/api_client.py). No imports from aip.orchestration or aip.adapter
+
+### Composition Root Exception
+
+The composition root — `aip/adapter/api/app.py` and `aip/adapter/api/dependencies.py` — is the ONLY place in the adapter layer that may reference orchestration. This is where concrete implementations are wired into the container.
+
+**Allowed in composition root:**
+- `importlib.import_module("aip.orchestration.xxx")` to load concrete implementations
+- Storing function references and classes on `AipContainer` (e.g., `container._ask_fn`, `container._orchestrator_config_class`)
+- Static imports are discouraged; use `importlib.import_module()` for consistency
+
+**NOT allowed in composition root:**
+- Top-level `from aip.orchestration import ...` (creates import-time coupling)
+
+**NOT allowed in route modules:**
+- Any form of import from `aip.orchestration` — static, lazy, or importlib
+- Route modules access orchestration ONLY through container attributes (e.g., `container._ask_fn`)
+
+### Enforcement
+
+Import boundaries are enforced by the following test suite:
+- `tests/test_import_boundary.py` — comprehensive AST-based checker (Chunk 6)
+- `tests/test_layering.py` — foundation isolation and function location checks
+- `tests/test_layer_discipline.py` — container function reference checks
+- `tests/test_governance_conformance.py` — AIP-G-06/07 governance checks with acknowledged violations
 
 ---
 

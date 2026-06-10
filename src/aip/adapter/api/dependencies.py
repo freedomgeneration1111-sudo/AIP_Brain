@@ -109,6 +109,16 @@ class AipContainer:
         self._sanitize_fts_query_fn: Any = None  # ask_pipeline._sanitize_fts_query
         self._ingest_conversation_fn: Any = None  # ingestion.pipeline.ingest_conversation
         self._ingest_file_fn: Any = None  # ingestion.pipeline.ingest_file
+        # Chunk 6: Container-mediated corpus ingest functions (avoids route→orchestration import)
+        self._corpus_ingest_config_class: Any = None  # CorpusIngestConfig
+        self._ingest_directory_to_corpus_fn: Any = None  # ingest_directory_to_corpus
+        self._ingest_file_to_corpus_fn: Any = None  # ingest_file_to_corpus
+        # Chunk 6: Container-mediated retrieval orchestrator access (avoids route→orchestration import)
+        self._get_orchestrator_cache_fn: Any = None  # get_orchestrator_cache
+        self._builtin_channels: Any = None  # BUILTIN_CHANNELS list
+        # Chunk 6: Container-mediated retrieval dashboard classes (avoids route→orchestration import)
+        self._orchestrator_config_class: Any = None  # OrchestratorConfig
+        self._adaptive_budget_tuner_class: Any = None  # AdaptiveBudgetTuner
         # Store registry — maps store_name → db_path for datastore truth.
         # Populated during lifespan startup as each store is initialized.
         # Used by startup validation, backup, and the /health/datastore endpoint.

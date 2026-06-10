@@ -237,11 +237,14 @@ async def ingest_to_corpus(
 
     Returns CorpusIngestResult with counts of ingested, skipped, updated, failed turns.
     """
-    from aip.orchestration.ingestion.corpus_ingest_pipeline import (
-        CorpusIngestConfig,
-        ingest_directory_to_corpus,
-        ingest_file_to_corpus,
-    )
+    # Chunk 6: Use container-mediated access instead of direct orchestration import
+    CorpusIngestConfig = getattr(container, "_corpus_ingest_config_class", None)
+    ingest_directory_to_corpus = getattr(container, "_ingest_directory_to_corpus_fn", None)
+    ingest_file_to_corpus = getattr(container, "_ingest_file_to_corpus_fn", None)
+
+    if CorpusIngestConfig is None or ingest_file_to_corpus is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="Corpus ingestion pipeline not wired")
 
     cts = getattr(container, "corpus_turn_store", None)
     if cts is None:

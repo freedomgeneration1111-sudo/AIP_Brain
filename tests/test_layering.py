@@ -116,8 +116,8 @@ def test_full_l3a_evaluation_in_orchestration_not_foundation():
     """full_l3a_evaluation must be defined in orchestration, not foundation.
 
     Per §7.2: multi-stage evaluation with model calls belongs in orchestration.
-    foundation/validation.py may have a backward-compat alias but the real
-    implementation must live in orchestration.l3a_orchestrator.
+    The backward-compat shim was removed in Chunk 6 — foundation/validation.py
+    must NOT contain full_l3a_evaluation.
     """
     # Verify the real implementation is in orchestration
     l3a_file = REPO_ROOT / "orchestration" / "l3a_orchestrator.py"
@@ -128,16 +128,19 @@ def test_full_l3a_evaluation_in_orchestration_not_foundation():
         "full_l3a_evaluation must be defined in orchestration/l3a_orchestrator.py"
     )
 
-    # Verify foundation has only the backward-compat alias
+    # Verify foundation does NOT contain the function (shim was removed in Chunk 6)
     validation_file = REPO_ROOT / "foundation" / "validation.py"
     source = validation_file.read_text()
 
     # foundation should have structural_validate as a top-level function
     assert "def structural_validate" in source, "structural_validate must remain in foundation/validation.py"
 
-    # foundation may have the alias but the alias must delegate to orchestration
-    if "async def full_l3a_evaluation" in source:
-        # It's the alias - should import from orchestration
-        assert "orchestration.l3a_orchestrator" in source or "orchestration.evaluation" in source, (
-            "foundation full_l3a_evaluation alias must delegate to orchestration"
-        )
+    # foundation must NOT have full_l3a_evaluation (shim removed)
+    assert "async def full_l3a_evaluation" not in source, (
+        "foundation/validation.py must not contain full_l3a_evaluation — "
+        "import from aip.orchestration.l3a_orchestrator instead"
+    )
+    # foundation must NOT import orchestration (shim removed)
+    assert "aip.orchestration" not in source, (
+        "foundation/validation.py must not import from orchestration layer"
+    )

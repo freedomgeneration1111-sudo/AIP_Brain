@@ -559,57 +559,59 @@ async def health(container: AipContainer = Depends(get_container)):
             pass
 
     # Chunk 5: Per-channel retrieval health from the orchestrator cache
+    # Chunk 6: Use container-mediated access instead of direct orchestration import
     retrieval_channel_health: dict[str, Any] = {}
     try:
-        from aip.orchestration.retrieval_orchestrator import get_orchestrator_cache
-        from aip.orchestration.channels.registry import BUILTIN_CHANNELS
+        get_orchestrator_cache = getattr(container, "_get_orchestrator_cache_fn", None)
+        BUILTIN_CHANNELS = getattr(container, "_builtin_channels", None)
 
-        orch_cache = get_orchestrator_cache()
-        if orch_cache._orchestrator is not None:
-            orch = orch_cache._orchestrator
-            for ch_name in BUILTIN_CHANNELS:
-                is_registered = orch.is_registered(ch_name)
-                retrieval_channel_health[ch_name] = {
-                    "registered": is_registered,
-                    "state": "available" if is_registered else "not_configured",
-                }
-            # Add vector backend detail if vector store is available
-            if container.vector_store is not None:
-                try:
-                    vstatus = container.vector_store.get_backend_status()
-                    from aip.foundation.schemas.vector import VectorBackendStatus
-                    if "vector" in retrieval_channel_health:
-                        retrieval_channel_health["vector"]["backend_status"] = vstatus.value
-                        retrieval_channel_health["vector"]["backend_name"] = (
-                            container.vector_store._backend_name
-                            if hasattr(container.vector_store, "_backend_name")
-                            else "sqlite_vss"
-                        )
-                        retrieval_channel_health["vector"]["vss_available"] = (
-                            container.vector_store._vss_available
-                            if hasattr(container.vector_store, "_vss_available")
-                            else False
-                        )
-                        retrieval_channel_health["vector"]["state"] = (
-                            "active" if vstatus == VectorBackendStatus.AVAILABLE
-                            else "degraded" if vstatus == VectorBackendStatus.DEGRADED_BRUTEFORCE
-                            else "failed" if vstatus == VectorBackendStatus.FAILED
-                            else "disabled"
-                        )
-                        if vstatus == VectorBackendStatus.DEGRADED_BRUTEFORCE:
-                            retrieval_channel_health["vector"]["degradation_reason"] = (
-                                "Using brute-force fallback (sqlite-vss extension not available)"
+        if get_orchestrator_cache is not None and BUILTIN_CHANNELS is not None:
+            orch_cache = get_orchestrator_cache()
+            if orch_cache._orchestrator is not None:
+                orch = orch_cache._orchestrator
+                for ch_name in BUILTIN_CHANNELS:
+                    is_registered = orch.is_registered(ch_name)
+                    retrieval_channel_health[ch_name] = {
+                        "registered": is_registered,
+                        "state": "available" if is_registered else "not_configured",
+                    }
+                # Add vector backend detail if vector store is available
+                if container.vector_store is not None:
+                    try:
+                        vstatus = container.vector_store.get_backend_status()
+                        from aip.foundation.schemas.vector import VectorBackendStatus
+                        if "vector" in retrieval_channel_health:
+                            retrieval_channel_health["vector"]["backend_status"] = vstatus.value
+                            retrieval_channel_health["vector"]["backend_name"] = (
+                                container.vector_store._backend_name
+                                if hasattr(container.vector_store, "_backend_name")
+                                else "sqlite_vss"
                             )
-                except Exception:
-                    pass
-            else:
-                if "vector" not in retrieval_channel_health:
-                    retrieval_channel_health["vector"] = {"registered": False, "state": "unavailable"}
-            # Mark embedding provider status for vector channel
-            if "vector" in retrieval_channel_health:
-                retrieval_channel_health["vector"]["embedding_provider_configured"] = (
-                    container.embedding_provider is not None
-                )
+                            retrieval_channel_health["vector"]["vss_available"] = (
+                                container.vector_store._vss_available
+                                if hasattr(container.vector_store, "_vss_available")
+                                else False
+                            )
+                            retrieval_channel_health["vector"]["state"] = (
+                                "active" if vstatus == VectorBackendStatus.AVAILABLE
+                                else "degraded" if vstatus == VectorBackendStatus.DEGRADED_BRUTEFORCE
+                                else "failed" if vstatus == VectorBackendStatus.FAILED
+                                else "disabled"
+                            )
+                            if vstatus == VectorBackendStatus.DEGRADED_BRUTEFORCE:
+                                retrieval_channel_health["vector"]["degradation_reason"] = (
+                                    "Using brute-force fallback (sqlite-vss extension not available)"
+                                )
+                    except Exception:
+                        pass
+                else:
+                    if "vector" not in retrieval_channel_health:
+                        retrieval_channel_health["vector"] = {"registered": False, "state": "unavailable"}
+                # Mark embedding provider status for vector channel
+                if "vector" in retrieval_channel_health:
+                    retrieval_channel_health["vector"]["embedding_provider_configured"] = (
+                        container.embedding_provider is not None
+                    )
     except Exception:
         pass
 

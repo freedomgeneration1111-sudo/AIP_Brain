@@ -627,7 +627,8 @@ async def lifespan(app: FastAPI):
     # ACE Playbook — async-safe procedural intervention rules (Chunk 4)
     # Uses ace_playbook.db in the same directory as state.db.
     try:
-        from aip.orchestration.ace_playbook import AcePlaybook
+        _ace_mod = importlib.import_module("aip.orchestration.ace_playbook")
+        AcePlaybook = _ace_mod.AcePlaybook
 
         ace_db_path = os.path.join(os.path.dirname(db_path), "ace_playbook.db")
         ace_cfg = config.get("ace_playbook", {})
@@ -1472,6 +1473,40 @@ async def lifespan(app: FastAPI):
         log.info("orchestration_functions_wired", module="ingestion.pipeline")
     except Exception as exc:
         log.warning("orchestration_functions_wiring_failed", module="ingestion.pipeline", error=str(exc))
+
+    # Chunk 6: Wire corpus ingest functions (avoids route→orchestration import)
+    try:
+        _corpus_ingest_mod = importlib.import_module("aip.orchestration.ingestion.corpus_ingest_pipeline")
+        container._corpus_ingest_config_class = _corpus_ingest_mod.CorpusIngestConfig
+        container._ingest_directory_to_corpus_fn = _corpus_ingest_mod.ingest_directory_to_corpus
+        container._ingest_file_to_corpus_fn = _corpus_ingest_mod.ingest_file_to_corpus
+        log.info("orchestration_functions_wired", module="ingestion.corpus_ingest_pipeline")
+    except Exception as exc:
+        log.warning("orchestration_functions_wiring_failed", module="ingestion.corpus_ingest_pipeline", error=str(exc))
+
+    # Chunk 6: Wire retrieval orchestrator access (avoids route→orchestration import)
+    try:
+        _retr_orch_mod = importlib.import_module("aip.orchestration.retrieval_orchestrator")
+        container._get_orchestrator_cache_fn = _retr_orch_mod.get_orchestrator_cache
+        container._orchestrator_config_class = _retr_orch_mod.OrchestratorConfig
+        log.info("orchestration_functions_wired", module="retrieval_orchestrator")
+    except Exception as exc:
+        log.warning("orchestration_functions_wiring_failed", module="retrieval_orchestrator", error=str(exc))
+
+    try:
+        _channels_mod = importlib.import_module("aip.orchestration.channels.registry")
+        container._builtin_channels = _channels_mod.BUILTIN_CHANNELS
+        log.info("orchestration_functions_wired", module="channels.registry")
+    except Exception as exc:
+        log.warning("orchestration_functions_wiring_failed", module="channels.registry", error=str(exc))
+
+    # Chunk 6: Wire adaptive budget tuner (avoids route→orchestration import)
+    try:
+        _budget_mod = importlib.import_module("aip.orchestration.adaptive_budget")
+        container._adaptive_budget_tuner_class = _budget_mod.AdaptiveBudgetTuner
+        log.info("orchestration_functions_wired", module="adaptive_budget")
+    except Exception as exc:
+        log.warning("orchestration_functions_wiring_failed", module="adaptive_budget", error=str(exc))
 
     log.info(
         "startup_complete",

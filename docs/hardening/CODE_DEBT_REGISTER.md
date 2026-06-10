@@ -154,9 +154,11 @@ from the grep scans and code review.
 |---|---|
 | Severity | **HIGH** (governance finding) |
 | Discovery | Grep scan + AIP_GOVERNANCE.md finding |
-| Summary | The orchestration layer imports concrete adapter implementations through function-local imports in 7 files. This tensions with the declared layer dependency direction (orchestration should not import adapter) and is documented as an AIP-G-06/07 open finding in the governance contract. The function-local pattern prevents import-time coupling but does not prevent runtime coupling. |
-| Files | `ask_pipeline.py` (10 imports), `review_export_pipeline.py` (5 imports), `artifact_lifecycle.py` (4 imports), `ingestion/corpus_ingest_pipeline.py` (2 imports), `ingestion/pipeline.py` (5 imports), `embed_providers.py` (3 imports), `codex/librarian.py` (5 imports), `channels/graph_channel.py` (1 import), `actors/vigil.py` (2 imports), `actors/beast.py` (2 imports), `actors/sexton.py` (3 imports) |
-| Resolution | Relocate concrete wiring to composition root (app.py or dependencies.py) so orchestration sees only Protocols. Or record each offender in the conformance suite's `acknowledged_import_violations` per AIP_GOVERNANCE.md. |
+| Updated | 2026-06-11 (Chunk 6: partial fix — route violations eliminated) |
+| Summary | The orchestration layer imports concrete adapter implementations through function-local imports in 11 files. This tensions with the declared layer dependency direction (orchestration should not import adapter) and is documented as an AIP-G-06/07 open finding in the governance contract. The function-local pattern prevents import-time coupling but does not prevent runtime coupling. Chunk 6 eliminated all adapter→orchestration route violations and the foundation→orchestration backward-compat shim. |
+| Files | `ask_pipeline.py` (10 imports), `review_export_pipeline.py` (5 imports), `artifact_lifecycle.py` (4 imports), `ingestion/corpus_ingest_pipeline.py` (2 imports), `ingestion/pipeline.py` (5 imports), `embed_providers.py` (7 imports including importlib), `codex/librarian.py` (5 imports), `channels/graph_channel.py` (1 import), `actors/vigil.py` (2 imports), `actors/beast.py` (2 imports), `actors/sexton.py` (3 imports), `model_provider_proxy.py` (1 importlib import) |
+| Resolution | Relocate concrete wiring to composition root (app.py or dependencies.py) so orchestration sees only Protocols. All violations are tracked in the governance suite's `acknowledged_import_violations` list (38 entries, reconciled in Chunk 6). New unacknowledged violations will cause the import-boundary test to fail. |
+| Chunk 6 status | **PARTIAL** — route violations fixed; orchestration→adapter violations remain acknowledged debt |
 
 ### CDR-007 — `admin.py:308` Blocking sqlite3 in Async Path
 

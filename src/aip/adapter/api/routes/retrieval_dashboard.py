@@ -263,19 +263,19 @@ async def retrieval_quality(container: AipContainer = Depends(get_container)):
     # LLM entity extraction summary
     result["llm_entity_extraction"] = await _compute_llm_extraction_summary(container)
 
-    # Channel budget configuration snapshot (importlib to preserve layer discipline)
-    _retr_mod = __import__('importlib').import_module('aip.orchestration.retrieval_orchestrator')
-    OrchestratorConfig = _retr_mod.OrchestratorConfig
-    config = OrchestratorConfig()
-    result["channel_budgets"] = {
-        "fts": config.fts_max_hits,
-        "vector": config.vector_max_hits,
-        "graph": config.graph_max_hits,
-        "wiki": config.wiki_max_hits,
-        "procedural": config.procedural_max_hits,
-        "corpus": config.corpus_max_hits,
-        "global_max_hits_per_channel": config.max_hits_per_channel,
-    }
+    # Channel budget configuration snapshot (container-mediated, Chunk 6)
+    OrchestratorConfig = getattr(container, "_orchestrator_config_class", None)
+    if OrchestratorConfig is not None:
+        config = OrchestratorConfig()
+        result["channel_budgets"] = {
+            "fts": config.fts_max_hits,
+            "vector": config.vector_max_hits,
+            "graph": config.graph_max_hits,
+            "wiki": config.wiki_max_hits,
+            "procedural": config.procedural_max_hits,
+            "corpus": config.corpus_max_hits,
+            "global_max_hits_per_channel": config.max_hits_per_channel,
+        }
 
     return result
 
@@ -313,12 +313,22 @@ async def retrieval_budget_tune(
         - ``summary``: Human-readable summary of the tuning result
         - ``current_budgets``: Current per-channel budget configuration
     """
-    # Use importlib to preserve layer discipline (adapter must not import orchestration statically)
-    import importlib as _importlib
-    _retr_mod = _importlib.import_module('aip.orchestration.retrieval_orchestrator')
-    OrchestratorConfig = _retr_mod.OrchestratorConfig
-    _budget_mod = _importlib.import_module('aip.orchestration.adaptive_budget')
-    AdaptiveBudgetTuner = _budget_mod.AdaptiveBudgetTuner
+    # Chunk 6: Use container-mediated access instead of importlib
+    # (adapter must not import orchestration, even via importlib in route modules)
+    OrchestratorConfig = getattr(container, "_orchestrator_config_class", None)
+    AdaptiveBudgetTuner = getattr(container, "_adaptive_budget_tuner_class", None)
+
+    if OrchestratorConfig is None or AdaptiveBudgetTuner is None:
+        return {
+            "status": "unavailable",
+            "message": "Retrieval budget tuning requires orchestration wiring",
+            "adjustments": [],
+            "applied": False,
+            "summary": "Not configured",
+            "channel_contributions": {},
+            "total_queries": 0,
+            "current_budgets": {},
+        }
 
     # Compute channel contribution summary from recent traces
     channel_contributions = await _compute_channel_contribution_summary(container)

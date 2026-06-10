@@ -80,13 +80,15 @@ PROFILES: dict[str, dict] = {
         # Orchestration pipelines import concrete adapter implementations through
         # function-local imports. Resolution: relocate concrete wiring to a
         # composition root so orchestration sees only Protocols.
+        # Updated Chunk 6: reconciled with actual AST scan — removed stale
+        # entries (embedding.ollama_client, vector._in_memory), added missing
+        # entries (model_provider_proxy, codex/librarian, ingestion/corpus_ingest_pipeline,
+        # channels/graph_channel).
         "acknowledged_import_violations": [
-            "orchestration/ask_pipeline.py imports aip.adapter.embedding.ollama_client",
             "orchestration/ask_pipeline.py imports aip.adapter.embedding.factory",
             "orchestration/ask_pipeline.py imports aip.adapter.artifact_store_versioned",
             "orchestration/ask_pipeline.py imports aip.adapter.ecs_store_persistent",
             "orchestration/ask_pipeline.py imports aip.adapter.project.sqlite_project_store",
-            "orchestration/ask_pipeline.py imports aip.adapter.vector._in_memory",
             "orchestration/ask_pipeline.py imports aip.adapter.vector.sqlite_vss_store",
             "orchestration/ask_pipeline.py imports aip.adapter.lexical.sqlite_fts5_store",
             "orchestration/ask_pipeline.py imports aip.adapter.event_store_queryable",
@@ -98,13 +100,24 @@ PROFILES: dict[str, dict] = {
             "orchestration/review_export_pipeline.py imports aip.adapter.ecs_store_persistent",
             "orchestration/review_export_pipeline.py imports aip.adapter.project.sqlite_project_store",
             "orchestration/review_export_pipeline.py imports aip.adapter.event_store_queryable",
-            "orchestration/ingestion/pipeline.py imports aip.adapter.vector._in_memory",
             "orchestration/ingestion/pipeline.py imports aip.adapter.vector.sqlite_vss_store",
             "orchestration/ingestion/pipeline.py imports aip.adapter.artifact_store_versioned",
             "orchestration/ingestion/pipeline.py imports aip.adapter.lexical.sqlite_fts5_store",
             "orchestration/ingestion/pipeline.py imports aip.adapter.event_store_queryable",
             "orchestration/ingestion/pipeline.py imports aip.adapter.embedding.factory",
+            "orchestration/ingestion/corpus_ingest_pipeline.py imports aip.adapter.corpus_turn_store",
+            "orchestration/ingestion/corpus_ingest_pipeline.py imports aip.adapter.event_store_queryable",
             "orchestration/embed_providers.py imports aip.adapter.embedding.factory",
+            "orchestration/embed_providers.py imports aip.adapter.embedding.ollama_embed",
+            "orchestration/embed_providers.py imports aip.adapter.embedding.openai_embed",
+            "orchestration/model_provider_proxy.py imports aip.adapter.model_slot_resolver",
+            "orchestration/artifact_lifecycle.py imports aip.adapter.artifact_store_versioned",
+            "orchestration/artifact_lifecycle.py imports aip.adapter.ecs_store_persistent",
+            "orchestration/artifact_lifecycle.py imports aip.adapter.event_store_queryable",
+            "orchestration/artifact_lifecycle.py imports aip.adapter.project.sqlite_project_store",
+            "orchestration/codex/librarian.py imports aip.adapter.codex.codex_store",
+            "orchestration/codex/librarian.py imports aip.adapter.corpus_turn_store",
+            "orchestration/channels/graph_channel.py imports aip.adapter.graph_store",
             "orchestration/actors/vigil.py imports aip.adapter.alerting",
             "orchestration/actors/sexton.py imports aip.adapter.alerting",
             "orchestration/actors/sexton.py imports aip.adapter.graph_store",

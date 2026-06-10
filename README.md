@@ -154,7 +154,7 @@ src/aip/
     └── ...              # Auth, budget, vigil, embedding, autonomy stores
 ```
 
-Layer discipline: `adapter` → `foundation` only; `orchestration` → `foundation` only; `adapter` never imports `orchestration` directly.
+Layer discipline: `foundation` → stdlib only; `orchestration` → `foundation` only; `adapter` → `foundation` + composition root wires `orchestration`; routes use container, never import `orchestration` directly; GUI is API-first.
 
 ## Configuration
 

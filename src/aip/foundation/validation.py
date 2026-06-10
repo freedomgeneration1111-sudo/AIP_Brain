@@ -77,13 +77,7 @@ def structural_validate(output: str, rules: list[ValidationRule] | None = None) 
     )
 
 
-# Backward-compatible alias — new code should import from
-# aip.orchestration.l3a_orchestrator  instead.
-# This alias preserves backward compatibility for existing callers.
-async def full_l3a_evaluation(*args, **kwargs):
-    """Moved to orchestration.l3a_orchestrator. This alias preserves backward compat."""
-    import importlib
-
-    _mod = importlib.import_module("aip.orchestration.l3a_orchestrator")
-    _real = _mod.full_l3a_evaluation
-    return await _real(*args, **kwargs)
+# NOTE: full_l3a_evaluation was moved to the orchestration layer (l3a_orchestrator).
+# The backward-compat shim that imported from the upper layer was removed in
+# Chunk 6 (Import Boundary Cleanup) because it violated layer discipline.
+# Import directly from the orchestration module's l3a_orchestrator instead.

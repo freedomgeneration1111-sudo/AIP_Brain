@@ -226,6 +226,16 @@ def test_container_has_orchestration_function_refs():
     assert hasattr(container, "_sanitize_fts_query_fn")
     assert hasattr(container, "_ingest_conversation_fn")
     assert hasattr(container, "_ingest_file_fn")
+    # Chunk 6: Container-mediated corpus ingest functions
+    assert hasattr(container, "_corpus_ingest_config_class")
+    assert hasattr(container, "_ingest_directory_to_corpus_fn")
+    assert hasattr(container, "_ingest_file_to_corpus_fn")
+    # Chunk 6: Container-mediated retrieval orchestrator access
+    assert hasattr(container, "_get_orchestrator_cache_fn")
+    assert hasattr(container, "_builtin_channels")
+    # Chunk 6: Container-mediated retrieval dashboard classes
+    assert hasattr(container, "_orchestrator_config_class")
+    assert hasattr(container, "_adaptive_budget_tuner_class")
 
     # All should be None initially (populated in lifespan)
     assert container._ask_fn is None
@@ -234,3 +244,10 @@ def test_container_has_orchestration_function_refs():
     assert container._sanitize_fts_query_fn is None
     assert container._ingest_conversation_fn is None
     assert container._ingest_file_fn is None
+    assert container._corpus_ingest_config_class is None
+    assert container._ingest_directory_to_corpus_fn is None
+    assert container._ingest_file_to_corpus_fn is None
+    assert container._get_orchestrator_cache_fn is None
+    assert container._builtin_channels is None
+    assert container._orchestrator_config_class is None
+    assert container._adaptive_budget_tuner_class is None
