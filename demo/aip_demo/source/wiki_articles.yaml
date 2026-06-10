@@ -1,0 +1,472 @@
+articles:
+  - article_id: "wiki-aip-overview"
+    title: "AIP_Brain Overview"
+    domain: "aip"
+    description: "Comprehensive overview of AIP_Brain, its purpose, and core principles."
+    content: |
+      AIP_Brain is a local-first sovereign knowledge engine that manages the lifecycle of knowledge artifacts from specification through synthesis, evaluation, and canonical promotion. Built as AI Poiesis (AIP) v0.1, it operates under a single governing axiom: the human is the DEFINER, the AI is the instrument. Every artifact promotion requires an explicit DEFINER gate approval. No code path may transition an artifact to APPROVED or any equivalent terminal state on its own initiative.
+
+      The system enforces three core principles. First, DEFINER sovereignty: no UI, workflow, Beast cadence, MCP call, or queued task may bypass the DEFINER gates. Second, no silent degradation: the evaluation pipeline does not silently pass artifacts, and default scores are 0.0 on evaluation failure. Third, local-first sovereignty: the DEFINER's corpus and artifacts remain under the DEFINER's control. No component may exfiltrate data or force cloud egress as a precondition of function.
+
+      AIP_Brain follows a strict three-layer architecture — foundation, orchestration, and adapter — with Protocol-based dependency injection that enables swapping storage backends, model providers, and embedding providers without changing business logic. All cross-layer dependencies are expressed via Python Protocol classes (PEP 544), not concrete imports.
+
+      The current corpus contains 2,766 tagged turns across three sources, with 28 Beast domains and a knowledge graph of 36 nodes and 17 edges. The system is in alpha status, with ~1.8% embedding coverage and DEBT-006 as the critical outstanding gap. Despite these alpha limitations, the foundational ingest-ask-review-approve-export pipeline is fully operational, and the system runs its own dogfood loop — ingesting its own development conversations and querying them to ground future design work in prior decisions.
+    tags: ["overview", "architecture", "sovereignty", "local-first", "definer"]
+    entities: ["AIP", "DEFINER", "Beast", "Vigil", "Sexton"]
+    related_topics: ["wiki-definer-sovereignty", "wiki-three-layer-architecture", "wiki-storage-model", "wiki-alpha-boundaries"]
+    source_type: "curated"
+    importance: 0.95
+
+  - article_id: "wiki-definer-sovereignty"
+    title: "DEFINER Sovereignty"
+    domain: "aip"
+    description: "The core axiom of AIP: the human is the DEFINER, the AI is the instrument, and every artifact requires explicit human approval."
+    content: |
+      DEFINER sovereignty is the foundational axiom of AIP. The human is the DEFINER — the author, the authority, the one who decides. The AI is the instrument: it proposes, drafts, retrieves, and executes, but it does not decide. This relationship is enforced in code, not merely asserted in documentation.
+
+      The primary enforcement mechanism is the DEFINER gate. No artifact may reach APPROVED, COMMITTED, or any equivalent terminal state without an explicit DEFINER action. The AutonomyGate protocol enforces this at the orchestration layer, and the CanonicalStore refuses writes that lack verified DEFINER approval. The canonical promotion pipeline has ten explicit steps, and step six verifies that the approved_by field equals "definer" before any write proceeds.
+
+      Autonomy is something the DEFINER grants explicitly and revocably. It is never something the system assumes. The AutonomyGate can escalate operations that affect admin-level resources, but escalation means routing to the DEFINER for a decision, not making the decision autonomously. An instrument that quietly decided things would not be a faster DEFINER; it would be an unaccountable author, and AIP refuses that by construction.
+
+      This principle extends to model dispatch. The ModelSlotResolver never silently returns a placeholder when a real model is expected. Unconfigured slots return honest sentinel values like NEEDS_CONFIGURATION rather than fabricated content. CI fixture data is flagged with ci_fixture=True and blocked from production promotion.
+
+      The DEFINER profile — a markdown document capturing preferences, expertise, and decision patterns — can be injected into augmented chat sessions, ensuring that synthesis is grounded in the DEFINER's own context. The profile is maintained by the DEFINER and never auto-modified by the system.
+    tags: ["sovereignty", "governance", "definer", "autonomy", "approval"]
+    entities: ["DEFINER", "AIP", "AutonomyGate", "CanonicalStore", "ModelSlotResolver"]
+    related_topics: ["wiki-aip-overview", "wiki-no-silent-degradation", "wiki-ecs-state-machine", "wiki-artifact-lifecycle"]
+    source_type: "curated"
+    importance: 1.0
+
+  - article_id: "wiki-full-dogfood-mode"
+    title: "Full Dogfood Mode"
+    domain: "aip"
+    description: "AIP's dogfood philosophy and the three dogfood modes: minimal, diagnostic, and full."
+    content: |
+      AIP runs its own ingest-ask-review-approve-export pipeline on its own development conversations. This is the dogfood loop: the project eats its own cooking. Architecture decisions, design discussions, and meeting transcripts are ingested into the corpus and queried via augmented chat to ground future design work in prior decisions.
+
+      The dogfood modes define how deeply the system exercises its own capabilities. In minimal mode, the system runs only the foundational pipeline: ingestion, FTS5 search, and basic ask without model synthesis. This proves that ingestion and retrieval are working correctly even without a configured model provider. In diagnostic mode, the system adds model synthesis, evaluation passes, and review queue population, but skips automatic background maintenance cycles. This is useful for debugging specific pipeline stages without the noise of scheduled actors. In full mode, all three background actors run their scheduled cycles: Beast heartbeats every 60 seconds, Sexton maintenance every 300 seconds, and Vigil evaluation hourly. Full mode is the target operational state for production use.
+
+      The dogfood smoke test scripts execute the complete loop automatically on a clean datastore: initialization, project creation, ingestion, ask, review, approve, and export. This test verifies that a fresh checkout can go from zero to a working knowledge base without manual intervention.
+
+      Currently, full dogfood mode is limited by DEBT-006: the new Sexton actor is built but not wired into app.py, so automatic corpus tagging, embedding, wiki generation, and graph extraction are not running. Only the old failure-classifier Sexton fires every 300 seconds. Manual commands like aip corpus tag and aip embed serve as workarounds until DEBT-006 is resolved.
+    tags: ["dogfood", "testing", "operational-modes", "smoke-test", "maintenance"]
+    entities: ["AIP", "Beast", "Sexton", "Vigil", "DEFINER"]
+    related_topics: ["wiki-aip-overview", "wiki-sexton-actor", "wiki-beast-actor", "wiki-alpha-boundaries"]
+    source_type: "curated"
+    importance: 0.85
+
+  - article_id: "wiki-three-layer-architecture"
+    title: "Three-Layer Architecture"
+    domain: "aip"
+    description: "AIP's strict three-layer architecture: foundation, orchestration, and adapter, with Protocol-based dependency injection."
+    content: |
+      AIP_Brain follows a strict three-layer architecture with dependency inversion via Protocol classes. The three layers are foundation, orchestration, and adapter, each with declared import boundaries that are mechanically checked.
+
+      The foundation layer contains pure validation, schemas, protocols, and the ECS state machine. It imports only from stdlib and pydantic — never from orchestration or adapter. This layer defines the data structures and contracts that the rest of the system depends on, including 30+ dataclass schemas across 13 modules, 16+ Protocol interfaces across 7 domain modules, the declarative ECS graph, and structural validation rules.
+
+      The orchestration layer contains business logic, evaluation nodes, actors, and pipelines. It may import from foundation but must not import from adapter. This layer includes the canonical pipeline, the ask pipeline, the review/export pipeline, all six evaluation nodes (synthesis, faithfulness, domain coherence, adversarial eval, definer gate, commit), the three background actors, workflow engine, ingestion pipelines, retrieval orchestrator, and L4 trajectory monitoring.
+
+      The adapter layer contains external interfaces and storage implementations. It may import from both foundation and orchestration, but only at the composition root (app.py, dependencies.py). This layer includes the FastAPI application with 17 routers, the Click-based CLI, MCP server, NiceGUI shell, and all storage implementations: SQLite stores for artifacts, canonicals, entities, projects, sessions, vigil quality, budget, corpus turns, and graph data.
+
+      All cross-layer dependencies are expressed via Python Protocol classes for structural subtyping. This enables swapping SQLite for PostgreSQL without changing orchestration logic, swapping Ollama for OpenAI without changing pipeline code, and testing orchestration with in-memory stubs. Known violations exist where orchestration imports concrete adapter implementations through function-local imports, documented as the AIP-G-06/07 open finding.
+    tags: ["architecture", "layers", "dependency-injection", "protocols", "foundation"]
+    entities: ["AIP", "DEFINER", "ECS", "ModelSlotResolver"]
+    related_topics: ["wiki-layer-discipline", "wiki-aip-overview", "wiki-ecs-state-machine", "wiki-storage-model"]
+    source_type: "curated"
+    importance: 0.95
+
+  - article_id: "wiki-retrieval-pipeline"
+    title: "Retrieval Pipeline"
+    domain: "aip"
+    description: "The hybrid retrieval pipeline with multi-channel dispatch and Reciprocal Rank Fusion."
+    content: |
+      The AIP retrieval pipeline uses multi-channel dispatch with Reciprocal Rank Fusion (RRF) to combine results from multiple search strategies into a single ranked list. When the DEFINER submits a query, the RetrievalOrchestrator dispatches the query in parallel to multiple channels: the FTS5 lexical channel for full-text search, the vector channel for semantic similarity search, the corpus channel for direct corpus turn matching, the graph channel for knowledge graph neighbor expansion, the wiki channel for domain article retrieval, and the procedural channel for structured knowledge.
+
+      Each channel returns ranked results independently. RRF computes a score for each result using the formula 1/(k + rank), where k defaults to 60, weighted by configurable channel weights. The default weights are vector=0.6, fts=0.4, corpus=0.4. These weights are tunable via the retrieval.channel_weights section in aip.config.toml, and the scripts/retrieval_weight_tuning.py script performs grid search over weight combinations against golden queries.
+
+      A coverage-aware gating mechanism disables the vector channel when embedding coverage falls below 10%, falling back to FTS5-only results. This prevents degraded hybrid quality when the vector index is sparse. Currently, with only ~1.8% embedding coverage, the vector channel provides limited benefit, and FTS5 carries most retrieval effectiveness.
+
+      The evaluation harness supports three modes: hybrid (both channels), fts-only (lexical only), and all (every channel). Golden queries with corpus-mapped IDs provide ground truth for precision-at-5, recall-at-10, and MRR metrics. Vigil performs periodic precision-at-5 sampling with alerting on degradation, closing the quality feedback loop.
+    tags: ["retrieval", "rrf", "hybrid-search", "channels", "evaluation"]
+    entities: ["AIP", "RetrievalOrchestrator", "Vigil", "DEFINER"]
+    related_topics: ["wiki-hybrid-retrieval", "wiki-embedding-pipeline", "wiki-vigil-actor", "wiki-knowledge-graph"]
+    source_type: "curated"
+    importance: 0.9
+
+  - article_id: "wiki-beast-actor"
+    title: "Beast Actor"
+    domain: "aip"
+    description: "The Beast actor: active synthesis support with context advisory, domain detection, and on-demand wiki drafting."
+    content: |
+      Beast is the active synthesis support actor in AIP. Per ADR-011, Beast operates in the foreground of the DEFINER's work sessions, not as a background scheduler. It is the active intelligence layer that fires when the DEFINER engages with the system.
+
+      Beast's primary responsibility is context advisory assembly for augmented chat. When the DEFINER sends a message in AUGMENTED mode, Beast retrieves relevant corpus turns, builds the system prompt stack with domain overview and retrieved context, and injects the DEFINER profile if configured. This ensures that synthesis responses are grounded in the DEFINER's own corpus rather than generic model knowledge.
+
+      Beast also performs real-time domain detection on incoming queries, proposes domain bridge connections when noticed during active sessions, and drafts wiki articles when explicitly triggered by the DEFINER or by threshold conditions. It does not, however, run scheduled background tagging passes, wiki generation cycles, graph building, embedding passes, or failure classification — all of those are Sexton responsibilities.
+
+      Beast uses a frontier or near-frontier model slot because it needs reasoning capability to assemble context under time pressure and make relevance judgments. Currently this slot resolves to models like meta-llama/llama-4-maverick or equivalent. Beast runs a brief heartbeat cycle every 60 seconds to check for urgent conditions, but does no heavy work in that heartbeat.
+
+      After the ADR-011 refactor, Beast's scheduled corpus tagging and wiki generation were removed from its run cycle. Beast is now idle between sessions except for the heartbeat. The log message "beast: no LLM configured, heartbeat only" is expected behavior between sessions, not an error condition. Beast becomes active only when the DEFINER sends a query.
+    tags: ["actor", "beast", "context-advisory", "augmented-chat", "adr-011"]
+    entities: ["Beast", "DEFINER", "AIP"]
+    related_topics: ["wiki-sexton-actor", "wiki-vigil-actor", "wiki-domain-registry", "wiki-beast-counsel-layer"]
+    source_type: "curated"
+    importance: 0.9
+
+  - article_id: "wiki-vigil-actor"
+    title: "Vigil Actor"
+    domain: "aip"
+    description: "The Vigil actor: quality evaluation with synthesis monitoring, retrieval quality gates, and model-slot re-evaluation."
+    content: |
+      Vigil is the quality evaluation actor in AIP. Per ADR-011, Vigil is a separate actor responsible for evaluating synthesis outputs and monitoring for quality degradation. It is not merely a cycle name — it is a distinct actor with specific quality assurance responsibilities.
+
+      Vigil monitors two quality dimensions. For synthesis quality, it evaluates augmented chat responses for citation rate, grounding rate, and LLM faithfulness scoring. It flags responses that make claims not supported by retrieved sources and generates quality evaluation reports as reviewable artifacts. For retrieval quality, introduced in Sprint 6.4, Vigil performs periodic precision-at-5 sampling with degradation alerting. When retrieval quality drops below configured thresholds, Vigil raises alerts that appear in the operator console.
+
+      Vigil also triggers re-evaluation on model slot changes. When the ModelSlotResolver's configuration changes — for example, when the DEFINER switches the synthesis model — Vigil marks existing canonical artifacts for re-evaluation against the new model's output characteristics. This prevents stale quality assessments from persisting after model changes.
+
+      Vigil records health checks to the VigilQualityStore, which provides persistent storage with retention and rollup policies. The store is implemented as a SQLite database in the adapter layer, following the same aiosqlite pattern as other adapter stores.
+
+      Vigil runs hourly, evaluating the last N synthesis responses produced since its previous cycle. It does not evaluate in real-time, as that would add latency to every augmented response. Vigil uses an evaluation-capable model slot that can read a response and its sources and judge whether the response faithfully represents the sources. Vigil may also propose DEFINER profile amendments when it notices systematic synthesis patterns drifting from the DEFINER's intent.
+    tags: ["actor", "vigil", "quality", "evaluation", "monitoring"]
+    entities: ["Vigil", "DEFINER", "ModelSlotResolver", "VigilQualityStore"]
+    related_topics: ["wiki-beast-actor", "wiki-sexton-actor", "wiki-model-slots", "wiki-no-silent-degradation"]
+    source_type: "curated"
+    importance: 0.9
+
+  - article_id: "wiki-sexton-actor"
+    title: "Sexton Actor"
+    domain: "aip"
+    description: "The Sexton actor: background maintenance with tagging, embedding, wiki generation, graph extraction, and failure classification."
+    content: |
+      Sexton is the background maintenance actor in AIP. Named for the church sexton who maintains the building — keeping it clean, current, and ready for when the operator arrives — the Sexton doesn't preach, it prepares. Per ADR-011, Sexton is the most active background actor in the system.
+
+      The new Sexton implementation at actors/sexton.py (1,341 lines) supports five operations. Tagging runs Beast domain tagging on untagged corpus turns in batches of up to 200 per cycle. Embedding runs background embedding passes on unembedded turns at approximately 50 turns per cycle. Wiki generation produces domain article drafts as GENERATED artifacts for domains that exceed the freshness threshold. Graph extraction infers new entity relationships and updates graph edges from bridge-tagged turns. Failure classification assigns domain coordinates using the Appendix E taxonomy with severity levels A through F, plus seven special conditions, and derives intervention recommendations.
+
+      Sexton runs a scheduled vigil cycle every 300 seconds. Each cycle runs a subset of operations based on what needs doing: scan for untagged turns, check embedding status, check wiki freshness, check graph staleness, classify pending proposals, and write a cycle observation artifact. Sexton uses a mid-tier free model slot because its operations are structured classification, summarization, and extraction tasks that do not require frontier reasoning.
+
+      Critically, the new Sexton is built but not yet wired into app.py — this is DEBT-006, the highest-priority technical debt item. The old failure-classifier-only Sexton at sexton/sexton.py (~220 lines) is currently active, running only run_classification_cycle() every 300 seconds. Until DEBT-006 is resolved, automatic corpus tagging, embedding, wiki generation, and graph extraction are not running. The 2,716 unembedded turns represent the single largest gap in retrieval quality.
+    tags: ["actor", "sexton", "maintenance", "tagging", "embedding", "debt-006"]
+    entities: ["Sexton", "AIP", "Beast", "DEFINER"]
+    related_topics: ["wiki-beast-actor", "wiki-vigil-actor", "wiki-embedding-pipeline", "wiki-domain-registry", "wiki-alpha-boundaries"]
+    source_type: "curated"
+    importance: 0.95
+
+  - article_id: "wiki-codex-wiki"
+    title: "CODEX Wiki"
+    domain: "aip"
+    description: "The CODEX Wiki subsystem: librarian, domain articles, and the wiki generation and retrieval pipeline."
+    content: |
+      The CODEX Wiki subsystem manages the generation, storage, and retrieval of domain wiki articles within AIP. Wiki articles serve as synthesized summaries of corpus knowledge within specific domains, providing the DEFINER with high-level overviews that are grounded in the actual corpus turns.
+
+      The CODEX Librarian, located at orchestration/codex/librarian.py, is responsible for managing the wiki lifecycle. It determines which domains need fresh wiki articles based on token thresholds — when a domain accumulates more than 200k new words since its last wiki generation, the Librarian flags it for compilation. The Librarian also handles wiki article versioning, ensuring that updated articles are generated as new GENERATED artifacts that go through the standard ECS review and approval process.
+
+      Wiki articles are stored via the CodexStore in the adapter layer and indexed for retrieval through the wiki channel in the retrieval orchestrator. When a query is dispatched, the wiki channel retrieves relevant domain articles and includes them in the RRF fusion alongside results from other channels. This means that wiki articles serve a dual purpose: they provide the DEFINER with curated domain overviews, and they improve retrieval quality by adding a synthesized knowledge layer to the hybrid search.
+
+      In augmented chat, Beast's context advisory assembly includes domain wiki content in the system prompt stack. When the DEFINER asks a question in AUGMENTED mode, the relevant domain's wiki article is injected alongside retrieved corpus turns, giving the synthesis model a high-level understanding of the domain before it generates a response.
+
+      Currently, wiki generation is operational as infrastructure but not running automatically due to DEBT-006. The Sexton's wiki compilation operation is part of the unwired new actor. Manual wiki generation remains available through CLI commands.
+    tags: ["codex", "wiki", "librarian", "domain-articles", "knowledge-synthesis"]
+    entities: ["CODEX", "Sexton", "Beast", "CodexStore"]
+    related_topics: ["wiki-retrieval-pipeline", "wiki-sexton-actor", "wiki-domain-registry", "wiki-artifact-lifecycle"]
+    source_type: "curated"
+    importance: 0.8
+
+  - article_id: "wiki-artifact-lifecycle"
+    title: "Artifact Lifecycle"
+    domain: "aip"
+    description: "How knowledge artifacts move through specification, generation, evaluation, review, approval, and supersession."
+    content: |
+      Every knowledge artifact in AIP follows a governed lifecycle managed by the ECS state machine. The lifecycle ensures that no artifact reaches a terminal state without explicit DEFINER action and that every state transition is recorded and auditable.
+
+      Artifacts begin in the SPECIFIED state, representing a defined intent or requirement. They transition to GENERATED when a model produces content for the artifact — whether through synthesis, wiki generation, or another production pathway. From GENERATED, an artifact moves to REVIEWED when it has been examined but not yet approved. The REVIEWED state is a prerequisite for the APPROVED state, which represents the DEFINER's explicit blessing.
+
+      The APPROVED state is terminal: it can only be left through SUPERSEDED, when a newer version of the artifact replaces it, or through an explicit DEFINER override recorded as a DecisionRecord. Two rejection paths exist: from GENERATED, an artifact can be REJECTED (preserving it for potential re-generation), and from any state, a FAILED transition records that a production attempt did not succeed.
+
+      The canonical promotion pipeline enforces this lifecycle through ten explicit steps: verify REVIEWED state, read artifact content, run faithfulness evaluation, run domain coherence evaluation, check AutonomyGate for admin escalation, verify approved_by equals "definer", write to CanonicalStore, transition ECS state to APPROVED, re-index in vector and lexical stores if configured, and record Vigil health check with event.
+
+      Version preservation is maintained through the VersionedArtifactStore, which ensures that superseded artifacts remain accessible for audit purposes. The artifact schema carries a provenance field that cites the exact sources from which the artifact derives. An artifact whose provenance is empty is refused, enforcing the source-grounding principle.
+    tags: ["lifecycle", "ecs", "artifacts", "approval", "provenance"]
+    entities: ["ECS", "DEFINER", "CanonicalStore", "AutonomyGate", "VersionedArtifactStore"]
+    related_topics: ["wiki-ecs-state-machine", "wiki-definer-sovereignty", "wiki-no-silent-degradation", "wiki-codex-wiki"]
+    source_type: "curated"
+    importance: 0.9
+
+  - article_id: "wiki-model-slots"
+    title: "Model Slots"
+    domain: "aip"
+    description: "The ModelSlotResolver system for configuring and dispatching model calls across named slots."
+    content: |
+      AIP uses a named model slot system to manage model dispatch across different operational contexts. The ModelSlotResolver maps five known slots to concrete provider, model, and base_url configurations: synthesis (for generating answers), evaluation (for faithfulness and coherence assessment), sexton (for background maintenance tasks), beast (for context advisory and domain detection), and embedding (for vector generation).
+
+      Configuration resolution follows a strict priority chain. Runtime overrides set via set_runtime_override have the highest priority — these are stored in-memory only and are never written to os.environ, ensuring credential sovereignty. Environment variables like AIP_SYNTHESIS_BASE_URL and AIP_SYNTHESIS_MODEL are read (not written) at startup time. Explicit slot configuration in aip.config.toml under the models section provides the baseline. Global defaults like AIP_OLLAMA_BASE_URL fill in remaining gaps.
+
+      The resolver supports two provider types: Ollama for local model inference via the /api/chat endpoint, and OpenAI-compatible for any provider implementing the /v1/chat/completions API, including OpenAI, DeepSeek, Together, and Fireworks. In CI mode, the resolver returns deterministic fixtures with no network calls, ensuring reproducible test runs.
+
+      Security is enforced through credential sovereignty: runtime overrides are never written to the process environment, preventing API key leakage to child processes, debugging tools, and log outputs. The resolver also guards against sentinel model names (placeholder values like "<synthesis>") being sent to real APIs, returning structured error responses instead.
+
+      When the DEFINER changes model configuration — for example, switching the synthesis model via the admin API — the runtime override system updates the slot configuration immediately without requiring a restart. Vigil is notified of model slot changes and marks existing canonical artifacts for re-evaluation.
+    tags: ["models", "slots", "configuration", "dispatch", "credential-sovereignty"]
+    entities: ["ModelSlotResolver", "DEFINER", "Vigil", "AIP"]
+    related_topics: ["wiki-vigil-actor", "wiki-no-silent-degradation", "wiki-operator-console", "wiki-definer-sovereignty"]
+    source_type: "curated"
+    importance: 0.85
+
+  - article_id: "wiki-storage-model"
+    title: "Storage Model"
+    domain: "aip"
+    description: "AIP's seven SQLite databases and their roles in the coordinated multi-store architecture."
+    content: |
+      AIP_Brain uses a coordinated multi-store architecture with seven SQLite databases, each serving a distinct concern. The primary databases are state.db (main database for artifacts, projects, events, ECS state, canonicals, graph, sessions, budget, entity, codex, and vigil data), lexical.db (FTS5 full-text search index), and vectors.db (vector similarity search index via sqlite-vss or pgvector). Supporting databases include vigil_quality.db (Vigil health data with retention and rollup), alert_history.db (alerting event history), trace.db (trace events and routing outcomes), and ace_playbook.db (ACE playbook state).
+
+      All adapter-layer SQLite stores use aiosqlite for async-safe database access — no blocking sqlite3.connect() is permitted inside async methods. The SqliteConcurrencyManager provides a persistent connection pattern with initialize() and _get_conn() methods that prevent connection churn. CLI commands may use synchronous sqlite3.connect() since they run outside the async event loop, but the single remaining async-path offender in admin.py is documented as DEBT-007.
+
+      The vector store factory supports three backends: sqlite-vss for laptop profile with local development, pgvector for production profile with PostgreSQL, and an in-memory store for testing. The factory pattern, combined with the VectorStore Protocol in the foundation layer, allows the orchestration layer to remain backend-agnostic.
+
+      All CLI commands share the same database path initialized by aip init, defaulting to db/state.db. The coordinated multi-store design ensures that no manual --db-path argument is needed for normal operation. Deployment profiles define the storage strategy: laptop uses SQLite across all stores, while production requires PostgreSQL with mandatory authentication and strong secrets.
+    tags: ["storage", "sqlite", "databases", "async", "multi-store"]
+    entities: ["AIP", "SqliteConcurrencyManager", "VectorStore", "CanonicalStore"]
+    related_topics: ["wiki-three-layer-architecture", "wiki-embedding-pipeline", "wiki-hybrid-retrieval", "wiki-layer-discipline"]
+    source_type: "curated"
+    importance: 0.9
+
+  - article_id: "wiki-operator-console"
+    title: "Operator Console"
+    domain: "aip"
+    description: "The operator-facing interfaces: CLI, web UI, and API for DEFINER interaction with AIP."
+    content: |
+      The operator console encompasses all DEFINER-facing surfaces for interacting with AIP. Three primary surfaces exist: the Click-based CLI, the FastAPI REST API with 17 routers, and the NiceGUI web shell. All surfaces communicate through the adapter layer and must not reach around the contract into orchestration internals.
+
+      The CLI provides the primary operational interface. Commands cover the full lifecycle: aip init for system initialization, aip status for system health, aip ingest for corpus ingestion, aip ask for source-grounded queries, aip review for artifact review and approval, aip export for markdown export, aip corpus for corpus management, and aip eval for evaluation tools. All CLI commands share the same database path, eliminating configuration drift between commands.
+
+      The FastAPI backend exposes 17 routers under /api/v1/, covering health, chat, ask, ingest, corpus, artifacts, review, knowledge, graph, graph visualization, models, sessions, projects, admin, ECS, actors, and wiki. The API includes a retrieval dashboard for monitoring search quality, a beast scan endpoint for on-demand corpus analysis, and vigil quality endpoints for monitoring evaluation metrics.
+
+      The NiceGUI web shell provides a chat interface with CHAT and AUGMENTED modes, a projects management page, and an admin panel. The graph visualization at /graph-viz uses Cytoscape.js to render the knowledge graph with a dark-mode interface. Critically, the GUI communicates only through the FastAPI backend, never by importing orchestration modules or accessing the container directly — this is verified by surface isolation tests.
+
+      A review queue web UI for MANUAL mode is not yet built. Currently, CLI review commands serve as the primary interface for artifact approval. The MCP server provides tool dispatch for search and artifact approval but is not runtime-wired, so it is not reachable via API or CLI today.
+    tags: ["cli", "api", "operator", "surfaces", "ui"]
+    entities: ["AIP", "DEFINER", "MCP", "Beast"]
+    related_topics: ["wiki-layer-discipline", "wiki-artifact-lifecycle", "wiki-alpha-boundaries", "wiki-beast-actor"]
+    source_type: "curated"
+    importance: 0.8
+
+  - article_id: "wiki-beast-counsel-layer"
+    title: "Beast Counsel Layer"
+    domain: "aip"
+    description: "How Beast assembles context advisory for augmented chat, including domain detection, retrieval injection, and profile integration."
+    content: |
+      The Beast Counsel Layer refers to Beast's context advisory assembly process for augmented chat — the mechanism by which Beast prepares a rich, grounded context stack before synthesis occurs. This is Beast's primary active function: when the DEFINER sends a message in AUGMENTED mode, Beast constructs a counsel of relevant knowledge to inform the synthesis model's response.
+
+      The context advisory assembly follows a structured pipeline. First, Beast detects the active domain from the DEFINER's query using the domain registry and keyword matching. Second, it retrieves relevant corpus turns through the retrieval orchestrator, which dispatches across FTS5, vector, corpus, graph, wiki, and procedural channels. Third, it injects the domain's wiki article content into the system prompt, providing the synthesis model with a high-level understanding of the domain. Fourth, if configured, it loads and injects the DEFINER profile — a markdown document capturing preferences, expertise, and decision patterns — ensuring that synthesis is personalized to the DEFINER's context.
+
+      The graph channel contributes domain neighbor injection. When Beast identifies the active domain, it performs a 1-hop graph neighbor lookup to find connected domains and includes summaries of those domains in the context. This cross-domain awareness helps the synthesis model understand when a query touches on multiple knowledge areas. Full Personalized PageRank expansion via GraphRetriever is implemented but not wired into the chat path, as entity extraction from free-text would add latency to the response.
+
+      The assembled context is packaged as a structured system prompt that separates domain overview, retrieved evidence, DEFINER profile, and graph neighbors into distinct sections. This structure helps the synthesis model distinguish between what it knows from the corpus and what it might infer, supporting the validation-first output principle.
+    tags: ["beast", "context-advisory", "augmented-chat", "counsel", "retrieval"]
+    entities: ["Beast", "DEFINER", "GraphRetriever", "CODEX"]
+    related_topics: ["wiki-beast-actor", "wiki-retrieval-pipeline", "wiki-knowledge-graph", "wiki-domain-registry"]
+    source_type: "curated"
+    importance: 0.85
+
+  - article_id: "wiki-no-silent-degradation"
+    title: "No Silent Degradation"
+    domain: "aip"
+    description: "AIP's principle that the evaluation pipeline never silently passes artifacts and that failures are always distinguishable from success."
+    content: |
+      No silent degradation is a foundational principle of AIP, codified as governance invariant AIP-G-02: a component must not return success for work it did not perform. Unconfigured, unimplemented, or disabled paths must return an honest, distinguishable status rather than a hollow success. This principle pervades every subsystem in AIP.
+
+      In the evaluation pipeline, default scores are 0.0 on evaluation failure. If the faithfulness evaluation node cannot reach the model, it does not fabricate a passing score — it returns 0.0 and flags the failure. CI fixture data is flagged with ci_fixture=True and is explicitly blocked from production promotion. The evaluation pipeline does not silently pass artifacts that have not been genuinely evaluated.
+
+      In model dispatch, the ModelSlotResolver returns honest sentinel values when a slot is unconfigured. A slot with no model configured resolves to a placeholder like "<synthesis>" which the resolver refuses to send to any API, returning a structured error response instead. In CI mode, the resolver returns deterministic fixtures that are clearly labeled as "[CI-FIXTURE for synthesis]" — they are never mistaken for real model output.
+
+      In storage operations, failed writes leave explicit recovery instructions rather than silently swallowing errors. The VersionedArtifactStore preserves prior versions before modification, and the ECS store validates state transitions before committing them, rolling back on failure.
+
+      Scaffold surfaces — components that exist as structure with placeholder dispatch — are disclosed in STATUS.md, not hidden. MCP tool dispatch is built but documented as not runtime-wired. The adaptive router's update_weights() is documented as a no-op. ScriptNode production execution returns DISABLED rather than pretending to run. Every gap is named, every scaffold is disclosed, and no gap pretends to be complete.
+    tags: ["governance", "honesty", "evaluation", "no-fake-success", "aip-g-02"]
+    entities: ["AIP", "DEFINER", "ModelSlotResolver", "ECS"]
+    related_topics: ["wiki-definer-sovereignty", "wiki-model-slots", "wiki-ecs-state-machine", "wiki-alpha-boundaries"]
+    source_type: "curated"
+    importance: 0.95
+
+  - article_id: "wiki-hardening-cycle"
+    title: "Hardening Cycle"
+    domain: "aip"
+    description: "AIP's hardening process: continuity audits, baseline freezes, and incremental quality improvement."
+    content: |
+      The hardening cycle is AIP's structured process for incremental quality improvement after the feature development phase. With the project in maintenance mode, no further feature sprints are planned. Instead, the hardening cycle addresses accumulated technical debt, closes runtime gaps, and improves system reliability through targeted chunks of work.
+
+      Each hardening chunk begins with a continuity audit and baseline freeze, documented in CURRENT_STATE_BASELINE.md. This document captures the verified state of the codebase — repository metadata, codebase size and shape, architecture, source file distribution, data flow, actor status, corpus status, scaffolding status, configuration system, test infrastructure, known bugs, grep scan results, layer violation inventory, and production safety configuration. Every subsequent chunk must reference this baseline when claiming a change or fix.
+
+      Completed hardening chunks have addressed critical runtime gaps. Chunk 3 closed credential sovereignty issues by ensuring API keys are never written to os.environ at runtime. Chunk 4 converted async-unsafe storage operations to aiosqlite, resolving DEBT-004 and DEBT-005 (GraphStore connection churn and missing Protocol). The P9 runtime gap closure addressed all known runtime gaps where core paths returned fake success.
+
+      The hardening cycle also enforces production safety configuration. Seven hard-failure configurations are checked at startup: production with auth disabled, production with missing database password, production with weak password, production with fixture providers, and public bind without auth or with weak secrets. These checks are programmatic — unsafe configs fail with clear error codes, not warnings.
+
+      The grep scan baseline captures counts of TODO, FIXME, except Exception: pass, and other code quality indicators. Tracking these counts across chunks ensures that hardening makes measurable progress rather than introducing new issues while fixing old ones.
+    tags: ["hardening", "maintenance", "quality", "debt", "baseline"]
+    entities: ["AIP", "DEFINER", "GraphStore", "ECS"]
+    related_topics: ["wiki-alpha-boundaries", "wiki-layer-discipline", "wiki-no-silent-degradation", "wiki-sexton-actor"]
+    source_type: "curated"
+    importance: 0.8
+
+  - article_id: "wiki-ecs-state-machine"
+    title: "ECS State Machine"
+    domain: "aip"
+    description: "The Entity Control State machine governing artifact lifecycle transitions with structural impossibility of invalid jumps."
+    content: |
+      The Entity Control State (ECS) machine is the declarative state machine that governs every artifact's lifecycle in AIP. Implemented in foundation/ecs_graph.py, the ECS machine makes it structurally impossible to skip states — you cannot, for example, transition directly from SPECIFIED to APPROVED.
+
+      The valid states are SPECIFIED, GENERATED, REVIEWED, APPROVED, SUPERSEDED, REJECTED, and FAILED. The forward progression follows SPECIFIED to GENERATED to REVIEWED to APPROVED to SUPERSEDED. Two rejection branches exist: from GENERATED, an artifact can transition to FAILED (when generation itself fails) or REJECTED (when the DEFINER rejects the generated content). From REVIEWED, an artifact can transition to REJECTED.
+
+      Every transition is validated by the ECS graph before execution. Invalid transitions raise InvalidTransitionError, preventing any code path from bypassing the lifecycle. The graph is declared as a static data structure — a dictionary mapping each state to its valid successors — which means the transition rules are auditable at a glance and cannot be accidentally modified at runtime.
+
+      Every transition is recorded via EcsStore.transition() with the actor (who initiated the transition) and the reason (why the transition occurred). The PersistentEcsStore implementation writes these transitions to SQLite, providing a durable audit trail. The combination of structural validation and durable recording ensures that the artifact lifecycle is both enforced and auditable.
+
+      The ECS machine embodies governance invariants AIP-G-01 (DEFINER Authority) and AIP-G-04 (Governed Lifecycle). Terminal states like APPROVED cannot be reverted without an explicit DEFINER override recorded as a DecisionRecord. The ECS graph's structural guarantees prevent the most common lifecycle violations — skipping review, auto-approving, or silently reverting terminal states — by making them impossible at the type level.
+    tags: ["ecs", "state-machine", "lifecycle", "validation", "governance"]
+    entities: ["ECS", "DEFINER", "PersistentEcsStore", "AIP"]
+    related_topics: ["wiki-artifact-lifecycle", "wiki-definer-sovereignty", "wiki-no-silent-degradation", "wiki-three-layer-architecture"]
+    source_type: "curated"
+    importance: 0.95
+
+  - article_id: "wiki-corpus-turn-model"
+    title: "Corpus Turn Model"
+    domain: "aip"
+    description: "The CorpusTurn data model and how individual conversation turns are ingested, tagged, embedded, and indexed."
+    content: |
+      The CorpusTurn is the fundamental unit of knowledge in AIP's corpus. Each turn represents a single exchange in a conversation — a user message paired with an assistant response — and carries metadata for domain classification, embedding status, bridge connections, and provenance tracking.
+
+      A CorpusTurn includes fields for the turn identifier, source account (identifying which export or ingestion batch it came from), source model (which AI model produced the response), user text, assistant text, and thinking text (preserved from models that expose chain-of-thought). Domain fields include primary_domain (the Beast-assigned domain tag), secondary_domains (additional domain assignments), bridges (domain-to-domain connector strings from the approved vocabulary), and importance_score (a 0.0-1.0 rating).
+
+      The corpus turn lifecycle begins with ingestion. The ingestion pipeline supports multiple input formats — ChatGPT JSON exports, Claude conversation exports, markdown transcripts, and plain text — each handled by a dedicated parser. After parsing, turns are chunked if they exceed size limits, persisted to the CorpusTurnStore in state.db, and indexed in the FTS5 lexical database for full-text search.
+
+      After ingestion, Beast domain tagging assigns primary and secondary domains to each turn using the 28-domain registry. Bridge tags connect turns that span multiple domains, using the approved connector vocabulary (for example, "nbcm->theology_research" for turns connecting physics to scripture). The current corpus contains 2,766 turns across three source accounts, all tagged but only 50 embedded (~1.8% coverage).
+
+      Embedding is the process of generating vector representations for semantic search. Each turn's text is processed through the embedding pipeline and stored in vectors.db. The embedding gap — 2,716 unembedded turns — is the single largest factor limiting hybrid retrieval quality. Full embedding requires resolving DEBT-006 to wire the new Sexton actor's automatic embedding pass.
+    tags: ["corpus", "ingestion", "turns", "tagging", "embedding"]
+    entities: ["CorpusTurn", "Beast", "Sexton", "AIP"]
+    related_topics: ["wiki-embedding-pipeline", "wiki-domain-registry", "wiki-sexton-actor", "wiki-retrieval-pipeline"]
+    source_type: "curated"
+    importance: 0.85
+
+  - article_id: "wiki-hybrid-retrieval"
+    title: "Hybrid Retrieval (FTS5 + Vector + Graph)"
+    domain: "aip"
+    description: "The three-pillar hybrid retrieval system combining lexical search, semantic vectors, and graph traversal."
+    content: |
+      AIP's hybrid retrieval system combines three complementary search strategies into a unified ranked output through Reciprocal Rank Fusion. Each strategy addresses a different aspect of information need, and their combination produces results that are more robust than any single approach.
+
+      The FTS5 lexical channel provides exact-term and phrase matching using SQLite's full-text search extension. It excels at finding specific technical terms, proper nouns, and exact phrases from the corpus. The lexical store is implemented in the adapter layer at adapter/lexical/sqlite_fts5_store.py and is always available regardless of vector or graph status. Currently, FTS5 carries most retrieval effectiveness because the vector index covers only ~1.8% of the corpus.
+
+      The vector channel provides semantic similarity search using embedding representations. When a query is embedded, the vector store returns turns whose embeddings are closest in vector space to the query embedding. This captures meaning-based relevance that lexical search misses — for example, a query about "sovereignty" might match turns about "DEFINER authority" even without term overlap. The vector store supports sqlite-vss for laptop profile and pgvector for production.
+
+      The graph channel provides knowledge-graph-aware retrieval through domain neighbor expansion and Personalized PageRank. When a query touches a domain, the graph channel retrieves connected domains and their associated turns. The GraphRetriever implements PPR via networkx, expanding query entities through the graph structure. Currently, 1-hop neighbor lookup is active in the chat path; full PPR expansion awaits faster entity extraction.
+
+      Coverage-aware gating ensures that the hybrid system degrades gracefully. When vector coverage is below 10%, the vector channel is disabled and FTS5-only results are returned. This prevents the vector channel from degrading result quality with sparse, unrepresentative embeddings. The channel weights (vector=0.6, fts=0.4, corpus=0.4) are configurable and tunable through grid search.
+    tags: ["retrieval", "hybrid", "fts5", "vector", "graph"]
+    entities: ["AIP", "RetrievalOrchestrator", "GraphRetriever", "VectorStore"]
+    related_topics: ["wiki-retrieval-pipeline", "wiki-embedding-pipeline", "wiki-knowledge-graph", "wiki-ecs-state-machine"]
+    source_type: "curated"
+    importance: 0.9
+
+  - article_id: "wiki-knowledge-graph"
+    title: "Knowledge Graph"
+    domain: "aip"
+    description: "AIP's knowledge graph: entity extraction, bridge-tagged edges, PPR retrieval, and Cytoscape.js visualization."
+    content: |
+      The AIP knowledge graph captures entity relationships and domain connections extracted from the corpus. It serves as the structural backbone for graph-aware retrieval, providing a navigable map of how knowledge domains and entities relate to each other.
+
+      The graph is stored in state.db with two tables: graph_nodes and graph_edges. Nodes represent entities and domains, while edges represent relationships between them. The current graph contains 36 nodes and 17 edges, built from bridge-tagged corpus turns via the aip corpus graph --build-from-bridges command. The entity alias registry (22 entries from entity_aliases.md) provides canonical name resolution, ensuring that variants like "aip_methodology" and "aip" map to the same node.
+
+      Bridge tags are the primary mechanism for edge creation. When Beast tags a corpus turn with a bridge like "nbcm->theology_research", the graph extraction process creates or strengthens an edge between those two domain nodes. The approved connector vocabulary defines 17 valid bridge patterns, each with a documented semantic relationship.
+
+      The GraphRetriever implements Personalized PageRank (PPR) via networkx for graph-based query expansion. Given a set of seed entities, PPR computes influence scores across the graph, surfacing relevant nodes that may not be directly connected to the query terms. Full PPR expansion is implemented but not yet wired into the chat path, as entity extraction from free-text would add latency.
+
+      The Cytoscape.js visualization at /graph-viz provides a standalone dark-mode page for exploring the graph interactively. Domain neighbor injection in augmented chat uses 1-hop adjacency lookup — when Beast identifies the active domain, it retrieves connected domains and includes their summaries in the synthesis context. The GraphStore has been converted to aiosqlite with a Protocol in the foundation layer, ensuring it follows the same patterns as other adapter stores.
+    tags: ["graph", "knowledge-graph", "ppr", "entities", "visualization"]
+    entities: ["AIP", "GraphRetriever", "GraphStore", "Beast"]
+    related_topics: ["wiki-hybrid-retrieval", "wiki-domain-registry", "wiki-beast-counsel-layer", "wiki-embedding-pipeline"]
+    source_type: "curated"
+    importance: 0.85
+
+  - article_id: "wiki-embedding-pipeline"
+    title: "Embedding Pipeline"
+    domain: "aip"
+    description: "The embedding generation pipeline: providers, batch processing, and the path from unembedded turns to vector-indexed retrieval."
+    content: |
+      The embedding pipeline transforms corpus turn text into vector representations that enable semantic similarity search. This pipeline is critical for hybrid retrieval quality, as vector search captures meaning-based relevance that lexical search alone cannot provide.
+
+      The pipeline supports multiple embedding providers. Ollama provides local embedding generation via the /api/embeddings endpoint, suitable for the laptop deployment profile. OpenAI-compatible providers offer cloud-based embedding via the /v1/embeddings endpoint. A factory pattern at adapter/embedding/factory.py selects the provider based on configuration, with a fake provider for CI determinism. The embedding provider is resolved through the ModelSlotResolver's embedding slot.
+
+      The embedding process is designed for batch operation. Sexton's embedding pass processes up to 50 turns per cycle, every 300 seconds. At this rate, a full embedding of the 2,716 unembedded turns would take approximately 17 hours of continuous operation. Currently, only 50 turns are embedded — approximately 1.8% of the corpus — representing the single largest gap in retrieval quality.
+
+      The aip embed CLI command provides manual control over the embedding process, supporting --limit to cap the number of turns embedded per run. The aip corpus tag command must run before embedding to ensure that turns have domain assignments, as embedding without domain context reduces the effectiveness of domain-filtered retrieval.
+
+      Once generated, embeddings are stored in vectors.db via the VectorStore implementation. The sqlite-vss backend uses SQLite's vector search extension for laptop deployment, while pgvector provides production-grade vector search with PostgreSQL. The VectorStore Protocol in the foundation layer ensures that the orchestration layer remains backend-agnostic.
+
+      Coverage-aware gating in the retrieval orchestrator monitors embedding coverage. When coverage falls below 10%, the vector channel is disabled and FTS5-only results are returned, preventing degraded hybrid quality from sparse embeddings.
+    tags: ["embedding", "vectors", "pipeline", "providers", "batch"]
+    entities: ["ModelSlotResolver", "Sexton", "VectorStore", "AIP"]
+    related_topics: ["wiki-hybrid-retrieval", "wiki-sexton-actor", "wiki-storage-model", "wiki-corpus-turn-model"]
+    source_type: "curated"
+    importance: 0.9
+
+  - article_id: "wiki-domain-registry"
+    title: "Domain Registry"
+    domain: "aip"
+    description: "The Beast Domain Registry: 28 domains, approved connector vocabulary, and the proposal protocol for new domains."
+    content: |
+      The Beast Domain Registry (v1.1) is the authoritative domain taxonomy for corpus tagging. Beast reads this registry before every tagging cycle and may propose additions but never unilaterally creates domains. All proposals go to DEFINER review before becoming active.
+
+      The registry defines 28 active domains organized into categories. AI and Technology includes aip (the unified intellectual endeavor), aip_brain (the engine room), aip_loom (long-form writing), and codeforge (autonomous coding). Science and Research covers nbcm (null-boundary physics), water_science (EZ water research), gef_tech (waste-to-energy), physics_education, and ancient_archaeology. Commercial and Product includes oxaway, forge_bars, frost_protection, wenatchee_wind, and harvest_harmonics. Theology and Ministry spans theology_research, ministry, and scripture_linguistics. Education and Development covers freedom_gen, bonded_labor, and social_justice. Personal and Operational includes freelance, personal_logistics, personal_health, creative, agi_philosophy, and quarantine.
+
+      Each domain entry specifies a DOMAIN_ID, DESCRIPTION, CORE_KEYWORDS, EXCLUDE rules, and IMPORTANCE_FLOOR. The EXCLUDE field prevents misclassification by explicitly stating what does not belong despite surface similarity. The IMPORTANCE_FLOOR sets the minimum importance score for any turn in that domain.
+
+      The approved connector vocabulary defines 17 bridge patterns with documented semantic relationships. Bridges like "nbcm->theology_research" (physics framework connects to scripture cosmology) and "gef_tech->bonded_labor" (waste-to-energy funding liberation) capture cross-domain connections that inform both graph construction and retrieval augmentation.
+
+      When Beast discovers three or more turns that don't fit approved domains, it files a domain proposal as a beast_domain_proposal artifact in GENERATED state. The proposal includes the proposed ID, description, evidence turn IDs, confidence, suggested connectors, and rationale. The DEFINER approves or rejects with notes. Rejected proposals include DEFINER guidance that Beast incorporates into future tagging decisions.
+    tags: ["domains", "registry", "taxonomy", "tagging", "beast"]
+    entities: ["Beast", "DEFINER", "AIP"]
+    related_topics: ["wiki-beast-actor", "wiki-sexton-actor", "wiki-knowledge-graph", "wiki-corpus-turn-model"]
+    source_type: "curated"
+    importance: 0.85
+
+  - article_id: "wiki-layer-discipline"
+    title: "Layer Discipline"
+    domain: "aip"
+    description: "AIP's strict layer discipline rules: import boundaries, Protocol-based communication, and known violations."
+    content: |
+      Layer discipline is the enforcement of strict import boundaries between AIP's three architectural layers. The declared rules are: foundation imports no AIP upper layers (stdlib and pydantic only), orchestration may import foundation but must not import adapter, and adapter may import both foundation and orchestration but only at the composition root. Adapter never imports orchestration directly outside the composition root.
+
+      These rules are not merely guidelines — they are mechanically checked. The test_layering.py and test_layer_discipline.py test suites use AST import analysis to verify that no layer violates its declared boundaries. The governance conformance test (test_governance_conformance.py) also checks layer separation under invariants AIP-G-06 and AIP-G-07.
+
+      All cross-layer dependencies are expressed via Protocol classes in the foundation layer. The VectorStore, LexicalStore, CanonicalStore, ArtifactStore, EcsStore, EventStore, BudgetStore, AutonomyGate, ModelProvider, EmbeddingProvider, VigilStore, AuthStore, KnowledgeStore, and GraphStore protocols define the interfaces that orchestration uses to communicate with adapter implementations. This structural typing enables dependency injection and testability without tight coupling.
+
+      A known open finding exists under AIP-G-06/07: orchestration pipelines import concrete adapter implementations through 21 function-local imports across 7 files. These are not import-time coupling — they occur inside function bodies to defer the import — but they tension with the Protocol-based design. The resolution is a DEFINER decision: either relocate concrete wiring to a composition root so orchestration sees only Protocols, or record each offender in the suite's acknowledged_import_violations so the debt is visible. It will not be silently greened.
+
+      Surface isolation is also enforced. The GUI communicates only through the FastAPI backend, never by importing aip.orchestration or accessing the container directly. This ensures that each surface can be developed, tested, and replaced independently.
+    tags: ["layers", "discipline", "imports", "protocols", "governance"]
+    entities: ["AIP", "DEFINER", "ECS", "ModelSlotResolver"]
+    related_topics: ["wiki-three-layer-architecture", "wiki-no-silent-degradation", "wiki-hardening-cycle", "wiki-alpha-boundaries"]
+    source_type: "curated"
+    importance: 0.9
+
+  - article_id: "wiki-alpha-boundaries"
+    title: "Alpha Boundaries and Known Limitations"
+    domain: "aip"
+    description: "Current alpha status boundaries: embedding coverage, DEBT-006, MCP scaffolding, and other known limitations."
+    content: |
+      AIP v0.1 is alpha software in active development by a single DEFINER. The following boundaries define what is working, what is limited, and what is scaffold.
+
+      The critical active limitation is DEBT-006: the new Sexton actor at actors/sexton.py (1,341 lines, five operations) is built but not wired into app.py. The old failure-classifier-only Sexton is currently active, running run_classification_cycle() every 300 seconds. As a result, automatic corpus tagging, embedding, wiki generation, and graph extraction are not running. Only failure classification fires automatically. This is the highest-priority debt item for maintenance mode.
+
+      Embedding coverage stands at approximately 1.8% — only 50 of 2,766 turns are embedded. Hybrid retrieval improvement over FTS5-only will be measurable only after a full embedding pass completes, which requires the DEBT-006 fix. FTS5 search works well for lexical queries, but semantic search is severely limited. At Sexton's planned rate of 50 turns per cycle every 300 seconds, completing the embedding pass would take approximately 17 hours of continuous operation.
+
+      MCP tool dispatch is built but not runtime-wired. The MCP server implements real search dispatch and artifact approval via Protocols, but it is not reachable via API or CLI today. The autonomy_gate=None escape hatch in server.py is a fail-open risk for write and admin tools that must be hardened to fail-closed before MCP is wired into the runtime.
+
+      The adaptive router does not adapt. Budget enforcement and route existence are real, but update_weights() is a no-op and exploration/exploitation is random. ScriptNode execution returns DISABLED in production mode. No review queue web UI exists for MANUAL mode — CLI review commands serve as the interface. Per-component performance metrics are estimated rather than measured.
+
+      Two test files have pre-existing failures when run in the full suite due to environment variable and global state pollution, though they pass in isolation. The overall test count stands at 1002+ passing with 23 skipped.
+    tags: ["alpha", "limitations", "boundaries", "debt-006", "known-issues"]
+    entities: ["AIP", "Sexton", "MCP", "DEFINER"]
+    related_topics: ["wiki-sexton-actor", "wiki-no-silent-degradation", "wiki-embedding-pipeline", "wiki-hardening-cycle"]
+    source_type: "curated"
+    importance: 0.95

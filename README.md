@@ -27,7 +27,7 @@ The following are planned but not yet built:
 - Multi-corpus support (Branham research corpus, NBCM citations)
 
 The following are built and working (partial or limited):
-- Vector embeddings (hybrid retrieval with RRF fusion operational; ~1.8% embedding coverage — full pass requires DEBT-006 fix)
+- Vector embeddings (hybrid retrieval with RRF fusion operational; full pass requires DEBT-006 fix)
 - Knowledge graph (36 nodes, 17 edges; Cytoscape.js visualization at /graph-viz)
 - DEFINER profile injection in augmented chat (partial — profile loaded, active injection in progress)
 
@@ -207,7 +207,7 @@ Environment variable overrides:
 | Domain registry (beast_domain_registry_v1.md) | Working | 26+ domains, event-driven |
 | Beast context advisory (augmented chat) | Working | Domain overview + retrieved turns |
 | Corpus turn store (FTS5 indexed) | Working | 2,700+ turns, thinking_text preserved |
-| Vector embeddings | Working | ~1.8% coverage (50/2,766 turns); full pass requires DEBT-006 fix |
+| Vector embeddings | Working | Full pass requires DEBT-006 fix |
 | Beast wiki articles | Not built | Phase 2A |
 | Knowledge graph | Working | 36 nodes, 17 edges; /graph-viz visualization |
 | DEFINER profile injection | Partial | Profile loaded; active injection in progress |
@@ -228,6 +228,32 @@ This component conforms to the [AIP Governance Contract](AIP_GOVERNANCE.md)
 `tests/test_governance_conformance.py`. See the contract's conformance
 matrix for this component's current status, including any open findings.
 
+## Demo Corpus
+
+AIP_Brain includes a small prebuilt demo corpus under `demo/aip_demo`.
+
+The demo contains curated Q&A turns about AIP_Brain, prebuilt wiki articles,
+tags, entities, and embeddings. It is intended for smoke testing and alpha
+demonstration only. It is not the operator's live dogfood corpus.
+
+Live local databases remain ignored by Git.
+
+The demo DB can be rebuilt from source with:
+
+```bash
+python scripts/demo/build_aip_demo_db.py --reset
+python scripts/demo/verify_aip_demo_db.py
+```
+
+To run AIP against the demo DB:
+
+```bash
+export AIP_DB_PATH=demo/aip_demo/db/state.db
+uv run aip status
+```
+
+See [`demo/aip_demo/README.md`](demo/aip_demo/README.md) for full details.
+
 ## Documentation
 
 - [`DOGFOOD_READY.md`](DOGFOOD_READY.md) — First-run dogfood guide (start here!)
@@ -237,6 +263,7 @@ matrix for this component's current status, including any open findings.
 - `docs/beast_domain_registry_v1.md` — Domain taxonomy for Beast corpus tagging
 - `docs/entity_aliases.md` — Canonical entity name resolution for knowledge graph
 - `examples/seed_corpus/` — AIP self-knowledge Q&A seed corpus + ingest script
+- `demo/aip_demo/` — Prebuilt demo corpus for smoke testing and alpha demonstration
 - `docs/ARCHITECTURE.md` — Architecture overview and design principles
 - `docs/CONFIGURATION.md` — Configuration reference
 - `docs/internal/ingestion.md` — Ingestion pipeline documentation

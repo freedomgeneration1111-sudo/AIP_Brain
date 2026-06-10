@@ -13,8 +13,6 @@ that guide was written, and there are important caveats for alpha testers:
 - CLI evaluation tools (`aip eval retrieval`)
 
 **Known limitations:**
-- **Embedding coverage is ~1.8%** — only 50 of 2,766 turns are embedded. Hybrid retrieval
-  (vector + FTS5) will show limited benefit until a full embedding pass completes.
 - **DEBT-006 (Critical):** Automatic tagging, embedding, wiki, and graph extraction are NOT
   running automatically. Use `aip corpus tag` and `aip embed` manually until this is fixed.
 - **MCP dispatch is built but not runtime-wired** — no MCP operations are reachable via API/CLI today
@@ -291,6 +289,34 @@ bash scripts/dogfood_smoke_test.sh
 
 This runs the full dogfood loop automatically on a clean datastore,
 including init, project creation, ingestion, ask, review, approve, and export.
+
+## 10. Demo Corpus
+
+AIP_Brain includes a small prebuilt demo corpus under `demo/aip_demo`.
+The demo contains 60 curated Q&A turns about AIP_Brain, 24 prebuilt wiki articles,
+tags, entities, and graph nodes. It is intended for smoke testing and alpha
+demonstration only — it is not your live dogfood corpus.
+
+```bash
+# Build the demo DB (from project root)
+python scripts/demo/build_aip_demo_db.py --reset
+
+# Verify the demo DB
+python scripts/demo/verify_aip_demo_db.py
+
+# Run AIP against the demo DB
+export AIP_DB_PATH=demo/aip_demo/db/state.db
+uv run aip status
+uv run aip corpus verify
+```
+
+To generate embeddings for the demo DB after configuring an embedding provider:
+
+```bash
+uv run aip corpus embed --limit 100 --db-path demo/aip_demo/db/state.db
+```
+
+See `demo/aip_demo/README.md` for full details.
 
 ## Troubleshooting
 

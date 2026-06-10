@@ -1,0 +1,94 @@
+# AIP_Brain Demo Corpus Manifest
+# This manifest describes the demo database contents and build provenance.
+
+name: aip_demo
+version: "1.0.0"
+description: >
+  Small prebuilt demo corpus for AIP_Brain containing curated Q&A turns
+  about AIP architecture, prebuilt wiki articles, tags, entities, and
+  (when built with embedding provider) vector embeddings. Intended for
+  smoke testing and alpha demonstration only. Not the operator's live
+  dogfood corpus.
+
+build_date: "2026-06-11"
+built_by: "AIP hardening engineer (automated)"
+
+contents:
+  qa_turns:
+    source: "demo/aip_demo/source/aip_qa_turns.jsonl"
+    count: 60
+    format: "JSONL (one CorpusTurn-compatible JSON object per line)"
+    topics:
+      - AIP overview
+      - DEFINER sovereignty
+      - Three-layer architecture
+      - Beast actor
+      - Vigil actor
+      - Sexton actor
+      - CODEX wiki / librarian
+      - Retrieval pipeline
+      - Artifact lifecycle (ECS)
+      - Model slots
+      - Storage model
+      - Dogfood mode
+      - No silent degradation
+      - Operator console / CLI
+      - Alpha limitations / hardening
+
+  wiki_articles:
+    source: "demo/aip_demo/source/wiki_articles.yaml"
+    count: 24
+    format: "YAML list of article objects"
+    articles:
+      - wiki-aip-overview
+      - wiki-definer-sovereignty
+      - wiki-full-dogfood-mode
+      - wiki-three-layer-architecture
+      - wiki-retrieval-pipeline
+      - wiki-beast-actor
+      - wiki-vigil-actor
+      - wiki-sexton-actor
+      - wiki-codex-wiki
+      - wiki-artifact-lifecycle
+      - wiki-model-slots
+      - wiki-storage-model
+      - wiki-operator-console
+      - wiki-beast-counsel-layer
+      - wiki-no-silent-degradation
+      - wiki-hardening-cycle
+      - wiki-ecs-state-machine
+      - wiki-corpus-turn-model
+      - wiki-hybrid-retrieval
+      - wiki-knowledge-graph
+      - wiki-embedding-pipeline
+      - wiki-domain-registry
+      - wiki-layer-discipline
+      - wiki-alpha-boundaries
+
+  smoke_questions:
+    source: "demo/aip_demo/expected/smoke_questions.yaml"
+    count: 15
+
+databases:
+  # These files are created by the builder script in demo/aip_demo/db/
+  state_db: "demo/aip_demo/db/state.db"
+  lexical_db: "demo/aip_demo/db/lexical.db"
+  vectors_db: "demo/aip_demo/db/vectors.db"
+  trace_db: "demo/aip_demo/db/trace.db"
+
+verification:
+  min_qa_turns: 50
+  min_wiki_articles: 20
+  min_tags_present: true
+  min_entities_present: true
+  embeddings_status: "present_or_pending"
+  no_private_paths: true
+  smoke_test_questions: 15
+
+build_command: "python scripts/demo/build_aip_demo_db.py --reset"
+verify_command: "python scripts/demo/verify_aip_demo_db.py"
+
+size_target_mb:
+  min: 5
+  max: 50
+  note: "If embeddings make it larger than 50 MB, move DB to release artifact and keep source in repo."

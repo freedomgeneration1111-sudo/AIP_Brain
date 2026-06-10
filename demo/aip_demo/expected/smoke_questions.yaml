@@ -1,0 +1,109 @@
+# Smoke questions for AIP_Brain demo DB verification.
+# Each question should return relevant results from the demo corpus
+# when queried via FTS5 search or the full ask pipeline.
+
+questions:
+  - id: smoke-001
+    question: "What is AIP_Brain?"
+    expected_domains: ["aip"]
+    expected_tags: ["overview", "architecture"]
+    expected_wiki_topic: "wiki-aip-overview"
+    min_results: 1
+
+  - id: smoke-002
+    question: "What is DEFINER sovereignty?"
+    expected_domains: ["aip"]
+    expected_tags: ["sovereignty", "gates"]
+    expected_wiki_topic: "wiki-definer-sovereignty"
+    min_results: 1
+
+  - id: smoke-003
+    question: "How does the three-layer architecture work?"
+    expected_domains: ["aip"]
+    expected_tags: ["architecture", "layers"]
+    expected_wiki_topic: "wiki-three-layer-architecture"
+    min_results: 1
+
+  - id: smoke-004
+    question: "What does the Beast actor do?"
+    expected_domains: ["aip"]
+    expected_tags: ["beast", "tagging"]
+    expected_wiki_topic: "wiki-beast-actor"
+    min_results: 1
+
+  - id: smoke-005
+    question: "What is the Vigil actor responsible for?"
+    expected_domains: ["aip"]
+    expected_tags: ["vigil", "quality"]
+    expected_wiki_topic: "wiki-vigil-actor"
+    min_results: 1
+
+  - id: smoke-006
+    question: "How does Sexton handle failures?"
+    expected_domains: ["aip"]
+    expected_tags: ["sexton", "failure"]
+    expected_wiki_topic: "wiki-sexton-actor"
+    min_results: 1
+
+  - id: smoke-007
+    question: "What is the CODEX wiki system?"
+    expected_domains: ["aip"]
+    expected_tags: ["codex", "librarian"]
+    expected_wiki_topic: "wiki-codex-wiki"
+    min_results: 1
+
+  - id: smoke-008
+    question: "How does the retrieval pipeline work?"
+    expected_domains: ["aip"]
+    expected_tags: ["retrieval", "hybrid"]
+    expected_wiki_topic: "wiki-retrieval-pipeline"
+    min_results: 1
+
+  - id: smoke-009
+    question: "What is the artifact lifecycle?"
+    expected_domains: ["aip"]
+    expected_tags: ["artifact", "ecs"]
+    expected_wiki_topic: "wiki-artifact-lifecycle"
+    min_results: 1
+
+  - id: smoke-010
+    question: "What are model slots in AIP?"
+    expected_domains: ["aip"]
+    expected_tags: ["models", "slots"]
+    expected_wiki_topic: "wiki-model-slots"
+    min_results: 1
+
+  - id: smoke-011
+    question: "How is AIP data stored?"
+    expected_domains: ["aip"]
+    expected_tags: ["storage", "sqlite"]
+    expected_wiki_topic: "wiki-storage-model"
+    min_results: 1
+
+  - id: smoke-012
+    question: "What is dogfood mode?"
+    expected_domains: ["aip"]
+    expected_tags: ["dogfood", "modes"]
+    expected_wiki_topic: "wiki-full-dogfood-mode"
+    min_results: 1
+
+  - id: smoke-013
+    question: "What does no silent degradation mean?"
+    expected_domains: ["aip"]
+    expected_tags: ["degradation", "honesty"]
+    expected_wiki_topic: "wiki-no-silent-degradation"
+    min_results: 1
+
+  - id: smoke-014
+    question: "How do I use the AIP CLI?"
+    expected_domains: ["aip"]
+    expected_tags: ["cli", "operator"]
+    expected_wiki_topic: "wiki-operator-console"
+    min_results: 1
+
+  - id: smoke-015
+    question: "What are the alpha limitations?"
+    expected_domains: ["aip"]
+    expected_tags: ["alpha", "limitations"]
+    expected_wiki_topic: "wiki-alpha-boundaries"
+    min_results: 1
