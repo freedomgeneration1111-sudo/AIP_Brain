@@ -8515,11 +8515,11 @@ class AlertManager:
 
             # Authenticate if credentials are provided
             if self._config.smtp_username:
-                # Prefer environment variable for password if not set in config
-                password = self._config.smtp_password
-                if not password:
-                    import os
-                    password = os.environ.get("AIP_SMTP_PASSWORD", "")
+                # Environment variable takes precedence over TOML config.
+                # This ensures operators can override secrets without editing
+                # the config file (credential sovereignty: no secrets in TOML).
+                import os
+                password = os.environ.get("AIP_SMTP_PASSWORD") or self._config.smtp_password
                 if password:
                     smtp.login(self._config.smtp_username, password)
 

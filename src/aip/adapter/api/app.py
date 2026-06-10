@@ -676,7 +676,7 @@ async def lifespan(app: FastAPI):
             smtp_host=alert_cfg_dict.get("smtp_host", ""),
             smtp_port=int(alert_cfg_dict.get("smtp_port", 587)),
             smtp_username=alert_cfg_dict.get("smtp_username", ""),
-            smtp_password=alert_cfg_dict.get("smtp_password", ""),
+            smtp_password=alert_cfg_dict.get("smtp_password", "") or os.environ.get("AIP_SMTP_PASSWORD", ""),
             smtp_use_tls=bool(alert_cfg_dict.get("smtp_use_tls", True)),
             alert_on_quality_degradation=bool(alert_cfg_dict.get("alert_on_quality_degradation", True)),
             alert_on_pool_adjustment=bool(alert_cfg_dict.get("alert_on_pool_adjustment", True)),

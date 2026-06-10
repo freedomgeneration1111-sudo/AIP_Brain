@@ -948,13 +948,15 @@ class AipApiClient:
         return os.environ.get("AIP_OPENAI_API_KEY")
 
     def set_openrouter_api_key(self, key: str) -> None:
-        """Store the OpenRouter API key in memory and set the env var.
+        """Store the OpenRouter API key in memory only.
 
-        Setting the env var ensures the backend's ModelSlotResolver
-        picks it up as AIP_OPENAI_API_KEY on next request.
+        The key is passed to the backend via the PATCH /models/slots API
+        (which uses in-memory runtime overrides), so there is no need
+        to write it to os.environ. Keeping secrets out of the process
+        environment prevents credential leakage to child processes and
+        debugging tools.
         """
         self._openrouter_api_key = key
-        os.environ["AIP_OPENAI_API_KEY"] = key
 
     def has_openrouter_api_key(self) -> bool:
         """Check if an OpenRouter API key is available."""
@@ -964,7 +966,7 @@ class AipApiClient:
     async def update_slot_model(self, slot_name: str, model: str, api_key: str | None = None) -> dict[str, Any]:
         """Update the model for a slot at runtime via PATCH /api/v1/models/slots/{slot_name}/model.
 
-        This sets the AIP_<SLOT>_MODEL env var in the backend process,
+        The backend stores the override in-memory (not in os.environ),
         which has the highest priority in ModelSlotResolver._resolve_slot_config().
         The change persists until the server restarts.
         """

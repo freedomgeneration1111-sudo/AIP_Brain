@@ -8,15 +8,24 @@ from fastapi import Depends, HTTPException, Request
 
 logger = logging.getLogger(__name__)
 
+# Sentinel value to distinguish "middleware ran but found no identity"
+# from "middleware didn't set anything at all" (shouldn't happen in
+# normal operation but provides a safe fallback).
+_AUTHENTICATED_NONE = object()
+
 
 async def get_current_identity(request: Request) -> dict:
-    """Returns the authenticated identity (or {'identity': 'definer', 'role': 'definer'} if auth disabled).
+    """Returns the authenticated identity.
 
     Checks in order:
     1. Session token in Authorization header
     2. API key in X-API-Key header
     3. Pre-set identity on request.state (from middleware)
-    4. DEFINER fallback (laptop profile / auth disabled)
+    4. DEFINER fallback — ONLY when auth is disabled (laptop mode)
+
+    When auth is enabled and no valid credential is provided, returns
+    an anonymous identity with no role, which will be rejected by
+    require_definer.
     """
     # 1. Check for session token in headers
     auth_header = request.headers.get("Authorization", "")
@@ -49,17 +58,32 @@ async def get_current_identity(request: Request) -> dict:
                     logger.debug("API key validation failed: %s", exc)
 
     # 3. Check for pre-set identity on request.state (from middleware)
-    identity = getattr(request.state, "auth_identity", None)
-    role = getattr(request.state, "auth_role", None)
+    identity = getattr(request.state, "auth_identity", _AUTHENTICATED_NONE)
+
+    if identity is _AUTHENTICATED_NONE:
+        # Middleware didn't run — this shouldn't happen in normal operation.
+        # Return anonymous identity so require_definer will reject.
+        return {"identity": None, "role": None}
+
     if identity is not None:
+        role = getattr(request.state, "auth_role", None)
         return {"identity": identity, "role": role}
 
-    # 4. Laptop profile fallback (auth disabled)
-    return {"identity": "definer", "role": "definer"}
+    # identity is None — middleware ran but found no valid credentials.
+    # This means auth is enabled and the request is unauthenticated.
+    # Return anonymous identity so require_definer will reject.
+    return {"identity": None, "role": None}
 
 
 async def require_definer(identity: dict = Depends(get_current_identity)) -> dict:
-    """Raises 403 if not DEFINER role."""
+    """Raises 403 if not DEFINER role.
+
+    In laptop mode (auth disabled), the AuthMiddleware sets
+    auth_identity=definer on every request, so require_definer passes.
+
+    When auth is enabled, unauthenticated requests get identity=None,
+    role=None, and are rejected with 403.
+    """
     if identity.get("role") != "definer":
         raise HTTPException(status_code=403, detail="DEFINER role required")
     return identity

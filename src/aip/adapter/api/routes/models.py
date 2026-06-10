@@ -6,8 +6,9 @@ reading enabled_models.json directly.
 
 Added: PATCH /models/slots/{slot_name}/model — runtime model override.
 This allows the GUI to change which model a slot uses without restarting
-the server. The override is stored in-process (env var) so it persists
-until the next server restart.
+the server. The override is stored in-process (in-memory runtime overrides
+on ModelSlotResolver, NOT in os.environ) so it persists until the next
+server restart. API keys are never written to the process environment.
 
 When the "embedding" slot is patched, the container's embedding_provider
 is also recreated so that the new embedding model takes effect immediately
@@ -16,13 +17,12 @@ for all downstream consumers (vector store, Beast, knowledge store, etc.).
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.adapter.api.dependencies import AipContainer, get_container, require_definer
 from aip.logging import get_logger
 
 log = get_logger(__name__)
@@ -37,7 +37,10 @@ class ModelOverrideRequest(BaseModel):
 
 
 @router.get("/models/api_key_status")
-async def api_key_status(container: AipContainer = Depends(get_container)):
+async def api_key_status(
+    container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
+):
     """Check whether the backend has a valid API key configured.
 
     The GUI calls this on startup to determine if it should show the
@@ -155,12 +158,13 @@ async def update_slot_model(
     slot_name: str,
     body: ModelOverrideRequest,
     container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
 ) -> dict[str, Any]:
     """Update the model for a slot at runtime.
 
-    Sets the AIP_<SLOT>_MODEL environment variable, which has the highest
-    priority in ModelSlotResolver._resolve_slot_config(). Also optionally
-    updates the API key via AIP_<SLOT>_API_KEY.
+    Uses the ModelSlotResolver's in-memory runtime overrides, which have
+    the highest priority in ``_resolve_slot_config()``. API keys are stored
+    in process memory only — they are NEVER written to ``os.environ``.
 
     When the "embedding" slot is updated, the container's embedding_provider
     is also recreated so the new model takes effect immediately for vector
@@ -182,14 +186,13 @@ async def update_slot_model(
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=f"Unknown slot: {slot_name}")
 
-    # Set environment variables — these have highest priority in the resolver
-    env_model_key = f"AIP_{slot_name.upper()}_MODEL"
-    os.environ[env_model_key] = body.model
+    # Set in-memory runtime overrides — highest priority in the resolver.
+    # API keys are kept in process memory, never written to os.environ.
+    model_provider.set_runtime_override(slot_name, "model", body.model)
 
-    # Optionally update API key
+    # Optionally update API key (in-memory only)
     if body.api_key:
-        env_api_key = f"AIP_{slot_name.upper()}_API_KEY"
-        os.environ[env_api_key] = body.api_key
+        model_provider.set_runtime_override(slot_name, "api_key", body.api_key)
 
     # Verify by resolving
     resolved = model_provider._resolve_slot_config(slot_name)

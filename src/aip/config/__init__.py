@@ -208,10 +208,11 @@ class ConfigValidationError(Exception):
 
 
 class ValidationResult:
-    """Aggregated validation result with all errors found."""
+    """Aggregated validation result with all errors and warnings found."""
 
     def __init__(self) -> None:
         self.errors: list[ConfigValidationError] = []
+        self.warnings: list[ConfigValidationError] = []
 
     @property
     def is_valid(self) -> bool:
@@ -233,16 +234,39 @@ class ValidationResult:
             )
         )
 
+    def add_warning(
+        self,
+        message: str,
+        code: str,
+        setting_path: str,
+        remediation: str,
+    ) -> None:
+        """Add a non-fatal warning (logged but does not block startup)."""
+        self.warnings.append(
+            ConfigValidationError(
+                message=message,
+                code=code,
+                setting_path=setting_path,
+                remediation=remediation,
+            )
+        )
+
     def raise_if_invalid(self) -> None:
         """Raise the first error if any validation failed.
 
         All errors are logged; the first is raised for the traceback.
+        Warnings are logged but never block startup.
         """
+        import logging
+
+        logger = logging.getLogger("aip.config")
+
+        # Log warnings first
+        for warn in self.warnings:
+            logger.warning("Config validation warning: %s", warn)
+
         if self.errors:
             # Log all errors for visibility
-            import logging
-
-            logger = logging.getLogger("aip.config")
             for err in self.errors:
                 logger.error("Config validation error: %s", err)
             raise self.errors[0]
@@ -370,6 +394,69 @@ def validate_config(config: dict[str, Any]) -> ValidationResult:
                 remediation="Set POSTGRES_PASSWORD to a strong value. "
                 "Example: export POSTGRES_PASSWORD=$(openssl rand -hex 32)",
             )
+
+    # ==================================================================
+    # SECRETS-IN-TOML CHECKS (warnings for both profiles)
+    # Credential sovereignty: secrets should come from env vars or a
+    # restricted secrets file, not from the TOML config which may be
+    # checked into version control or displayed via GET /admin/config.
+    # ==================================================================
+
+    # 7. SMTP password in TOML — should use AIP_SMTP_PASSWORD env var
+    smtp_password = config.get("alerting", {}).get("smtp_password", "")
+    if isinstance(smtp_password, str) and smtp_password.strip():
+        result.add_warning(
+            message="SMTP password found in TOML config [alerting].smtp_password. "
+            "Secrets in TOML risk exposure via config dumps and version control. "
+            "Prefer the AIP_SMTP_PASSWORD environment variable.",
+            code="SECRET_IN_TOML_SMTP_PASSWORD",
+            setting_path="alerting.smtp_password",
+            remediation="Remove smtp_password from TOML and set AIP_SMTP_PASSWORD env var instead.",
+        )
+
+    # 8. API keys in TOML model slots — should use AIP_<SLOT>_API_KEY env vars
+    models_cfg = config.get("models", {})
+    if isinstance(models_cfg, dict):
+        for slot_name, slot_val in models_cfg.items():
+            if not isinstance(slot_val, dict):
+                continue
+            api_key = slot_val.get("api_key", "")
+            if isinstance(api_key, str) and api_key.strip():
+                result.add_warning(
+                    message=f"API key found in TOML config [models.{slot_name}].api_key. "
+                    "Secrets in TOML risk exposure via config dumps and version control. "
+                    f"Prefer the AIP_{slot_name.upper()}_API_KEY environment variable.",
+                    code="SECRET_IN_TOML_API_KEY",
+                    setting_path=f"models.{slot_name}.api_key",
+                    remediation=f"Remove api_key from TOML [models.{slot_name}] and set "
+                    f"AIP_{slot_name.upper()}_API_KEY env var instead.",
+                )
+
+    # 9. Postgres password in TOML — should use POSTGRES_PASSWORD env var
+    pg_password_toml = config.get("postgres", {}).get("password", "")
+    if isinstance(pg_password_toml, str) and pg_password_toml.strip():
+        result.add_warning(
+            message="Postgres password found in TOML config [postgres].password. "
+            "Secrets in TOML risk exposure via config dumps and version control. "
+            "Prefer the POSTGRES_PASSWORD or DATABASE_URL environment variable.",
+            code="SECRET_IN_TOML_POSTGRES_PASSWORD",
+            setting_path="postgres.password",
+            remediation="Remove password from TOML [postgres] and set POSTGRES_PASSWORD "
+            "or DATABASE_URL env var instead.",
+        )
+
+    # 10. Embedding API key in TOML [embedding].api_key — legacy path
+    embed_api_key = config.get("embedding", {}).get("api_key", "")
+    if isinstance(embed_api_key, str) and embed_api_key.strip():
+        result.add_warning(
+            message="API key found in TOML config [embedding].api_key. "
+            "Secrets in TOML risk exposure via config dumps and version control. "
+            "Prefer the AIP_EMBEDDING_API_KEY or AIP_OPENAI_API_KEY environment variable.",
+            code="SECRET_IN_TOML_EMBEDDING_API_KEY",
+            setting_path="embedding.api_key",
+            remediation="Remove api_key from TOML [embedding] and set AIP_EMBEDDING_API_KEY "
+            "or AIP_OPENAI_API_KEY env var instead.",
+        )
 
     return result
 

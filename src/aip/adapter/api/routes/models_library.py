@@ -16,8 +16,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 import aiosqlite
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from aip.adapter.api.dependencies import get_container, require_definer
+from aip.adapter.api.dependencies import AipContainer
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -83,7 +86,9 @@ async def list_model_library() -> dict:
 
 
 @router.post("/models/library/fetch")
-async def fetch_model_library() -> dict:
+async def fetch_model_library(
+    _auth=Depends(require_definer),
+) -> dict:
     """Fetch model list from OpenRouter and upsert into enabled_models.
 
     Per AIP-G-09: this is the ONLY outbound call, user-triggered only.
@@ -187,6 +192,7 @@ async def fetch_model_library() -> dict:
 async def toggle_model_enabled(
     model_id: str,
     body: ToggleEnabledRequest,
+    _auth=Depends(require_definer),
 ) -> dict:
     """Toggle the enabled flag for a model in the library.
 

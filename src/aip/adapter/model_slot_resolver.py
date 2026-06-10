@@ -8,16 +8,25 @@ Real dispatch supports:
   - OpenAI-compatible (/v1/chat/completions endpoint)
 
 Configuration sources (in priority order):
-  1. Explicit slot config dict passed to __init__ under ``models.<slot>``.
-  2. Environment variables:
+  1. **In-memory runtime overrides** — set via ``set_runtime_override()``.
+     These are used for hot-reload of model/api-key changes from the admin
+     API without writing secrets into ``os.environ``.
+  2. Environment variables (startup-time only, NOT written at runtime):
        AIP_<SLOT>_BASE_URL   — e.g. AIP_SYNTHESIS_BASE_URL
        AIP_<SLOT>_MODEL      — e.g. AIP_SYNTHESIS_MODEL
        AIP_<SLOT>_API_KEY    — e.g. AIP_SYNTHESIS_API_KEY (for OpenAI-compatible)
        AIP_<SLOT>_PROVIDER   — e.g. AIP_SYNTHESIS_PROVIDER (ollama | openai_compatible)
-  3. Global defaults:
+  3. Explicit slot config dict passed to __init__ under ``models.<slot>``.
+  4. Global defaults:
        AIP_OLLAMA_BASE_URL   — default base URL for all Ollama slots (default: http://localhost:11434)
        AIP_OPENAI_BASE_URL   — default base URL for all OpenAI-compatible slots
        AIP_OPENAI_API_KEY    — default API key for all OpenAI-compatible slots
+
+Security note (Chunk 3 — credential sovereignty):
+  Runtime overrides are stored in-memory ONLY. API keys are NEVER written
+  to ``os.environ`` at runtime. This prevents credential leakage to child
+  processes, debugging tools, and log outputs that dump environment
+  variables.
 """
 
 from __future__ import annotations
@@ -80,6 +89,11 @@ class ModelSlotResolver(ModelProvider):
 
         # ci_mode defaults to True unless explicitly set to False
         self._ci_mode = self._models.get("ci_mode", True)
+
+        # In-memory runtime overrides — highest priority, never written to os.environ.
+        # Keys are "<SLOT_NAME>.<FIELD>" (e.g. "synthesis.model", "embedding.api_key").
+        # This is the credential-sovereign alternative to setting os.environ at runtime.
+        self._runtime_overrides: dict[str, str] = {}
 
         # Lazy httpx client — created on first real call, reused thereafter
         self._http_client: Any = None
@@ -150,13 +164,52 @@ class ModelSlotResolver(ModelProvider):
     # Configuration resolution with environment variable fallbacks
     # ------------------------------------------------------------------
 
-    def _resolve_slot_config(self, slot_name: str) -> dict:
-        """Resolve slot config from dict + environment variable overrides.
+    def set_runtime_override(self, slot_name: str, field: str, value: str) -> None:
+        """Set an in-memory runtime override for a slot field.
 
-        Environment variables follow the pattern AIP_<SLOT>_KEY (uppercased).
-        For example, slot "synthesis" checks:
-          AIP_SYNTHESIS_BASE_URL, AIP_SYNTHESIS_MODEL,
-          AIP_SYNTHESIS_PROVIDER, AIP_SYNTHESIS_API_KEY
+        Runtime overrides have the **highest** priority in ``_resolve_slot_config``,
+        superseding both environment variables and TOML config. They are never
+        written to ``os.environ``, keeping API keys out of the process environment.
+
+        Args:
+            slot_name: e.g. "synthesis", "embedding"
+            field: one of "model", "api_key", "base_url", "provider"
+            value: the override value
+        """
+        key = f"{slot_name}.{field}"
+        self._runtime_overrides[key] = value
+        log.info(
+            "slot_runtime_override_set",
+            slot=slot_name,
+            field=field,
+            has_value=bool(value),
+        )
+
+    def get_runtime_override(self, slot_name: str, field: str) -> str | None:
+        """Get the current runtime override for a slot field, or None."""
+        return self._runtime_overrides.get(f"{slot_name}.{field}")
+
+    def clear_runtime_overrides(self, slot_name: str | None = None) -> None:
+        """Clear runtime overrides, either for one slot or all slots.
+
+        Args:
+            slot_name: if given, clear only overrides for that slot; otherwise clear all.
+        """
+        if slot_name is None:
+            self._runtime_overrides.clear()
+        else:
+            prefix = f"{slot_name}."
+            self._runtime_overrides = {
+                k: v for k, v in self._runtime_overrides.items()
+                if not k.startswith(prefix)
+            }
+
+    def _resolve_slot_config(self, slot_name: str) -> dict:
+        """Resolve slot config with priority: runtime overrides > env vars > TOML config.
+
+        Runtime overrides (in-memory) have the highest priority, ensuring
+        that API keys set via the admin API are never leaked to os.environ.
+        Environment variables are read (not written) for startup-time config.
         """
         slot_cfg = self._models.get(slot_name, {})
         if not isinstance(slot_cfg, dict):
@@ -164,19 +217,25 @@ class ModelSlotResolver(ModelProvider):
 
         log.debug("slot_config_resolved", slot=slot_name, has_cfg=bool(slot_cfg), cfg_keys=list(slot_cfg.keys()) if isinstance(slot_cfg, dict) else [])
 
-        env_prefix = f"AIP_{slot_name.upper()}_"
+        # 1. Runtime overrides (highest priority — in-memory, never in os.environ)
+        rt_model = self._runtime_overrides.get(f"{slot_name}.model")
+        rt_api_key = self._runtime_overrides.get(f"{slot_name}.api_key")
+        rt_base_url = self._runtime_overrides.get(f"{slot_name}.base_url")
+        rt_provider = self._runtime_overrides.get(f"{slot_name}.provider")
 
-        # Environment variable overrides (highest priority)
+        # 2. Environment variables (read-only — set before process start)
+        env_prefix = f"AIP_{slot_name.upper()}_"
         env_base_url = os.environ.get(f"{env_prefix}BASE_URL")
         env_model = os.environ.get(f"{env_prefix}MODEL")
         env_provider = os.environ.get(f"{env_prefix}PROVIDER")
         env_api_key = os.environ.get(f"{env_prefix}API_KEY")
 
+        # 3. Merge: runtime > env > TOML config
         resolved = {
-            "provider": env_provider or slot_cfg.get("provider", PROVIDER_OPENAI_COMPATIBLE),
-            "model": env_model or slot_cfg.get("model", f"<{slot_name}>"),
-            "base_url": env_base_url or slot_cfg.get("base_url"),
-            "api_key": env_api_key or slot_cfg.get("api_key"),
+            "provider": rt_provider or env_provider or slot_cfg.get("provider", PROVIDER_OPENAI_COMPATIBLE),
+            "model": rt_model or env_model or slot_cfg.get("model", f"<{slot_name}>"),
+            "base_url": rt_base_url or env_base_url or slot_cfg.get("base_url"),
+            "api_key": rt_api_key or env_api_key or slot_cfg.get("api_key"),
             "fallback_provider": slot_cfg.get("fallback_provider"),
             "fallback_model": slot_cfg.get("fallback_model"),
             "dimensions": slot_cfg.get("dimensions"),

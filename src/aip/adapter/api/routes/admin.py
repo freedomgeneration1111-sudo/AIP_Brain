@@ -28,7 +28,16 @@ router = APIRouter()
 
 
 @router.get("/admin/config")
-async def get_admin_config(container: AipContainer = Depends(get_container)):
+async def get_admin_config(
+    container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
+):
+    """Return the runtime configuration.
+
+    DEFINER-only: the config dict may contain sensitive values
+    (SMTP credentials, API key indicators, internal hostnames)
+    that must not be exposed to unauthenticated callers.
+    """
     return container.config or {"status": "unconfigured"}
 
 
@@ -77,7 +86,10 @@ async def patch_admin_config(payload: dict, container: AipContainer = Depends(ge
 
 
 @router.get("/admin/sexton/classifications")
-async def get_sexton_classifications(container: AipContainer = Depends(get_container)):
+async def get_sexton_classifications(
+    container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
+):
     # From Sexton actor's failure classifier (ADR-011)
     if container.sexton_actor is not None:
         fc = getattr(container.sexton_actor, "_failure_classifier", None)
@@ -96,7 +108,10 @@ async def get_sexton_classifications(container: AipContainer = Depends(get_conta
 
 
 @router.get("/admin/sexton/audit")
-async def get_sexton_audit(container: AipContainer = Depends(get_container)):
+async def get_sexton_audit(
+    container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
+):
     # Stale rule audit from Sexton actor's failure classifier (7.3)
     if container.sexton_actor is not None:
         fc = getattr(container.sexton_actor, "_failure_classifier", None)
@@ -114,7 +129,10 @@ async def get_sexton_audit(container: AipContainer = Depends(get_container)):
 
 
 @router.get("/admin/sexton/playbook")
-async def get_sexton_playbook(container: AipContainer = Depends(get_container)):
+async def get_sexton_playbook(
+    container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
+):
     # From AcePlaybook (7.2)
     if container.ace_playbook:
         try:
@@ -126,7 +144,10 @@ async def get_sexton_playbook(container: AipContainer = Depends(get_container)):
 
 
 @router.get("/admin/beast/status")
-async def get_beast_status(container: AipContainer = Depends(get_container)):
+async def get_beast_status(
+    container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
+):
     # From Beast (7.5)
     if container.beast:
         try:
@@ -138,7 +159,10 @@ async def get_beast_status(container: AipContainer = Depends(get_container)):
 
 
 @router.get("/admin/router/weights")
-async def get_router_weights(container: AipContainer = Depends(get_container)):
+async def get_router_weights(
+    container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
+):
     # From AdaptiveRouter (7.4)
     if container.adaptive_router:
         try:
@@ -154,6 +178,7 @@ async def get_budget_status(
     scope: str = "session",
     scope_id: str = "default",
     container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
 ):
     """Get budget status for a given scope and scope_id.
 
@@ -170,7 +195,10 @@ async def get_budget_status(
 
 
 @router.get("/admin/autonomy/log")
-async def get_autonomy_log(container: AipContainer = Depends(get_container)):
+async def get_autonomy_log(
+    container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
+):
     # From AutonomyGate audit
     return {"escalations": []}
 
@@ -192,6 +220,7 @@ class BackfillRequest(BaseModel):
 async def backfill_embeddings(
     body: BackfillRequest,
     container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
 ):
     """Generate vector embeddings for lexical documents that don't have them yet.
 
@@ -380,7 +409,10 @@ async def _run_backfill_in_background(body: BackfillRequest, container: AipConta
 
 
 @router.get("/admin/embeddings/backfill/status")
-async def get_backfill_status(container: AipContainer = Depends(get_container)):
+async def get_backfill_status(
+    container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
+):
     """Get status of the (background) backfill process.
     Includes running flag, current progress, and last result.
     """
@@ -393,7 +425,10 @@ async def get_backfill_status(container: AipContainer = Depends(get_container)):
 
 
 @router.get("/admin/hot-reload/status")
-async def get_hot_reload_status(container: AipContainer = Depends(get_container)):
+async def get_hot_reload_status(
+    container: AipContainer = Depends(get_container),
+    _auth=Depends(require_definer),
+):
     """Get detailed hot-reload status including pending and rejected changes.
 
     Sprint 5.26: Provides operators with visibility into the hot-reload
