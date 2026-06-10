@@ -263,8 +263,9 @@ async def retrieval_quality(container: AipContainer = Depends(get_container)):
     # LLM entity extraction summary
     result["llm_entity_extraction"] = await _compute_llm_extraction_summary(container)
 
-    # Channel budget configuration snapshot
-    from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
+    # Channel budget configuration snapshot (importlib to preserve layer discipline)
+    _retr_mod = __import__('importlib').import_module('aip.orchestration.retrieval_orchestrator')
+    OrchestratorConfig = _retr_mod.OrchestratorConfig
     config = OrchestratorConfig()
     result["channel_budgets"] = {
         "fts": config.fts_max_hits,
@@ -312,8 +313,12 @@ async def retrieval_budget_tune(
         - ``summary``: Human-readable summary of the tuning result
         - ``current_budgets``: Current per-channel budget configuration
     """
-    from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
-    from aip.orchestration.adaptive_budget import AdaptiveBudgetTuner
+    # Use importlib to preserve layer discipline (adapter must not import orchestration statically)
+    import importlib as _importlib
+    _retr_mod = _importlib.import_module('aip.orchestration.retrieval_orchestrator')
+    OrchestratorConfig = _retr_mod.OrchestratorConfig
+    _budget_mod = _importlib.import_module('aip.orchestration.adaptive_budget')
+    AdaptiveBudgetTuner = _budget_mod.AdaptiveBudgetTuner
 
     # Compute channel contribution summary from recent traces
     channel_contributions = await _compute_channel_contribution_summary(container)

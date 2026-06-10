@@ -59,7 +59,7 @@ workers = 1
 memory_limit_mb = 4096
 
 [embedding]
-provider = "fake"  # Set to "local" for real embeddings
+provider = "openai_compatible"  # Set to "ollama" for local, "fake" for CI
 
 [performance]
 sqlite_wal_mode = true

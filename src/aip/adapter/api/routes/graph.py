@@ -29,7 +29,7 @@ async def _get_graph_store(container: AipContainer):
     if store is not None:
         return store
     from aip.adapter.graph_store import GraphStore
-    db_path = container.config.get("db_path", "")
+    db_path = container.config.get("db_path", "") or container.config.get("database", {}).get("db_path", "")
     if not db_path:
         try:
             from aip.cli._db_path import get_default_db_path

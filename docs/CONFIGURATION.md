@@ -2,6 +2,10 @@
 
 AIP 0.1 configuration is loaded from `config/aip.config.toml`. All parameters are toggleable per §1.8 (Harness Evolution Principle).
 
+> **Alpha Release Note**: This reference reflects the current config schema as of Sprint 6.4. Some sections
+> reference features that are built but not yet wired (e.g., Sexton maintenance operations require DEBT-006
+> fix). See STATUS.md for the current operational state of each feature.
+
 ---
 
 ## `[retrieval]`
@@ -16,6 +20,18 @@ Retrieval harness parameters for the hybrid retrieval pipeline.
 | `weight_authority` | float | 0.15 | Weight for source authority in hybrid scoring |
 | `weight_frequency` | float | 0.10 | Weight for access frequency in hybrid scoring |
 
+### `[retrieval.channel_weights]`
+
+Channel weights for RRF fusion in the RetrievalOrchestrator (Sprint 6.1+). Higher weight = channel contributes more to the final RRF score. `vector + fts` should sum to approximately 1.0; `corpus` is an independent lexical weight.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `vector` | float | 0.6 | Weight for the vector (semantic) channel |
+| `fts` | float | 0.4 | Weight for the FTS5 (lexical) channel |
+| `corpus` | float | 0.4 | Weight for the corpus-level lexical channel |
+
+To tune these weights, run `scripts/retrieval_weight_tuning.py` which performs a grid search and reports the optimal combination.
+
 ---
 
 ## `[embedding]`
@@ -24,8 +40,13 @@ Embedding provider configuration.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `provider` | string | `"fake"` | Provider: `"fake"` (deterministic), `"local"` (sentence-transformers), `"api"` (remote) |
-| `model` | string | — | Model name for local/api provider (e.g., `"sentence-transformers/all-MiniLM-L6-v2"`) |
+| `provider` | string | `"openai_compatible"` | Provider: `"fake"` (deterministic), `"ollama"` (local Ollama), `"openai_compatible"` (remote API) |
+| `model` | string | `"nvidia/llama-nemotron-embed-vl-1b-v2:free"` | Model name for embedding |
+| `base_url` | string | `"https://openrouter.ai/api"` | API endpoint for openai_compatible provider |
+| `api_key_env` | string | `"AIP_EMBEDDING_API_KEY"` | Environment variable name for API key |
+
+> **Note**: The `[models.embedding]` slot configuration takes priority over this legacy section.
+> Changes to the embedding slot via the API or UI will override these values at runtime.
 
 ---
 
@@ -243,6 +264,17 @@ Vigil actor configuration.
 | `max_re_evaluate_batch_size` | int | 50 | Max artifacts per re-evaluation batch |
 | `entity_consistency_check` | bool | true | Check entity consistency |
 
+### `[vigil.retrieval_quality]`
+
+Retrieval quality monitoring (Sprint 6.4). Vigil periodically samples golden queries through the retrieval pipeline and alerts if precision@5 drops below threshold.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sampling_enabled` | bool | true | Enable retrieval quality sampling |
+| `sample_size` | int | 5 | Number of golden queries per sample |
+| `precision_threshold` | float | 0.3 | Alert if precision@5 drops below this value |
+| `sample_interval_cycles` | int | 6 | Run every N Vigil cycles (~6 hours at default cadence) |
+
 ---
 
 ## `[auth]`
@@ -370,4 +402,114 @@ Release metadata.
 | `release_version` | string | `"0.1.0"` | Version string |
 | `release_date` | string | `""` | ISO 8601 date (set at release) |
 | `release_status` | string | `"alpha"` | Release status |
-| `architecture_revision` | string | `"5.2"` | Architecture document revision |
+| `architecture_revision` | string | `"6.4"` | Architecture document revision |
+
+---
+
+## `[models]` Slots
+
+Model slot configuration for provider dispatch. Each slot defines a model provider, model name,
+and API endpoint. All slots support `openai_compatible` provider (for OpenRouter, OpenAI, DeepSeek, etc.)
+and `ollama` provider (for local inference).
+
+### `[models.synthesis]`
+
+Primary synthesis model for answer generation.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `provider` | string | `"openai_compatible"` | Provider type |
+| `model` | string | varies | Model name (e.g., `"meta-llama/llama-4-maverick"`) |
+| `base_url` | string | varies | API endpoint |
+
+### `[models.evaluation]`
+
+Model used for faithfulness and domain coherence evaluation.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `provider` | string | `"openai_compatible"` | Provider type |
+| `model` | string | varies | Model name (e.g., `"openai/gpt-oss-20b:free"`) |
+| `base_url` | string | varies | API endpoint |
+
+### `[models.sexton]`
+
+Model used by Sexton for failure classification, tagging, and wiki generation.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `provider` | string | `"openai_compatible"` | Provider type |
+| `model` | string | varies | Model name (e.g., `"google/gemma-4-31b-it:free"`) |
+| `base_url` | string | varies | API endpoint |
+
+### `[models.embedding]`
+
+Model used for vector embedding. Takes priority over the legacy `[embedding]` section.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `provider` | string | `"openai_compatible"` | Provider type |
+| `model` | string | varies | Embedding model name |
+| `base_url` | string | varies | API endpoint |
+
+### `[models.beast]`
+
+Model used by Beast for context advisory, tagging, and domain summary.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `provider` | string | `"openai_compatible"` | Provider type |
+| `model` | string | varies | Model name |
+| `base_url` | string | varies | API endpoint |
+
+All model slots share these additional parameters:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `api_key_env` | string | `"AIP_OPENAI_API_KEY"` | Environment variable for API key |
+| `ci_mode` | bool | false | Use deterministic fixtures for CI |
+
+---
+
+## `[read_pool]`
+
+Read connection pool for SQLite concurrency management.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pool_size` | int | 4 | Number of read connections |
+| `per_store_override` | dict | `{}` | Per-store pool size overrides |
+
+---
+
+## `[alerting]`
+
+Alerting system configuration for webhook, email, WebSocket, and SSE notifications.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `enabled` | bool | true | Enable alerting |
+| `webhook_url` | string | `""` | Webhook endpoint for alerts |
+| `digest_interval_seconds` | int | 3600 | Alert digest cadence |
+
+---
+
+## `[config_hot_reload]`
+
+Safe configuration hot-reload settings. Changes to hot-reloadable keys take effect without restart.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `enabled` | bool | true | Enable hot-reload |
+| `safe_keys` | list | varies | Keys that can be hot-reloaded (budget, beast, vigil, sexton, performance, rate_limit, surface, retrieval.channel_weights) |
+
+---
+
+## `[database]`
+
+Database configuration.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `db_path` | string | `"db/state.db"` | Main database path |
+| `lexical_db_path` | string | `"db/lexical.db"` | FTS5 index database path |

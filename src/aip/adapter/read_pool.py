@@ -192,6 +192,8 @@ class ReadPoolMixin:
                 conn = await aiosqlite.connect(db_path)
                 conn.row_factory = sqlite3.Row
                 await conn.execute("PRAGMA journal_mode=WAL")
+                # Sprint 6.3: busy_timeout even on read connections
+                await conn.execute("PRAGMA busy_timeout=5000")
                 await conn.execute("PRAGMA query_only = ON")
                 self._read_pool.append(conn)
                 self._read_pool_available.append(True)
@@ -240,6 +242,8 @@ class ReadPoolMixin:
                     new_conn = await aiosqlite.connect(db_path)
                     new_conn.row_factory = sqlite3.Row
                     await new_conn.execute("PRAGMA journal_mode=WAL")
+                    # Sprint 6.3: busy_timeout on recreated read connections
+                    await new_conn.execute("PRAGMA busy_timeout=5000")
                     await new_conn.execute("PRAGMA query_only = ON")
                     self._read_pool[i] = new_conn
                     self._record_checkout(t0, fallback=False)

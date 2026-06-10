@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     </style>
 </head>
 <body class="bg-zinc-950 text-zinc-200">
@@ -19,15 +21,15 @@
             </div>
             <div class="text-right text-sm">
                 <div id="health-status" class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800">
-                    <span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+                    <span class="w-2 h-2 bg-emerald-400 rounded-full pulse-dot"></span>
                     <span class="font-mono text-xs text-emerald-400">HEALTHY</span>
                 </div>
                 <div class="text-zinc-500 mt-1 text-xs">v0.1 • laptop profile</div>
             </div>
         </div>
 
+        <!-- Quick Links -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <!-- Quick Links -->
             <a href="/static/projects.html" class="group block p-6 bg-zinc-900 border border-zinc-800 rounded-2xl hover:border-zinc-700 transition-colors">
                 <div class="font-semibold text-lg group-hover:text-white">Projects</div>
                 <div class="text-sm text-zinc-400 mt-1">Create, list, and manage projects</div>
@@ -49,6 +51,189 @@
             </a>
         </div>
 
+        <!-- Actor Status Panel (Sprint 6.2) -->
+        <div class="mt-8">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold">Actor Status</h2>
+                <div class="flex items-center gap-2 text-xs text-zinc-500">
+                    <span class="w-1.5 h-1.5 bg-blue-400 rounded-full pulse-dot"></span>
+                    Auto-refreshes every 30s
+                </div>
+            </div>
+            <div id="actor-panel" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Beast -->
+                <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <span id="beast-dot" class="w-2.5 h-2.5 rounded-full bg-zinc-600"></span>
+                            <span class="font-semibold">Beast</span>
+                        </div>
+                        <span class="text-xs text-zinc-500 font-mono">synthesis</span>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Status</span>
+                            <span id="beast-status" class="text-zinc-500">—</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Last Cycle</span>
+                            <span id="beast-last-cycle" class="text-zinc-500 font-mono text-xs">—</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Cycles</span>
+                            <span id="beast-cycles" class="text-zinc-500">—</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Interval</span>
+                            <span id="beast-interval" class="text-zinc-500">—</span>
+                        </div>
+                        <div id="beast-errors-row" class="hidden">
+                            <div class="text-amber-400 text-xs mt-1">⚠ Recent errors</div>
+                            <div id="beast-errors" class="text-xs text-zinc-500 mt-1 max-h-20 overflow-auto"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vigil -->
+                <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <span id="vigil-dot" class="w-2.5 h-2.5 rounded-full bg-zinc-600"></span>
+                            <span class="font-semibold">Vigil</span>
+                        </div>
+                        <span class="text-xs text-zinc-500 font-mono">quality</span>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Status</span>
+                            <span id="vigil-status" class="text-zinc-500">—</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Last Eval</span>
+                            <span id="vigil-last-cycle" class="text-zinc-500 font-mono text-xs">—</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Cycles</span>
+                            <span id="vigil-cycles" class="text-zinc-500">—</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">LLM Faithfulness</span>
+                            <span id="vigil-llm" class="text-zinc-500">—</span>
+                        </div>
+                        <div id="vigil-errors-row" class="hidden">
+                            <div class="text-amber-400 text-xs mt-1">⚠ Recent errors</div>
+                            <div id="vigil-errors" class="text-xs text-zinc-500 mt-1 max-h-20 overflow-auto"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sexton -->
+                <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <span id="sexton-dot" class="w-2.5 h-2.5 rounded-full bg-zinc-600"></span>
+                            <span class="font-semibold">Sexton</span>
+                        </div>
+                        <span class="text-xs text-zinc-500 font-mono">maintenance</span>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Status</span>
+                            <span id="sexton-status" class="text-zinc-500">—</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Last Cycle</span>
+                            <span id="sexton-last-cycle" class="text-zinc-500 font-mono text-xs">—</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Cycles</span>
+                            <span id="sexton-cycles" class="text-zinc-500">—</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Embed Pass</span>
+                            <span id="sexton-embed-pass" class="text-zinc-500">—</span>
+                        </div>
+                        <div id="sexton-errors-row" class="hidden">
+                            <div class="text-amber-400 text-xs mt-1">⚠ Recent errors</div>
+                            <div id="sexton-errors" class="text-xs text-zinc-500 mt-1 max-h-20 overflow-auto"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Embedding & Store Coverage (Sprint 6.2) -->
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Embedding Coverage -->
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+                <div class="font-medium mb-3">Embedding Coverage</div>
+                <div class="flex items-end gap-2 mb-2">
+                    <span id="embed-pct" class="text-3xl font-bold text-emerald-400">0%</span>
+                </div>
+                <div class="w-full bg-zinc-800 rounded-full h-2 mb-3">
+                    <div id="embed-bar" class="bg-emerald-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <div class="flex justify-between text-xs text-zinc-500">
+                    <span><span id="embed-done">0</span> embedded</span>
+                    <span><span id="embed-total">0</span> total</span>
+                </div>
+            </div>
+
+            <!-- Vector Store -->
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+                <div class="font-medium mb-3">Vector Store</div>
+                <div class="flex items-end gap-2 mb-2">
+                    <span id="vector-count" class="text-3xl font-bold text-blue-400">0</span>
+                    <span class="text-sm text-zinc-500 pb-1">vectors</span>
+                </div>
+                <div class="text-xs text-zinc-500" id="vector-status">Not configured</div>
+            </div>
+
+            <!-- Graph Store -->
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+                <div class="font-medium mb-3">Knowledge Graph</div>
+                <div class="flex items-end gap-4 mb-2">
+                    <div>
+                        <span id="graph-nodes" class="text-3xl font-bold text-purple-400">0</span>
+                        <span class="text-sm text-zinc-500">nodes</span>
+                    </div>
+                    <div>
+                        <span id="graph-edges" class="text-3xl font-bold text-purple-300">0</span>
+                        <span class="text-sm text-zinc-500">edges</span>
+                    </div>
+                </div>
+                <div class="text-xs text-zinc-500" id="graph-status">Not configured</div>
+            </div>
+        </div>
+
+        <!-- Alerting Health (Sprint 6.2) -->
+        <div class="mt-6">
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="font-medium">Alerting Health</div>
+                    <span id="alerting-badge" class="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500">Disabled</span>
+                </div>
+                <div id="alerting-detail" class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                        <div class="text-zinc-400">Circuit Breaker</div>
+                        <div id="alerting-cb" class="text-zinc-500">—</div>
+                    </div>
+                    <div>
+                        <div class="text-zinc-400">Alerts Sent</div>
+                        <div id="alerting-sent" class="text-zinc-500">—</div>
+                    </div>
+                    <div>
+                        <div class="text-zinc-400">Delivery Failures</div>
+                        <div id="alerting-failures" class="text-zinc-500">—</div>
+                    </div>
+                    <div>
+                        <div class="text-zinc-400">WS Subscribers</div>
+                        <div id="alerting-ws" class="text-zinc-500">—</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="mt-8 text-xs text-zinc-500">
             This is a minimal server-rendered HTMX dashboard. All data comes from the REST API. 
             Authentication and rate limiting are enforced by the server.
@@ -56,19 +241,171 @@
     </div>
 
     <script>
-        // Simple health poll
-        async function checkHealth() {
+        // Format timestamp to relative time
+        function timeAgo(ts) {
+            if (!ts) return '—';
+            const now = Date.now() / 1000;
+            const diff = now - ts;
+            if (diff < 60) return 'just now';
+            if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+            if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+            return Math.floor(diff / 86400) + 'd ago';
+        }
+
+        function formatInterval(seconds) {
+            if (!seconds) return '—';
+            if (seconds < 60) return seconds + 's';
+            if (seconds < 3600) return Math.round(seconds / 60) + 'm';
+            return Math.round(seconds / 3600) + 'h';
+        }
+
+        function updateActorCard(name, data) {
+            const initialized = data.initialized;
+            const dot = document.getElementById(name + '-dot');
+            const status = document.getElementById(name + '-status');
+            const lastCycle = document.getElementById(name + '-last-cycle');
+            const cycles = document.getElementById(name + '-cycles');
+            const errorsRow = document.getElementById(name + '-errors-row');
+            const errorsDiv = document.getElementById(name + '-errors');
+
+            if (!initialized) {
+                dot.className = 'w-2.5 h-2.5 rounded-full bg-zinc-600';
+                status.textContent = 'Not initialized';
+                status.className = 'text-zinc-600';
+                return;
+            }
+
+            const hasErrors = data.recent_errors && data.recent_errors.length > 0;
+            dot.className = hasErrors
+                ? 'w-2.5 h-2.5 rounded-full bg-amber-400 pulse-dot'
+                : 'w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-dot';
+            status.textContent = hasErrors ? 'Running (errors)' : 'Running';
+            status.className = hasErrors ? 'text-amber-400' : 'text-emerald-400';
+
+            const lastTime = data.last_cycle_time || data.last_eval_time;
+            lastCycle.textContent = timeAgo(lastTime);
+
+            cycles.textContent = data.cycle_count != null ? data.cycle_count : '—';
+
+            // Actor-specific fields
+            if (name === 'beast') {
+                const interval = document.getElementById('beast-interval');
+                if (interval && data.interval_seconds) interval.textContent = formatInterval(data.interval_seconds);
+            }
+            if (name === 'vigil') {
+                const llm = document.getElementById('vigil-llm');
+                if (llm) llm.textContent = data.llm_faithfulness_enabled ? 'Enabled' : 'Disabled';
+            }
+            if (name === 'sexton') {
+                const embedPass = document.getElementById('sexton-embed-pass');
+                if (embedPass) {
+                    const pass = data.embedding_pass;
+                    if (pass && pass.running) {
+                        embedPass.textContent = 'Running...';
+                        embedPass.className = 'text-blue-400';
+                    } else if (pass && pass.last_completed_at) {
+                        embedPass.textContent = 'Idle';
+                        embedPass.className = 'text-zinc-400';
+                    } else {
+                        embedPass.textContent = '—';
+                    }
+                }
+            }
+
+            if (hasErrors) {
+                errorsRow.classList.remove('hidden');
+                errorsDiv.textContent = data.recent_errors.slice(-3).join('\n');
+            } else {
+                errorsRow.classList.add('hidden');
+            }
+        }
+
+        async function refreshDashboard() {
             try {
                 const res = await fetch('/api/v1/health');
                 const data = await res.json();
+
+                // Health status badge
                 const el = document.getElementById('health-status');
                 if (data.status === 'ok') {
-                    el.innerHTML = `<span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span><span class="font-mono text-xs text-emerald-400">HEALTHY</span>`;
+                    el.innerHTML = '<span class="w-2 h-2 bg-emerald-400 rounded-full pulse-dot"></span><span class="font-mono text-xs text-emerald-400">HEALTHY</span>';
+                } else if (data.status === 'degraded') {
+                    el.innerHTML = '<span class="w-2 h-2 bg-amber-400 rounded-full pulse-dot"></span><span class="font-mono text-xs text-amber-400">DEGRADED</span>';
+                } else {
+                    el.innerHTML = '<span class="w-2 h-2 bg-red-400 rounded-full pulse-dot"></span><span class="font-mono text-xs text-red-400">UNHEALTHY</span>';
                 }
-            } catch(e) {}
+
+                // Actor details (Sprint 6.2)
+                if (data.actor_details) {
+                    updateActorCard('beast', data.actor_details.beast || {});
+                    updateActorCard('vigil', data.actor_details.vigil || {});
+                    updateActorCard('sexton', data.actor_details.sexton || {});
+                }
+
+                // Embedding coverage
+                if (data.embedding_coverage) {
+                    const ec = data.embedding_coverage;
+                    const pct = ec.percentage || 0;
+                    document.getElementById('embed-pct').textContent = pct.toFixed(1) + '%';
+                    document.getElementById('embed-bar').style.width = pct + '%';
+                    document.getElementById('embed-done').textContent = ec.embedded || 0;
+                    document.getElementById('embed-total').textContent = ec.total || 0;
+
+                    // Color coding
+                    const pctEl = document.getElementById('embed-pct');
+                    const barEl = document.getElementById('embed-bar');
+                    if (pct >= 90) {
+                        pctEl.className = 'text-3xl font-bold text-emerald-400';
+                        barEl.className = 'bg-emerald-500 h-2 rounded-full transition-all duration-500';
+                    } else if (pct >= 50) {
+                        pctEl.className = 'text-3xl font-bold text-blue-400';
+                        barEl.className = 'bg-blue-500 h-2 rounded-full transition-all duration-500';
+                    } else {
+                        pctEl.className = 'text-3xl font-bold text-amber-400';
+                        barEl.className = 'bg-amber-500 h-2 rounded-full transition-all duration-500';
+                    }
+                }
+
+                // Store sizes
+                if (data.store_sizes) {
+                    const ss = data.store_sizes;
+                    if (ss.vector_store) {
+                        document.getElementById('vector-count').textContent = ss.vector_store.count || 0;
+                        document.getElementById('vector-status').textContent = ss.vector_store.available ? 'Connected' : 'Not available';
+                    }
+                    if (ss.graph_store) {
+                        document.getElementById('graph-nodes').textContent = ss.graph_store.nodes || 0;
+                        document.getElementById('graph-edges').textContent = ss.graph_store.edges || 0;
+                        document.getElementById('graph-status').textContent = ss.graph_store.available ? 'Connected' : 'Not available';
+                    }
+                }
+
+                // Alerting health
+                if (data.alerting_health) {
+                    const ah = data.alerting_health;
+                    const badge = document.getElementById('alerting-badge');
+                    if (ah.enabled) {
+                        badge.textContent = 'Active';
+                        badge.className = 'text-xs px-2 py-0.5 rounded-full bg-emerald-900 text-emerald-300';
+                    } else {
+                        badge.textContent = 'Disabled';
+                        badge.className = 'text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500';
+                    }
+                    document.getElementById('alerting-cb').textContent = ah.circuit_breaker_open ? 'Open' : 'Closed';
+                    document.getElementById('alerting-cb').className = ah.circuit_breaker_open ? 'text-red-400' : 'text-emerald-400';
+                    document.getElementById('alerting-sent').textContent = ah.recent_alert_count || 0;
+                    document.getElementById('alerting-failures').textContent = ah.delivery_failures || 0;
+                    document.getElementById('alerting-failures').className = ah.delivery_failures > 0 ? 'text-amber-400' : 'text-zinc-500';
+                    document.getElementById('alerting-ws').textContent = ah.realtime_subscribers || 0;
+                }
+            } catch(e) {
+                console.error('Dashboard refresh failed:', e);
+            }
         }
-        setInterval(checkHealth, 30000);
-        checkHealth();
+
+        // Refresh every 30 seconds
+        setInterval(refreshDashboard, 30000);
+        refreshDashboard();
     </script>
 </body>
 </html>

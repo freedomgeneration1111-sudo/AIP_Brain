@@ -6,6 +6,10 @@ AIP (AI Poiesis) is a local-first, sovereign knowledge synthesis engine that gui
 specification through generation, review, and canonical promotion — with the human DEFINER retaining absolute
 sovereignty at every stage.
 
+**Status:** Alpha Test Release (0.1.0-alpha) — suitable for evaluation and dogfood usage.
+See [STATUS.md](../STATUS.md) for known limitations and [DOGFOOD_READY.md](../DOGFOOD_READY.md) for
+the first-run guide.
+
 ## Core Principles
 
 1. **DEFINER Sovereignty** (§1.7): No UI, workflow, Beast cadence, MCP call, or queued task may bypass the DEFINER gates. The human always has the final say.
@@ -54,8 +58,14 @@ SPECIFIED → GENERATED → REVIEWED → APPROVED → SUPERSEDED
 # Install dependencies
 uv sync
 
-# Run the API server
-uv run uvicorn aip.adapter.api.app:create_app --host 0.0.0.0 --port 8000 --factory
+# Initialize the database
+uv run aip init
+
+# Ingest your Claude conversations
+uv run aip corpus ingest /path/to/conversations.json --source-model claude
+
+# Start the API server + GUI
+./scripts/start.sh
 
 # Run tests
 uv run pytest
@@ -63,6 +73,8 @@ uv run pytest
 # Run acceptance tests
 uv run pytest tests/acceptance/
 ```
+
+For the complete first-run guide, see [DOGFOOD_READY.md](../DOGFOOD_READY.md).
 
 ## Deployment Profiles
 
@@ -85,6 +97,23 @@ aip/
 └── workflows/            # Workflow YAML definitions
 ```
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [STATUS.md](../STATUS.md) | Current system state, known limitations, corpus metrics |
+| [ROADMAP.md](../ROADMAP.md) | Phase status, maintenance mode, future work |
+| [TECH_DEBT.md](../TECH_DEBT.md) | Deferred work register with remediation triggers |
+| [DOGFOOD_READY.md](../DOGFOOD_READY.md) | First-run guide for new users |
+| [AIP_GOVERNANCE.md](../AIP_GOVERNANCE.md) | Binding governance contract (AIP-G-01 through AIP-G-11) |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | Three-layer architecture, subsystems, data flow |
+| [API_REFERENCE.md](./API_REFERENCE.md) | REST API endpoint reference |
+| [CONFIGURATION.md](./CONFIGURATION.md) | Configuration reference for `aip.config.toml` |
+| [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) | Development setup and conventions |
+| [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) | Laptop and production deployment |
+| [Maintenance_Protocol.md](./Maintenance_Protocol.md) | Operational procedures for maintenance phase |
+| [CHANGELOG.md](./CHANGELOG.md) | Append-only change history |
+
 ## License
 
-Proprietary — internal use only.
+MIT — see [LICENSE](../LICENSE).

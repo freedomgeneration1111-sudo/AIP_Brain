@@ -956,3 +956,257 @@ def _run_graph_extract(db_path: str, limit: int) -> None:
     except Exception as exc:
         click.echo(f"Error during graph extraction: {exc}", err=True)
         sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Sprint 6.3: Corpus integrity verification
+# ---------------------------------------------------------------------------
+
+
+@corpus.command("verify")
+@click.option("--repair", is_flag=True, default=False,
+              help="Attempt to repair inconsistencies found (reset orphaned embedded flags, clear orphaned vectors).")
+@click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
+def corpus_verify_cmd(repair: bool, db_path: str | None) -> None:
+    """Verify corpus integrity across corpus_turns, vector store, and FTS5 indexes.
+
+    Checks for:
+    1. Orphaned embedded flags: turns marked embedded=1 but no vector in the vector store.
+    2. Orphaned vectors: vectors in the vector store with no matching corpus_turn.
+    3. Missing FTS5 entries: turns in corpus_turns but not in the FTS5 index.
+    4. Stale re-embed flags: turns marked needs_reembed=1 that should have been processed.
+    5. Model consistency: turns embedded with different models than the current one.
+
+    Use --repair to automatically fix safe-to-repair inconsistencies:
+    - Reset orphaned embedded flags (embedded=1 but no vector) back to embedded=0.
+    - Clear orphaned vectors (no matching turn) from the vector store.
+
+    Examples:
+      uv run aip corpus verify
+      uv run aip corpus verify --repair
+    """
+    import sqlite3 as _sqlite3
+    import tomllib
+    from pathlib import Path
+
+    resolved_db_path = db_path or get_default_db_path()
+
+    # Determine vector DB path from config
+    cfg: dict = {}
+    config_p = Path("config/aip.config.toml")
+    if config_p.exists():
+        with open(config_p, "rb") as f:
+            cfg = tomllib.load(f)
+    vec_db_path = cfg.get("vector_backend", {}).get("db_path", "db/vectors.db")
+
+    issues_found = 0
+    issues_repaired = 0
+
+    # --- Check 1: Orphaned embedded flags ---
+    click.echo("Checking for orphaned embedded flags (embedded=1 but no vector)...")
+
+    # Get all embedded turn IDs from corpus_turns
+    main_conn = _sqlite3.connect(resolved_db_path)
+    main_conn.row_factory = _sqlite3.Row
+    try:
+        embedded_rows = main_conn.execute(
+            "SELECT turn_id, embedding_model FROM corpus_turns WHERE embedded = 1"
+        ).fetchall()
+        embedded_ids = {row["turn_id"]: row["embedding_model"] for row in embedded_rows}
+    finally:
+        main_conn.close()
+
+    # Get all vector IDs from vector store
+    vec_ids: set[str] = set()
+    try:
+        vec_conn = _sqlite3.connect(vec_db_path)
+        vec_conn.row_factory = _sqlite3.Row
+        try:
+            vec_rows = vec_conn.execute("SELECT id FROM vector_metadata").fetchall()
+            vec_ids = {row["id"] for row in vec_rows}
+        finally:
+            vec_conn.close()
+    except Exception as exc:
+        click.echo(f"  Warning: Could not read vector store: {exc}", err=True)
+        click.echo("  Skipping vector-related checks.")
+        vec_ids = set()
+
+    # Orphaned embedded: marked embedded=1 but no vector
+    orphaned_embedded = {tid for tid in embedded_ids if tid not in vec_ids}
+    if orphaned_embedded:
+        issues_found += len(orphaned_embedded)
+        click.echo(f"  FOUND: {len(orphaned_embedded)} turns marked embedded=1 but have no vector")
+        if len(orphaned_embedded) <= 10:
+            for tid in sorted(orphaned_embedded):
+                click.echo(f"    - {tid} (model: {embedded_ids.get(tid, 'unknown')})")
+        else:
+            for tid in sorted(orphaned_embedded)[:5]:
+                click.echo(f"    - {tid} (model: {embedded_ids.get(tid, 'unknown')})")
+            click.echo(f"    ... and {len(orphaned_embedded) - 5} more")
+
+        if repair:
+            main_conn = _sqlite3.connect(resolved_db_path)
+            try:
+                cursor = main_conn.execute(
+                    "UPDATE corpus_turns SET embedded = 0, needs_reembed = 0 WHERE embedded = 1 AND turn_id IN "
+                    f"({','.join('?' * len(orphaned_embedded))})",
+                    list(orphaned_embedded),
+                )
+                main_conn.commit()
+                repaired = cursor.rowcount
+                issues_repaired += repaired
+                click.echo(f"  REPAIRED: Reset {repaired} orphaned embedded flags to embedded=0")
+            finally:
+                main_conn.close()
+    else:
+        click.echo("  OK: No orphaned embedded flags found")
+
+    # --- Check 2: Orphaned vectors ---
+    click.echo("Checking for orphaned vectors (vector exists but no corpus_turn)...")
+
+    if vec_ids:
+        corpus_ids: set[str] = set()
+        main_conn = _sqlite3.connect(resolved_db_path)
+        try:
+            rows = main_conn.execute("SELECT turn_id FROM corpus_turns").fetchall()
+            corpus_ids = {row[0] for row in rows}
+        finally:
+            main_conn.close()
+
+        orphaned_vectors = {vid for vid in vec_ids if vid not in corpus_ids}
+        if orphaned_vectors:
+            issues_found += len(orphaned_vectors)
+            click.echo(f"  FOUND: {len(orphaned_vectors)} vectors with no matching corpus turn")
+            if len(orphaned_vectors) <= 10:
+                for vid in sorted(orphaned_vectors):
+                    click.echo(f"    - {vid}")
+            else:
+                for vid in sorted(orphaned_vectors)[:5]:
+                    click.echo(f"    - {vid}")
+                click.echo(f"    ... and {len(orphaned_vectors) - 5} more")
+
+            if repair:
+                vec_conn = _sqlite3.connect(vec_db_path)
+                try:
+                    cursor = vec_conn.execute(
+                        "DELETE FROM vector_metadata WHERE id IN "
+                        f"({','.join('?' * len(orphaned_vectors))})",
+                        list(orphaned_vectors),
+                    )
+                    try:
+                        vec_conn.execute("DELETE FROM vss_vectors WHERE rowid IN "
+                                        "(SELECT rowid FROM vector_metadata WHERE id IN "
+                                        f"({','.join('?' * len(orphaned_vectors))}))",
+                                        list(orphaned_vectors))
+                    except Exception:
+                        pass  # vss table may not exist
+                    vec_conn.commit()
+                    repaired = cursor.rowcount
+                    issues_repaired += repaired
+                    click.echo(f"  REPAIRED: Deleted {repaired} orphaned vectors")
+                finally:
+                    vec_conn.close()
+        else:
+            click.echo("  OK: No orphaned vectors found")
+    else:
+        click.echo("  SKIPPED: Vector store not accessible")
+
+    # --- Check 3: FTS5 consistency ---
+    click.echo("Checking FTS5 index consistency...")
+
+    main_conn = _sqlite3.connect(resolved_db_path)
+    try:
+        # Count corpus_turns vs FTS5 entries
+        ct_count = main_conn.execute("SELECT COUNT(*) FROM corpus_turns").fetchone()[0]
+        fts_count = main_conn.execute("SELECT COUNT(*) FROM corpus_turns_fts").fetchone()[0]
+
+        if ct_count != fts_count:
+            issues_found += 1
+            diff = ct_count - fts_count
+            click.echo(f"  FOUND: corpus_turns has {ct_count} rows but FTS5 has {fts_count} entries (diff: {diff})")
+            if repair:
+                # Rebuild FTS5 index by deleting and re-inserting
+                click.echo("  REPAIR: Rebuilding FTS5 index...")
+                main_conn.execute("DELETE FROM corpus_turns_fts")
+                main_conn.execute(
+                    "INSERT INTO corpus_turns_fts(rowid, turn_id, conversation_name, searchable_text, primary_domain) "
+                    "SELECT rowid, turn_id, conversation_name, searchable_text, primary_domain FROM corpus_turns"
+                )
+                main_conn.commit()
+                new_fts = main_conn.execute("SELECT COUNT(*) FROM corpus_turns_fts").fetchone()[0]
+                issues_repaired += 1
+                click.echo(f"  REPAIRED: FTS5 rebuilt — now {new_fts} entries (was {fts_count})")
+        else:
+            click.echo(f"  OK: FTS5 index consistent ({fts_count} entries)")
+    except Exception as exc:
+        click.echo(f"  Warning: FTS5 check failed: {exc}", err=True)
+    finally:
+        main_conn.close()
+
+    # --- Check 4: Stale re-embed flags ---
+    click.echo("Checking for stale re-embed flags...")
+
+    main_conn = _sqlite3.connect(resolved_db_path)
+    try:
+        stale_count = main_conn.execute(
+            "SELECT COUNT(*) FROM corpus_turns WHERE needs_reembed = 1 AND embedded = 1"
+        ).fetchone()[0]
+        if stale_count > 0:
+            issues_found += 1
+            click.echo(f"  FOUND: {stale_count} turns with both needs_reembed=1 AND embedded=1 (contradictory)")
+            if repair:
+                cursor = main_conn.execute(
+                    "UPDATE corpus_turns SET embedded = 0 WHERE needs_reembed = 1 AND embedded = 1"
+                )
+                main_conn.commit()
+                issues_repaired += cursor.rowcount
+                click.echo(f"  REPAIRED: Reset {cursor.rowcount} contradictory turns to embedded=0")
+        else:
+            click.echo("  OK: No contradictory re-embed flags")
+
+        # Also check for very old needs_reembed flags (stale >7 days)
+        from datetime import datetime as _dt, timezone as _tz
+        week_ago = (_dt.now(_tz.utc).isoformat())
+        stale_old = main_conn.execute(
+            "SELECT COUNT(*) FROM corpus_turns WHERE needs_reembed = 1 AND updated_at < ?",
+            (week_ago,),
+        ).fetchone()[0]
+        if stale_old > 0:
+            click.echo(f"  NOTE: {stale_old} turns with needs_reembed=1 older than current session "
+                       "(may indicate interrupted re-embed pass)")
+    finally:
+        main_conn.close()
+
+    # --- Check 5: Model consistency ---
+    click.echo("Checking embedding model consistency...")
+
+    main_conn = _sqlite3.connect(resolved_db_path)
+    try:
+        model_dist = main_conn.execute(
+            "SELECT embedding_model, COUNT(*) as c FROM corpus_turns "
+            "WHERE embedded = 1 GROUP BY embedding_model ORDER BY c DESC"
+        ).fetchall()
+        if model_dist:
+            models = {row[0] or "(empty)": row[1] for row in model_dist}
+            if len(models) > 1:
+                click.echo(f"  NOTE: Multiple embedding models in use: {models}")
+                click.echo("  This is normal after a model change. Re-embedding should converge.")
+            else:
+                model_name = list(models.keys())[0]
+                click.echo(f"  OK: Single embedding model: {model_name} ({list(models.values())[0]} turns)")
+        else:
+            click.echo("  OK: No embedded turns yet")
+    finally:
+        main_conn.close()
+
+    # --- Summary ---
+    click.echo("")
+    if issues_found == 0:
+        click.echo("Corpus integrity: OK — no inconsistencies found.")
+    else:
+        click.echo(f"Corpus integrity: {issues_found} issue(s) found.")
+        if repair:
+            click.echo(f"  {issues_repaired} issue(s) repaired.")
+        else:
+            click.echo("  Run with --repair to fix safe-to-repair issues.")
+

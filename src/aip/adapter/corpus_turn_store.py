@@ -149,6 +149,8 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
             await self._conn.execute("PRAGMA journal_mode=WAL")
+            # Sprint 6.3: busy_timeout to handle concurrent write contention
+            await self._conn.execute("PRAGMA busy_timeout=5000")
             self._health_track_connect()
             if not self._tables_ready:
                 await self._create_tables(self._conn)
@@ -341,6 +343,43 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
                 (embedding_model, now, now, turn_id),
             )
             await conn.commit()
+        except Exception:
+            await self._reset_conn()
+            raise
+
+    async def batch_mark_embedded(
+        self, turn_ids: list[str], embedding_model: str = "",
+    ) -> int:
+        """Sprint 6.3: Mark multiple turns as embedded in a single transaction.
+
+        This reduces write contention by batching multiple mark_embedded
+        operations into one transaction instead of committing each one
+        individually. Returns the number of turns updated.
+
+        Args:
+            turn_ids: List of turn IDs to mark as embedded.
+            embedding_model: Name of the model used for embedding.
+        """
+        if not turn_ids:
+            return 0
+        conn = await self._get_conn()
+        try:
+            now = datetime.now(timezone.utc).isoformat() + "Z"
+            updated = 0
+            # Process in chunks of 50 to avoid SQL variable limit
+            chunk_size = 50
+            for i in range(0, len(turn_ids), chunk_size):
+                chunk = turn_ids[i : i + chunk_size]
+                placeholders = ",".join("?" * len(chunk))
+                cursor = await conn.execute(
+                    f"UPDATE corpus_turns SET embedded = 1, embedding_model = ?, "
+                    f"needs_reembed = 0, last_embed_at = ?, updated_at = ? "
+                    f"WHERE turn_id IN ({placeholders})",
+                    [embedding_model, now, now] + chunk,
+                )
+                updated += cursor.rowcount
+            await conn.commit()
+            return updated
         except Exception:
             await self._reset_conn()
             raise

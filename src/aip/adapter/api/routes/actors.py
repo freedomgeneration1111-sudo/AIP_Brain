@@ -20,42 +20,35 @@ async def get_actors_status(container: AipContainer = Depends(get_container)):
 
     Returns health, last-cycle info, and configuration for Beast, Vigil, and Sexton.
     This is the primary endpoint the GUI uses to populate the actor status display.
+
+    Sprint 6.2: Now uses get_status_summary() for all three actors, providing
+    consistent cycle_count, recent_errors, and dependency information.
     """
     actors = {}
 
     # --- Beast ---
-    beast_status: dict = {"initialized": container.beast is not None, "health": None, "last_cycle": None}
-    if container.beast is not None:
+    beast_status: dict = {"initialized": container.beast is not None}
+    if container.beast is not None and hasattr(container.beast, "get_status_summary"):
         try:
-            health = await container.beast.run_health_check()
-            beast_status["health"] = health
-            beast_status["last_cycle_time"] = container.beast._last_cycle_time
-            beast_status["interval_seconds"] = container.beast._config.health_check_interval_seconds
+            beast_status = container.beast.get_status_summary()
         except Exception as exc:
             beast_status["health_error"] = str(exc)
     actors["beast"] = beast_status
 
     # --- Vigil ---
-    vigil_status: dict = {"initialized": container.vigil is not None, "health": None}
-    if container.vigil is not None:
+    vigil_status: dict = {"initialized": container.vigil is not None}
+    if container.vigil is not None and hasattr(container.vigil, "get_status_summary"):
         try:
-            health = await container.vigil.check_canonical_health()
-            vigil_status["health"] = health
-            vigil_status["interval_seconds"] = container.vigil.config.canonical_health_check_interval_seconds
-            vigil_status["stale_threshold_days"] = container.vigil.config.stale_threshold_days
+            vigil_status = container.vigil.get_status_summary()
         except Exception as exc:
             vigil_status["health_error"] = str(exc)
     actors["vigil"] = vigil_status
 
     # --- Sexton (ADR-011 maintenance actor) ---
-    sexton_status: dict = {"initialized": container.sexton_actor is not None, "unclassified_count": 0}
-    if container.sexton_actor is not None:
+    sexton_status: dict = {"initialized": container.sexton_actor is not None}
+    if container.sexton_actor is not None and hasattr(container.sexton_actor, "get_status_summary"):
         try:
-            fc = getattr(container.sexton_actor, "_failure_classifier", None)
-            if fc is not None:
-                unclassified = await fc.count_unclassified()
-                sexton_status["unclassified_count"] = unclassified
-            sexton_status["interval_seconds"] = container.sexton_actor._config.classification_interval_seconds
+            sexton_status = container.sexton_actor.get_status_summary()
         except Exception as exc:
             sexton_status["error"] = str(exc)
     actors["sexton"] = sexton_status

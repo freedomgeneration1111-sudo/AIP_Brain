@@ -100,3 +100,76 @@ Stage Summary:
 - Delivery status (including email where possible) is visible per channel via polling
 - WebSocket uses native permessage-deflate compression when available, with graceful fallback
 - All changes are backward-compatible with safe defaults
+
+---
+Task ID: sprint-6.4
+Agent: main
+Task: Sprint 6.4 — Retrieval Quality Validation and Project Closure (final sprint)
+
+Work Log:
+- Performed comprehensive code review of retrieval evaluation harness, hybrid retrieval implementation, documentation state, ADR structure, and Vigil integration
+- Deliverable 1: Retrieval Evaluation Harness improvements
+  - Created scripts/update_golden_ids.py to map golden queries to real corpus turn IDs
+  - Updated tests/retrieval_goldens/golden_queries.json with corpus-mapped IDs
+  - Added --mode flag (hybrid/fts-only/all) to aip eval retrieval CLI
+  - Added config_snapshot to EvalResult capturing mode, channels, weights, and k
+  - Added baseline save to docs/retrieval_benchmark_baseline.json alongside eval_results/baseline.json
+  - Bumped eval_harness_version from "5.12" to "6.4"
+- Deliverable 2: Channel Weight Tuning
+  - Created scripts/retrieval_weight_tuning.py grid search over vector_weight [0.2-0.8]
+  - Added [retrieval.channel_weights] section to config/aip.config.toml
+  - Wired config channel weights into OrchestratorConfig via ask_pipeline.py _search_sources_with_trace()
+  - Updated aip eval retrieval CLI to read channel weights from config in hybrid mode
+- Deliverable 3: Vigil Retrieval Quality Gate
+  - Added _run_retrieval_quality_sample() method to Vigil actor
+  - Samples 3-5 golden queries every N cycles, computes precision@5
+  - Alerts on degradation via _alert_manager if precision@5 drops below threshold
+  - Added retrieval quality config fields to VigilConfig
+  - Added [vigil.retrieval_quality] section to aip.config.toml
+  - Updated app.py VigilConfig creation to flatten nested config
+- Deliverable 4: Documentation & Project Closure
+  - Updated STATUS.md: marked maintenance mode, updated retrieval quality section, refreshed corpus stats
+  - Updated ROADMAP.md: marked Phase 0/1/2/3 as COMPLETE, added Maintenance Mode section, updated version history
+  - Updated TECH_DEBT.md: clarified DEBT-006 as highest priority, updated DEBT-006 impact description
+  - Wrote ADR-013: documented Sprint 6.4 decisions, scope exclusions, and consequences
+  - Created docs/Maintenance_Protocol.md with operational procedures for maintenance phase
+
+Stage Summary:
+- Retrieval evaluation harness supports FTS5-only vs Hybrid comparison via --mode flag
+- Channel weights are configurable through aip.config.toml and read by the orchestrator
+- Vigil provides automated retrieval quality degradation detection
+- All major documentation is accurate and current
+- ADR-013 written; project explicitly marked as entering maintenance mode
+- docs/Maintenance_Protocol.md created with emergency procedures and regular maintenance schedule
+- Sprint 6.4 exit criteria addressed: harness exists, hybrid comparison supported, documentation current, ADR-013 written
+- Note: Hybrid ≥20% precision@5 improvement target requires full embedding pass (currently ~1.8% coverage)
+
+---
+Task ID: alpha-doc-refresh
+Agent: main
+Task: Bring all documentation up to date for alpha test release
+
+Work Log:
+- Audited full codebase state: git history, test counts, config.toml, all 14 ADRs, existing documentation
+- Identified key discrepancies: stale dates, wrong license, missing config sections, outdated architecture descriptions
+- Updated STATUS.md: added alpha release framing, expanded known limitations for testers, fixed eval harness description
+- Updated ROADMAP.md: added alpha release version history entry
+- Updated CHANGELOG.md: added comprehensive Sprint 6.0–6.4 entries, fixed Unreleased header, renamed old Phase 9 entry
+- Updated docs/README.md: fixed license (MIT not proprietary), added alpha status badge, refreshed quick start, added documentation index table
+- Updated CONTRIBUTING.md: fixed repo URL (AIP_Brain not aip), added alpha maintenance mode guidance
+- Updated docs/ARCHITECTURE.md: rewrote Sexton/Beast/Vigil actor descriptions to reflect ADR-011 refactor, added retrieval pipeline diagram and description
+- Updated docs/CONFIGURATION.md: added [retrieval.channel_weights], [vigil.retrieval_quality], [models.*] slots (5), [read_pool], [alerting], [config_hot_reload], [database] sections; updated [embedding] defaults to openai_compatible; fixed architecture_revision to 6.4
+- Updated docs/DEPLOYMENT_GUIDE.md: fixed [embedding] default from "fake" to "openai_compatible"
+- Updated docs/DEVELOPER_GUIDE.md: added CLI commands section, eval CLI section, updated config key references
+- Updated docs/API_REFERENCE.md: added Graph, Corpus, Vigil Quality, Retrieval Dashboard sections; updated hot-reloadable keys table; updated phase reference to Sprint 6.4
+- Updated DOGFOOD_READY.md: rewrote header with alpha test release caveats, what works well, known limitations
+- Updated docs/implementation_status.md: added alpha release summary header with Sprint 6.0–6.4 changes, updated date and scaffolding percentage
+- Updated docs/Maintenance_Protocol.md: added alpha test release framing, tester guidance
+- Updated config/aip.config.toml: fixed architecture_revision from "5.2" to "6.4"
+
+Stage Summary:
+- 16 documentation files updated for alpha test release
+- Key fixes: license corrected (MIT), repo URL corrected, architecture revision aligned (6.4), embedding defaults updated (openai_compatible), retrieval pipeline documented, actor descriptions aligned with ADR-011
+- Missing sections added to CONFIGURATION.md: channel weights, vigil quality, model slots, read pool, alerting, hot-reload, database
+- New API endpoint sections added: Graph, Corpus, Vigil Quality, Retrieval Dashboard, Embeddings Backfill
+- Alpha tester guidance added to DOGFOOD_READY.md, CONTRIBUTING.md, Maintenance_Protocol.md, STATUS.md

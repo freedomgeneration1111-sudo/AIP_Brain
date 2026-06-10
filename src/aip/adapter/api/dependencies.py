@@ -95,6 +95,18 @@ class AipContainer:
         self._alert_history_store: Any = None  # AlertHistoryStore for SQLite-backed alert history
         # Backfill status for async backfill tracking (simple in-memory for now)
         self.backfill_status: dict = {"running": False, "last_result": None, "progress": {}}
+        # Startup background tasks — stored on container so shutdown can cancel them
+        self._sexton_startup_task: Any = None
+        self._vigil_startup_task: Any = None
+        # Orchestration function references — populated in lifespan.
+        # Routes access these through the container instead of importing
+        # orchestration directly, preserving layer discipline (adapter → foundation only).
+        self._ask_fn: Any = None  # ask_pipeline.ask
+        self._ask_stores_class: Any = None  # ask_pipeline.AskStores
+        self._search_sources_fn: Any = None  # ask_pipeline._search_sources_with_trace
+        self._sanitize_fts_query_fn: Any = None  # ask_pipeline._sanitize_fts_query
+        self._ingest_conversation_fn: Any = None  # ingestion.pipeline.ingest_conversation
+        self._ingest_file_fn: Any = None  # ingestion.pipeline.ingest_file
 
     def set_embedding_provider(self, provider: "EmbeddingProvider | None") -> None:
         """Safely replace the embedding provider.

@@ -6,6 +6,10 @@
     <title>Admin + Memory — AIP 0.1</title>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    </style>
 </head>
 <body class="bg-zinc-950 text-zinc-200 p-8 max-w-5xl mx-auto">
     <div class="flex items-center justify-between mb-6">
@@ -30,8 +34,126 @@
         </div>
     </div>
 
+    <!-- Sprint 6.2: Alerting & Actor Health Panel -->
+    <div class="mt-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold">Alerting & Actor Health</h2>
+            <div class="flex items-center gap-2 text-xs text-zinc-500">
+                <span class="w-1.5 h-1.5 bg-blue-400 rounded-full pulse-dot"></span>
+                Auto-refreshes every 60s
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Alerting Health -->
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="font-medium">Alerting Subsystem</div>
+                    <span id="admin-alerting-badge" class="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500">Checking...</span>
+                </div>
+                <div id="admin-alerting-content" class="space-y-3 text-sm">
+                    <div class="text-xs text-zinc-500">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Recent Alerts -->
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="font-medium">Recent Alerts</div>
+                    <span id="admin-alert-count" class="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500">0</span>
+                </div>
+                <div id="admin-recent-alerts" class="space-y-2 text-sm max-h-60 overflow-auto">
+                    <div class="text-xs text-zinc-500">Loading...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="mt-8 text-xs text-zinc-500">
         All panels are live calls to the Admin/Memory REST endpoints. Auth and rate limiting apply server-side.
     </div>
+
+    <script>
+        async function refreshAlertingHealth() {
+            try {
+                const res = await fetch('/api/v1/health');
+                const data = await res.json();
+
+                // Alerting health
+                const ah = data.alerting_health || {};
+                const badge = document.getElementById('admin-alerting-badge');
+                if (ah.enabled) {
+                    badge.textContent = 'Active';
+                    badge.className = 'text-xs px-2 py-0.5 rounded-full bg-emerald-900 text-emerald-300';
+                } else {
+                    badge.textContent = 'Disabled';
+                    badge.className = 'text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500';
+                }
+
+                const content = document.getElementById('admin-alerting-content');
+                if (ah.enabled) {
+                    const cbOpen = ah.circuit_breaker_open;
+                    const failures = ah.delivery_failures || 0;
+                    content.innerHTML = `
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Circuit Breaker</span>
+                            <span class="${cbOpen ? 'text-red-400' : 'text-emerald-400'}">${cbOpen ? 'OPEN (tripped)' : 'Closed'}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Alerts Sent</span>
+                            <span>${ah.recent_alert_count || 0}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Delivery Failures</span>
+                            <span class="${failures > 0 ? 'text-amber-400' : ''}">${failures}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Realtime Subscribers</span>
+                            <span>${ah.realtime_subscribers || 0}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-zinc-400">Active Alerts</span>
+                            <span>${ah.lifecycle_active_count || 0}</span>
+                        </div>
+                    `;
+                } else {
+                    content.innerHTML = '<div class="text-zinc-500 text-xs">Alerting subsystem is not enabled. Configure [alerting] in your TOML config to activate.</div>';
+                }
+
+                // Recent alerts from alerting_status (full detail)
+                const as = data.alerting_status || {};
+                const recentAlerts = document.getElementById('admin-recent-alerts');
+                const alertCount = document.getElementById('admin-alert-count');
+                if (as.enabled && as.recent_alerts && as.recent_alerts.length > 0) {
+                    alertCount.textContent = as.recent_alerts.length;
+                    alertCount.className = 'text-xs px-2 py-0.5 rounded-full bg-amber-900 text-amber-300';
+                    recentAlerts.innerHTML = as.recent_alerts.slice(0, 10).map(a => {
+                        const severity = a.severity || 'info';
+                        const color = severity === 'critical' ? 'text-red-400' :
+                                      severity === 'warning' ? 'text-amber-400' : 'text-blue-400';
+                        return `<div class="border-l-2 ${severity === 'critical' ? 'border-red-500' : severity === 'warning' ? 'border-amber-500' : 'border-blue-500'} pl-3 py-1">
+                            <div class="flex justify-between">
+                                <span class="${color} text-xs font-medium">${a.alert_type || 'alert'}</span>
+                                <span class="text-xs text-zinc-600">${a.subject || ''}</span>
+                            </div>
+                            <div class="text-xs text-zinc-500 mt-0.5">${(a.message || '').substring(0, 120)}</div>
+                        </div>`;
+                    }).join('');
+                } else if (as.enabled) {
+                    alertCount.textContent = '0';
+                    alertCount.className = 'text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500';
+                    recentAlerts.innerHTML = '<div class="text-xs text-zinc-500">No recent alerts.</div>';
+                } else {
+                    alertCount.textContent = '—';
+                    recentAlerts.innerHTML = '<div class="text-xs text-zinc-500">Alerting not enabled.</div>';
+                }
+            } catch(e) {
+                console.error('Alerting health refresh failed:', e);
+            }
+        }
+
+        setInterval(refreshAlertingHealth, 60000);
+        refreshAlertingHealth();
+    </script>
 </body>
 </html>

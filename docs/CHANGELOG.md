@@ -6,7 +6,86 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
-## [Unreleased] — 2026-06-02
+## [Unreleased]
+
+### Sprint 6.0 — Bug Fixes and Sexton Validation
+
+#### Fixed
+- **BUG-001**: `aip init` creates no default project (documented, deferred to maintenance)
+- **BUG-002**: `chat.py` uses wrong DB path for GraphStore (documented, deferred to maintenance)
+- **BUG-004**: GraphStore has no Protocol, uses sync sqlite3 (documented as DEBT-005, deferred)
+- Sexton validation rules strengthened with deterministic A-F classification + 7 special conditions
+
+### Sprint 6.1 — Embedding Pipeline and Hybrid Retrieval
+
+#### Added
+- **Hybrid retrieval with RRF fusion**: `RetrievalOrchestrator` in `orchestration/retrieval_orchestrator.py`
+  dispatches parallel queries across FTS5, Vector, and Corpus channels, then fuses results
+  using weighted Reciprocal Rank Fusion (RRF, k=60). Channel weights are configurable via
+  `[retrieval.channel_weights]` in `aip.config.toml` (default: vector=0.6, fts=0.4, corpus=0.4).
+- **Coverage-aware gating**: The orchestrator gracefully falls back to FTS5-only when vector
+  coverage is below `min_vector_coverage` (default 0.10), preventing degraded hybrid results
+  on largely unembedded corpora.
+- **OpenAI-compatible embedding client** (`aip.adapter.embedding.openai_embed.py`):
+  New `OpenAICompatibleEmbeddingClient` that calls `/v1/embeddings` endpoints
+  (OpenRouter, OpenAI, DeepSeek, etc.). Includes `MockOpenAICompatibleEmbeddingClient`
+  for CI/testing.
+- **`openai_compatible` provider in `embed_providers.py`**: The orchestration-layer
+  embedding provider loader now supports `provider = "openai_compatible"` alongside
+  the existing `ollama` and `fake` options.
+- **Background embedding pass in Sexton**: `_run_embedding_pass()` in the new Sexton actor
+  processes unembedded turns in batches of ~50 per cycle (built, not wired — DEBT-006).
+- **Re-embedding on model slot change**: Infrastructure complete for re-generating vectors
+  when the embedding model is changed at runtime.
+- **Retrieval evaluation harness** (`orchestration/retrieval_eval.py`): Full harness with
+  P@5, R@10, MRR, and entity coverage metrics. Supports `--mode` flag (hybrid/fts-only/all)
+  via `aip eval retrieval` CLI. Includes A/B comparison and regression detection.
+- **Golden queries with corpus-mapped IDs** (`tests/retrieval_goldens/golden_queries.json`):
+  Updated from placeholder IDs to actual corpus turn IDs via FTS5 matching.
+- **Channel weight tuning script** (`scripts/retrieval_weight_tuning.py`): Grid search over
+  vector/fts weight combinations, reports best weights for config.
+- **Vigil retrieval quality gate** (`vigil.py::_run_retrieval_quality_sample()`): Periodic
+  precision@5 sampling with alerting on degradation. Configurable via
+  `[vigil.retrieval_quality]` in `aip.config.toml`.
+- **VigilQualityStore** (persistent): Quality history with retention and rollup, enabling
+  trend tracking and degradation alerting over time.
+
+#### Changed
+- `[embedding]` in `aip.config.toml` now defaults to `provider = "openai_compatible"`
+  with `model = "nvidia/llama-nemotron-embed-vl-1b-v2:free"` and
+  `base_url = "https://openrouter.ai/api"` instead of `provider = "fake"`.
+- `app.py` lifespan: Replaced inline embedding provider creation with
+  `_create_embedding_provider()` which properly resolves from slot config.
+- `ask_pipeline.py` now reads channel weights from config and constructs
+  `OrchestratorConfig` dynamically.
+
+### Sprint 6.4 — Retrieval Quality Validation and Project Closure
+
+#### Added
+- **ADR-013**: Formal record of Sprint 6.4 decisions — pragmatic eval harness, channel
+  weight tuning, Vigil quality gate, documentation closure, and scope exclusions.
+- **`docs/Maintenance_Protocol.md`**: Operational procedures for the maintenance phase
+  including priority tasks (DEBT-006, retrieval re-evaluation), regular maintenance
+  schedules, monitoring guidance, and emergency procedures.
+- **Alpha test release documentation**: All project documentation refreshed and validated
+  for alpha tester consumption.
+
+#### Changed
+- **STATUS.md**: Updated with alpha release framing, explicit known limitations for testers,
+  and current corpus/retrieval/actor state.
+- **ROADMAP.md**: Added alpha release version history entry.
+- **TECH_DEBT.md**: No new items; all existing items verified current.
+- **CHANGELOG.md**: Comprehensive Sprint 6.0–6.4 entries added.
+
+#### Scope Exclusions
+- No new retrieval features — this sprint measures, does not improve
+- No full embedding pass — requires DEBT-006 fix (maintenance task)
+- No UI changes — focus was backend validation and documentation
+- No perfect golden query set — sufficient for directional signal
+
+---
+
+## [0.1.0-alpha-pre] — 2026-06-02
 
 ### Phase 9 — Real OpenRouter Embedding + Backfill
 

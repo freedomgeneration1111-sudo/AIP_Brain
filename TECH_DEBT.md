@@ -1,7 +1,7 @@
 # AIP Technical Debt Register
 
 **Owner:** B. Moses Jorgensen  
-**Last Updated:** 2026-06-06
+**Last Updated:** 2026-06-10
 
 Each entry records a deliberate deferral — what was skipped, why, and what triggers remediation.
 
@@ -46,7 +46,7 @@ After full corpus retag (2,649 currently untagged turns), re-run `aip corpus gra
 
 **Status:** Deferred  
 **Phase:** 2B Knowledge Graph → Phase 3  
-**Filed:** 2026-06-05
+**Filed:** 2026-05-05
 
 **What was deferred:**  
 The full HippoRAG Personalized PageRank (PPR) expansion path in `chat.py` was deferred.
@@ -162,7 +162,7 @@ graph size. The work was captured as BUG-004 for the next bug-fix pass.
 
 ## DEBT-006 — `actors/sexton.py` Not Wired into app.py (CRITICAL)
 
-**Status:** Active — BUG-003, must fix before dogfood  
+**Status:** Active — BUG-003, highest priority for maintenance mode  
 **Phase:** 3 Actor Intelligence  
 **Filed:** 2026-06-06
 
@@ -177,7 +177,7 @@ However, `app.py` was NOT updated to wire the new actor. The lifespan still:
 - Calls `run_classification_cycle()` every 300s
 
 The new `actors/sexton.py::Sexton.run_cycle()` is never called. As a result:
-- **Automatic corpus tagging is not running** (2,649 untagged turns not being processed)
+- **Automatic corpus tagging is not running**
 - **Automatic embedding is not running**
 - **Automatic wiki generation is not running**
 - **Automatic graph extraction is not running**
@@ -188,36 +188,28 @@ The refactor was done in incremental commits focused on the code. The app.py wir
 was identified as a separate task and captured here. It was not a silent omission — the
 docstring in `actors/sexton.py` explicitly references the wiring gap.
 
-**Additional finding:** The `actors/sexton.py` docstring references `container.sexton_actor`
-as the field name, but `AipContainer` defines the field as `container.sexton`. The wiring
-fix must use `container.sexton` (the actual field) and call `run_cycle()` (not
-`run_classification_cycle()`).
+**Impact:**  
+This is the single highest-priority debt item. Until it is resolved:
+- The full embedding pass cannot complete (2,716 turns unembedded)
+- Hybrid retrieval quality is limited by low embedding coverage (~1.8%)
+- Wiki generation and graph extraction are not running automatically
 
 **Remediation steps (BUG-003):**  
-In `src/aip/adapter/api/app.py`, replace the Sexton instantiation block (lines ~565-585)
-and scheduler block (lines ~747-781) as follows:
+In `src/aip/adapter/api/app.py`, replace the Sexton instantiation block and scheduler block:
 
 1. **Instantiation** — import `actors/sexton.Sexton` instead of `sexton/sexton.Sexton`;
-   pass the full store set: `sexton_provider` (model slot resolver), `corpus_turn_store`,
-   `embedding_provider`, `vector_store`, `artifact_store`, `ecs_store`, `event_store`,
-   `trace_store`, `lexical_store`, `config` (SextonConfig from toml).
+   pass the full store set: `sexton_provider`, `corpus_turn_store`, `embedding_provider`,
+   `vector_store`, `artifact_store`, `ecs_store`, `event_store`, `trace_store`,
+   `lexical_store`, `config`.
 
 2. **Scheduler** — change `await container.sexton.run_classification_cycle()` to
-   `await container.sexton.run_cycle()`. The `run_cycle()` method internally delegates
-   to `_run_failure_classification()` which itself instantiates and calls the old
-   `sexton/sexton.py` Sexton — so classification is preserved.
+   `await container.sexton.run_cycle()`.
 
 3. **Interval** — `run_cycle()` reads `SextonConfig.classification_interval_seconds`
-   (same field, same default 300s). No config change needed.
+   (same field, same default 300s).
 
 4. **Docstring fix** — update `actors/sexton.py` docstring to reference
    `container.sexton` (not `container.sexton_actor`).
-
-**Testing:**  
-Verify in `~/AIP_Brain` (fresh seed):
-- `aip status` shows tagging progress after 5 minutes
-- Sexton logs show `sexton_vigil_start` and `sexton_vigil_complete` events
-- `actors_route` returns Sexton as active with `run_cycle` callable
 
 **Related work:**  
 - `src/aip/orchestration/actors/sexton.py` — the full-maintenance Sexton (built, unwired)
@@ -225,6 +217,6 @@ Verify in `~/AIP_Brain` (fresh seed):
 - `src/aip/adapter/api/app.py` — the wiring location
 - `src/aip/adapter/api/dependencies.py` — `container.sexton` field (Any type)
 - ADR-011 — the architectural decision that drove the refactor
-- ROADMAP Phase 3.2 — Sexton status
+- ROADMAP Phase 3.3 — Sexton status
 
 ---

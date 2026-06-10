@@ -95,6 +95,10 @@ class Beast:
         self._corpus_turns = corpus_turn_store  # for _run_turn_tagging (batch 8 + registry)
         self._last_cycle_time: float | None = None
 
+        # Sprint 6.2: Cycle count and recent errors for operator visibility
+        self._cycle_count: int = 0
+        self._recent_errors: list[str] = []  # Last 10 error messages
+
         # Load Beast soul — identity/personality injected into all LLM system prompts
         # AIP-G-02: if soul.md missing/unreadable, fall back to empty string, never raise
         self._soul_text = self._load_soul_text()
@@ -480,6 +484,39 @@ class Beast:
         return result
 
     # ------------------------------------------------------------------
+    # Status summary for operator visibility (Sprint 6.2)
+    # ------------------------------------------------------------------
+
+    def get_status_summary(self) -> dict:
+        """Return a summary of Beast's current state for operator visibility.
+
+        Includes dependency availability, last cycle time, and cycle count.
+        This method is synchronous and never raises. Called by /actors/status,
+        /health, and dashboard endpoints.
+        """
+        return {
+            "initialized": True,
+            "dependencies": {
+                "vector_store": self._vector is not None,
+                "embedding_provider": self._embed is not None,
+                "project_store": self._projects is not None,
+                "event_store": self._events is not None,
+                "entity_store": self._entity_store is not None,
+                "canonical_store": self._canonical_store is not None,
+                "beast_provider": self._beast_provider is not None,
+                "artifact_store": self._artifacts is not None,
+                "ecs_store": self._ecs is not None,
+                "lexical_store": self._lexical is not None,
+                "corpus_turn_store": self._corpus_turns is not None,
+            },
+            "last_cycle_time": self._last_cycle_time,
+            "interval_seconds": self._config.health_check_interval_seconds,
+            "cycle_count": self._cycle_count,
+            "recent_errors": list(self._recent_errors),
+            "role": "active_synthesis_support",
+        }
+
+    # ------------------------------------------------------------------
     # Cadence / Scheduling
     # ------------------------------------------------------------------
 
@@ -500,6 +537,9 @@ class Beast:
         """
         cycle_start = time.monotonic()
 
+        # Sprint 6.2: Structured start event with cycle count
+        log.info("beast_cycle_start", cycle=self._cycle_count + 1)
+
         health = await self.run_health_check()
 
         # Lightweight heartbeat (always)
@@ -513,12 +553,15 @@ class Beast:
             except Exception as exc:
                 log.error("context_advisory_failed", error=str(exc))
                 advisory_stats = {"error": str(exc)}
+                self._recent_errors.append(f"context_advisory: {exc}")
+                self._recent_errors = self._recent_errors[-10:]
         else:
             log.info("beast: no LLM configured, heartbeat only")
             advisory_stats = {"note": "no_llm_heartbeat_only"}
 
         elapsed = time.monotonic() - cycle_start
         self._last_cycle_time = time.time()
+        self._cycle_count += 1
 
         summary = {
             "health_overall": health.get("overall", "unknown"),

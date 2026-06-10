@@ -22,7 +22,7 @@ class SurfaceConfig:
 
     api_host: str = "127.0.0.1"
     api_port: int = 8000
-    api_cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:3000"])
+    api_cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:3000", "http://localhost:8080"])
     api_workers: int = 1
     chat_max_history_turns: int = 50
     review_page_size: int = 20

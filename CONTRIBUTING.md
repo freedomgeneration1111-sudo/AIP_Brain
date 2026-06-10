@@ -2,11 +2,15 @@
 
 Thank you for your interest in contributing to AI Poiesis (AIP).
 
+> **Alpha Test Release**: AIP v0.1 is in alpha testing. The project is in maintenance mode —
+> contributions should be small, incremental bug fixes or documentation improvements. No new
+> feature development is planned. See [ROADMAP.md](ROADMAP.md) for the maintenance mode scope.
+
 ## Development Setup
 
 ```bash
-git clone https://github.com/freedomgeneration1111-sudo/aip.git
-cd aip
+git clone https://github.com/freedomgeneration1111-sudo/AIP_Brain.git
+cd AIP_Brain
 uv sync
 ```
 

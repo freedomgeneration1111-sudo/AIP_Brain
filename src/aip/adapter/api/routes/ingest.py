@@ -87,9 +87,11 @@ async def ingest_conversation_endpoint(
         metadata={"domain": domain, "source": "api", "auto_save": payload.get("auto_save", False)},
     )
 
-    # Run the ingestion pipeline
+    # Run the ingestion pipeline (through container — layer discipline)
     try:
-        from aip.orchestration.ingestion.pipeline import ingest_conversation
+        ingest_conversation = container._ingest_conversation_fn
+        if ingest_conversation is None:
+            raise HTTPException(status_code=503, detail="Ingestion pipeline not available")
 
         result: IngestionResult = await ingest_conversation(
             conversation=conversation,
@@ -141,7 +143,9 @@ async def ingest_file_endpoint(
     source_format = payload.get("source_format")
 
     try:
-        from aip.orchestration.ingestion.pipeline import ingest_file
+        ingest_file = container._ingest_file_fn
+        if ingest_file is None:
+            raise HTTPException(status_code=503, detail="Ingestion pipeline not available")
 
         results = await ingest_file(
             path=path,
@@ -209,7 +213,9 @@ async def auto_save_chat_turn(
         # --- Legacy ingestion path (artifacts + lexical + vector) ---
         # Only runs if both artifact_store and lexical_store are available.
         if container.artifact_store is not None and container.lexical_store is not None:
-            from aip.orchestration.ingestion.pipeline import ingest_conversation
+            ingest_conversation = container._ingest_conversation_fn
+            if ingest_conversation is None:
+                raise RuntimeError("Ingestion pipeline not available via container")
 
             conversation = ImportedConversation(
                 conversation_id=session_id,

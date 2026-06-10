@@ -240,7 +240,7 @@ class EvalResult:
     per_query_results: list[QueryEvalResult] = field(default_factory=list)
     config_snapshot: dict = field(default_factory=dict)
     channel_contribution_summary: dict[str, int] = field(default_factory=dict)
-    eval_harness_version: str = "5.12"
+    eval_harness_version: str = "6.4"
 
     def to_dict(self) -> dict:
         """Serialize to a JSON-friendly dict."""

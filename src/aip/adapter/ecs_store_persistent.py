@@ -94,6 +94,8 @@ class PersistentEcsStore(EcsStore, StoreHealthMixin):
             self._conn = await aiosqlite.connect(self._db_path)
             self._conn.row_factory = aiosqlite.Row
             await self._conn.execute("PRAGMA journal_mode=WAL")
+            # Sprint 6.3: busy_timeout to handle concurrent write contention
+            await self._conn.execute("PRAGMA busy_timeout=5000")
             self._health_track_connect()
             if not self._tables_ready:
                 await self._create_tables(self._conn)

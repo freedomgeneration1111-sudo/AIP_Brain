@@ -43,8 +43,8 @@ async def _get_graph_neighbors(domain: str, container: Any = None) -> list[str]:
 
     BUG-002: Previously used a separate db_path resolution that could
     diverge from the one used in routes/graph.py. Now reuses the same
-    container.config.get("db_path") pattern with get_default_db_path()
-    fallback.
+    container.config.get("db_path") / config.get("database") pattern
+    with get_default_db_path() fallback.
     """
     try:
         store = getattr(container, "graph_store", None) if container is not None else None
@@ -53,7 +53,7 @@ async def _get_graph_neighbors(domain: str, container: Any = None) -> list[str]:
 
             db_path = ""
             if container is not None:
-                db_path = container.config.get("db_path", "")
+                db_path = container.config.get("db_path", "") or container.config.get("database", {}).get("db_path", "")
             if not db_path:
                 try:
                     from aip.cli._db_path import get_default_db_path
@@ -111,9 +111,13 @@ async def _search_corpus_turns(
 ) -> list[dict]:
     """Search corpus turns via FTS5 and return formatted source dicts."""
     try:
-        from aip.orchestration.ask_pipeline import _sanitize_fts_query
-
-        fts_query = _sanitize_fts_query(query)
+        from aip.adapter.api.dependencies import get_container as _get_container
+        _container = _get_container(request)
+        _sanitize_fn = _container._sanitize_fts_query_fn if _container else None
+        if _sanitize_fn:
+            fts_query = _sanitize_fn(query)
+        else:
+            fts_query = query
     except Exception:
         fts_query = query
     turns = await corpus_turn_store.search(
@@ -248,10 +252,11 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
 
                             # Augmented mode: retrieve sources and inject context
                             try:
-                                from aip.orchestration.ask_pipeline import (
-                                    AskStores,
-                                    _search_sources_with_trace,
-                                )
+                                # Access orchestration through container (layer discipline)
+                                AskStores = _container._ask_stores_class
+                                _search_sources_fn = _container._search_sources_fn
+                                if AskStores is None or _search_sources_fn is None:
+                                    raise RuntimeError("Retrieval pipeline not available via container")
 
                                 # Resolve domain from session or project
                                 domain = (session_meta or {}).get("domain")
@@ -301,7 +306,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                         corpus_turn_store=_container.corpus_turn_store,
                                         graph_store=getattr(_container, "graph_store", None),
                                     )
-                                    source_refs, _ret_trace, packed_ctx = await _search_sources_with_trace(
+                                    source_refs, _ret_trace, packed_ctx = await _search_sources_fn(
                                         query=content,
                                         stores=_ask_stores,
                                         source_filter="all",

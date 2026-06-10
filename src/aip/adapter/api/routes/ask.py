@@ -3,9 +3,10 @@
 Exposes the ask_pipeline via REST endpoint so the GUI can submit
 knowledge-augmented queries without requiring CLI access.
 
-The ask pipeline retrieves relevant sources from LexicalStore and
-VectorStore, assembles context, dispatches to the configured model,
-and returns a source-grounded answer with provenance references.
+Layer discipline: This module imports ONLY from adapter and foundation.
+Orchestration functions (ask, AskStores, _search_sources_with_trace,
+_sanitize_fts_query) are accessed through the container, not imported
+directly from orchestration.
 """
 
 from __future__ import annotations
@@ -73,8 +74,12 @@ async def ask_query(payload: dict, container: AipContainer = Depends(get_contain
     # Project store is optional — corpus is project-agnostic and search
     # proceeds even when no project exists in the database.
 
-    # Build AskStores from container's already-wired components
-    from aip.orchestration.ask_pipeline import AskStores
+    # Build AskStores from container's already-wired components.
+    # Access AskStores class through the container (layer discipline:
+    # routes do not import from orchestration directly).
+    AskStores = container._ask_stores_class
+    if AskStores is None:
+        raise HTTPException(status_code=503, detail="Ask pipeline not available")
 
     stores = AskStores(
         artifact_store=container.artifact_store,
@@ -89,11 +94,13 @@ async def ask_query(payload: dict, container: AipContainer = Depends(get_contain
         graph_store=getattr(container, "graph_store", None),
     )
 
-    # Import and call the ask pipeline
-    from aip.orchestration.ask_pipeline import ask
+    # Call the ask pipeline through the container (layer discipline).
+    ask_fn = container._ask_fn
+    if ask_fn is None:
+        raise HTTPException(status_code=503, detail="Ask pipeline not available")
 
     try:
-        result = await ask(
+        result = await ask_fn(
             question=question,
             project_name=project_name,
             stores=stores,
@@ -161,7 +168,11 @@ async def ask_retrieve_only(payload: dict, container: AipContainer = Depends(get
     if container.lexical_store is None:
         raise HTTPException(status_code=503, detail="Lexical store not available")
 
-    from aip.orchestration.ask_pipeline import _search_sources_with_trace, _sanitize_fts_query
+    # Access orchestration functions through the container (layer discipline).
+    search_sources_fn = container._search_sources_fn
+    AskStores = container._ask_stores_class
+    if search_sources_fn is None or AskStores is None:
+        raise HTTPException(status_code=503, detail="Retrieval pipeline not available")
 
     # Corpus is project-agnostic: do not filter by domain/project.
     # project_domain is kept for future use but does not limit retrieval.
@@ -169,7 +180,7 @@ async def ask_retrieve_only(payload: dict, container: AipContainer = Depends(get
 
     # Use the orchestrator pipeline for retrieval
     try:
-        sources, _trace, _packed = await _search_sources_with_trace(
+        sources, _trace, _packed = await search_sources_fn(
             query=question,
             stores=AskStores(
                 artifact_store=container.artifact_store,

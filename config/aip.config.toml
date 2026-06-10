@@ -8,6 +8,15 @@ weight_recency       = 0.15
 weight_authority     = 0.15
 weight_frequency     = 0.10
 
+# Sprint 6.4: Per-channel RRF weights for hybrid retrieval tuning.
+# Higher weight = channel contributes more to the final RRF score.
+# vector + fts should sum to ~1.0; corpus is lexical (same as fts).
+# These values are read by ask_pipeline and eval harness.
+[retrieval.channel_weights]
+vector = 0.6
+fts = 0.4
+corpus = 0.4
+
 # CHUNK-3.9 example for Phase 3 real embedding slot (Rev 1.3).
 # In Phase 1/CI: provider = "fake" (default, uses deterministic fake_embed).
 # In Phase 3+: set provider = "local" (or "api") and specify model to load a real embedder.
@@ -138,7 +147,7 @@ fts5_query_limit = 50
 release_version = "0.1.0"
 release_date = ""  # set by 10.7
 release_status = "alpha"
-architecture_revision = "5.2"
+architecture_revision = "6.4"
 
 # --- Phase 7 additions (append only) ---
 # Per CHUNK-9.0a ANNEX + prose: vigil, auth, rate limiting,
@@ -177,6 +186,15 @@ stale_threshold_days = 30
 re_evaluate_on_slot_change = true
 max_re_evaluate_batch_size = 50
 entity_consistency_check = true
+
+# Sprint 6.4: Retrieval quality sampling — Vigil periodically runs golden
+# queries through the retrieval pipeline and flags precision@5 degradation.
+# This is a light-weight quality gate; only a few queries per sample.
+[vigil.retrieval_quality]
+sampling_enabled = true
+sample_size = 5
+precision_threshold = 0.3
+sample_interval_cycles = 6
 
 [auth]
 # IMPORTANT: auth_enabled=false means ALL requests are treated as DEFINER.

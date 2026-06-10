@@ -23,6 +23,55 @@ from aip.logging import get_logger
 
 log = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# Sprint 6.3: Embedding retry with exponential backoff
+# ---------------------------------------------------------------------------
+
+_EMBED_MAX_RETRIES = 3          # Maximum retry attempts for embedding API calls
+_EMBED_BASE_DELAY = 2.0         # Base delay in seconds for exponential backoff
+_EMBED_MAX_DELAY = 30.0         # Maximum delay between retries
+
+
+async def _embed_with_retry(
+    provider: EmbeddingProvider,
+    text: str,
+    max_retries: int = _EMBED_MAX_RETRIES,
+    base_delay: float = _EMBED_BASE_DELAY,
+    max_delay: float = _EMBED_MAX_DELAY,
+) -> list[float]:
+    """Call provider.embed() with exponential backoff on transient failures.
+
+    Retries on ConnectionError (API outages, network failures) up to
+    max_retries times. Returns the embedding vector on success.
+    Raises the last exception if all retries are exhausted.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            return await provider.embed(text)
+        except ConnectionError as exc:
+            last_exc = exc
+            if attempt < max_retries - 1:
+                delay = min(base_delay * (2 ** attempt), max_delay)
+                log.warning(
+                    "sexton_embedding_retry",
+                    attempt=attempt + 1,
+                    max_retries=max_retries,
+                    delay_seconds=delay,
+                    error=str(exc),
+                )
+                await asyncio.sleep(delay)
+            else:
+                log.error(
+                    "sexton_embedding_retry_exhausted",
+                    attempts=max_retries,
+                    error=str(exc),
+                )
+        except Exception as exc:
+            # Non-transient errors (e.g. ValueError) should not be retried
+            raise
+    raise last_exc  # type: ignore[misc]
+
 
 def _extract_json_array(text: str) -> list:
     """Robustly extract a JSON array from an LLM response.
@@ -113,6 +162,10 @@ class Sexton:
         self._graph_store = graph_store  # BUG-004: use container's graph_store instead of creating new one
         self._last_cycle_time: float | None = None
 
+        # Sprint 6.2: Cycle count and recent errors for operator visibility
+        self._cycle_count: int = 0
+        self._recent_errors: list[str] = []  # Last 10 error messages
+
         # Sprint 6.1: Embedding pipeline state tracking
         self._embedding_failures: list[str] = []  # Last 100 failed turn IDs for retry
         self._embedding_pass_state: dict = {  # In-progress / last-batch state
@@ -124,6 +177,13 @@ class Sexton:
             "last_batch_re_embedded": 0,
             "current_model": "",
         }
+
+        # Sprint 6.3: Persistent cycle tracking for restart recovery
+        # Written to event_store on cycle start/complete so interrupted
+        # cycles can be detected on restart.
+        self._current_cycle_id: str | None = None
+        self._provider_outage_detected: bool = False
+        self._consecutive_embed_failures: int = 0
 
         # LLM batching telemetry — accumulates across cycles
         self._batch_telemetry = {
@@ -164,6 +224,59 @@ class Sexton:
                 log.warning("sexton_failure_classifier_init_failed", error=str(exc))
 
     # ------------------------------------------------------------------
+    # Restart recovery (Sprint 6.3)
+    # ------------------------------------------------------------------
+
+    async def detect_interrupted_cycle(self) -> dict | None:
+        """Check if a previous Sexton cycle was interrupted (via event trail).
+
+        Queries the event_store for the most recent sexton_vigil_start event
+        that has no corresponding sexton_vigil_complete event. Returns the
+        interrupted cycle's metadata dict, or None if no interruption detected.
+
+        This is called once at startup by the lifespan handler to detect
+        and log interrupted cycles. No automatic resume is attempted — the
+        next regular cycle handles any pending work naturally.
+        """
+        if self._events is None:
+            return None
+        try:
+            if not hasattr(self._events, "query_events"):
+                return None
+
+            # Find the most recent sexton_vigil_start
+            starts = await self._events.query_events(
+                event_type="sexton_vigil_start",
+                limit=1,
+            )
+            if not starts:
+                return None
+
+            last_start = starts[0]
+            start_ts = last_start.get("timestamp") or last_start.get("created_at", "")
+
+            # Check if there's a sexton_vigil_complete after this start
+            completes = await self._events.query_events(
+                event_type="sexton_vigil_complete",
+                limit=1,
+            )
+            if completes:
+                complete_ts = completes[0].get("timestamp") or completes[0].get("created_at", "")
+                if complete_ts >= start_ts:
+                    return None  # Complete event exists after start — no interruption
+
+            # Interrupted cycle detected
+            log.warning(
+                "sexton_interrupted_cycle_detected",
+                start_timestamp=start_ts,
+                cycle=last_start.get("cycle"),
+            )
+            return last_start
+        except Exception as exc:
+            log.warning("sexton_interrupted_cycle_check_failed", error=str(exc))
+            return None
+
+    # ------------------------------------------------------------------
     # Main vigil cycle (ADR-011)
     # ------------------------------------------------------------------
 
@@ -181,31 +294,87 @@ class Sexton:
         """
         cycle_start = time.monotonic()
 
+        # Sprint 6.3: Generate a unique cycle ID for restart recovery tracking
+        import uuid
+        self._current_cycle_id = f"sexton-cycle-{uuid.uuid4().hex[:12]}"
+
+        # Sprint 6.2: Structured start event with cycle count
+        log.info(
+            "sexton_vigil_start",
+            cycle=self._cycle_count + 1,
+            cycle_id=self._current_cycle_id,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+
+        # Sprint 6.3: Emit start event with cycle_id for restart recovery
         await self._emit_event(
             event_type="sexton_vigil_start",
             artifact_id="system",
-            metadata={"timestamp": datetime.now(timezone.utc).isoformat()},
+            metadata={
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "cycle": self._cycle_count + 1,
+                "cycle_id": self._current_cycle_id,
+            },
         )
 
         # 1. Turn tagging
+        tag_start = time.monotonic()
         tagging_result = await self._run_turn_tagging(limit=200)
+        tag_elapsed = time.monotonic() - tag_start
+        log.info(
+            "sexton_tagging_pass_complete",
+            elapsed_seconds=round(tag_elapsed, 3),
+            turns_tagged=tagging_result.get("turns_tagged", 0),
+            turns_failed=tagging_result.get("turns_failed", 0),
+        )
 
         # 2. Embedding pass (configurable limit for faster corpus coverage)
+        embed_start = time.monotonic()
         embedding_result = await self._run_embedding_pass(limit=self._config.embed_batch_limit)
+        embed_elapsed = time.monotonic() - embed_start
+        log.info(
+            "sexton_embedding_pass_complete",
+            elapsed_seconds=round(embed_elapsed, 3),
+            embedded=embedding_result.get("embedded", 0),
+            failed=embedding_result.get("failed", 0),
+            model=embedding_result.get("model", ""),
+        )
 
         # 3. Wiki generation
+        wiki_start = time.monotonic()
         wiki_result = await self._run_wiki_generation(max_per_cycle=3)
+        wiki_elapsed = time.monotonic() - wiki_start
+        log.info(
+            "sexton_wiki_pass_complete",
+            elapsed_seconds=round(wiki_elapsed, 3),
+            domains_generated=wiki_result.get("domains_generated", 0),
+        )
 
         # 4. Graph extraction (only if bridge-tagged turns exist)
         graph_result: dict = {"skipped": "no_bridge_tagged_turns"}
         if await self._has_bridge_tagged_turns():
+            graph_start = time.monotonic()
             graph_result = await self._run_graph_extraction()
+            graph_elapsed = time.monotonic() - graph_start
+            log.info(
+                "sexton_graph_pass_complete",
+                elapsed_seconds=round(graph_elapsed, 3),
+                entities_created=graph_result.get("entities_created", 0),
+            )
 
         # 5. Failure classification
+        class_start = time.monotonic()
         classification_result = await self._run_failure_classification()
+        class_elapsed = time.monotonic() - class_start
+        log.info(
+            "sexton_classification_pass_complete",
+            elapsed_seconds=round(class_elapsed, 3),
+            classified=classification_result.get("classified", 0),
+        )
 
         elapsed = time.monotonic() - cycle_start
         self._last_cycle_time = time.time()
+        self._cycle_count += 1
 
         summary = {
             "tagging": tagging_result,
@@ -216,22 +385,39 @@ class Sexton:
             "batch_telemetry": dict(self._batch_telemetry),
             "cycle_elapsed_seconds": round(elapsed, 3),
             "last_cycle_time": self._last_cycle_time,
+            # Sprint 6.2: Per-operation timing breakdown
+            "timing": {
+                "tagging_seconds": round(tag_elapsed, 3),
+                "embedding_seconds": round(embed_elapsed, 3),
+                "wiki_seconds": round(wiki_elapsed, 3),
+                "graph_seconds": round(graph_elapsed, 3) if "skipped" not in graph_result else 0.0,
+                "classification_seconds": round(class_elapsed, 3),
+                "total_seconds": round(elapsed, 3),
+            },
         }
 
         await self._emit_event(
             event_type="sexton_vigil_complete",
             artifact_id="system",
-            metadata=summary,
+            metadata={**summary, "cycle_id": self._current_cycle_id},
         )
+
+        # Sprint 6.3: Clear the cycle ID now that we've completed
+        self._current_cycle_id = None
 
         log.info(
             "sexton_vigil_complete",
+            cycle=self._cycle_count,
             elapsed=round(elapsed, 3),
             tagging_tagged=tagging_result.get("turns_tagged", 0),
             embedding_done=embedding_result.get("embedded", 0),
             wiki_generated=wiki_result.get("domains_generated", 0),
             graph_entities=graph_result.get("entities_created", 0),
             classification_count=classification_result.get("classified", 0),
+            timing_tagging=round(tag_elapsed, 3),
+            timing_embedding=round(embed_elapsed, 3),
+            timing_wiki=round(wiki_elapsed, 3),
+            timing_classification=round(class_elapsed, 3),
         )
 
         return summary
@@ -262,6 +448,8 @@ class Sexton:
                 "alert_manager": self._alert_manager is not None,
             },
             "last_cycle_time": self._last_cycle_time,
+            "cycle_count": self._cycle_count,
+            "recent_errors": list(self._recent_errors),
             "batch_telemetry": dict(self._batch_telemetry),
             "current_batch_size": self._current_batch_size,
             "total_batch_successes": self._total_batch_successes,
@@ -275,6 +463,10 @@ class Sexton:
             },
             "embedding_pass": dict(self._embedding_pass_state),
             "embedding_failure_count": len(self._embedding_failures),
+            # Sprint 6.3: Restart recovery and provider health
+            "current_cycle_id": self._current_cycle_id,
+            "provider_outage_detected": self._provider_outage_detected,
+            "consecutive_embed_failures": self._consecutive_embed_failures,
         }
 
     # ------------------------------------------------------------------
@@ -436,6 +628,8 @@ Example response structure:
                     to_tag.extend(ret)
         except Exception as exc:
             log.error("sexton_get_turns_failed", error=str(exc))
+            self._recent_errors.append(f"tagging_get_turns: {exc}")
+            self._recent_errors = self._recent_errors[-10:]
             return {"turns_tagged": 0, "turns_failed": 0, "proposals_filed": 0, "error": str(exc)}
 
         if not to_tag:
@@ -670,6 +864,14 @@ Example response structure:
         Truncates text to 8000 chars. Sets embedded=1 on success in corpus_turns.
         Tracks embedding model name for re-embedding detection.
 
+        Sprint 6.3 changes:
+        - Retry with exponential backoff on embedding API failures (ConnectionError).
+        - Track failed turns persistently in corpus_turns (embed_fail_count) for
+          later retry instead of only in-memory.
+        - Detect provider outages: if many consecutive failures, log outage clearly.
+        - On vector upsert + mark_embedded failure, the turn remains unembedded
+          and will be re-processed next cycle (idempotent by design).
+
         When reembed=True, marks all embedded turns with a different model
         for re-embedding before processing.
 
@@ -703,6 +905,8 @@ Example response structure:
             ]
         except Exception as exc:
             log.error("sexton_get_unembedded_failed", error=str(exc))
+            self._recent_errors.append(f"embedding_get_unembedded: {exc}")
+            self._recent_errors = self._recent_errors[-10:]
             return {"embedded": 0, "failed": 0, "skipped": 0, "error": str(exc)}
 
         if not to_embed:
@@ -727,6 +931,9 @@ Example response structure:
         re_embedded = 0
         failed_ids: list[str] = []  # Track failed turn IDs for retry
 
+        # Sprint 6.3: Batch-accumulated results for batch_mark_embedded
+        batch_embedded_ids: list[str] = []
+
         for b_start in range(0, total, BATCH_SIZE):
             batch = to_embed[b_start : b_start + BATCH_SIZE]
             batch_idx = (b_start // BATCH_SIZE) + 1
@@ -745,11 +952,16 @@ Example response structure:
                     if not text.strip():
                         skipped += 1
                         continue
-                    vec = await self._embed.embed(text)
+
+                    # Sprint 6.3: Use retry with exponential backoff
+                    vec = await _embed_with_retry(self._embed, text)
+
                     if not vec or len(vec) == 0:
                         failed += 1
                         failed_ids.append(tid)
+                        self._consecutive_embed_failures += 1
                         continue
+
                     # Store keyed by turn_id — only mark embedded if upsert succeeds
                     if self._vector is not None:
                         await self._vector.upsert(
@@ -767,17 +979,48 @@ Example response structure:
                         try:
                             if hasattr(self._corpus_turns, "mark_embedded"):
                                 await self._corpus_turns.mark_embedded(tid, embedding_model=embedding_model)
-                        except Exception:
-                            pass
+                        except Exception as embed_mark_exc:
+                            # Sprint 6.3: Log this clearly — vector was stored but
+                            # the turn won't be marked embedded, so it'll be
+                            # re-processed next cycle (idempotent but wasteful)
+                            log.warning(
+                                "sexton_mark_embedded_failed_after_upsert",
+                                turn_id=tid,
+                                error=str(embed_mark_exc),
+                            )
+                            # Don't count as embedded since mark failed
+                            # (turn will be re-processed next cycle)
+                            failed += 1
+                            failed_ids.append(tid)
+                            continue
                         embedded += 1
                         if needs_re:
                             re_embedded += 1
+                        # Sprint 6.3: Reset consecutive failure counter on success
+                        self._consecutive_embed_failures = 0
+                        self._provider_outage_detected = False
                     else:
                         # No vector store available — don't mark as embedded
                         # (previous bug: marking embedded without vector upsert)
                         failed += 1
                         failed_ids.append(tid)
                         log.warning("sexton_embedding_no_vector_store", turn_id=tid)
+                except ConnectionError as exc:
+                    # Sprint 6.3: Provider outage — track and log clearly
+                    failed += 1
+                    failed_ids.append(tid)
+                    self._consecutive_embed_failures += 1
+                    if self._consecutive_embed_failures >= 5 and not self._provider_outage_detected:
+                        self._provider_outage_detected = True
+                        log.error(
+                            "sexton_embedding_provider_outage",
+                            consecutive_failures=self._consecutive_embed_failures,
+                            error=str(exc),
+                        )
+                        self._recent_errors.append(
+                            f"embedding_provider_outage: {self._consecutive_embed_failures} consecutive failures"
+                        )
+                        self._recent_errors = self._recent_errors[-10:]
                 except Exception as exc:
                     log.warning("sexton_embedding_failed", turn_id=tid, error=str(exc))
                     failed += 1
@@ -787,10 +1030,29 @@ Example response structure:
                 # to stay under embedding API per-minute limits
                 await asyncio.sleep(embed_delay)
 
+            # Sprint 6.3: If provider outage detected mid-batch, abort early
+            # to avoid wasting API calls on a known-down provider
+            if self._provider_outage_detected and self._consecutive_embed_failures >= 10:
+                log.warning(
+                    "sexton_embedding_pass_aborted_provider_outage",
+                    consecutive_failures=self._consecutive_embed_failures,
+                    remaining=total - b_start - BATCH_SIZE,
+                )
+                # Count remaining turns in this batch and beyond as failed
+                remaining = total - (b_start + BATCH_SIZE)
+                if remaining > 0:
+                    # Don't add individual IDs for un-attempted turns
+                    failed += remaining
+                break
+
         # Update failure tracking for retry analysis
         if failed_ids:
             self._embedding_failures.extend(failed_ids[-50:])  # Keep last 50
             self._embedding_failures = self._embedding_failures[-100:]  # Cap at 100
+
+            # Sprint 6.3: Persist failed turn IDs so they survive restarts
+            # and can be retried in future cycles
+            await self._persist_embedding_failures(failed_ids, embedding_model)
 
         # Clear in-progress state
         self._embedding_pass_state = {
@@ -811,6 +1073,7 @@ Example response structure:
             re_embedded=re_embedded,
             reembed_marked=reembed_marked,
             model=embedding_model,
+            provider_outage=self._provider_outage_detected,
         )
 
         return {
@@ -820,6 +1083,7 @@ Example response structure:
             "re_embedded": re_embedded,
             "reembed_marked": reembed_marked,
             "model": embedding_model,
+            "provider_outage": self._provider_outage_detected,
         }
 
     # ------------------------------------------------------------------
@@ -893,6 +1157,8 @@ Example response structure:
                 wiki_content = await self._call_sexton_for_wiki(domain_id, domain_entry, domain_data)
             except Exception as exc:
                 log.error("sexton_wiki_llm_failed", domain=domain_id, error=str(exc))
+                self._recent_errors.append(f"wiki_llm_{domain_id}: {exc}")
+                self._recent_errors = self._recent_errors[-10:]
                 errors += 1
                 continue
 
@@ -1833,6 +2099,32 @@ Output format:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    async def _persist_embedding_failures(
+        self, failed_ids: list[str], embedding_model: str,
+    ) -> None:
+        """Sprint 6.3: Persist failed embedding turn IDs to the event store.
+
+        This ensures that failure information survives restarts and can be
+        used by `aip corpus verify` to identify turns that need retry.
+        Writes a single event listing all failed turn IDs from this pass.
+        """
+        if not failed_ids or self._events is None:
+            return
+        try:
+            await self._events.write_event(
+                event_type="sexton_embedding_failures",
+                actor="sexton",
+                artifact_id="system",
+                from_state=None,
+                to_state=None,
+                failed_turn_ids=failed_ids[:100],  # Cap at 100
+                embedding_model=embedding_model,
+                failure_count=len(failed_ids),
+                timestamp=datetime.now(timezone.utc).isoformat(),
+            )
+        except Exception as exc:
+            log.warning("sexton_persist_embedding_failures_failed", error=str(exc))
 
     async def _emit_event(
         self,

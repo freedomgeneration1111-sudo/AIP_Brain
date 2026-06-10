@@ -124,26 +124,32 @@ Each carries a `model_gen_assumption` per §1.8.
 
 ### Sexton Actor (§16.1)
 
-Failure classification engine:
-- Reads trace events with unclassified failures
-- Classifies using Appendix E taxonomy (A–F)
-- Auto-derives ACE Playbook entries from classifications
-- Audits `model_gen_assumption` fields on model slot changes
+Background maintenance engine with five operations (ADR-011 refactor):
+- **Tagging**: Batch LLM-based domain tagging of untagged corpus turns
+- **Embedding**: Background embedding pass for unembedded turns (~50/cycle)
+- **Wiki generation**: Domain article generation as GENERATED artifacts
+- **Graph extraction**: Entity extraction and relationship inference from corpus
+- **Classification**: Failure classification using Appendix E taxonomy (A–F)
+
+> **Note (DEBT-006):** The new full-maintenance Sexton (`actors/sexton.py`, 1,341 lines) is built
+> but **not yet wired** into `app.py`. The old failure-classifier-only Sexton is currently active.
+> See TECH_DEBT.md#DEBT-006 for remediation steps.
 
 ### Beast Actor (§3)
 
-Maintenance cadence actor:
-- Corpus reindexing (hourly)
-- Entity maintenance (every 30 min)
-- Health checks (every 60 sec)
+Active synthesis support actor:
+- Context advisory for augmented chat (domain overview + retrieval injection)
+- On-demand wiki draft generation
+- Health checks (every 60s)
+- Domain summary generation (event-driven, not timer-driven)
 
 ### Vigil Actor
 
-Read-only health monitoring:
-- Canonical corpus staleness detection
-- Entity consistency checking
+Quality evaluation actor with two monitoring paths:
+- **Synthesis quality**: Citation rate, grounding rate, LLM faithfulness scoring
+- **Retrieval quality**: Periodic precision@5 sampling with degradation alerting (Sprint 6.4)
 - Triggers re-evaluation on model slot changes
-- Records health checks to VigilStore
+- Records health checks to VigilQualityStore (persistent, with retention/rollup)
 
 ---
 
@@ -172,6 +178,8 @@ AIP uses Python's `Protocol` (PEP 544) for structural subtyping:
 
 ## Data Flow
 
+### Synthesis Pipeline
+
 ```
 DEFINER Input (Chat/CLI)
        ↓
@@ -189,3 +197,38 @@ DEFINER Input (Chat/CLI)
        ↓
     Vigil Health Recording
 ```
+
+### Retrieval Pipeline
+
+The hybrid retrieval pipeline uses multi-channel dispatch with Reciprocal Rank Fusion (RRF):
+
+```
+User Query
+       ↓
+    RetrievalOrchestrator.retrieve()
+       ↓
+    ┌─────────────┬─────────────┬──────────────┐
+    │ FTS5 Channel│Vector Channel│Corpus Channel│   (parallel dispatch)
+    └──────┬──────┴──────┬──────┴──────┬───────┘
+           ↓             ↓             ↓
+    ┌──────────────────────────────────────────┐
+    │         Weighted RRF Fusion (k=60)        │
+    │   channel_weights: vector=0.6, fts=0.4   │
+    └──────────────────┬───────────────────────┘
+                       ↓
+              Quality Gate (min_score, min_hits)
+                       ↓
+              Coverage-Aware Gating
+              (falls back to FTS5-only if
+               vector coverage < 10%)
+                       ↓
+              Ranked Results
+```
+
+- **RRF fusion**: Each channel returns ranked results; RRF computes `1/(k + rank)` per result,
+  weighted by channel weight, then sums across channels.
+- **Channel weights**: Configurable via `[retrieval.channel_weights]` in `aip.config.toml`.
+- **Coverage-aware gating**: When vector coverage is below threshold, the vector channel is
+  disabled and FTS5-only results are returned (prevents degraded hybrid quality).
+- **Evaluation**: `aip eval retrieval --mode (hybrid|fts-only|all)` measures P@5, R@10, MRR
+  against golden queries. `scripts/retrieval_weight_tuning.py` does grid search over weights.

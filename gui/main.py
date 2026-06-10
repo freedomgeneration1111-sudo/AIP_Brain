@@ -1014,4 +1014,5 @@ def on_role_model_changed(slot_name: str, model_id: str) -> None:
 # Removed subordinate @ui.page routes - they are now handled by shell.py
 # Only imports and shared utilities are kept for compatibility
 
-ui.run(title="AIP_Brain", port=8080, reload=True)
+if __name__ == "__main__":
+    ui.run(title="AIP_Brain", port=8080, reload=True)

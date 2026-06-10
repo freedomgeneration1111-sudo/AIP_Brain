@@ -1,9 +1,26 @@
 ---
-## ⚠️ Read This First — Current Dogfood State (2026-06-06)
+## ⚠️ Read This First — Alpha Test Release (2026-06-10)
 
-The dogfood guide below describes the foundational ingest→ask→review→export
-loop. This still works. However AIP has grown significantly since that guide
-was written. The current recommended first-run sequence is:
+AIP v0.1 is now in **alpha test release**. The dogfood guide below describes the foundational
+ingest→ask→review→export loop. This still works. However AIP has grown significantly since
+that guide was written, and there are important caveats for alpha testers:
+
+**What works well:**
+- FTS5 full-text search across your ingested corpus
+- Ingest, tag, ask, review, approve, export pipeline
+- Augmented chat with Beast context advisory
+- Knowledge graph visualization at /graph-viz
+- CLI evaluation tools (`aip eval retrieval`)
+
+**Known limitations:**
+- **Embedding coverage is ~1.8%** — only 50 of 2,766 turns are embedded. Hybrid retrieval
+  (vector + FTS5) will show limited benefit until a full embedding pass completes.
+- **DEBT-006 (Critical):** Automatic tagging, embedding, wiki, and graph extraction are NOT
+  running automatically. Use `aip corpus tag` and `aip embed` manually until this is fixed.
+- **MCP dispatch is scaffold** — no real search/approval through MCP
+- **No review queue web UI** — use `aip review list/approve/reject` via CLI
+
+The current recommended first-run sequence is:
 
 ### Step 0 — Initialize
 ```bash

@@ -1,6 +1,6 @@
 # AIP 0.1 API Reference
 
-Comprehensive reference for all REST and WebSocket endpoints exposed by AIP 0.1 as of **Phase 5**.
+Comprehensive reference for all REST and WebSocket endpoints exposed by AIP 0.1 as of **Sprint 6.4 (Alpha Test Release)**.
 
 **Base URL**: `http://localhost:8000/api/v1`
 
@@ -27,6 +27,10 @@ Comprehensive reference for all REST and WebSocket endpoints exposed by AIP 0.1 
 - [Collaborators](#collaborators)
 - [Plugins](#plugins)
 - [Performance](#performance)
+- [Graph](#graph)
+- [Corpus](#corpus)
+- [Vigil Quality](#vigil-quality)
+- [Retrieval Dashboard](#retrieval-dashboard)
 - [Rate Limiting](#rate-limiting)
 - [Error Responses](#error-responses)
 
@@ -567,8 +571,10 @@ Safe keys are applied immediately (hot-reloaded). Unsafe keys require a process 
 | `performance` | Yes | Profiling toggles |
 | `rate_limit` | Yes | Rate limit thresholds |
 | `surface` | Yes | Page sizes, CORS origins |
+| `retrieval.channel_weights` | Yes | Vector, FTS, corpus weights |
 | `db_path` | **No** | Requires restart |
 | `auth` | **No** | Requires restart |
+| `models.*` | **No** | Requires restart (use slot API) |
 
 **Request Body**:
 ```json
@@ -1462,6 +1468,201 @@ Get memory usage metrics.
 **Auth**: Definer
 
 **Response**: `{"ok": true, "data": {...}}` (or same error structure as above).
+
+---
+
+## Graph
+
+Knowledge graph visualization and exploration endpoints.
+
+### `GET /api/v1/graph/data`
+
+Get all graph nodes and edges for Cytoscape.js visualization.
+
+**Response**:
+```json
+{
+  "nodes": [
+    {"id": "aip", "label": "AIP", "type": "domain"}
+  ],
+  "edges": [
+    {"source": "aip", "target": "theology_research", "type": "bridge"}
+  ]
+}
+```
+
+---
+
+### `GET /api/v1/graph/neighbors/{node_id}`
+
+Get neighbors of a specific graph node.
+
+**Response**:
+```json
+{
+  "node_id": "aip",
+  "neighbors": [
+    {"id": "theology_research", "type": "domain", "edge_type": "bridge"}
+  ]
+}
+```
+
+---
+
+### `GET /api/v1/graph/stats`
+
+Get graph statistics (node count, edge count).
+
+**Response**:
+```json
+{
+  "node_count": 36,
+  "edge_count": 17
+}
+```
+
+---
+
+## Corpus
+
+Corpus management and statistics endpoints.
+
+### `GET /api/v1/corpus/stats`
+
+Get corpus statistics including turn counts, tagging progress, and embedding coverage.
+
+**Response**:
+```json
+{
+  "total_turns": 2766,
+  "tagged_turns": 2766,
+  "embedded_turns": 50,
+  "embedding_coverage": 0.018,
+  "domain_distribution": {
+    "aip": 450,
+    "theology_research": 380
+  }
+}
+```
+
+---
+
+### `GET /api/v1/corpus/embedding-progress`
+
+Get embedding pass progress for monitoring background embedding operations.
+
+**Response**:
+```json
+{
+  "total_turns": 2766,
+  "embedded_turns": 50,
+  "remaining": 2716,
+  "progress_percent": 1.8,
+  "last_batch_size": 50,
+  "estimated_completion_hours": 17
+}
+```
+
+---
+
+## Vigil Quality
+
+Vigil quality monitoring and history endpoints (Sprint 6.4+).
+
+### `GET /api/v1/vigil/quality`
+
+Get latest Vigil quality metrics including citation rate, grounding rate, and retrieval quality.
+
+**Response**:
+```json
+{
+  "citation_rate": 0.85,
+  "grounding_rate": 0.78,
+  "last_check": "2026-06-10T10:00:00Z",
+  "retrieval_quality": {
+    "precision_at_5": 0.42,
+    "last_sample": "2026-06-10T04:00:00Z",
+    "sample_size": 5
+  }
+}
+```
+
+---
+
+### `GET /api/v1/vigil/quality/alerts`
+
+Get retrieval quality degradation alerts.
+
+**Response**:
+```json
+{
+  "alerts": [
+    {
+      "alert_type": "retrieval_quality_degradation",
+      "metric": "precision_at_5",
+      "value": 0.25,
+      "threshold": 0.3,
+      "timestamp": "2026-06-10T04:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## Retrieval Dashboard
+
+Retrieval evaluation and benchmarking endpoints.
+
+### `GET /api/v1/retrieval/dashboard`
+
+Get retrieval dashboard data including current channel weights, evaluation history, and coverage stats.
+
+**Response**:
+```json
+{
+  "channel_weights": {"vector": 0.6, "fts": 0.4, "corpus": 0.4},
+  "vector_coverage": 0.018,
+  "coverage_gate_active": true,
+  "last_eval": null,
+  "baseline_available": false
+}
+```
+
+---
+
+### `POST /api/v1/admin/embeddings/backfill`
+
+Trigger an embedding backfill for documents that lack vector entries.
+
+**Auth**: Definer
+
+**Request Body**:
+```json
+{
+  "domain": null,
+  "batch_size": 50,
+  "limit": null,
+  "dry_run": false
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `domain` | string | null | Filter to specific domain |
+| `batch_size` | int | 50 | Embedding batch size |
+| `limit` | int | null | Max documents to process (null = all) |
+| `dry_run` | bool | false | Preview without generating embeddings |
+
+**Response**:
+```json
+{
+  "processed": 150,
+  "embedded": 148,
+  "errors": 2,
+  "dry_run": false
+}
+```
 
 ---
 

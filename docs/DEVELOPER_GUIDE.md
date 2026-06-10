@@ -46,11 +46,11 @@ uv run pytest --cov=aip tests/
 ### 4. Start the API Server
 
 ```bash
-# Development mode (auto-reload)
-uv run uvicorn aip.adapter.api.app:create_app --host 0.0.0.0 --port 8000 --factory --reload
+# Start both backend (port 8000) and GUI (port 8080)
+./scripts/start.sh
 
-# Production mode
-uv run uvicorn aip.adapter.api.app:create_app --host 0.0.0.0 --port 8000 --factory --workers 2
+# Or start just the API backend
+uv run uvicorn aip.adapter.api.app:create_app --host 0.0.0.0 --port 8000 --factory --reload
 ```
 
 ### 5. Start Ollama (for local models)
@@ -103,10 +103,36 @@ Foundation ← Orchestration ← Adapter
 Configuration is loaded from `config/aip.config.toml`. See [CONFIGURATION.md](./CONFIGURATION.md) for the full reference.
 
 Key sections:
-- `[embedding]` — Embedding provider and model
+- `[embedding]` / `[models.embedding]` — Embedding provider and model (default: OpenRouter)
+- `[retrieval]` / `[retrieval.channel_weights]` — Hybrid retrieval weights (vector=0.6, fts=0.4)
 - `[budget]` — Token budget limits
 - `[deployment]` — Laptop vs production profile
 - `[auth]` — Authentication settings
+- `[vigil]` / `[vigil.retrieval_quality]` — Quality monitoring and alerting
+
+## CLI Commands
+
+### Core Workflow
+
+```bash
+uv run aip init                          # Initialize database
+uv run aip status                        # Check system and corpus status
+uv run aip corpus ingest <path>          # Ingest conversations
+uv run aip corpus tag --limit 100        # Tag corpus with domains
+uv run aip ask "question" --project X    # Ask a question
+uv run aip review list                   # List pending reviews
+uv run aip review approve <id>           # Approve an artifact
+uv run aip export artifact <id>          # Export to markdown
+```
+
+### Evaluation
+
+```bash
+uv run aip eval retrieval --mode hybrid  # Evaluate hybrid retrieval (P@5, R@10, MRR)
+uv run aip eval retrieval --mode fts-only  # Evaluate FTS5-only baseline
+uv run aip eval retrieval-ab --config-a ... --config-b ...  # A/B comparison
+uv run python scripts/retrieval_weight_tuning.py  # Grid search channel weights
+```
 
 ## Testing Strategy
 

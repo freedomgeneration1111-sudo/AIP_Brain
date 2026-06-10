@@ -46,7 +46,7 @@ max_reindex_batch_size = 1000
 [api]
 host = "127.0.0.1"
 port = 8000
-cors_origins = ["http://localhost:3000"]
+cors_origins = ["http://localhost:3000", "http://localhost:8080"]
 workers = 1
 chat_max_history_turns = 50
 review_page_size = 20

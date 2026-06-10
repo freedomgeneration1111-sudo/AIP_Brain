@@ -26,6 +26,15 @@ Usage::
     # Set the k parameter
     aip eval retrieval --k 5
 
+    # Use FTS-only mode (no Vector channel)
+    aip eval retrieval --mode fts-only
+
+    # Use all channels (FTS, Vector, Graph, Wiki, Procedural, Corpus)
+    aip eval retrieval --mode all
+
+    # Hybrid mode with RRF weights (default)
+    aip eval retrieval --mode hybrid
+
     # A/B comparison: compare two saved evaluation results
     aip eval retrieval-ab --config-a eval_results/eval_a.json --config-b eval_results/eval_b.json
 
@@ -92,6 +101,13 @@ def eval_cmd() -> None:
     help="Exit with non-zero code if regression check fails",
 )
 @click.option(
+    "--mode", "-m",
+    type=click.Choice(["hybrid", "fts-only", "all"], case_sensitive=False),
+    default="hybrid",
+    help="Retrieval mode: 'hybrid' (FTS+Vector+Corpus with RRF weights), "
+         "'fts-only' (FTS+Corpus, no Vector), 'all' (all channels incl. Graph/Wiki/Procedural)",
+)
+@click.option(
     "--save-baseline",
     is_flag=True,
     default=False,
@@ -105,6 +121,7 @@ def retrieval_eval(
     db_path: str | None,
     fail_on_regression: bool,
     save_baseline: bool,
+    mode: str,
 ) -> None:
     """Run retrieval quality evaluation against golden queries.
 
@@ -136,9 +153,10 @@ def retrieval_eval(
             project_root, "tests", "retrieval_goldens", "golden_queries.json"
         )
 
-    click.echo(f"Running retrieval evaluation (k={k})...")
+    click.echo(f"Running retrieval evaluation (k={k}, mode={mode})...")
     click.echo(f"  Golden queries: {golden_queries}")
     click.echo(f"  Output dir:     {output_dir}")
+    click.echo(f"  Mode:           {mode}")
     if baseline:
         click.echo(f"  Baseline:       {baseline}")
 
@@ -149,6 +167,7 @@ def retrieval_eval(
             db_path=db_path,
             k=k,
             output_dir=output_dir,
+            mode=mode,
         ))
     except Exception as exc:
         click.echo(f"Error running evaluation: {exc}", err=True)
@@ -168,6 +187,19 @@ def retrieval_eval(
         result.to_json(baseline_path)
         click.echo(f"Baseline saved to: {baseline_path}")
 
+        # Also save a copy to docs/ for easy reference
+        docs_baseline_path = os.path.join(
+            os.environ.get("AIP_PROJECT_ROOT", "."),
+            "docs",
+            "retrieval_benchmark_baseline.json",
+        )
+        try:
+            os.makedirs(os.path.dirname(docs_baseline_path), exist_ok=True)
+            result.to_json(docs_baseline_path)
+            click.echo(f"Baseline copy saved to: {docs_baseline_path}")
+        except OSError as exc:
+            click.echo(f"Warning: Could not save baseline to docs/: {exc}", err=True)
+
     # Regression check
     if baseline:
         from aip.orchestration.retrieval_eval import compare_against_baseline
@@ -185,11 +217,42 @@ def retrieval_eval(
         click.echo(f"\nSelf-comparison check: {'PASSED' if check.passed else 'FAILED'}")
 
 
+def _load_config() -> dict | None:
+    """Load AIP config from default location (same as ask_pipeline._load_config)."""
+    try:
+        import tomllib
+    except ImportError:
+        try:
+            import tomli as tomllib  # type: ignore[no-redef]
+        except ImportError:
+            return None
+
+    config_path = os.environ.get("AIP_CONFIG_PATH", "config/aip.config.toml")
+    if not os.path.exists(config_path):
+        return None
+
+    with open(config_path, "rb") as f:
+        return tomllib.load(f)
+
+
+def _get_channel_weights_from_config(config: dict | None) -> dict[str, float]:
+    """Extract channel_weights from the parsed config dict.
+
+    Looks for ``retrieval.channel_weights`` in the config.  Returns an empty
+    dict if not found, which means OrchestratorConfig defaults will be used.
+    """
+    if config is None:
+        return {}
+    cw = config.get("retrieval", {}).get("channel_weights", {})
+    return {k: float(v) for k, v in cw.items() if isinstance(v, (int, float))}
+
+
 async def _run_eval(
     golden_path: str,
     db_path: str,
     k: int,
     output_dir: str,
+    mode: str = "hybrid",
 ):
     """Run the evaluation harness with the full AIP retrieval stack."""
     from aip.orchestration.retrieval_eval import (
@@ -205,6 +268,12 @@ async def _run_eval(
         raise SystemExit(1)
 
     click.echo(f"  Loaded {len(queries)} golden queries")
+
+    # Load config for channel weights (Sprint 6.4)
+    app_config = _load_config()
+    config_channel_weights = _get_channel_weights_from_config(app_config)
+    if config_channel_weights:
+        click.echo(f"  Channel weights (from config): {config_channel_weights}")
 
     # Create stores and retriever function
     try:
@@ -229,22 +298,57 @@ async def _run_eval(
             register_fn=lambda orch: _register_retriever_channels(orch, stores),
         )
 
-        # Use all channels for evaluation
-        config = OrchestratorConfig(
-            enable_fts=True,
-            enable_vector=True,
-            enable_graph=True,
-            enable_wiki=True,
-            enable_procedural=True,
-            enable_corpus=True,
-        )
+        # Build OrchestratorConfig based on mode
+        if mode == "fts-only":
+            config = OrchestratorConfig(
+                enable_fts=True,
+                enable_vector=False,
+                enable_graph=False,
+                enable_wiki=False,
+                enable_procedural=False,
+                enable_corpus=True,
+                channel_weights={},  # No weights for FTS-only
+            )
+        elif mode == "all":
+            config = OrchestratorConfig(
+                enable_fts=True,
+                enable_vector=True,
+                enable_graph=True,
+                enable_wiki=True,
+                enable_procedural=True,
+                enable_corpus=True,
+            )
+        else:  # hybrid (default)
+            # Sprint 6.4: use channel weights from config if available,
+            # otherwise fall back to OrchestratorConfig defaults.
+            config = OrchestratorConfig(
+                enable_fts=True,
+                enable_vector=True,
+                enable_graph=False,
+                enable_wiki=False,
+                enable_procedural=False,
+                enable_corpus=True,
+            )
+            if config_channel_weights:
+                config.channel_weights = config_channel_weights
 
         async def _retriever_fn(query: str):
             return await orchestrator.retrieve(query, config=config)
 
     else:
         # Fallback: mock retriever for testing the harness itself
+        from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
         from aip.foundation.schemas.retrieval import RetrievalHit, RetrievalTrace
+
+        # Build a placeholder config for config_snapshot in mock mode
+        config = OrchestratorConfig(
+            enable_fts=True,
+            enable_vector=(mode != "fts-only"),
+            enable_graph=(mode == "all"),
+            enable_wiki=(mode == "all"),
+            enable_procedural=(mode == "all"),
+            enable_corpus=True,
+        )
 
         async def _retriever_fn(query: str):
             hits = [
@@ -256,6 +360,19 @@ async def _run_eval(
     # Run the harness
     harness = RetrievalEvalHarness(k=k)
     result = await harness.run(queries, _retriever_fn)
+
+    # Capture mode in config_snapshot for baseline tracking
+    result.config_snapshot["mode"] = mode
+    result.config_snapshot["channels_enabled"] = {
+        "fts": config.enable_fts,
+        "vector": config.enable_vector,
+        "graph": config.enable_graph,
+        "wiki": config.enable_wiki,
+        "procedural": config.enable_procedural,
+        "corpus": config.enable_corpus,
+    }
+    result.config_snapshot["channel_weights"] = config.channel_weights
+    result.config_snapshot["k"] = k
 
     # Clean up stores
     if stores is not None:

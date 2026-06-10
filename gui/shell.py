@@ -1904,4 +1904,5 @@ async def main_page() -> None:
 # Register non-blocking backend health check on app startup
 app.on_startup(check_backend)
 
-ui.run(title="AIP_Brain", port=8080, reload=True)
+if __name__ == "__main__":
+    ui.run(title="AIP_Brain", port=8080, reload=True)

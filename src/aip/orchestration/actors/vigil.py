@@ -41,6 +41,7 @@ Phase 3.3 (Sprint 5.23, graduated Sprint 5.24): LLM-powered faithfulness evaluat
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -157,6 +158,10 @@ Be strict: if a specific number, date, or factual claim appears in the response 
         self._corpus_turns = corpus_turn_store
         self._last_eval_time: float | None = None
 
+        # Sprint 6.2: Cycle count and recent errors for operator visibility
+        self._cycle_count: int = 0
+        self._recent_errors: list[str] = []  # Last 10 error messages
+
         # LLM faithfulness telemetry — accumulates across cycles
         self._llm_faithfulness_telemetry = {
             "total_llm_evaluations": 0,
@@ -192,6 +197,42 @@ Be strict: if a specific number, date, or factual claim appears in the response 
                 )
 
     # ------------------------------------------------------------------
+    # Status summary for operator visibility (Sprint 6.2)
+    # ------------------------------------------------------------------
+
+    def get_status_summary(self) -> dict:
+        """Return a summary of Vigil's current state for operator visibility.
+
+        Includes dependency availability, last eval time, and config.
+        This method is synchronous and never raises. Called by /actors/status,
+        /health, and dashboard endpoints.
+        """
+        return {
+            "initialized": True,
+            "dependencies": {
+                "vigil_store": self.vigil_store is not None,
+                "canonical_store": self.canonical_store is not None,
+                "entity_store": self.entity_store is not None,
+                "model_provider": self.model_provider is not None,
+                "trace_store": self.trace_store is not None,
+                "sexton": self.sexton is not None,
+                "artifact_store": self._artifacts is not None,
+                "ecs_store": self._ecs is not None,
+                "event_store": self._events is not None,
+                "corpus_turn_store": self._corpus_turns is not None,
+                "alert_manager": self._alert_manager is not None,
+                "quality_store": self._quality_store is not None,
+            },
+            "last_eval_time": self._last_eval_time,
+            "interval_seconds": self.config.canonical_health_check_interval_seconds,
+            "cycle_count": self._cycle_count,
+            "recent_errors": list(self._recent_errors),
+            "llm_faithfulness_enabled": self.config.llm_faithfulness_enabled,
+            "retrieval_quality_sampling_enabled": self.config.retrieval_quality_sampling_enabled,
+            "role": "quality_evaluation",
+        }
+
+    # ------------------------------------------------------------------
     # ADR-011 Quality Evaluation Cycle
     # ------------------------------------------------------------------
 
@@ -216,7 +257,8 @@ Be strict: if a specific number, date, or factual claim appears in the response 
         """
         cycle_start = time.monotonic()
 
-        logger.info("vigil_eval_start")
+        # Sprint 6.2: Structured start event with cycle count
+        logger.info("vigil_eval_start", cycle=self._cycle_count + 1)
 
         evaluated_count = 0
         flagged_count = 0
@@ -236,6 +278,8 @@ Be strict: if a specific number, date, or factual claim appears in the response 
                 )
             except Exception as exc:
                 logger.warning("vigil_augmented_turns_query_failed", error=str(exc))
+                self._recent_errors.append(f"augmented_turns_query: {exc}")
+                self._recent_errors = self._recent_errors[-10:]
                 turns = []
 
             # --- Step 2: Evaluate citation quality for each turn ---
@@ -356,6 +400,8 @@ Be strict: if a specific number, date, or factual claim appears in the response 
                 )
             except Exception as exc:
                 logger.warning("vigil_llm_faithfulness_cycle_failed", error=str(exc))
+                self._recent_errors.append(f"llm_faithfulness: {exc}")
+                self._recent_errors = self._recent_errors[-10:]
 
         # Compute aggregate metrics
         avg_citation_rate = (
@@ -409,6 +455,7 @@ Be strict: if a specific number, date, or factual claim appears in the response 
         # --- Step 6: Per-cycle quality report artifact (Sprint 5.24) ---
         elapsed = time.monotonic() - cycle_start
         self._last_eval_time = time.time()
+        self._cycle_count += 1
 
         trend_indicators = self._compute_trend_indicators(
             avg_citation_rate=avg_citation_rate,
@@ -462,6 +509,17 @@ Be strict: if a specific number, date, or factual claim appears in the response 
             cycle_elapsed=elapsed,
         )
 
+        # --- Step 7: Retrieval quality sampling (Sprint 6.4) ---
+        # At the end of the cycle, run a light retrieval quality sample.
+        # This is gated by config and cycle interval — may be a no-op.
+        retrieval_quality_result = {}
+        try:
+            retrieval_quality_result = await self._run_retrieval_quality_sample()
+        except Exception as exc:
+            logger.warning("vigil_retrieval_quality_sample_error", error=str(exc))
+            self._recent_errors.append(f"retrieval_quality_sample: {exc}")
+            self._recent_errors = self._recent_errors[-10:]
+
         result = {
             "status": "quality_evaluation_complete",
             "evaluated_count": evaluated_count,
@@ -481,10 +539,13 @@ Be strict: if a specific number, date, or factual claim appears in the response 
             "llm_faithfulness_telemetry": dict(self._llm_faithfulness_telemetry),
             # Sprint 5.24: trend indicators
             "trend_indicators": trend_indicators,
+            # Sprint 6.4: retrieval quality gate
+            "retrieval_quality_sample": retrieval_quality_result,
         }
 
         logger.info(
             "vigil_eval_complete",
+            cycle=self._cycle_count,
             status=result["status"],
             evaluated=evaluated_count,
             flagged=flagged_count,
@@ -492,8 +553,191 @@ Be strict: if a specific number, date, or factual claim appears in the response 
             avg_grounding_rate=avg_grounding_rate,
             hedging_detected=hedging_detected_count,
             llm_eval_count=llm_eval_count,
+            elapsed_seconds=round(elapsed, 3),
         )
         return result
+
+    # ------------------------------------------------------------------
+    # Retrieval Quality Sampling (Sprint 6.4)
+    # ------------------------------------------------------------------
+
+    async def _run_retrieval_quality_sample(self) -> dict:
+        """Run a light retrieval quality sample and flag precision@5 degradation.
+
+        Sprint 6.4: Periodically runs 3-5 golden queries through the retrieval
+        pipeline, computes precision@5, and alerts if mean precision drops below
+        the configured threshold.  This is intentionally LIGHT — just a few
+        queries to catch gross retrieval degradation, not a full eval harness.
+
+        Gate: only runs when ``retrieval_quality_sampling_enabled`` is True AND
+        ``_cycle_count % sample_interval_cycles == 0`` (so with 1-hour cycles
+        and interval=6, this runs every ~6 hours).
+
+        Graceful skip: if the retrieval infrastructure (vector store, embedding
+        provider, DB) is unavailable, the sample is skipped silently.
+
+        Returns:
+            Dict with: sampled_count, mean_precision_at_5, threshold, degraded.
+        """
+        cfg = self.config
+        # Gate 1: sampling enabled?
+        if not cfg.retrieval_quality_sampling_enabled:
+            return {"sampled_count": 0, "mean_precision_at_5": 0.0, "threshold": cfg.retrieval_quality_threshold, "degraded": False}
+
+        # Gate 2: interval cycle — only run every N cycles
+        interval = cfg.retrieval_quality_sample_interval_cycles
+        if interval > 0 and self._cycle_count % interval != 0:
+            return {"sampled_count": 0, "mean_precision_at_5": 0.0, "threshold": cfg.retrieval_quality_threshold, "degraded": False}
+
+        # Step 1: Load golden queries
+        try:
+            from aip.orchestration.retrieval_eval import load_golden_queries, compute_precision_at_k
+        except ImportError:
+            logger.warning("vigil_retrieval_quality_import_failed", error="retrieval_eval module not available")
+            return {"sampled_count": 0, "mean_precision_at_5": 0.0, "threshold": cfg.retrieval_quality_threshold, "degraded": False}
+
+        golden_queries = load_golden_queries()
+        if not golden_queries:
+            logger.info("vigil_retrieval_quality_no_golden_queries")
+            return {"sampled_count": 0, "mean_precision_at_5": 0.0, "threshold": cfg.retrieval_quality_threshold, "degraded": False}
+
+        # Step 2: Sample a subset
+        sample_size = min(cfg.retrieval_quality_sample_size, len(golden_queries))
+        sampled = golden_queries[:sample_size]
+
+        # Step 3: Create retrieval infrastructure (light, temporary)
+        try:
+            from aip.orchestration.ask_pipeline import AskStores, create_ask_stores
+            from aip.orchestration.retrieval_orchestrator import OrchestratorConfig, get_orchestrator_cache
+            from aip.orchestration.ask_pipeline import _register_retriever_channels
+
+            db_path = os.environ.get("AIP_DB_PATH", "db/state.db")
+            try:
+                stores = await create_ask_stores(db_path)
+            except Exception as exc:
+                logger.info("vigil_retrieval_quality_stores_unavailable", error=str(exc))
+                return {"sampled_count": 0, "mean_precision_at_5": 0.0, "threshold": cfg.retrieval_quality_threshold, "degraded": False}
+
+            # Build hybrid OrchestratorConfig: FTS + Vector + Corpus
+            orch_config = OrchestratorConfig(
+                enable_fts=True,
+                enable_vector=True,
+                enable_graph=False,
+                enable_wiki=False,
+                enable_procedural=False,
+                enable_corpus=True,
+            )
+
+            # Create orchestrator with registered channels
+            cache = get_orchestrator_cache()
+            store_key = id(stores.lexical_store) ^ id(stores.vector_store) ^ id(stores.corpus_turn_store)
+            orchestrator = cache.get_or_create(
+                store_key=store_key,
+                register_fn=lambda orch: _register_retriever_channels(orch, stores),
+            )
+        except Exception as exc:
+            logger.info("vigil_retrieval_quality_infra_unavailable", error=str(exc))
+            return {"sampled_count": 0, "mean_precision_at_5": 0.0, "threshold": cfg.retrieval_quality_threshold, "degraded": False}
+
+        # Step 4: Run retrieval for each sampled query and compute precision@5
+        precision_scores: list[float] = []
+        for gq in sampled:
+            try:
+                hits, _trace = await orchestrator.retrieve(gq.query, config=orch_config)
+                retrieved_ids = [h.id for h in hits]
+                p5 = compute_precision_at_k(retrieved_ids, gq.relevant_ids, k=5)
+                precision_scores.append(p5)
+            except Exception as exc:
+                logger.warning(
+                    "vigil_retrieval_quality_query_failed",
+                    query=gq.query[:80],
+                    error=str(exc),
+                )
+                # Count as 0 precision for failed queries
+                precision_scores.append(0.0)
+
+        # Clean up temporary stores
+        try:
+            await stores.close()
+        except Exception:
+            pass
+
+        # Step 5: Compute mean precision@5
+        if not precision_scores:
+            return {"sampled_count": 0, "mean_precision_at_5": 0.0, "threshold": cfg.retrieval_quality_threshold, "degraded": False}
+
+        mean_p5 = round(sum(precision_scores) / len(precision_scores), 4)
+        threshold = cfg.retrieval_quality_threshold
+        degraded = mean_p5 < threshold
+
+        # Step 6: Alert if degraded
+        if degraded:
+            logger.warning(
+                "vigil_retrieval_quality_degraded",
+                mean_precision_at_5=mean_p5,
+                threshold=threshold,
+                sampled_count=len(precision_scores),
+            )
+            if self._alert_manager is not None:
+                try:
+                    from aip.adapter.alerting import Alert
+                    self._alert_manager.send_alert(Alert(
+                        alert_type="retrieval_quality_degradation",
+                        severity="warning",
+                        subject="retrieval_quality",
+                        message=(
+                            f"Vigil retrieval quality gate triggered: "
+                            f"mean precision@5 = {mean_p5:.2%} "
+                            f"(threshold = {threshold:.2%}). "
+                            f"Sampled {len(precision_scores)} golden queries."
+                        ),
+                        data={
+                            "mean_precision_at_5": mean_p5,
+                            "threshold": threshold,
+                            "sampled_count": len(precision_scores),
+                            "per_query_precision": precision_scores,
+                        },
+                    ))
+                except Exception as exc:
+                    logger.warning("vigil_retrieval_quality_alert_failed", error=str(exc))
+
+        # Step 7: Record in cycle report history
+        sample_result = {
+            "retrieval_quality_sample": {
+                "sampled_count": len(precision_scores),
+                "mean_precision_at_5": mean_p5,
+                "threshold": threshold,
+                "degraded": degraded,
+                "per_query_precision": precision_scores,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        }
+
+        # Add to the latest cycle report in history (if any)
+        if self._cycle_report_history:
+            self._cycle_report_history[-1].update(sample_result)
+
+        # Persist to quality store if available
+        if self._quality_store is not None:
+            try:
+                self._quality_store.record_cycle(sample_result)
+            except Exception as exc:
+                logger.warning("vigil_retrieval_quality_store_failed", error=str(exc))
+
+        logger.info(
+            "vigil_retrieval_quality_sample_complete",
+            sampled_count=len(precision_scores),
+            mean_precision_at_5=mean_p5,
+            threshold=threshold,
+            degraded=degraded,
+        )
+
+        return {
+            "sampled_count": len(precision_scores),
+            "mean_precision_at_5": mean_p5,
+            "threshold": threshold,
+            "degraded": degraded,
+        }
 
     # ------------------------------------------------------------------
     # LLM-Powered Faithfulness Evaluation (Phase 3.3, Sprint 5.23)

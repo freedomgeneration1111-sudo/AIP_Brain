@@ -98,6 +98,13 @@ class VigilConfig:
     llm_faithfulness_enabled: bool = True  # Default-on since Sprint 5.24
     llm_faithfulness_model_slot: str = "evaluation"
     llm_faithfulness_sample_size: int = 10  # Max turns per cycle for LLM eval
+    # Sprint 6.4: Retrieval quality sampling — Vigil periodically samples
+    # retrieval results via golden queries and flags precision@5 degradation.
+    # Light-weight: only a few queries per sample, runs every N cycles.
+    retrieval_quality_sampling_enabled: bool = True
+    retrieval_quality_sample_size: int = 5  # Number of golden queries to sample
+    retrieval_quality_threshold: float = 0.3  # precision@5 threshold below which alerts fire
+    retrieval_quality_sample_interval_cycles: int = 6  # Only run every N cycles
 
 
 @dataclass

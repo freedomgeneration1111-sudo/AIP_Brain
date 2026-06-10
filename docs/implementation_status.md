@@ -1,13 +1,34 @@
 # AIP Implementation Status
 
-**Date:** 2026-05-29
+**Date:** 2026-06-10 (updated for alpha test release)
+**Original Date:** 2026-05-29
 **Phase 0–3 + Stabilization Wrap-Up + Hardening Status:** Complete
+**Sprint 6.0–6.4 Status:** Complete (project in maintenance mode)
+
+> **Note for Alpha Testers**: This document provides a detailed module-by-module assessment
+> of the codebase. The detailed table below was originally written on 2026-05-29 and has been
+> updated to reflect Sprint 6.0–6.4 changes. Items marked with ✅ have been verified as of the
+> alpha release date. The summary sections at the top reflect the current state.
+
+## Alpha Release Summary
 
 **Overall Assessment:** The AIP 0.1 codebase has a well-designed three-layer architecture (foundation →
 orchestration → adapter) with sound Protocol-based dependency injection and comprehensive schema/protocol
-definitions. After Phases 0–3, evaluation pipeline cleanup, model provider wiring, review/gate honesty
-improvements, stabilization wrap-up, aiosqlite migration, project hardening, and **Campaign 1 usability
-fixes**, the implementation is approximately 10-12% scaffolding overall.
+definitions. The implementation is approximately 5-8% scaffolding overall, down from 10-12% at the
+initial assessment. The remaining scaffolding is in MCP dispatch, adaptive router, and ScriptNode sandbox
+— all documented and safely disabled in production paths.
+
+**Tests:** 1002+ passing, 23 skipped, 2 pre-existing failures. CI enforces `ruff format`, `ruff check`,
+and `pytest` as blocking gates.
+
+**Key Changes Since Initial Assessment (2026-05-29):**
+- Sprint 6.0: Bug fixes (BUG-001, BUG-002, BUG-004 documented; Sexton validation strengthened)
+- Sprint 6.1: Full embedding pipeline + hybrid retrieval with RRF fusion + coverage-aware gating
+- Sprint 6.4: Retrieval evaluation harness, channel weight tuning, Vigil quality gate, project closure
+- ADR-011 refactor: Actor role boundaries redefined; new Sexton actor built (5 ops, 1,341 lines) but
+  NOT WIRED (DEBT-006 — highest priority maintenance item)
+- ADR-012: Single-writer sufficiency for SQLite stores accepted
+- ADR-013: Retrieval quality validation closure accepted
 
 **All SQLite adapter stores are now migrated to `aiosqlite`** — no adapter store uses blocking
 `sqlite3.connect()` inside `async` methods. Every store follows the consistent pattern: sync table creation in

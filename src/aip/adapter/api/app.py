@@ -69,7 +69,9 @@ from aip.adapter.api.routes import (
     sources,
     wiki,
 )
+from aip.adapter.embedding.factory import create_embedding_provider
 from aip.config import validate_config
+from aip.config.loader import load_dotenv, load_toml_config
 from aip.foundation.schemas import BeastCadenceConfig, SurfaceConfig
 from aip.logging import configure_logging, get_logger, new_correlation_id, set_correlation_id
 
@@ -77,183 +79,20 @@ log = get_logger(__name__)
 
 
 # ------------------------------------------------------------------
-# TOML Config Loader
+# Config loader + embedding factory are now in canonical modules:
+#   aip.config.loader       — load_toml_config, load_dotenv
+#   aip.adapter.embedding.factory — create_embedding_provider
 # ------------------------------------------------------------------
 
-
-def _load_dotenv() -> None:
-    """Load .env file from the project root if python-dotenv is available.
-
-    This ensures AIP_OPENAI_API_KEY and other env vars are available
-    to ModelSlotResolver without manually exporting them. Safe to call
-    multiple times — dotenv won't overwrite existing env vars.
-    """
-    try:
-        from dotenv import load_dotenv
-    except ImportError:
-        return
-    # Search for .env in CWD and project root
-    candidates = [
-        Path.cwd() / ".env",
-        Path(__file__).resolve().parent.parent.parent.parent / ".env",
-    ]
-    for env_path in candidates:
-        if env_path.is_file():
-            load_dotenv(env_path, override=False)
-            log.info("dotenv_loaded", path=str(env_path))
-            return
-
-
-def _load_toml_config() -> dict:
-    """Load the AIP config from the default TOML file.
-
-    Looks for config/aip.config.toml relative to the project root.
-    The search order is:
-      1. AIP_CONFIG_PATH environment variable (explicit override)
-      2. config/aip.config.toml relative to CWD
-      3. config/aip.config.toml relative to this file's parent (src/aip/adapter/api/ → ../../../../config/)
-    Returns an empty dict if no config file is found (not an error —
-    the app can run with defaults, just no model slots).
-
-    Also loads .env file if python-dotenv is available, so that
-    AIP_OPENAI_API_KEY and other env vars are available to the
-    ModelSlotResolver without manually exporting them.
-    """
-    # Load .env BEFORE reading any env vars (so AIP_OPENAI_API_KEY is available)
-    _load_dotenv()
-    config_path = os.environ.get("AIP_CONFIG_PATH", "")
-    candidates = []
-    if config_path:
-        candidates.append(Path(config_path))
-    else:
-        candidates.append(Path.cwd() / "config" / "aip.config.toml")
-        # Relative to this source file: src/aip/adapter/api/ → project root
-        project_root = Path(__file__).resolve().parent.parent.parent.parent
-        candidates.append(project_root / "config" / "aip.config.toml")
-
-    for path in candidates:
-        if path.is_file():
-            try:
-                import tomllib
-            except ImportError:
-                try:
-                    import tomli as tomllib  # type: ignore[no-redef]
-                except ImportError:
-                    log.warning("toml_config_unavailable", reason="neither tomllib nor tomli is installed")
-                    return {}
-            try:
-                with open(path, "rb") as f:
-                    cfg = tomllib.load(f)
-                log.info("config_loaded", path=str(path), sections=list(cfg.keys()))
-                return cfg
-            except Exception as exc:
-                log.warning("config_load_failed", path=str(path), error=str(exc))
-                return {}
-
-    log.info("config_not_found", searched=[str(p) for p in candidates])
-    return {}
+# Backward-compatible aliases so existing code (tests, scripts) that
+# imports these from aip.adapter.api.app still works.
+_load_dotenv = load_dotenv
+_load_toml_config = load_toml_config
+_create_embedding_provider = create_embedding_provider
 
 
 class StartupError(Exception):
     """Raised when a required component fails to initialize on startup."""
-
-
-def _create_embedding_provider(config: dict) -> "EmbeddingProvider | None":
-    """Create an EmbeddingProvider from config.
-
-    Resolution order:
-      1. [models.embedding] slot (if provider is openai_compatible) — this
-         is the primary path when a model has been selected via the UI.
-         Reads base_url, model, api_key from the slot config with env var
-         overrides (AIP_EMBEDDING_BASE_URL, AIP_EMBEDDING_MODEL, etc.).
-      2. [embedding] section — legacy backward-compatible config.
-         Supports "ollama" and "fake" providers.
-      3. Fallback: MockOllamaEmbeddingClient (deterministic fake for CI).
-
-    Returns an EmbeddingProvider instance, or None on failure.
-    """
-    import os
-
-    from aip.adapter.model_slot_resolver import ModelSlotResolver
-
-    # Check the [models.embedding] slot first — this is the path used when
-    # an embedding model is selected via the UI.
-    models_cfg = config.get("models", {})
-    embed_slot = models_cfg.get("embedding", {})
-    if isinstance(embed_slot, dict) and embed_slot.get("provider"):
-        # Use the slot resolver to get resolved config (includes env var overrides)
-        resolver = ModelSlotResolver(config)
-        try:
-            resolved = resolver._resolve_slot_config("embedding")
-            provider = resolved.get("provider", "")
-            base_url = resolved.get("base_url", "https://api.openai.com")
-            model = resolved.get("model", "")
-            api_key = resolved.get("api_key")
-            dimensions = resolved.get("dimensions")
-
-            if provider == "openai_compatible" and model:
-                from aip.adapter.embedding.openai_embed import OpenAICompatibleEmbeddingClient
-
-                client = OpenAICompatibleEmbeddingClient(
-                    base_url=base_url,
-                    model=model,
-                    api_key=api_key,
-                    dimensions=dimensions,
-                )
-                log.info(
-                    "embedding_provider_from_slot",
-                    provider=provider,
-                    model=model,
-                    base_url=base_url,
-                    has_api_key=bool(api_key),
-                )
-                return client
-
-            if provider == "ollama" and model:
-                from aip.adapter.embedding.ollama_embed import OllamaEmbeddingClient
-
-                return OllamaEmbeddingClient(
-                    base_url=base_url,
-                    model=model,
-                    dimensions=dimensions or 768,
-                )
-        except Exception as exc:
-            log.warning("embedding_slot_resolution_failed", error=str(exc))
-
-    # Fallback: legacy [embedding] section
-    embed_cfg = config.get("embedding", {})
-    provider = embed_cfg.get("provider", "fake")
-
-    if provider == "ollama":
-        from aip.adapter.embedding.ollama_embed import OllamaEmbeddingClient
-
-        return OllamaEmbeddingClient(
-            base_url=embed_cfg.get("base_url", "http://localhost:11434"),
-            model=embed_cfg.get("model", "nomic-embed-text"),
-        )
-
-    if provider == "openai_compatible":
-        from aip.adapter.embedding.openai_embed import OpenAICompatibleEmbeddingClient
-
-        base_url = embed_cfg.get("base_url", "https://api.openai.com")
-        model = embed_cfg.get("model")
-        api_key = (
-            embed_cfg.get("api_key") or os.environ.get("AIP_EMBEDDING_API_KEY") or os.environ.get("AIP_OPENAI_API_KEY")
-        )
-        dimensions = embed_cfg.get("dimensions")
-
-        if model:
-            return OpenAICompatibleEmbeddingClient(
-                base_url=base_url,
-                model=model,
-                api_key=api_key,
-                dimensions=dimensions,
-            )
-
-    # Default: mock/fake
-    from aip.adapter.embedding.ollama_embed import MockOllamaEmbeddingClient
-
-    return MockOllamaEmbeddingClient()
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
@@ -294,7 +133,7 @@ async def lifespan(app: FastAPI):
     container = AipContainer(config)
 
     # --- Wire adapter stores from config ---
-    db_path = config.get("db_path", "db/state.db")
+    db_path = config.get("database", {}).get("db_path", "db/state.db")
 
     # =====================================================================
     # REQUIRED COMPONENTS — startup fails if these cannot initialize
@@ -639,9 +478,17 @@ async def lifespan(app: FastAPI):
             _vigil_mod = importlib.import_module("aip.orchestration.actors.vigil")
             _Vigil = _vigil_mod.Vigil
             _VigilConfig = importlib.import_module("aip.foundation.schemas.review").VigilConfig
-            vigil_config = _VigilConfig(
-                **{k: v for k, v in config.get("vigil", {}).items() if k in _VigilConfig.__dataclass_fields__},
-            )
+            # Flatten nested [vigil.retrieval_quality] TOML section into VigilConfig fields.
+            # TOML uses short names (sampling_enabled, sample_size, precision_threshold,
+            # sample_interval_cycles) while VigilConfig uses retrieval_quality_ prefixed names.
+            _vigil_flat = {k: v for k, v in config.get("vigil", {}).items() if k in _VigilConfig.__dataclass_fields__}
+            _rq = config.get("vigil", {}).get("retrieval_quality", {})
+            if _rq:
+                _vigil_flat["retrieval_quality_sampling_enabled"] = _rq.get("sampling_enabled", True)
+                _vigil_flat["retrieval_quality_sample_size"] = _rq.get("sample_size", 5)
+                _vigil_flat["retrieval_quality_threshold"] = _rq.get("precision_threshold", 0.3)
+                _vigil_flat["retrieval_quality_sample_interval_cycles"] = _rq.get("sample_interval_cycles", 6)
+            vigil_config = _VigilConfig(**_vigil_flat)
             # trace_store: use event_store if it supports write_event (TraceStore protocol)
             # The event_store and trace_store share the same interface in the current impl
             trace_store = container.event_store
@@ -693,6 +540,19 @@ async def lifespan(app: FastAPI):
                     container.sexton_actor._ecs = container.ecs_store
                     log.info("sexton_actor_ecs_backfill", reason="ecs_store_was_none_at_creation")
             log.info("component_initialized", component="sexton_actor", required=False)
+
+            # Sprint 6.3: Restart recovery — check for interrupted cycle on startup
+            try:
+                interrupted = await container.sexton_actor.detect_interrupted_cycle()
+                if interrupted is not None:
+                    log.warning(
+                        "sexton_interrupted_cycle_on_startup",
+                        cycle=interrupted.get("cycle"),
+                        cycle_id=interrupted.get("cycle_id"),
+                        note="next_regular_cycle_will_handle_pending_work",
+                    )
+            except Exception as recovery_exc:
+                log.warning("sexton_startup_recovery_check_failed", error=str(recovery_exc))
         except Exception as exc:
             log.warning(
                 "component_failed", component="sexton_actor", degradation="no_background_maintenance", error=str(exc)
@@ -1334,6 +1194,7 @@ async def lifespan(app: FastAPI):
                 log.warning("sexton_actor_startup_run_failed", error=str(exc))
 
         _sexton_startup_task = asyncio.create_task(_sexton_startup_run(), name="sexton-actor-startup")
+        container._sexton_startup_task = _sexton_startup_task
         log.info("sexton_actor_startup_run_scheduled")
 
     if container.vigil is not None:
@@ -1347,6 +1208,7 @@ async def lifespan(app: FastAPI):
                 log.warning("vigil_startup_run_failed", error=str(exc))
 
         _vigil_startup_task = asyncio.create_task(_vigil_startup_run(), name="vigil-startup")
+        container._vigil_startup_task = _vigil_startup_task
         log.info("vigil_startup_run_scheduled")
 
     # --- ConfigWatcher background scheduler (Sprint 5.27) ---
@@ -1453,6 +1315,27 @@ async def lifespan(app: FastAPI):
         )
         log.info("quality_weekly_rollup_scheduler_created")
 
+    # --- Wire orchestration function references into container ---
+    # Routes access these through the container instead of importing
+    # orchestration directly, preserving layer discipline.
+    try:
+        _ask_mod = importlib.import_module("aip.orchestration.ask_pipeline")
+        container._ask_fn = _ask_mod.ask
+        container._ask_stores_class = _ask_mod.AskStores
+        container._search_sources_fn = _ask_mod._search_sources_with_trace
+        container._sanitize_fts_query_fn = _ask_mod._sanitize_fts_query
+        log.info("orchestration_functions_wired", module="ask_pipeline")
+    except Exception as exc:
+        log.warning("orchestration_functions_wiring_failed", module="ask_pipeline", error=str(exc))
+
+    try:
+        _ingest_mod = importlib.import_module("aip.orchestration.ingestion.pipeline")
+        container._ingest_conversation_fn = _ingest_mod.ingest_conversation
+        container._ingest_file_fn = _ingest_mod.ingest_file
+        log.info("orchestration_functions_wired", module="ingestion.pipeline")
+    except Exception as exc:
+        log.warning("orchestration_functions_wiring_failed", module="ingestion.pipeline", error=str(exc))
+
     log.info(
         "startup_complete",
         required_initialized=5,
@@ -1481,6 +1364,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # --- Shutdown ---
+    # Cancel scheduler tasks first (long-running loops)
     for task_name, task in [
         ("beast", beast_task),
         ("vigil", vigil_task),
@@ -1491,6 +1375,19 @@ async def lifespan(app: FastAPI):
     ]:
         if task is not None:
             log.info(f"{task_name}_scheduler_cancelling")
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    # Cancel one-shot startup tasks (may still be running if shutdown happens quickly)
+    for task_name, task in [
+        ("sexton_startup", getattr(container, "_sexton_startup_task", None)),
+        ("vigil_startup", getattr(container, "_vigil_startup_task", None)),
+    ]:
+        if task is not None:
+            log.info(f"{task_name}_task_cancelling")
             task.cancel()
             try:
                 await task

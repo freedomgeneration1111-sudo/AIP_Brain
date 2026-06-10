@@ -36,11 +36,16 @@ class HealthEndpointResponse(TypedDict):
     optional_total: int
     vector_backend: str
     model_slots: list[Any]
-    actors: dict[str, dict[str, bool]]
+    actors: dict[str, dict[str, Any]]
     budget_status: str
     db_writable: bool
     store_health: dict[str, dict[str, Any]]
     read_pool_summary: dict[str, Any]
+    # Sprint 6.2: Enhanced actor status, embedding coverage, store sizes
+    actor_details: dict[str, dict[str, Any]]
+    embedding_coverage: dict[str, Any]
+    store_sizes: dict[str, Any]
+    alerting_health: dict[str, Any]
 
 
 @router.get("/health")
@@ -69,6 +74,87 @@ async def health(container: AipContainer = Depends(get_container)):
         "vigil": {"initialized": container.vigil is not None},
         "sexton": {"initialized": container.sexton_actor is not None},
     }
+
+    # Sprint 6.2: Detailed actor status from get_status_summary()
+    actor_details: dict[str, dict[str, Any]] = {}
+    for actor_name, actor_instance in [
+        ("beast", container.beast),
+        ("vigil", container.vigil),
+        ("sexton", container.sexton_actor),
+    ]:
+        if actor_instance is not None and hasattr(actor_instance, "get_status_summary"):
+            try:
+                actor_details[actor_name] = actor_instance.get_status_summary()
+            except Exception:
+                actor_details[actor_name] = {"initialized": True, "summary_error": True}
+        elif actor_instance is not None:
+            actor_details[actor_name] = {"initialized": True}
+        else:
+            actor_details[actor_name] = {"initialized": False}
+
+    # Sprint 6.2: Embedding coverage from corpus turn store
+    embedding_coverage: dict[str, Any] = {
+        "percentage": 0.0,
+        "total": 0,
+        "embedded": 0,
+        "unembedded": 0,
+        "sexton_pass_state": None,
+    }
+    cts = getattr(container, "corpus_turn_store", None)
+    if cts is not None:
+        try:
+            total = await cts.total_turns()
+            unembedded = await cts.count_unembedded()
+            embedded = total - unembedded
+            embedding_coverage["total"] = total
+            embedding_coverage["embedded"] = embedded
+            embedding_coverage["unembedded"] = unembedded
+            embedding_coverage["percentage"] = round(embedded / total * 100, 2) if total > 0 else 0.0
+        except Exception:
+            pass
+    if container.sexton_actor is not None:
+        try:
+            embedding_coverage["sexton_pass_state"] = dict(container.sexton_actor._embedding_pass_state)
+        except Exception:
+            pass
+
+    # Sprint 6.2: Store sizes — vector count and graph node/edge counts
+    store_sizes: dict[str, Any] = {
+        "vector_store": {"available": False, "count": 0},
+        "graph_store": {"available": False, "nodes": 0, "edges": 0},
+    }
+    if container.vector_store is not None and hasattr(container.vector_store, "count"):
+        try:
+            store_sizes["vector_store"]["available"] = True
+            store_sizes["vector_store"]["count"] = await container.vector_store.count()
+        except Exception:
+            pass
+    graph_store = getattr(container, "graph_store", None)
+    if graph_store is not None and hasattr(graph_store, "node_count"):
+        try:
+            store_sizes["graph_store"]["available"] = True
+            store_sizes["graph_store"]["nodes"] = await graph_store.node_count()
+            store_sizes["graph_store"]["edges"] = await graph_store.edge_count()
+        except Exception:
+            pass
+
+    # Sprint 6.2: High-level alerting health from StatusAggregator
+    alerting_health: dict[str, Any] = {"enabled": False}
+    alert_manager = getattr(container, "_alert_manager", None)
+    if alert_manager is not None and hasattr(alert_manager, "get_status"):
+        try:
+            full_status = alert_manager.get_status()
+            # Extract only the high-level health indicators, not the full detail
+            alerting_health = {
+                "enabled": full_status.get("enabled", False),
+                "circuit_breaker_open": full_status.get("circuit_breaker", {}).get("active", False),
+                "recent_alert_count": full_status.get("total_alerts_sent", 0),
+                "delivery_failures": full_status.get("total_send_failures", 0),
+                "realtime_subscribers": full_status.get("sse_subscribers", 0) + full_status.get("ws_subscribers", 0),
+                "lifecycle_active_count": full_status.get("alert_groups", 0),
+            }
+        except Exception:
+            pass
 
     # Sexton batch telemetry (if available)
     sexton_batch_telemetry = {}
@@ -385,9 +471,8 @@ async def health(container: AipContainer = Depends(get_container)):
         except Exception:
             pass
 
-    # Sprint 5.25: Alerting status
+    # Sprint 5.25: Alerting status (full detail — retained for backward compat)
     alerting_status: dict[str, Any] = {"enabled": False}
-    alert_manager = getattr(container, "_alert_manager", None)
     if alert_manager is not None and hasattr(alert_manager, "get_status"):
         try:
             alerting_status = alert_manager.get_status()
@@ -454,4 +539,9 @@ async def health(container: AipContainer = Depends(get_container)):
         "cleanup_metrics": cleanup_metrics,
         "calibration_drift": calibration_drift_status,
         "snapshot_gc": snapshot_gc_status,
+        # Sprint 6.2: Enhanced observability fields
+        "actor_details": actor_details,
+        "embedding_coverage": embedding_coverage,
+        "store_sizes": store_sizes,
+        "alerting_health": alerting_health,
     }

@@ -627,6 +627,30 @@ async def _search_sources_with_trace(
         max_hits=max_sources * 3,
     )
 
+    # Sprint 6.4: Read channel weights from config dict (from aip.config.toml).
+    # The config dict is the parsed TOML — we look for retrieval.channel_weights.
+    # If the caller doesn't pass a config, fall back to _load_config() so we
+    # always pick up the latest operator-tuned weights.
+    _effective_config = config
+    if _effective_config is None:
+        try:
+            _effective_config = _load_config()
+        except Exception:
+            _effective_config = None
+    if _effective_config is not None:
+        _cw = _effective_config.get("retrieval", {}).get("channel_weights", {})
+        if _cw:
+            # Only override channel_weights if we have both semantic and lexical channels
+            has_semantic = vector_enabled
+            has_lexical = enable_fts or orch_config.enable_corpus
+            if has_semantic and has_lexical:
+                orch_config.channel_weights = {
+                    k: float(v) for k, v in _cw.items() if isinstance(v, (int, float))
+                }
+            else:
+                # No hybrid — clear weights to avoid distorting FTS-only scores
+                orch_config.channel_weights = {}
+
     # Adaptive channel selection: auto-enable channels based on query signals.
     # Only enables (never disables). Set auto_channel_selection=False for manual control.
     if auto_channel_selection:
@@ -773,8 +797,8 @@ async def create_ask_stores(db_path: str) -> AskStores:
     try:
         config = _load_config()
         if config is not None:
-            from aip.adapter.api.app import _create_embedding_provider
-            embedding_provider = _create_embedding_provider(config)
+            from aip.adapter.embedding.factory import create_embedding_provider
+            embedding_provider = create_embedding_provider(config)
     except Exception:
         pass  # graceful: no embedding provider — lexical-only search
 
