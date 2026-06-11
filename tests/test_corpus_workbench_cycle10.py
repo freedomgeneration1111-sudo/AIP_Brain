@@ -56,7 +56,7 @@ class TestCorpusStatusEndpoint:
         container.corpus_turn_store = mock_cts
 
         # Call the route handler directly
-        result = asyncio.get_event_loop().run_until_complete(get_corpus_status(container=container))
+        result = asyncio.run(get_corpus_status(container=container))
         assert "total_turns" in result
         assert "embedded" in result
         assert "tagged" in result
@@ -69,7 +69,7 @@ class TestCorpusStatusEndpoint:
         container = MagicMock()
         container.corpus_turn_store = None
 
-        result = asyncio.get_event_loop().run_until_complete(get_corpus_status(container=container))
+        result = asyncio.run(get_corpus_status(container=container))
         assert result.get("total_turns") == 0
         assert result.get("embedded") == 0
         assert result.get("tagged") == 0
@@ -88,7 +88,7 @@ class TestCorpusDocumentsEndpoint:
         mock_cts.list_documents.return_value = []
         container.corpus_turn_store = mock_cts
 
-        result = asyncio.get_event_loop().run_until_complete(list_documents(container=container))
+        result = asyncio.run(list_documents(container=container))
         assert result.get("items") == []
         assert result.get("total") == 0
 
@@ -99,7 +99,7 @@ class TestCorpusDocumentsEndpoint:
         container = MagicMock()
         container.corpus_turn_store = None
 
-        result = asyncio.get_event_loop().run_until_complete(list_documents(container=container))
+        result = asyncio.run(list_documents(container=container))
         assert result.get("items") == []
         assert result.get("total") == 0
 
@@ -126,7 +126,7 @@ class TestCorpusDocumentsEndpoint:
         ]
         container.corpus_turn_store = mock_cts
 
-        result = asyncio.get_event_loop().run_until_complete(list_documents(search="test", container=container))
+        result = asyncio.run(list_documents(search="test", container=container))
         assert len(result.get("items", [])) == 1
 
 
@@ -148,9 +148,7 @@ class TestCorpusDocumentDetailEndpoint:
         container.corpus_turn_store = mock_cts
 
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(
-                get_document_detail(source_path="nonexistent.json", container=container)
-            )
+            asyncio.run(get_document_detail(source_path="nonexistent.json", container=container))
         assert exc_info.value.status_code == 404
 
     def test_document_detail_without_store(self):
@@ -160,9 +158,7 @@ class TestCorpusDocumentDetailEndpoint:
         container = MagicMock()
         container.corpus_turn_store = None
 
-        result = asyncio.get_event_loop().run_until_complete(
-            get_document_detail(source_path="test.json", container=container)
-        )
+        result = asyncio.run(get_document_detail(source_path="test.json", container=container))
         assert result.get("not_found") is True
 
 
@@ -184,7 +180,7 @@ class TestCorpusProblemsEndpoint:
         }
         container.corpus_turn_store = mock_cts
 
-        result = asyncio.get_event_loop().run_until_complete(get_corpus_problems(container=container))
+        result = asyncio.run(get_corpus_problems(container=container))
         assert result.get("failed_ingest_jobs") == []
         assert result.get("available") is True
 
@@ -195,7 +191,7 @@ class TestCorpusProblemsEndpoint:
         container = MagicMock()
         container.corpus_turn_store = None
 
-        result = asyncio.get_event_loop().run_until_complete(get_corpus_problems(container=container))
+        result = asyncio.run(get_corpus_problems(container=container))
         assert result.get("available") is False
 
 
@@ -210,9 +206,7 @@ class TestCorpusBackfillEndpoint:
         container.embedding_provider = None
         container.corpus_turn_store = None
 
-        result = asyncio.get_event_loop().run_until_complete(
-            trigger_embedding_backfill(payload={}, container=container)
-        )
+        result = asyncio.run(trigger_embedding_backfill(payload={}, container=container))
         assert result.get("status") == "not_wired"
 
     def test_backfill_already_running(self):
@@ -223,9 +217,7 @@ class TestCorpusBackfillEndpoint:
         container.embedding_provider = MagicMock()  # Provider configured
         container.backfill_status = {"running": True}
 
-        result = asyncio.get_event_loop().run_until_complete(
-            trigger_embedding_backfill(payload={}, container=container)
-        )
+        result = asyncio.run(trigger_embedding_backfill(payload={}, container=container))
         assert result.get("status") == "already_running"
 
 
@@ -240,7 +232,7 @@ class TestCorpusRetryFailedEndpoint:
         container.corpus_turn_store = None
         container.embedding_provider = MagicMock()
 
-        result = asyncio.get_event_loop().run_until_complete(retry_failed_embeds(payload={}, container=container))
+        result = asyncio.run(retry_failed_embeds(payload={}, container=container))
         assert result.get("status") == "not_wired"
 
     def test_retry_not_wired_without_provider(self):
@@ -252,7 +244,7 @@ class TestCorpusRetryFailedEndpoint:
         container.corpus_turn_store = mock_cts
         container.embedding_provider = None
 
-        result = asyncio.get_event_loop().run_until_complete(retry_failed_embeds(payload={}, container=container))
+        result = asyncio.run(retry_failed_embeds(payload={}, container=container))
         assert result.get("status") == "not_wired"
 
 
@@ -270,9 +262,7 @@ class TestCorpusIngestEndpoint:
         container._ingest_file_to_corpus_fn = None
 
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(
-                ingest_to_corpus(payload={"path": "/tmp/test.json"}, container=container)
-            )
+            asyncio.run(ingest_to_corpus(payload={"path": "/tmp/test.json"}, container=container))
         assert exc_info.value.status_code == 503
 
     def test_ingest_requires_path(self):
@@ -287,7 +277,7 @@ class TestCorpusIngestEndpoint:
         container.corpus_turn_store = MagicMock()
 
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(ingest_to_corpus(payload={}, container=container))
+            asyncio.run(ingest_to_corpus(payload={}, container=container))
         assert exc_info.value.status_code == 400
 
 
@@ -301,7 +291,7 @@ class TestCorpusDuplicatesAndStaleEndpoints:
         container = MagicMock()
         container.corpus_turn_store = None
 
-        result = asyncio.get_event_loop().run_until_complete(get_duplicate_documents(container=container))
+        result = asyncio.run(get_duplicate_documents(container=container))
         assert result.get("available") is False
 
     def test_stale_without_store(self):
@@ -311,7 +301,7 @@ class TestCorpusDuplicatesAndStaleEndpoints:
         container = MagicMock()
         container.corpus_turn_store = None
 
-        result = asyncio.get_event_loop().run_until_complete(get_stale_documents(container=container))
+        result = asyncio.run(get_stale_documents(container=container))
         assert result.get("available") is False
 
 
@@ -332,7 +322,7 @@ class TestEmbeddingCoverageHonesty:
         }
         container.corpus_turn_store = mock_cts
 
-        result = asyncio.get_event_loop().run_until_complete(get_corpus_status(container=container))
+        result = asyncio.run(get_corpus_status(container=container))
         assert result.get("embed_coverage") == 0.0
 
 
@@ -405,7 +395,7 @@ class TestNoSecretExposure:
         }
         container.corpus_turn_store = mock_cts
 
-        result = asyncio.get_event_loop().run_until_complete(get_corpus_status(container=container))
+        result = asyncio.run(get_corpus_status(container=container))
         result_str = str(result)
         for secret_term in ["api_key", "password", "token", "secret"]:
             assert secret_term not in result_str.lower(), f"Secret term '{secret_term}' found in corpus status response"
@@ -420,7 +410,7 @@ class TestNoSecretExposure:
         mock_cts.list_documents.return_value = []
         container.corpus_turn_store = mock_cts
 
-        result = asyncio.get_event_loop().run_until_complete(list_documents(container=container))
+        result = asyncio.run(list_documents(container=container))
         result_str = str(result)
         for secret_term in ["api_key", "password", "token", "secret"]:
             assert secret_term not in result_str.lower(), f"Secret term '{secret_term}' found in documents response"

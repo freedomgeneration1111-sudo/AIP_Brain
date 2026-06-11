@@ -32,7 +32,7 @@ def _make_test_config(**overrides):
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
     config = {
-        "db_path": tmp.name,
+        "database": {"db_path": tmp.name},
         "auth": {"auth_enabled": False},
         "rate_limit": {"enabled": False},
         "embedding": {"provider": "mock"},

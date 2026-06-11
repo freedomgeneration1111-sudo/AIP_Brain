@@ -213,7 +213,7 @@ class TestStartupHonesty:
 
         import asyncio
 
-        result = asyncio.get_event_loop().run_until_complete(health(container=container))
+        result = asyncio.run(health(container=container))
         sexton_status = result["actors"]["sexton"]
         # Sexton has all deps but no cycle — should be "degraded", not "active"
         assert sexton_status["state"] != "active", (

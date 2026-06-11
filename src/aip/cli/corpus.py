@@ -1430,17 +1430,12 @@ def corpus_backfill_cmd(limit: int, db_path: str | None) -> None:
         if embedding_provider is None:
             return None, "No embedding provider configured"
 
-        # Create vector store
+        # Create vector store via factory (indirect import to preserve layer boundary)
+        import importlib
 
-        from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
-
-        vec_db = cfg.get("vector_backend", {}).get("db_path", "db/vectors.db")
-        vector_store = SqliteVssVectorStore(
-            db_path=vec_db,
-            dimensions=768,
-            embedding_provider=embedding_provider,
-        )
-        await vector_store.initialize()
+        _vec_factory_mod = importlib.import_module("aip.adapter.vector.factory")
+        _create_vector_store = _vec_factory_mod.create_vector_store
+        vector_store = await _create_vector_store(cfg, embedding_provider=embedding_provider)
 
         store = CorpusTurnStore(db_path=resolved_db_path)
         await store.initialize()

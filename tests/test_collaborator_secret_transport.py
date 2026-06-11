@@ -14,12 +14,19 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from aip.adapter.api.collaborators import router
+from aip.adapter.auth.dependencies import require_definer
+
+
+def _override_require_definer():
+    """Override that grants DEFINER role for testing."""
+    return {"identity": "test_definer", "role": "definer"}
 
 
 def _create_test_app() -> tuple[FastAPI, TestClient]:
     """Create a minimal FastAPI app with the collaborators router for testing."""
     app = FastAPI()
     app.include_router(router)
+    app.dependency_overrides[require_definer] = _override_require_definer
     client = TestClient(app)
     return app, client
 

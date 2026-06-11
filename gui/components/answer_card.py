@@ -220,7 +220,7 @@ def add_answer_card(
             else:
                 ui.button("No Sources").props("dense flat size=xs disable").style(
                     f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
-                )
+                ).tooltip("not wired — no sources available")
 
             # Show Trace — available when trace was generated
             if trace_available:
@@ -231,7 +231,7 @@ def add_answer_card(
             else:
                 ui.button("Trace Unavailable").props("dense flat size=xs disable").style(
                     f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
-                )
+                ).tooltip("not wired — trace data not available")
 
             # Save as Artifact — always available (creates GENERATED artifact)
             if on_save_artifact:
@@ -242,7 +242,7 @@ def add_answer_card(
             else:
                 ui.button("Save Artifact").props("dense flat size=xs disable").style(
                     f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
-                )
+                ).tooltip("not wired — save artifact callback not provided")
 
             # Beast Counsel — available when turn_data has a turn_id
             if on_beast_counsel:
@@ -253,7 +253,7 @@ def add_answer_card(
             else:
                 ui.button("Beast Counsel").props("dense flat size=xs disable").style(
                     f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
-                )
+                ).tooltip("not wired — beast counsel callback not provided")
 
             # Link Wiki — UI Cycle 8: Crosslink System now provides backend endpoint
             if on_link_wiki:
@@ -264,7 +264,7 @@ def add_answer_card(
             else:
                 ui.button("Link Wiki").props("dense flat size=xs disable").style(
                     f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
-                )
+                ).tooltip("not wired — link wiki callback not provided")
 
             # Run Model Council — available via Model Council panel
             if on_run_model_council:
@@ -275,7 +275,7 @@ def add_answer_card(
             else:
                 ui.button("Model Council").props("dense flat size=xs disable").style(
                     f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
-                )
+                ).tooltip("not wired — model council callback not provided")
 
 
 def _safe_callback(callback: Any, turn_data: dict[str, Any]) -> None:
