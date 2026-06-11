@@ -2067,6 +2067,203 @@ class AipApiClient:
             log.warning("get_retrieval_recent_traces_failed: %s", exc)
             return {"status": "error", "traces": [], "count": 0}
 
+    # ── UI Cycle 12: Maintenance Center ─────────────────────────────────
+
+    async def get_maintenance_status(self) -> dict[str, Any]:
+        """Get aggregated maintenance status via GET /api/v1/maintenance/status.
+
+        Returns actor states, backfill state, capability availability,
+        and warnings. Honest about unavailable/not_wired states.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/maintenance/status",
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_maintenance_status_failed: %s", exc)
+            return {
+                "actors": {},
+                "backfill": {"state": "unavailable", "running": False, "progress": {}, "last_result": None},
+                "capabilities": {},
+                "warnings": [f"Backend unavailable: {exc}"],
+            }
+
+    async def get_actor_runs(self, actor_name: str, limit: int = 20) -> dict[str, Any]:
+        """Get recent run history for an actor via GET /api/v1/actors/{actor}/runs.
+
+        Returns honest empty list if event store is unavailable or no events exist.
+        Never fakes run history.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/actors/{actor_name}/runs",
+                params={"limit": limit},
+                timeout=8.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_actor_runs_failed: %s", exc)
+            return {
+                "actor": actor_name,
+                "runs": [],
+                "available": False,
+                "count": 0,
+                "message": f"Backend unavailable: {exc}",
+            }
+
+    async def get_maintenance_logs(self, limit: int = 50) -> dict[str, Any]:
+        """Get recent maintenance logs via GET /api/v1/maintenance/logs.
+
+        Returns honest empty list if event store is unavailable. Never fakes logs.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/maintenance/logs",
+                params={"limit": limit},
+                timeout=8.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_maintenance_logs_failed: %s", exc)
+            return {
+                "logs": [],
+                "available": False,
+                "count": 0,
+                "message": f"Backend unavailable: {exc}",
+            }
+
+    async def trigger_maintenance_backfill(self, limit: int = 500, batch_size: int = 20, dry_run: bool = False) -> dict[str, Any]:
+        """Trigger embedding backfill via POST /api/v1/maintenance/backfill-embeddings.
+
+        Explicit DEFINER action. Uses the same runtime path as
+        POST /corpus/backfill. Reports honest unavailable if not wired.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/maintenance/backfill-embeddings",
+                json={"limit": limit, "batch_size": batch_size, "dry_run": dry_run},
+                timeout=15.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("trigger_maintenance_backfill_failed: %s", exc)
+            return {"status": "error", "message": f"Backfill request failed: {exc}"}
+
+    async def trigger_maintenance_rebuild_graph(self) -> dict[str, Any]:
+        """Trigger graph rebuild via POST /api/v1/maintenance/rebuild-graph.
+
+        Explicit DEFINER action. Returns not_wired/scheduled_only honestly
+        if no standalone endpoint exists.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/maintenance/rebuild-graph",
+                timeout=15.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("trigger_maintenance_rebuild_graph_failed: %s", exc)
+            return {"status": "error", "message": f"Graph rebuild request failed: {exc}"}
+
+    async def trigger_maintenance_rebuild_codex(self) -> dict[str, Any]:
+        """Trigger CODEX/wiki rebuild via POST /api/v1/maintenance/rebuild-codex.
+
+        Explicit DEFINER action. Returns not_wired/scheduled_only honestly
+        if no standalone endpoint exists.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/maintenance/rebuild-codex",
+                timeout=15.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("trigger_maintenance_rebuild_codex_failed: %s", exc)
+            return {"status": "error", "message": f"CODEX rebuild request failed: {exc}"}
+
+    async def trigger_maintenance_retrieval_eval(self) -> dict[str, Any]:
+        """Trigger retrieval eval via POST /api/v1/maintenance/run-retrieval-eval.
+
+        Explicit DEFINER action. Returns not_wired honestly if CLI-only.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/maintenance/run-retrieval-eval",
+                timeout=15.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("trigger_maintenance_retrieval_eval_failed: %s", exc)
+            return {"status": "error", "message": f"Retrieval eval request failed: {exc}"}
+
+    async def trigger_maintenance_check_stale_docs(self) -> dict[str, Any]:
+        """Check for stale documents via POST /api/v1/maintenance/check-stale-docs.
+
+        Explicit DEFINER action. Delegates to existing corpus stale logic.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/maintenance/check-stale-docs",
+                timeout=15.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("trigger_maintenance_check_stale_docs_failed: %s", exc)
+            return {"status": "error", "message": f"Stale docs check failed: {exc}"}
+
+    async def trigger_maintenance_check_contradictions(self) -> dict[str, Any]:
+        """Check for contradictions via POST /api/v1/maintenance/check-contradictions.
+
+        Explicit DEFINER action. Returns not_wired honestly if not available.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/maintenance/check-contradictions",
+                timeout=15.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("trigger_maintenance_check_contradictions_failed: %s", exc)
+            return {"status": "error", "message": f"Contradiction check failed: {exc}"}
+
+    async def trigger_actor_run(self, actor_name: str) -> dict[str, Any]:
+        """Trigger an actor cycle via POST /api/v1/actors/{actor}/trigger.
+
+        Explicit DEFINER action. Uses the existing actor trigger endpoint.
+        Returns unavailable if actor not initialized.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/actors/{actor_name}/trigger",
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("trigger_actor_run_failed: %s", exc)
+            return {"actor": actor_name, "triggered": False, "error": f"Backend unavailable: {exc}"}
+
 
 # Module-level singleton for the GUI to use
 _api_client: AipApiClient | None = None

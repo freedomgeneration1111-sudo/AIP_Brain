@@ -48,7 +48,7 @@ The old `main.py` had a header-based navigation with buttons to `/models`, `/vec
 - `/retrieval` → Retrieval Lab v1 (UI Cycle 11)
 - `/wiki` → Wiki/CODEX Home (placeholder)
 - `/artifacts` → Artifact Workbench (**BUILT — UI Cycle 9**)
-- `/maintenance` → Maintenance Center (placeholder)
+- `/maintenance` → Maintenance Center (v1 — actor status, maintenance jobs, logs, problems)
 - `/settings` → Settings (placeholder)
 
 The shell.py tab-based layout is **frozen** (no new features); `app.py` is the default entry point. All start scripts reference `gui.app`.
@@ -336,10 +336,15 @@ The following API concepts are needed by the Operator Console but **do not exist
 
 | Needed | Status | Notes |
 |--------|--------|-------|
-| `POST /api/v1/maintenance/rebuild-graph` | **MISSING** | No graph rebuild trigger |
-| `POST /api/v1/maintenance/rebuild-codex` | **MISSING** | No CODEX topic rebuild trigger |
-| `POST /api/v1/maintenance/run-retrieval-eval` | **MISSING** | No retrieval eval trigger |
-| `GET /api/v1/actors/{name}/runs` | **MISSING** | No actor run history |
+| `GET /api/v1/maintenance/status` | **BUILT** | UI Cycle 12: Aggregated maintenance overview |
+| `GET /api/v1/actors/{name}/runs` | **BUILT** | UI Cycle 12: Actor run history from event store |
+| `GET /api/v1/maintenance/logs` | **BUILT** | UI Cycle 12: Recent maintenance event logs |
+| `POST /api/v1/maintenance/backfill-embeddings` | **BUILT** | UI Cycle 12: Delegates to existing corpus backfill path |
+| `POST /api/v1/maintenance/rebuild-graph` | **BUILT** | UI Cycle 12: Returns `scheduled_only` (graph rebuild runs via Sexton cycle) |
+| `POST /api/v1/maintenance/rebuild-codex` | **BUILT** | UI Cycle 12: Returns `scheduled_only` (wiki rebuild runs via Sexton cycle) |
+| `POST /api/v1/maintenance/run-retrieval-eval` | **BUILT** | UI Cycle 12: Returns `not_wired` (CLI-only tool) |
+| `POST /api/v1/maintenance/check-stale-docs` | **BUILT** | UI Cycle 12: Delegates to existing corpus stale logic |
+| `POST /api/v1/maintenance/check-contradictions` | **BUILT** | UI Cycle 12: Returns `not_wired` (not yet available) |
 | Actor next-run display | **PARTIAL** | Actor interval is shown but next scheduled run time is not exposed |
 
 ### 3.9 Settings

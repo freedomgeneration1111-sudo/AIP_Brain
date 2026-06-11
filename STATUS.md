@@ -6,7 +6,7 @@
 **Release:** Alpha Test Release
 **Project Mode:** MAINTENANCE — active development phase complete; see docs/Maintenance_Protocol.md
 
-> This document reflects the state after UI Cycle 11 (Retrieval Lab v1) and Chunk 5 (retrieval honesty).
+> This document reflects the state after UI Cycle 12 (Maintenance Center v1) and Chunk 5 (retrieval honesty).
 > The project has entered maintenance mode. No further feature sprints are planned.
 > See ROADMAP.md for the maintenance mode section and docs/Maintenance_Protocol.md for operational procedures.
 

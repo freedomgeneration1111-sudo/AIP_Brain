@@ -136,6 +136,7 @@ class QueryableEventStore(StoreHealthMixin):
         self,
         artifact_id: str | None = None,
         event_type: str | None = None,
+        actor: str | None = None,
         limit: int = 100,
     ) -> list[Event]:
         """Query events by filters, most recent first."""
@@ -150,6 +151,9 @@ class QueryableEventStore(StoreHealthMixin):
             if event_type is not None:
                 conditions.append("event_type = ?")
                 params.append(event_type)
+            if actor is not None:
+                conditions.append("actor = ?")
+                params.append(actor)
 
             where = " AND ".join(conditions) if conditions else "1=1"
             sql = (

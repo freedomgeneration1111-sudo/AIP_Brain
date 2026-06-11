@@ -3223,3 +3223,238 @@ Read-only (GET) requests are not rate-limited when `model_budget_protection = tr
 | `DELETE` | `/api/v1/links/{link_id}` | Required | No | Delete knowledge link |
 | `GET` | `/api/v1/links/backlinks/{target_type}/{target_id}` | Optional | No | Get backlinks for object |
 | `GET` | `/api/v1/links/forward/{source_type}/{source_id}` | Optional | No | Get forward links for object |
+| `GET` | `/api/v1/maintenance/status` | Optional | No | Aggregated maintenance overview |
+| `GET` | `/api/v1/actors/{actor}/runs` | Optional | No | Actor run history from event store |
+| `GET` | `/api/v1/maintenance/logs` | Optional | No | Recent maintenance event logs |
+| `POST` | `/api/v1/maintenance/backfill-embeddings` | Definer | No | Trigger embedding backfill |
+| `POST` | `/api/v1/maintenance/rebuild-graph` | Definer | No | Trigger graph rebuild (scheduled_only) |
+| `POST` | `/api/v1/maintenance/rebuild-codex` | Definer | No | Trigger CODEX/wiki rebuild (scheduled_only) |
+| `POST` | `/api/v1/maintenance/run-retrieval-eval` | Definer | No | Trigger retrieval eval (not_wired) |
+| `POST` | `/api/v1/maintenance/check-stale-docs` | Definer | No | Check for stale documents |
+| `POST` | `/api/v1/maintenance/check-contradictions` | Definer | No | Check for contradictions (not_wired) |
+
+## Maintenance Center
+
+Maintenance Center API for the Operator Console. Exposes actor status, run-now, run history, maintenance job triggers, and recent maintenance logs. All maintenance actions are explicit DEFINER actions. No fake runs, no fake healthy states. Jobs that are not wired return `unavailable`/`not_wired`/`scheduled_only` honestly.
+
+### `GET /api/v1/maintenance/status`
+
+Aggregated maintenance overview combining actor states, backfill state, and capability availability.
+
+**Response:**
+
+```json
+{
+  "actors": {
+    "beast": {
+      "name": "beast",
+      "initialized": true,
+      "scheduled": false,
+      "running": false,
+      "enabled": true,
+      "state": "active",
+      "last_run_at": "2026-06-12T10:00:00",
+      "next_run_at": null,
+      "last_result": null,
+      "last_error": null,
+      "degraded_reason": null,
+      "run_now_supported": true,
+      "cycle_count": 42,
+      "recent_errors": [],
+      "dependencies": {},
+      "missing_core_dependencies": [],
+      "interval_seconds": 60,
+      "role": "Active synthesis support"
+    },
+    "vigil": { "...": "..." },
+    "sexton": { "...": "..." }
+  },
+  "backfill": {
+    "state": "configured_idle",
+    "running": false,
+    "progress": {},
+    "last_result": null
+  },
+  "capabilities": {
+    "embedding_backfill": { "available": true, "status": "available" },
+    "graph_rebuild": { "available": false, "status": "scheduled_only", "message": "..." },
+    "codex_rebuild": { "available": false, "status": "scheduled_only", "message": "..." },
+    "retrieval_eval": { "available": false, "status": "not_wired", "message": "..." },
+    "stale_docs_check": { "available": true, "status": "available" },
+    "contradiction_check": { "available": false, "status": "not_wired", "message": "..." }
+  },
+  "warnings": []
+}
+```
+
+### `GET /api/v1/actors/{actor_name}/runs`
+
+Get recent run history for an actor from the event store. Returns honest empty list if event store is unavailable.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `actor_name` | path | required | One of: `beast`, `vigil`, `sexton` |
+| `limit` | query | 20 | Maximum events to return |
+
+**Response:**
+
+```json
+{
+  "actor": "beast",
+  "runs": [
+    {
+      "event_type": "beast_heartbeat",
+      "actor": "beast",
+      "artifact_id": "system",
+      "from_state": null,
+      "to_state": null,
+      "timestamp": "2026-06-12T10:00:00",
+      "metadata": {}
+    }
+  ],
+  "available": true,
+  "count": 1
+}
+```
+
+### `GET /api/v1/maintenance/logs`
+
+Get recent maintenance events from all actors. Honest empty list if event store is unavailable.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | query | 50 | Maximum events to return |
+
+**Response:**
+
+```json
+{
+  "logs": [
+    {
+      "event_type": "sexton_vigil_complete",
+      "actor": "sexton",
+      "artifact_id": "system",
+      "from_state": null,
+      "to_state": null,
+      "timestamp": "2026-06-12T09:55:00",
+      "metadata": {}
+    }
+  ],
+  "available": true,
+  "count": 1
+}
+```
+
+### `POST /api/v1/maintenance/backfill-embeddings`
+
+Trigger embedding backfill. Explicit DEFINER action. Uses the same runtime path as `POST /corpus/backfill`.
+
+**Auth: Definer**
+
+**Request Body:**
+
+```json
+{
+  "limit": 500,
+  "batch_size": 20,
+  "dry_run": false
+}
+```
+
+**Response (accepted):**
+
+```json
+{
+  "status": "accepted",
+  "message": "Embedding backfill started.",
+  "limit": 500,
+  "batch_size": 20,
+  "dry_run": false
+}
+```
+
+**Response (not_wired):**
+
+```json
+{
+  "status": "not_wired",
+  "message": "Embedding provider not configured."
+}
+```
+
+### `POST /api/v1/maintenance/rebuild-graph`
+
+Trigger graph rebuild. Explicit DEFINER action. Returns `scheduled_only` honestly — graph rebuild runs as part of Sexton's scheduled cycle.
+
+**Auth: Definer**
+
+**Response:**
+
+```json
+{
+  "status": "scheduled_only",
+  "message": "Graph rebuild runs as part of Sexton's scheduled cycle. Use POST /api/v1/actors/sexton/trigger to run a full Sexton cycle.",
+  "alternative": "POST /api/v1/actors/sexton/trigger"
+}
+```
+
+### `POST /api/v1/maintenance/rebuild-codex`
+
+Trigger CODEX/wiki rebuild. Explicit DEFINER action. Returns `scheduled_only` honestly — wiki generation runs as part of Sexton's scheduled cycle.
+
+**Auth: Definer**
+
+**Response:** Same pattern as rebuild-graph.
+
+### `POST /api/v1/maintenance/run-retrieval-eval`
+
+Trigger retrieval evaluation. Explicit DEFINER action. Returns `not_wired` honestly — retrieval eval is currently a CLI-only tool.
+
+**Auth: Definer**
+
+**Response:**
+
+```json
+{
+  "status": "not_wired",
+  "message": "Retrieval evaluation is currently a CLI-only tool. Run 'aip eval retrieval' from the command line.",
+  "alternative": "CLI: aip eval retrieval"
+}
+```
+
+### `POST /api/v1/maintenance/check-stale-docs`
+
+Check for stale documents. Explicit DEFINER action. Delegates to existing CorpusTurnStore stale document logic.
+
+**Auth: Definer**
+
+**Response:**
+
+```json
+{
+  "status": "completed",
+  "message": "Found 3 stale document(s).",
+  "stale_count": 3,
+  "stale_docs": ["..."]
+}
+```
+
+### `POST /api/v1/maintenance/check-contradictions`
+
+Check for contradictions. Explicit DEFINER action. Returns `not_wired` honestly — standalone contradiction detection is not yet available.
+
+**Auth: Definer**
+
+**Response:**
+
+```json
+{
+  "status": "not_wired",
+  "message": "Contradiction detection is not yet available as a standalone maintenance job.",
+  "alternative": "GET /api/v1/wiki/contradictions"
+}
+```

@@ -985,3 +985,135 @@ class RetrievalHealthResponse(TypedDict, total=False):
     embedding_coverage: RetrievalEmbeddingCoverage
     vector_fallback_chain: list[str]
     summary: RetrievalHealthSummary
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# UI Cycle 12 — Maintenance Center
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class MaintenanceActorEntry(TypedDict, total=False):
+    """Per-actor status entry from GET /api/v1/maintenance/status."""
+
+    name: str  # beast, vigil, sexton
+    initialized: bool
+    scheduled: bool
+    running: bool
+    enabled: bool
+    state: str  # active, degraded, failed, not_configured, unknown, instantiated
+    last_run_at: str | int | None
+    next_run_at: str | int | None
+    last_result: str | None
+    last_error: str | None
+    degraded_reason: str | None
+    run_now_supported: bool
+    cycle_count: int
+    recent_errors: list[str]
+    dependencies: dict[str, bool]
+    missing_core_dependencies: list[str]
+    interval_seconds: int
+    role: str
+    health_error: str
+
+
+class MaintenanceBackfillStatus(TypedDict, total=False):
+    """Backfill status from GET /api/v1/maintenance/status."""
+
+    state: str  # not_configured, configured_idle, backfill_running, etc.
+    running: bool
+    progress: dict[str, Any]
+    last_result: dict[str, Any] | None
+
+
+class MaintenanceCapabilityEntry(TypedDict, total=False):
+    """A single maintenance capability from GET /api/v1/maintenance/status."""
+
+    available: bool
+    status: str  # available, not_wired, scheduled_only
+    message: str
+
+
+class MaintenanceStatusResponse(TypedDict, total=False):
+    """Response from GET /api/v1/maintenance/status.
+
+    Aggregated maintenance overview. Honest about unavailable states.
+    Never fakes actor health or capability availability.
+    """
+
+    actors: dict[str, MaintenanceActorEntry]
+    backfill: MaintenanceBackfillStatus
+    capabilities: dict[str, MaintenanceCapabilityEntry]
+    warnings: list[str]
+
+
+class ActorRunEvent(TypedDict, total=False):
+    """A single actor run event from GET /api/v1/actors/{actor}/runs."""
+
+    event_type: str
+    actor: str
+    artifact_id: str
+    from_state: str | None
+    to_state: str | None
+    timestamp: str
+    metadata: dict[str, Any]
+
+
+class ActorRunsResponse(TypedDict, total=False):
+    """Response from GET /api/v1/actors/{actor}/runs.
+
+    Honest empty list if event store unavailable or no events exist.
+    Never fakes run history.
+    """
+
+    actor: str
+    runs: list[ActorRunEvent]
+    available: bool
+    count: int
+    message: str
+
+
+class MaintenanceLogEntry(TypedDict, total=False):
+    """A single maintenance log entry from GET /api/v1/maintenance/logs."""
+
+    event_type: str
+    actor: str
+    artifact_id: str
+    from_state: str | None
+    to_state: str | None
+    timestamp: str
+    metadata: dict[str, Any]
+
+
+class MaintenanceLogsResponse(TypedDict, total=False):
+    """Response from GET /api/v1/maintenance/logs.
+
+    Honest empty list if event store unavailable. Never fakes logs.
+    """
+
+    logs: list[MaintenanceLogEntry]
+    available: bool
+    count: int
+    message: str
+
+
+class MaintenanceJobResponse(TypedDict, total=False):
+    """Response from POST /api/v1/maintenance/* job endpoints.
+
+    All maintenance jobs are explicit DEFINER actions.
+    Status values:
+      - accepted: Job started
+      - completed: Job finished (synchronous)
+      - not_wired: Capability not available
+      - scheduled_only: Only available via scheduled actor cycle
+      - already_running: Job already in progress
+      - error: Failed
+    """
+
+    status: str  # accepted, completed, not_wired, scheduled_only, already_running, error
+    message: str
+    alternative: str  # Suggested alternative action
+    limit: int
+    batch_size: int
+    dry_run: bool
+    stale_count: int
+    stale_docs: list[dict[str, Any]]
