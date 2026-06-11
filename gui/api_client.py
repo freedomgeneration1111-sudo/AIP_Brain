@@ -743,15 +743,133 @@ class AipApiClient:
         *,
         state: str | None = None,
         domain: str | None = None,
+        search: str | None = None,
     ) -> dict[str, Any]:
-        """List wiki articles from artifacts + ecs_state via GET /api/v1/wiki/articles."""
+        """List wiki articles from artifacts + ecs_state via GET /api/v1/wiki/articles.
+
+        UI Cycle 7: Enhanced with search filter support.
+        """
         client = self._get_http_client()
         params: dict[str, str] = {}
         if state:
             params["state"] = state
         if domain:
             params["domain"] = domain
+        if search:
+            params["search"] = search
         resp = await client.get(f"{self.base_url}/api/v1/wiki/articles", params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_wiki_article(self, article_id: str) -> dict[str, Any]:
+        """Get a single wiki article by ID via GET /api/v1/wiki/articles/{id}.
+
+        UI Cycle 7: Returns full WikiArticle schema with backlinks and
+        contradictions populated when available.
+        """
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/wiki/articles/{article_id}")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def create_wiki_article(
+        self,
+        *,
+        title: str,
+        domain: str = "",
+        summary: str = "",
+        body: str = "",
+        tags: list[str] | None = None,
+        aliases: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Create a new wiki article via POST /api/v1/wiki/articles.
+
+        UI Cycle 7: Explicit DEFINER action. Article is created as GENERATED
+        state — never auto-approved. Requires separate review/approve.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {
+            "title": title,
+            "domain": domain,
+            "summary": summary,
+            "body": body,
+        }
+        if tags:
+            payload["tags"] = tags
+        if aliases:
+            payload["aliases"] = aliases
+        resp = await client.post(f"{self.base_url}/api/v1/wiki/articles", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def update_wiki_article(
+        self,
+        article_id: str,
+        *,
+        title: str | None = None,
+        summary: str | None = None,
+        body: str | None = None,
+        tags: list[str] | None = None,
+        aliases: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Update a wiki article via PATCH /api/v1/wiki/articles/{id}.
+
+        UI Cycle 7: Explicit DEFINER action. Creates a new version but does
+        NOT change ECS state. Separate review/approve required.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {}
+        if title is not None:
+            payload["title"] = title
+        if summary is not None:
+            payload["summary"] = summary
+        if body is not None:
+            payload["body"] = body
+        if tags is not None:
+            payload["tags"] = tags
+        if aliases is not None:
+            payload["aliases"] = aliases
+        resp = await client.patch(
+            f"{self.base_url}/api/v1/wiki/articles/{article_id}", json=payload
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_wiki_backlinks(self, article_id: str) -> dict[str, Any]:
+        """Get backlinks for a wiki article via GET /api/v1/wiki/backlinks/{id}.
+
+        UI Cycle 7: Returns empty list honestly if graph_edges not available.
+        """
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/wiki/backlinks/{article_id}")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_wiki_stats(self) -> dict[str, Any]:
+        """Get wiki statistics via GET /api/v1/wiki/stats."""
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/wiki/stats")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_wiki_stale(self) -> dict[str, Any]:
+        """Get stale wiki articles via GET /api/v1/wiki/stale.
+
+        UI Cycle 7: Returns empty list honestly if CODEX tables not available.
+        """
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/wiki/stale")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_wiki_contradictions(self) -> dict[str, Any]:
+        """Get wiki contradictions via GET /api/v1/wiki/contradictions.
+
+        UI Cycle 7: Contradictions are never auto-resolved. Returns empty
+        list honestly if CODEX tables not available.
+        """
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/wiki/contradictions")
         resp.raise_for_status()
         return resp.json()
 

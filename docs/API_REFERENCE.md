@@ -23,6 +23,7 @@ Comprehensive reference for all REST and WebSocket endpoints exposed by AIP 0.1 
 - [Ask](#ask)
 - [Beast](#beast)
 - [Knowledge](#knowledge)
+- [Wiki / CODEX](#wiki--codex)
 - [ECS](#ecs)
 - [Sources](#sources)
 - [Collaborators](#collaborators)
@@ -1328,6 +1329,262 @@ Get a specific compiled knowledge item by ID, including provenance chain.
 ```
 
 **Error**: `404` if not found, `503` if store not available.
+
+---
+
+## Wiki / CODEX
+
+Wiki article CRUD, backlinks, contradictions, and stale article detection. Wiki articles follow the ECS lifecycle: `GENERATED → REVIEWED → APPROVED`. All mutations require DEFINER authorization.
+
+### `GET /api/v1/wiki/articles`
+
+List wiki articles with optional search filtering. Enhanced in UI Cycle 7 with `search` query parameter and stable `WikiArticle` response schema.
+
+**Auth**: None (read-only).
+
+**Query Parameters**:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `domain` | string | null | Filter by domain prefix |
+| `search` | string | null | FTS5 search across title and content |
+| `limit` | int | 50 | Maximum results to return |
+| `offset` | int | 0 | Pagination offset |
+
+**Response**:
+```json
+{
+  "articles": [
+    {
+      "article_id": "wiki-001",
+      "title": "Architecture Decisions",
+      "domain": "aip_loom",
+      "state": "APPROVED",
+      "tags": [],
+      "aliases": [],
+      "linked_article_ids": [],
+      "open_questions": [],
+      "version": 1,
+      "created_at": "2026-06-12T10:00:00Z",
+      "updated_at": "2026-06-12T11:00:00Z"
+    }
+  ],
+  "total": 1,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+**Sovereignty notes**: Returns honest empty list when no articles exist. No fake content. No secrets exposed.
+
+---
+
+### `GET /api/v1/wiki/articles/{article_id}`
+
+Get a single wiki article by ID with the full `WikiArticle` schema including content body.
+
+**Auth**: None (read-only).
+
+**Path Parameters**:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `article_id` | string | Wiki article identifier |
+
+**Response**:
+```json
+{
+  "article_id": "wiki-001",
+  "title": "Architecture Decisions",
+  "content": "Full article content...",
+  "domain": "aip_loom",
+  "state": "APPROVED",
+  "tags": ["architecture", "decisions"],
+  "aliases": ["AD", "arch-decisions"],
+  "linked_article_ids": ["wiki-002"],
+  "open_questions": ["Should we migrate to PostgreSQL?"],
+  "version": 3,
+  "created_at": "2026-06-12T10:00:00Z",
+  "updated_at": "2026-06-12T14:00:00Z"
+}
+```
+
+**Error**: `404` if article not found.
+
+**Sovereignty notes**: Returns full content only for existing articles. No fabrication of missing content.
+
+---
+
+### `POST /api/v1/wiki/articles`
+
+Create a new wiki article. **Auth: Definer** — requires DEFINER authorization.
+
+**Request Body**:
+```json
+{
+  "title": "New Article Title",
+  "content": "Article body content",
+  "domain": "aip_loom",
+  "tags": ["tag1", "tag2"],
+  "aliases": ["alias1"],
+  "open_questions": ["What about X?"]
+}
+```
+
+**Response**: `201 Created` with full `WikiArticle` schema (state will always be `GENERATED`).
+
+**Sovereignty notes**:
+- **CREATE always sets state to `GENERATED`** — never auto-approved. DEFINER must explicitly review and approve.
+- No silent state promotion.
+- No secret exposure in response.
+
+---
+
+### `PATCH /api/v1/wiki/articles/{article_id}`
+
+Update an existing wiki article. **Auth: Definer** — requires DEFINER authorization.
+
+**Path Parameters**:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `article_id` | string | Wiki article identifier |
+
+**Request Body** (partial update — only included fields are modified):
+```json
+{
+  "title": "Updated Title",
+  "content": "Updated content",
+  "tags": ["updated-tag"],
+  "aliases": ["new-alias"],
+  "open_questions": ["Resolved question removed"]
+}
+```
+
+**Response**: Full `WikiArticle` schema with incremented `version`.
+
+**Sovereignty notes**:
+- **EDIT creates a new version but does NOT change ECS state** — an APPROVED article stays APPROVED after edit; a GENERATED article stays GENERATED.
+- State transitions require explicit review/approval via the Reviews API.
+- No secret exposure in response.
+
+---
+
+### `GET /api/v1/wiki/backlinks/{article_id}`
+
+Get backlinks for a wiki article — other articles that reference this article.
+
+**Auth**: None (read-only).
+
+**Path Parameters**:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `article_id` | string | Wiki article identifier |
+
+**Response**:
+```json
+{
+  "article_id": "wiki-001",
+  "backlinks": [
+    {
+      "from_article_id": "wiki-003",
+      "from_title": "Related Article",
+      "context": "...referenced in Architecture Decisions..."
+    }
+  ],
+  "total": 1
+}
+```
+
+**Sovereignty notes**: Returns an honest empty `backlinks` list when no backlinks exist or when CODEX tables don't exist. Never fakes backlink data.
+
+---
+
+### `GET /api/v1/wiki/stale`
+
+Get wiki articles that are potentially stale (not updated within a threshold period while linked content has changed).
+
+**Auth**: None (read-only).
+
+**Query Parameters**:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `days` | int | 30 | Staleness threshold in days |
+
+**Response**:
+```json
+{
+  "stale_articles": [
+    {
+      "article_id": "wiki-005",
+      "title": "Outdated Article",
+      "last_updated": "2026-05-01T10:00:00Z",
+      "days_since_update": 42,
+      "reason": "linked_turns_updated_after_article"
+    }
+  ],
+  "total": 1,
+  "threshold_days": 30
+}
+```
+
+**Sovereignty notes**: Returns an honest empty list when no stale articles are detected or when CODEX tables don't exist. Never fabricates staleness signals.
+
+---
+
+### `GET /api/v1/wiki/contradictions`
+
+Get detected contradictions between wiki articles.
+
+**Auth**: None (read-only).
+
+**Response**:
+```json
+{
+  "contradictions": [
+    {
+      "article_a_id": "wiki-001",
+      "article_a_title": "Article A",
+      "article_b_id": "wiki-004",
+      "article_b_title": "Article B",
+      "description": "Conflicting statements about X",
+      "severity": "medium"
+    }
+  ],
+  "total": 1
+}
+```
+
+**Sovereignty notes**: Returns an honest empty list when no contradictions are detected or when CODEX tables don't exist. Contradiction detection is advisory — it does not auto-resolve or auto-mutate articles.
+
+---
+
+### `GET /api/v1/wiki/stats`
+
+Wiki statistics. Enhanced in UI Cycle 7 with additional metrics.
+
+**Auth**: None (read-only).
+
+**Response**:
+```json
+{
+  "total_articles": 24,
+  "by_state": {
+    "GENERATED": 5,
+    "APPROVED": 19
+  },
+  "by_domain": {
+    "aip_loom": 15,
+    "physics": 9
+  },
+  "stale_count": 2,
+  "contradiction_count": 0
+}
+```
+
+**Sovereignty notes**: Returns honest zeros when CODEX tables don't exist. No secret exposure.
 
 ---
 

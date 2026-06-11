@@ -35,8 +35,7 @@ that guide was written, and there are important caveats for alpha testers:
   channel). Retrieval trace is inspectable in a detail drawer when available (shows "Trace
   unavailable" honestly when no trace exists). Save-as-artifact is available via the action bar
   — it creates a GENERATED artifact requiring DEFINER review before approval (no auto-approve).
-  Link Wiki buttons are visible but disabled with "not yet implemented"
-  tooltips; no backend endpoint exists for this feature yet.
+  Link Wiki buttons are now enabled via Wiki/CODEX Home v1 (UI Cycle 7).
   **Model Council is now available** (UI Cycle 6) — click the "Model Council" button on any answer card
   to run an advisory multi-model comparison across all configured text-generation slots.
   Model Council reports are ADVISORY ONLY — they never auto-approve, auto-export, or mutate
@@ -53,7 +52,8 @@ that guide was written, and there are important caveats for alpha testers:
 - **Model Council** (UI Cycle 6) — The Ask page now includes a Model Council comparison tool accessible via the "Model Council" button on each answer card. Model Council runs your prompt across all configured text-generation model slots and produces an advisory comparison report showing side-by-side responses, consensus/disagreement highlights, and recommendations. Reports are ADVISORY ONLY — they require DEFINER approval before any action is taken. If fewer than 2 text-gen slots are configured, the comparison returns `insufficient_models` honestly. If one model fails, the remaining models produce a partial/degraded report rather than a total failure. The embedding slot is excluded from text generation comparison. Reports can optionally be saved as GENERATED artifacts.
 - **MCP dispatch is built but not runtime-wired** — no MCP operations are reachable via API/CLI today
 - **No review queue web UI** — use `aip review list/approve/reject` via CLI
-- **Operator Console shell is now the default GUI** — Start with `python -m gui.app` (port 8080). The `./scripts/start.sh` script launches the Operator Console by default. Dashboard shows honest system health. Ask page is now the Ask Workbench with answer inspection, source detail, trace detail, and save-as-artifact. Placeholder pages for Corpus, Retrieval, Wiki, Artifacts, Maintenance, and Settings show "Not yet implemented" honestly. The old `python -m gui.shell` is frozen (no new features). The old `python -m gui.main` is preserved until Ask Workbench is proven.
+- **Wiki/CODEX Home v1** (UI Cycle 7) — The Operator Console now includes a full Wiki/CODEX Home at `/wiki` with article listing (with search), single article viewing with full WikiArticle schema, article creation (DEFINER action, state=GENERATED — never auto-approved), article editing (DEFINER action, no ECS state change), backlinks, contradiction detection, stale article detection, and enhanced wiki statistics. All endpoints return honest empty/unavailable states when CODEX tables don't exist — no fake article content. CREATE always sets state to GENERATED; EDIT creates a new version but does NOT change ECS state; no secret exposure in wiki responses.
+- **Operator Console shell is now the default GUI** — Start with `python -m gui.app` (port 8080). The `./scripts/start.sh` script launches the Operator Console by default. Dashboard shows honest system health. Ask page is now the Ask Workbench with answer inspection, source detail, trace detail, and save-as-artifact. Wiki page is now a full CODEX Home with article CRUD, backlinks, contradictions, and stale detection (UI Cycle 7). Placeholder pages for Corpus, Retrieval, Artifacts, Maintenance, and Settings show "Not yet implemented" honestly. The old `python -m gui.shell` is frozen (no new features). The old `python -m gui.main` is preserved until Ask Workbench is proven.
 
 The current recommended first-run sequence is:
 

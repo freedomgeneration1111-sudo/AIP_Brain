@@ -279,3 +279,150 @@ class ModelCouncilResponse(TypedDict, total=False):
     requires_DEFINER_approval: bool  # Always True
     error: str
     synthesis_status: str  # pending, completed, unavailable, failed
+
+
+# ── UI Cycle 7: Wiki / CODEX types ────────────────────────────────────
+
+
+class WikiArticle(TypedDict, total=False):
+    """Stable WikiArticle schema from GET /api/v1/wiki/articles and
+    GET /api/v1/wiki/articles/{id}.
+
+    Fields not yet backed by the crosslink system return empty arrays
+    honestly. No fake data. No secrets exposed.
+
+    Status values match ECS states:
+      - "GENERATED": Created but not yet reviewed
+      - "REVIEWED": Reviewed but not yet approved
+      - "APPROVED": Approved by DEFINER — canonical
+      - "REJECTED": Rejected by DEFINER
+      - "SUPERSEDED": Replaced by a newer version
+      - "UNKNOWN": No ECS state entry found
+    """
+
+    id: str
+    title: str
+    summary: str
+    body: str
+    status: str  # ECS state: GENERATED, REVIEWED, APPROVED, REJECTED, SUPERSEDED, UNKNOWN
+    tags: list[str]
+    aliases: list[str]
+    linked_articles: list[str]
+    backlinks: list[dict[str, Any]]
+    source_documents: list[str]
+    related_artifacts: list[str]
+    related_turns: list[str]
+    related_beast_commentaries: list[str]
+    open_questions: list[str]
+    contradictions: list[dict[str, Any]]
+    revision_history: list[dict[str, Any]]
+    created_at: str
+    updated_at: str
+    approved_at: str | None
+    domain: str
+    artifact_type: str  # "wiki" | "proposal"
+    version: int
+    word_count: int
+    metadata: dict[str, Any]
+
+
+class WikiArticleListResponse(TypedDict, total=False):
+    """Response from GET /api/v1/wiki/articles."""
+
+    items: list[WikiArticle]
+    total: int
+    page: int
+    page_size: int
+
+
+class WikiArticleCreateResponse(TypedDict, total=False):
+    """Response from POST /api/v1/wiki/articles.
+
+    State is always GENERATED — never auto-approved.
+    """
+
+    id: str
+    title: str
+    domain: str
+    state: str  # Always "GENERATED"
+    message: str
+    created_at: str
+
+
+class WikiArticleUpdateResponse(TypedDict, total=False):
+    """Response from PATCH /api/v1/wiki/articles/{id}.
+
+    ECS state is unchanged by editing — separate review/approve required.
+    """
+
+    id: str
+    title: str
+    version: int
+    state: str  # Unchanged from current
+    message: str
+    updated_at: str
+
+
+class WikiBacklinkEntry(TypedDict, total=False):
+    """A single backlink from the backlinks endpoint."""
+
+    source_id: str
+    source_type: str
+    relation_type: str
+    confidence: float | None
+
+
+class WikiBacklinksResponse(TypedDict, total=False):
+    """Response from GET /api/v1/wiki/backlinks/{id}."""
+
+    article_id: str
+    backlinks: list[WikiBacklinkEntry]
+    total: int
+    available: bool  # False if graph_edges table not present
+
+
+class WikiContradictionEntry(TypedDict, total=False):
+    """A single contradiction from the contradictions endpoint.
+
+    Contradictions are never auto-resolved — DEFINER must review.
+    """
+
+    contradiction_id: str
+    topic_id: str
+    claim_a: str
+    source_a_id: str
+    source_a_title: str
+    claim_b: str
+    source_b_id: str
+    source_b_title: str
+    severity: str  # critical, major, minor, apparent
+    status: str  # open, investigating, resolved_correct, etc.
+    context: str
+    detected_at: str
+
+
+class WikiContradictionsResponse(TypedDict, total=False):
+    """Response from GET /api/v1/wiki/contradictions."""
+
+    items: list[WikiContradictionEntry]
+    total: int
+    available: bool  # False if codex_contradictions table not present
+
+
+class WikiStaleEntry(TypedDict, total=False):
+    """A single stale topic from the stale endpoint."""
+
+    topic_id: str
+    title: str
+    domain: str
+    staleness_score: float
+    last_activity_at: str
+    has_wiki_page: bool
+
+
+class WikiStaleResponse(TypedDict, total=False):
+    """Response from GET /api/v1/wiki/stale."""
+
+    items: list[WikiStaleEntry]
+    total: int
+    available: bool  # False if codex_topics table not present

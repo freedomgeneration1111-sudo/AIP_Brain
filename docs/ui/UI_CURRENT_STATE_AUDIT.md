@@ -122,14 +122,17 @@ The chat flow is fully implemented and functional:
 ### 1.10 Wiki/CODEX Pages
 
 - WIKI tab shows two-pane domain navigator + article reader
-- Articles filtered by domain
+- Articles filtered by domain with search param
 - State indicators (GENERATED/APPROVED)
-- No article creation
-- No article editing
-- No backlinks
-- No crosslinks to artifacts/sources/turns
-- No article revision history
-- No search within wiki
+- **Article creation** — POST /api/v1/wiki/articles (DEFINER action, state=GENERATED) — Implemented UI Cycle 7
+- **Article editing** — PATCH /api/v1/wiki/articles/{id} (DEFINER action, no state change) — Implemented UI Cycle 7
+- **Single article view** — GET /api/v1/wiki/articles/{id} with full WikiArticle schema — Implemented UI Cycle 7
+- **Backlinks** — GET /api/v1/wiki/backlinks/{id} — Implemented UI Cycle 7
+- **Contradiction detection** — GET /api/v1/wiki/contradictions — Implemented UI Cycle 7
+- **Stale article detection** — GET /api/v1/wiki/stale — Implemented UI Cycle 7
+- **Enhanced stats** — GET /api/v1/wiki/stats with stale_count, contradiction_count — Implemented UI Cycle 7
+- No crosslinks to artifacts/sources/turns (deferred to Crosslink System)
+- No article revision history browsing (version counter exists)
 
 ### 1.11 Corpus/Vector/Graph Pages
 
@@ -168,7 +171,7 @@ The backend has a rich API surface. Key endpoints relevant to the Operator Conso
 | Corpus | `GET /corpus/stats`, `GET /corpus/embedding-progress`, `GET /corpus/status`, `GET /corpus/audit`, `GET /corpus/backfill-queue`, `POST /corpus/ingest` | Corpus Workbench |
 | Artifacts | `GET /artifacts`, `GET /artifacts/{id}`, `GET /artifacts/{id}/versions`, `GET /artifacts/{id}/evaluation` | Artifact Workbench |
 | Reviews | `GET /reviews`, `POST /reviews/{id}/approve`, `POST /reviews/approve-all`, `POST /reviews/{id}/reject` | Artifact Workbench |
-| Wiki | `GET /wiki/articles`, `GET /wiki/stats` | Wiki/CODEX |
+| Wiki | `GET /wiki/articles`, `GET /wiki/articles/{id}`, `POST /wiki/articles`, `PATCH /wiki/articles/{id}`, `GET /wiki/backlinks/{id}`, `GET /wiki/stale`, `GET /wiki/contradictions`, `GET /wiki/stats` | Wiki/CODEX |
 | Beast Scan | `GET /beast/scan` | Ask Workbench |
 | Models | `GET /models/slots`, `GET /models/slots/{name}`, `PATCH /models/slots/{name}/model`, `GET /models/api_key_status`, `GET /models/library`, `POST /models/library/fetch`, `PATCH /models/library/{id}` | Settings |
 | Ask | `POST /ask`, `POST /ask/retrieve` | Ask Workbench |
@@ -240,13 +243,14 @@ The following API concepts are needed by the Operator Console but **do not exist
 
 | Needed | Status | Notes |
 |--------|--------|-------|
-| `GET /api/v1/wiki/articles/{id}` | **MISSING** | Can only list articles, not get a single article by ID |
-| `POST /api/v1/wiki/articles` | **MISSING** | No article creation endpoint |
-| `PATCH /api/v1/wiki/articles/{id}` | **MISSING** | No article update endpoint |
-| `GET /api/v1/wiki/backlinks/{id}` | **MISSING** | No backlink retrieval |
-| `GET /api/v1/wiki/contradictions` | **MISSING** | No contradiction detection endpoint |
-| `GET /api/v1/wiki/stale` | **MISSING** | No stale article detection |
-| WikiArticle schema (full) | **PARTIAL** | Wiki articles are currently just knowledge items with `beast:wiki:*` domain prefix. No dedicated article model with tags, aliases, linked articles, open questions, contradictions, revision history. |
+| `GET /api/v1/wiki/articles` (enhanced) | **✅ BUILT (UI Cycle 7)** | Added `search` param, stable WikiArticle schema |
+| `GET /api/v1/wiki/articles/{id}` | **✅ BUILT (UI Cycle 7)** | Single article with full schema |
+| `POST /api/v1/wiki/articles` | **✅ BUILT (UI Cycle 7)** | Create article (DEFINER action, state=GENERATED) |
+| `PATCH /api/v1/wiki/articles/{id}` | **✅ BUILT (UI Cycle 7)** | Update article (DEFINER action, no state change) |
+| `GET /api/v1/wiki/backlinks/{id}` | **✅ BUILT (UI Cycle 7)** | Backlink retrieval |
+| `GET /api/v1/wiki/contradictions` | **✅ BUILT (UI Cycle 7)** | Contradiction detection |
+| `GET /api/v1/wiki/stale` | **✅ BUILT (UI Cycle 7)** | Stale article detection |
+| WikiArticle schema (full) | **✅ COMPLETE (UI Cycle 7)** | Dedicated article model with tags, aliases, linked articles, open questions, version. CREATE always sets state=GENERATED; EDIT does not change ECS state. |
 
 ### 3.5 Crosslink System
 
@@ -575,7 +579,7 @@ Following the Development Cycle sequence, adapted based on current state:
 | 3 | **Ask Workbench Upgrade** | Shell | Chat WS exists; need turn-level sources/trace endpoints (partially exist in retrieval dashboard) | Medium-High |
 | 4 | **Beast Counsel Panel v1** | Ask Workbench | **MISSING** — need `GET/POST /turns/{id}/beast-commentary` | High |
 | 5 | **Model Council** | Ask Workbench | **MISSING** — need `POST /beast/compare-models` | Medium |
-| 6 | **Wiki/CODEX Home** | Shell | **PARTIAL** — need CRUD for articles, backlinks, contradictions | High |
+| 6 | **Wiki/CODEX Home** | Shell | **✅ BUILT (UI Cycle 7)** — CRUD for articles, backlinks, contradictions, stale detection all implemented | ~~High~~ Done |
 | 7 | **Crosslink System v1** | Wiki + Artifacts + Ask | **MISSING** — full crosslink API needed | High |
 | 8 | **Artifact Workbench** | Shell + Crosslinks | **PARTIAL** — need needs-revision, export, force-export | Medium-High |
 | 9 | **Corpus Workbench** | Shell | **MOSTLY READY** — corpus, ingest, backfill endpoints exist | Medium |
@@ -597,7 +601,7 @@ The **Beast Counsel Panel** and **Wiki/CODEX Home** are on the critical path bec
 | Risk | Severity | Mitigation |
 |------|----------|------------|
 | **Beast commentary backend doesn't exist** — no storage, no schema, no generation pipeline | High | Define API contract first; implement panel with "unavailable" state; build backend in parallel |
-| **Wiki article CRUD doesn't exist** — can only list, cannot create/edit/read individual articles | High | Define WikiArticle schema; implement panel with read-only view first; build CRUD endpoints |
+| ~~Wiki article CRUD doesn't exist~~ — **RESOLVED (UI Cycle 7)** — full CRUD, backlinks, contradictions, stale detection all implemented | ~~High~~ Resolved | Define WikiArticle schema; implement panel with read-only view first; build CRUD endpoints |
 | **Crosslink system is entirely absent** — no data model, no storage, no API | High | Defer to later cycle; implement as standalone module; define schema before building UI |
 | **Module-level singleton state breaks multi-tab** — concurrent tabs share `_state` | Medium | Refactor to per-session state early (Step 1) |
 | **Dual main.py / shell.py creates confusion** — which is the active frontend? | Medium | Archive main.py immediately in Step 1 |
@@ -660,7 +664,7 @@ This UI cycle does **not** include:
    - `@ui.page("/ask")` → Ask Workbench (preserved chat functionality)
    - `@ui.page("/corpus")` → Corpus Workbench (placeholder)
    - `@ui.page("/retrieval")` → Retrieval Lab (placeholder)
-   - `@ui.page("/wiki")` → Wiki/CODEX Home (placeholder)
+   - `@ui.page("/wiki")` → Wiki/CODEX Home (**Implemented — UI Cycle 7**)
    - `@ui.page("/artifacts")` → Artifact Workbench (placeholder)
    - `@ui.page("/maintenance")` → Maintenance Center (placeholder)
    - `@ui.page("/settings")` → Settings (placeholder)
@@ -731,7 +735,7 @@ Note: The backend also serves its own HTML pages (chat.html, index.html, review.
 | Ask Workbench | Chat WS, `/ask`, `/ask/retrieve`, `/beast/scan`, sessions CRUD | Turn-level sources/trace | `/turns/{id}/beast-commentary` (GET/POST), Beast modes |
 | Beast Counsel | `/beast/scan` | — | Full Beast commentary API, Beast modes |
 | Model Council | `/models/library`, `/models/slots` | Cohort tab does client-side multi-ask | `/beast/compare-models` |
-| Wiki/CODEX Home | `/wiki/articles` (list), `/wiki/stats` | — | Article CRUD, backlinks, contradictions, stale |
+| Wiki/CODEX Home | `/wiki/articles`, `/wiki/articles/{id}`, `POST /wiki/articles`, `PATCH /wiki/articles/{id}`, `/wiki/backlinks/{id}`, `/wiki/stale`, `/wiki/contradictions`, `/wiki/stats` | — | Crosslink System (deferred) |
 | Crosslink System | — | — | Full crosslink API |
 | Artifact Workbench | `/artifacts`, `/reviews` (approve/reject), `/ecs/graph` | `/artifacts/{id}/evaluation` | Needs-revision, export, force-export, source panel |
 | Corpus Workbench | `/corpus/*`, `/ingest/*`, `/sources/*`, `/admin/embeddings/backfill` | — | Document detail, chunk inspection, failed jobs |

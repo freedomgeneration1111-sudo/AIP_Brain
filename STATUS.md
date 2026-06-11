@@ -2,11 +2,11 @@
 
 **Version:** 0.1.0-alpha
 **Architecture Revision:** 6.4
-**Last Updated:** 2026-06-11
+**Last Updated:** 2026-06-12
 **Release:** Alpha Test Release
 **Project Mode:** MAINTENANCE — active development phase complete; see docs/Maintenance_Protocol.md
 
-> This document reflects the state after Chunk 5 (retrieval honesty and vector health verification).
+> This document reflects the state after UI Cycle 7 (Wiki/CODEX Home v1) and Chunk 5 (retrieval honesty).
 > The project has entered maintenance mode. No further feature sprints are planned.
 > See ROADMAP.md for the maintenance mode section and docs/Maintenance_Protocol.md for operational procedures.
 
@@ -59,7 +59,7 @@ UI Cycle 2 created the Operator Console shell with three-region layout (top bar,
 | gui/theme.py (design tokens) | ✅ Active | Extracted from shell.py |
 | gui/state.py (per-session state) | ✅ Active | Replaces module-level _state singleton |
 | gui/components/ (reusable) | ✅ Active | layout, chat, pills, buttons, modals |
-| gui/pages/ (8 pages) | ✅ Active | Dashboard, Ask, Corpus, Retrieval Lab, Wiki, Artifacts, Maintenance, Settings |
+| gui/pages/ (8 pages) | ✅ Active | Dashboard, Ask, Corpus, Retrieval Lab, Wiki (full CODEX Home v1 — UI Cycle 7), Artifacts, Maintenance, Settings |
 | gui/panels/ (right rail) | ✅ Active | Dogfood mode, actor status, retrieval health, gates, warnings |
 | gui/shell.py (old) | 🧊 Frozen | FROZEN — no new features; preserved for reference only |
 | gui/main.py (old) | 🔒 Preserved | PRESERVED — do not modify; retained until Ask Workbench proven |
@@ -98,7 +98,7 @@ UI Cycle 4 upgrades the Ask page from a plain chat interface to an Ask Workbench
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| gui/components/answer_card.py | ✅ Active | Status strip (retrieval healthy, degraded, lexical only, no sources, direct model only, trace unavailable) + action bar (Show Sources, Show Trace, Save Artifact, Link Wiki [disabled], Model Council [disabled]) |
+| gui/components/answer_card.py | ✅ Active | Status strip (retrieval healthy, degraded, lexical only, no sources, direct model only, trace unavailable) + action bar (Show Sources, Show Trace, Save Artifact, Link Wiki [enabled via UI Cycle 7], Model Council [disabled]) |
 | gui/components/source_panel.py | ✅ Active | Right drawer showing source title/path, snippet, score, channel per retrieval source |
 | gui/components/trace_panel.py | ✅ Active | Right drawer showing retrieval trace details (channels, latency, verdict, degradation, warnings) |
 | gui/pages/ask.py (upgraded) | ✅ Active | Uses answer_card instead of plain add_message; wires source_panel, trace_panel, save-artifact; preserves all existing chat/WebSocket/gate behavior |
@@ -118,7 +118,7 @@ UI Cycle 4 upgrades the Ask page from a plain chat interface to an Ask Workbench
 - **Retrieval trace verdict**: Clicking "Show Trace" opens a right drawer with trace details when available. When no trace exists, the UI shows "Trace unavailable" honestly — no fake traces.
 - **Save-as-artifact verdict**: "Save Artifact" creates a GENERATED artifact via `POST /api/v1/turns/save-artifact`. No auto-approve — DEFINER review is required before promotion to APPROVED. The response confirms the GENERATED state.
 - **Direct model fallback verdict**: Still visibly labeled "DIRECT MODEL ONLY — NOT DOGFOOD" with banner when no model provider is configured.
-- **Unwired action honesty verdict**: Link Wiki and Model Council buttons are shown as disabled with "not yet implemented" tooltips. No backend endpoints exist for these features — the UI is honest about this rather than hiding or faking functionality.
+- **Unwired action honesty verdict**: Model Council button is shown as disabled with "not yet implemented" tooltip. Link Wiki is now enabled via Wiki/CODEX Home v1 (UI Cycle 7). No backend endpoints are faked — the UI is honest about unimplemented features.
 - **Import-boundary verdict**: All tests pass (14/14 GUI, 17/17 layer). GUI remains API-first — never imports from aip.orchestration.
 
 ## UI Cycle 4.1 — Ask Workbench API Verification and Sovereignty Tests (2026-06-11)
@@ -428,6 +428,30 @@ via `aip ask` to ground future design work in prior decisions.
 | Graph API endpoints | COMPLETE | /api/v1/graph/data, /neighbors, /stats |
 | Cytoscape.js visualization | COMPLETE | /graph-viz standalone dark-mode page |
 | Chat augmentation | COMPLETE | Domain neighbor injection in augmented chat |
+
+## Wiki / CODEX Home Status (UI Cycle 7)
+
+Wiki/CODEX Home v1 is now implemented with full article CRUD, backlinks, contradictions, and stale article detection.
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| GET /api/v1/wiki/articles (enhanced) | ✅ Built | Added `search` param, stable WikiArticle schema |
+| GET /api/v1/wiki/articles/{id} | ✅ Built | Single article with full schema |
+| POST /api/v1/wiki/articles | ✅ Built | DEFINER action, state always set to GENERATED — never auto-approved |
+| PATCH /api/v1/wiki/articles/{id} | ✅ Built | DEFINER action, creates new version but does NOT change ECS state |
+| GET /api/v1/wiki/backlinks/{id} | ✅ Built | Returns honest empty list when no backlinks or CODEX tables don't exist |
+| GET /api/v1/wiki/stale | ✅ Built | Returns honest empty list when no stale articles or CODEX tables don't exist |
+| GET /api/v1/wiki/contradictions | ✅ Built | Returns honest empty list when no contradictions or CODEX tables don't exist |
+| GET /api/v1/wiki/stats (enhanced) | ✅ Built | Now includes stale_count, contradiction_count |
+| WikiArticle schema | ✅ Complete | Dedicated model with tags, aliases, linked_article_ids, open_questions, version |
+| gui/pages/wiki.py | ✅ Active | Full CODEX Home with article listing, viewing, create/edit, backlinks, contradictions, stale detection |
+
+**Sovereignty guarantees:**
+- CREATE always sets state to GENERATED — never auto-approved
+- EDIT creates new version but does NOT change ECS state
+- No fake article content — honest empty/unavailable states
+- No secret exposure in wiki responses
+- Backlinks/contradictions/stale return empty lists honestly when CODEX tables don't exist
 
 ## Bug Registry
 
