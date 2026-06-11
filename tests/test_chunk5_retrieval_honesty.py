@@ -13,11 +13,7 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
-import json
 import math
-import os
-import tempfile
 import time
 
 import pytest
@@ -25,7 +21,6 @@ import pytest
 # ---------------------------------------------------------------------------
 # 1. VectorBackendStatus enum
 # ---------------------------------------------------------------------------
-
 from aip.foundation.schemas.vector import VectorBackendStatus, VectorDegradationInfo
 
 
@@ -81,7 +76,7 @@ class TestVectorDegradationInfo:
 # 2. SqliteVssVectorStore backend status and degradation info
 # ---------------------------------------------------------------------------
 
-from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore, RuntimeMode
+from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
 
 
 class TestSqliteVssBackendStatus:

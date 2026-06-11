@@ -25,7 +25,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import shutil
 import sqlite3
 import sys
@@ -73,24 +72,24 @@ def main() -> None:
 
     # state.db — all core tables
     _init_state_db(state_db_path)
-    print(f"  state.db: schema initialized")
+    print("  state.db: schema initialized")
 
     # lexical.db — FTS5 index
     _init_lexical_db(lexical_db_path)
-    print(f"  lexical.db: schema initialized")
+    print("  lexical.db: schema initialized")
 
     # vectors.db — vector metadata + VSS
     _init_vectors_db(vectors_db_path)
-    print(f"  vectors.db: schema initialized")
+    print("  vectors.db: schema initialized")
 
     # trace.db — trace events
     _init_trace_db(trace_db_path)
-    print(f"  trace.db: schema initialized")
+    print("  trace.db: schema initialized")
 
     # Other DBs — touch them
     for name in ["vigil_quality.db", "alert_history.db", "ace_playbook.db"]:
         (db_dir / name).touch(exist_ok=True)
-    print(f"  Other DBs: touched (vigil_quality, alert_history, ace_playbook)")
+    print("  Other DBs: touched (vigil_quality, alert_history, ace_playbook)")
 
     # 3. Create default project
     _create_default_project(state_db_path)
@@ -137,7 +136,7 @@ def main() -> None:
     _print_summary(state_db_path, vectors_db_path)
 
     print(f"\nDatabase location: {db_dir}/")
-    print(f"To verify: python scripts/demo/verify_aip_demo_db.py")
+    print("To verify: python scripts/demo/verify_aip_demo_db.py")
     print(f"To use:    export AIP_DB_PATH={state_db_path}")
 
 

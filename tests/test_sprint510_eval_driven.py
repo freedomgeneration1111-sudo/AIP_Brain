@@ -22,7 +22,6 @@ from aip.orchestration.retrieval_orchestrator import (
     RetrievalOrchestrator,
 )
 
-
 # ---------------------------------------------------------------------------
 # 1. Channel Contribution Tracking
 # ---------------------------------------------------------------------------
@@ -303,7 +302,6 @@ class TestRegressionProtection:
     def test_no_regression_when_improved(self):
         from aip.orchestration.retrieval_eval import (
             EvalResult,
-            QueryEvalResult,
             compare_against_baseline,
         )
 
@@ -415,7 +413,6 @@ class TestRegressionProtection:
     def test_regression_report_format(self):
         from aip.orchestration.retrieval_eval import (
             EvalResult,
-            RegressionCheckResult,
             compare_against_baseline,
         )
 

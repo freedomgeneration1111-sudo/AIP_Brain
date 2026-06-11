@@ -10,38 +10,32 @@ Deliverable 5: Config Hot-Reload Safety Audit (validation, rejection, admin endp
 
 from __future__ import annotations
 
-import json
 import os
 import sqlite3
 import tempfile
 import time
-from dataclasses import dataclass
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
     DeliveryFailure,
     validate_webhook_url,
 )
-from aip.adapter.config_watcher import (
-    ConfigWatcher,
-    ConfigReloadEvent,
-    ConfigRejectedEvent,
-    _HOT_RELOADABLE_KEYS,
-)
 from aip.adapter.auto_tuning_policy import (
     AutoTuningPolicy,
-    load_policy_from_config,
     apply_policy_to_auto_sizer,
-    apply_policy_to_sexton,
+    load_policy_from_config,
+)
+from aip.adapter.config_watcher import (
+    _HOT_RELOADABLE_KEYS,
+    ConfigRejectedEvent,
+    ConfigWatcher,
 )
 from aip.adapter.read_pool import ReadPoolAutoSizer, ReadPoolHealth
-
 
 # ============================================================================
 # Shared fakes
@@ -381,9 +375,8 @@ class TestVigilQualityStore:
 
     def test_vigil_with_quality_store(self, tmp_path):
         """Vigil can be constructed with a quality_store and persists cycles."""
-        from aip.orchestration.actors.vigil import Vigil
         from aip.foundation.schemas import VigilConfig
-        from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
+        from aip.orchestration.actors.vigil import Vigil
 
         store = self._create_store(tmp_path)
 

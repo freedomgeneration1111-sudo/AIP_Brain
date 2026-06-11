@@ -18,15 +18,11 @@ Covers:
 from __future__ import annotations
 
 import ast
-import hashlib
-import importlib
 import json
-import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -364,11 +360,12 @@ class TestRunBeastCommentary:
     @pytest.mark.asyncio
     async def test_run_invalid_mode_returns_400(self, mock_container_with_provider):
         """POST with invalid mode returns 400 error."""
+        from fastapi import HTTPException
+
         from aip.adapter.api.routes.beast_commentary import (
             BeastCommentaryRequest,
             run_beast_commentary,
         )
-        from fastapi import HTTPException
 
         request = BeastCommentaryRequest(mode="invalid_mode")
         with pytest.raises(HTTPException) as exc_info:
@@ -488,9 +485,9 @@ class TestAnswerCardBeastCounsel:
 
     def test_add_answer_card_accepts_beast_counsel_callback(self):
         """add_answer_card function accepts on_beast_counsel parameter."""
-        from gui.components.answer_card import add_answer_card
-
         import inspect
+
+        from gui.components.answer_card import add_answer_card
 
         sig = inspect.signature(add_answer_card)
         assert "on_beast_counsel" in sig.parameters
@@ -722,10 +719,8 @@ class TestModePersistence:
     async def test_get_mode_a_does_not_return_mode_b(self, mock_container_full):
         """GET with mode=continuity does not return critique commentary."""
         from aip.adapter.api.routes.beast_commentary import (
-            BeastCommentaryRequest,
             _commentary_artifact_id,
             get_beast_commentary,
-            run_beast_commentary,
         )
 
         turn_id = "turn-isolation-test"
@@ -897,6 +892,7 @@ class TestModePersistence:
     def test_gui_api_client_get_accepts_mode(self):
         """API client get_beast_commentary accepts mode parameter."""
         import inspect
+
         from gui.api_client import AipApiClient
 
         sig = inspect.signature(AipApiClient.get_beast_commentary)

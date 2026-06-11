@@ -18,8 +18,6 @@ from __future__ import annotations
 import os
 import tempfile
 
-import pytest
-
 from aip.adapter.artifact_store_versioned import VersionedArtifactStore
 from aip.adapter.ecs_store_persistent import PersistentEcsStore
 from aip.adapter.event_store_queryable import QueryableEventStore
@@ -35,7 +33,6 @@ from aip.orchestration.review_export_pipeline import (
     review_show,
     review_sources,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -666,6 +663,7 @@ class TestCLIExportGateOptions:
 
     def test_export_artifact_has_reason_option(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -675,6 +673,7 @@ class TestCLIExportGateOptions:
 
     def test_export_artifact_has_yes_option(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -684,6 +683,7 @@ class TestCLIExportGateOptions:
 
     def test_export_project_has_reason_option(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -693,6 +693,7 @@ class TestCLIExportGateOptions:
 
     def test_export_project_has_yes_option(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -702,6 +703,7 @@ class TestCLIExportGateOptions:
 
     def test_force_help_mentions_emergency_debug(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -712,6 +714,7 @@ class TestCLIExportGateOptions:
 
     def test_include_unreviewed_help_mentions_sovereign_override(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()

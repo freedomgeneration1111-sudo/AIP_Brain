@@ -23,15 +23,12 @@ from gui.theme import (
     C_INK60,
     C_MUTED,
     C_OK_FG,
-    C_RAISED,
     C_SURFACE,
     C_WARN_FG,
     F_MONO,
     F_SANS,
-    R_LG,
     R_MD,
     R_SM,
-    BORDER,
 )
 
 log = logging.getLogger("gui.components.wiki_article_view")
@@ -93,7 +90,7 @@ def render_wiki_article_view(
 
 def _render_empty_state(*, on_create: Callable[[], None] | None = None) -> None:
     """Render the empty/none-selected state."""
-    with ui.column().classes("w-full items-center justify-center").style(f"padding:48px; min-height:300px;"):
+    with ui.column().classes("w-full items-center justify-center").style("padding:48px; min-height:300px;"):
         ui.icon("menu_book", size="48px").style(f"color:{C_INK60}; margin-bottom:16px;")
         ui.label("No article selected").style(f"font-size:16px; color:{C_MUTED}; font-family:{F_SANS};")
         ui.label("Select an article from the list, or create a new one.").style(

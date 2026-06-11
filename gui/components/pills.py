@@ -8,7 +8,6 @@ from gui.theme import (
     C_DOGFOOD_BARE,
     C_DOGFOOD_DEGRADED,
     C_DOGFOOD_FULL,
-    C_INK40,
     C_MUTED,
     R_SM,
     status_pill,  # noqa: F401 — re-export

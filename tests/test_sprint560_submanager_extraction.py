@@ -9,13 +9,8 @@ Covers:
 6. Core state consolidation — counters owned by DeliveryManager
 """
 
-import asyncio
 import threading
-import time
-from unittest.mock import MagicMock, patch
-
-import pytest
-
+from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -414,8 +409,9 @@ class TestAsyncioDeprecationElimination:
 
     def test_async_send_json_uses_get_running_loop(self):
         """The _async_send_json helper should use get_running_loop."""
-        from aip.adapter.alerting import RealtimeEventBus
         import inspect
+
+        from aip.adapter.alerting import RealtimeEventBus
 
         source = inspect.getsource(RealtimeEventBus._async_send_json)
         assert "get_running_loop" in source
@@ -499,7 +495,7 @@ class TestCoreStateConsolidation:
 
     def test_send_alert_increments_delivery_manager(self):
         """Verify that send_alert increments the DeliveryManager counter."""
-        from aip.adapter.alerting import Alert, AlertConfig
+        from aip.adapter.alerting import Alert
 
         mgr = _make_alert_manager(webhook_url="")
         alert = Alert(

@@ -12,7 +12,6 @@ import logging
 from datetime import datetime, timezone
 
 import aiosqlite
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from aip.adapter.api.dependencies import AipContainer, get_container, require_definer

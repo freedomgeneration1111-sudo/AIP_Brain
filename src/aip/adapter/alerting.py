@@ -92,9 +92,9 @@ import random
 import re
 import threading
 import time
-import uuid
-import urllib.request
 import urllib.error
+import urllib.request
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterator
@@ -916,8 +916,8 @@ class RealtimeEventBus:
         if not self._config.ws_compression_enabled:
             return data, False
         try:
-            import zlib
             import base64
+            import zlib
 
             raw_bytes = data.encode("utf-8")
             compressed = zlib.compress(raw_bytes, level=6)
@@ -936,8 +936,8 @@ class RealtimeEventBus:
     def decompress_ws_message(self, compressed_b64: str) -> str:
         """Decompress a base64-encoded zlib-compressed WebSocket message."""
         try:
-            import zlib
             import base64
+            import zlib
 
             compressed = base64.b64decode(compressed_b64)
             decompressed = zlib.decompress(compressed)

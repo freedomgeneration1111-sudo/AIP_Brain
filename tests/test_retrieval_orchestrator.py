@@ -34,7 +34,6 @@ from aip.orchestration.smart_context_packer import (
     extractive_summarize,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers: fake retriever channels
 # ---------------------------------------------------------------------------
@@ -559,11 +558,11 @@ class TestSearchSourcesWithTrace:
     """Integration test for _search_sources_with_trace using fakes."""
 
     async def test_basic_search_with_trace(self):
+        from aip.foundation.schemas.retrieval import Chunk
         from aip.orchestration.ask_pipeline import (
             AskStores,
             _search_sources_with_trace,
         )
-        from aip.foundation.schemas.retrieval import Chunk
 
         # Minimal fake stores
         class FakeLexical:

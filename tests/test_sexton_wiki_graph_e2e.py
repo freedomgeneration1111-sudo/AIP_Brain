@@ -11,8 +11,8 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from unittest.mock import patch
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -31,7 +31,6 @@ from aip.orchestration.actors.domain_registry import (
     DomainRegistry,
 )
 from aip.orchestration.actors.sexton import Sexton
-
 
 # ---------------------------------------------------------------------------
 # Stub stores
@@ -776,8 +775,8 @@ async def test_sexton_graph_extraction_writes_extraction_log(tmp_db):
     the turn should be logged in graph_extraction_log so it is not re-extracted
     on subsequent cycles.
     """
-    from aip.foundation.schemas.corpus_turn import CorpusTurn
     from aip.adapter.graph_store import GraphStore
+    from aip.foundation.schemas.corpus_turn import CorpusTurn
 
     corpus_turn_store = CorpusTurnStore(tmp_db)
     await corpus_turn_store.initialize()
@@ -842,8 +841,8 @@ async def test_sexton_graph_extraction_log_prevents_reduplication(tmp_db):
     After a successful graph extraction, calling _run_graph_extraction again
     should skip the already-extracted turn.
     """
-    from aip.foundation.schemas.corpus_turn import CorpusTurn
     from aip.adapter.graph_store import GraphStore
+    from aip.foundation.schemas.corpus_turn import CorpusTurn
 
     corpus_turn_store = CorpusTurnStore(tmp_db)
     await corpus_turn_store.initialize()
@@ -903,9 +902,9 @@ async def test_sexton_graph_extraction_log_prevents_reduplication(tmp_db):
 @pytest.mark.asyncio
 async def test_sexton_graph_extraction_log_records_counts(tmp_db):
     """graph_extraction_log should record entities_found and relationships_found counts."""
-    from aip.foundation.schemas.corpus_turn import CorpusTurn
-    from aip.adapter.graph_store import GraphStore
     import sqlite3 as _sqlite3
+
+    from aip.foundation.schemas.corpus_turn import CorpusTurn
 
     corpus_turn_store = CorpusTurnStore(tmp_db)
     await corpus_turn_store.initialize()

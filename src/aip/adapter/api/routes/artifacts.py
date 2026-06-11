@@ -21,7 +21,6 @@ Architecture:
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -30,7 +29,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from aip.adapter.api.dependencies import AipContainer, get_container, require_definer
-from aip.foundation.ecs_graph import ALL_STATES, InvalidTransitionError, validate_transition
+from aip.foundation.ecs_graph import ALL_STATES, InvalidTransitionError
 from aip.foundation.schemas import SurfaceConfig
 
 router = APIRouter()

@@ -244,7 +244,7 @@ def _print_export_result(result: dict) -> None:
 
     if result.get("artifacts_exported") is not None:
         # Project export
-        click.echo(f"Project export complete.")
+        click.echo("Project export complete.")
         click.echo(f"  Project:  {result['project']}")
         click.echo(f"  Exported: {result['artifacts_exported']} artifacts")
         if result.get("sovereign_override_count"):
@@ -256,12 +256,12 @@ def _print_export_result(result: dict) -> None:
         click.echo(f"  Size:     {result.get('bytes_written', 0)} bytes")
     else:
         # Artifact export
-        click.echo(f"Artifact exported.")
+        click.echo("Artifact exported.")
         click.echo(f"  ID:       {result['artifact_id']}")
         click.echo(f"  State:    {result.get('lifecycle_state', '')}")
         if result.get("force_bypass"):
             click.echo(f"  ** SOVEREIGN OVERRIDE: exported from {result.get('force_bypass_state', '')} state **")
-            click.echo(f"  Audit:    Recorded (force_export event)")
+            click.echo("  Audit:    Recorded (force_export event)")
             click.echo(f"  Reason:   {result.get('force_reason', '')}")
         click.echo(f"  Output:   {result['out_path']}")
         click.echo(f"  Size:     {result.get('bytes_written', 0)} bytes")

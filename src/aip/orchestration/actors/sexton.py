@@ -67,7 +67,7 @@ async def _embed_with_retry(
                     attempts=max_retries,
                     error=str(exc),
                 )
-        except Exception as exc:
+        except Exception:
             # Non-transient errors (e.g. ValueError) should not be retried
             raise
     raise last_exc  # type: ignore[misc]
@@ -1619,8 +1619,8 @@ CRITICAL CONSTRAINTS:
             log.info("sexton_graph_extraction_fallback_create", reason="no_container_graph_store")
 
         try:
-            from aip.adapter.graph_store import GraphNode, GraphEdge
             from aip.adapter.entity_alias_loader import EntityAliasRegistry
+            from aip.adapter.graph_store import GraphEdge, GraphNode
         except Exception as exc:
             log.warning("sexton_graph_import_failed", error=str(exc))
             return {"skipped": "import_error", "error": str(exc)}

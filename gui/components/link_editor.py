@@ -25,16 +25,12 @@ from nicegui import ui
 from gui.theme import (
     C_AMBER,
     C_CREAM,
-    C_ERR_FG,
     C_GROUND,
     C_INK40,
     C_INK60,
-    C_MUTED,
-    C_OK_FG,
     C_SURFACE,
     C_WARN_FG,
     F_MONO,
-    F_SANS,
     R_MD,
     R_SM,
 )
@@ -142,7 +138,7 @@ class LinkEditorDialog:
                     )
 
                 # Form
-                with ui.column().classes("w-full").style(f"padding:16px; gap:12px;"):
+                with ui.column().classes("w-full").style("padding:16px; gap:12px;"):
                     # Source (pre-filled, read-only)
                     ui.label("SOURCE").style(
                         f"font-size:8px; font-weight:700; font-family:{F_MONO}; color:{C_INK60}; letter-spacing:0.5px;"

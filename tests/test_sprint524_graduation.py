@@ -11,19 +11,17 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
 
 import pytest
 
-from aip.foundation.schemas import SextonConfig, VigilConfig
-from aip.orchestration.actors.vigil import Vigil
 from aip.adapter.read_pool import (
-    ReadPoolAutoSizer,
-    ReadPoolHealth,
     PoolSizeAdjustment,
     PoolSizeSuggestion,
+    ReadPoolAutoSizer,
+    ReadPoolHealth,
 )
-
+from aip.foundation.schemas import SextonConfig, VigilConfig
+from aip.orchestration.actors.vigil import Vigil
 
 # ============================================================================
 # Shared fakes (reused from Sprint 5.23 test infrastructure)

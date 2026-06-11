@@ -195,36 +195,36 @@ def test_gui_state_importable():
 
 def test_gui_components_importable():
     """gui.components submodules can be imported."""
-    import gui.components.layout  # noqa: F401
-    import gui.components.pills  # noqa: F401
-    import gui.components.buttons  # noqa: F401
-    import gui.components.chat  # noqa: F401
-    import gui.components.modals  # noqa: F401
-    import gui.components.artifact_list  # noqa: F401
     import gui.components.artifact_detail  # noqa: F401
+    import gui.components.artifact_list  # noqa: F401
     import gui.components.artifact_review_panel  # noqa: F401
     import gui.components.artifact_state_badge  # noqa: F401
-    import gui.components.corpus_summary  # noqa: F401
-    import gui.components.document_table  # noqa: F401
-    import gui.components.document_detail  # noqa: F401
+    import gui.components.buttons  # noqa: F401
+    import gui.components.chat  # noqa: F401
     import gui.components.corpus_actions  # noqa: F401
     import gui.components.corpus_problems  # noqa: F401
-    import gui.components.retrieval_query_panel  # noqa: F401
+    import gui.components.corpus_summary  # noqa: F401
+    import gui.components.document_detail  # noqa: F401
+    import gui.components.document_table  # noqa: F401
+    import gui.components.layout  # noqa: F401
+    import gui.components.modals  # noqa: F401
+    import gui.components.pills  # noqa: F401
     import gui.components.retrieval_channel_results  # noqa: F401
     import gui.components.retrieval_health_cards  # noqa: F401
+    import gui.components.retrieval_query_panel  # noqa: F401
     import gui.components.retrieval_ranked_context  # noqa: F401
 
 
 def test_gui_pages_importable():
     """gui.pages submodules can be imported."""
-    import gui.pages.dashboard  # noqa: F401
+    import gui.pages.artifacts  # noqa: F401
     import gui.pages.ask  # noqa: F401
     import gui.pages.corpus  # noqa: F401
-    import gui.pages.retrieval_lab  # noqa: F401
-    import gui.pages.wiki  # noqa: F401
-    import gui.pages.artifacts  # noqa: F401
+    import gui.pages.dashboard  # noqa: F401
     import gui.pages.maintenance  # noqa: F401
+    import gui.pages.retrieval_lab  # noqa: F401
     import gui.pages.settings  # noqa: F401
+    import gui.pages.wiki  # noqa: F401
 
 
 def test_gui_panels_importable():

@@ -16,10 +16,7 @@ import time
 
 import pytest
 
-from aip.adapter.graph_store import GraphStore, GraphNode, GraphEdge
-from aip.adapter.read_pool import ReadPoolMixin, ReadPoolHealth
-from aip.adapter.store_health import StoreHealthMixin
-
+from aip.adapter.graph_store import GraphNode, GraphStore
 
 # ---------------------------------------------------------------------------
 # Fixtures

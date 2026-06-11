@@ -13,15 +13,10 @@ only — never from aip.orchestration in production-path assertions.
 
 from __future__ import annotations
 
-import hashlib
 import json
-import os
-import tempfile
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Fake stores for testing (lightweight, no DB dependency)
@@ -209,8 +204,9 @@ class TestSaveArtifactSovereignty:
     @pytest.mark.asyncio
     async def test_save_artifact_rejects_missing_content(self):
         """Missing content should return 400, not silently fail."""
-        from aip.adapter.api.routes.turns import save_turn_artifact
         from fastapi import HTTPException
+
+        from aip.adapter.api.routes.turns import save_turn_artifact
 
         container = self._make_container()
 
@@ -225,8 +221,9 @@ class TestSaveArtifactSovereignty:
     @pytest.mark.asyncio
     async def test_save_artifact_rejects_missing_session_id(self):
         """Missing session_id should return 400, not silently fail."""
-        from aip.adapter.api.routes.turns import save_turn_artifact
         from fastapi import HTTPException
+
+        from aip.adapter.api.routes.turns import save_turn_artifact
 
         container = self._make_container()
 
@@ -305,8 +302,9 @@ class TestSaveArtifactSovereignty:
     @pytest.mark.asyncio
     async def test_save_artifact_503_when_stores_unavailable(self):
         """Returns 503 when artifact_store or ecs_store is None."""
-        from aip.adapter.api.routes.turns import save_turn_artifact
         from fastapi import HTTPException
+
+        from aip.adapter.api.routes.turns import save_turn_artifact
 
         # artifact_store is None
         container = self._make_container()
@@ -531,7 +529,6 @@ class TestAskChatMetadataCompatibility:
         """POST /api/v1/ask response dict must include trace_available."""
         # Verify the ask route builds the response with metadata fields
         # by inspecting the route code
-        import ast
         from pathlib import Path
 
         ask_file = Path(__file__).resolve().parent.parent / "src/aip/adapter/api/routes/ask.py"
@@ -543,7 +540,6 @@ class TestAskChatMetadataCompatibility:
 
     def test_ask_retrieve_includes_metadata(self):
         """POST /api/v1/ask/retrieve response must include metadata fields."""
-        import ast
         from pathlib import Path
 
         ask_file = Path(__file__).resolve().parent.parent / "src/aip/adapter/api/routes/ask.py"

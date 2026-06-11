@@ -10,8 +10,8 @@ from pathlib import Path
 
 import click
 
-from aip.cli import ask as ask_cmd
 from aip.cli import artifact as artifact_cmd
+from aip.cli import ask as ask_cmd
 from aip.cli import backup as backup_cmd
 from aip.cli import codex as codex_cmd
 from aip.cli import config as config_cmd

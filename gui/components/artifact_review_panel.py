@@ -27,12 +27,10 @@ from gui.theme import (
     C_CREAM,
     C_ERR_BG,
     C_ERR_FG,
-    C_GROUND,
     C_INK40,
     C_INK60,
     C_MUTED,
     C_OK_FG,
-    C_RAISED,
     C_SURFACE,
     C_WARN_FG,
     F_MONO,
@@ -336,7 +334,6 @@ def _handle_action_error(action: str, artifact_id: str, exc: Exception) -> None:
     # Try to extract meaningful error from httpx response
     if hasattr(exc, "response") and hasattr(exc.response, "text"):
         try:
-            import json
 
             detail = exc.response.json().get("detail", error_msg)
             error_msg = detail

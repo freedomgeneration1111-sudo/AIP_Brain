@@ -15,9 +15,7 @@ and external integrations (MCP, scripts).
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -258,6 +256,7 @@ async def auto_save_chat_turn(
         if container.corpus_turn_store is not None:
             try:
                 import json as _json
+
                 from aip.foundation.schemas.corpus_turn import CorpusTurn, make_turn_id
 
                 now = datetime.now(timezone.utc)

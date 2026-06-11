@@ -14,29 +14,24 @@ Tests for:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-import tempfile
 
 import pytest
 
+from aip.foundation.schemas.ask import AskResult
 from aip.foundation.schemas.retrieval import (
-    ChannelHealthState,
     ChannelHealthReport,
+    ChannelHealthState,
     RetrievalHit,
     RetrievalTrace,
 )
-from aip.foundation.schemas.ask import AskResult
 from aip.foundation.schemas.vector import VectorBackendStatus, VectorDegradationInfo
+from aip.orchestration.ask_pipeline import _build_degradation_dict, _build_retrieval_warnings
 from aip.orchestration.retrieval_orchestrator import (
     OrchestratorConfig,
     RetrievalOrchestrator,
-    rrf_fuse,
-    apply_quality_gate,
 )
-from aip.orchestration.ask_pipeline import _build_retrieval_warnings, _build_degradation_dict
-
 
 # ======================================================================
 # 1. ChannelHealthState enum
@@ -668,7 +663,7 @@ questions:
 
         # Every query should have a query string
         for q in queries:
-            assert q.query, f"Empty query found"
+            assert q.query, "Empty query found"
             assert len(q.query) > 5, f"Query too short: {q.query}"
 
 

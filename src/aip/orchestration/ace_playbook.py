@@ -21,7 +21,6 @@ import aiosqlite
 
 from aip.foundation.schemas import AcePlaybookEntry, FailureClassification
 
-
 _DDL_ACE_PLAYBOOK = """
     CREATE TABLE IF NOT EXISTS ace_playbook (
         entry_id TEXT PRIMARY KEY,

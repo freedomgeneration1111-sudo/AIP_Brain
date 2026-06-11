@@ -610,7 +610,7 @@ Be strict: if a specific number, date, or factual claim appears in the response 
 
         # Step 1: Load golden queries
         try:
-            from aip.orchestration.retrieval_eval import load_golden_queries, compute_precision_at_k
+            from aip.orchestration.retrieval_eval import compute_precision_at_k, load_golden_queries
         except ImportError:
             logger.warning("vigil_retrieval_quality_import_failed", error="retrieval_eval module not available")
             return {
@@ -636,9 +636,8 @@ Be strict: if a specific number, date, or factual claim appears in the response 
 
         # Step 3: Create retrieval infrastructure (light, temporary)
         try:
-            from aip.orchestration.ask_pipeline import AskStores, create_ask_stores
+            from aip.orchestration.ask_pipeline import _register_retriever_channels, create_ask_stores
             from aip.orchestration.retrieval_orchestrator import OrchestratorConfig, get_orchestrator_cache
-            from aip.orchestration.ask_pipeline import _register_retriever_channels
 
             db_path = os.environ.get("AIP_DB_PATH", "db/state.db")
             try:

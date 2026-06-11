@@ -454,7 +454,7 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
             row = await cursor.fetchone()
             self._health_track_operation(time.monotonic() - t0)
             return int(row[0]) if row else 0
-        except Exception as exc:
+        except Exception:
             await self._reset_conn()
             return 0
         finally:
@@ -469,7 +469,7 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
             row = await cursor.fetchone()
             self._health_track_operation(time.monotonic() - t0)
             return int(row[0]) if row else 0
-        except Exception as exc:
+        except Exception:
             await self._reset_conn()
             return 0
         finally:

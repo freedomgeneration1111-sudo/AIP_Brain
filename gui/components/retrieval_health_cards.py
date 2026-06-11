@@ -13,19 +13,17 @@ from typing import Any
 from nicegui import ui
 
 from gui.theme import (
-    C_CREAM,
-    C_SURFACE,
-    C_INK40,
-    C_OK_FG,
     C_AMBER,
+    C_CREAM,
     C_ERR_FG,
+    C_INK40,
     C_MUTED,
-    F_SANS,
+    C_OK_FG,
+    C_SURFACE,
     F_MONO,
-    R_MD,
+    F_SANS,
     R_SM,
 )
-
 
 # Channel display name mapping
 CHANNEL_LABELS: dict[str, str] = {

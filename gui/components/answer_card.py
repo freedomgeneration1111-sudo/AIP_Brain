@@ -23,8 +23,6 @@ from gui.theme import (
     C_AMBER,
     C_CREAM,
     C_DOGFOOD_BARE,
-    C_ERR_FG,
-    C_GROUND,
     C_INK40,
     C_INK60,
     C_MUTED,
@@ -33,10 +31,8 @@ from gui.theme import (
     C_SURFACE,
     C_WARN_FG,
     F_MONO,
-    F_SANS,
     R_MD,
     R_SM,
-    btn_secondary,
 )
 
 log = logging.getLogger("gui.components.answer_card")
@@ -214,7 +210,7 @@ def add_answer_card(
             ui.label(status["detail"]).style(f"font-size:9px; color:{C_INK60}; font-family:{F_MONO};")
 
         # ── Action bar ─────────────────────────────────────────
-        with ui.row().classes("w-full items-center").style(f"margin-top:2px; padding:2px 0; gap:4px;"):
+        with ui.row().classes("w-full items-center").style("margin-top:2px; padding:2px 0; gap:4px;"):
             # Show Sources — available when sources exist
             if sources:
                 ui.button(

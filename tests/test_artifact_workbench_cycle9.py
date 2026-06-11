@@ -28,7 +28,6 @@ import os
 import sqlite3
 import tempfile
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -681,6 +680,7 @@ class TestArtifactGUIBoundary:
     def test_artifact_list_no_orchestration(self):
         """artifact_list does not import from aip.orchestration."""
         import ast
+
         import gui.components.artifact_list as mod
 
         source = Path(mod.__file__).read_text()
@@ -696,6 +696,7 @@ class TestArtifactGUIBoundary:
     def test_artifact_detail_no_orchestration(self):
         """artifact_detail does not import from aip.orchestration."""
         import ast
+
         import gui.components.artifact_detail as mod
 
         source = Path(mod.__file__).read_text()
@@ -713,6 +714,7 @@ class TestArtifactGUIBoundary:
     def test_artifact_review_panel_no_orchestration(self):
         """artifact_review_panel does not import from aip.orchestration."""
         import ast
+
         import gui.components.artifact_review_panel as mod
 
         source = Path(mod.__file__).read_text()

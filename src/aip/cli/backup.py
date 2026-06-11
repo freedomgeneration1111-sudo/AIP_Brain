@@ -23,7 +23,6 @@ from typing import Any
 
 import click
 
-
 # The canonical list of DB files in the honest multi-file local datastore.
 # This must match the store registry populated during app startup.
 _KNOWN_DB_FILES = [
@@ -101,7 +100,7 @@ def backup(db_dir: str, config_dir: str, output_dir: str, include_optional: bool
     backup_root = Path(output_dir) / f"aip-backup-{timestamp}"
     backup_root.mkdir(parents=True, exist_ok=True)
 
-    click.echo(f"=== AIP backup ===")
+    click.echo("=== AIP backup ===")
     click.echo(f"DB dir:    {db_path.resolve()}")
     click.echo(f"Config dir: {config_path.resolve()}")
     click.echo(f"Output:    {backup_root.resolve()}")
@@ -169,28 +168,28 @@ def backup(db_dir: str, config_dir: str, output_dir: str, include_optional: bool
         try:
             shutil.copytree(config_path, config_backup, dirs_exist_ok=True)
             manifest["config_included"] = True
-            click.echo(f"  config/: copied")
+            click.echo("  config/: copied")
         except Exception as exc:
             manifest["config_included"] = False
             manifest["config_error"] = str(exc)
             click.echo(f"  config/: ERROR: {exc}")
             errors += 1
     else:
-        click.echo(f"  config/: skipped (not found)")
+        click.echo("  config/: skipped (not found)")
 
     # Write manifest
     manifest_path = backup_root / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))
-    click.echo(f"  manifest.json: written")
+    click.echo("  manifest.json: written")
 
     # Summary
-    click.echo(f"\n=== Backup complete ===")
+    click.echo("\n=== Backup complete ===")
     click.echo(f"  Databases backed up: {backed_up}")
     click.echo(f"  Databases skipped:   {skipped}")
     click.echo(f"  Errors:              {errors}")
     click.echo(f"  Location:            {backup_root.resolve()}")
-    click.echo(f"\nTo restore:")
-    click.echo(f"  1. Stop the AIP application")
+    click.echo("\nTo restore:")
+    click.echo("  1. Stop the AIP application")
     click.echo(f"  2. Copy .db files from {backup_root}/ to {db_path}/")
     click.echo(f"  3. Copy config/ from {backup_root}/config/ to {config_path}/")
-    click.echo(f"  4. Restart the application")
+    click.echo("  4. Restart the application")

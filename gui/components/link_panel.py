@@ -34,16 +34,13 @@ from gui.theme import (
     C_AMBER,
     C_CREAM,
     C_ERR_FG,
-    C_GROUND,
     C_INK40,
     C_INK60,
     C_MUTED,
     C_OK_FG,
-    C_RAISED,
     C_SURFACE,
     C_WARN_FG,
     F_MONO,
-    F_SANS,
     R_MD,
     R_SM,
 )
@@ -200,7 +197,7 @@ def _render_content(
 
         # Storage availability indicator
         if not state["forward_available"] and not state["backlink_available"]:
-            with ui.row().classes("w-full").style(f"padding:8px 12px;"):
+            with ui.row().classes("w-full").style("padding:8px 12px;"):
                 ui.label("Link storage unavailable").style(f"font-size:10px; color:{C_MUTED}; font-family:{F_MONO};")
             return
 
@@ -251,7 +248,7 @@ def _render_content(
 
 def _render_section_label(text: str, count: int) -> None:
     """Render a section label with count."""
-    with ui.row().classes("w-full items-center").style(f"padding:6px 12px 2px 12px; margin-top:4px;"):
+    with ui.row().classes("w-full items-center").style("padding:6px 12px 2px 12px; margin-top:4px;"):
         ui.label(text).style(
             f"font-size:8px; font-weight:700; font-family:{F_MONO}; color:{C_INK60}; letter-spacing:0.5px;"
         )

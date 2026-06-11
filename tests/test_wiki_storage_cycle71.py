@@ -16,16 +16,11 @@ Verifies:
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
-import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 
 # ── Test fixtures ───────────────────────────────────────────────────────
 
@@ -171,8 +166,8 @@ class TestStorageBackendResolution:
 
     def test_returns_sqlite_compat_when_no_artifact_store(self):
         """Container without artifact_store → sqlite_compat."""
-        from aip.adapter.api.routes.wiki import _resolve_storage_backend
         from aip.adapter.api.dependencies import AipContainer
+        from aip.adapter.api.routes.wiki import _resolve_storage_backend
 
         container = AipContainer({})
         container.artifact_store = None
@@ -185,8 +180,8 @@ class TestStorageBackendResolution:
         ECS state management requires ecs_store for proper validation,
         so partial wiring degrades to sqlite_compat.
         """
-        from aip.adapter.api.routes.wiki import _resolve_storage_backend
         from aip.adapter.api.dependencies import AipContainer
+        from aip.adapter.api.routes.wiki import _resolve_storage_backend
 
         container = AipContainer({})
         container.artifact_store = MagicMock()
@@ -195,8 +190,8 @@ class TestStorageBackendResolution:
 
     def test_returns_artifact_store_when_both_wired(self):
         """Container with artifact_store AND ecs_store → artifact_store."""
-        from aip.adapter.api.routes.wiki import _resolve_storage_backend
         from aip.adapter.api.dependencies import AipContainer
+        from aip.adapter.api.routes.wiki import _resolve_storage_backend
 
         container = AipContainer({})
         container.artifact_store = MagicMock()
@@ -262,7 +257,7 @@ class TestWikiCreateArtifactStorePath:
     async def test_create_via_artifact_store_path(self):
         """Create should use container.artifact_store.write() and
         container.ecs_store.transition() when both are wired."""
-        from aip.adapter.api.routes.wiki import create_wiki_article, WikiArticleCreateRequest
+        from aip.adapter.api.routes.wiki import WikiArticleCreateRequest, create_wiki_article
 
         # Mock container with artifact_store and ecs_store
         container = MagicMock()
@@ -301,7 +296,7 @@ class TestWikiCreateArtifactStorePath:
     @pytest.mark.asyncio
     async def test_create_falls_back_to_sqlite_compat(self, wiki_db: Path, monkeypatch):
         """Create should fall back to sqlite_compat when container has no stores."""
-        from aip.adapter.api.routes.wiki import create_wiki_article, WikiArticleCreateRequest
+        from aip.adapter.api.routes.wiki import WikiArticleCreateRequest, create_wiki_article
 
         # Patch _STATE_DB to use our test database
         monkeypatch.setattr("aip.adapter.api.routes.wiki._STATE_DB", str(wiki_db))
@@ -347,7 +342,7 @@ class TestWikiEditNoAutoApprove:
     @pytest.mark.asyncio
     async def test_edit_via_artifact_store_path_preserves_state(self):
         """Edit via artifact_store should NOT change ECS state."""
-        from aip.adapter.api.routes.wiki import update_wiki_article, WikiArticleUpdateRequest
+        from aip.adapter.api.routes.wiki import WikiArticleUpdateRequest, update_wiki_article
 
         container = MagicMock()
         container.artifact_store = AsyncMock()
@@ -395,7 +390,7 @@ class TestWikiEditNoAutoApprove:
     @pytest.mark.asyncio
     async def test_edit_via_sqlite_compat_preserves_state(self, wiki_db_with_articles: Path, monkeypatch):
         """Edit via sqlite_compat should NOT change ECS state."""
-        from aip.adapter.api.routes.wiki import update_wiki_article, WikiArticleUpdateRequest
+        from aip.adapter.api.routes.wiki import WikiArticleUpdateRequest, update_wiki_article
 
         monkeypatch.setattr("aip.adapter.api.routes.wiki._STATE_DB", str(wiki_db_with_articles))
 
@@ -923,7 +918,7 @@ class TestWikiVersionPreservation:
     @pytest.mark.asyncio
     async def test_edit_via_artifact_store_increments_version(self):
         """Edit via artifact_store should increment version via write()."""
-        from aip.adapter.api.routes.wiki import update_wiki_article, WikiArticleUpdateRequest
+        from aip.adapter.api.routes.wiki import WikiArticleUpdateRequest, update_wiki_article
 
         container = MagicMock()
         container.artifact_store = AsyncMock()

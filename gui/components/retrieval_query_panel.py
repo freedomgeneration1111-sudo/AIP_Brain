@@ -10,26 +10,23 @@ Provides:
 
 from __future__ import annotations
 
-from typing import Any, Callable, Awaitable
+from typing import Awaitable, Callable
 
 from nicegui import ui
 
 from gui.theme import (
+    C_AMBER,
     C_CREAM,
     C_GROUND,
-    C_SURFACE,
-    C_RAISED,
     C_INK40,
     C_MUTED,
     C_OK_FG,
-    C_AMBER,
-    C_ERR_FG,
-    F_SANS,
+    C_SURFACE,
     F_MONO,
+    F_SANS,
     R_MD,
     R_SM,
 )
-
 
 # Channel definitions: key, label, default_enabled
 CHANNEL_DEFS: list[tuple[str, str, bool]] = [

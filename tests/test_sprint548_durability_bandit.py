@@ -8,19 +8,14 @@ Covers all 5 deliverables:
 5. Rollback Dry-Run Mode
 """
 
-import json
-import math
 import os
 import tempfile
 import time
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
-
-from aip.adapter.alerting import AlertConfig, AlertManager
 from aip.adapter.alert_history_store import AlertHistoryStore
-
+from aip.adapter.alerting import AlertConfig, AlertManager
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -28,19 +28,14 @@ from __future__ import annotations
 import os
 import tempfile
 import time
-from datetime import datetime, timezone
-from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
-
+from aip.adapter.alert_history_store import AlertHistoryStore
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
 )
-from aip.adapter.alert_history_store import AlertHistoryStore
-
 
 # ============================================================================
 # Deliverable 1: Service Worker Offline Cache

@@ -34,11 +34,9 @@ import pytest
 
 from aip.config import (
     DogfoodMode,
-    DogfoodReadinessCheck,
     get_dogfood_mode,
     validate_dogfood_readiness,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -489,11 +487,10 @@ class TestActorWiring:
 
     def test_beast_receives_all_stores(self):
         """Beast actor constructor accepts all stores wired in lifespan."""
-        from aip.orchestration.actors.beast import Beast
-        from aip.foundation.schemas import BeastCadenceConfig
-
         # Verify the constructor accepts all the parameters we pass
         import inspect
+
+        from aip.orchestration.actors.beast import Beast
 
         sig = inspect.signature(Beast.__init__)
         params = list(sig.parameters.keys())
@@ -517,9 +514,9 @@ class TestActorWiring:
 
     def test_vigil_receives_all_stores(self):
         """Vigil actor constructor accepts all stores wired in lifespan."""
-        from aip.orchestration.actors.vigil import Vigil
-
         import inspect
+
+        from aip.orchestration.actors.vigil import Vigil
 
         sig = inspect.signature(Vigil.__init__)
         params = list(sig.parameters.keys())
@@ -543,9 +540,9 @@ class TestActorWiring:
 
     def test_sexton_receives_alert_manager(self):
         """Sexton actor constructor accepts alert_manager parameter."""
-        from aip.orchestration.actors.sexton import Sexton
-
         import inspect
+
+        from aip.orchestration.actors.sexton import Sexton
 
         sig = inspect.signature(Sexton.__init__)
         params = list(sig.parameters.keys())

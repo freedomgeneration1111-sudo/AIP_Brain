@@ -36,7 +36,6 @@ from gui.theme import (
     C_INK40,
     C_INK60,
     C_MUTED,
-    C_OK_FG,
     C_RAISED,
     C_SURFACE,
     F_MONO,
@@ -267,7 +266,7 @@ def _render_content(
 
         # Error state
         if state.get("error"):
-            with ui.column().classes("w-full").style(f"padding:16px;"):
+            with ui.column().classes("w-full").style("padding:16px;"):
                 ui.label("Backend unavailable").style(
                     f"font-size:12px; color:{C_CREAM}; font-family:{F_SANS}; font-weight:600;"
                 )
@@ -328,7 +327,7 @@ def _render_item(
         .style(f"padding:8px 12px; border-bottom:0.5px solid {C_INK40}; cursor:pointer; transition:background 0.15s;")
         .on("click", lambda: on_select(artifact_id) if on_select else None)
         .on("mouseenter", lambda: ui.run_javascript(f"this.style.background='{C_RAISED}'"))
-        .on("mouseleave", lambda: ui.run_javascript(f"this.style.background='transparent'"))
+        .on("mouseleave", lambda: ui.run_javascript("this.style.background='transparent'"))
     ):
         # State badge
         render_artifact_state_badge(

@@ -19,8 +19,7 @@ import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from aip.adapter.api.dependencies import get_container, require_definer
-from aip.adapter.api.dependencies import AipContainer
+from aip.adapter.api.dependencies import require_definer
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

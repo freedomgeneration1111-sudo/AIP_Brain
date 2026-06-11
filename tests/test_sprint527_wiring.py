@@ -10,32 +10,26 @@ Deliverable 5: Quality Store Retention Policy + Rollup
 
 from __future__ import annotations
 
-import json
 import os
 import sqlite3
 import tempfile
-import time
-from dataclasses import dataclass
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
-    DeliveryFailure,
 )
-from aip.adapter.read_pool import ReadPoolAutoSizer, ReadPoolHealth
 from aip.adapter.auto_tuning_policy import (
     AutoTuningPolicy,
-    load_policy_from_config,
     apply_policy_to_auto_sizer,
     apply_policy_to_sexton,
+    load_policy_from_config,
 )
+from aip.adapter.read_pool import ReadPoolAutoSizer, ReadPoolHealth
 from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
-
 
 # ============================================================================
 # Shared fakes

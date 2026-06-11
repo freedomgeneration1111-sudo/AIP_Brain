@@ -32,9 +32,8 @@ portability across Linux, macOS, and CI environments.
 
 from __future__ import annotations
 
-import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -511,9 +510,9 @@ class ConfigWatcher:
         """
         try:
             from aip.adapter.auto_tuning_policy import (
-                load_policy_from_config,
                 apply_policy_to_auto_sizer,
                 apply_policy_to_sexton,
+                load_policy_from_config,
             )
 
             current_config = getattr(self._container, "config", {})

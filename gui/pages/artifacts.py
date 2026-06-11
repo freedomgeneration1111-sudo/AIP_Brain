@@ -34,10 +34,8 @@ from gui.theme import (
     C_GROUND,
     C_INK40,
     C_MUTED,
-    C_SURFACE,
-    F_SANS,
     F_MONO,
-    R_MD,
+    F_SANS,
 )
 
 
@@ -69,13 +67,13 @@ async def artifacts_page():
             )
         ):
             # Title
-            with ui.row().classes("w-full items-center").style(f"padding:16px 16px 8px 16px;"):
+            with ui.row().classes("w-full items-center").style("padding:16px 16px 8px 16px;"):
                 ui.label("Artifact Workbench").style(
                     f"font-family:{F_SANS}; font-size:18px; font-weight:700; color:{C_CREAM};"
                 )
 
             # Dashboard summary
-            with ui.row().classes("w-full").style(f"padding:0 16px 12px 16px;"):
+            with ui.row().classes("w-full").style("padding:0 16px 12px 16px;"):
                 summary_label = ui.label("Loading...").style(f"font-size:10px; color:{C_MUTED}; font-family:{F_MONO};")
 
             # Artifact list component

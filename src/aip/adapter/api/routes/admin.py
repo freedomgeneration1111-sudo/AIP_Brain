@@ -10,7 +10,6 @@ lexical documents that don't yet have vector embeddings.
 from __future__ import annotations
 
 import asyncio
-import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel

@@ -12,14 +12,12 @@ from __future__ import annotations
 import json
 import tempfile
 from dataclasses import dataclass
-from typing import Any
 
 import pytest
 
+from aip.adapter.read_pool import ReadPoolAutoSizer, ReadPoolHealth
 from aip.foundation.schemas import SextonConfig, VigilConfig
 from aip.orchestration.actors.vigil import Vigil
-from aip.adapter.read_pool import ReadPoolAutoSizer, ReadPoolHealth
-
 
 # ============================================================================
 # Shared fakes

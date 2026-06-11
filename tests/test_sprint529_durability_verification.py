@@ -13,19 +13,17 @@ from __future__ import annotations
 import os
 import sqlite3
 import tempfile
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
+from aip.adapter.alert_history_store import AlertHistoryStore
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
 )
-from aip.adapter.alert_history_store import AlertHistoryStore
 from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
-
 
 # ============================================================================
 # Deliverable 1: Alerting Durability — AlertHistoryStore

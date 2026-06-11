@@ -30,10 +30,7 @@ from aip.foundation.schemas.codex import (
     CodexContradiction,
     CodexDashboard,
     CodexSource,
-    CodexSourceStatus,
     CodexTopic,
-    ContradictionSeverity,
-    ContradictionStatus,
 )
 
 # ---------------------------------------------------------------------------

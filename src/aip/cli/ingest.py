@@ -243,7 +243,7 @@ async def _ingest_file_async(
     path: str, source_format: str, domain: str, project: str | None, db_path: str | None, embed: bool | None = None
 ):
     """Async ingestion implementation."""
-    from aip.cli._db_path import ensure_db_dir, get_default_db_path, get_default_lexical_db_path
+    from aip.cli._db_path import ensure_db_dir, get_default_db_path
     from aip.orchestration.ingestion import pipeline as _pipeline
 
     if db_path is None:

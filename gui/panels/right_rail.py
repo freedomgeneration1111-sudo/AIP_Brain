@@ -10,29 +10,23 @@ falling back to individual endpoint data when summary is unavailable.
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from typing import Any
 
 from nicegui import ui
 
 from gui.state import GuiState
 from gui.theme import (
     C_AMBER,
-    C_CREAM,
     C_DOGFOOD_BARE,
     C_DOGFOOD_DEGRADED,
     C_DOGFOOD_FULL,
     C_ERR_FG,
     C_GROUND,
     C_INK40,
-    C_INK60,
     C_MUTED,
     C_OK_FG,
     C_WARN_FG,
     F_MONO,
-    R_SM,
-    SP_SM,
 )
 
 log = logging.getLogger("gui.panels.right_rail")

@@ -12,11 +12,11 @@ from gui.state import get_session_state
 from gui.theme import (
     C_CREAM,
     C_GROUND,
+    C_INK40,
     C_MUTED,
     C_SURFACE,
-    C_INK40,
-    F_SANS,
     F_MONO,
+    F_SANS,
     R_MD,
 )
 

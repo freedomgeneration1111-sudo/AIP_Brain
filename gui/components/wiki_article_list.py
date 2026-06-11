@@ -15,7 +15,6 @@ from gui.theme import (
     C_AMBER,
     C_CREAM,
     C_ERR_FG,
-    C_GROUND,
     C_INK40,
     C_INK60,
     C_MUTED,
@@ -27,7 +26,6 @@ from gui.theme import (
     F_SANS,
     R_MD,
     R_SM,
-    BORDER,
 )
 
 log = logging.getLogger("gui.components.wiki_article_list")

@@ -25,18 +25,13 @@ Deliverable 5: Dashboard WebSocket Compression
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
-from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
 )
-
 
 # ============================================================================
 # Deliverable 1: Service Worker Migration

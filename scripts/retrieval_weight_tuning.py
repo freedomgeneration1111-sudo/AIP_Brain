@@ -30,10 +30,9 @@ import json
 import os
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -86,8 +85,8 @@ async def _run_single_eval(
     k: int = 10,
 ) -> dict[str, float]:
     """Run one evaluation with the given config and return aggregate metrics."""
-    from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
     from aip.orchestration.retrieval_eval import RetrievalEvalHarness
+    from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
 
     if mode == "fts-only":
         config = OrchestratorConfig(
@@ -140,7 +139,7 @@ async def run_grid_search(db_path: str, golden_path: str) -> list[WeightResult]:
     vector_available = False
 
     try:
-        from aip.orchestration.ask_pipeline import create_ask_stores, _register_retriever_channels
+        from aip.orchestration.ask_pipeline import _register_retriever_channels, create_ask_stores
         from aip.orchestration.retrieval_orchestrator import get_orchestrator_cache
 
         stores = await create_ask_stores(db_path)
@@ -149,7 +148,6 @@ async def run_grid_search(db_path: str, golden_path: str) -> list[WeightResult]:
         if stores.vector_store is not None and stores.embedding_provider is not None:
             try:
                 # Quick probe: try to retrieve with a dummy vector
-                import numpy as np
 
                 probe_vec = [0.0] * 768
                 hits = await stores.vector_store.retrieve(probe_vec, top_k=1)
@@ -165,8 +163,8 @@ async def run_grid_search(db_path: str, golden_path: str) -> list[WeightResult]:
         stores = None
 
     if stores is not None:
-        from aip.orchestration.retrieval_orchestrator import get_orchestrator_cache
         from aip.orchestration.ask_pipeline import _register_retriever_channels
+        from aip.orchestration.retrieval_orchestrator import get_orchestrator_cache
 
         cache = get_orchestrator_cache()
         cache.invalidate()  # Force fresh orchestrator
@@ -541,8 +539,8 @@ def main() -> None:
 
     # Print recommendation
     if best_hybrid and not best_hybrid.error:
-        print(f"\n  RECOMMENDED: Set the following in config/aip.config.toml:")
-        print(f"    [retrieval.channel_weights]")
+        print("\n  RECOMMENDED: Set the following in config/aip.config.toml:")
+        print("    [retrieval.channel_weights]")
         print(f"    vector = {best_hybrid.vector_weight:.1f}")
         print(f"    fts = {best_hybrid.fts_weight:.1f}")
         print(f"    corpus = {best_hybrid.corpus_weight:.1f}")

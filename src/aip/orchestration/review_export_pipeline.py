@@ -26,10 +26,9 @@ Chunk 7 — Review/export gate integrity:
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -565,7 +564,7 @@ async def review_approve(
         from_state=current_state,
         to_state="APPROVED",
         verdict="APPROVED",
-        detail=f"DEFINER approved via CLI review — promoted to canonical",
+        detail="DEFINER approved via CLI review — promoted to canonical",
         source_count=len(source_ids),
     )
 

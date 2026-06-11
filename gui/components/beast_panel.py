@@ -20,7 +20,6 @@ Never imports from aip.orchestration.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -34,16 +33,12 @@ from gui.theme import (
     C_GROUND,
     C_INK40,
     C_INK60,
-    C_MUTED,
     C_OK_FG,
     C_RAISED,
-    C_SURFACE,
     C_WARN_FG,
     F_MONO,
     F_SANS,
-    R_MD,
     R_SM,
-    btn_secondary,
 )
 
 log = logging.getLogger("gui.components.beast_panel")
@@ -242,7 +237,7 @@ class BeastPanel:
         created_at = data.get("created_at", "")
 
         # Mode badge
-        with ui.row().classes("w-full items-center").style(f"padding: 8px 16px;"):
+        with ui.row().classes("w-full items-center").style("padding: 8px 16px;"):
             ui.label(f"Mode: {mode.upper()}").style(
                 f"font-size: 10px; font-weight: 700; font-family: {F_MONO}; "
                 f"color: {C_OK_FG}; letter-spacing: 0.5px; "
@@ -279,7 +274,7 @@ class BeastPanel:
         if actions:
             self._render_section_label("Suggested Actions")
             for act in actions:
-                with ui.row().classes("w-full").style(f"padding: 4px 16px;"):
+                with ui.row().classes("w-full").style("padding: 4px 16px;"):
                     action_text = act.get("action", "")
                     target = act.get("target", "")
                     if target:
@@ -288,7 +283,7 @@ class BeastPanel:
                         f"font-size: 11px; color: {C_CREAM}; font-family: {F_SANS}; "
                         f"max-width: 300px; word-wrap: break-word;"
                     )
-                with ui.row().classes("w-full").style(f"padding: 0 16px 4px 16px;"):
+                with ui.row().classes("w-full").style("padding: 0 16px 4px 16px;"):
                     ui.label("advisory only — requires DEFINER approval").style(
                         f"font-size: 8px; color: {C_WARN_FG}; font-family: {F_MONO}; font-style: italic;"
                     )
@@ -297,14 +292,14 @@ class BeastPanel:
         if wiki_links:
             self._render_section_label("Suggested Wiki Links")
             for link in wiki_links:
-                with ui.row().classes("w-full").style(f"padding: 2px 16px;"):
+                with ui.row().classes("w-full").style("padding: 2px 16px;"):
                     ui.label(f"  {link}").style(f"font-size: 10px; color: {C_AMBER}; font-family: {F_MONO};")
 
         # Suggested artifacts
         if artifacts:
             self._render_section_label("Suggested Artifacts")
             for art in artifacts:
-                with ui.row().classes("w-full").style(f"padding: 2px 16px;"):
+                with ui.row().classes("w-full").style("padding: 2px 16px;"):
                     ui.label(f"  {art}").style(f"font-size: 10px; color: {C_AMBER}; font-family: {F_MONO};")
 
     def _render_no_commentary(
@@ -316,7 +311,7 @@ class BeastPanel:
     ) -> None:
         """Render the 'no commentary yet for this mode' state with a Run button."""
         mode = kwargs.get("mode", self._current_mode)
-        with ui.column().classes("w-full").style(f"padding: 16px;"):
+        with ui.column().classes("w-full").style("padding: 16px;"):
             ui.label(f"No Beast commentary yet for this turn (mode: {mode}).").style(
                 f"font-size: 12px; color: {C_INK60}; font-family: {F_SANS};"
             )
@@ -356,7 +351,7 @@ class BeastPanel:
 
     def _render_not_wired(self) -> None:
         """Render the 'not wired' state — no model provider configured."""
-        with ui.column().classes("w-full").style(f"padding: 16px;"):
+        with ui.column().classes("w-full").style("padding: 16px;"):
             ui.label("BEAST NOT WIRED").style(
                 f"font-size: 12px; font-weight: 700; font-family: {F_MONO}; "
                 f"color: {C_DOGFOOD_BARE}; letter-spacing: 0.5px;"
@@ -376,7 +371,7 @@ class BeastPanel:
         if reason:
             msg += f" ({reason})"
 
-        with ui.column().classes("w-full").style(f"padding: 16px;"):
+        with ui.column().classes("w-full").style("padding: 16px;"):
             ui.label("BEAST UNAVAILABLE").style(
                 f"font-size: 12px; font-weight: 700; font-family: {F_MONO}; color: {C_WARN_FG}; letter-spacing: 0.5px;"
             )
@@ -385,7 +380,7 @@ class BeastPanel:
     def _render_error(self, data: dict[str, Any]) -> None:
         """Render the 'error' state — generation or retrieval failed."""
         error_msg = data.get("error", "Unknown error")
-        with ui.column().classes("w-full").style(f"padding: 16px;"):
+        with ui.column().classes("w-full").style("padding: 16px;"):
             ui.label("BEAST ERROR").style(
                 f"font-size: 12px; font-weight: 700; font-family: {F_MONO}; color: {C_ERR_FG}; letter-spacing: 0.5px;"
             )
@@ -396,7 +391,7 @@ class BeastPanel:
     def _render_section(self, title: str, content: str, color: str) -> None:
         """Render a titled content section."""
         self._render_section_label(title)
-        with ui.row().classes("w-full").style(f"padding: 4px 16px 8px 16px;"):
+        with ui.row().classes("w-full").style("padding: 4px 16px 8px 16px;"):
             ui.label(content).style(
                 f"font-size: 11px; color: {color}; font-family: {F_SANS}; "
                 f"line-height: 1.5; max-width: 380px; word-wrap: break-word;"
@@ -404,7 +399,7 @@ class BeastPanel:
 
     def _render_section_label(self, text: str) -> None:
         """Render a section label."""
-        with ui.row().classes("w-full").style(f"padding: 8px 16px 2px 16px; margin-top: 4px;"):
+        with ui.row().classes("w-full").style("padding: 8px 16px 2px 16px; margin-top: 4px;"):
             ui.label(text.upper()).style(
                 f"font-size: 9px; font-weight: 700; font-family: {F_MONO}; color: {C_INK60}; letter-spacing: 0.5px;"
             )

@@ -15,19 +15,17 @@ import sqlite3
 import tempfile
 import time
 from datetime import datetime, timezone
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
+from aip.adapter.alert_history_store import AlertHistoryStore
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
 )
-from aip.adapter.alert_history_store import AlertHistoryStore
 from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
-
 
 # ============================================================================
 # Deliverable 1: Async Alert Dispatch
@@ -354,7 +352,7 @@ class TestAlertAcknowledgment:
     @pytest.mark.asyncio
     async def test_acknowledge_endpoint(self):
         """POST /vigil/quality/alerts/{id}/acknowledge endpoint works."""
-        from aip.adapter.api.routes.vigil_quality import vigil_alert_acknowledge, AcknowledgeRequest
+        from aip.adapter.api.routes.vigil_quality import AcknowledgeRequest, vigil_alert_acknowledge
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
@@ -385,7 +383,7 @@ class TestAlertAcknowledgment:
     @pytest.mark.asyncio
     async def test_dismiss_endpoint(self):
         """POST /vigil/quality/alerts/{id}/dismiss endpoint works."""
-        from aip.adapter.api.routes.vigil_quality import vigil_alert_dismiss, DismissRequest
+        from aip.adapter.api.routes.vigil_quality import DismissRequest, vigil_alert_dismiss
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
@@ -745,8 +743,8 @@ class TestRetentionConfigAPI:
     async def test_retention_config_patch_endpoint(self, tmp_path):
         """PATCH /vigil/quality/retention/config updates configuration."""
         from aip.adapter.api.routes.vigil_quality import (
-            vigil_retention_config_update,
             RetentionConfigUpdate,
+            vigil_retention_config_update,
         )
 
         store = self._create_store(tmp_path, retention_days=90, rollup_age_days=7)
@@ -764,8 +762,8 @@ class TestRetentionConfigAPI:
     async def test_retention_config_patch_negative_validation(self, tmp_path):
         """PATCH /vigil/quality/retention/config rejects negative values."""
         from aip.adapter.api.routes.vigil_quality import (
-            vigil_retention_config_update,
             RetentionConfigUpdate,
+            vigil_retention_config_update,
         )
 
         store = self._create_store(tmp_path, retention_days=90)
@@ -793,8 +791,8 @@ class TestRetentionConfigAPI:
     async def test_retention_config_patch_no_store(self):
         """PATCH /vigil/quality/retention/config returns gracefully when no store."""
         from aip.adapter.api.routes.vigil_quality import (
-            vigil_retention_config_update,
             RetentionConfigUpdate,
+            vigil_retention_config_update,
         )
 
         container = MagicMock()

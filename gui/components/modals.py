@@ -5,7 +5,6 @@ from __future__ import annotations
 from nicegui import ui
 
 from gui.theme import (
-    C_AMBER,
     C_CREAM,
     C_INK40,
     C_MUTED,

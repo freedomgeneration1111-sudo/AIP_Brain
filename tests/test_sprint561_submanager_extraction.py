@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import threading
 import time
-import uuid
 
 import pytest
 
@@ -22,13 +21,10 @@ from aip.adapter.alerting import (
     Alert,
     AlertConfig,
     AlertManager,
-    DeliveryManager,
     DigestManager,
     PredictionManager,
-    RealtimeEventBus,
     ThrottleManager,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

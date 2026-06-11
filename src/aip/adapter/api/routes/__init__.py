@@ -1,8 +1,8 @@
 """API route modules for API surfaces."""
 
 from . import (
-    admin,
     actors,
+    admin,
     artifacts,
     ask,
     beast_commentary,

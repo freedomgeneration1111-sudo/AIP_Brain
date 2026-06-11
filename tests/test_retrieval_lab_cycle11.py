@@ -24,11 +24,7 @@ Frontend tests use import checks.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-
+from unittest.mock import AsyncMock, MagicMock
 
 # ── Backend Endpoint Schema Tests ────────────────────────────────────
 
@@ -582,14 +578,8 @@ class TestRetrievalLabPageImports:
     def test_status_types_retrieval_lab_typeddicts(self):
         """gui.status_types has Retrieval Lab TypedDicts."""
         from gui.status_types import (
-            RetrievalTestItem,
-            RetrievalChannelResult,
-            RetrievalTestScores,
-            RetrievalTestResponse,
-            RetrievalHealthChannel,
-            RetrievalEmbeddingCoverage,
-            RetrievalHealthSummary,
             RetrievalHealthResponse,
+            RetrievalTestResponse,
         )
 
         # Verify they exist as TypedDict subclasses

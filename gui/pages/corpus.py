@@ -40,12 +40,9 @@ from gui.components.layout import build_left_nav, build_right_rail, build_top_ba
 from gui.state import get_session_state
 from gui.theme import (
     C_CREAM,
-    C_ERR_FG,
     C_GROUND,
     C_INK40,
-    C_INK60,
     C_MUTED,
-    C_OK_FG,
     C_SURFACE,
     F_MONO,
     F_SANS,

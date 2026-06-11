@@ -23,15 +23,10 @@ Backend tests use FastAPI TestClient. Frontend tests use import checks.
 from __future__ import annotations
 
 import asyncio
-import os
-import sqlite3
-import tempfile
 from pathlib import Path
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 
 # ── Backend Endpoint Schema Tests ────────────────────────────────────
 
@@ -373,21 +368,6 @@ class TestCorpusWorkbenchImports:
 
     def test_status_types_corpus_types(self):
         """gui.status_types includes Corpus Workbench types."""
-        from gui.status_types import (
-            CorpusBackfillResponse,
-            CorpusDocumentDetailResponse,
-            CorpusDocumentItem,
-            CorpusDocumentListResponse,
-            CorpusDuplicateHash,
-            CorpusEmbeddingProgressResponse,
-            CorpusFailedJob,
-            CorpusIngestResponse,
-            CorpusProblemsResponse,
-            CorpusRetryFailedResponse,
-            CorpusStaleDoc,
-            CorpusStatusResponse,
-            CorpusUnembeddedResponse,
-        )
 
     def test_api_client_corpus_methods(self):
         """gui.api_client has Corpus Workbench methods."""

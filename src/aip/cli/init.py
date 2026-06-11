@@ -535,8 +535,8 @@ def init(force: bool) -> None:
         click.echo("  WARNING: No .db files found in db/ directory!")
 
     click.echo(f"\n  All databases: {db_dir.resolve()}/")
-    click.echo(f"  Backup: aip backup (VACUUM INTO for consistent snapshots)")
-    click.echo(f"  Restore: Copy .db files from backup/ to db/ (stop app first)")
+    click.echo("  Backup: aip backup (VACUUM INTO for consistent snapshots)")
+    click.echo("  Restore: Copy .db files from backup/ to db/ (stop app first)")
     click.echo("\nNext steps:")
     click.echo("  1. Run `aip status` to inspect current state.")
     click.echo("  2. Run `aip project create --name <name> --domain <domain>` to create a project.")

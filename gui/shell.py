@@ -1390,7 +1390,7 @@ def _build_unified_chat_panel(
     beast_visible: list[bool] = [True]
 
     # Main content area: flex row with conversation + Beast pane
-    with ui.row().classes("w-full").style(f"flex:1;min-height:0;"):
+    with ui.row().classes("w-full").style("flex:1;min-height:0;"):
         # ── LEFT: Conversation thread ──
         msgs = (
             ui.column()

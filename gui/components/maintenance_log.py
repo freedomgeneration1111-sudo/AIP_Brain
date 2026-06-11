@@ -21,11 +21,9 @@ from gui.theme import (
     C_OK_FG,
     C_RAISED,
     C_SURFACE,
-    C_WARN_FG,
     F_MONO,
     F_SANS,
     R_MD,
-    R_SM,
 )
 
 

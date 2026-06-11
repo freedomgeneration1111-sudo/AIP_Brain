@@ -13,14 +13,10 @@ Deterministic, zero-token, no network, no LLM.
 
 from __future__ import annotations
 
-import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
-import pytest
-
-from aip.adapter.alerting import AlertManager, AlertConfig, Alert
 from aip.adapter.alert_history_store import AlertHistoryStore
-
+from aip.adapter.alerting import Alert, AlertConfig, AlertManager
 
 # ---------------------------------------------------------------------------
 # Helpers

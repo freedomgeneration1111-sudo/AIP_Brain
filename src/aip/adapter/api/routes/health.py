@@ -18,7 +18,6 @@ from typing import Any, TypedDict
 from fastapi import APIRouter, Depends
 
 from aip.adapter.api.dependencies import AipContainer, get_container
-from aip.adapter.store_health import ConnectionHealth
 from aip.config import DogfoodMode, get_dogfood_mode, validate_dogfood_readiness
 
 router = APIRouter()

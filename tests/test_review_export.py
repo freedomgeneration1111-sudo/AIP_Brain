@@ -31,8 +31,6 @@ from __future__ import annotations
 import os
 import tempfile
 
-import pytest
-
 from aip.adapter.artifact_store_versioned import VersionedArtifactStore
 from aip.adapter.ecs_store_persistent import PersistentEcsStore
 from aip.adapter.event_store_queryable import QueryableEventStore
@@ -48,7 +46,6 @@ from aip.orchestration.review_export_pipeline import (
     review_show,
     review_sources,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers: create test stores with a generated artifact
@@ -675,6 +672,7 @@ class TestCLIReviewExport:
 
     def test_review_command_registered(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -684,6 +682,7 @@ class TestCLIReviewExport:
 
     def test_review_list_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -693,6 +692,7 @@ class TestCLIReviewExport:
 
     def test_review_show_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -702,6 +702,7 @@ class TestCLIReviewExport:
 
     def test_review_sources_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -710,6 +711,7 @@ class TestCLIReviewExport:
 
     def test_review_approve_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -718,6 +720,7 @@ class TestCLIReviewExport:
 
     def test_review_reject_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -727,6 +730,7 @@ class TestCLIReviewExport:
 
     def test_review_needs_revision_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -736,6 +740,7 @@ class TestCLIReviewExport:
 
     def test_export_command_registered(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -745,6 +750,7 @@ class TestCLIReviewExport:
 
     def test_export_artifact_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -755,6 +761,7 @@ class TestCLIReviewExport:
 
     def test_export_project_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()

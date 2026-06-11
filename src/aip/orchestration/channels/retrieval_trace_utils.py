@@ -20,7 +20,6 @@ import logging
 from typing import TYPE_CHECKING
 
 from aip.foundation.schemas.retrieval import (
-    ChannelHealthDetail,
     ChannelHealthState,
     RetrievalTrace,
 )

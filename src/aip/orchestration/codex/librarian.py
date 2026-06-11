@@ -171,7 +171,6 @@ class Librarian:
                 return {"skipped": "corpus_not_connected"}
 
             # Query distinct sources from corpus_turns
-            import sqlite3
             from aip.adapter.corpus_turn_store import CorpusTurnStore
 
             if not isinstance(self._corpus, CorpusTurnStore):

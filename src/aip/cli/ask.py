@@ -13,8 +13,6 @@ import sys
 
 import click
 
-from aip.foundation.schemas.ask import AskSource
-
 _VALID_SOURCES = ("ingested", "artifacts", "all")
 
 
@@ -100,7 +98,7 @@ async def _ask_async(
 ):
     """Async ask pipeline implementation."""
     from aip.cli._db_path import ensure_db_dir, get_default_db_path
-    from aip.orchestration.ask_pipeline import ask, create_ask_stores, format_context_display
+    from aip.orchestration.ask_pipeline import ask, create_ask_stores
 
     if db_path is None:
         db_path = get_default_db_path()

@@ -13,7 +13,6 @@ Never imports from aip.orchestration.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -22,7 +21,6 @@ from nicegui import ui
 from gui.theme import (
     C_AMBER,
     C_CREAM,
-    C_DOGFOOD_BARE,
     C_ERR_FG,
     C_GROUND,
     C_INK40,
@@ -34,10 +32,7 @@ from gui.theme import (
     C_WARN_FG,
     F_MONO,
     F_SANS,
-    R_MD,
     R_SM,
-    btn_primary,
-    btn_secondary,
 )
 
 log = logging.getLogger("gui.components.model_council_panel")
@@ -173,7 +168,7 @@ class ModelCouncilPanel:
         sources: list[dict],
     ) -> None:
         """Render initial state with slot selector and run button."""
-        with ui.column().classes("w-full").style(f"padding: 16px;"):
+        with ui.column().classes("w-full").style("padding: 16px;"):
             if not prompt and not existing_answer:
                 ui.label("No prompt or answer available for Model Council.").style(
                     f"font-size: 12px; color: {C_INK60}; font-family: {F_SANS};"
@@ -261,7 +256,7 @@ class ModelCouncilPanel:
             # Determine if this slot should be checked by default
             is_checked = slot_name in self._selected_slots
 
-            with ui.row().classes("w-full items-center").style(f"padding: 2px 0;"):
+            with ui.row().classes("w-full items-center").style("padding: 2px 0;"):
                 checkbox = (
                     ui.checkbox(
                         value=is_checked,
@@ -395,7 +390,7 @@ class ModelCouncilPanel:
         }
         status_color = status_colors.get(status, C_MUTED)
 
-        with ui.row().classes("w-full items-center").style(f"padding: 8px 16px;"):
+        with ui.row().classes("w-full items-center").style("padding: 8px 16px;"):
             ui.label(f"Status: {status.upper()}").style(
                 f"font-size: 10px; font-weight: 700; font-family: {F_MONO}; "
                 f"color: {status_color}; letter-spacing: 0.5px; "
@@ -411,7 +406,7 @@ class ModelCouncilPanel:
         selected_models = data.get("selected_models", [])
         if selected_models:
             slot_names = [m.get("model_slot", "") for m in selected_models]
-            with ui.row().classes("w-full items-center").style(f"padding: 2px 16px;"):
+            with ui.row().classes("w-full items-center").style("padding: 2px 16px;"):
                 ui.label(f"Slots: {', '.join(slot_names)}").style(
                     f"font-size: 9px; color: {C_INK60}; font-family: {F_MONO}; letter-spacing: 0.3px;"
                 )
@@ -447,7 +442,7 @@ class ModelCouncilPanel:
             self._render_section("Beast Conclusion", data.get("beast_conclusion", ""), C_CREAM)
             self._render_section("Recommended Decision", data.get("recommended_decision", ""), C_AMBER)
         elif synthesis_status == "unavailable":
-            with ui.column().classes("w-full").style(f"padding: 8px 16px;"):
+            with ui.column().classes("w-full").style("padding: 8px 16px;"):
                 ui.label("SYNTHESIS UNAVAILABLE").style(
                     f"font-size: 10px; font-weight: 700; font-family: {F_MONO}; "
                     f"color: {C_WARN_FG}; letter-spacing: 0.5px;"
@@ -460,7 +455,7 @@ class ModelCouncilPanel:
                 if conclusion:
                     self._render_section("Note", conclusion, C_MUTED)
         elif synthesis_status == "failed":
-            with ui.column().classes("w-full").style(f"padding: 8px 16px;"):
+            with ui.column().classes("w-full").style("padding: 8px 16px;"):
                 ui.label("SYNTHESIS FAILED").style(
                     f"font-size: 10px; font-weight: 700; font-family: {F_MONO}; "
                     f"color: {C_ERR_FG}; letter-spacing: 0.5px;"
@@ -481,7 +476,7 @@ class ModelCouncilPanel:
 
         # Save as artifact button
         if data.get("artifact_id"):
-            with ui.row().classes("w-full").style(f"padding: 8px 16px;"):
+            with ui.row().classes("w-full").style("padding: 8px 16px;"):
                 ui.label(f"Saved as artifact: {data['artifact_id'][:24]}...").style(
                     f"font-size: 9px; color: {C_OK_FG}; font-family: {F_MONO};"
                 )
@@ -581,7 +576,7 @@ class ModelCouncilPanel:
 
     def _render_insufficient_models(self, data: dict[str, Any]) -> None:
         """Render the insufficient_models state."""
-        with ui.column().classes("w-full").style(f"padding: 16px;"):
+        with ui.column().classes("w-full").style("padding: 16px;"):
             ui.label("INSUFFICIENT MODELS").style(
                 f"font-size: 12px; font-weight: 700; font-family: {F_MONO}; color: {C_WARN_FG}; letter-spacing: 0.5px;"
             )
@@ -599,7 +594,7 @@ class ModelCouncilPanel:
     def _render_error(self, data: dict[str, Any]) -> None:
         """Render the error state."""
         error_msg = data.get("error", "Unknown error")
-        with ui.column().classes("w-full").style(f"padding: 16px;"):
+        with ui.column().classes("w-full").style("padding: 16px;"):
             ui.label("MODEL COUNCIL ERROR").style(
                 f"font-size: 12px; font-weight: 700; font-family: {F_MONO}; color: {C_ERR_FG}; letter-spacing: 0.5px;"
             )
@@ -612,7 +607,7 @@ class ModelCouncilPanel:
         if not content:
             return
         self._render_section_label(title)
-        with ui.row().classes("w-full").style(f"padding: 4px 16px 8px 16px;"):
+        with ui.row().classes("w-full").style("padding: 4px 16px 8px 16px;"):
             ui.label(content).style(
                 f"font-size: 11px; color: {color}; font-family: {F_SANS}; "
                 f"line-height: 1.5; max-width: 420px; word-wrap: break-word;"
@@ -620,7 +615,7 @@ class ModelCouncilPanel:
 
     def _render_section_label(self, text: str) -> None:
         """Render a section label."""
-        with ui.row().classes("w-full").style(f"padding: 8px 16px 2px 16px; margin-top: 4px;"):
+        with ui.row().classes("w-full").style("padding: 8px 16px 2px 16px; margin-top: 4px;"):
             ui.label(text.upper()).style(
                 f"font-size: 9px; font-weight: 700; font-family: {F_MONO}; color: {C_INK60}; letter-spacing: 0.5px;"
             )

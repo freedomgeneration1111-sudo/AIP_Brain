@@ -3,12 +3,11 @@
 Claude Export Ingestion Script for AIP_Brain
 """
 
-import sys
 import json
-import zipfile
-import tempfile
-import shutil
 import subprocess
+import sys
+import tempfile
+import zipfile
 from pathlib import Path
 
 

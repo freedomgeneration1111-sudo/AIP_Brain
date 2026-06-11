@@ -8,13 +8,11 @@ Covers:
 5. AI fingerprint cleanup smoke test (just checks imports work)
 """
 
-import asyncio
 import hashlib
 import json
 import math
 import os
 import sqlite3
-import tempfile
 
 import pytest
 
@@ -170,8 +168,8 @@ class TestVssStoreAsyncInit:
     async def test_brute_force_respects_scan_limit(self, tmp_path):
         """Brute-force retrieval must cap scans at _BRUTE_FORCE_SCAN_LIMIT."""
         from aip.adapter.vector.sqlite_vss_store import (
-            SqliteVssVectorStore,
             _BRUTE_FORCE_SCAN_LIMIT,
+            SqliteVssVectorStore,
         )
 
         db_path = str(tmp_path / "vectors_limit.db")
@@ -485,7 +483,7 @@ class TestAIFingerprintCleanup:
 
     def test_ask_pipeline_imports(self):
         """ask_pipeline.py must import cleanly after cleanup."""
-        from aip.orchestration.ask_pipeline import ask, create_ask_stores, AskStores
+        from aip.orchestration.ask_pipeline import AskStores, ask, create_ask_stores
 
         assert callable(ask)
         assert callable(create_ask_stores)
@@ -493,7 +491,7 @@ class TestAIFingerprintCleanup:
 
     def test_ingestion_pipeline_imports(self):
         """ingestion/pipeline.py must import cleanly after cleanup."""
-        from aip.orchestration.ingestion.pipeline import ingest_file, ingest_conversation, create_ingestion_stores
+        from aip.orchestration.ingestion.pipeline import create_ingestion_stores, ingest_conversation, ingest_file
 
         assert callable(ingest_file)
         assert callable(ingest_conversation)

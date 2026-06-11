@@ -15,19 +15,17 @@ import sqlite3
 import tempfile
 import time
 from datetime import datetime, timezone
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
+from aip.adapter.alert_history_store import AlertHistoryStore
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
 )
-from aip.adapter.alert_history_store import AlertHistoryStore
 from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
-
 
 # ============================================================================
 # Deliverable 1: Alert Delivery Status Tracking
@@ -364,7 +362,7 @@ class TestAlertMuting:
     @pytest.mark.asyncio
     async def test_mute_endpoint(self):
         """POST /vigil/quality/alerts/mute creates a mute rule."""
-        from aip.adapter.api.routes.vigil_quality import vigil_alert_mute, MuteRuleRequest
+        from aip.adapter.api.routes.vigil_quality import MuteRuleRequest, vigil_alert_mute
 
         mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
 
@@ -571,8 +569,9 @@ class TestDashboardSSE:
     @pytest.mark.asyncio
     async def test_sse_endpoint_returns_streaming_response(self):
         """GET /vigil/quality/dashboard/stream returns a StreamingResponse."""
-        from aip.adapter.api.routes.vigil_quality import vigil_quality_sse
         from fastapi.responses import StreamingResponse
+
+        from aip.adapter.api.routes.vigil_quality import vigil_quality_sse
 
         container = MagicMock()
         container._alert_manager = None

@@ -25,13 +25,12 @@ tracing, and all failure modes.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import tempfile
 
 import pytest
 
-from aip.foundation.schemas.ask import AskResult, AskSource, SourceReference
+from aip.foundation.schemas.ask import SourceReference
 from aip.foundation.schemas.ingestion import ConversationTurn, ImportedConversation
 from aip.foundation.schemas.retrieval import Chunk, RetrievalHit
 from aip.orchestration.ask_pipeline import (
@@ -43,7 +42,6 @@ from aip.orchestration.ask_pipeline import (
     format_context_display,
 )
 from aip.orchestration.ingestion.pipeline import ingest_conversation
-
 
 # ---------------------------------------------------------------------------
 # Fakes for testing
@@ -142,7 +140,6 @@ class FakeEmbeddingProvider:
 
     async def embed(self, text: str) -> list[float]:
         self.embed_calls.append(text)
-        import hashlib
 
         h = hashlib.sha256(text.encode()).digest()
         return [(h[i % len(h)] / 255.0) - 0.5 for i in range(self.dimensions)]
@@ -858,8 +855,8 @@ class TestContextAssembly:
 
     def test_smart_context_packer_with_hits(self):
         """SmartContextPacker should pack RetrievalHit objects correctly."""
-        from aip.orchestration.smart_context_packer import SmartContextPacker, PackerConfig
         from aip.foundation.schemas.retrieval import RetrievalHit
+        from aip.orchestration.smart_context_packer import PackerConfig, SmartContextPacker
 
         hits = [
             RetrievalHit(
@@ -1093,6 +1090,7 @@ class TestCLIAsk:
 
     def test_ask_command_registered(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -1102,6 +1100,7 @@ class TestCLIAsk:
 
     def test_ask_requires_project(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -1111,6 +1110,7 @@ class TestCLIAsk:
 
     def test_ask_source_options(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()

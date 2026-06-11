@@ -11,24 +11,19 @@ Exercises:
 
 import pytest
 
+from aip.orchestration.adaptive_budget import (
+    AdaptiveBudgetTuner,
+)
+from aip.orchestration.llm_query_expansion import (
+    _extract_json_array,
+    expand_query_with_llm,
+)
 from aip.orchestration.retrieval_eval import (
     EvalResult,
     QueryEvalResult,
-    ABComparisonResult,
     compare_eval_results,
 )
 from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
-from aip.orchestration.adaptive_budget import (
-    AdaptiveBudgetTuner,
-    BudgetAdjustment,
-    BudgetTuningResult,
-)
-from aip.orchestration.llm_query_expansion import (
-    ExpansionResult,
-    expand_query_with_llm,
-    _extract_json_array,
-)
-
 
 # =====================================================================
 # 1. BUG-003: Sexton actor ECS wiring
@@ -566,8 +561,9 @@ class TestSextonEndToEndWiring:
 
     def test_sexton_run_cycle_graceful_without_stores(self):
         """Sexton should gracefully degrade when stores are missing."""
-        from aip.orchestration.actors.sexton import Sexton
         import asyncio
+
+        from aip.orchestration.actors.sexton import Sexton
 
         sexton = Sexton()  # No stores at all
         summary = asyncio.run(sexton.run_cycle())
@@ -578,8 +574,8 @@ class TestSextonEndToEndWiring:
 
     def test_sexton_ecs_used_for_proposals(self):
         """Verify ECS store is called when proposals are filed."""
+
         from aip.orchestration.actors.sexton import Sexton
-        import asyncio
 
         transitions = []
 
@@ -623,6 +619,7 @@ class TestLLMQueryExpansionIntegration:
     def test_expansion_result_used_in_retrieval(self):
         """Expanded terms should be merged into the retrieval query."""
         import asyncio
+
         from aip.orchestration.llm_query_expansion import expand_query_with_llm
 
         class FakeProvider:

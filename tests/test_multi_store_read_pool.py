@@ -20,11 +20,9 @@ import tempfile
 import pytest
 
 from aip.adapter.corpus_turn_store import CorpusTurnStore
-from aip.adapter.graph_store import GraphStore, GraphNode
+from aip.adapter.graph_store import GraphNode, GraphStore
 from aip.adapter.lexical.sqlite_fts5_store import SqliteFts5LexicalStore
-from aip.adapter.store_health import StoreHealthMixin
 from aip.foundation.schemas.corpus_turn import CorpusTurn
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

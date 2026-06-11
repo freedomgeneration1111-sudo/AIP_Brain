@@ -20,29 +20,28 @@ Architecture requirements satisfied:
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from nicegui import context, ui
 
 from gui.api_client import get_api_client
 from gui.components.layout import build_left_nav, build_right_rail, build_top_bar
+from gui.components.retrieval_channel_results import RetrievalChannelResults
 from gui.components.retrieval_health_cards import RetrievalHealthCards
 from gui.components.retrieval_query_panel import RetrievalQueryPanel
-from gui.components.retrieval_channel_results import RetrievalChannelResults
 from gui.components.retrieval_ranked_context import RetrievalRankedContext
 from gui.state import get_session_state
 from gui.theme import (
-    C_CREAM,
-    C_GROUND,
-    C_MUTED,
-    C_SURFACE,
-    C_INK40,
-    C_OK_FG,
     C_AMBER,
+    C_CREAM,
     C_ERR_FG,
-    F_SANS,
+    C_GROUND,
+    C_INK40,
+    C_MUTED,
+    C_OK_FG,
+    C_SURFACE,
     F_MONO,
+    F_SANS,
     R_MD,
     R_SM,
 )

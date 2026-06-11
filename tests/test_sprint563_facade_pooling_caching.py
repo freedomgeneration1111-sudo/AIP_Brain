@@ -29,25 +29,16 @@ Deliverable 5: StatusAggregator Batching
 from __future__ import annotations
 
 import asyncio
-import queue
-import threading
 import time
-from typing import Any
 from unittest.mock import MagicMock
-
-import pytest
 
 from aip.adapter.alerting import (
     Alert,
     AlertConfig,
     AlertManager,
-    AlertLifecycleManager,
-    PruningManager,
     RealtimeEventBus,
-    StatusAggregator,
     _WSConnectionPool,
 )
-
 
 # ============================================================================
 # Deliverable 1: AB Experiment Facade Methods

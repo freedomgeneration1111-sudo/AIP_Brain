@@ -836,10 +836,9 @@ async def lifespan(app: FastAPI):
     # and Sexton actor at startup.  The policy can be hot-reloaded later.
     try:
         from aip.adapter.auto_tuning_policy import (
-            AutoTuningPolicy,
-            load_policy_from_config,
             apply_policy_to_auto_sizer,
             apply_policy_to_sexton,
+            load_policy_from_config,
         )
 
         policy = load_policy_from_config(config)

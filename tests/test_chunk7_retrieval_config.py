@@ -18,7 +18,6 @@ from aip.orchestration.channels.retrieval_config import (
 )
 from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
 
-
 # ---------------------------------------------------------------------------
 # build_orchestrator_config
 # ---------------------------------------------------------------------------
@@ -282,6 +281,7 @@ class TestRetrievalTraceUtilsClean:
     def test_no_except_pass_in_trace_utils(self):
         """retrieval_trace_utils must not contain 'except Exception: pass'."""
         import inspect
+
         from aip.orchestration.channels import retrieval_trace_utils
 
         source = inspect.getsource(retrieval_trace_utils)
@@ -294,6 +294,7 @@ class TestRetrievalTraceUtilsClean:
     def test_no_dead_code_in_build_warnings(self):
         """build_retrieval_warnings must not contain dead code (unused dict lookups)."""
         import inspect
+
         from aip.orchestration.channels.retrieval_trace_utils import build_retrieval_warnings
 
         source = inspect.getsource(build_retrieval_warnings)

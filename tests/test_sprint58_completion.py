@@ -18,19 +18,15 @@ from __future__ import annotations
 
 import asyncio
 
-from aip.foundation.schemas.retrieval import Chunk, RetrievalHit, RetrievalTrace
+from aip.foundation.schemas.retrieval import RetrievalHit
 from aip.orchestration.retrieval_orchestrator import (
-    OrchestratorCache,
     OrchestratorConfig,
     RetrievalOrchestrator,
-    apply_quality_gate,
-    rrf_fuse,
 )
 from aip.orchestration.smart_context_packer import (
     PackerConfig,
     SmartContextPacker,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers: fake retriever channels for all six channels

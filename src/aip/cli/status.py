@@ -91,7 +91,7 @@ def status() -> None:
     # --- Effective database paths ---
     main_db = get_default_db_path()
     lexical_db = get_default_lexical_db_path()
-    click.echo(f"\nEffective database paths:")
+    click.echo("\nEffective database paths:")
     click.echo(f"  Main DB:    {main_db}")
     click.echo(f"  Lexical DB: {lexical_db}")
 

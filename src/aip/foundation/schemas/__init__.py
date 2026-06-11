@@ -13,6 +13,21 @@ The actual definitions live in domain-specific sub-modules:
 
 from __future__ import annotations
 
+# -- artifact --
+from .artifact import (
+    ArtifactLedgerEntry,
+    ArtifactMetadata,
+    ArtifactType,
+    ReviewQueueSummary,
+)
+
+# -- ask --
+from .ask import (
+    AskResult,
+    AskSource,
+    SourceReference,
+)
+
 # -- auth --
 from .auth import (
     AuthConfig,
@@ -48,11 +63,29 @@ from .budget import (
     BudgetScope,
 )
 
+# -- codex --
+from .codex import (
+    CodexConfig,
+    CodexContradiction,
+    CodexDashboard,
+    CodexSource,
+    CodexSourceStatus,
+    CodexTopic,
+    ContradictionSeverity,
+    ContradictionStatus,
+)
+
 # -- config --
 from .config import (
     PerformanceConfig,
     PluginConfig,
     PluginStatus,
+)
+
+# -- corpus (turn-level) --
+from .corpus_turn import (
+    CorpusTurn,
+    make_turn_id,
 )
 
 # -- evaluation --
@@ -65,13 +98,6 @@ from .evaluation import (
     FaithfulnessResult,
     KnowledgeCompilationConfig,
     SextonConfig,
-)
-
-# -- ask --
-from .ask import (
-    AskResult,
-    AskSource,
-    SourceReference,
 )
 
 # -- ingestion --
@@ -129,32 +155,6 @@ from .workflow import (
     ModelSlotConfig,
     RoutingWeight,
     WorkflowTemplate,
-)
-
-# -- corpus (turn-level) --
-from .corpus_turn import (
-    CorpusTurn,
-    make_turn_id,
-)
-
-# -- artifact --
-from .artifact import (
-    ArtifactLedgerEntry,
-    ArtifactMetadata,
-    ArtifactType,
-    ReviewQueueSummary,
-)
-
-# -- codex --
-from .codex import (
-    CodexConfig,
-    CodexContradiction,
-    CodexDashboard,
-    CodexSource,
-    CodexSourceStatus,
-    CodexTopic,
-    ContradictionSeverity,
-    ContradictionStatus,
 )
 
 __all__ = [

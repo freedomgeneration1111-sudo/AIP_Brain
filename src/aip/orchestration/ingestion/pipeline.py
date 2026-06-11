@@ -170,8 +170,8 @@ async def ingest_conversation(
     # Vector indexing (auto-resolves embedding_provider from config if not provided)
     if embedding_provider is None:
         try:
-            from aip.config.loader import load_toml_config
             from aip.adapter.embedding.factory import create_embedding_provider
+            from aip.config.loader import load_toml_config
 
             cfg = load_toml_config()
             if cfg:
@@ -313,8 +313,8 @@ async def create_ingestion_stores(db_path: str) -> IngestionStores:
     # Create embedding provider using same logic as API container (models slot + env overrides first)
     embedding_provider = None
     try:
-        from aip.config.loader import load_toml_config
         from aip.adapter.embedding.factory import create_embedding_provider
+        from aip.config.loader import load_toml_config
 
         config = load_toml_config()
         if config:

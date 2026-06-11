@@ -22,9 +22,7 @@ from typing import Any
 import click
 
 from aip.adapter.corpus_turn_store import CorpusTurnStore
-from aip.adapter.event_store_queryable import QueryableEventStore
 from aip.cli._db_path import get_default_db_path
-from aip.orchestration.ingestion.parsers.claude_parser import parse_claude_export
 
 # For direct Beast tagging from CLI (beast_provider via resolver, dummies for vector/embed)
 try:
@@ -380,7 +378,6 @@ def corpus_wiki_cmd(domain: str | None, force: bool, all_domains: bool, db_path:
     async def _run_wiki():
         import tomllib
         from pathlib import Path
-        from typing import Any
 
         from aip.adapter.model_slot_resolver import ModelSlotResolver
         from aip.foundation.schemas import BeastCadenceConfig
@@ -522,9 +519,9 @@ def corpus_clear_vectors_cmd(confirm: bool, db_path: str | None) -> None:
         sys.exit(1)
 
     async def _clear():
+        import sqlite3
         import tomllib
         from pathlib import Path
-        import sqlite3
 
         cfg: dict = {}
         config_p = Path("config/aip.config.toml")
@@ -770,8 +767,9 @@ def corpus_graph_cmd(
 def _run_build_from_bridges(db_path: str) -> None:
     """Build seed graph from bridge tags and entity alias registry."""
     import sqlite3
-    from aip.adapter.graph_store import GraphStore, GraphNode, GraphEdge
+
     from aip.adapter.entity_alias_loader import EntityAliasRegistry
+    from aip.adapter.graph_store import GraphEdge, GraphNode, GraphStore
 
     async def _build():
         store = GraphStore(db_path)
@@ -801,7 +799,7 @@ def _run_build_from_bridges(db_path: str) -> None:
             await store.upsert_node(node)
             alias_nodes += 1
 
-        click.echo(f"Processing bridge tags from corpus...")
+        click.echo("Processing bridge tags from corpus...")
 
         # Read all bridge-tagged turns
         conn = sqlite3.connect(db_path)
@@ -1210,7 +1208,8 @@ def corpus_verify_cmd(repair: bool, db_path: str | None) -> None:
             click.echo("  OK: No contradictory re-embed flags")
 
         # Also check for very old needs_reembed flags (stale >7 days)
-        from datetime import datetime as _dt, timezone as _tz
+        from datetime import datetime as _dt
+        from datetime import timezone as _tz
 
         week_ago = _dt.now(_tz.utc).isoformat()
         stale_old = main_conn.execute(
@@ -1332,7 +1331,7 @@ def corpus_audit_cmd(db_path: str | None) -> None:
     click.echo("=" * 50)
 
     # Summary
-    click.echo(f"\nSummary:")
+    click.echo("\nSummary:")
     click.echo(f"  Total turns:         {audit.get('total_turns', 0)}")
     click.echo(f"  Embedded:            {audit.get('embedded', 0)}")
     click.echo(f"  Unembedded:          {audit.get('unembedded', 0)}")
@@ -1344,21 +1343,21 @@ def corpus_audit_cmd(db_path: str | None) -> None:
     # Source model distribution
     by_model = audit.get("by_source_model", {})
     if by_model:
-        click.echo(f"\nBy Source Model:")
+        click.echo("\nBy Source Model:")
         for model, count in sorted(by_model.items(), key=lambda x: -x[1]):
             click.echo(f"  {model:20s} {count}")
 
     # Domain distribution
     by_domain = audit.get("by_domain", {})
     if by_domain:
-        click.echo(f"\nBy Domain:")
+        click.echo("\nBy Domain:")
         for domain, count in sorted(by_domain.items(), key=lambda x: -x[1])[:15]:
             click.echo(f"  {domain:20s} {count}")
 
     # Source path distribution (documents)
     by_path = audit.get("by_source_path", {})
     if by_path:
-        click.echo(f"\nBy Source Path (top 10):")
+        click.echo("\nBy Source Path (top 10):")
         for path, count in sorted(by_path.items(), key=lambda x: -x[1])[:10]:
             click.echo(f"  {path:50s} {count} turns")
 
@@ -1431,8 +1430,8 @@ def corpus_backfill_cmd(limit: int, db_path: str | None) -> None:
             return None, "No embedding provider configured"
 
         # Create vector store
+
         from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
-        import os
 
         vec_db = cfg.get("vector_backend", {}).get("db_path", "db/vectors.db")
         vector_store = SqliteVssVectorStore(

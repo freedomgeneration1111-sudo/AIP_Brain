@@ -23,14 +23,12 @@ import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
 
 from aip.adapter.corpus_turn_store import CorpusTurnStore
 from aip.adapter.event_store_queryable import QueryableEventStore
 from aip.foundation.schemas.corpus_turn import (
     CorpusTurn,
     compute_content_hash,
-    make_document_conversation_id,
     make_turn_id,
 )
 

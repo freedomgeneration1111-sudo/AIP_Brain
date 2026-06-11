@@ -11,20 +11,17 @@ Deliverable 5: Integration Smoke Test with Lifespan
 from __future__ import annotations
 
 import os
-import sqlite3
 import tempfile
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
 )
 from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
-
 
 # ============================================================================
 # Shared fakes
@@ -700,8 +697,9 @@ class TestLifespanSmokeTest:
                 },
             }
 
-            from aip.adapter.api.app import lifespan
             from fastapi import FastAPI
+
+            from aip.adapter.api.app import lifespan
 
             app = FastAPI(lifespan=lifespan)
             app.state.raw_config = config
@@ -767,8 +765,9 @@ class TestLifespanSmokeTest:
                 },
             }
 
-            from aip.adapter.api.app import lifespan
             from fastapi import FastAPI
+
+            from aip.adapter.api.app import lifespan
 
             app = FastAPI(lifespan=lifespan)
             app.state.raw_config = config

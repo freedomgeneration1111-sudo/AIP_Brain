@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import pytest
 
-from aip.adapter.store_health import StoreHealthMixin
-
 
 def _assert_health_fields(health: dict, store_name: str) -> None:
     """Assert that a connection_health dict has all required fields."""

@@ -11,21 +11,17 @@ Each channel is tested in isolation with fake stores, verifying:
 
 from __future__ import annotations
 
-import asyncio
-import pytest
-
 from aip.foundation.schemas.retrieval import Chunk, RetrievalHit
-from aip.orchestration.channels.types import ChannelFailure, ChannelResult, safe_retriever
 from aip.orchestration.channels.registry import (
+    clear_custom_channels,
     register_all_channels,
     register_custom_channel,
-    clear_custom_channels,
 )
+from aip.orchestration.channels.types import ChannelFailure, ChannelResult, safe_retriever
 from aip.orchestration.retrieval_orchestrator import (
     OrchestratorConfig,
     RetrievalOrchestrator,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fake stores for testing
@@ -304,7 +300,7 @@ class TestLexicalChannel:
     """Tests for the FTS5 lexical channel."""
 
     async def test_register_and_retrieve(self):
-        from aip.orchestration.channels.lexical_channel import register, CHANNEL_NAME
+        from aip.orchestration.channels.lexical_channel import CHANNEL_NAME, register
 
         lexical = FakeLexicalStore(
             documents=[
@@ -373,7 +369,7 @@ class TestVectorChannel:
     """Tests for the vector (semantic) channel."""
 
     async def test_register_with_deps(self):
-        from aip.orchestration.channels.vector_channel import register, CHANNEL_NAME
+        from aip.orchestration.channels.vector_channel import CHANNEL_NAME, register
 
         vec_store = FakeVectorStore(
             chunks=[
@@ -391,7 +387,7 @@ class TestVectorChannel:
         assert len(failures) == 0
 
     async def test_register_without_deps_returns_failure(self):
-        from aip.orchestration.channels.vector_channel import register, CHANNEL_NAME
+        from aip.orchestration.channels.vector_channel import CHANNEL_NAME, register
 
         stores = _FakeAskStores(vector_store=None, embedding_provider=None)
         orch = RetrievalOrchestrator()
@@ -432,7 +428,7 @@ class TestCorpusChannel:
     """Tests for the corpus turn channel."""
 
     async def test_register_with_deps(self):
-        from aip.orchestration.channels.corpus_channel import register, CHANNEL_NAME
+        from aip.orchestration.channels.corpus_channel import CHANNEL_NAME, register
 
         # Create a simple turn-like object
         class FakeTurn:
@@ -450,7 +446,7 @@ class TestCorpusChannel:
         assert len(failures) == 0
 
     async def test_register_without_deps_returns_failure(self):
-        from aip.orchestration.channels.corpus_channel import register, CHANNEL_NAME
+        from aip.orchestration.channels.corpus_channel import CHANNEL_NAME, register
 
         stores = _FakeAskStores(corpus_turn_store=None)
         orch = RetrievalOrchestrator()
@@ -471,7 +467,7 @@ class TestWikiChannel:
     """Tests for the wiki article channel."""
 
     async def test_register_with_deps(self):
-        from aip.orchestration.channels.wiki_channel import register, CHANNEL_NAME
+        from aip.orchestration.channels.wiki_channel import CHANNEL_NAME, register
 
         artifact_store = FakeArtifactStore(
             artifacts=[
@@ -491,7 +487,7 @@ class TestWikiChannel:
         assert len(failures) == 0
 
     async def test_register_without_deps_returns_failure(self):
-        from aip.orchestration.channels.wiki_channel import register, CHANNEL_NAME
+        from aip.orchestration.channels.wiki_channel import CHANNEL_NAME, register
 
         stores = _FakeAskStores(artifact_store=None, ecs_store=None)
         orch = RetrievalOrchestrator()
@@ -539,7 +535,7 @@ class TestProceduralChannel:
     """Tests for the procedural guide channel."""
 
     async def test_register_with_deps(self):
-        from aip.orchestration.channels.procedural_channel import register, CHANNEL_NAME
+        from aip.orchestration.channels.procedural_channel import CHANNEL_NAME, register
 
         artifact_store = FakeArtifactStore(
             artifacts=[
@@ -558,7 +554,7 @@ class TestProceduralChannel:
         assert len(failures) == 0
 
     async def test_register_without_deps_returns_failure(self):
-        from aip.orchestration.channels.procedural_channel import register, CHANNEL_NAME
+        from aip.orchestration.channels.procedural_channel import CHANNEL_NAME, register
 
         stores = _FakeAskStores(artifact_store=None)
         orch = RetrievalOrchestrator()
@@ -603,7 +599,7 @@ class TestGraphChannel:
     """Tests for the graph retrieval channel."""
 
     async def test_register_with_graph_store(self):
-        from aip.orchestration.channels.graph_channel import register, CHANNEL_NAME
+        from aip.orchestration.channels.graph_channel import CHANNEL_NAME, register
 
         stores = _FakeAskStores(graph_store=FakeGraphStore())
         orch = RetrievalOrchestrator()

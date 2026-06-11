@@ -12,22 +12,16 @@ Deliverable 5: Causal Grouping Time-Window Enforcement (window expiry, fresh gro
 from __future__ import annotations
 
 import os
-import sqlite3
 import tempfile
 import time
-from datetime import datetime, timezone
-from typing import Any
 from unittest.mock import MagicMock
 
-import pytest
-
+from aip.adapter.alert_history_store import AlertHistoryStore
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
 )
-from aip.adapter.alert_history_store import AlertHistoryStore
-
 
 # ============================================================================
 # Deliverable 1: WebSocket Heartbeat & Dead-Session Detection

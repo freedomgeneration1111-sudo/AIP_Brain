@@ -17,7 +17,6 @@ Sovereignty guarantees:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from nicegui import context, ui
@@ -34,17 +33,13 @@ from gui.theme import (
     C_ERR_FG,
     C_GROUND,
     C_INK40,
-    C_INK60,
-    C_MUTED,
     C_OK_FG,
     C_SURFACE,
     C_WARN_FG,
     F_MONO,
     F_SANS,
-    R_LG,
     R_MD,
     R_SM,
-    BORDER,
 )
 
 log = logging.getLogger("gui.pages.wiki")
@@ -85,7 +80,7 @@ async def wiki_page():
             )
 
         # Status bar
-        with ui.row().classes("w-full items-center").style(f"margin-bottom:16px; gap:12px; flex-wrap:wrap;"):
+        with ui.row().classes("w-full items-center").style("margin-bottom:16px; gap:12px; flex-wrap:wrap;"):
             # Backend status
             if not state.backend_reachable:
                 ui.label("UNAVAILABLE — backend unreachable").style(

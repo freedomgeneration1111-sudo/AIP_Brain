@@ -1742,8 +1742,8 @@ CRITICAL CONSTRAINTS:
             return {"skipped": "no_db_path"}
 
         try:
-            from aip.adapter.graph_store import GraphStore, GraphNode, GraphEdge
             from aip.adapter.entity_alias_loader import EntityAliasRegistry
+            from aip.adapter.graph_store import GraphEdge, GraphNode, GraphStore
         except Exception as exc:
             log.warning("beast_graph_import_failed", error=str(exc))
             return {"skipped": "import_error", "error": str(exc)}

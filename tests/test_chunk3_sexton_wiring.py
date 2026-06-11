@@ -14,13 +14,12 @@ Validates:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from aip.orchestration.actors.sexton import Sexton
 from aip.foundation.schemas import SextonConfig
-
+from aip.orchestration.actors.sexton import Sexton
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -308,8 +307,9 @@ class TestL4SextonSignature:
         Verify that passing trace_store as a positional arg is a bug
         by checking the actual constructor signature.
         """
-        from aip.orchestration.sexton.sexton import Sexton as FailureSexton
         import inspect
+
+        from aip.orchestration.sexton.sexton import Sexton as FailureSexton
 
         sig = inspect.signature(FailureSexton.__init__)
         params = list(sig.parameters.keys())

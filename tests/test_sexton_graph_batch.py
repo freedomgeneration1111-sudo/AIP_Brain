@@ -11,7 +11,7 @@ import json
 import os
 import tempfile
 from typing import Any
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 
 import pytest
 
@@ -20,7 +20,6 @@ from aip.adapter.graph_store import GraphStore
 from aip.foundation.schemas import SextonConfig
 from aip.foundation.schemas.corpus_turn import CorpusTurn
 from aip.orchestration.actors.sexton import Sexton
-
 
 # ---------------------------------------------------------------------------
 # Stub infrastructure
@@ -357,7 +356,6 @@ async def test_batch_fallback_on_missing_turn_ids(tmp_db, corpus_turn_store):
 @pytest.mark.asyncio
 async def test_batch_rate_limiting_sleeps_between_batches(tmp_db, corpus_turn_store):
     """Batch mode should sleep between batches (not between individual turns)."""
-    import time
 
     model_provider = BatchAwareModelProvider()
     event_store = StubEventStore()

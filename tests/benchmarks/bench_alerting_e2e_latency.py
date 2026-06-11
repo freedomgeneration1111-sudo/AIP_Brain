@@ -12,16 +12,12 @@ Usage:
 from __future__ import annotations
 
 import queue
-import threading
 import time
-import uuid
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 import pytest
 
 from aip.adapter.alerting import Alert, AlertConfig, AlertManager
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -359,7 +355,7 @@ def test_e2e_multi_subscriber_fanout():
         avg = sum(latencies) / len(latencies)
         results[num_subs] = avg
 
-    print(f"\n  Multi-subscriber fan-out:")
+    print("\n  Multi-subscriber fan-out:")
     for n, avg in sorted(results.items()):
         print(f"    {n} subscribers: avg={avg:.2f}ms")
 
@@ -584,7 +580,7 @@ def test_e2e_connection_pool_activation():
 
     # Verify pool activated at 60+ subscribers
     assert "60_subs" in results
-    print(f"\n  Latency comparison: 40 vs 80 subscribers")
+    print("\n  Latency comparison: 40 vs 80 subscribers")
     print(f"    40 subs: {results.get('40_subs', 0):.2f}ms")
     print(f"    80 subs: {results.get('80_subs', 0):.2f}ms")
 
@@ -628,7 +624,7 @@ def test_e2e_cb_caching_under_load():
     avg_cached_us = sum(cached_times) / len(cached_times)
     p99_cached_us = sorted(cached_times)[int(len(cached_times) * 0.99)]
 
-    print(f"\n  CB status caching benchmark (1000 calls):")
+    print("\n  CB status caching benchmark (1000 calls):")
     print(f"    uncached={uncached_us:.1f}us")
     print(f"    cached_avg={avg_cached_us:.1f}us  cached_p99={p99_cached_us:.1f}us")
     print(f"    speedup={uncached_us / max(avg_cached_us, 0.01):.1f}x")
@@ -667,7 +663,7 @@ def test_e2e_status_aggregator_caching():
     avg_cached_us = sum(cached_times) / len(cached_times)
     p99_cached_us = sorted(cached_times)[int(len(cached_times) * 0.99)]
 
-    print(f"\n  StatusAggregator caching benchmark (100 calls):")
+    print("\n  StatusAggregator caching benchmark (100 calls):")
     print(f"    uncached={uncached_us:.1f}us")
     print(f"    cached_avg={avg_cached_us:.1f}us  cached_p99={p99_cached_us:.1f}us")
     print(f"    speedup={uncached_us / max(avg_cached_us, 0.01):.1f}x")

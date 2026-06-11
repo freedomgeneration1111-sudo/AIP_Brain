@@ -14,22 +14,18 @@ import os
 import tempfile
 import time
 from dataclasses import dataclass
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from aip.foundation.schemas import SextonConfig, VigilConfig
-from aip.orchestration.actors.vigil import Vigil
+from aip.adapter.alerting import Alert, AlertConfig, AlertManager
+from aip.adapter.config_watcher import ConfigReloadEvent, ConfigWatcher
 from aip.adapter.read_pool import (
     ReadPoolAutoSizer,
     ReadPoolHealth,
-    PoolSizeAdjustment,
-    PoolSizeSuggestion,
 )
-from aip.adapter.alerting import AlertConfig, Alert, AlertManager
-from aip.adapter.config_watcher import ConfigWatcher, ConfigReloadEvent
-
+from aip.foundation.schemas import SextonConfig, VigilConfig
+from aip.orchestration.actors.vigil import Vigil
 
 # ============================================================================
 # Shared fakes (reused from Sprint 5.24 test infrastructure)

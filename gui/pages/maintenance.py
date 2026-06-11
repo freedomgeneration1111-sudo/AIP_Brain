@@ -35,7 +35,6 @@ from gui.theme import (
     C_WARN_FG,
     F_MONO,
     F_SANS,
-    R_LG,
     R_MD,
 )
 
@@ -171,7 +170,7 @@ async def maintenance_page():
                 backend_label.text = f"Backend: connected | Backfill: {backfill_state}"
                 backend_label.style(f"font-size:11px; color:{C_MUTED}; font-family:{F_SANS};")
         else:
-            backend_label.text = f"Backend: unreachable"
+            backend_label.text = "Backend: unreachable"
             backend_label.style(f"font-size:11px; color:{C_ERR_FG}; font-family:{F_SANS};")
 
         # Problems

@@ -42,13 +42,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
 from nicegui import context, ui
 
-from gui.api_client import get_api_client, AipApiClient
+from gui.api_client import AipApiClient, get_api_client
 
 # Module-level logger for the GUI chat flow
 log = logging.getLogger("gui.chat")

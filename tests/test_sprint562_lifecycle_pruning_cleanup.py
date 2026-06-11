@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import queue
 import time
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -41,7 +40,6 @@ from aip.adapter.alerting import (
     PruningManager,
     RealtimeEventBus,
 )
-
 
 # ============================================================================
 # Deliverable 1: Backward-compatibility wrapper removal
@@ -442,8 +440,9 @@ class TestSprint562Integration:
 
     def test_attach_history_store_propagates(self):
         """attach_history_store propagates to lifecycle and pruning managers."""
-        import tempfile
         import os
+        import tempfile
+
         from aip.adapter.alert_history_store import AlertHistoryStore
 
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -13,7 +13,6 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import tempfile
@@ -25,9 +24,7 @@ from aip.foundation.schemas.corpus_turn import (
     CorpusTurn,
     compute_content_hash,
     make_document_conversation_id,
-    make_turn_id,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -673,6 +670,7 @@ class TestCorpusCLICommands:
     def test_corpus_status_command_exists(self):
         """aip corpus status command is registered."""
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -683,6 +681,7 @@ class TestCorpusCLICommands:
     def test_corpus_audit_command_exists(self):
         """aip corpus audit command is registered."""
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -692,6 +691,7 @@ class TestCorpusCLICommands:
     def test_corpus_backfill_command_exists(self):
         """aip corpus backfill command is registered."""
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -701,6 +701,7 @@ class TestCorpusCLICommands:
     def test_corpus_list_command_exists(self):
         """aip corpus list command is registered."""
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -711,6 +712,7 @@ class TestCorpusCLICommands:
     def test_corpus_ingest_accepts_document_model(self):
         """aip corpus ingest accepts --source-model document."""
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -721,6 +723,7 @@ class TestCorpusCLICommands:
     def test_corpus_ingest_supports_recursive(self):
         """aip corpus ingest supports --recursive flag."""
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -731,6 +734,7 @@ class TestCorpusCLICommands:
     def test_corpus_list_failed_flag(self):
         """aip corpus list supports --failed flag."""
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()

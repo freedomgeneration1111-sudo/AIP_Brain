@@ -26,7 +26,6 @@ import hashlib
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any
 
 from aip.adapter.artifact_store_versioned import VersionedArtifactStore
 from aip.adapter.ecs_store_persistent import PersistentEcsStore
@@ -358,10 +357,10 @@ async def artifact_ledger(
             detail = f"SOVEREIGN OVERRIDE: exported from {bypassed}" + (f" — {reason}" if reason else "")
         elif ev.event_type == "ecs_transition":
             reason = meta.get("reason", "")
-            detail = f"State transition" + (f" — {reason}" if reason else "")
+            detail = "State transition" + (f" — {reason}" if reason else "")
         elif ev.event_type == "ask_query":
             prompt = meta.get("prompt", "")
-            detail = f"Ask query" + (f": {prompt[:80]}" if prompt else "")
+            detail = "Ask query" + (f": {prompt[:80]}" if prompt else "")
         else:
             detail = meta.get("detail", ev.event_type)
 

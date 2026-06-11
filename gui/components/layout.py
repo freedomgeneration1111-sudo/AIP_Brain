@@ -6,11 +6,11 @@ All styling uses tokens from gui.theme.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from nicegui import ui
 
+from gui.state import GuiState
 from gui.theme import (
     _AIP_MARK,
     C_AMBER,
@@ -19,9 +19,7 @@ from gui.theme import (
     C_DOGFOOD_DEGRADED,
     C_DOGFOOD_FULL,
     C_ERR_FG,
-    C_GROUND,
     C_INK40,
-    C_INK60,
     C_MUTED,
     C_OK_FG,
     C_RAISED,
@@ -32,7 +30,6 @@ from gui.theme import (
     SP_MD,
     SP_SM,
 )
-from gui.state import GuiState
 
 log = logging.getLogger("gui.components.layout")
 

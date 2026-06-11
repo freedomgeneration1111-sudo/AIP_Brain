@@ -21,15 +21,11 @@ Covers:
 from __future__ import annotations
 
 import ast
-import hashlib
-import importlib
 import json
-import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -74,8 +70,9 @@ class TestModelCouncilSchema:
 
     def test_request_prompt_required(self):
         """ModelCouncilRequest requires prompt."""
-        from aip.adapter.api.routes.model_council import ModelCouncilRequest
         from pydantic import ValidationError
+
+        from aip.adapter.api.routes.model_council import ModelCouncilRequest
 
         with pytest.raises(ValidationError):
             ModelCouncilRequest()
@@ -783,6 +780,7 @@ class TestModelCouncilAPIClient:
     def test_run_model_council_accepts_params(self):
         """run_model_council accepts all required parameters."""
         import inspect
+
         from gui.api_client import AipApiClient
 
         sig = inspect.signature(AipApiClient.run_model_council)
@@ -844,9 +842,9 @@ class TestAnswerCardModelCouncil:
 
     def test_add_answer_card_accepts_model_council_callback(self):
         """add_answer_card function accepts on_run_model_council parameter."""
-        from gui.components.answer_card import add_answer_card
-
         import inspect
+
+        from gui.components.answer_card import add_answer_card
 
         sig = inspect.signature(add_answer_card)
         assert "on_run_model_council" in sig.parameters

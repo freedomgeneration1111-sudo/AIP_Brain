@@ -8,20 +8,15 @@ Covers all 5 deliverables:
 5. Calibration Drift Detection
 """
 
-import json
-import math
 import os
 import sqlite3
 import tempfile
-import time
-from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from aip.adapter.alerting import AlertConfig, AlertManager
 from aip.adapter.alert_history_store import AlertHistoryStore
-
+from aip.adapter.alerting import AlertConfig, AlertManager
 
 # ---------------------------------------------------------------------------
 # Helpers

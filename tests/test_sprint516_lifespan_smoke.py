@@ -14,21 +14,19 @@ import tempfile
 
 import pytest
 
-from aip.adapter.entity.sqlite_entity_store import SqliteEntityStore
-from aip.adapter.canonical.sqlite_canonical_store import SqliteCanonicalStore
-from aip.adapter.event_store_queryable import QueryableEventStore
 from aip.adapter.artifact_store_versioned import VersionedArtifactStore
-from aip.adapter.ecs_store_persistent import PersistentEcsStore
-from aip.adapter.review_queue_store import ReviewQueueStore
-from aip.adapter.budget_store_sqlite import SqliteBudgetStore
-from aip.adapter.session.sqlite_session_store import SqliteSessionStore
-from aip.adapter.project.sqlite_project_store import SqliteProjectStore
 from aip.adapter.autonomy.autonomy_gate import AutonomyGateImpl
-from aip.adapter.vigil.sqlite_vigil_store import SqliteVigilStore
-from aip.adapter.knowledge.sqlite_knowledge_store import SqliteKnowledgeStore
+from aip.adapter.budget_store_sqlite import SqliteBudgetStore
+from aip.adapter.canonical.sqlite_canonical_store import SqliteCanonicalStore
 from aip.adapter.corpus_turn_store import CorpusTurnStore
+from aip.adapter.ecs_store_persistent import PersistentEcsStore
+from aip.adapter.entity.sqlite_entity_store import SqliteEntityStore
+from aip.adapter.event_store_queryable import QueryableEventStore
 from aip.adapter.lexical.sqlite_fts5_store import SqliteFts5LexicalStore
-
+from aip.adapter.project.sqlite_project_store import SqliteProjectStore
+from aip.adapter.review_queue_store import ReviewQueueStore
+from aip.adapter.session.sqlite_session_store import SqliteSessionStore
+from aip.adapter.vigil.sqlite_vigil_store import SqliteVigilStore
 
 # ---------------------------------------------------------------------------
 # All stores that should support the async init pattern

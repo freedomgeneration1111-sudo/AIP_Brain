@@ -13,17 +13,15 @@ import tempfile
 import pytest
 
 from aip.foundation.schemas.ingestion import (
+    ConversationTurn,
     ImportedConversation,
     IngestionResult,
-    ConversationTurn,
-    SourceFormat,
 )
 from aip.orchestration.ingestion.chunker import chunk_conversation, chunk_text
+from aip.orchestration.ingestion.parsers import detect_format
 from aip.orchestration.ingestion.parsers.chatgpt import parse_chatgpt_export
 from aip.orchestration.ingestion.parsers.markdown import parse_markdown_transcript
 from aip.orchestration.ingestion.parsers.plaintext import parse_plaintext_transcript
-from aip.orchestration.ingestion.parsers import detect_format
-
 
 # ---------------------------------------------------------------------------
 # ChatGPT Parser Tests
@@ -735,6 +733,7 @@ class TestCLIIngest:
 
     def test_ingest_command_registered(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -744,6 +743,7 @@ class TestCLIIngest:
 
     def test_ingest_file_subcommand_help(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -753,6 +753,7 @@ class TestCLIIngest:
 
     def test_ingest_directory_subcommand_help(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -762,6 +763,7 @@ class TestCLIIngest:
 
     def test_ingest_file_with_sample(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         with tempfile.TemporaryDirectory() as tmp:

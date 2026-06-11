@@ -56,7 +56,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import sys
 
 import click
 
@@ -356,7 +355,7 @@ async def _run_eval(
 
     # Create stores and retriever function
     try:
-        from aip.orchestration.ask_pipeline import AskStores, create_ask_stores
+        from aip.orchestration.ask_pipeline import create_ask_stores
 
         stores = await create_ask_stores(db_path)
     except Exception as exc:
@@ -365,11 +364,11 @@ async def _run_eval(
 
     if stores is not None:
         # Build a real retriever function using the orchestrator
+        from aip.orchestration.ask_pipeline import _register_retriever_channels
         from aip.orchestration.retrieval_orchestrator import (
             OrchestratorConfig,
             get_orchestrator_cache,
         )
-        from aip.orchestration.ask_pipeline import _register_retriever_channels
 
         cache = get_orchestrator_cache()
         store_key = id(stores.lexical_store) ^ id(stores.vector_store) ^ id(stores.corpus_turn_store)
@@ -417,8 +416,8 @@ async def _run_eval(
 
     else:
         # Fallback: mock retriever for testing the harness itself
-        from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
         from aip.foundation.schemas.retrieval import RetrievalHit, RetrievalTrace
+        from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
 
         # Build a placeholder config for config_snapshot in mock mode
         config = OrchestratorConfig(
@@ -525,8 +524,8 @@ def retrieval_ab_eval(
 
     from aip.orchestration.retrieval_eval import (
         EvalResult,
-        compare_eval_results,
         QueryEvalResult,
+        compare_eval_results,
     )
 
     # Load config A
@@ -588,7 +587,7 @@ def retrieval_ab_eval(
     a_label = label_a or config_a
     b_label = label_b or config_b
 
-    click.echo(f"Comparing A/B evaluation results...")
+    click.echo("Comparing A/B evaluation results...")
     click.echo(f"  Config A: {a_label}")
     click.echo(f"  Config B: {b_label}")
 
@@ -777,8 +776,8 @@ def budget_tune(
         # Conservative tuning with smaller max change
         aip eval budget-tune --max-change 0.15 --min-samples 10
     """
-    from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
     from aip.orchestration.adaptive_budget import AdaptiveBudgetTuner
+    from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
 
     # Resolve DB path
     if db_path is None:
@@ -794,14 +793,14 @@ def budget_tune(
     channel_contributions, total_queries = _load_channel_contributions_from_eval()
 
     if channel_contributions:
-        click.echo(f"\n  Data source:   eval results (latest)")
+        click.echo("\n  Data source:   eval results (latest)")
         click.echo(f"  Total queries: {total_queries}")
     else:
         # Step 2: Fallback — try trace store
         click.echo("\n  No eval results found, trying trace store...")
         channel_contributions, total_queries = asyncio.run(_load_channel_contributions_from_trace_store(db_path))
         if channel_contributions:
-            click.echo(f"  Data source:   trace store")
+            click.echo("  Data source:   trace store")
             click.echo(f"  Total queries: {total_queries}")
         else:
             click.echo("")

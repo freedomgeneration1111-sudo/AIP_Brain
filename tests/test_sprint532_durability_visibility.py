@@ -16,19 +16,16 @@ import sqlite3
 import tempfile
 import time
 from datetime import datetime, timezone
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
+from aip.adapter.alert_history_store import AlertHistoryStore
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
 )
-from aip.adapter.alert_history_store import AlertHistoryStore
-from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
-
 
 # ============================================================================
 # Deliverable 1: Alert Delivery Status Persistence
@@ -494,8 +491,8 @@ class TestAlertCorrelationGrouping:
     async def test_bulk_acknowledge_endpoint(self):
         """POST /vigil/quality/alerts/groups/bulk-acknowledge endpoint works."""
         from aip.adapter.api.routes.vigil_quality import (
-            vigil_bulk_acknowledge,
             BulkActionRequest,
+            vigil_bulk_acknowledge,
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -526,8 +523,8 @@ class TestAlertCorrelationGrouping:
     async def test_bulk_dismiss_endpoint(self):
         """POST /vigil/quality/alerts/groups/bulk-dismiss endpoint works."""
         from aip.adapter.api.routes.vigil_quality import (
-            vigil_bulk_dismiss,
             BulkActionRequest,
+            vigil_bulk_dismiss,
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir:

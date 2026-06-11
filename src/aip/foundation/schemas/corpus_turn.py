@@ -189,7 +189,6 @@ def make_document_conversation_id(source_path: str) -> str:
     mount points or working directories.
     """
     # Use basename + parent dir for stability across path prefixes
-    import os
 
     # Normalize: use relative-ish path (last 3 components)
     parts = source_path.replace("\\", "/").split("/")

@@ -43,10 +43,10 @@ from typing import Any
 from nicegui import context, ui
 
 from gui.components.answer_card import add_answer_card
+from gui.components.beast_panel import BeastPanel
 from gui.components.chat import add_message, add_system_message, build_chat_input
 from gui.components.layout import build_left_nav, build_right_rail, build_top_bar
 from gui.components.modals import show_api_key_prompt
-from gui.components.beast_panel import BeastPanel
 from gui.components.model_council_panel import ModelCouncilPanel
 from gui.components.source_panel import SourcePanel
 from gui.components.trace_panel import TracePanel
@@ -69,15 +69,11 @@ from gui.theme import (
     C_INK40,
     C_INK60,
     C_MUTED,
-    C_OK_BG,
     C_OK_FG,
-    C_RAISED,
     C_SURFACE,
     C_WARN_BG,
     C_WARN_FG,
     F_MONO,
-    F_SANS,
-    R_MD,
     R_SM,
     btn_primary,
     btn_secondary,
@@ -167,7 +163,7 @@ async def ask_page():
                 )
                 .props("dense dark")
                 .classes("min-w-[180px]")
-                .style(f"font-size:11px;")
+                .style("font-size:11px;")
             )
 
             ui.separator().props("vertical").style(f"margin:0 12px; color:{C_INK40};")
@@ -208,7 +204,7 @@ async def ask_page():
 
         # ── Chat container ────────────────────────────────────────
         chat_container = (
-            ui.column().classes("w-full flex-1").style(f"padding:16px; overflow-y:auto; flex:1; min-height:300px;")
+            ui.column().classes("w-full flex-1").style("padding:16px; overflow-y:auto; flex:1; min-height:300px;")
         )
 
         # ── Connection status ─────────────────────────────────────

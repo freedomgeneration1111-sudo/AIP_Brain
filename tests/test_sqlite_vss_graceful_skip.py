@@ -2,7 +2,6 @@
 Verifies that sqlite_vss extension loading handles missing vss0.so gracefully in CI environments.
 """
 
-import asyncio
 import tempfile
 
 import pytest

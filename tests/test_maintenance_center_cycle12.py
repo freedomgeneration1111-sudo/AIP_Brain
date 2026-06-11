@@ -19,14 +19,9 @@ Verifies:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import sys
 from pathlib import Path
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
 
 # Ensure project root on sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

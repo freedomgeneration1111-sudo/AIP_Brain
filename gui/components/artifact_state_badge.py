@@ -24,11 +24,9 @@ from nicegui import ui
 from gui.theme import (
     C_AMBER,
     C_AMBER_P,
-    C_CREAM,
-    C_ERR_FG,
     C_ERR_BG,
+    C_ERR_FG,
     C_INK40,
-    C_INK60,
     C_MUTED,
     C_OK_BG,
     C_OK_FG,

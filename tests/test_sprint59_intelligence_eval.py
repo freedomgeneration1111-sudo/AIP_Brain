@@ -21,13 +21,11 @@ from aip.foundation.schemas.retrieval import RetrievalHit, RetrievalTrace
 from aip.orchestration.retrieval_orchestrator import (
     OrchestratorConfig,
     RetrievalOrchestrator,
-    rrf_fuse,
 )
 from aip.orchestration.smart_context_packer import (
     PackerConfig,
     SmartContextPacker,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1. EntityExtractor tests

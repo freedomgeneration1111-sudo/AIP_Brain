@@ -960,7 +960,7 @@ async def vigil_quality_sse(
 
         try:
             # Send initial connection event
-            yield f"event: connected\ndata: {{}}\n\n"
+            yield "event: connected\ndata: {}\n\n"
 
             while True:
                 try:
@@ -974,7 +974,7 @@ async def vigil_quality_sse(
                     yield f"event: {event_type}\ndata: {event_data}\n\n"
                 except asyncio.TimeoutError:
                     # Send keepalive comment
-                    yield f": keepalive\n\n"
+                    yield ": keepalive\n\n"
         except asyncio.CancelledError:
             pass
         finally:

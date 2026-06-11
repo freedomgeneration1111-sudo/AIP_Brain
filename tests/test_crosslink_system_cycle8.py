@@ -932,8 +932,8 @@ class TestGuiImportBoundary:
 
     def test_link_panel_does_not_import_orchestration(self):
         """Link Panel does not import from aip.orchestration (checked via AST, not docstrings)."""
-        import pathlib
         import ast
+        import pathlib
 
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "link_panel.py"
         source = p.read_text()
@@ -949,8 +949,8 @@ class TestGuiImportBoundary:
 
     def test_link_editor_does_not_import_orchestration(self):
         """Link Editor does not import from aip.orchestration (checked via AST, not docstrings)."""
-        import pathlib
         import ast
+        import pathlib
 
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "link_editor.py"
         source = p.read_text()
@@ -975,10 +975,6 @@ class TestGuiImportBoundary:
         """status_types.py has KnowledgeLink types."""
         from gui.status_types import (
             KnowledgeLink,
-            KnowledgeLinkListResponse,
-            KnowledgeLinkCreateResponse,
-            KnowledgeLinkBacklinksResponse,
-            KnowledgeLinkForwardLinksResponse,
         )
 
         assert KnowledgeLink is not None
@@ -1004,8 +1000,9 @@ class TestGeneralImportBoundary:
 
     def test_links_route_imports_only_from_adapter_and_foundation(self):
         """Links route only imports from adapter and foundation layers."""
-        import aip.adapter.api.routes.links as mod
         import ast
+
+        import aip.adapter.api.routes.links as mod
 
         source = open(mod.__file__).read()
         tree = ast.parse(source)

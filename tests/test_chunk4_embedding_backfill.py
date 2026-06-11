@@ -15,13 +15,12 @@ Validates:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from aip.orchestration.actors.sexton import Sexton
 from aip.foundation.schemas import SextonConfig
-
+from aip.orchestration.actors.sexton import Sexton
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -479,6 +478,7 @@ class TestAdapterHealthHonesty:
     def test_health_module_reports_honest_embedding_status(self):
         """Verify that adapter/health.py no longer has hardcoded 'healthy' embedding."""
         import inspect
+
         from aip.adapter import health as health_mod
 
         source = inspect.getsource(health_mod.system_health_check)
@@ -494,6 +494,7 @@ class TestAdapterHealthHonesty:
     def test_health_module_no_hardcoded_ollama(self):
         """adapter/health.py must not hardcode 'ollama' backend."""
         import inspect
+
         from aip.adapter import health as health_mod
 
         source = inspect.getsource(health_mod.system_health_check)

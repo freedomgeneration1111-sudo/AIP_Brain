@@ -16,7 +16,6 @@ import sqlite3
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -213,7 +212,6 @@ class TestCorpusTurnStoreAsyncInit:
     async def test_count_domain_words_since(self, tmp_path):
         """count_domain_words_since() must count words correctly."""
         from aip.adapter.corpus_turn_store import CorpusTurnStore
-        from aip.foundation.schemas.corpus_turn import CorpusTurn
 
         db_path = str(tmp_path / "corpus_words.db")
         store = CorpusTurnStore(db_path)
@@ -490,7 +488,6 @@ class TestSextonFullPipeline:
         """_has_bridge_tagged_turns must use CorpusTurnStore async method."""
         from aip.adapter.corpus_turn_store import CorpusTurnStore
         from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
-        from aip.foundation.schemas.corpus_turn import CorpusTurn
         from aip.orchestration.actors.sexton import Sexton
 
         db_path = str(tmp_path / "sexton_bridge.db")
@@ -545,10 +542,8 @@ class TestAIFingerprintCleanup:
     def test_retrieval_orchestrator_imports(self):
         """retrieval_orchestrator.py must import cleanly after cleanup."""
         from aip.orchestration.retrieval_orchestrator import (
-            RetrievalOrchestrator,
-            OrchestratorConfig,
-            rrf_fuse,
             apply_quality_gate,
+            rrf_fuse,
         )
 
         assert callable(rrf_fuse)
@@ -563,6 +558,7 @@ class TestAIFingerprintCleanup:
     def test_no_sprint_log_comments_in_orchestrator(self):
         """retrieval_orchestrator.py should not contain 'Sprint 5.' comments."""
         import inspect
+
         from aip.orchestration import retrieval_orchestrator
 
         source = inspect.getsource(retrieval_orchestrator)
@@ -573,8 +569,9 @@ class TestAIFingerprintCleanup:
 
     def test_corpus_turn_store_has_single_ddl_source(self):
         """CorpusTurnStore DDL should be module-level constants, not duplicated."""
-        from aip import adapter
         import inspect
+
+        from aip import adapter
 
         source = inspect.getsource(adapter.corpus_turn_store)
         # Count occurrences of "CREATE TABLE IF NOT EXISTS corpus_turns"
@@ -601,7 +598,7 @@ class TestRuntimeMode:
     @pytest.mark.asyncio
     async def test_strict_mode_raises_on_brute_force(self, tmp_path):
         """STRICT mode must raise RuntimeError when VSS is unavailable."""
-        from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore, RuntimeMode
+        from aip.adapter.vector.sqlite_vss_store import RuntimeMode, SqliteVssVectorStore
 
         db_path = str(tmp_path / "strict.db")
         store = SqliteVssVectorStore(
@@ -624,7 +621,7 @@ class TestRuntimeMode:
     @pytest.mark.asyncio
     async def test_development_mode_allows_brute_force(self, tmp_path):
         """DEVELOPMENT mode must allow brute-force retrieval."""
-        from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore, RuntimeMode
+        from aip.adapter.vector.sqlite_vss_store import RuntimeMode, SqliteVssVectorStore
 
         db_path = str(tmp_path / "dev_mode.db")
         store = SqliteVssVectorStore(
@@ -649,7 +646,7 @@ class TestRuntimeMode:
     @pytest.mark.asyncio
     async def test_production_mode_allows_brute_force_with_warning(self, tmp_path):
         """PRODUCTION mode must allow brute-force retrieval (with warning)."""
-        from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore, RuntimeMode
+        from aip.adapter.vector.sqlite_vss_store import RuntimeMode, SqliteVssVectorStore
 
         db_path = str(tmp_path / "prod_mode.db")
         store = SqliteVssVectorStore(
@@ -677,7 +674,7 @@ class TestRuntimeMode:
     @pytest.mark.asyncio
     async def test_health_check_includes_runtime_mode(self, tmp_path):
         """health_check() must report the current runtime_mode."""
-        from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore, RuntimeMode
+        from aip.adapter.vector.sqlite_vss_store import RuntimeMode, SqliteVssVectorStore
 
         db_path = str(tmp_path / "hc_mode.db")
         store = SqliteVssVectorStore(

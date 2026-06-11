@@ -17,22 +17,16 @@ from nicegui import ui
 from gui.theme import (
     C_AMBER,
     C_CREAM,
-    C_ERR_BG,
     C_ERR_FG,
-    C_GROUND,
     C_INK40,
     C_INK60,
     C_MUTED,
-    C_OK_BG,
     C_OK_FG,
     C_RAISED,
-    C_SURFACE,
-    C_WARN_BG,
     C_WARN_FG,
     F_MONO,
     F_SANS,
     R_MD,
-    R_SM,
 )
 
 log = logging.getLogger("gui.components.corpus_problems")

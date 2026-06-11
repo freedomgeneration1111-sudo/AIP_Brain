@@ -24,8 +24,6 @@ from gui.theme import (
     C_INK40,
     C_INK60,
     C_MUTED,
-    C_OK_FG,
-    C_RAISED,
     C_SURFACE,
     C_WARN_FG,
     F_MONO,

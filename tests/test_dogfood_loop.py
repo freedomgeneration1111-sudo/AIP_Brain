@@ -9,15 +9,11 @@ use the same default database path after `aip init`.
 
 from __future__ import annotations
 
-import asyncio
 import os
 import tempfile
 from pathlib import Path
 
 import pytest
-
-from aip.foundation.schemas.ingestion import ImportedConversation, ConversationTurn
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -105,7 +101,7 @@ async def _save_artifact_with_mock(db_path: str, question: str = "artifact stora
 
     Returns (artifact_id, ask_result).
     """
-    from aip.orchestration.ask_pipeline import create_ask_stores, ask
+    from aip.orchestration.ask_pipeline import ask, create_ask_stores
 
     ask_stores = await create_ask_stores(db_path)
     ask_stores.model_provider = MockModelProvider()
@@ -201,7 +197,7 @@ async def test_ingest_and_ask_share_same_store(tmp_aip_env, sample_markdown_file
     assert results[0].lexical_indexed, "Content not indexed into lexical store"
 
     # Ask — must find the same content in the same lexical store
-    from aip.orchestration.ask_pipeline import create_ask_stores, _search_sources_with_trace
+    from aip.orchestration.ask_pipeline import _search_sources_with_trace, create_ask_stores
 
     ask_stores = await create_ask_stores(db_path)
     try:
@@ -228,7 +224,7 @@ async def test_ask_retrieves_after_restart(tmp_aip_env, sample_markdown_file):
     await _setup_project_and_ingest(db_path, sample_markdown_file)
 
     # Simulate restart by creating entirely new store instances
-    from aip.orchestration.ask_pipeline import create_ask_stores, _search_sources_with_trace
+    from aip.orchestration.ask_pipeline import _search_sources_with_trace, create_ask_stores
 
     ask_stores = await create_ask_stores(db_path)
     try:
@@ -254,7 +250,7 @@ async def test_ask_no_model_shows_sources(tmp_aip_env, sample_markdown_file):
 
     await _setup_project_and_ingest(db_path, sample_markdown_file)
 
-    from aip.orchestration.ask_pipeline import create_ask_stores, ask
+    from aip.orchestration.ask_pipeline import ask, create_ask_stores
 
     ask_stores = await create_ask_stores(db_path)
     ask_stores.model_provider = None  # Ensure no model
@@ -395,7 +391,7 @@ async def test_export_approved_artifact(tmp_aip_env, sample_markdown_file, tmp_p
     artifact_id, _ = await _save_artifact_with_mock(db_path)
     assert artifact_id, "No artifact saved"
 
-    from aip.orchestration.review_export_pipeline import create_review_export_stores, review_approve, export_artifact
+    from aip.orchestration.review_export_pipeline import create_review_export_stores, export_artifact, review_approve
 
     # Approve
     review_stores = await create_review_export_stores(db_path)
@@ -427,7 +423,7 @@ async def test_exported_markdown_content(tmp_aip_env, sample_markdown_file, tmp_
     artifact_id, _ = await _save_artifact_with_mock(db_path)
     assert artifact_id, "No artifact saved"
 
-    from aip.orchestration.review_export_pipeline import create_review_export_stores, review_approve, export_artifact
+    from aip.orchestration.review_export_pipeline import create_review_export_stores, export_artifact, review_approve
 
     # Approve
     review_stores = await create_review_export_stores(db_path)

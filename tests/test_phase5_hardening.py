@@ -14,18 +14,16 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from aip.adapter.api.app import create_app
 from aip.adapter.api.dependencies import AipContainer
-from aip.adapter.trace_store_adapter import TraceStoreAdapter
 from aip.adapter.event_store_queryable import QueryableEventStore
-
+from aip.adapter.trace_store_adapter import TraceStoreAdapter
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -18,10 +18,9 @@ Required test scenarios:
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
+from aip.foundation.schemas.ask import AskResult
 from aip.foundation.schemas.retrieval import (
     ChannelHealthDetail,
     ChannelHealthReport,
@@ -29,14 +28,12 @@ from aip.foundation.schemas.retrieval import (
     RetrievalHit,
     RetrievalTrace,
 )
-from aip.foundation.schemas.ask import AskResult
 from aip.foundation.schemas.vector import VectorBackendStatus, VectorDegradationInfo
+from aip.orchestration.ask_pipeline import _build_degradation_dict, _build_retrieval_warnings
 from aip.orchestration.retrieval_orchestrator import (
     OrchestratorConfig,
     RetrievalOrchestrator,
 )
-from aip.orchestration.ask_pipeline import _build_degradation_dict, _build_retrieval_warnings
-
 
 # ======================================================================
 # 0. ChannelHealthState new values

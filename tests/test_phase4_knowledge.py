@@ -17,7 +17,6 @@ Tests for the new API routes:
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import tempfile
 
@@ -48,15 +47,15 @@ def _create_test_app():
     container = AipContainer(config)
 
     # Wire required stores for testing
-    from aip.adapter.entity.sqlite_entity_store import SqliteEntityStore
+    from aip.adapter.artifact_store_versioned import VersionedArtifactStore
     from aip.adapter.canonical.sqlite_canonical_store import SqliteCanonicalStore
+    from aip.adapter.ecs_store_persistent import PersistentEcsStore
+    from aip.adapter.embedding.ollama_embed import MockOllamaEmbeddingClient
+    from aip.adapter.entity.sqlite_entity_store import SqliteEntityStore
     from aip.adapter.event_store_queryable import QueryableEventStore
     from aip.adapter.lexical.sqlite_fts5_store import SqliteFts5LexicalStore
-    from aip.adapter.vector._in_memory import InMemoryVectorStore
-    from aip.adapter.embedding.ollama_embed import MockOllamaEmbeddingClient
     from aip.adapter.project.sqlite_project_store import SqliteProjectStore
-    from aip.adapter.ecs_store_persistent import PersistentEcsStore
-    from aip.adapter.artifact_store_versioned import VersionedArtifactStore
+    from aip.adapter.vector._in_memory import InMemoryVectorStore
 
     # Use a temporary directory for DB files
     tmpdir = tempfile.mkdtemp()
@@ -109,7 +108,7 @@ def _create_test_app():
     loop.close()
 
     # Wire orchestration function references (container-mediated layer discipline)
-    from aip.orchestration.ask_pipeline import AskStores, ask, _search_sources_with_trace, _sanitize_fts_query
+    from aip.orchestration.ask_pipeline import AskStores, _sanitize_fts_query, _search_sources_with_trace, ask
 
     container._ask_stores_class = AskStores
     container._ask_fn = ask
@@ -123,7 +122,6 @@ def _create_test_app():
 @pytest.fixture(scope="module")
 def test_client():
     """Create a test client with a fully wired container."""
-    from httpx import AsyncClient, ASGITransport
 
     app = _create_test_app()
 

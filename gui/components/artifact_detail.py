@@ -27,8 +27,8 @@ from typing import Any, Callable
 
 from nicegui import ui
 
-from gui.components.artifact_state_badge import render_artifact_state_badge
 from gui.components.artifact_review_panel import render_artifact_review_panel
+from gui.components.artifact_state_badge import render_artifact_state_badge
 from gui.components.link_panel import render_link_panel
 from gui.theme import (
     C_AMBER,
@@ -39,7 +39,6 @@ from gui.theme import (
     C_INK60,
     C_MUTED,
     C_OK_FG,
-    C_RAISED,
     C_SURFACE,
     C_WARN_FG,
     F_MONO,
@@ -146,7 +145,7 @@ def _render_content(
 
         # Error state
         if state.get("error"):
-            with ui.column().classes("w-full").style(f"padding:16px;"):
+            with ui.column().classes("w-full").style("padding:16px;"):
                 ui.label("Artifact detail unavailable").style(
                     f"font-size:12px; color:{C_CREAM}; font-family:{F_SANS}; font-weight:600;"
                 )
@@ -294,7 +293,7 @@ def _render_content(
                         )
 
         # ── Crosslinks ───────────────────────────────────────
-        with ui.column().classes("w-full").style(f"padding:0 0 4px 0;"):
+        with ui.column().classes("w-full").style("padding:0 0 4px 0;"):
             render_link_panel(
                 object_type="artifact",
                 object_id=artifact_id,

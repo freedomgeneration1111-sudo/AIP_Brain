@@ -259,7 +259,7 @@ def get_session_state() -> GuiState:
     Falls back to a simple ID-based map when storage is not yet initialized.
     """
     try:
-        from nicegui import app, context
+        from nicegui import context
 
         # Try to use NiceGUI's per-user storage
         client_id = getattr(context.client, "id", None)
