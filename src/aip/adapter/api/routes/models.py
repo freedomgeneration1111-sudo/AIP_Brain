@@ -10,6 +10,10 @@ the server. The override is stored in-process (in-memory runtime overrides
 on ModelSlotResolver, NOT in os.environ) so it persists until the next
 server restart. API keys are never written to the process environment.
 
+Added: GET /models/text-generation-slots — returns only text-generation
+slots (excludes embedding). Used by the Model Council panel to populate
+the slot selector. Never exposes secrets.
+
 When the "embedding" slot is patched, the container's embedding_provider
 is also recreated so that the new embedding model takes effect immediately
 for all downstream consumers (vector store, Beast, knowledge store, etc.).
@@ -28,6 +32,9 @@ from aip.logging import get_logger
 log = get_logger(__name__)
 
 router = APIRouter()
+
+# Slots that should NOT be used for text generation comparison
+_EXCLUDED_TEXT_GEN_SLOTS = {"embedding"}
 
 
 class ModelOverrideRequest(BaseModel):
@@ -126,6 +133,68 @@ async def list_model_slots(container: AipContainer = Depends(get_container)):
     return {
         "slots": slots_info,
         "ci_mode": ci_mode,
+    }
+
+
+@router.get("/models/text-generation-slots")
+async def list_text_generation_slots(container: AipContainer = Depends(get_container)):
+    """List text-generation model slots only (excludes embedding).
+
+    Returns only slots suitable for text generation, filtering out
+    embedding and other non-text-generation slots. Used by the Model
+    Council panel to populate the slot selector. Never exposes secrets.
+
+    Each slot entry includes: slot_name, provider, model (display only,
+    never the actual model ID with secrets), and whether the slot has
+    a real model configured (vs. sentinel placeholder like <slot_name>).
+    """
+    model_provider = container.model_provider
+    if model_provider is None:
+        return {
+            "slots": [],
+            "ci_mode": True,
+            "sufficient_for_council": False,
+            "error": "model_provider_not_configured",
+        }
+
+    all_slots_info = []
+    try:
+        slot_names = model_provider.list_slots()
+    except Exception:
+        slot_names = []
+
+    ci_mode = getattr(model_provider, "_ci_mode", True)
+
+    for slot_name in slot_names:
+        # Skip embedding and other excluded slots
+        if slot_name in _EXCLUDED_TEXT_GEN_SLOTS:
+            continue
+
+        try:
+            resolved = model_provider._resolve_slot_config(slot_name)
+            model_id = resolved.get("model", f"<{slot_name}>")
+            all_slots_info.append(
+                {
+                    "slot_name": slot_name,
+                    "provider": resolved.get("provider", "unknown"),
+                    "model": model_id,
+                    "has_real_model": not (model_id.startswith("<") and model_id.endswith(">")),
+                }
+            )
+        except Exception:
+            all_slots_info.append(
+                {
+                    "slot_name": slot_name,
+                    "provider": "unknown",
+                    "model": f"<{slot_name}>",
+                    "has_real_model": False,
+                }
+            )
+
+    return {
+        "slots": all_slots_info,
+        "ci_mode": ci_mode,
+        "sufficient_for_council": len(all_slots_info) >= 2,
     }
 
 

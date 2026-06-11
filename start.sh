@@ -47,8 +47,8 @@ start_backend() {
 }
 
 start_frontend() {
-    echo "Starting AIP Frontend (NiceGUI) on port 8080..."
-    PYTHONPATH=src python -m gui.main &
+    echo "Starting AIP Operator Console (NiceGUI) on port 8080..."
+    PYTHONPATH=src python -m gui.app &
     FRONTEND_PID=$!
     echo "Frontend PID: $FRONTEND_PID"
 }

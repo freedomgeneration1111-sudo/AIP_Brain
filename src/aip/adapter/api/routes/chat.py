@@ -219,6 +219,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         # Include system context from session if available
                         messages = []
                         response_sources = []  # Sources for augmented mode
+                        ret_trace = None  # Retrieval trace metadata (populated in augmented mode)
 
                         if session_mode == "augmented" and (
                             _container.corpus_turn_store is not None or _container.lexical_store is not None
@@ -306,7 +307,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                         corpus_turn_store=_container.corpus_turn_store,
                                         graph_store=getattr(_container, "graph_store", None),
                                     )
-                                    source_refs, _ret_trace, packed_ctx = await _search_sources_fn(
+                                    source_refs, ret_trace, packed_ctx = await _search_sources_fn(
                                         query=content,
                                         stores=_ask_stores,
                                         source_filter="all",
@@ -557,6 +558,10 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                             ),
                             "sources": response_sources,  # Empty in normal mode, populated in augmented mode
                             "mode": session_mode,  # Echo the mode so GUI knows how the response was generated
+                            "trace_available": ret_trace is not None and bool(ret_trace),
+                            "lexical_only": getattr(ret_trace, "lexical_only", False) if ret_trace is not None else False,
+                            "vector_contributed": getattr(ret_trace, "vector_contributed", False) if ret_trace is not None else False,
+                            "direct_model": False,  # WS path always goes through the backend
                         }
 
                         # Check if review is available for augmented mode sessions
@@ -684,6 +689,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                             "model": "none",
                             "artifacts": [],
                             "tokens_used": 0,
+                            "direct_model": True,  # Degraded path: no backend model dispatch
                         }
                     )
 

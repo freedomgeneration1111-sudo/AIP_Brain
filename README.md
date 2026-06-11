@@ -50,6 +50,10 @@ See STATUS.md for current test counts and known issues.
 
 The bootstrap seeds AIP with its own self-knowledge (51 entities, 23 Q&A turns about AIP architecture). Augmented chat works immediately.
 
+**Operator Console (default GUI):** `uv run python -m gui.app` — Full operator console with three-region layout, dashboard, and right rail. This is the default GUI launched by `./scripts/start.sh`.
+
+**Legacy shell** (`python -m gui.shell`) is frozen and preserved for reference only. The original chat frontend (`python -m gui.main`) is preserved until the Ask Workbench is proven.
+
 **Full first-run guide:** [`DOGFOOD_READY.md`](DOGFOOD_READY.md)
 
 ## CLI Usage
@@ -212,6 +216,7 @@ Environment variable overrides:
 | Knowledge graph | Working | 36 nodes, 17 edges; /graph-viz visualization |
 | DEFINER profile injection | Partial | Profile loaded; active injection in progress |
 | Dogfood smoke test | Working | `bash scripts/dogfood_smoke_test.sh` |
+| Operator Console shell | Working | `python -m gui.app` (default) — Dashboard, Ask, Corpus (placeholder), Retrieval (placeholder), Wiki (placeholder), Artifacts (placeholder), Maintenance (placeholder), Settings (placeholder). Legacy `gui.shell` frozen. |
 | MCP tool server | Built (not runtime-wired) | Real dispatch via Protocols; not wired into app.py; autonomy_gate=None fail-open risk |
 | ScriptNode execution | Disabled | Production safe |
 

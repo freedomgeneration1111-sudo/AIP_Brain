@@ -161,6 +161,94 @@ async def retrieval_traces(
     return {"status": "ok", "traces": traces, "count": len(traces)}
 
 
+@router.get("/traces/session/{session_id}")
+async def retrieval_trace_by_session(
+    session_id: str,
+    container: AipContainer = Depends(get_container),
+):
+    """Return the most recent retrieval trace for a given session.
+
+    Queries the EventStore for the latest ``ask_query`` event whose
+    actor (or metadata session_id) matches *session_id* and returns
+    the trace metadata from that event's metadata_json.
+
+    Returns ``{"status": "not_found", "trace": null}`` when no trace
+    exists for the session.
+    """
+    if container.event_store is None:
+        return {"status": "not_found", "trace": None}
+
+    try:
+        events = await container.event_store.query(
+            event_type="ask_query",
+            limit=100,
+        )
+    except Exception as exc:
+        logger.debug("Failed to query traces for session %s: %s", session_id, exc)
+        return {"status": "not_found", "trace": None}
+
+    for ev in events:
+        # Match by actor field first, then by metadata session_id
+        actor = getattr(ev, "actor", "") or ""
+        metadata = getattr(ev, "metadata", {}) or {}
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except (json.JSONDecodeError, TypeError):
+                metadata = {}
+
+        ev_session = metadata.get("session_id", "")
+        if actor != session_id and ev_session != session_id:
+            continue
+
+        # Only include events with retrieval trace data
+        if "retrieval_total_ms" not in metadata and "retrieval_verdict" not in metadata:
+            continue
+
+        # Build trace dict from event metadata
+        channels_raw = metadata.get("retrieval_channels", "[]")
+        try:
+            channels = json.loads(channels_raw) if isinstance(channels_raw, str) else channels_raw
+        except (json.JSONDecodeError, TypeError):
+            channels = []
+
+        per_channel_ms_raw = metadata.get("retrieval_per_channel_ms", "{}")
+        try:
+            per_channel_ms = json.loads(per_channel_ms_raw) if isinstance(per_channel_ms_raw, str) else per_channel_ms_raw
+        except (json.JSONDecodeError, TypeError):
+            per_channel_ms = {}
+
+        channel_contributions_raw = metadata.get("retrieval_channel_contributions", "{}")
+        try:
+            channel_contributions = (
+                json.loads(channel_contributions_raw)
+                if isinstance(channel_contributions_raw, str)
+                else channel_contributions_raw
+            )
+        except (json.JSONDecodeError, TypeError):
+            channel_contributions = {}
+
+        trace = {
+            "session_id": session_id,
+            "query": metadata.get("prompt", "")[:100],
+            "channels_queried": channels,
+            "per_channel_elapsed_ms": per_channel_ms,
+            "total_elapsed_ms": metadata.get("retrieval_total_ms", 0),
+            "hits_before_fusion": metadata.get("retrieval_hits_before_fusion", 0),
+            "hits_after_fusion": metadata.get("retrieval_hits_after_fusion", 0),
+            "hits_after_gate": metadata.get("retrieval_hits_after_gate", 0),
+            "verdict": metadata.get("retrieval_verdict", "UNKNOWN"),
+            "round": metadata.get("retrieval_round", 0),
+            "channel_contributions": channel_contributions,
+            "timestamp": getattr(ev, "timestamp", ""),
+            "lexical_only": metadata.get("lexical_only", False),
+            "vector_contributed": metadata.get("vector_contributed", False),
+        }
+        return {"status": "ok", "trace": trace}
+
+    return {"status": "not_found", "trace": None}
+
+
 @router.get("/channels")
 async def retrieval_channels(container: AipContainer = Depends(get_container)):
     """Return per-channel health and performance metrics.

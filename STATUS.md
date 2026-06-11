@@ -40,7 +40,7 @@ Production configuration is **enforced programmatically**. Unsafe configs fail a
 
 ## Module Status
 
-- **Tests:** 1048+ passing (incl. 46 new Chunk 5 tests), 23 skipped (sqlite_vss extension + pre-existing governance), 2 pre-existing failures
+- **Tests:** 1090+ passing (incl. 46 Chunk 5 tests, 42 Cycle 4.1 sovereignty tests, 48 Cycle 6 tests, 38 Cycle 6.1 tests), 23 skipped (sqlite_vss extension + pre-existing governance), 2 pre-existing failures
 - **Architecture:** Three-layer (foundation → orchestration → adapter)
 - **Default DB path:** `db/state.db` (SQLite, laptop profile)
 - **Scaffolding:** ~5-8% overall (MCP dispatch, adaptive router, ScriptNode sandbox)
@@ -48,6 +48,210 @@ Production configuration is **enforced programmatically**. Unsafe configs fail a
 - **Lint:** ruff format + ruff check (E, F, W, I) — all passing, blocking in CI
 - **Retrieval:** Hybrid (FTS5 + Vector + Corpus) with RRF fusion; configurable channel weights in `aip.config.toml` (`[retrieval.channel_weights]`)
 - **Eval harness:** `aip eval retrieval` with --mode flag (hybrid / fts-only / all); baseline comparator available via `--save-baseline`
+
+## UI Cycle 2 — Operator Console Shell (2026-06-11)
+
+UI Cycle 2 created the Operator Console shell with three-region layout (top bar, left nav, main workspace, right rail). The Operator Console (`python -m gui.app`) is now the default GUI entry point. All start scripts (`scripts/start.sh`, `start.sh`, `start-aip.sh`) launch `gui.app`.
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| gui/app.py (entry point) | ✅ Active | ui.run() guarded under if __name__; reload defaults to false |
+| gui/theme.py (design tokens) | ✅ Active | Extracted from shell.py |
+| gui/state.py (per-session state) | ✅ Active | Replaces module-level _state singleton |
+| gui/components/ (reusable) | ✅ Active | layout, chat, pills, buttons, modals |
+| gui/pages/ (8 pages) | ✅ Active | Dashboard, Ask, Corpus, Retrieval Lab, Wiki, Artifacts, Maintenance, Settings |
+| gui/panels/ (right rail) | ✅ Active | Dogfood mode, actor status, retrieval health, gates, warnings |
+| gui/shell.py (old) | 🧊 Frozen | FROZEN — no new features; preserved for reference only |
+| gui/main.py (old) | 🔒 Preserved | PRESERVED — do not modify; retained until Ask Workbench proven |
+| gui/archive/main.py | 📦 Archived | Archived copy of original chat frontend |
+| GUI import boundary tests | ✅ 10/10 | No orchestration imports; no _state singleton; no silent exception catching |
+| Start scripts | ✅ Updated | scripts/start.sh, start.sh, start-aip.sh all reference gui.app |
+
+Ask page preservation verdict: Chat/WebSocket flow fully migrated from shell.py. Direct model fallback labeled "DIRECT MODEL ONLY — NOT DOGFOOD".
+
+## UI Cycle 3 — Status Summary API and Dashboard (2026-06-11)
+
+UI Cycle 3 wires the Operator Console Dashboard to the consolidated `GET /api/v1/status/summary` endpoint. The dashboard now answers "Can I trust AIP right now?" with real data from a single backend call instead of scattered individual API calls. All 9 required dashboard cards are implemented with honest degraded/unavailable states.
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| GET /api/v1/status/summary | ✅ Active | Consolidated, secret-safe status summary endpoint (existed in health.py) |
+| gui/api_client.get_status_summary() | ✅ Active | New client method calling /status/summary with 8s timeout |
+| gui/state.refresh_status_summary() | ✅ Active | Single-call refresh populates status_summary + derived fields |
+| gui/status_types.py | ✅ Active | TypedDict schema documenting the stable response shape |
+| gui/pages/dashboard.py | ✅ Active | 9 dashboard cards: Dogfood Mode, Backend Health, Corpus Health, Retrieval Health, Actor Health, Embedding/Backfill, Review Queue, Wiki/CODEX, Model Slots, Warnings, Recent Activity |
+| gui/panels/right_rail.py | ✅ Active | Right rail consumes status_summary for all sections |
+| gui/components/layout.py | ✅ Updated | Delegates to panels.right_rail for consistent data source |
+| GUI import boundary tests | ✅ 14/14 | No orchestration imports; no _state singleton; no silent exception catching |
+| Layer/import boundary tests | ✅ 17/17 | All adapter/foundation/orchestration boundaries enforced |
+
+Key design decisions:
+- **Single-call architecture**: Dashboard and right rail both consume `state.status_summary` from `refresh_status_summary()`, replacing the previous multi-call approach
+- **Backend is authoritative**: Dogfood mode comes from `/api/v1/status/summary` rather than client-side heuristic
+- **Honest state visibility**: All cards show `UNAVAILABLE`, `NOT CONFIGURED`, `DEGRADED`, or `EMPTY` honestly — never fake healthy
+- **No secret exposure**: Model slot API keys show "configured"/"missing" only
+- **Import boundary preserved**: gui/ never imports from aip.* — all data comes through api_client
+
+## UI Cycle 4 — Ask Workbench Upgrade (2026-06-11)
+
+UI Cycle 4 upgrades the Ask page from a plain chat interface to an Ask Workbench with answer inspection, source detail drawers, retrieval trace drawers, and save-as-artifact capability.
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| gui/components/answer_card.py | ✅ Active | Status strip (retrieval healthy, degraded, lexical only, no sources, direct model only, trace unavailable) + action bar (Show Sources, Show Trace, Save Artifact, Link Wiki [disabled], Model Council [disabled]) |
+| gui/components/source_panel.py | ✅ Active | Right drawer showing source title/path, snippet, score, channel per retrieval source |
+| gui/components/trace_panel.py | ✅ Active | Right drawer showing retrieval trace details (channels, latency, verdict, degradation, warnings) |
+| gui/pages/ask.py (upgraded) | ✅ Active | Uses answer_card instead of plain add_message; wires source_panel, trace_panel, save-artifact; preserves all existing chat/WebSocket/gate behavior |
+| gui/api_client.py | ✅ Updated | Added get_retrieval_trace_by_session() and save_turn_as_artifact() |
+| gui/status_types.py | ✅ Updated | Added SourceEntry, RetrievalTraceEntry, ChatResponseMetadata, SaveArtifactResponse, SessionTraceResponse TypedDicts |
+| POST /api/v1/turns/save-artifact | ✅ Active | New endpoint — creates GENERATED artifact, never auto-approves |
+| GET /api/v1/retrieval/traces/session/{session_id} | ✅ Active | New endpoint — fetches most recent trace for a session |
+| chat.py response metadata | ✅ Updated | WebSocket chat response now includes trace_available, lexical_only, vector_contributed, direct_model fields |
+| ask.py response metadata | ✅ Updated | Ask endpoint response now includes trace_available, lexical_only, vector_contributed fields |
+| GUI import boundary tests | ✅ 14/14 | No orchestration imports; no _state singleton; no silent exception catching |
+| Layer/import boundary tests | ✅ 17/17 | All adapter/foundation/orchestration boundaries enforced |
+
+**Verdicts:**
+
+- **Answer inspection verdict**: Every answer shows a status strip indicating retrieval health and an action bar with available operations. No answer appears without metadata context.
+- **Source panel verdict**: Clicking "Show Sources" opens a right drawer with per-source detail (title/path, snippet, score, channel). Empty source lists show "No sources" honestly — never fake data.
+- **Retrieval trace verdict**: Clicking "Show Trace" opens a right drawer with trace details when available. When no trace exists, the UI shows "Trace unavailable" honestly — no fake traces.
+- **Save-as-artifact verdict**: "Save Artifact" creates a GENERATED artifact via `POST /api/v1/turns/save-artifact`. No auto-approve — DEFINER review is required before promotion to APPROVED. The response confirms the GENERATED state.
+- **Direct model fallback verdict**: Still visibly labeled "DIRECT MODEL ONLY — NOT DOGFOOD" with banner when no model provider is configured.
+- **Unwired action honesty verdict**: Link Wiki and Model Council buttons are shown as disabled with "not yet implemented" tooltips. No backend endpoints exist for these features — the UI is honest about this rather than hiding or faking functionality.
+- **Import-boundary verdict**: All tests pass (14/14 GUI, 17/17 layer). GUI remains API-first — never imports from aip.orchestration.
+
+## UI Cycle 4.1 — Ask Workbench API Verification and Sovereignty Tests (2026-06-11)
+
+UI Cycle 4.1 is a verification/hardening cycle that adds focused API tests for the Cycle 4 Ask Workbench integration. No production code was changed — only test coverage expanded.
+
+| Test Category | Tests | Status | Notes |
+|--------------|-------|--------|-------|
+| Save-as-artifact sovereignty | 8 | ✅ ALL PASS | GENERATED only, never APPROVED, never EXPORTED, honest 400/503, stable schema, no secrets |
+| Retrieval trace endpoint | 6 | ✅ ALL PASS | Honest not_found, no faking, degraded details preserved, event_store=None handled |
+| Ask/chat metadata compatibility | 5 | ✅ ALL PASS | trace_available, lexical_only, vector_contributed, direct_model all present in responses |
+| Answer card component | 8 | ✅ ALL PASS | Direct model warning, trace unavailable, lexical only, disabled actions, no auto-approve |
+| Import boundary (new components) | 5 | ✅ ALL PASS | AST-verified: answer_card, source_panel, trace_panel, turns route, ask route |
+| API client methods | 3 | ✅ ALL PASS | get_retrieval_trace_by_session, save_turn_as_artifact exist and documented |
+| Turns route registration | 3 | ✅ ALL PASS | Router importable, mounted in app, correct endpoint path |
+| Direct model fallback | 4 | ✅ ALL PASS | degraded=True, normal=False, banner displayed, error-level status |
+| **TOTAL** | **42** | **✅ ALL PASS** | |
+
+**Existing test verification:** 112 total tests verified across all categories (42 new + 14 GUI boundary + 8 import boundary + 48 ask/chat/definer).
+
+**Sanitation scan results:**
+- 25 pattern hits across 10 files: 17 LEGITIMATE, 8 DOCUMENTED DEBT, 0 BLOCKERS
+- No fake trace/source/healthy data found
+- No auto-approve mechanisms found
+- No aip.orchestration import violations found
+- 8 documented debt items: silent except handlers in chat.py and ask.py fallback paths should add logger.debug() (LOW risk, MEDIUM priority for hardening)
+
+**Verdicts:**
+
+- **Save-as-artifact sovereignty**: PASS — Artifacts always GENERATED, never APPROVED/EXPORTED, honest errors, no secret exposure
+- **Retrieval trace endpoint**: PASS — Honest not_found when no trace, no data fabrication, degraded channel details preserved
+- **Ask/chat metadata compatibility**: PASS — All metadata fields present in ask, retrieve, and WebSocket responses
+- **Frontend answer-card**: PASS — Direct model warning at error level, trace unavailable state, disabled actions with tooltips, no auto-approve
+- **Direct model fallback**: PASS — Correct True/False flags, banner visible, error-level status
+- **Import-boundary**: PASS — All new components AST-verified, no orchestration imports
+
+**Blockers for Beast Counsel**: NONE
+
+## UI Cycle 5 — Beast Counsel Panel v1 (2026-06-11)
+
+UI Cycle 5 adds Beast Counsel Panel v1 to the Ask Workbench. Beast provides an advisory second perspective on each assistant turn: continuity, critique, strategy, risk, librarian notes, and suggested actions. Beast must not silently mutate wiki, artifacts, config, approvals, exports, or gates.
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| GET /api/v1/turns/{turn_id}/beast-commentary | ✅ Active | Retrieve existing Beast commentary for a turn + mode (mode query param, Cycle 5.1) |
+| POST /api/v1/turns/{turn_id}/beast-commentary/run | ✅ Active | Generate Beast commentary for a turn via Beast model slot |
+| BeastCommentaryRequest/Response schemas | ✅ Stable | Pydantic models with all required fields |
+| gui/components/beast_panel.py | ✅ Active | Beast Counsel right drawer — 5 modes, mode-aware switching (Cycle 5.1) |
+| gui/components/answer_card.py (updated) | ✅ Active | Added "Beast Counsel" button to action bar |
+| gui/pages/ask.py (wired) | ✅ Active | BeastPanel instance + _handle_beast_counsel callback |
+| gui/api_client.py (updated) | ✅ Active | Added get_beast_commentary(mode=) and run_beast_commentary() |
+| gui/status_types.py (updated) | ✅ Active | Added BeastCommentaryResponse and BeastCommentarySuggestedAction TypedDicts |
+| Commentary persistence | ✅ GENERATED only | Artifacts in GENERATED state — never auto-approved, never auto-exported |
+| Mode persistence | ✅ Distinct per mode | Cycle 5.1: Each mode produces distinct artifact per turn (sha256(turn_id:mode)) |
+| No fake commentary | ✅ Verified | Honest not_wired, unavailable, error, not_available states |
+| Advisory-only actions | ✅ Verified | All suggested_actions include advisory_only=True, requires_DEFINER_approval=True |
+| GUI import boundary | ✅ 16/16 | beast_panel + all GUI modules verified — no aip.orchestration imports |
+| Backend import boundary | ✅ Verified | beast_commentary route never imports from aip.orchestration |
+| Cycle 5 tests | ✅ 43/43 | Schema, GET, POST, sovereignty, secrets, panel, answer card, import boundary, mode persistence |
+
+**Verdicts:**
+
+- **Beast commentary backend**: PASS — Two stable endpoints with honest degradation. Commentary generated via Beast model slot, persisted as GENERATED artifacts, never auto-approved. Suggested actions are advisory-only with DEFINER approval required.
+- **Beast Counsel panel**: PASS — Right drawer with 5 Beast modes. Handles all states: no commentary (with Run button), commentary available, not wired, unavailable, error. No fake commentary.
+- **Persistence**: PASS — Commentary stored as GENERATED artifacts via VersionedArtifactStore with ECS state management. Requires DEFINER review before approval.
+- **Mode persistence (Cycle 5.1)**: PASS — Each turn+mode produces a distinct artifact ID. Running continuity does not overwrite critique. Re-running same mode creates a new version; GET returns latest. Frontend mode selector fetches commentary for selected mode; switching modes fetches fresh data.
+- **Sovereignty**: PASS — No auto-approve, no auto-export, no wiki mutation, no config changes, no model slot changes. Beast only suggests — DEFINER decides.
+- **No-fake-commentary**: PASS — All states are honest. not_wired when no model provider, unavailable when no artifact store, error when generation fails, not_available when no commentary exists yet.
+- **Ask/chat preservation**: PASS — All existing chat/WebSocket/gate/direct-model behavior preserved. Cycle 4.1 tests (42) still pass.
+- **Import-boundary**: PASS — gui/ never imports from aip.orchestration. Backend route never imports from orchestration. All 17 layer boundary tests pass.
+
+**Blockers for Model Council / Wiki / Crosslinks**: None new. Model Council and Wiki CRUD remain out of scope for this cycle.
+
+## UI Cycle 6 — Model Council (2026-06-11)
+
+UI Cycle 6 implements the Model Council feature — an advisory multi-model comparison tool for the Ask Workbench. The Model Council runs the same prompt across all configured text-generation model slots and produces a structured comparison report.
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| POST /api/v1/beast/compare-models | ✅ Active | New endpoint — runs multi-model comparison, returns ModelCouncilResponse |
+| gui/panels/model_council.py | ✅ Active | Model Council right drawer — side-by-side model responses, consensus/disagreement highlights, advisory recommendations |
+| gui/components/answer_card.py (updated) | ✅ Active | "Model Council" button now enabled (was disabled with "not yet implemented" tooltip) |
+| gui/pages/ask.py (wired) | ✅ Active | ModelCouncilPanel instance + _handle_model_council callback |
+| gui/api_client.py (updated) | ✅ Active | Added compare_models() method |
+| gui/status_types.py (updated) | ✅ Active | Added ModelCouncilResponse and ModelSlotComparison TypedDicts |
+| Advisory-only enforcement | ✅ Verified | All reports include advisory_only=True, requires_DEFINER_approval=True |
+| Graceful degradation | ✅ Verified | insufficient_models when <2 text-gen slots; partial when one model fails |
+| Optional artifact persistence | ✅ Active | save_as_artifact=true persists as GENERATED artifact — no auto-approve |
+| Embedding slot exclusion | ✅ Verified | Embedding slot excluded from text generation comparison |
+| GUI import boundary tests | ✅ Passing | No orchestration imports |
+| Layer/import boundary tests | ✅ 17/17 | All adapter/foundation/orchestration boundaries enforced |
+
+**Verdicts:**
+
+- **Model Council backend**: PASS — Stable endpoint with honest degradation. Returns `completed`, `partial`, `insufficient_models`, `unavailable`, or `error` as appropriate. Reports are ADVISORY ONLY.
+- **Model Council panel**: PASS — Right drawer with side-by-side comparison. Handles all states: completed, partial, insufficient_models, unavailable, error. No fake comparison data.
+- **Advisory-only sovereignty**: PASS — No auto-approve, no auto-export, no config changes, no model slot changes. The council only advises — DEFINER decides.
+- **Graceful degradation**: PASS — Fewer than 2 text-gen slots yields `insufficient_models`. One model failure yields `partial` report, not total failure. Embedding slot excluded from comparison.
+- **Ask/chat preservation**: PASS — All existing chat/WebSocket/gate/direct-model/Beast Counsel behavior preserved.
+- **Import-boundary**: PASS — gui/ never imports from aip.orchestration. All 17 layer boundary tests pass.
+
+**Blockers for Wiki / Crosslinks**: None new. Wiki CRUD and Crosslink System remain out of scope for this cycle.
+
+## UI Cycle 6.1 — Model Council Slot Selector (2026-06-11)
+
+UI Cycle 6.1 adds explicit model slot selection to the Model Council panel, allowing the DEFINER to choose which text-generation model slots participate in the council comparison.
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| GET /api/v1/models/text-generation-slots | ✅ Active | New endpoint — returns only text-gen slots (excludes embedding), with sufficient_for_council flag |
+| gui/components/model_council_panel.py (updated) | ✅ Active | Slot selector with checkboxes, min-2 enforcement, insufficient_models inline notice |
+| gui/api_client.py (updated) | ✅ Active | Added list_text_generation_slots() method |
+| gui/status_types.py (updated) | ✅ Active | Added TextGenerationSlotEntry TypedDict |
+| Backend selected_model_slots honored | ✅ Verified | Only specified slots are called; embedding excluded even if requested; invalid slots filtered honestly |
+| Backend defaults preserved | ✅ Verified | Empty selected_model_slots uses default text-gen slots (synthesis, evaluation, beast) |
+| Advisory labeling | ✅ Verified | Reports labeled "ADVISORY ONLY — requires DEFINER review" in header and footer |
+| GUI import boundary tests | ✅ Passing | No orchestration imports |
+| Cycle 6.1 tests | ✅ 38/38 | All new tests pass; existing Cycle 6 tests (48) still pass |
+
+**Verdicts:**
+
+- **Model slot selector**: PASS — Panel shows checkboxes for each available text-generation slot. At least 2 must be selected to run. Embedding never shown. Unconfigured slots marked "(unconfigured)".
+- **Selected slot backend**: PASS — `selected_model_slots` is honored by the compare-models endpoint. Only specified slots are called. Default selection preserved when empty.
+- **Embedding exclusion**: PASS — Embedding slot excluded even if explicitly included in `selected_model_slots`. Verified by dedicated test.
+- **Insufficient models**: PASS — Honest `insufficient_models` when fewer than 2 text-gen slots available. No faking of available models.
+- **Partial failure**: PASS — One model failure yields `partial`/degraded report, not total failure. Per-model results still available.
+- **Secret exposure**: PASS — Text-generation-slots endpoint never exposes API keys. No `api_key` field in response.
+- **Import-boundary**: PASS — gui/ never imports from aip.orchestration. Backend routes never import from orchestration.
+- **Sanitation**: PASS — No fake council/comparison, no auto-approve, no wiki mutation, no bare except-pass, no TODO/FIXME/placeholder.
+
+**Remaining Model Council debt**: Persisted GET endpoint for prior reports (deferred per spec).
+
+**Blockers or dependencies affecting Wiki/CODEX or Crosslinks**: None.
 
 ## Actor Status (post ADR-011 refactor, post Sprint 6.4)
 

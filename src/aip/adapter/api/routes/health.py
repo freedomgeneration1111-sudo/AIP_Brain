@@ -790,3 +790,405 @@ async def dogfood_health(request: Any, container: AipContainer = Depends(get_con
         response["channel_states"] = channel_state_detail
 
     return response
+
+
+# ---------------------------------------------------------------------------
+# UI Cycle 3: Operator Console Dashboard — consolidated status summary
+# ---------------------------------------------------------------------------
+
+_SECRET_KEYWORDS = frozenset({
+    "api_key", "apikey", "password", "secret", "token", "auth_token",
+    "access_token", "refresh_token", "private_key",
+})
+
+
+def _mask_secrets(d: dict) -> dict:
+    """Return a copy of *d* with any secret-looking values replaced."""
+    out: dict[str, Any] = {}
+    for k, v in d.items():
+        if k.lower() in _SECRET_KEYWORDS:
+            out[k] = "configured" if v else "missing"
+        else:
+            out[k] = v
+    return out
+
+
+@router.get("/status/summary")
+async def status_summary(container: AipContainer = Depends(get_container)):
+    """Consolidated status summary for the Operator Console Dashboard.
+
+    UI Cycle 3: Aggregates subsystem health into a single stable response
+    for the dashboard to answer "Can I trust AIP right now?"
+
+    This endpoint does NOT expose secrets, api keys, or internal details.
+    Missing subsystems are reported honestly as unavailable/not_wired.
+    """
+    warnings: list[str] = []
+
+    # ------------------------------------------------------------------
+    # 1. Dogfood mode
+    # ------------------------------------------------------------------
+    try:
+        dogfood_mode = get_dogfood_mode(container.config).value
+    except Exception:
+        dogfood_mode = "unknown"
+
+    # ------------------------------------------------------------------
+    # 2. Backend health — reuse the same logic as /health
+    # ------------------------------------------------------------------
+    start_time = getattr(container, "_app_start_time", None)
+    uptime_seconds = int(time.time() - start_time) if start_time else 0
+
+    db_writable = False
+    if container.event_store is not None:
+        try:
+            await container.event_store.write_event(
+                event_type="status_summary_check",
+                actor="status_summary",
+                artifact_id="",
+                from_state=None,
+                to_state=None,
+            )
+            db_writable = True
+        except Exception:
+            pass
+
+    ci_mode = True
+    if container.model_provider is not None:
+        try:
+            ci_mode = getattr(container.model_provider, "_ci_mode", True)
+        except Exception:
+            pass
+
+    # Determine overall status using the same criteria as /health
+    critical_available = all([
+        container.entity_store is not None,
+        container.canonical_store is not None,
+        container.event_store is not None,
+        container.autonomy_gate is not None,
+        container.artifact_store is not None,
+    ])
+    optional_components = {
+        "lexical_store": container.lexical_store is not None,
+        "vector_store": container.vector_store is not None,
+        "embedding_provider": container.embedding_provider is not None,
+        "project_store": container.project_store is not None,
+        "budget_store": container.budget_store is not None,
+        "budget_manager": container.budget_manager is not None,
+        "vigil_store": container.vigil_store is not None,
+        "model_provider": container.model_provider is not None,
+        "knowledge_store": container.knowledge_store is not None,
+        "session_store": container.session_store is not None,
+        "ecs_store": container.ecs_store is not None,
+        "review_queue_store": container.review_queue_store is not None,
+        "trace_store": container.trace_store is not None,
+        "graph_store": getattr(container, "graph_store", None) is not None,
+    }
+    optional_count = sum(optional_components.values())
+    optional_total = len(optional_components)
+
+    if not critical_available:
+        backend_status = "unhealthy"
+    elif optional_count < optional_total:
+        backend_status = "degraded"
+    else:
+        backend_status = "ok"
+
+    if backend_status == "degraded":
+        warnings.append("Backend running in degraded mode")
+
+    backend_health: dict[str, Any] = {
+        "status": backend_status,
+        "uptime_seconds": uptime_seconds,
+        "db_writable": db_writable,
+        "ci_mode": ci_mode,
+    }
+
+    # ------------------------------------------------------------------
+    # 3. Actor status summary — per-actor: initialized, state, last_cycle_time
+    # ------------------------------------------------------------------
+    actor_status_summary: dict[str, dict[str, Any]] = {}
+    for actor_name, actor_instance in [
+        ("sexton", container.sexton_actor),
+        ("beast", container.beast),
+        ("vigil", container.vigil),
+    ]:
+        try:
+            if actor_instance is not None and hasattr(actor_instance, "get_status_summary"):
+                summary = actor_instance.get_status_summary()
+                entry: dict[str, Any] = {
+                    "initialized": True,
+                    "state": summary.get("state", "unknown"),
+                }
+                # Collect last cycle time from whichever field the actor uses
+                last_cycle = (
+                    summary.get("last_cycle_time")
+                    or summary.get("last_eval_time")
+                )
+                if last_cycle is not None:
+                    entry["last_cycle_time"] = last_cycle
+                actor_status_summary[actor_name] = entry
+            elif actor_instance is not None:
+                actor_status_summary[actor_name] = {
+                    "initialized": True,
+                    "state": "instantiated",
+                }
+            else:
+                actor_status_summary[actor_name] = {
+                    "initialized": False,
+                    "state": "not_configured",
+                }
+                warnings.append(f"{actor_name} actor not active")
+        except Exception:
+            actor_status_summary[actor_name] = {
+                "initialized": False,
+                "state": "error",
+            }
+
+    # ------------------------------------------------------------------
+    # 4. Retrieval health summary — per-channel: name, registered, state
+    # ------------------------------------------------------------------
+    retrieval_health_summary: dict[str, dict[str, Any]] = {}
+    try:
+        get_orchestrator_cache = getattr(container, "_get_orchestrator_cache_fn", None)
+        builtin_channels = getattr(container, "_builtin_channels", None)
+
+        if get_orchestrator_cache is not None and builtin_channels is not None:
+            orch_cache = get_orchestrator_cache()
+            if orch_cache._orchestrator is not None:
+                orch = orch_cache._orchestrator
+                for ch_name in builtin_channels:
+                    is_registered = orch.is_registered(ch_name)
+                    if is_registered:
+                        ch_state = "available"
+                    elif ch_name == "vector" and container.vector_store is None:
+                        ch_state = "unavailable"
+                    elif ch_name == "vector" and container.embedding_provider is None:
+                        ch_state = "not_configured"
+                    else:
+                        ch_state = "not_configured"
+                    retrieval_health_summary[ch_name] = {
+                        "name": ch_name,
+                        "registered": is_registered,
+                        "state": ch_state,
+                    }
+                # Refine vector channel state from backend status
+                if "vector" in retrieval_health_summary and container.vector_store is not None:
+                    try:
+                        from aip.foundation.schemas.vector import VectorBackendStatus
+                        vstatus = container.vector_store.get_backend_status()
+                        if vstatus == VectorBackendStatus.AVAILABLE:
+                            retrieval_health_summary["vector"]["state"] = "available"
+                        elif vstatus == VectorBackendStatus.DEGRADED_BRUTEFORCE:
+                            retrieval_health_summary["vector"]["state"] = "degraded"
+                        elif vstatus == VectorBackendStatus.FAILED:
+                            retrieval_health_summary["vector"]["state"] = "unavailable"
+                    except Exception:
+                        pass
+        else:
+            # No orchestrator cache — mark known channels as not_configured
+            for ch_name in ("vector", "lexical", "graph", "wiki", "procedural"):
+                retrieval_health_summary[ch_name] = {
+                    "name": ch_name,
+                    "registered": False,
+                    "state": "not_configured",
+                }
+    except Exception:
+        retrieval_health_summary = {
+            "_error": {"name": "_error", "registered": False, "state": "unavailable"}
+        }
+
+    # ------------------------------------------------------------------
+    # 5. Corpus summary — total_turns, tagged, embedded, unembedded, percentage
+    # ------------------------------------------------------------------
+    corpus_summary: dict[str, Any] = {
+        "total_turns": 0,
+        "tagged": 0,
+        "embedded": 0,
+        "unembedded": 0,
+        "embedding_percentage": 0.0,
+    }
+    cts = getattr(container, "corpus_turn_store", None)
+    if cts is not None:
+        try:
+            total = await cts.total_turns()
+            unembedded = await cts.count_unembedded()
+            embedded = total - unembedded
+            pct = round(embedded / total * 100, 2) if total > 0 else 0.0
+            corpus_summary = {
+                "total_turns": total,
+                "tagged": total,
+                "embedded": embedded,
+                "unembedded": unembedded,
+                "embedding_percentage": pct,
+            }
+            if pct < 10 and total > 0:
+                warnings.append(f"Low embedding coverage ({pct}%)")
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # 6. Embedding backfill summary
+    # ------------------------------------------------------------------
+    embedding_backfill_summary: dict[str, Any] = {
+        "backfill_state": "unknown",
+        "provider_type": "none",
+        "provider_active": False,
+    }
+    try:
+        # Backfill state from Sexton
+        if container.sexton_actor is not None and hasattr(container.sexton_actor, "_embedding_backfill_state"):
+            embedding_backfill_summary["backfill_state"] = container.sexton_actor._embedding_backfill_state or "unknown"
+        # Embedding provider info
+        if container.embedding_provider is not None:
+            embedding_backfill_summary["provider_active"] = True
+            # Determine provider type — check common attribute names
+            for attr in ("provider_type", "_provider_type", "provider_name", "_name", "__class__"):
+                val = getattr(container.embedding_provider, attr, None)
+                if val is not None:
+                    if attr == "__class__":
+                        val = val.__name__
+                    embedding_backfill_summary["provider_type"] = val
+                    break
+        else:
+            embedding_backfill_summary["provider_type"] = "none"
+            warnings.append("No embedding provider configured")
+    except Exception:
+        pass
+
+    # ------------------------------------------------------------------
+    # 7. Review queue summary
+    # ------------------------------------------------------------------
+    review_queue_summary: dict[str, Any] = {"count": 0, "state": "not_wired"}
+    rqs = getattr(container, "review_queue_store", None)
+    if rqs is not None:
+        try:
+            if hasattr(rqs, "count_pending"):
+                count = await rqs.count_pending()
+                review_queue_summary = {"count": count, "state": "available"}
+            else:
+                review_queue_summary = {"count": 0, "state": "available"}
+        except Exception:
+            review_queue_summary = {"count": 0, "state": "error"}
+
+    # ------------------------------------------------------------------
+    # 8. Wiki summary — counts from artifact_store + ecs_store
+    # ------------------------------------------------------------------
+    wiki_summary: dict[str, Any] = {"total": 0, "approved": 0, "generated": 0, "state": "not_wired"}
+    try:
+        if container.artifact_store is not None and getattr(container, "ecs_store", None) is not None:
+            # Try to use aiosqlite directly (same approach as wiki route)
+            import aiosqlite
+
+            db_path = "db/state.db"
+            from pathlib import Path
+            if Path(db_path).exists():
+                conn = await aiosqlite.connect(db_path)
+                conn.row_factory = aiosqlite.Row
+                try:
+                    cursor = await conn.execute(
+                        """
+                        SELECT e.current_state, COUNT(*) as c
+                        FROM artifacts a
+                        INNER JOIN ecs_state e ON a.id = e.artifact_id
+                        WHERE a.id LIKE 'beast:wiki:%' OR a.id LIKE 'beast:proposal:%'
+                        GROUP BY e.current_state
+                        """
+                    )
+                    total = 0
+                    approved = 0
+                    generated = 0
+                    for row in await cursor.fetchall():
+                        cnt = row["c"]
+                        total += cnt
+                        if row["current_state"] == "APPROVED":
+                            approved = cnt
+                        elif row["current_state"] == "GENERATED":
+                            generated = cnt
+                    wiki_summary = {
+                        "total": total,
+                        "approved": approved,
+                        "generated": generated,
+                        "state": "available",
+                    }
+                finally:
+                    await conn.close()
+    except Exception:
+        pass
+
+    # ------------------------------------------------------------------
+    # 9. Model slot summary — slot names with model info, NO api keys
+    # ------------------------------------------------------------------
+    model_slot_summary: list[dict[str, Any]] = []
+    if container.model_provider is not None:
+        try:
+            slot_names = container.model_provider.list_slots()
+            for slot_name in slot_names:
+                slot_info: dict[str, Any] = {"slot_name": slot_name}
+                # Try to get resolved config (has model, provider, base_url, api_key)
+                if hasattr(container.model_provider, "_resolve_slot_config"):
+                    try:
+                        resolved = container.model_provider._resolve_slot_config(slot_name)
+                        slot_info["model"] = resolved.get("model", "unknown")
+                        slot_info["provider"] = resolved.get("provider", "unknown")
+                        # NEVER expose api_key — show only configured/missing
+                        slot_info["api_key"] = "configured" if resolved.get("api_key") else "missing"
+                        # base_url is not a secret
+                        base_url = resolved.get("base_url")
+                        slot_info["base_url"] = base_url if base_url else "not_set"
+                    except Exception:
+                        slot_info["model"] = "unknown"
+                        slot_info["provider"] = "unknown"
+                elif hasattr(container.model_provider, "resolve"):
+                    try:
+                        resolved_cfg = container.model_provider.resolve(slot_name)
+                        slot_info["model"] = getattr(resolved_cfg, "model", "unknown")
+                        slot_info["provider"] = getattr(resolved_cfg, "provider", "unknown")
+                        has_key = bool(getattr(resolved_cfg, "api_key", None))
+                        slot_info["api_key"] = "configured" if has_key else "missing"
+                        base_url = getattr(resolved_cfg, "base_url", None)
+                        slot_info["base_url"] = base_url if base_url else "not_set"
+                    except Exception:
+                        slot_info["model"] = "unknown"
+                        slot_info["provider"] = "unknown"
+                model_slot_summary.append(slot_info)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # 10. Budget status — for warnings
+    # ------------------------------------------------------------------
+    budget_status = "unconfigured"
+    if container.budget_manager is not None:
+        try:
+            status_result = await container.budget_manager.get_status(
+                scope="session", scope_id="status_summary_check",
+            )
+            budget_status = "active" if status_result else "error"
+        except Exception:
+            budget_status = "error"
+
+    if budget_status in ("error", "unconfigured"):
+        warnings.append(f"Budget manager {budget_status}")
+
+    # ------------------------------------------------------------------
+    # 11. Recent activity — placeholder
+    # ------------------------------------------------------------------
+    recent_activity: list[Any] = []
+
+    # ------------------------------------------------------------------
+    # Build final response
+    # ------------------------------------------------------------------
+    return {
+        "dogfood_mode": dogfood_mode,
+        "backend_health": backend_health,
+        "actor_status_summary": actor_status_summary,
+        "retrieval_health_summary": retrieval_health_summary,
+        "corpus_summary": corpus_summary,
+        "embedding_backfill_summary": embedding_backfill_summary,
+        "review_queue_summary": review_queue_summary,
+        "wiki_summary": wiki_summary,
+        "model_slot_summary": model_slot_summary,
+        "warnings": warnings,
+        "recent_activity": recent_activity,
+    }

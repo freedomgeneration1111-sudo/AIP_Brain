@@ -11,6 +11,7 @@ that guide was written, and there are important caveats for alpha testers:
 - Augmented chat with Beast context advisory
 - Knowledge graph visualization at /graph-viz
 - CLI evaluation tools (`aip eval retrieval`)
+- Model Council — advisory multi-model comparison (Ask Workbench → Model Council button on any answer card)
 
 **Known limitations:**
 - **Embedding coverage is low (~1.8%)** — Sexton will automatically embed turns when an
@@ -28,8 +29,31 @@ that guide was written, and there are important caveats for alpha testers:
   report `not_configured` rather than `failed`; channels returning 0 results report `empty`
   rather than `active`. The `lexical_only` flag in ask responses indicates when only FTS5
   contributed results.
+- **Ask Workbench upgrade** (UI Cycle 4) — The Ask page now shows retrieval health per answer
+  via a status strip (retrieval healthy, degraded, lexical only, no sources, direct model only,
+  trace unavailable). Sources are inspectable in a detail drawer (title/path, snippet, score,
+  channel). Retrieval trace is inspectable in a detail drawer when available (shows "Trace
+  unavailable" honestly when no trace exists). Save-as-artifact is available via the action bar
+  — it creates a GENERATED artifact requiring DEFINER review before approval (no auto-approve).
+  Link Wiki buttons are visible but disabled with "not yet implemented"
+  tooltips; no backend endpoint exists for this feature yet.
+  **Model Council is now available** (UI Cycle 6) — click the "Model Council" button on any answer card
+  to run an advisory multi-model comparison across all configured text-generation slots.
+  Model Council reports are ADVISORY ONLY — they never auto-approve, auto-export, or mutate
+  system state. If fewer than 2 text-gen slots are configured, the comparison returns
+  `insufficient_models` honestly. Reports can optionally be saved as GENERATED artifacts
+  requiring DEFINER review before approval.
+- **Ask Workbench API sovereignty verified** (UI Cycle 4.1) — 42 focused tests confirm:
+  save-as-artifact always creates GENERATED artifacts (never APPROVED/EXPORTED);
+  retrieval trace endpoint returns honest not_found when no trace exists (never fakes data);
+  ask/chat WebSocket responses include trace_available, lexical_only, vector_contributed, direct_model;
+  answer card shows correct status for all states; import boundaries verified for all new components.
+  Zero blockers for Beast Counsel development.
+- **Beast Counsel Panel v1** (UI Cycle 5) — The Ask page now includes a Beast Counsel panel accessible via the "Beast Counsel" button on each answer card. Beast provides an advisory second perspective on each turn with five modes: Continuity, Critique, Strategy, Librarian, and Risk. Beast commentary is ADVISORY ONLY — suggested actions always require DEFINER approval. Commentary is persisted as GENERATED artifacts requiring review before approval (no auto-approve). When no model provider is configured, Beast honestly reports "not wired" rather than faking commentary. The panel also shows "unavailable" when the artifact store is not configured, and "error" when generation fails.
+- **Model Council** (UI Cycle 6) — The Ask page now includes a Model Council comparison tool accessible via the "Model Council" button on each answer card. Model Council runs your prompt across all configured text-generation model slots and produces an advisory comparison report showing side-by-side responses, consensus/disagreement highlights, and recommendations. Reports are ADVISORY ONLY — they require DEFINER approval before any action is taken. If fewer than 2 text-gen slots are configured, the comparison returns `insufficient_models` honestly. If one model fails, the remaining models produce a partial/degraded report rather than a total failure. The embedding slot is excluded from text generation comparison. Reports can optionally be saved as GENERATED artifacts.
 - **MCP dispatch is built but not runtime-wired** — no MCP operations are reachable via API/CLI today
 - **No review queue web UI** — use `aip review list/approve/reject` via CLI
+- **Operator Console shell is now the default GUI** — Start with `python -m gui.app` (port 8080). The `./scripts/start.sh` script launches the Operator Console by default. Dashboard shows honest system health. Ask page is now the Ask Workbench with answer inspection, source detail, trace detail, and save-as-artifact. Placeholder pages for Corpus, Retrieval, Wiki, Artifacts, Maintenance, and Settings show "Not yet implemented" honestly. The old `python -m gui.shell` is frozen (no new features). The old `python -m gui.main` is preserved until Ask Workbench is proven.
 
 The current recommended first-run sequence is:
 
@@ -67,12 +91,12 @@ uv run aip status
 ```bash
 ./scripts/start.sh
 # Opens backend on http://127.0.0.1:8000
-# Opens GUI on http://127.0.0.1:8080
-# Switch to AUGMENTED tab for Beast-context-enhanced responses
+# Opens Operator Console on http://127.0.0.1:8080
+# Switch to AUGMENTED mode in Ask Workbench for Beast-context-enhanced responses
 ```
 
 Note: `uv run aip serve` does not exist. Always use `./scripts/start.sh` to
-start both the FastAPI backend and the NiceGUI shell together.
+start both the FastAPI backend and the NiceGUI Operator Console together.
 
 ### Step 5 — Review Sexton's domain proposals
 Any domains Sexton couldn't classify appear in the review queue:
@@ -424,4 +448,4 @@ from the project store. If the project has domain `aip_loom` and you pass
 ./scripts/start.sh
 ```
 
-This starts both the FastAPI backend (port 8000) and the NiceGUI shell (port 8080).
+This starts both the FastAPI backend (port 8000) and the NiceGUI Operator Console (port 8080).

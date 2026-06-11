@@ -1,4 +1,10 @@
-"""AIP_Brain GUI — Fixed Shell (Tier 0).
+"""FROZEN LEGACY — This module is preserved for reference only (UI Cycle 2).
+
+Status: FROZEN — no new features or bug fixes will be applied.
+Active entry point: gui.app (python -m gui.app)
+
+Original description:
+AIP_Brain GUI — Fixed Shell (Tier 0).
 
 Dev entry point:  python -m gui.shell  (port 8082, runs alongside main.py)
 Final entry point after Stage 0D: replaces gui/main.py on port 8080.

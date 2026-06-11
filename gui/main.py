@@ -1,4 +1,11 @@
-"""AIP_Brain NiceGUI Frontend — OpenRouter Integration Pass.
+"""PRESERVED LEGACY — Retained until Ask Workbench is proven (UI Cycle 2).
+
+Status: PRESERVED — do not add features or modify. Chat functionality has been
+migrated to gui/pages/ask.py. An archived copy exists at gui/archive/main.py.
+Active entry point: gui.app (python -m gui.app)
+
+Original description:
+AIP_Brain NiceGUI Frontend — OpenRouter Integration Pass.
 
 This module implements the NiceGUI frontend that communicates EXCLUSIVELY
 through the AIP FastAPI backend's REST and WebSocket endpoints. It does NOT:

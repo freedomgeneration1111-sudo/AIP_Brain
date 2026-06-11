@@ -50,6 +50,7 @@ from aip.adapter.api.routes import (
     admin,
     artifacts,
     ask,
+    beast_commentary,
     beast_scan,
     chat,
     corpus,
@@ -60,6 +61,7 @@ from aip.adapter.api.routes import (
     ingest,
     knowledge,
     memory,
+    model_council,
     models,
     models_library,
     projects,
@@ -67,6 +69,7 @@ from aip.adapter.api.routes import (
     review,
     sessions,
     sources,
+    turns,
     wiki,
 )
 from aip.adapter.embedding.factory import create_embedding_provider
@@ -1756,6 +1759,9 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(ecs.router, prefix="/api/v1", tags=["ecs"])
     app.include_router(sources.router, prefix="/api/v1", tags=["sources"])
     app.include_router(corpus.router, prefix="/api/v1", tags=["corpus"])
+    app.include_router(turns.router, prefix="/api/v1", tags=["turns"])
+    app.include_router(beast_commentary.router, prefix="/api/v1", tags=["beast_commentary"])
+    app.include_router(model_council.router, prefix="/api/v1", tags=["model_council"])
     app.include_router(graph.router, prefix="/api/v1", tags=["graph"])
     app.include_router(graph_viz.router, tags=["graph"])
 

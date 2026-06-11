@@ -7,8 +7,8 @@ uv run uvicorn "aip.adapter.api.app:create_app" --factory \
 BACKEND_PID=$!
 
 sleep 1
-echo "Starting AIP GUI (renders immediately — backend connects in background)..."
-uv run python -m gui.shell &
+echo "Starting AIP Operator Console (renders immediately — backend connects in background)..."
+uv run python -m gui.app &
 GUI_PID=$!
 
 echo "Backend PID: $BACKEND_PID"

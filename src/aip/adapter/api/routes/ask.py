@@ -138,6 +138,9 @@ async def ask_query(payload: dict, container: AipContainer = Depends(get_contain
         "project_name": result.project_name,
         "prompt": result.prompt,
         "errors": result.errors,
+        "trace_available": bool(result.sources),
+        "lexical_only": result.retrieval_degradation.get("lexical_only", False) if result.retrieval_degradation else False,
+        "vector_contributed": result.retrieval_degradation.get("vector_contributed", False) if result.retrieval_degradation else False,
     }
 
 
@@ -179,8 +182,9 @@ async def ask_retrieve_only(payload: dict, container: AipContainer = Depends(get
     project_domain = None
 
     # Use the orchestrator pipeline for retrieval
+    trace = None
     try:
-        sources, _trace, _packed = await search_sources_fn(
+        sources, trace, _packed = await search_sources_fn(
             query=question,
             stores=AskStores(
                 artifact_store=container.artifact_store,
@@ -216,4 +220,7 @@ async def ask_retrieve_only(payload: dict, container: AipContainer = Depends(get
             for s in sources
         ],
         "total": len(sources),
+        "trace_available": trace is not None and bool(trace),
+        "lexical_only": getattr(trace, "lexical_only", False) if trace is not None else False,
+        "vector_contributed": getattr(trace, "vector_contributed", False) if trace is not None else False,
     }

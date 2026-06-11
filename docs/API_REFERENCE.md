@@ -21,6 +21,7 @@ Comprehensive reference for all REST and WebSocket endpoints exposed by AIP 0.1 
 - [Actors](#actors)
 - [Ingest](#ingest)
 - [Ask](#ask)
+- [Beast](#beast)
 - [Knowledge](#knowledge)
 - [ECS](#ecs)
 - [Sources](#sources)
@@ -30,6 +31,7 @@ Comprehensive reference for all REST and WebSocket endpoints exposed by AIP 0.1 
 - [Graph](#graph)
 - [Corpus](#corpus)
 - [Vigil Quality](#vigil-quality)
+- [Turns](#turns)
 - [Retrieval Dashboard](#retrieval-dashboard)
 - [Rate Limiting](#rate-limiting)
 - [Error Responses](#error-responses)
@@ -149,6 +151,84 @@ Detailed health check for dogfood operators. No authentication required. Returns
 | Field | Type | Description |
 |-------|------|-------------|
 | `channel_states` | object | **(Chunk 5)** Per-channel state summary. Values: `"available"`, `"unavailable"`, `"not_configured"`, `"degraded"`. Distinguishes between channels that are present and healthy vs. channels that are absent or misconfigured. |
+
+---
+
+### `GET /api/v1/status/summary`
+
+Consolidated status summary for the Operator Console Dashboard. No authentication required. Aggregates subsystem health into a single stable, secret-safe response for the dashboard to answer "Can I trust AIP right now?".
+
+**UI Cycle 3**: This endpoint is the primary data source for the dashboard cards and right rail. It does NOT expose secrets, API keys, or internal details. Missing subsystems are reported honestly as `unavailable`/`not_wired`.
+
+**Response**:
+```json
+{
+  "dogfood_mode": "FULL",
+  "backend_health": {
+    "status": "ok",
+    "uptime_seconds": 3600,
+    "db_writable": true,
+    "ci_mode": false,
+    "critical_available": true,
+    "optional_available": 14,
+    "optional_total": 14
+  },
+  "actor_status_summary": {
+    "beast": {"initialized": true, "state": "active"},
+    "vigil": {"initialized": true, "state": "active"},
+    "sexton": {"initialized": true, "state": "active", "last_cycle_time": 1718000000}
+  },
+  "retrieval_health_summary": {
+    "fts": {"state": "available", "registered": true},
+    "vector": {"state": "not_configured", "registered": false},
+    "corpus": {"state": "available", "registered": true}
+  },
+  "corpus_summary": {
+    "total_turns": 2766,
+    "tagged": 2766,
+    "untagged": 0,
+    "embedded": 50,
+    "unembedded": 2716
+  },
+  "embedding_backfill_summary": {
+    "state": "not_configured",
+    "percentage": 1.8
+  },
+  "review_queue_summary": {
+    "count": 3,
+    "state": "active"
+  },
+  "wiki_summary": {
+    "total": 5,
+    "approved": 2,
+    "generated": 3,
+    "state": "available"
+  },
+  "model_slot_summary": [
+    {"slot_name": "synthesis", "model": "gpt-4o", "provider": "openai", "api_key": "configured"},
+    {"slot_name": "embedding", "model": "not set", "provider": "", "api_key": "missing"}
+  ],
+  "warnings": [
+    "Embedding coverage is low (~1.8%)",
+    "Backend running in degraded mode"
+  ],
+  "recent_activity": []
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dogfood_mode` | string | Current dogfood mode: `"FULL"`, `"DIAGNOSTIC"`, `"DEGRADED"`, `"BARE"`, `"DIRECT MODEL ONLY"` |
+| `backend_health` | object | Backend/API health with `status`, `uptime_seconds`, `db_writable`, `ci_mode`, `critical_available`, `optional_available`, `optional_total` |
+| `actor_status_summary` | object | Per-actor status: `beast`, `vigil`, `sexton` with `initialized`, `state`, optional `last_cycle_time` |
+| `retrieval_health_summary` | object | Per-channel retrieval health: keys are channel names, values have `state` and `registered` |
+| `corpus_summary` | object | Corpus stats: `total_turns`, `tagged`, `untagged`, `embedded`, `unembedded` |
+| `embedding_backfill_summary` | object | Embedding/backfill state: `state`, `percentage` |
+| `review_queue_summary` | object | Review queue: `count`, `state` |
+| `wiki_summary` | object | Wiki/CODEX stats: `total`, `approved`, `generated`, `state` |
+| `model_slot_summary` | array | Per-slot info: `slot_name`, `model`, `provider`, `api_key` (always `"configured"` or `"missing"`, never the actual key) |
+| `warnings` | array of string | Current system warnings |
+| `recent_activity` | array | Recent activity items (placeholder — may be empty) |
 
 ---
 
@@ -386,9 +466,22 @@ In **augmented mode**, the `sources` array is populated with retrieval results:
     }
   ],
   "mode": "augmented",
-  "review_available": true
+  "review_available": true,
+  "trace_available": true,
+  "lexical_only": false,
+  "vector_contributed": true,
+  "direct_model": false
 }
 ```
+
+**(UI Cycle 4)** The response now includes retrieval metadata fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `trace_available` | bool | Whether a retrieval trace was recorded for this response |
+| `lexical_only` | bool | `true` if only the FTS5/lexical channel contributed results (vector unavailable or not configured) |
+| `vector_contributed` | bool | `true` if the vector channel contributed results to the answer |
+| `direct_model` | bool | `true` when no model provider is configured and the response came from a direct/fallback model. Indicates the answer is NOT dogfood-grounded. |
 
 **Error responses**:
 ```json
@@ -1029,9 +1122,20 @@ Execute a source-grounded ask query against the AIP knowledge substrate. Retriev
   "project_id": "proj-001",
   "project_name": "Physics Research",
   "prompt": "...",
+  "trace_available": true,
+  "lexical_only": false,
+  "vector_contributed": true,
   "errors": []
 }
 ```
+
+**(UI Cycle 4)** The ask response now includes retrieval metadata fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `trace_available` | bool | Whether a retrieval trace was recorded for this answer |
+| `lexical_only` | bool | `true` if only the FTS5/lexical channel contributed results |
+| `vector_contributed` | bool | `true` if the vector channel contributed results |
 
 **Error responses**: `400` (missing question/project), `503` (required stores not wired), `500` (pipeline failure).
 
@@ -1079,6 +1183,64 @@ Retrieve sources for a query without generating an answer. Lightweight endpoint 
   "total": 5
 }
 ```
+
+---
+
+## Beast
+
+Beast actor endpoints for synthesis support, context advisory, and model comparison.
+
+### Model Council
+
+#### `POST /api/v1/beast/compare-models`
+
+Run a multi-model comparison and produce an advisory Model Council report.
+
+**Request Body:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `prompt` | string | Yes | - | The prompt/question to compare across models |
+| `turn_id` | string | No | `""` | Optional turn ID for artifact tracking |
+| `session_id` | string | No | `""` | Optional session ID |
+| `existing_answer` | string | No | `""` | Optional existing answer to include in context |
+| `sources` | list[dict] | No | `[]` | Optional sources/context |
+| `selected_model_slots` | list[string] | No | `[]` | Optional model slot names to compare (default: all text-gen slots) |
+| `save_as_artifact` | boolean | No | `false` | Save report as GENERATED artifact |
+
+**Response:** ModelCouncilResponse with status values: `completed`, `partial`, `insufficient_models`, `unavailable`, `error`
+
+Reports are ADVISORY ONLY. `advisory_only: true`, `requires_DEFINER_approval: true`.
+If fewer than 2 text-generation slots are configured, returns `insufficient_models`.
+One model failure yields `partial`/degraded report, not total failure.
+Embedding slot is excluded from text generation comparison.
+
+---
+
+### Model Slot Discovery
+
+#### `GET /api/v1/models/text-generation-slots`
+
+List text-generation model slots only (excludes embedding). Used by the Model Council panel to populate the slot selector. Never exposes secrets.
+
+**Response:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `slots` | array | Text-generation slot entries (see below) |
+| `ci_mode` | boolean | Whether the backend is running in CI fixture mode |
+| `sufficient_for_council` | boolean | `true` if at least 2 text-generation slots are available |
+
+**Each slot entry:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `slot_name` | string | Slot name (e.g. "synthesis", "evaluation", "beast") |
+| `provider` | string | Provider type (e.g. "openai_compatible", "ollama") |
+| `model` | string | Model display name; sentinel like `<slot_name>` if unconfigured |
+| `has_real_model` | boolean | `false` if model is a sentinel placeholder (no real model configured) |
+
+Embedding slot is always excluded from this endpoint. No API keys or secrets are ever exposed.
 
 ---
 
@@ -1652,6 +1814,182 @@ Get retrieval quality degradation alerts.
 
 ---
 
+## Turns
+
+Turn-level operations for the Ask Workbench.
+
+### `POST /api/v1/turns/save-artifact`
+
+Save a chat turn as a GENERATED artifact. The artifact is created in the `GENERATED` ECS state — it does **not** auto-approve. DEFINER review is required before the artifact can be promoted to `APPROVED`.
+
+**Auth**: Required
+
+**Request Body**:
+```json
+{
+  "session_id": "sess-a1b2c3d4e5f6",
+  "turn_index": 3,
+  "title": "Summary of quantum entanglement discussion",
+  "domain": "physics"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `session_id` | string | Yes | The session the turn belongs to |
+| `turn_index` | int | Yes | Zero-based index of the turn within the session |
+| `title` | string | No | Optional title for the artifact |
+| `domain` | string | No | Optional domain override (defaults to session domain) |
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "artifact_id": "art-turn-001",
+  "ecs_state": "GENERATED",
+  "note": "Artifact created in GENERATED state. DEFINER review required before approval."
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | `"ok"` on success |
+| `artifact_id` | string | ID of the newly created artifact |
+| `ecs_state` | string | Always `"GENERATED"` — never auto-approved |
+| `note` | string | Reminder that DEFINER review is required |
+
+**Error responses**: `400` (invalid input), `404` (session or turn not found), `503` (required stores not wired), `500` (creation failure).
+
+---
+
+### `GET /api/v1/turns/{turn_id}/beast-commentary`
+
+Retrieve existing Beast commentary for a turn + mode.
+
+**(UI Cycle 5.1)** Beast commentary is mode-aware: each turn can have multiple commentaries, one per mode. The `mode` query parameter selects which mode to retrieve. Different modes produce distinct artifacts, so switching modes does not overwrite or return stale data from another mode.
+
+**(UI Cycle 5)** Beast provides an advisory second perspective on each assistant turn. Commentary is ADVISORY ONLY — Beast may suggest actions but must never silently execute them. No auto-approve, no auto-export, no wiki mutation.
+
+**Query Parameters**:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `mode` | string | `"continuity"` | Which commentary mode to retrieve: `"continuity"`, `"critique"`, `"strategy"`, `"librarian"`, `"risk"` |
+
+**Response** (commentary available):
+```json
+{
+  "id": "beast:commentary:abc123def456",
+  "turn_id": "turn-001",
+  "session_id": "sess-abc",
+  "mode": "continuity",
+  "summary": "The answer correctly frames the topic...",
+  "critique": "Strong on evidence, weak on alternatives.",
+  "continuity_notes": "Follows prior discussion about...",
+  "risk_notes": "Minimal risk, but assumption X could be wrong.",
+  "suggested_actions": [
+    {"action": "Create wiki article", "target": "Topic X", "advisory_only": true, "requires_DEFINER_approval": true}
+  ],
+  "suggested_wiki_links": ["Topic X"],
+  "suggested_artifacts": [],
+  "model_comparison": "",
+  "retrieval_notes": "Retrieval was adequate.",
+  "source_notes": "Sources are relevant.",
+  "created_at": "2026-06-11T10:00:00+00:00",
+  "status": "available",
+  "persistence": "available",
+  "error": ""
+}
+```
+
+**Response** (no commentary yet for this mode):
+```json
+{
+  "id": "",
+  "turn_id": "turn-001",
+  "mode": "continuity",
+  "status": "not_available",
+  "summary": "No commentary yet for this turn",
+  "persistence": "available",
+  "error": ""
+}
+```
+
+**Response** (unavailable — no artifact store):
+```json
+{
+  "status": "unavailable",
+  "persistence": "not_available",
+  "summary": "Artifact store not available — cannot retrieve commentary"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Commentary artifact ID (empty if not available) |
+| `turn_id` | string | The turn this commentary belongs to |
+| `session_id` | string | Session context |
+| `mode` | string | Commentary mode: `"continuity"`, `"critique"`, `"strategy"`, `"librarian"`, `"risk"` |
+| `summary` | string | Short assessment of the answer |
+| `critique` | string | Critical evaluation |
+| `continuity_notes` | string | How this connects to prior context |
+| `risk_notes` | string | Potential risks identified |
+| `suggested_actions` | array | Suggested actions — always `advisory_only: true`, `requires_DEFINER_approval: true` |
+| `suggested_wiki_links` | array of string | Wiki articles that would be relevant |
+| `suggested_artifacts` | array of string | Artifacts to review or create |
+| `model_comparison` | string | Multi-model comparison notes (populated by Model Council via `POST /api/v1/beast/compare-models`) |
+| `retrieval_notes` | string | Assessment of retrieval quality |
+| `source_notes` | string | Assessment of source quality |
+| `created_at` | string | ISO timestamp of commentary generation |
+| `status` | string | `"available"`, `"not_available"`, `"unavailable"`, `"not_wired"`, `"error"` |
+| `persistence` | string | `"available"` or `"not_available"` |
+| `error` | string | Error details (empty if no error) |
+
+---
+
+### `POST /api/v1/turns/{turn_id}/beast-commentary/run`
+
+Generate Beast commentary for a turn using the configured Beast model slot.
+
+**(UI Cycle 5.1)** Commentary is mode-aware: the `mode` field in the request body determines which commentary mode to generate. Each mode produces a distinct artifact per turn (keyed by `sha256(turn_id:mode)`), so running `continuity` does not overwrite `critique`. Re-running the same mode creates a new version of the same artifact; GET returns the latest version.
+
+**(UI Cycle 5)** Uses the ModelSlotResolver "beast" slot for LLM generation. Commentary is persisted as a GENERATED artifact — it requires DEFINER review before approval. Never auto-approves, auto-exports, or mutates wiki/config.
+
+**Request Body**:
+```json
+{
+  "session_id": "sess-abc",
+  "mode": "continuity",
+  "question_text": "What is full dogfood mode?",
+  "answer_text": "Full dogfood mode means...",
+  "sources": [],
+  "trace_available": true,
+  "lexical_only": false,
+  "vector_contributed": true
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `session_id` | string | `""` | Session context for the turn |
+| `mode` | string | `"continuity"` | Commentary mode: `"continuity"`, `"critique"`, `"strategy"`, `"librarian"`, `"risk"` |
+| `question_text` | string | `""` | The user's question text |
+| `answer_text` | string | `""` | The assistant's answer text |
+| `sources` | array | `[]` | Retrieval sources from the answer |
+| `trace_available` | bool | `false` | Whether a retrieval trace was recorded |
+| `lexical_only` | bool | `false` | Whether only FTS5 contributed |
+| `vector_contributed` | bool | `false` | Whether vector search contributed |
+
+**Response**: Same shape as `GET /api/v1/turns/{turn_id}/beast-commentary`, with `status: "available"` on success.
+
+**Error responses**: 
+- `400` — Invalid mode (must be one of: continuity, critique, strategy, librarian, risk)
+- `not_wired` status — Model provider not configured
+- `unavailable` status — Artifact store not available
+- `error` status — Provider call failed or JSON parsing failed
+
+---
+
 ## Retrieval Dashboard
 
 Retrieval evaluation and benchmarking endpoints.
@@ -1670,6 +2008,55 @@ Get retrieval dashboard data including current channel weights, evaluation histo
   "baseline_available": false
 }
 ```
+
+---
+
+### `GET /api/v1/retrieval/traces/session/{session_id}`
+
+Fetch the most recent retrieval trace for a session. Used by the Ask Workbench trace panel to show retrieval channel details, latency, and degradation information.
+
+**Auth**: Optional
+
+**Path Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `session_id` | string | Yes | Session ID to look up the most recent trace for |
+
+**Response**:
+```json
+{
+  "session_id": "sess-a1b2c3d4e5f6",
+  "trace": {
+    "trace_id": "trace-001",
+    "channels_attempted": ["fts", "vector", "corpus"],
+    "channels_used": ["fts", "corpus"],
+    "lexical_only": true,
+    "vector_contributed": false,
+    "total_latency_ms": 120,
+    "degradation": "vector_unavailable",
+    "warnings": ["Vector channel returned no results"]
+  },
+  "available": true
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session_id` | string | The session ID queried |
+| `trace` | object \| null | The most recent retrieval trace, or `null` if none exists for this session |
+| `available` | bool | Whether a trace was found (`false` if no trace exists) |
+
+When no trace exists for the session:
+```json
+{
+  "session_id": "sess-xyz",
+  "trace": null,
+  "available": false
+}
+```
+
+**Error responses**: `404` (session not found), `503` (trace store not wired).
 
 ---
 

@@ -124,6 +124,30 @@ class AipApiClient:
         data = resp.json()
         return data.get("slots", [])
 
+    async def list_text_generation_slots(self) -> dict[str, Any]:
+        """Fetch text-generation model slots from GET /api/v1/models/text-generation-slots.
+
+        Returns only slots suitable for text generation (excludes embedding).
+        Used by the Model Council panel to populate the slot selector.
+
+        Returns a dict with:
+          slots: list of slot info dicts with slot_name, provider, model, has_real_model
+          ci_mode: bool
+          sufficient_for_council: bool — True if at least 2 text-gen slots
+        Never exposes secrets.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/models/text-generation-slots",
+                timeout=5.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("text_generation_slots_fetch_failed: %s", exc)
+            return {"slots": [], "ci_mode": True, "sufficient_for_council": False}
+
     async def list_model_library(self, enabled_only: bool = True) -> list[dict[str, Any]]:
         """Fetch model library from GET /api/v1/models/library.
 
@@ -344,6 +368,37 @@ class AipApiClient:
         resp = await client.get(f"{self.base_url}/api/v1/actors/status")
         resp.raise_for_status()
         return resp.json()
+
+    # ------------------------------------------------------------------
+    # Status Summary (UI Cycle 3 — consolidated dashboard endpoint)
+    # ------------------------------------------------------------------
+
+    async def get_status_summary(self) -> dict[str, Any]:
+        """Fetch the consolidated status summary for the Operator Console Dashboard.
+
+        Calls GET /api/v1/status/summary which aggregates all subsystem health
+        into a single stable, secret-safe response. This is the primary data
+        source for the dashboard cards and right rail.
+
+        Returns a dict with keys:
+          dogfood_mode, backend_health, actor_status_summary,
+          retrieval_health_summary, corpus_summary,
+          embedding_backfill_summary, review_queue_summary,
+          wiki_summary, model_slot_summary, warnings, recent_activity
+
+        Never exposes secrets. Missing subsystems reported honestly.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/status/summary",
+                timeout=8.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("status_summary_fetch_failed: %s", exc)
+            return {}
 
     async def trigger_actor_cycle(self, actor_name: str) -> dict[str, Any]:
         """Manually trigger an actor cycle (admin/debug)."""
@@ -981,6 +1036,129 @@ class AipApiClient:
         resp.raise_for_status()
         return resp.json()
 
+    # ------------------------------------------------------------------
+    # UI Cycle 5 — Beast Counsel: Commentary endpoints
+    # ------------------------------------------------------------------
+
+    async def get_beast_commentary(self, turn_id: str, mode: str = "continuity") -> dict[str, Any]:
+        """Fetch existing Beast commentary for a turn + mode.
+
+        Calls GET /api/v1/turns/{turn_id}/beast-commentary?mode={mode}.
+        Returns commentary if available, or an honest not_available/unavailable status.
+        The mode parameter ensures commentary is retrieved for the correct
+        mode — different modes produce distinct artifacts per turn.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/turns/{turn_id}/beast-commentary",
+                params={"mode": mode},
+                timeout=8.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("beast_commentary_get_failed: %s", exc)
+            return {"status": "unavailable", "error": str(exc), "turn_id": turn_id, "mode": mode}
+
+    async def run_beast_commentary(
+        self,
+        turn_id: str,
+        *,
+        session_id: str = "",
+        mode: str = "continuity",
+        question_text: str = "",
+        answer_text: str = "",
+        sources: list[dict] | None = None,
+        trace_available: bool = False,
+        lexical_only: bool = False,
+        vector_contributed: bool = False,
+    ) -> dict[str, Any]:
+        """Generate Beast commentary for a turn.
+
+        Calls POST /api/v1/turns/{turn_id}/beast-commentary/run.
+        Returns commentary if generated, or an honest not_wired/error status.
+        Commentary is ADVISORY ONLY — never auto-approved or auto-executed.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {
+            "session_id": session_id,
+            "mode": mode,
+            "question_text": question_text,
+            "answer_text": answer_text,
+            "sources": sources or [],
+            "trace_available": trace_available,
+            "lexical_only": lexical_only,
+            "vector_contributed": vector_contributed,
+        }
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/turns/{turn_id}/beast-commentary/run",
+                json=payload,
+                timeout=60.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("beast_commentary_run_failed: %s", exc)
+            return {"status": "error", "error": str(exc), "turn_id": turn_id, "mode": mode}
+
+    # ------------------------------------------------------------------
+    # UI Cycle 4 — Ask Workbench: Turn-level inspection endpoints
+    # ------------------------------------------------------------------
+
+    async def get_retrieval_trace_by_session(self, session_id: str) -> dict[str, Any]:
+        """Fetch the retrieval trace for a session via GET /api/v1/retrieval/traces/session/{session_id}.
+
+        Returns the most recent retrieval trace for the given session,
+        including channel details, latency, degradation flags, and warnings.
+        If no trace is found, returns {"status": "not_found", "trace": null}.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/retrieval/traces/session/{session_id}",
+                timeout=8.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("trace_by_session_fetch_failed: %s", exc)
+            return {"status": "error", "trace": None, "error": str(exc)}
+
+    async def save_turn_as_artifact(
+        self,
+        session_id: str,
+        content: str,
+        *,
+        title: str | None = None,
+        domain: str = "chat",
+    ) -> dict[str, Any]:
+        """Save a chat turn as a versioned artifact via POST /api/v1/turns/save-artifact.
+
+        Creates an artifact in GENERATED state (NOT APPROVED — requires DEFINER review).
+        Returns artifact_id, ecs_state, and a message noting review is required.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {
+            "session_id": session_id,
+            "content": content,
+            "domain": domain,
+        }
+        if title:
+            payload["title"] = title
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/turns/save-artifact",
+                json=payload,
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("save_turn_artifact_failed: %s", exc)
+            return {"artifact_id": None, "ecs_state": None, "error": str(exc)}
+
     async def approve_review(self, artifact_id: str) -> dict[str, Any]:
         """Approve a review item via POST /api/v1/reviews/{id}/approve."""
         client = self._get_http_client()
@@ -1032,6 +1210,50 @@ class AipApiClient:
         resp = await client.get(f"{self.base_url}/api/v1/graph/neighbors/{node_id}")
         resp.raise_for_status()
         return resp.json()
+
+    # ------------------------------------------------------------------
+    # UI Cycle 6 — Model Council: Multi-model comparison
+    # ------------------------------------------------------------------
+
+    async def run_model_council(
+        self,
+        prompt: str,
+        *,
+        turn_id: str = "",
+        session_id: str = "",
+        existing_answer: str = "",
+        sources: list[dict] | None = None,
+        selected_model_slots: list[str] | None = None,
+        save_as_artifact: bool = False,
+    ) -> dict[str, Any]:
+        """Run a Model Council multi-model comparison report.
+
+        Calls POST /api/v1/beast/compare-models.
+        Returns an advisory comparison report with per-model results,
+        convergence, disagreements, risks, and Beast synthesis.
+        Reports are ADVISORY ONLY — never auto-approved.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {
+            "prompt": prompt,
+            "turn_id": turn_id,
+            "session_id": session_id,
+            "existing_answer": existing_answer,
+            "sources": sources or [],
+            "selected_model_slots": selected_model_slots or [],
+            "save_as_artifact": save_as_artifact,
+        }
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/beast/compare-models",
+                json=payload,
+                timeout=120.0,  # Multiple model calls may take time
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("model_council_run_failed: %s", exc)
+            return {"status": "error", "error": str(exc)}
 
 
 # Module-level singleton for the GUI to use
