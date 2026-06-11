@@ -142,7 +142,7 @@ class TestRetrievalTestEndpoint:
             "include_trace": True,
         }
 
-        result = asyncio.get_event_loop().run_until_complete(retrieval_test(payload=payload, container=container))
+        result = asyncio.run(retrieval_test(payload=payload, container=container))
 
         # Verify required top-level fields
         assert "status" in result
@@ -169,7 +169,7 @@ class TestRetrievalTestEndpoint:
         container = self._make_container_with_pipeline()
 
         payload = {"query": ""}
-        result = asyncio.get_event_loop().run_until_complete(retrieval_test(payload=payload, container=container))
+        result = asyncio.run(retrieval_test(payload=payload, container=container))
 
         assert result["status"] == "error"
         assert "query is required" in result.get("message", "")
@@ -182,7 +182,7 @@ class TestRetrievalTestEndpoint:
         container = self._make_container_with_pipeline()
 
         payload = {"query": "test query"}
-        result = asyncio.get_event_loop().run_until_complete(retrieval_test(payload=payload, container=container))
+        result = asyncio.run(retrieval_test(payload=payload, container=container))
 
         # Must not contain answer-related fields
         assert "answer" not in result
@@ -199,7 +199,7 @@ class TestRetrievalTestEndpoint:
         container._ask_stores_class = None
 
         payload = {"query": "test query"}
-        result = asyncio.get_event_loop().run_until_complete(retrieval_test(payload=payload, container=container))
+        result = asyncio.run(retrieval_test(payload=payload, container=container))
 
         assert result["status"] == "unavailable"
         assert "not configured" in result.get("message", "").lower() or "not wired" in result.get("message", "").lower()
@@ -226,7 +226,7 @@ class TestRetrievalTestEndpoint:
         container.graph_store = None
 
         payload = {"query": "test query"}
-        result = asyncio.get_event_loop().run_until_complete(retrieval_test(payload=payload, container=container))
+        result = asyncio.run(retrieval_test(payload=payload, container=container))
 
         assert result["status"] == "error"
         assert "Test retrieval error" in result.get("message", "")
@@ -278,7 +278,7 @@ class TestRetrievalTestEndpoint:
         container.graph_store = None
 
         payload = {"query": "obscure query with no matches"}
-        result = asyncio.get_event_loop().run_until_complete(retrieval_test(payload=payload, container=container))
+        result = asyncio.run(retrieval_test(payload=payload, container=container))
 
         # Must NOT claim success with fake data
         assert result["fusion_results"] == []
@@ -351,7 +351,7 @@ class TestRetrievalTestEndpoint:
         container.graph_store = None
 
         payload = {"query": "test degraded"}
-        result = asyncio.get_event_loop().run_until_complete(retrieval_test(payload=payload, container=container))
+        result = asyncio.run(retrieval_test(payload=payload, container=container))
 
         assert "vector" in result.get("degraded_channels", [])
         assert result["channel_health"].get("vector") == "degraded"
@@ -398,7 +398,7 @@ class TestRetrievalTestEndpoint:
             "query": "test",
             "selected_channels": ["fts", "corpus"],
         }
-        asyncio.get_event_loop().run_until_complete(retrieval_test(payload=payload, container=container))
+        asyncio.run(retrieval_test(payload=payload, container=container))
 
         # Verify channel flags were passed correctly
         assert received_kwargs.get("enable_fts") is True
@@ -437,7 +437,7 @@ class TestRetrievalHealthEndpoint:
         )
         container.graph_store = MagicMock()
 
-        result = asyncio.get_event_loop().run_until_complete(retrieval_health(container=container))
+        result = asyncio.run(retrieval_health(container=container))
 
         # Verify top-level fields
         assert result["status"] == "ok"
@@ -483,7 +483,7 @@ class TestRetrievalHealthEndpoint:
         container.corpus_turn_store = None
         container.graph_store = None
 
-        result = asyncio.get_event_loop().run_until_complete(retrieval_health(container=container))
+        result = asyncio.run(retrieval_health(container=container))
 
         channels = result["channels"]
         # All channels should be unavailable
@@ -511,7 +511,7 @@ class TestRetrievalHealthEndpoint:
         container.corpus_turn_store = AsyncMock()
         container.graph_store = MagicMock()
 
-        result = asyncio.get_event_loop().run_until_complete(retrieval_health(container=container))
+        result = asyncio.run(retrieval_health(container=container))
 
         vector_ch = result["channels"].get("vector", {})
         assert vector_ch.get("state") == "degraded"
@@ -540,7 +540,7 @@ class TestRetrievalHealthEndpoint:
         )
         container.graph_store = MagicMock()
 
-        result = asyncio.get_event_loop().run_until_complete(retrieval_health(container=container))
+        result = asyncio.run(retrieval_health(container=container))
 
         coverage = result["embedding_coverage"]
         assert coverage["status"] == "available"
@@ -670,7 +670,7 @@ class TestRetrievalLabNoSecretExposure:
         container._ask_stores_class = None
 
         payload = {"query": "test"}
-        result = asyncio.get_event_loop().run_until_complete(retrieval_test(payload=payload, container=container))
+        result = asyncio.run(retrieval_test(payload=payload, container=container))
 
         # No secrets in the response
         result_str = str(result).lower()
@@ -690,7 +690,7 @@ class TestRetrievalLabNoSecretExposure:
         container.corpus_turn_store = None
         container.graph_store = None
 
-        result = asyncio.get_event_loop().run_until_complete(retrieval_health(container=container))
+        result = asyncio.run(retrieval_health(container=container))
 
         result_str = str(result).lower()
         for secret_word in ["api_key", "password", "token", "secret"]:
@@ -742,7 +742,7 @@ class TestRetrievalLabNoMutation:
         container.graph_store = None
 
         payload = {"query": "test no mutation"}
-        asyncio.get_event_loop().run_until_complete(retrieval_test(payload=payload, container=container))
+        asyncio.run(retrieval_test(payload=payload, container=container))
 
         # The retrieval test should not call model_provider
         if container.model_provider is not None:
