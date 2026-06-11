@@ -77,12 +77,12 @@ async def corpus_page():
 
     summary_cards = CorpusSummaryCards()
     corpus_actions = CorpusActions(
-        on_ingest=_handle_ingest,
-        on_backfill=_handle_backfill,
-        on_retry_failed=_handle_retry_failed,
+        on_ingest=lambda: _handle_ingest(),
+        on_backfill=lambda: _handle_backfill(),
+        on_retry_failed=lambda: _handle_retry_failed(),
     )
-    document_table = DocumentTable(on_select=_handle_document_select)
-    document_detail_panel = DocumentDetail(on_close=_handle_detail_close)
+    document_table = DocumentTable(on_select=lambda sp: _handle_document_select(sp))
+    document_detail_panel = DocumentDetail(on_close=lambda: _handle_detail_close())
     problems_panel = CorpusProblems()
 
     # ── Layout ─────────────────────────────────────────────────────
@@ -352,7 +352,10 @@ async def corpus_page():
                 f"font-size:14px; font-weight:700; color:{C_CREAM}; font-family:{F_SANS};"
             )
             ui.label(
-                "Explicit DEFINER action. Clears failure counters for failed embeds so they will be retried in the next cycle."
+                (
+                    "Explicit DEFINER action. Clears failure counters for failed embeds "
+                    "so they will be retried in the next cycle."
+                )
             ).style(f"font-size:11px; color:{C_MUTED}; margin-bottom:8px;")
 
             with ui.row().style("gap:8px; margin-top:12px;"):

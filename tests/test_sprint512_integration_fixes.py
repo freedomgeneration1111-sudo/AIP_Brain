@@ -306,7 +306,6 @@ class TestAdaptiveBudgetTuning:
         )
 
         # Save original values
-        original_graph = config.graph_max_hits
 
         # Apply
         tuner.apply(result, config)
@@ -612,7 +611,7 @@ class TestLLMQueryExpansionIntegration:
         from aip.orchestration.retrieval_orchestrator import RetrievalOrchestrator
 
         config = OrchestratorConfig(enable_llm_query_expansion=False)
-        orch = RetrievalOrchestrator()
+        RetrievalOrchestrator()
         # Should not attempt expansion
         assert not config.enable_llm_query_expansion
 

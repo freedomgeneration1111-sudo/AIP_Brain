@@ -124,13 +124,14 @@ async def _load(
         state["data"] = None
 
     state["loading"] = False
-    _render_content(content_area, state, api_client, on_action_complete)
+    _render_content(content_area, state, api_client, container, on_action_complete)
 
 
 def _render_content(
     content_area: ui.column,
     state: dict,
     api_client: Any,
+    container: ui.column,
     on_action_complete: Callable[[], None] | None,
 ) -> None:
     """Render the artifact detail content."""

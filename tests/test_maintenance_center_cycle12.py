@@ -13,7 +13,8 @@ Verifies:
 10. No secret exposure.
 11. GUI import-boundary tests pass.
 12. General import-boundary tests pass.
-13. Existing Ask/Beast/Model Council/Wiki/Crosslink/Artifact/Corpus/Retrieval tests still pass if shared components are touched.
+13. Existing Ask/Beast/Model Council/Wiki/Crosslink/Artifact/Corpus/Retrieval tests
+    still pass if shared components are touched.
 14. Actor runs endpoint returns honest empty state when event store unavailable.
 """
 

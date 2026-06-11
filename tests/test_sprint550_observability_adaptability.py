@@ -525,7 +525,7 @@ class TestSnapshotGarbageCollection:
     def test_gc_keeps_active_experiment_snapshots(self):
         """Snapshot GC keeps snapshots for active experiments."""
         store = _make_store()
-        now_iso = datetime.now(timezone.utc).isoformat()
+        datetime.now(timezone.utc).isoformat()
 
         store.record_pre_promotion_snapshot("active-exp", {"test": True})
 
@@ -543,7 +543,7 @@ class TestSnapshotGarbageCollection:
     def test_gc_removes_inactive_experiment_snapshots(self):
         """Snapshot GC removes snapshots for experiments not in the active set."""
         store = _make_store()
-        now_iso = datetime.now(timezone.utc).isoformat()
+        datetime.now(timezone.utc).isoformat()
 
         store.record_pre_promotion_snapshot("inactive-exp", {"test": True})
 
@@ -684,7 +684,6 @@ class TestCalibrationDriftDetection:
         mgr.ab_experiment_mgr._confidence_calibration_map["alert_subject"] = 1.50
 
         # Mock send_alert to track calls
-        original_send = mgr.send_alert
         sent_alerts = []
 
         def mock_send(alert):
@@ -855,7 +854,7 @@ class TestStoreSprint550Integration:
     def test_snapshot_gc_with_multiple_experiments(self):
         """Snapshot GC correctly handles multiple experiments with mixed status."""
         store = _make_store()
-        now_iso = datetime.now(timezone.utc).isoformat()
+        datetime.now(timezone.utc).isoformat()
         old_iso = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat()
 
         # Active experiment (recent)

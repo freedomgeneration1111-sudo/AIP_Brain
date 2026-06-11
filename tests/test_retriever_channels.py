@@ -603,7 +603,7 @@ class TestGraphChannel:
 
         stores = _FakeAskStores(graph_store=FakeGraphStore())
         orch = RetrievalOrchestrator()
-        failures = register(orch, stores)
+        register(orch, stores)
 
         # Graph channel always registers (it creates GraphStore as fallback)
         assert orch.is_registered(CHANNEL_NAME)
@@ -641,7 +641,7 @@ class TestChannelRegistry:
             embedding_provider=FakeEmbeddingProvider(),
         )
         orch = RetrievalOrchestrator()
-        failures = register_all_channels(orch, stores)
+        register_all_channels(orch, stores)
 
         # FTS should always be registered
         assert orch.is_registered("fts")
@@ -763,7 +763,7 @@ class TestRegistryIntegration:
             embedding_provider=FakeEmbeddingProvider(),
         )
         orch = RetrievalOrchestrator()
-        failures = register_all_channels(orch, stores)
+        register_all_channels(orch, stores)
 
         # Both channels should be registered
         assert orch.is_registered("fts")

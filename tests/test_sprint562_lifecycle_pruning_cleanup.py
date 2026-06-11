@@ -465,7 +465,7 @@ class TestSprint562Integration:
                 ab_experiment_enabled=True,
             )
         )
-        result = mgr.ab_experiment_mgr.start_ab_experiment(
+        mgr.ab_experiment_mgr.start_ab_experiment(
             name="test-exp",
             control_config={"threshold": 0.5},
             variant_config={"threshold": 0.7},

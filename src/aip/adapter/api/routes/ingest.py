@@ -138,7 +138,7 @@ async def ingest_file_endpoint(
         raise HTTPException(status_code=503, detail="Lexical store not wired")
 
     domain = payload.get("domain", "imported")
-    source_format = payload.get("source_format")
+    payload.get("source_format")
 
     try:
         ingest_file = container._ingest_file_fn

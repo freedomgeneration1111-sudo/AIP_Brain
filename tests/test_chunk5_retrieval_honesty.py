@@ -18,10 +18,15 @@ import time
 
 import pytest
 
+from aip.adapter.vector._in_memory import InMemoryVectorStore
+from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
+from aip.foundation.schemas.ask import AskResult
+from aip.foundation.schemas.retrieval import RetrievalTrace
+from aip.foundation.schemas.vector import VectorBackendStatus, VectorDegradationInfo
+
 # ---------------------------------------------------------------------------
 # 1. VectorBackendStatus enum
 # ---------------------------------------------------------------------------
-from aip.foundation.schemas.vector import VectorBackendStatus, VectorDegradationInfo
 
 
 class TestVectorBackendStatus:
@@ -75,8 +80,6 @@ class TestVectorDegradationInfo:
 # ---------------------------------------------------------------------------
 # 2. SqliteVssVectorStore backend status and degradation info
 # ---------------------------------------------------------------------------
-
-from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
 
 
 class TestSqliteVssBackendStatus:
@@ -210,8 +213,6 @@ class TestBruteForceScanLimits:
 # 5. RetrievalTrace.vector_degradation and degradation_summary()
 # ---------------------------------------------------------------------------
 
-from aip.foundation.schemas.retrieval import RetrievalTrace
-
 
 class TestRetrievalTraceDegradation:
     """Verify RetrievalTrace carries degradation info and can summarize it."""
@@ -250,8 +251,6 @@ class TestRetrievalTraceDegradation:
 # ---------------------------------------------------------------------------
 # 6. AskResult.retrieval_degradation
 # ---------------------------------------------------------------------------
-
-from aip.foundation.schemas.ask import AskResult
 
 
 class TestAskResultDegradation:
@@ -376,9 +375,9 @@ class TestBruteForcePerformance1k:
         # Retrieve and check truncation metadata
         if not store._vss_available:
             query_vec = [0.5] * dim
-            results = await store.retrieve(query_vec, domain="cap-test", top_k=5)
+            await store.retrieve(query_vec, domain="cap-test", top_k=5)
             # If rows exceed scan limit, truncation flag should be set
-            info = store.get_degradation_info()
+            store.get_degradation_info()
             # The scan should have been limited
             assert store._last_brute_force_rows_scanned <= _BRUTE_FORCE_MAX_ROWS
 
@@ -388,8 +387,6 @@ class TestBruteForcePerformance1k:
 # ---------------------------------------------------------------------------
 # 8. InMemoryVectorStore reports DISABLED
 # ---------------------------------------------------------------------------
-
-from aip.adapter.vector._in_memory import InMemoryVectorStore
 
 
 class TestInMemoryBackendStatus:

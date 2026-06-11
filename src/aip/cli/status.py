@@ -248,7 +248,10 @@ def status() -> None:
                 proposals_pending = 0
                 try:
                     proposals_pending = conn.execute(
-                        'SELECT COUNT(*) FROM artifacts WHERE metadata_json LIKE \'%"artifact_type": "beast_domain_proposal"%\''
+                        (
+                            "SELECT COUNT(*) FROM artifacts "
+                            'WHERE metadata_json LIKE \'%"artifact_type": "beast_domain_proposal"%\''
+                        )
                     ).fetchone()[0]
                 except Exception:
                     pass

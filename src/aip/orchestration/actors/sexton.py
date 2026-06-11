@@ -1086,7 +1086,6 @@ Example response structure:
         failed_ids: list[str] = []  # Track failed turn IDs for retry
 
         # Sprint 6.3: Batch-accumulated results for batch_mark_embedded
-        batch_embedded_ids: list[str] = []
 
         for b_start in range(0, total, BATCH_SIZE):
             batch = to_embed[b_start : b_start + BATCH_SIZE]
@@ -1913,7 +1912,7 @@ Output format:
         if not batch_enabled:
             # ---- Per-turn mode (default, identical to original behavior) ----
             for turn in turns:
-                turn_id = turn["turn_id"]
+                turn["turn_id"]
                 ents, rels = await _extract_single_turn(turn)
                 total_processed += 1
                 total_entities += ents

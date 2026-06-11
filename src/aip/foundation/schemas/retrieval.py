@@ -374,7 +374,8 @@ class RetrievalTrace:
     # Unified RetrievalTrace fields
     # ------------------------------------------------------------------
 
-    # Per-channel health: channel_name → "active" | "degraded" | "failed" | "disabled" | "unavailable" | "not_configured" | "empty"
+    # Per-channel health: channel_name → "active" | "degraded" | "failed" | "disabled"
+    # | "unavailable" | "not_configured" | "empty"
     channel_health: dict[str, str] = field(default_factory=dict)
     # Per-channel reason for degraded/failed state
     channel_health_reasons: dict[str, str] = field(default_factory=dict)

@@ -516,7 +516,7 @@ class Librarian:
         Contradictions are NEVER auto-resolved — only flagged.
         """
         try:
-            topics = await self._store.get_topics_with_contradictions(limit=20)
+            await self._store.get_topics_with_contradictions(limit=20)
 
             # Also check topics with multiple sources (potential for contradictions)
             all_topics = await self._store.list_topics(limit=200)
@@ -563,13 +563,19 @@ class Librarian:
                                         claim_a=f"Source '{a_src.title}' is current (active)",
                                         source_a_id=a_src.source_id,
                                         source_a_title=a_src.title,
-                                        claim_b=f"Source '{s_src.title}' may contain outdated information (stale since {s_src.last_updated_at[:10]})",
+                                        claim_b=(
+                                            f"Source '{s_src.title}' may contain outdated "
+                                            f"information (stale since {s_src.last_updated_at[:10]})"
+                                        ),
                                         source_b_id=s_src.source_id,
                                         source_b_title=s_src.title,
                                         severity="apparent",
                                         status="open",
-                                        context=f"Topic '{topic.title or topic.topic_id}' has both active and stale sources. "
-                                        f"The stale source may contain claims that contradict the current source.",
+                                        context=(
+                                            f"Topic '{topic.title or topic.topic_id}' has both active "
+                                            f"and stale sources. The stale source may contain claims "
+                                            f"that contradict the current source."
+                                        ),
                                         detected_at=now,
                                     )
                                     await self._store.upsert_contradiction(contradiction)
@@ -851,8 +857,8 @@ CONTRADICTION:
 
 If no contradictions are found, respond with: NO CONTRADICTIONS FOUND
 
-Be conservative — only flag genuine factual conflicts, not differences in emphasis, 
-perspective, or scope. Apparent contradictions (where context might explain the 
+Be conservative — only flag genuine factual conflicts, not differences in emphasis,
+perspective, or scope. Apparent contradictions (where context might explain the
 difference) should be marked as "apparent" severity."""
 
 

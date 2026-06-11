@@ -185,7 +185,7 @@ def codex_stale_cmd(threshold: int, limit: int, db_path: str | None) -> None:
     async def _run():
         from aip.foundation.schemas.codex import CodexConfig
 
-        config = CodexConfig(stale_threshold_days=threshold)
+        CodexConfig(stale_threshold_days=threshold)
 
         store = CodexStore(db_path=resolved_db_path)
         await store.initialize()

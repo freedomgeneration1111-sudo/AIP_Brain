@@ -70,7 +70,7 @@ async def patch_admin_config(
         "rate_limit",
         "surface",
     }
-    unsafe_keys = set(payload.keys()) - safe_keys
+    set(payload.keys()) - safe_keys
 
     applied = {}
     not_applied = {}
@@ -87,7 +87,10 @@ async def patch_admin_config(
         "updated": True,
         "applied": applied,
         "not_applied": not_applied,
-        "note": "Safe keys (budget, beast, vigil, sexton, performance, rate_limit, surface) are applied immediately. Other keys require a process restart."
+        "note": (
+            "Safe keys (budget, beast, vigil, sexton, performance, rate_limit, surface) "
+            "are applied immediately. Other keys require a process restart."
+        )
         if not_applied
         else None,
     }
@@ -297,7 +300,9 @@ async def backfill_embeddings(
     return {
         "ok": True,
         "scheduled": True,
-        "message": "Backfill started in background. Poll GET /admin/embeddings/backfill/status for progress and result.",
+        "message": (
+            "Backfill started in background. Poll GET /admin/embeddings/backfill/status for progress and result."
+        ),
         "status": container.backfill_status,
     }
 

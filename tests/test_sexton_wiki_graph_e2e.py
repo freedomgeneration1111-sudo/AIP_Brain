@@ -393,7 +393,7 @@ async def test_sexton_wiki_generation_writes_artifact(corpus_turn_store, test_re
 
     # Patch load_registry to return our test registry
     with patch("aip.orchestration.actors.domain_registry.load_registry", return_value=test_registry):
-        result = await sexton._run_wiki_generation(force_domains=["nbcm"], max_per_cycle=1)
+        await sexton._run_wiki_generation(force_domains=["nbcm"], max_per_cycle=1)
 
     # Should have written at least one wiki artifact
     all_artifacts = artifact_store.get_all()

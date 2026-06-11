@@ -728,8 +728,10 @@ class TestVigilSextonIntegration:
             turn_id="turn-hallucination",
             conversation_id="conv-test",
             user_text="What are the results?",
-            assistant_text="The results show a 99.9% success rate which is unprecedented.",  # No [source: ...] citations
-            metadata_json=json.dumps({"source_turn_ids": ["abc12345", "def67890"]}),  # IDs not in response
+            assistant_text=(
+                "The results show a 99.9% success rate which is unprecedented."
+            ),  # No [source: ...] citations
+            metadata_json=json.dumps({"source_turn_ids": ["abc12345", "def67890"]}),  # IDs not in resp
         )
         corpus_turns._turns = [turn]
 
@@ -818,7 +820,9 @@ class TestVigilSextonIntegration:
         # Create a well-cited turn
         turn = FakeTurn(
             turn_id="turn-good",
-            assistant_text="Based on [source: src-001], the population is 13.9 million. [source: src-002] confirms this.",
+            assistant_text=(
+                "Based on [source: src-001], the population is 13.9 million. [source: src-002] confirms this."
+            ),
             metadata_json=json.dumps({"source_turn_ids": ["src-001", "src-002"]}),
         )
         corpus_turns._turns = [turn]

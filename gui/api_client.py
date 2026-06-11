@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from typing import Any
 
 import httpx
@@ -23,7 +24,6 @@ import httpx
 log = logging.getLogger("gui.api_client")
 
 # Default backend URL — configurable via environment variable
-import os
 
 # Load .env file on import so AIP_OPENAI_API_KEY is available immediately.
 # This MUST happen before reading any env vars.

@@ -267,8 +267,8 @@ def _render_link_item(
     rel_type = link.get("relation_type", "?")
     status = link.get("status", "suggested")
     confidence = link.get("confidence", 1.0)
-    approved = link.get("approved_by_definer", False)
-    created_by = link.get("created_by", "?")
+    link.get("approved_by_definer", False)
+    link.get("created_by", "?")
 
     # Determine the "other side" of the link
     if is_forward:

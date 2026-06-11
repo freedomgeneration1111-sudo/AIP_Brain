@@ -214,7 +214,8 @@ class AipMcpServer:
             if self.container.autonomy_gate is None:
                 return _error(
                     FORBIDDEN,
-                    f"Autonomy gate unavailable: {level}-level tool '{name}' requires an active gate for DEFINER sovereignty enforcement. "
+                    f"Autonomy gate unavailable: {level}-level tool '{name}' requires an active gate "
+                    f"for DEFINER sovereignty enforcement. "
                     f"Wire AutonomyGate into the container before using this tool.",
                     {"tool_name": name, "required_level": level, "gate_status": "unavailable"},
                 )

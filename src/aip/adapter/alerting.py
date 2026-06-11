@@ -693,7 +693,7 @@ class RealtimeEventBus:
         # inside a running event loop (typical for FastAPI WebSocket handlers).
         if asyncio is not None:
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
 
                 # Inside a running loop — schedule concurrent fan-out
                 async def _concurrent_fan_out() -> None:
@@ -769,7 +769,7 @@ class RealtimeEventBus:
         """Schedule a flush after the batch window (must be called with _lock held)."""
         if asyncio is not None:
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
                 # We are inside a running loop — schedule async flush
                 asyncio.ensure_future(self._flush_ws_batch_later(delay))
             except RuntimeError:
@@ -810,7 +810,7 @@ class RealtimeEventBus:
         # Sprint 5.62: Use concurrent fan-out for batch delivery too
         if asyncio is not None:
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
 
                 async def _concurrent_batch_fan_out() -> None:
                     tasks = []
@@ -901,7 +901,7 @@ class RealtimeEventBus:
         if asyncio is None:
             return
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # Inside a running loop — schedule the send as a task
             asyncio.ensure_future(ws.send_json(data))
         except RuntimeError:
@@ -2830,7 +2830,7 @@ class ABExperimentManager:
 
         Returns the experiment dict.
         """
-        now = time.time()
+        time.time()
         now_iso = datetime.now(timezone.utc).isoformat()
 
         if name in self._ab_experiments:
@@ -3269,7 +3269,9 @@ class ABExperimentManager:
                 alert_type="confidence_decay",
                 severity="warning" if decay_amount < 0.2 else "critical",
                 subject=subject,
-                message=f"Confidence decay of {decay_amount:.3f} detected for {subject} (current: {current_confidence:.3f})",
+                message=(
+                    f"Confidence decay of {decay_amount:.3f} detected for {subject} (current: {current_confidence:.3f})"
+                ),
                 data={
                     "subject": subject,
                     "decay_amount": decay_amount,
@@ -3371,8 +3373,11 @@ class ABExperimentManager:
                                     alert_type="ab_experiment_ttl_expired",
                                     severity="warning",
                                     subject=f"experiment:{name}",
-                                    message=f"A/B experiment '{name}' expired due to TTL ({self._config.ab_experiment_ttl_hours}h). "
-                                    f"This may indicate a forgotten or misconfigured experiment.",
+                                    message=(
+                                        f"A/B experiment '{name}' expired due to TTL "
+                                        f"({self._config.ab_experiment_ttl_hours}h). "
+                                        f"This may indicate a forgotten or misconfigured experiment."
+                                    ),
                                     data={
                                         "experiment_name": name,
                                         "ttl_hours": self._config.ab_experiment_ttl_hours,
@@ -3608,7 +3613,9 @@ class ABExperimentManager:
                 alert_type="ab_experiment_rollback",
                 severity="warning",
                 subject=f"experiment:{name}",
-                message=f"Auto-rollback triggered for experiment '{name}': variant '{promoted}' caused accuracy degradation",
+                message=(
+                    f"Auto-rollback triggered for experiment '{name}': variant '{promoted}' caused accuracy degradation"
+                ),
                 data=alert_data,
             )
         )
@@ -4230,7 +4237,7 @@ class ABExperimentManager:
         """
         # Hill's approximation for the t-distribution CDF
         x = df / (df + t * t)
-        z = x * (1 + t * t / df) if df > 0 else 0.5
+        x * (1 + t * t / df) if df > 0 else 0.5
         # Simple approximation: use normal with wider tails
         return 0.5 * (1 + math.erf(t / math.sqrt(2 * df / (df - 2)))) if df > 2 else 0.5 * (1 + math.erf(t / 2))
 

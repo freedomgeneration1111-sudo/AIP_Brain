@@ -721,7 +721,7 @@ class TestAskResultChannelStateMetadata:
                 backend_status=VectorBackendStatus.AVAILABLE,
             ),
         )
-        warnings = _build_retrieval_warnings(trace)
+        _build_retrieval_warnings(trace)
         # Empty channels should not produce "unavailable" warnings by default
         # (they were attempted and succeeded — they just returned nothing)
 
@@ -742,7 +742,7 @@ class TestChannelHealthReportExtended:
             },
             reasons={"graph": "GraphStore not configured"},
         )
-        warnings = report.format_warnings()
+        report.format_warnings()
         # UNAVAILABLE is not FAILED or DEGRADED, so format_warnings won't show it
         # This is a design choice: the ChannelHealthReport.format_warnings() only
         # surfaces FAILED and DEGRADED states. UNAVAILABLE is informational.
@@ -756,7 +756,7 @@ class TestChannelHealthReportExtended:
             },
             reasons={"vector": "No embedding provider"},
         )
-        warnings = report.format_warnings()
+        report.format_warnings()
         # NOT_CONFIGURED is not FAILED, so format_warnings won't show it
         # (it's a different category — informational rather than error)
         # This is by design: not_configured is a configuration issue, not a failure

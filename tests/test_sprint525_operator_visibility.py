@@ -214,7 +214,7 @@ class TestAlertManager:
         )
 
         # First alert should go through (no transports, but not rate-limited)
-        result1 = manager.send_alert(alert1)
+        manager.send_alert(alert1)
         # Second identical alert should be rate-limited
         result2 = manager.send_alert(alert2)
         assert result2 == "rate_limited"  # Rate limited
@@ -372,7 +372,7 @@ class TestAlertManager:
             metadata_json=json.dumps({"source_turn_ids": ["src-001", "src-002"]}),
         )
         corpus_turns._turns = [turn]
-        result = await vigil.run_cycle()
+        await vigil.run_cycle()
 
         # An alert should have been dispatched
         assert alert_mgr.delivery_mgr._total_alerts_sent >= 1
@@ -792,7 +792,7 @@ class TestConfigHotReload:
             # Reset debounce
             watcher._last_reload = 0
 
-            events = watcher.check_and_reload()
+            watcher.check_and_reload()
             # Should detect the pool_size change
             # Note: without a container, events won't be applied but changes
             # should still be detected

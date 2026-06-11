@@ -464,7 +464,11 @@ async def trigger_embedding_backfill(
     if backfill_status.get("running"):
         return {
             "status": "already_running",
-            "message": "Backfill is already in progress. Poll GET /api/v1/corpus/embedding-progress or GET /api/v1/admin/embeddings/backfill/status for progress.",
+            "message": (
+                "Backfill is already in progress. "
+                "Poll GET /api/v1/corpus/embedding-progress or "
+                "GET /api/v1/admin/embeddings/backfill/status for progress."
+            ),
         }
 
     # Delegate to the existing admin backfill endpoint logic
@@ -512,7 +516,11 @@ async def trigger_embedding_backfill(
 
         return {
             "status": "accepted",
-            "message": "Embedding backfill started. Poll GET /api/v1/corpus/embedding-progress or GET /api/v1/admin/embeddings/backfill/status for progress.",
+            "message": (
+                "Embedding backfill started. "
+                "Poll GET /api/v1/corpus/embedding-progress or "
+                "GET /api/v1/admin/embeddings/backfill/status for progress."
+            ),
             "limit": limit,
             "batch_size": batch_size,
             "dry_run": dry_run,
@@ -572,7 +580,9 @@ async def retry_failed_embeds(
 
         return {
             "status": "accepted",
-            "message": f"Cleared failure counters for {retried_count} turns. They will be retried in the next backfill cycle.",
+            "message": (
+                f"Cleared failure counters for {retried_count} turns. They will be retried in the next backfill cycle."
+            ),
             "retried_count": retried_count,
         }
     except Exception as exc:

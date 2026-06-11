@@ -56,16 +56,16 @@ async def maintenance_page():
 
     # Instantiate class-based components with callbacks
     actor_table = ActorStatusTable(
-        on_run_actor=_handle_run_actor,
-        on_view_logs=_handle_view_actor_logs,
+        on_run_actor=lambda actor_name: _handle_run_actor(actor_name),
+        on_view_logs=lambda actor_name: _handle_view_actor_logs(actor_name),
     )
     maintenance_jobs = MaintenanceJobs(
-        on_backfill=_handle_backfill,
-        on_rebuild_graph=_handle_rebuild_graph,
-        on_rebuild_codex=_handle_rebuild_codex,
-        on_retrieval_eval=_handle_retrieval_eval,
-        on_check_stale=_handle_check_stale,
-        on_check_contradictions=_handle_check_contradictions,
+        on_backfill=lambda: _handle_backfill(),
+        on_rebuild_graph=lambda: _handle_rebuild_graph(),
+        on_rebuild_codex=lambda: _handle_rebuild_codex(),
+        on_retrieval_eval=lambda: _handle_retrieval_eval(),
+        on_check_stale=lambda: _handle_check_stale(),
+        on_check_contradictions=lambda: _handle_check_contradictions(),
     )
     log_panel = MaintenanceLog()
     problem_panel = MaintenanceProblemPanel()
@@ -120,9 +120,7 @@ async def maintenance_page():
             log_container = ui.column().classes("w-full").style("padding:8px; gap:0;")
 
         # ── Action result notification area ────────────────────────────
-        action_result_label = ui.label("").style(
-            f"font-size:11px; color:{C_MUTED}; font-family:{F_SANS}; margin-top:12px; min-height:20px;"
-        )
+        ui.label("").style(f"font-size:11px; color:{C_MUTED}; font-family:{F_SANS}; margin-top:12px; min-height:20px;")
 
     build_right_rail(state)
 
@@ -277,7 +275,10 @@ async def maintenance_page():
             with (
                 ui.dialog() as dialog,
                 ui.card().style(
-                    f"background:{C_SURFACE}; border-radius:{R_MD}; padding:20px; min-width:500px; max-height:400px; overflow-y:auto;"
+                    (
+                        f"background:{C_SURFACE}; border-radius:{R_MD}; "
+                        f"padding:20px; min-width:500px; max-height:400px; overflow-y:auto;"
+                    )
                 ),
             ):
                 ui.label(f"{actor_name.upper()} — Recent Events").style(

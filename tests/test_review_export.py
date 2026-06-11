@@ -544,9 +544,7 @@ class TestExportProjectExcludesUnreviewed:
     async def test_export_project_no_unreviewed(self):
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
-            aid1 = await _create_project_and_artifact(
-                stores, artifact_id="ask:unreviewed1", content="Unreviewed answer"
-            )
+            await _create_project_and_artifact(stores, artifact_id="ask:unreviewed1", content="Unreviewed answer")
             # Don't approve — leave in GENERATED state
 
             out_path = os.path.join(tmp, "project_export.md")

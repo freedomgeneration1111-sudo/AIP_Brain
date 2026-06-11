@@ -63,7 +63,7 @@ def get_embed_fn(config: dict | Any | None = None) -> Callable[[str], list[float
 
             def _wrapped_embed(text: str) -> list[float]:
                 try:
-                    loop = asyncio.get_running_loop()
+                    asyncio.get_running_loop()
                     import concurrent.futures
 
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:

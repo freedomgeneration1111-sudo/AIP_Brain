@@ -868,7 +868,8 @@ class Beast:
             )
             system = (
                 "You are AIP Beast, the corpus intelligence actor for a sovereign knowledge engine. "
-                "Your role is to generate accurate, grounded summaries of knowledge domains based only on the content provided. "
+                "Your role is to generate accurate, grounded summaries of knowledge domains "
+                "based only on the content provided. "
                 "Do not infer or hallucinate content not present in the chunks. Be concise and specific."
             )
             messages = [
@@ -950,11 +951,11 @@ class Beast:
         domain_list = "\n".join(f"  - {d}" for d in approved_domains)
         bridge_list = "\n".join(f"  - {b}" for b in approved_bridges)
 
-        system_prompt = f"""You are AIP Beast, corpus intelligence actor for a 
-sovereign knowledge engine. Your job is to classify conversation turns 
+        system_prompt = f"""You are AIP Beast, corpus intelligence actor for a
+sovereign knowledge engine. Your job is to classify conversation turns
 into knowledge domains and score their importance.
 
-You will receive a batch of conversation turns. For each turn, return 
+You will receive a batch of conversation turns. For each turn, return
 a JSON object with exactly these fields:
   turn_id: string (copy exactly from input)
   primary_domain: string (exactly one domain_id from the approved list)
@@ -971,7 +972,7 @@ APPROVED BRIDGE TAGS:
 {bridge_list}
 
 IMPORTANCE SCORING RULES:
-0.9-1.0: Decision recorded, conclusion reached, original framework 
+0.9-1.0: Decision recorded, conclusion reached, original framework
          developed, manuscript section completed
 0.7-0.8: Substantive analysis, design discussion, theological exegesis,
          research finding, problem solved
@@ -986,7 +987,7 @@ considered reasoning worth preserving.
 
 QUARANTINE RULES — assign primary_domain "quarantine" only when ALL:
   1. user_text < 15 words with no substantive content
-  2. assistant_text < 50 words  
+  2. assistant_text < 50 words
   3. No domain keywords match
   4. Total word_count < 30
 NEVER quarantine turns with thinking_text, decisions, frameworks,
@@ -1092,7 +1093,8 @@ Example response structure:
                 # Plain progress line for CLI `aip corpus tag` visibility (matches mandated verif output)
                 try:
                     print(
-                        f"Tagging batch {batch_idx}/{(total + BATCH_SIZE - 1) // BATCH_SIZE} (turns {b_start + 1}-{min(b_start + BATCH_SIZE, total)})..."
+                        f"Tagging batch {batch_idx}/{(total + BATCH_SIZE - 1) // BATCH_SIZE} "
+                        f"(turns {b_start + 1}-{min(b_start + BATCH_SIZE, total)})..."
                     )
                 except Exception:
                     pass
@@ -1330,7 +1332,8 @@ Example response structure:
                 )
                 try:
                     print(
-                        f"Embedding batch {batch_idx}/{(total + BATCH_SIZE - 1) // BATCH_SIZE} (turns {b_start + 1}-{min(b_start + BATCH_SIZE, total)})..."
+                        f"Embedding batch {batch_idx}/{(total + BATCH_SIZE - 1) // BATCH_SIZE} "
+                        f"(turns {b_start + 1}-{min(b_start + BATCH_SIZE, total)})..."
                     )
                 except Exception:
                     pass

@@ -502,7 +502,7 @@ class TestSourceFilterAll:
         )
 
         assert result.status == "OK"
-        source_types = {s.source_type for s in result.sources}
+        {s.source_type for s in result.sources}
         # Should include both types (if the search finds both)
         assert len(result.sources) > 0
 

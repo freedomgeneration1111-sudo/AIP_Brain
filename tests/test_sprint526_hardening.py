@@ -254,7 +254,7 @@ class TestVigilQualityStore:
 
     def test_initialize_creates_table(self, tmp_path):
         """VigilQualityStore creates the quality history table."""
-        store = self._create_store(tmp_path)
+        self._create_store(tmp_path)
 
         # Verify table exists
         db_path = os.path.join(tmp_path, "vigil_quality.db")

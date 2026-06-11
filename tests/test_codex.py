@@ -942,7 +942,9 @@ class TestContradictionResolution:
             contradiction_id="contra-test",
             status="resolved_outdated",
             resolved_by="definer",
-            resolution_notes="README was outdated; STATUS reflects current state. CONFIGURATION confirms sqlite_vss is active.",
+            resolution_notes=(
+                "README was outdated; STATUS reflects current state. CONFIGURATION confirms sqlite_vss is active."
+            ),
         )
 
         # 5. Verify resolution

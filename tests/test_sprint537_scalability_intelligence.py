@@ -347,7 +347,7 @@ class TestAutoMergePolicy:
         mgr._alert_groups_metadata["test_subject_a"] = time.time()
         mgr._alert_groups_metadata["test_subject_b"] = time.time()
 
-        suggestions = mgr.suggest_auto_merges()
+        mgr.suggest_auto_merges()
         # In suggest mode, suggestions are returned but not auto-applied
         # The total_applied should still be 0
         assert mgr._total_auto_merges_applied == 0
@@ -371,7 +371,7 @@ class TestAutoMergePolicy:
         mgr._alert_groups_metadata["test_subject"] = time.time()
         mgr._alert_groups_metadata["test_subject_copy"] = time.time()
 
-        suggestions = mgr.suggest_auto_merges()
+        mgr.suggest_auto_merges()
         # In auto mode with zero cooldown, one merge should be applied
         # (if suggestions are generated)
 
@@ -397,8 +397,7 @@ class TestAutoMergePolicy:
         mgr._alert_groups_metadata["beta_test"] = time.time()
 
         # Even in auto mode, cooldown prevents auto-apply
-        initial_applied = mgr._total_auto_merges_applied
-        suggestions = mgr.suggest_auto_merges()
+        mgr.suggest_auto_merges()
         # Should not have auto-applied because cooldown hasn't elapsed
         assert mgr._last_auto_merge_time > 0
 
@@ -850,7 +849,7 @@ class TestSprint537Integration:
         mgr._alert_groups_metadata["beta_test_subject"] = time.time()
 
         # Generate suggestions in suggest mode
-        suggestions = mgr.suggest_auto_merges()
+        mgr.suggest_auto_merges()
         # Should return suggestions without auto-applying
         assert mgr._total_auto_merges_applied == 0
 

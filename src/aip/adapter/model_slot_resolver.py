@@ -273,7 +273,8 @@ class ModelSlotResolver(ModelProvider):
         resolved = self._resolve_slot_config(slot_name)
 
         log.info(
-            f"slot {slot_name}: provider={resolved['provider']} model={resolved.get('model')} base_url={resolved.get('base_url')}"
+            f"slot {slot_name}: provider={resolved['provider']} "
+            f"model={resolved.get('model')} base_url={resolved.get('base_url')}"
         )
 
         return ModelSlotConfig(

@@ -652,7 +652,7 @@ class TestSaveAsArtifactSovereignty:
 
         request = ModelCouncilRequest(prompt="Test", save_as_artifact=True)
         with patch("aip.adapter.api.routes.model_council.logger"):
-            result = await compare_models(request, container=mock_container_with_provider)
+            await compare_models(request, container=mock_container_with_provider)
 
         # Verify ECS transition was GENERATED, never APPROVED
         ecs_call = mock_container_with_provider.ecs_store.transition.call_args
@@ -669,7 +669,7 @@ class TestSaveAsArtifactSovereignty:
 
         request = ModelCouncilRequest(prompt="Test", save_as_artifact=True)
         with patch("aip.adapter.api.routes.model_council.logger"):
-            result = await compare_models(request, container=mock_container_with_provider)
+            await compare_models(request, container=mock_container_with_provider)
 
         # No export/approve related calls on the container
         for attr in dir(mock_container_with_provider):

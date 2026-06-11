@@ -140,7 +140,7 @@ class DocumentTable:
                         f"flex:0.5; min-width:50px; text-align:right; color:{C_CREAM}; font-family:{F_MONO};"
                     )
                     # Embedded with color coding
-                    embed_pct = (embedded_count / turn_count * 100) if turn_count > 0 else 0
+                    (embedded_count / turn_count * 100) if turn_count > 0 else 0
                     ui.label(f"{embedded_count}/{turn_count}").style(
                         f"flex:0.5; min-width:60px; text-align:right; color:{status_color}; font-family:{F_MONO};"
                     )

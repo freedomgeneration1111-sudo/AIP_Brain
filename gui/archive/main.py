@@ -802,7 +802,7 @@ async def main_page():
         ):
             ui.icon("chat", size="xs").classes("text-amber q-mr-xs")
             ui.label("Chat Model").classes("text-caption text-amber text-weight-bold q-mr-xs")
-            chat_model_select = (
+            (
                 ui.select(
                     all_model_options,
                     value=current_chat_model,
@@ -941,7 +941,10 @@ async def main_page():
                 "AIP Backend not reachable — chat will use direct OpenRouter API (no auto-save, no actors)."
             ).classes("text-warning text-weight-medium q-pa-md")
             ui.label(
-                "For full features (auto-save, actors, augmented mode), start the backend: uvicorn aip.adapter.api.app:create_app --factory --port 8000"
+                (
+                    "For full features (auto-save, actors, augmented mode), "
+                    "start the backend: uvicorn aip.adapter.api.app:create_app --factory --port 8000"
+                )
             ).classes("text-caption q-px-md")
     else:
         with chat_container:

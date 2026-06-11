@@ -287,7 +287,7 @@ class TestEntityExtractorModes:
             ),
             llm_fn=tracking_llm,
         )
-        result = asyncio.run(ext.extract_async("simple query"))
+        asyncio.run(ext.extract_async("simple query"))
         assert llm_called is False
 
 

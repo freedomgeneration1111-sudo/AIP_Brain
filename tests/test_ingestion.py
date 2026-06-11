@@ -306,9 +306,9 @@ class TestChunker:
         chunks = chunk_conversation(conv)
         assert len(chunks) >= 1
         # Each chunk is (chunk_id, chunk_text)
-        for chunk_id, chunk_text in chunks:
+        for chunk_id, chunk_content in chunks:
             assert chunk_id.startswith("chunk:test:123:")
-            assert len(chunk_text) > 0
+            assert len(chunk_content) > 0
 
     def test_chunk_conversation_empty(self):
         conv = ImportedConversation(
@@ -526,7 +526,7 @@ class TestIngestionPipeline:
         lexical_store = FakeLexicalStore()
         event_store = FakeEventStore()
 
-        result = await ingest_conversation(
+        await ingest_conversation(
             conv,
             artifact_store,
             lexical_store,

@@ -256,7 +256,9 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
                     embedded, metadata_json, embedding_model, needs_reembed, last_embed_at,
                     embed_fail_count, last_embed_error,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
                 """,
                 (
                     turn.turn_id,
@@ -1225,7 +1227,8 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
                     SUM(CASE WHEN embedded = 0 THEN 1 ELSE 0 END) as unembedded_count,
                     SUM(CASE WHEN embed_fail_count > 0 THEN 1 ELSE 0 END) as embed_fail_count,
                     SUM(CASE WHEN needs_reembed = 1 THEN 1 ELSE 0 END) as needs_reembed_count,
-                    GROUP_CONCAT(DISTINCT CASE WHEN primary_domain != '' THEN primary_domain ELSE NULL END) as primary_domains,
+                    GROUP_CONCAT(DISTINCT CASE WHEN primary_domain != ''
+                        THEN primary_domain ELSE NULL END) as primary_domains,
                     MAX(updated_at) as last_updated,
                     COUNT(DISTINCT conversation_id) as conversation_count
                 FROM corpus_turns
@@ -1299,7 +1302,8 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
                     SUM(CASE WHEN embedded = 0 THEN 1 ELSE 0 END) as unembedded_count,
                     SUM(CASE WHEN embed_fail_count > 0 THEN 1 ELSE 0 END) as embed_fail_count,
                     SUM(CASE WHEN needs_reembed = 1 THEN 1 ELSE 0 END) as needs_reembed_count,
-                    GROUP_CONCAT(DISTINCT CASE WHEN primary_domain != '' THEN primary_domain ELSE NULL END) as primary_domains,
+                    GROUP_CONCAT(DISTINCT CASE WHEN primary_domain != ''
+                        THEN primary_domain ELSE NULL END) as primary_domains,
                     MIN(created_at) as first_turn_at,
                     MAX(updated_at) as last_updated,
                     COUNT(DISTINCT conversation_id) as conversation_count,

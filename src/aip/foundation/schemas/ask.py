@@ -46,7 +46,8 @@ class AskResult:
     rather than silently pretending retrieval was healthier than it was.
     """
 
-    status: str  # "OK" | "NO_PROJECT" | "NO_PROJECT_MEMORY" | "NEEDS_CONFIGURATION" | "MODEL_FAILURE" | "ARTIFACT_SAVE_FAILURE"
+    status: str  # "OK" | "NO_PROJECT" | "NO_PROJECT_MEMORY" | "NEEDS_CONFIGURATION"
+    # | "MODEL_FAILURE" | "ARTIFACT_SAVE_FAILURE"
     answer: str  # generated answer or error message
     sources: list[SourceReference] = field(default_factory=list)
     model_slot: str = ""

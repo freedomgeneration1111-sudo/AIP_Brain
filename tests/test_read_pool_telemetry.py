@@ -569,7 +569,7 @@ class TestAskLikeWorkloadBenchmark:
         # 20 concurrent reads
         num_reads = 20
         tasks = [store.get_node(f"high_node_{i % 30}") for i in range(num_reads)]
-        results = await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks)
 
         health = store.read_pool_health()
         print(

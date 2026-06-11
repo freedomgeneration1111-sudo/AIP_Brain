@@ -360,9 +360,7 @@ class TestProjectExportSovereignOverride:
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
             aid1 = await _create_project_and_artifact(stores, artifact_id="ask:approved1", content="Approved answer 1")
-            aid2 = await _create_project_and_artifact(
-                stores, artifact_id="ask:unreviewed1", content="Unreviewed answer 1"
-            )
+            await _create_project_and_artifact(stores, artifact_id="ask:unreviewed1", content="Unreviewed answer 1")
             await review_approve(aid1, stores)
 
             out_path = os.path.join(tmp, "project_export.md")

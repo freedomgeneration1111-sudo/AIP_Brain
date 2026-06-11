@@ -206,12 +206,12 @@ class RetrievalChannelResults:
 
     def _render_item(self, index: int, item: dict[str, Any]) -> None:
         """Render a single result item."""
-        item_id = item.get("id", "")
+        item.get("id", "")
         title = item.get("title", "")[:80]
         snippet = item.get("snippet", "")[:200]
         score = item.get("score", 0)
-        source_type = item.get("source_type", "")
-        domain = item.get("domain", "")
+        item.get("source_type", "")
+        item.get("domain", "")
 
         with ui.row().classes("w-full items-start gap-1 py-1").style(f"border-bottom:0.5px solid {C_INK40};"):
             # Index

@@ -63,7 +63,7 @@ class TestDeliveryStatusTracking:
         time.sleep(0.2)
 
         # Delivery status should exist (even if delivery failed)
-        status = mgr.get_delivery_status(correlation_id)
+        mgr.get_delivery_status(correlation_id)
         # Status may or may not be found depending on timing,
         # but the correlation_id should be tracked
         assert correlation_id.startswith("alert-")

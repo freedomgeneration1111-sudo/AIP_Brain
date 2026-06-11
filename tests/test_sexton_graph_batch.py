@@ -373,12 +373,11 @@ async def test_batch_rate_limiting_sleeps_between_batches(tmp_db, corpus_turn_st
 
     # Patch asyncio.sleep to track calls without actually sleeping
     sleep_calls: list[float] = []
-    original_sleep = Sexton.__module__
 
     with patch("asyncio.sleep") as mock_sleep:
         mock_sleep.side_effect = lambda s: sleep_calls.append(s)
 
-        result = await sexton._run_graph_extraction(limit=10)
+        await sexton._run_graph_extraction(limit=10)
 
     # Should have 2 batch calls (4 turns / batch_size 2), so 2 sleeps between batches
     # The sleep calls should all be 5 seconds (rate-limit)
@@ -923,11 +922,11 @@ async def test_batch_telemetry_accumulates_across_cycles(tmp_db, corpus_turn_sto
     )
 
     # First cycle
-    result1 = await sexton._run_graph_extraction(limit=5)
+    await sexton._run_graph_extraction(limit=5)
     t1 = sexton._batch_telemetry.copy()
 
     # Second cycle (no new turns to extract, but telemetry should persist)
-    result2 = await sexton._run_graph_extraction(limit=5)
+    await sexton._run_graph_extraction(limit=5)
     t2 = sexton._batch_telemetry.copy()
 
     # Telemetry should accumulate (not reset)

@@ -563,7 +563,7 @@ class TestAIFingerprintCleanup:
 
         source = inspect.getsource(retrieval_orchestrator)
         # Check that no "Sprint 5.X:" style comments remain in the module body
-        lines = [l for l in source.split("\n") if "Sprint 5." in l]
+        lines = [line for line in source.split("\n") if "Sprint 5." in line]
         # Allow at most 0 such lines (we cleaned them all)
         assert len(lines) == 0, f"Found Sprint-log comments in retrieval_orchestrator: {lines}"
 

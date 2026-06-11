@@ -115,7 +115,10 @@ class Vigil:
     _GROUNDING_THRESHOLD = 0.5  # Flag if < 50% of numeric claims are grounded
 
     # LLM faithfulness prompt
-    _FAITHFULNESS_SYSTEM_PROMPT = """You are an AIP Vigil evaluator performing faithfulness checking on an AI-generated response. Your job is to determine whether the response accurately reflects the retrieved source material without hallucination or unsupported claims.
+    _FAITHFULNESS_SYSTEM_PROMPT = """\
+You are an AIP Vigil evaluator performing faithfulness checking on an AI-generated
+response. Your job is to determine whether the response accurately reflects the
+retrieved source material without hallucination or unsupported claims.
 
 You will receive:
 1. The user's question
@@ -139,7 +142,9 @@ Output ONLY valid JSON with exactly these fields:
   "explanation": "Brief explanation of the score"
 }
 
-Be strict: if a specific number, date, or factual claim appears in the response but not in the sources, flag it. If the response adds reasonable inference or synthesis from the sources, that is acceptable — flag only unsupported assertions."""
+Be strict: if a specific number, date, or factual claim appears in the response but not in the
+sources, flag it. If the response adds reasonable inference or synthesis from the sources, that
+is acceptable — flag only unsupported assertions."""
 
     def __init__(
         self,
@@ -1160,7 +1165,10 @@ Be strict: if a specific number, date, or factual claim appears in the response 
             if self._ecs is not None:
                 try:
                     reasons_str = ", ".join(flag_reasons or ["low_citation_rate"])
-                    detail = f"Quality evaluation: {reasons_str} (citation_rate={citation_rate:.1%}, grounding_rate={grounding_rate:.1%})"
+                    detail = (
+                        f"Quality evaluation: {reasons_str} "
+                        f"(citation_rate={citation_rate:.1%}, grounding_rate={grounding_rate:.1%})"
+                    )
                     if llm_faithfulness_score is not None:
                         detail += f", llm_faithfulness={llm_faithfulness_score:.1%}"
                     await self._ecs.transition(

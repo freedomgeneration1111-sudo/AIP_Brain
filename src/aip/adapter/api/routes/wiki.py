@@ -524,7 +524,11 @@ async def create_wiki_article(
             # Record creation event
             try:
                 await conn.execute(
-                    "INSERT INTO events (event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        "INSERT INTO events "
+                        "(event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)"
+                    ),
                     (
                         "ecs_transition",
                         "definer",
@@ -744,7 +748,11 @@ async def update_wiki_article(
             # Record update event
             try:
                 await conn.execute(
-                    "INSERT INTO events (event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        "INSERT INTO events "
+                        "(event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)"
+                    ),
                     (
                         "artifact_updated",
                         "definer",

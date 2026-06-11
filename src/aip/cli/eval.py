@@ -39,7 +39,8 @@ Usage::
     aip eval retrieval-ab --config-a eval_results/eval_a.json --config-b eval_results/eval_b.json
 
     # A/B comparison: run both configs live and compare
-    aip eval retrieval-ab --config-a eval_results/eval_a.json --config-b eval_results/eval_b.json --label-a "FTS only" --label-b "All channels"
+    aip eval retrieval-ab --config-a eval_results/eval_a.json --config-b eval_results/eval_b.json
+    --label-a "FTS only" --label-b "All channels"
 
     # Budget tuning: suggest per-channel budget adjustments
     aip eval budget-tune

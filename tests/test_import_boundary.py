@@ -260,7 +260,6 @@ def test_adapter_routes_do_not_import_orchestration():
             if module.startswith("aip.orchestration"):
                 rel = _rel_path(py_file)
                 # Check if acknowledged
-                ack_key = f"adapter/{rel} imports {module}"
                 if rel not in ACKNOWLEDGED_ROUTE_VIOLATIONS or module not in ACKNOWLEDGED_ROUTE_VIOLATIONS.get(rel, []):
                     violations.append(f"{rel}:{lineno} ({style}) — imports '{module}' from route module")
 

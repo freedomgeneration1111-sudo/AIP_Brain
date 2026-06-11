@@ -98,9 +98,9 @@ class TestDashboardWebSocketUI:
         # Should try WS first, not SSE directly
         # The old direct connectSSE() call should be replaced
         lines = _DASHBOARD_HTML.split("\n")
-        auto_load_section = [l for l in lines if "connectWebSocket()" in l or "connectSSE()" in l]
+        auto_load_section = [line for line in lines if "connectWebSocket()" in line or "connectSSE()" in line]
         # Should have connectWebSocket in auto-load, connectSSE only as fallback
-        ws_in_autoload = any("connectWebSocket()" in l for l in auto_load_section)
+        ws_in_autoload = any("connectWebSocket()" in line for line in auto_load_section)
         assert ws_in_autoload
 
 

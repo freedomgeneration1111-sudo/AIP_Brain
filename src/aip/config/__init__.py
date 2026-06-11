@@ -257,7 +257,8 @@ class DogfoodReadinessCheck:
         lines.append(f"Actors: {actor_ok}/{actor_total} active")
 
         lines.append(
-            f"Embedding provider: {'active' if self.embedding_provider_active else 'INACTIVE'} ({self.embedding_provider_type})"
+            f"Embedding provider: {'active' if self.embedding_provider_active else 'INACTIVE'} "
+            f"({self.embedding_provider_type})"
         )
         lines.append(f"Embedding backfill: {self.embedding_backfill_state}")
 

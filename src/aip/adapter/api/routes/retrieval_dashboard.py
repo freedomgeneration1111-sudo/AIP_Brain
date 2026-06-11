@@ -526,7 +526,7 @@ async def retrieval_test(payload: dict, container: AipContainer = Depends(get_co
         ch_reasons = getattr(trace, "channel_health_reasons", {}) or {}
         ch_details = getattr(trace, "channel_details", {}) or {}
         ch_elapsed = getattr(trace, "per_channel_elapsed_ms", {}) or {}
-        ch_contributions = getattr(trace, "channel_contributions", {}) or {}
+        getattr(trace, "channel_contributions", {}) or {}
 
         for ch_name in valid_channels:
             health_state = ch_health.get(ch_name, "not_configured")

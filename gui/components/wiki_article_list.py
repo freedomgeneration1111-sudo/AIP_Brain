@@ -123,7 +123,7 @@ def _render_article_row(
     article_id = article.get("id", "")
     title = article.get("title", article_id)
     state = article.get("status", article.get("state", "UNKNOWN"))
-    word_count = article.get("word_count", 0)
+    article.get("word_count", 0)
 
     # State color mapping
     state_colors = {

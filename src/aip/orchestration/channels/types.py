@@ -141,7 +141,7 @@ def safe_retriever(
         start = time.monotonic()
         try:
             hits = await retriever_fn(query)
-            elapsed = (time.monotonic() - start) * 1000.0
+            (time.monotonic() - start) * 1000.0
             _last_failure = None
             if not hits:
                 _last_failure = ChannelFailure(
@@ -151,7 +151,7 @@ def safe_retriever(
                 )
             return hits
         except Exception as exc:
-            elapsed = (time.monotonic() - start) * 1000.0
+            (time.monotonic() - start) * 1000.0
             failure = ChannelFailure(
                 channel=channel_name,
                 error_type="store_error",

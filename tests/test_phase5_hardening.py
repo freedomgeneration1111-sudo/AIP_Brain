@@ -437,7 +437,7 @@ class TestLayerDiscipline:
             lines = f.readlines()
         # Check for actual import lines, not docstring mentions
         import_lines = [
-            l for l in lines if l.strip().startswith(("import ", "from ")) and not l.strip().startswith("#")
+            line for line in lines if line.strip().startswith(("import ", "from ")) and not line.strip().startswith("#")
         ]
         for line in import_lines:
             assert "aip.orchestration" not in line, f"Found orchestration import: {line.strip()}"
@@ -448,7 +448,7 @@ class TestLayerDiscipline:
         with open("gui/main.py") as f:
             lines = f.readlines()
         import_lines = [
-            l for l in lines if l.strip().startswith(("import ", "from ")) and not l.strip().startswith("#")
+            line for line in lines if line.strip().startswith(("import ", "from ")) and not line.strip().startswith("#")
         ]
         for line in import_lines:
             assert "aip.orchestration" not in line, f"Found orchestration import: {line.strip()}"

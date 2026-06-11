@@ -370,7 +370,10 @@ async def maintenance_backfill_embeddings(
     except ImportError:
         return {
             "status": "not_wired",
-            "message": "Backfill pipeline not wired. Use POST /api/v1/corpus/backfill or POST /api/v1/admin/embeddings/backfill instead.",
+            "message": (
+                "Backfill pipeline not wired. Use POST /api/v1/corpus/backfill "
+                "or POST /api/v1/admin/embeddings/backfill instead."
+            ),
         }
     except Exception as exc:
         logger.warning("Maintenance backfill trigger failed: %s", exc)

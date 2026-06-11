@@ -285,11 +285,25 @@ async def run_beast_commentary(
     soul_text = _load_soul_text()
 
     mode_descriptions = {
-        "continuity": "Assess how well this answer connects to prior turns and established knowledge. Flag gaps in reasoning or context continuity.",
-        "critique": "Critically evaluate the answer's strengths and weaknesses. Identify unsupported claims, logical fallacies, or missing perspectives.",
-        "strategy": "Suggest strategic next steps for the DEFINER. What should be explored further? What decisions need to be made?",
-        "librarian": "Evaluate source quality and coverage. Suggest additional sources, wiki links, or knowledge gaps that should be addressed.",
-        "risk": "Identify potential risks, failure modes, or unintended consequences. Flag assumptions that could be wrong.",
+        "continuity": (
+            "Assess how well this answer connects to prior turns and established "
+            "knowledge. Flag gaps in reasoning or context continuity."
+        ),
+        "critique": (
+            "Critically evaluate the answer's strengths and weaknesses. "
+            "Identify unsupported claims, logical fallacies, or missing perspectives."
+        ),
+        "strategy": (
+            "Suggest strategic next steps for the DEFINER. "
+            "What should be explored further? What decisions need to be made?"
+        ),
+        "librarian": (
+            "Evaluate source quality and coverage. Suggest additional sources, "
+            "wiki links, or knowledge gaps that should be addressed."
+        ),
+        "risk": (
+            "Identify potential risks, failure modes, or unintended consequences. Flag assumptions that could be wrong."
+        ),
     }
 
     system_prompt = (

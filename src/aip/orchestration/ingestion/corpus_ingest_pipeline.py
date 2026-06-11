@@ -250,7 +250,7 @@ def _is_conversation_export(path: str, ext: str) -> bool:
 
 def _parse_conversation_file(path: str, config: CorpusIngestConfig) -> list[CorpusTurn]:
     """Parse a conversation export file into CorpusTurns."""
-    basename = os.path.basename(path).lower()
+    os.path.basename(path).lower()
 
     # Claude export
     if "claude" in config.source_model.lower() or "chat_messages" in _peek_content(path):

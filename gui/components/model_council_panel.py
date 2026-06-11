@@ -257,7 +257,7 @@ class ModelCouncilPanel:
             is_checked = slot_name in self._selected_slots
 
             with ui.row().classes("w-full items-center").style("padding: 2px 0;"):
-                checkbox = (
+                (
                     ui.checkbox(
                         value=is_checked,
                         on_change=lambda checked, sn=slot_name: self._toggle_slot(sn, checked.value),

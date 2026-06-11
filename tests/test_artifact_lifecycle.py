@@ -436,7 +436,7 @@ class TestPlainTextExport:
             # Plain text format: no YAML frontmatter delimiters (--- on own line)
             # The separator uses 60 dashes on its own line, but no YAML --- blocks
             lines = content.split("\n")
-            yaml_frontmatter_lines = [l.strip() for l in lines if l.strip() == "---"]
+            yaml_frontmatter_lines = [line.strip() for line in lines if line.strip() == "---"]
             assert len(yaml_frontmatter_lines) == 0, "Plain text should not have YAML frontmatter"
             assert "**Provenance**" not in content  # No bold markdown
             assert "Plain text content" in content
@@ -521,7 +521,7 @@ class TestArtifactLedger:
             await review_reject(aid, stores, note="Not good enough")
 
             # Need export stores for reject
-            export_stores = await _create_export_stores(tmp)
+            await _create_export_stores(tmp)
 
             result = await artifact_ledger(aid, stores)
 
@@ -863,7 +863,10 @@ class TestFullLifecycle:
 
             # 1. Create artifact
             create_result = await artifact_create(
-                content="This is a complete lifecycle test document. It demonstrates the full GENERATED → REVIEWED → APPROVED → EXPORTED path.",
+                content=(
+                    "This is a complete lifecycle test document. It demonstrates "
+                    "the full GENERATED → REVIEWED → APPROVED → EXPORTED path."
+                ),
                 stores=lifecycle_stores,
                 title="Lifecycle Test Document",
                 description="Testing the full artifact lifecycle",

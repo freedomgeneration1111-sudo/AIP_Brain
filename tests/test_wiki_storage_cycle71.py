@@ -860,7 +860,11 @@ class TestWikiBacklinksHonestEmpty:
                 )
             """)
             conn.execute(
-                "INSERT INTO graph_edges (source_id, source_type, target_id, relation_type, confidence) VALUES (?, ?, ?, ?, ?)",
+                (
+                    "INSERT INTO graph_edges "
+                    "(source_id, source_type, target_id, relation_type, confidence) "
+                    "VALUES (?, ?, ?, ?, ?)"
+                ),
                 (
                     "beast:wiki:another_domain:20260611T130000",
                     "wiki_article",

@@ -1136,12 +1136,12 @@ def _build_cohort_panel(state: GuiState) -> None:
         # Synthesis model + estimated cost
         with ui.row().classes("w-full items-center gap-4"):
             ui.label("Synthesis model:").style(f"font-size:12px;color:{C_MUTED};")
-            synth_select = (
+            (
                 ui.select(_COHORT_SYNTH_OPTS, value=_COHORT_SYNTH_OPTS[0])
                 .props("dense outlined")
                 .classes("min-w-[260px]")
             )
-            cost_lbl = ui.label("Estimated cost: ~$0.03").style(f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};")
+            ui.label("Estimated cost: ~$0.03").style(f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};")
 
         # ASK button
         ask_btn = (
@@ -1713,7 +1713,8 @@ async def main_page() -> None:
         # ── Global: force minimum text contrast on dark backgrounds ──
         f"body,.q-page,.q-layout{{background:{C_GROUND}!important;color:{C_MUTED}!important}}"
         # Tab bar
-        f".q-tab{{padding:14px 16px;font-size:13px;font-weight:500;color:{C_MUTED};border-bottom:2px solid transparent;}}"
+        f".q-tab{{padding:14px 16px;font-size:13px;font-weight:500;"
+        f"color:{C_MUTED};border-bottom:2px solid transparent;}}"
         f".q-tab--active{{color:{C_CREAM};border-bottom:2px solid {C_AMBER};}}"
         f".q-tabs{{border-bottom:0.5px solid {C_INK40};}}"
         f".q-tab__label{{font-size:13px;font-weight:500;font-family:{F_SANS}}}"

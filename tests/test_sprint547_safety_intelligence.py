@@ -429,7 +429,7 @@ class TestCleanupAlertingAndMetrics:
 
         history_before = len(mgr.lifecycle_mgr._alert_history)
         mgr.cleanup_expired_experiments()
-        history_after = len(mgr.lifecycle_mgr._alert_history)
+        len(mgr.lifecycle_mgr._alert_history)
 
         # Should NOT send a TTL expiry alert (but may send other alerts)
         ttl_alerts = [

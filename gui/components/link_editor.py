@@ -28,6 +28,7 @@ from gui.theme import (
     C_GROUND,
     C_INK40,
     C_INK60,
+    C_RAISED,
     C_SURFACE,
     C_WARN_FG,
     F_MONO,

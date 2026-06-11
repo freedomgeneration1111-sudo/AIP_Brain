@@ -105,7 +105,9 @@ _DEFAULT_MAX_FAILURE_ROWS = 1000
 # Default maximum number of delivery status rows to retain (Sprint 5.33)
 _DEFAULT_MAX_DELIVERY_STATUS_ROWS = 2000
 
-# Schema version for migrations (Sprint 5.45: v8 adds ab_experiments; Sprint 5.46: v9 adds rollback/recovery; Sprint 5.48: v10 adds stat results + timeseries; Sprint 5.49: v11 adds confidence_calibration + pre_promotion_snapshots; Sprint 5.50: v12 adds bandit_decision_log)
+# Schema version for migrations (Sprint 5.45: v8 adds ab_experiments; Sprint 5.46: v9 adds rollback/recovery;
+# Sprint 5.48: v10 adds stat results + timeseries; Sprint 5.49: v11 adds confidence_calibration
+# + pre_promotion_snapshots; Sprint 5.50: v12 adds bandit_decision_log)
 _SCHEMA_VERSION = 12
 
 

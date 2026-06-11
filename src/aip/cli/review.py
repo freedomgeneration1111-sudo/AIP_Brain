@@ -310,7 +310,7 @@ def _print_list_result(result: dict, project_name: str = "") -> None:
         sys.exit(1)
 
     artifacts = result.get("artifacts", [])
-    project = result.get("project", project_name)
+    result.get("project", project_name)
 
     if not artifacts:
         click.echo(f"No artifacts found for '{project_name}'.")
@@ -372,7 +372,8 @@ def _print_show_result(result: dict) -> None:
         click.echo("  Export:         BLOCKED (rejected — requires --force with audit trail)")
     elif result.get("export_requires_force"):
         click.echo(
-            f"  Export:         REQUIRES --force ({result.get('lifecycle_state', '')} — sovereign override with audit trail)"
+            f"  Export:         REQUIRES --force ({result.get('lifecycle_state', '')} "
+            f"— sovereign override with audit trail)"
         )
     elif result.get("export_warn"):
         click.echo("  Export:         WARNING (unreviewed — requires --force with audit trail)")

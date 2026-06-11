@@ -112,7 +112,10 @@ def _insert_artifact(
     meta = metadata or {}
     conn = sqlite3.connect(db_path)
     conn.execute(
-        "INSERT OR REPLACE INTO artifacts (id, version, content, metadata_json, created_at) VALUES (?, 1, ?, ?, datetime('now'))",
+        (
+            "INSERT OR REPLACE INTO artifacts "
+            "(id, version, content, metadata_json, created_at) VALUES (?, 1, ?, ?, datetime('now'))"
+        ),
         (artifact_id, content, json.dumps(meta)),
     )
     conn.commit()
@@ -137,7 +140,11 @@ def _insert_event(
     meta = metadata or {}
     conn = sqlite3.connect(db_path)
     conn.execute(
-        "INSERT INTO events (event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))",
+        (
+            "INSERT INTO events "
+            "(event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, datetime('now'))"
+        ),
         (event_type, actor, artifact_id, None, None, json.dumps(meta)),
     )
     conn.commit()
@@ -158,7 +165,10 @@ def _get_events(db_path: str, artifact_id: str, event_type: str | None = None) -
     conn = sqlite3.connect(db_path)
     if event_type:
         cursor = conn.execute(
-            "SELECT event_type, actor, metadata_json, created_at FROM events WHERE artifact_id = ? AND event_type = ? ORDER BY created_at",
+            (
+                "SELECT event_type, actor, metadata_json, created_at FROM events "
+                "WHERE artifact_id = ? AND event_type = ? ORDER BY created_at"
+            ),
             (artifact_id, event_type),
         )
     else:
@@ -780,7 +790,7 @@ class TestReviewActionSideEffects:
         # Check links before
         resp_before = client.get("/api/v1/links?limit=100")
 
-        resp = client.post("/api/v1/artifacts/art:1/approve")
+        client.post("/api/v1/artifacts/art:1/approve")
         # Check result only if approval succeeded
 
         # Check links after — should be same

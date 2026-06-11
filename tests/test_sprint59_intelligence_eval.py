@@ -291,9 +291,7 @@ class TestPerChannelBudgetEnforcement:
         hits, trace = await orch.retrieve("test query", config=config)
 
         # FTS should have been capped to 5 hits before fusion
-        fts_hits_in_trace = sum(
-            1 for h in hits if h.source_channel == "fts" or "fts" in h.metadata.get("source_channels", [])
-        )
+        sum(1 for h in hits if h.source_channel == "fts" or "fts" in h.metadata.get("source_channels", []))
         # After RRF fusion and quality gate, FTS hits could be fewer than 5
         # but the total FTS hits before fusion should be 5
         assert trace.hits_before_fusion <= 6  # 5 FTS + 1 graph

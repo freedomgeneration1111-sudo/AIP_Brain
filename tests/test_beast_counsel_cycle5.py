@@ -161,7 +161,7 @@ class TestGetBeastCommentary:
 
         turn_id = "turn-test-001"
         mode = "continuity"
-        artifact_id = _commentary_artifact_id(turn_id, mode)
+        _commentary_artifact_id(turn_id, mode)
         commentary_data = json.dumps(
             {
                 "summary": "Test summary",
@@ -731,7 +731,7 @@ class TestModePersistence:
 
         # The artifact store should raise KeyError for continuity (not found)
         # but return data for critique
-        continuity_artifact_id = _commentary_artifact_id(turn_id, "continuity")
+        _commentary_artifact_id(turn_id, "continuity")
         critique_artifact_id = _commentary_artifact_id(turn_id, "critique")
 
         async def mock_read(artifact_id, version=None):
@@ -816,7 +816,7 @@ class TestModePersistence:
         critique_data = json.dumps({"summary": "Original critique", "mode": "critique"})
         critique_metadata = {"created_at": "2026-06-11T10:00:00Z", "mode": "critique"}
         critique_artifact_id = _commentary_artifact_id(turn_id, "critique")
-        continuity_artifact_id = _commentary_artifact_id(turn_id, "continuity")
+        _commentary_artifact_id(turn_id, "continuity")
 
         async def mock_read(artifact_id, version=None):
             if artifact_id == critique_artifact_id:
@@ -861,7 +861,7 @@ class TestModePersistence:
 
             req = BeastCommentaryRequest(mode=mode)
             with patch("aip.adapter.api.routes.beast_commentary.logger"):
-                result = await run_beast_commentary("turn-sov", req, container=mock_container_full)
+                await run_beast_commentary("turn-sov", req, container=mock_container_full)
 
             # ECS transition must be GENERATED, never APPROVED
             ecs_call = mock_container_full.ecs_store.transition.call_args

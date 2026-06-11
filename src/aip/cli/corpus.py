@@ -196,7 +196,8 @@ def corpus_ingest_cmd(
     "--limit",
     default=200,
     type=int,
-    help="Max turns to tag this run (default 200). No upper limit enforced for manual sessions (pass large values at your own risk/cost).",
+    help="Max turns to tag this run (default 200). No upper limit enforced "
+    "for manual sessions (pass large values at your own risk/cost).",
 )
 @click.option(
     "--retag",

@@ -378,7 +378,7 @@ async def artifact_ledger(
         )
 
     # Build summary
-    creation_event = next(
+    next(
         (e for e in ledger_entries if e.event_type in ("artifact_created", "ecs_transition") and e.from_state is None),
         None,
     )

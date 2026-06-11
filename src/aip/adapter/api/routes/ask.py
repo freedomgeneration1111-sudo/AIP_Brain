@@ -165,7 +165,7 @@ async def ask_retrieve_only(payload: dict, container: AipContainer = Depends(get
     if not question:
         raise HTTPException(status_code=400, detail="question is required")
 
-    domain = payload.get("domain") or payload.get("project_name")
+    payload.get("domain") or payload.get("project_name")
     source: AskSource = payload.get("source", "all")  # type: ignore[assignment]
     if source not in ("ingested", "artifacts", "all"):
         source = "all"

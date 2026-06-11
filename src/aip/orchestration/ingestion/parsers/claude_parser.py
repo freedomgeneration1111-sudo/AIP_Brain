@@ -149,7 +149,6 @@ def parse_claude_export(
 
         # Turn pairing logic - state machine for non-alternating senders
         current_user_text = ""
-        current_thinking_text = ""
         turn_index = 0
 
         for message in messages:
@@ -182,7 +181,6 @@ def parse_claude_export(
                     turn_index += 1
 
                 current_user_text = content_text
-                current_thinking_text = ""
 
                 if not content_text:
                     warnings.append(f"conv {conv_id[:8]}: empty human message skipped")
@@ -215,7 +213,6 @@ def parse_claude_export(
                 )
                 turn_index += 1
                 current_user_text = ""
-                current_thinking_text = ""
 
             else:
                 warnings.append(f"conv {conv_id[:8]}: unknown sender '{sender}', message skipped")

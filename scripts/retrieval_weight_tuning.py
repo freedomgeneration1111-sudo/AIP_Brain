@@ -366,7 +366,8 @@ def print_comparison(best_hybrid: WeightResult | None, fts_only: WeightResult | 
         print("  FTS-only is the only mode evaluated.")
         if fts_only is not None:
             print(
-                f"    FTS-only: P@5={fts_only.precision_at_5:.4f}  R@10={fts_only.recall_at_10:.4f}  MRR={fts_only.mrr:.4f}"
+                f"    FTS-only: P@5={fts_only.precision_at_5:.4f}  "
+                f"R@10={fts_only.recall_at_10:.4f}  MRR={fts_only.mrr:.4f}"
             )
         print("=" * 90)
         return
@@ -391,7 +392,8 @@ def print_comparison(best_hybrid: WeightResult | None, fts_only: WeightResult | 
     mrr_imp = _pct_improvement(best_hybrid.mrr, fts_only.mrr)
 
     print(
-        f"  Best hybrid weights: vector={best_hybrid.vector_weight:.1f}  fts={best_hybrid.fts_weight:.1f}  corpus={best_hybrid.corpus_weight:.1f}"
+        f"  Best hybrid weights: vector={best_hybrid.vector_weight:.1f}  "
+        f"fts={best_hybrid.fts_weight:.1f}  corpus={best_hybrid.corpus_weight:.1f}"
     )
     print()
     print(f"  {'Metric':<15} {'Hybrid':>10} {'FTS-only':>10} {'Improvement':>12}")

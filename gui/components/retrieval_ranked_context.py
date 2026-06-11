@@ -42,7 +42,7 @@ class RetrievalRankedContext:
         self._container.clear()
 
         fusion_results = test_result.get("fusion_results", [])
-        selected_context = test_result.get("selected_context", [])
+        test_result.get("selected_context", [])
         scores = test_result.get("scores", {})
         warnings = test_result.get("warnings", [])
         lexical_only = test_result.get("lexical_only", False)
@@ -129,7 +129,7 @@ class RetrievalRankedContext:
 
     def _render_result_item(self, index: int, result: dict[str, Any]) -> None:
         """Render a single ranked result item."""
-        result_id = result.get("id", "")
+        result.get("id", "")
         title = result.get("title", "")[:100]
         snippet = result.get("snippet", "")[:300]
         score = result.get("score", 0)

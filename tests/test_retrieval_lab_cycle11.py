@@ -398,7 +398,7 @@ class TestRetrievalTestEndpoint:
             "query": "test",
             "selected_channels": ["fts", "corpus"],
         }
-        result = asyncio.get_event_loop().run_until_complete(retrieval_test(payload=payload, container=container))
+        asyncio.get_event_loop().run_until_complete(retrieval_test(payload=payload, container=container))
 
         # Verify channel flags were passed correctly
         assert received_kwargs.get("enable_fts") is True
@@ -742,7 +742,7 @@ class TestRetrievalLabNoMutation:
         container.graph_store = None
 
         payload = {"query": "test no mutation"}
-        result = asyncio.get_event_loop().run_until_complete(retrieval_test(payload=payload, container=container))
+        asyncio.get_event_loop().run_until_complete(retrieval_test(payload=payload, container=container))
 
         # The retrieval test should not call model_provider
         if container.model_provider is not None:

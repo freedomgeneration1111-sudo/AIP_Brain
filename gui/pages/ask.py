@@ -155,7 +155,7 @@ async def ask_page():
             ui.label("Chat Model").style(
                 f"font-size:10px; font-weight:600; color:{C_AMBER}; letter-spacing:0.5px; margin-right:8px;"
             )
-            chat_model_select = (
+            (
                 ui.select(
                     all_model_options,
                     value=current_chat_model,
@@ -231,7 +231,15 @@ async def ask_page():
         input_field = build_chat_input(
             state,
             chat_container,
-            send_fn=lambda: _send_prompt(state, chat_container, input_field, source_panel, trace_panel),
+            send_fn=lambda: _send_prompt(
+                state,
+                chat_container,
+                input_field,
+                source_panel,
+                trace_panel,
+                beast_panel,
+                model_council_panel,
+            ),
         )
 
     build_right_rail(state)
@@ -378,6 +386,8 @@ async def _send_prompt(
     input_field: ui.input,
     source_panel: SourcePanel,
     trace_panel: TracePanel,
+    beast_panel: BeastPanel,
+    model_council_panel: ModelCouncilPanel,
 ) -> None:
     """Handle the send button click — sends message via WebSocket or direct OpenRouter.
 
@@ -388,9 +398,25 @@ async def _send_prompt(
     try:
         if state.client is not None:
             with state.client:
-                await _send_prompt_inner(state, chat_container, input_field, source_panel, trace_panel)
+                await _send_prompt_inner(
+                    state,
+                    chat_container,
+                    input_field,
+                    source_panel,
+                    trace_panel,
+                    beast_panel,
+                    model_council_panel,
+                )
         else:
-            await _send_prompt_inner(state, chat_container, input_field, source_panel, trace_panel)
+            await _send_prompt_inner(
+                state,
+                chat_container,
+                input_field,
+                source_panel,
+                trace_panel,
+                beast_panel,
+                model_council_panel,
+            )
     except Exception as exc:
         import traceback
 
@@ -407,6 +433,8 @@ async def _send_prompt_inner(
     input_field: ui.input,
     source_panel: SourcePanel,
     trace_panel: TracePanel,
+    beast_panel: BeastPanel,
+    model_council_panel: ModelCouncilPanel,
 ) -> None:
     """Inner implementation of send_prompt."""
     prompt = input_field.value.strip()

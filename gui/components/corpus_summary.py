@@ -123,7 +123,7 @@ class CorpusSummaryCards:
 
             # Backfill state card
             backfill_status = status.get("backfill_state", "")
-            sexton_active = bool(status.get("needs_reembed", 0) >= 0)  # status was returned
+            bool(status.get("needs_reembed", 0) >= 0)  # status was returned
             bf_label = (
                 "ACTIVE"
                 if backfill_status in ("backfill_running", "configured_idle")

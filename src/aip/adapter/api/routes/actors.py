@@ -93,7 +93,9 @@ async def get_actor_detail(actor_name: str, container: AipContainer = Depends(ge
                 "stale_canonicals_count": len(stale),
                 "entity_inconsistencies_count": len(inconsistencies),
                 "config": {
-                    "canonical_health_check_interval_seconds": container.vigil.config.canonical_health_check_interval_seconds,
+                    "canonical_health_check_interval_seconds": (
+                        container.vigil.config.canonical_health_check_interval_seconds
+                    ),
                     "stale_threshold_days": container.vigil.config.stale_threshold_days,
                     "re_evaluate_on_slot_change": container.vigil.config.re_evaluate_on_slot_change,
                     "max_re_evaluate_batch_size": container.vigil.config.max_re_evaluate_batch_size,

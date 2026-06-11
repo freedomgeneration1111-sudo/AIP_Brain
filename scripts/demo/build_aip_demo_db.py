@@ -529,7 +529,9 @@ def _ingest_qa_turns(db_path: Path, qa_path: Path) -> int:
                     embedded, metadata_json, embedding_model, needs_reembed, last_embed_at,
                     embed_fail_count, last_embed_error,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
                 """,
                 (
                     turn_id,
@@ -861,7 +863,8 @@ def _create_graph_seed(db_path: Path) -> int:
         conn.execute(
             """
             INSERT OR IGNORE INTO graph_nodes
-            (id, entity_type, canonical_name, domain, confidence, source, aliases_json, metadata_json, created_at, updated_at)
+            (id, entity_type, canonical_name, domain, confidence, source,
+             aliases_json, metadata_json, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -882,7 +885,8 @@ def _create_graph_seed(db_path: Path) -> int:
         conn.execute(
             """
             INSERT OR IGNORE INTO graph_edges
-            (id, source_id, target_id, relationship_type, bridge_tag, confidence, evidence_turn_ids_json, weight, created_at)
+            (id, source_id, target_id, relationship_type, bridge_tag,
+             confidence, evidence_turn_ids_json, weight, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (edge_id, source_id, target_id, rel_type, f"{source_id}->{target_id}", 1.0, json.dumps([]), 1.0, now),
@@ -911,14 +915,20 @@ def _index_lexical(lexical_db_path: Path, state_db_path: Path) -> int:
 
     for turn_id, text, domain in turns:
         lex_conn.execute(
-            "INSERT OR REPLACE INTO fts_documents (doc_id, content, domain, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
+            (
+                "INSERT OR REPLACE INTO fts_documents "
+                "(doc_id, content, domain, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
+            ),
             (f"turn:{turn_id}", text, domain, json.dumps({"type": "corpus_turn", "turn_id": turn_id}), now),
         )
         count += 1
 
     for topic_id, description, domain in wiki:
         lex_conn.execute(
-            "INSERT OR REPLACE INTO fts_documents (doc_id, content, domain, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
+            (
+                "INSERT OR REPLACE INTO fts_documents "
+                "(doc_id, content, domain, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
+            ),
             (f"wiki:{topic_id}", description, domain, json.dumps({"type": "wiki", "topic_id": topic_id}), now),
         )
         count += 1
@@ -941,7 +951,10 @@ def _try_embeddings(state_db_path: Path, vectors_db_path: Path) -> str:
 
         eslot = cfg.get("models", {}).get("embedding", {}) if isinstance(cfg.get("models"), dict) else {}
         if not (isinstance(eslot, dict) and eslot.get("provider") and eslot.get("model")):
-            return "PENDING — no [models.embedding] configured. Run 'aip corpus embed' locally after configuring an embedding provider."
+            return (
+                "PENDING — no [models.embedding] configured. "
+                "Run 'aip corpus embed' locally after configuring an embedding provider."
+            )
 
         # Try to create and use the embedding provider
         from aip.adapter.api.app import _create_embedding_provider
@@ -974,7 +987,10 @@ def _try_embeddings(state_db_path: Path, vectors_db_path: Path) -> str:
                     if embedding and len(embedding) > 0:
                         # Store in vector_metadata (without actual VSS index, just metadata)
                         vec_conn.execute(
-                            "INSERT OR REPLACE INTO vector_metadata (id, content, domain, metadata_json, created_at) VALUES (?, ?, ?, ?, ?)",
+                            (
+                                "INSERT OR REPLACE INTO vector_metadata "
+                                "(id, content, domain, metadata_json, created_at) VALUES (?, ?, ?, ?, ?)"
+                            ),
                             (
                                 turn["turn_id"],
                                 turn["searchable_text"][:500],
@@ -995,7 +1011,10 @@ def _try_embeddings(state_db_path: Path, vectors_db_path: Path) -> str:
             turn_ids = [t["turn_id"] for t in turns[:embedded_count]]
             for tid in turn_ids:
                 state_conn2.execute(
-                    "UPDATE corpus_turns SET embedded = 1, embedding_model = ?, last_embed_at = ?, updated_at = ? WHERE turn_id = ?",
+                    (
+                        "UPDATE corpus_turns SET embedded = 1, "
+                        "embedding_model = ?, last_embed_at = ?, updated_at = ? WHERE turn_id = ?"
+                    ),
                     (eslot.get("model", "unknown"), now, now, tid),
                 )
             state_conn2.commit()

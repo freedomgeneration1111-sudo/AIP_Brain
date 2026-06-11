@@ -270,7 +270,7 @@ async def _do_needs_revision(
 ) -> None:
     """Execute needs-revision action."""
     try:
-        result = await api_client.needs_revision_artifact(artifact_id)
+        await api_client.needs_revision_artifact(artifact_id)
         ui.notify("Revision requested — artifact preserved", color="warning")
         if on_action_complete:
             on_action_complete()
@@ -334,7 +334,6 @@ def _handle_action_error(action: str, artifact_id: str, exc: Exception) -> None:
     # Try to extract meaningful error from httpx response
     if hasattr(exc, "response") and hasattr(exc.response, "text"):
         try:
-
             detail = exc.response.json().get("detail", error_msg)
             error_msg = detail
         except Exception:

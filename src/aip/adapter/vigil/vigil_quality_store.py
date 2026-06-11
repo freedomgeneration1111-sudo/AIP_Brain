@@ -928,7 +928,10 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
             daily_newest = None
             if daily_count > 0:
                 row = await conn.execute(
-                    "SELECT MIN(cycle_timestamp) as oldest, MAX(cycle_timestamp) as newest FROM vigil_quality_history WHERE is_rollup = 1 AND rollup_period = 'daily'"
+                    (
+                        "SELECT MIN(cycle_timestamp) as oldest, MAX(cycle_timestamp) as newest "
+                        "FROM vigil_quality_history WHERE is_rollup = 1 AND rollup_period = 'daily'"
+                    )
                 ).fetchone()
                 daily_oldest = row[0] if row else None
                 daily_newest = row[1] if row else None
@@ -943,7 +946,10 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
             weekly_newest = None
             if weekly_count > 0:
                 row = await conn.execute(
-                    "SELECT MIN(cycle_timestamp) as oldest, MAX(cycle_timestamp) as newest FROM vigil_quality_history WHERE is_rollup = 1 AND rollup_period = 'weekly'"
+                    (
+                        "SELECT MIN(cycle_timestamp) as oldest, MAX(cycle_timestamp) as newest "
+                        "FROM vigil_quality_history WHERE is_rollup = 1 AND rollup_period = 'weekly'"
+                    )
                 ).fetchone()
                 weekly_oldest = row[0] if row else None
                 weekly_newest = row[1] if row else None
@@ -954,7 +960,11 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
 
             # Total data points represented (including rollup counts)
             total_represented_cursor = await conn.execute(
-                "SELECT COALESCE(SUM(rollup_count), 0) + COUNT(*) - COALESCE(SUM(CASE WHEN is_rollup = 1 THEN 1 ELSE 0 END), 0) FROM vigil_quality_history"
+                (
+                    "SELECT COALESCE(SUM(rollup_count), 0) + COUNT(*) "
+                    "- COALESCE(SUM(CASE WHEN is_rollup = 1 THEN 1 ELSE 0 END), 0) "
+                    "FROM vigil_quality_history"
+                )
             )
             total_represented = (await total_represented_cursor.fetchone())[0]
 

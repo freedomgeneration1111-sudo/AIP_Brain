@@ -49,7 +49,8 @@ def ingest() -> None:
 @click.option(
     "--embed/--no-embed",
     default=None,
-    help="Enable real embedding using [models.embedding] config during ingest (default: auto from config; --no-embed forces metadata-only vectors)",
+    help="Enable real embedding using [models.embedding] config during ingest "
+    "(default: auto from config; --no-embed forces metadata-only vectors)",
 )
 def ingest_file_cmd(
     path: str, source_format: str, domain: str, project: str | None, db_path: str | None, embed: bool | None
@@ -77,7 +78,8 @@ def ingest_file_cmd(
 @click.option(
     "--embed/--no-embed",
     default=None,
-    help="Enable real embedding using [models.embedding] config during ingest (default: auto from config; --no-embed forces metadata-only vectors)",
+    help="Enable real embedding using [models.embedding] config during ingest "
+    "(default: auto from config; --no-embed forces metadata-only vectors)",
 )
 def ingest_directory_cmd(
     directory: str,

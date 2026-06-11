@@ -730,7 +730,7 @@ class ReadPoolAutoSizer:
         """
         current_size = store._read_pool_size
         configured_size = self._configured_pool_sizes.get(store_name, current_size)
-        already_increased = self._auto_applied_increase.get(store_name, 0)
+        self._auto_applied_increase.get(store_name, 0)
 
         # Compute target size based on exhaustion severity
         if exhaustion_rate > 0.6:

@@ -319,7 +319,10 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
             meta_json = json.dumps(metadata or {})
             emb_json = json.dumps(embedding) if embedding else None
             await conn.execute(
-                "INSERT INTO vector_metadata (id, content, domain, metadata_json, embedding_json) VALUES (?, ?, ?, ?, ?)",
+                (
+                    "INSERT INTO vector_metadata "
+                    "(id, content, domain, metadata_json, embedding_json) VALUES (?, ?, ?, ?, ?)"
+                ),
                 (id, content, domain, meta_json, emb_json),
             )
             cursor = await conn.execute("SELECT rowid FROM vector_metadata WHERE id = ?", (id,))

@@ -102,11 +102,11 @@ async def retrieval_lab_page():
             # Will be populated by _load_health
 
         # ── Query Panel ────────────────────────────────────────────────
-        query_panel = RetrievalQueryPanel(on_run=_handle_run_test)
+        query_panel = RetrievalQueryPanel(on_run=lambda q, ch, lim, tr: _handle_run_test(q, ch, lim, tr))
         query_panel.render()
 
         # ── Test Results Area ──────────────────────────────────────────
-        results_container = ui.column().classes("w-full mt-4 gap-4")
+        ui.column().classes("w-full mt-4 gap-4")
 
         # Warnings bar (for degraded/unavailable states)
         warnings_container = ui.column().classes("w-full gap-1")
