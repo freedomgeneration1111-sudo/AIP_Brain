@@ -1,4 +1,87 @@
 ---
+Task ID: 10
+Agent: Super Z (main)
+Task: UI Cycle 10 — Corpus Workbench v1
+
+Work Log:
+- Read all required docs: UI_OPERATOR_CONSOLE_ARCHITECTURE, UI_DEVELOPMENT_PROMPT_SEQUENCE, UI_CURRENT_STATE_AUDIT, API_REFERENCE, STATUS, DOGFOOD_READY, ARCHITECTURE
+- Inspected all frontend files: corpus.py (placeholder), api_client.py, status_types.py, link_panel.py, shared components, layout, theme
+- Inspected all backend files: corpus.py route, ingest.py, sources.py, admin.py (embedding backfill), corpus_turn_store.py, dependencies.py, app.py container wiring
+- Determined existing capabilities: 6 corpus endpoints existed (/stats, /embedding-progress, /status, /audit, /backfill-queue, /ingest), 2 admin embedding endpoints, 2 ingestion endpoints, 2 source endpoints
+- Identified gaps: no document-level views, no problems aggregation, no corpus-scoped backfill trigger, no retry-failed, no duplicates/stale endpoints
+- Added 4 new store methods on CorpusTurnStore: list_documents, count_documents, get_document_detail, get_corpus_problems
+- Implemented 8 new backend endpoints in src/aip/adapter/api/routes/corpus.py: GET /corpus/documents, GET /corpus/documents/{source_path}, GET /corpus/problems, GET /corpus/unembedded, POST /corpus/backfill, POST /corpus/retry-failed, GET /corpus/duplicates, GET /corpus/stale
+- Added require_definer auth to /corpus/ingest endpoint
+- All endpoints return honest unavailable/not_wired when CorpusTurnStore not wired
+- Implemented 5 new frontend components: corpus_summary, document_table, document_detail, corpus_actions, corpus_problems
+- Replaced placeholder corpus.py page with full Corpus Workbench v1
+- Added 12 API client methods in gui/api_client.py
+- Added 15 TypedDict classes in gui/status_types.py
+- Wrote 30 new tests in tests/test_corpus_workbench_cycle10.py (all passing)
+- Verified 14 GUI import boundary tests pass (updated for new components)
+- Verified 106 existing tests still pass (import boundary, crosslink, artifact)
+- Ran post-execution sanitation: no blockers, 3 documented debt items (except Exception: pass in JSON parsing)
+- Updated docs: UI_CURRENT_STATE_AUDIT.md, DOGFOOD_READY.md
+- Committed and pushed to main
+
+Stage Summary:
+- Corpus Workbench v1 fully built — replaces placeholder with functional corpus management workbench
+- Backend: 8 new endpoints + 4 new store methods, Frontend: 5 components + page wiring
+- 30 new tests passing, 14 GUI boundary + 106 existing tests still passing
+- No fake corpus counts, no fake embedding status, no silent mutation
+- Ingest/backfill/retry are explicit DEFINER actions with confirmation dialogs
+- Honest unavailable/not_wired/degraded states throughout
+- No secrets exposed in any corpus response
+
+Files changed:
+- src/aip/adapter/corpus_turn_store.py (4 new methods)
+- src/aip/adapter/api/routes/corpus.py (8 new endpoints, require_definer on ingest)
+- gui/pages/corpus.py (replaced placeholder with full workbench)
+- gui/components/corpus_summary.py (new)
+- gui/components/document_table.py (new)
+- gui/components/document_detail.py (new)
+- gui/components/corpus_actions.py (new)
+- gui/components/corpus_problems.py (new)
+- gui/api_client.py (12 new methods)
+- gui/status_types.py (15 new TypedDicts)
+- tests/test_corpus_workbench_cycle10.py (new, 30 tests)
+- tests/test_gui_import_boundary.py (updated for new components)
+- docs/ui/UI_CURRENT_STATE_AUDIT.md (updated)
+- DOGFOOD_READY.md (updated)
+
+Behavior changed:
+- Corpus page now shows full workbench instead of placeholder
+- Document-level views available (list, detail)
+- Problems visible (failed jobs, unembedded, stale, duplicates)
+- Ingest/backfill/retry available as explicit DEFINER actions
+- All corpus data comes from real backend queries
+
+Corpus backend verdict: 8 new endpoints, all return honest unavailable/not_wired states. No fake data.
+
+Corpus Workbench page verdict: Fully functional with summary cards, document table, detail panel, actions, problems panel. Handles empty corpus, populated corpus, backend unavailable, unembedded chunks, failed jobs, action unavailable states.
+
+Ingest action verdict: Explicit DEFINER action with require_definer auth. Reports honestly. Not wired returns 503. No path returns 400. No silent overwrite.
+
+Backfill action verdict: Explicit DEFINER action. Wraps existing admin backfill path. Returns not_wired if no provider, already_running if in progress, accepted when started. No fake success.
+
+Embedding status honesty verdict: Computed from real store queries. Zero coverage returns 0.0%. No fake healthy.
+
+Problems/failed jobs verdict: Visible via /corpus/problems. Failed ingest jobs, unembedded count, needs_reembed count, duplicate hashes, stale docs all shown. Honest empty lists when no problems.
+
+Crosslink integration verdict: Deferred to integration pass. Link panel not yet integrated into document detail.
+
+Secret exposure verdict: No API keys, passwords, or tokens in any corpus response. Verified by tests.
+
+Import-boundary verdict: All GUI modules import only from gui.* No aip.orchestration imports. 14 GUI boundary + general import boundary tests all pass.
+
+Remaining Corpus Workbench debt:
+- Crosslink panel integration in document detail (deferred to integration pass)
+- 3 except Exception: pass in corpus_turn_store.py JSON parsing (documented debt, should log at debug level)
+- File upload from GUI for ingest (currently path-only; GUI file upload deferred)
+
+Blockers or dependencies affecting Retrieval Lab: None. All corpus data is accessible for retrieval testing.
+
+---
 Task ID: 9
 Agent: Super Z (main)
 Task: UI Cycle 9 — Artifact Workbench v1
