@@ -2,7 +2,9 @@
 
 Renders the center panel of the Wiki/CODEX Home page showing article
 title, summary, body, status, tags, timestamps, and side panels for
-backlinks, related objects, and contradictions.
+backlinks, related objects, contradictions, and crosslinks.
+
+UI Cycle 8: Added Crosslink System link panel integration.
 """
 
 from __future__ import annotations
@@ -41,6 +43,7 @@ def render_wiki_article_view(
     backlinks_data: dict[str, Any] | None = None,
     on_edit: Callable[[str], None] | None = None,
     on_create: Callable[[], None] | None = None,
+    api_client: Any = None,
 ) -> None:
     """Render the wiki article view panel.
 
@@ -49,6 +52,7 @@ def render_wiki_article_view(
         backlinks_data: Backlinks response dict, or None
         on_edit: Callback when edit is clicked (receives article ID)
         on_create: Callback when "Create Article" is clicked in empty state
+        api_client: AipApiClient instance (for Crosslink System link panel)
     """
     if article is None:
         _render_empty_state(on_create=on_create)
@@ -82,9 +86,9 @@ def render_wiki_article_view(
         with ui.column().style("flex:2; min-width:0;"):
             _render_article_content(article)
 
-        # Sidebar: backlinks, related, contradictions
+        # Sidebar: backlinks, related, contradictions, crosslinks
         with ui.column().style("flex:1; min-width:200px;"):
-            _render_sidebar(article, backlinks_data)
+            _render_sidebar(article, backlinks_data, api_client=api_client)
 
 
 def _render_empty_state(*, on_create: Callable[[], None] | None = None) -> None:
@@ -184,7 +188,7 @@ def _render_article_content(article: dict[str, Any]) -> None:
         word_count = article.get("word_count", 0)
         ui.label(f"Words: {word_count}").style(
             f"font-size:10px; color:{C_INK60}; font-family:{F_MONO};"
-        )
+            )
         version = article.get("version", 1)
         ui.label(f"Version: {version}").style(
             f"font-size:10px; color:{C_INK60}; font-family:{F_MONO};"
@@ -196,13 +200,23 @@ def _render_article_content(article: dict[str, Any]) -> None:
             ui.label(f"Updated: {date_str}").style(
                 f"font-size:10px; color:{C_INK60}; font-family:{F_MONO};"
             )
+        # Cycle 7.1: Storage backend indicator
+        storage_backend = article.get("storage_backend", "")
+        if storage_backend:
+            backend_color = C_OK_FG if storage_backend == "artifact_store" else C_WARN_FG if storage_backend == "sqlite_compat" else C_MUTED
+            ui.label(f"Storage: {storage_backend}").style(
+                f"font-size:9px; color:{backend_color}; font-family:{F_MONO}; "
+                f"border:0.5px solid {backend_color}; border-radius:{R_SM}; padding:1px 6px;"
+            )
 
 
 def _render_sidebar(
     article: dict[str, Any],
     backlinks_data: dict[str, Any] | None,
+    *,
+    api_client: Any = None,
 ) -> None:
-    """Render the sidebar with backlinks, related objects, and contradictions."""
+    """Render the sidebar with backlinks, related objects, contradictions, and crosslinks."""
     # Backlinks section
     with ui.card().classes("w-full").style(
         f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
@@ -324,3 +338,14 @@ def _render_sidebar(
                     ui.label(f"? {q}").style(
                         f"font-size:10px; color:{C_CREAM}; font-family:{F_MONO};"
                     )
+
+    # Crosslink System — Link Panel (UI Cycle 8)
+    article_id = article.get("id", "")
+    if article_id and api_client is not None:
+        from gui.components.link_panel import render_link_panel
+        render_link_panel(
+            object_type="wiki_article",
+            object_id=article_id,
+            api_client=api_client,
+            show_create=True,
+        )

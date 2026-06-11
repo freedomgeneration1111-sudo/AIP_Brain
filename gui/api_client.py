@@ -1373,6 +1373,233 @@ class AipApiClient:
             log.warning("model_council_run_failed: %s", exc)
             return {"status": "error", "error": str(exc)}
 
+    # ------------------------------------------------------------------
+    # UI Cycle 8 — Crosslink System: Knowledge Links
+    # ------------------------------------------------------------------
+
+    async def list_knowledge_links(
+        self,
+        *,
+        source_type: str | None = None,
+        source_id: str | None = None,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        relation_type: str | None = None,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """List knowledge links with optional filters.
+
+        Calls GET /api/v1/links.
+        Returns honest empty list if no links match or storage unavailable.
+        """
+        client = self._get_http_client()
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if source_type:
+            params["source_type"] = source_type
+        if source_id:
+            params["source_id"] = source_id
+        if target_type:
+            params["target_type"] = target_type
+        if target_id:
+            params["target_id"] = target_id
+        if relation_type:
+            params["relation_type"] = relation_type
+        if status:
+            params["status"] = status
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/links",
+                params=params,
+                timeout=8.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("list_knowledge_links_failed: %s", exc)
+            return {
+                "items": [],
+                "total": 0,
+                "limit": limit,
+                "offset": offset,
+                "storage_backend": "unavailable",
+                "error": str(exc),
+            }
+
+    async def create_knowledge_link(
+        self,
+        *,
+        source_type: str,
+        source_id: str,
+        target_type: str,
+        target_id: str,
+        relation_type: str,
+        confidence: float = 1.0,
+        created_by: str = "definer",
+        status: str = "suggested",
+        approved_by_definer: bool = False,
+        provenance: str = "",
+        notes: str = "",
+    ) -> dict[str, Any]:
+        """Create a new knowledge link.
+
+        Calls POST /api/v1/links.
+        Default status is 'suggested', approved_by_definer is False.
+        No linked objects are mutated. No artifacts are approved/exported.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {
+            "source_type": source_type,
+            "source_id": source_id,
+            "target_type": target_type,
+            "target_id": target_id,
+            "relation_type": relation_type,
+            "confidence": confidence,
+            "created_by": created_by,
+            "status": status,
+            "approved_by_definer": approved_by_definer,
+            "provenance": provenance,
+            "notes": notes,
+        }
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/links",
+                json=payload,
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("create_knowledge_link_failed: %s", exc)
+            return {"status": "error", "error": str(exc)}
+
+    async def update_knowledge_link(
+        self,
+        link_id: str,
+        *,
+        relation_type: str | None = None,
+        confidence: float | None = None,
+        status: str | None = None,
+        approved_by_definer: bool | None = None,
+        provenance: str | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        """Update a knowledge link (approve, reject, edit).
+
+        Calls PATCH /api/v1/links/{link_id}.
+        Approval requires explicit approved_by_definer=True.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {}
+        if relation_type is not None:
+            payload["relation_type"] = relation_type
+        if confidence is not None:
+            payload["confidence"] = confidence
+        if status is not None:
+            payload["status"] = status
+        if approved_by_definer is not None:
+            payload["approved_by_definer"] = approved_by_definer
+        if provenance is not None:
+            payload["provenance"] = provenance
+        if notes is not None:
+            payload["notes"] = notes
+        try:
+            resp = await client.patch(
+                f"{self.base_url}/api/v1/links/{link_id}",
+                json=payload,
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("update_knowledge_link_failed: %s", exc)
+            return {"status": "error", "error": str(exc)}
+
+    async def delete_knowledge_link(self, link_id: str) -> dict[str, Any]:
+        """Delete a knowledge link.
+
+        Calls DELETE /api/v1/links/{link_id}.
+        No linked objects are mutated.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.delete(
+                f"{self.base_url}/api/v1/links/{link_id}",
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("delete_knowledge_link_failed: %s", exc)
+            return {"deleted": False, "error": str(exc)}
+
+    async def get_link_backlinks(
+        self,
+        target_type: str,
+        target_id: str,
+        *,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Get backlinks (links pointing TO a given object).
+
+        Calls GET /api/v1/links/backlinks/{target_type}/{target_id}.
+        Returns honest empty list if no backlinks exist or storage unavailable.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/links/backlinks/{target_type}/{target_id}",
+                params={"limit": limit},
+                timeout=8.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_link_backlinks_failed: %s", exc)
+            return {
+                "target_type": target_type,
+                "target_id": target_id,
+                "backlinks": [],
+                "total": 0,
+                "available": False,
+                "storage_backend": "unavailable",
+                "error": str(exc),
+            }
+
+    async def get_link_forward_links(
+        self,
+        source_type: str,
+        source_id: str,
+        *,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Get forward links (links pointing FROM a given object).
+
+        Calls GET /api/v1/links/forward/{source_type}/{source_id}.
+        Returns honest empty list if no forward links exist or storage unavailable.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/links/forward/{source_type}/{source_id}",
+                params={"limit": limit},
+                timeout=8.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_link_forward_links_failed: %s", exc)
+            return {
+                "source_type": source_type,
+                "source_id": source_id,
+                "forward_links": [],
+                "total": 0,
+                "available": False,
+                "storage_backend": "unavailable",
+                "error": str(exc),
+            }
+
 
 # Module-level singleton for the GUI to use
 _api_client: AipApiClient | None = None

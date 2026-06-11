@@ -269,11 +269,18 @@ def add_answer_card(
                     f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
                 )
 
-            # Link Wiki — NOT WIRED (no backend endpoint)
-            ui.button("Link Wiki").props("dense flat size=xs disable").style(
-                f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
-            )
-            ui.tooltip("Requires backend endpoint — not yet implemented")
+            # Link Wiki — UI Cycle 8: Crosslink System now provides backend endpoint
+            if on_link_wiki:
+                ui.button(
+                    "Link Wiki",
+                    on_click=lambda: _safe_callback(on_link_wiki, turn_data),
+                ).props("dense flat size=xs").style(
+                    f"color:{C_AMBER}; font-size:9px; font-family:{F_MONO};"
+                )
+            else:
+                ui.button("Link Wiki").props("dense flat size=xs disable").style(
+                    f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
+                )
 
             # Run Model Council — available via Model Council panel
             if on_run_model_council:

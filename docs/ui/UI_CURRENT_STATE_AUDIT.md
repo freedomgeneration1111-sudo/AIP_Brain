@@ -131,6 +131,9 @@ The chat flow is fully implemented and functional:
 - **Contradiction detection** — GET /api/v1/wiki/contradictions — Implemented UI Cycle 7
 - **Stale article detection** — GET /api/v1/wiki/stale — Implemented UI Cycle 7
 - **Enhanced stats** — GET /api/v1/wiki/stats with stale_count, contradiction_count — Implemented UI Cycle 7
+- **Storage boundary hardened** — Cycle 7.1: wiki create/edit route through `container.artifact_store` + `container.ecs_store` when available; `sqlite_compat` fallback isolated and documented
+- **storage_backend indicator** — Cycle 7.1: every wiki response includes `storage_backend` (artifact_store / sqlite_compat / unavailable); GUI shows badge in article view
+- **Article IDs crosslink-safe** — Cycle 7.1: `wiki:{domain}:{title_slug}:{timestamp}` format documented as stable target for Cycle 8 Crosslinks
 - No crosslinks to artifacts/sources/turns (deferred to Crosslink System)
 - No article revision history browsing (version counter exists)
 
@@ -256,12 +259,20 @@ The following API concepts are needed by the Operator Console but **do not exist
 
 | Needed | Status | Notes |
 |--------|--------|-------|
-| `GET /api/v1/links` | **MISSING** | No crosslink system exists |
-| `POST /api/v1/links` | **MISSING** | No link creation |
-| `PATCH /api/v1/links/{id}` | **MISSING** | No link editing |
-| `DELETE /api/v1/links/{id}` | **MISSING** | No link deletion |
-| KnowledgeLink schema | **MISSING** | No crosslink data model |
-| Backlink lookup | **MISSING** | No backlink infrastructure |
+| `GET /api/v1/links` | **✅ BUILT (UI Cycle 8)** | List knowledge links with filters |
+| `POST /api/v1/links` | **✅ BUILT (UI Cycle 8)** | Create knowledge link (status=suggested, no auto-approve) |
+| `PATCH /api/v1/links/{link_id}` | **✅ BUILT (UI Cycle 8)** | Update link status/relation/metadata |
+| `DELETE /api/v1/links/{link_id}` | **✅ BUILT (UI Cycle 8)** | Delete link (no linked object mutation) |
+| `GET /api/v1/links/backlinks/{target_type}/{target_id}` | **✅ BUILT (UI Cycle 8)** | Get backlinks for an object |
+| `GET /api/v1/links/forward/{source_type}/{source_id}` | **✅ BUILT (UI Cycle 8)** | Get forward links from an object |
+| KnowledgeLink schema | **✅ BUILT (UI Cycle 8)** | 10 object types, 12 relation types, storage_backend indicator |
+| KnowledgeLinkStore | **✅ BUILT (UI Cycle 8)** | aiosqlite adapter with dedicated knowledge_links table in state.db |
+| gui/components/link_panel.py | **✅ BUILT (UI Cycle 8)** | Reusable Link Panel with status badges, approve/reject/delete |
+| gui/components/link_editor.py | **✅ BUILT (UI Cycle 8)** | Manual link creation dialog with dropdowns |
+| gui/api_client.py (6 new methods) | **✅ BUILT (UI Cycle 8)** | list/create/update/delete + backlinks/forward |
+| gui/status_types.py (6 TypedDicts) | **✅ BUILT (UI Cycle 8)** | KnowledgeLink + response types |
+| Link panel in wiki sidebar | **✅ BUILT (UI Cycle 8)** | Integrated into wiki article view |
+| Answer card "Link Wiki" wired | **✅ BUILT (UI Cycle 8)** | No longer "not yet implemented" |
 
 ### 3.6 Artifact Workbench
 
@@ -580,7 +591,7 @@ Following the Development Cycle sequence, adapted based on current state:
 | 4 | **Beast Counsel Panel v1** | Ask Workbench | **MISSING** — need `GET/POST /turns/{id}/beast-commentary` | High |
 | 5 | **Model Council** | Ask Workbench | **MISSING** — need `POST /beast/compare-models` | Medium |
 | 6 | **Wiki/CODEX Home** | Shell | **✅ BUILT (UI Cycle 7)** — CRUD for articles, backlinks, contradictions, stale detection all implemented | ~~High~~ Done |
-| 7 | **Crosslink System v1** | Wiki + Artifacts + Ask | **MISSING** — full crosslink API needed | High |
+| 7 | **Crosslink System v1** | Wiki + Artifacts + Ask | **✅ BUILT (UI Cycle 8)** — full crosslink API, link panel, link editor, wiki sidebar integration | ~~High~~ Done |
 | 8 | **Artifact Workbench** | Shell + Crosslinks | **PARTIAL** — need needs-revision, export, force-export | Medium-High |
 | 9 | **Corpus Workbench** | Shell | **MOSTLY READY** — corpus, ingest, backfill endpoints exist | Medium |
 | 10 | **Retrieval Lab** | Shell | **PARTIAL** — need `POST /retrieval/test` with per-channel detail | Medium |
@@ -602,7 +613,7 @@ The **Beast Counsel Panel** and **Wiki/CODEX Home** are on the critical path bec
 |------|----------|------------|
 | **Beast commentary backend doesn't exist** — no storage, no schema, no generation pipeline | High | Define API contract first; implement panel with "unavailable" state; build backend in parallel |
 | ~~Wiki article CRUD doesn't exist~~ — **RESOLVED (UI Cycle 7)** — full CRUD, backlinks, contradictions, stale detection all implemented | ~~High~~ Resolved | Define WikiArticle schema; implement panel with read-only view first; build CRUD endpoints |
-| **Crosslink system is entirely absent** — no data model, no storage, no API | High | Defer to later cycle; implement as standalone module; define schema before building UI |
+| ~~Crosslink system is entirely absent~~ — **RESOLVED (UI Cycle 8)** — full crosslink API (GET/POST/PATCH/DELETE /links, backlinks, forward links), KnowledgeLinkStore, link panel, link editor all implemented | ~~High~~ Resolved | 56 tests in tests/test_crosslink_system_cycle8.py; all existing tests still pass |
 | **Module-level singleton state breaks multi-tab** — concurrent tabs share `_state` | Medium | Refactor to per-session state early (Step 1) |
 | **Dual main.py / shell.py creates confusion** — which is the active frontend? | Medium | Archive main.py immediately in Step 1 |
 | **Direct OpenRouter fallback lacks required labeling** — must show `DIRECT MODEL ONLY — NOT DOGFOOD` | Medium | Fix in Ask Workbench upgrade (Step 3) |
@@ -735,8 +746,8 @@ Note: The backend also serves its own HTML pages (chat.html, index.html, review.
 | Ask Workbench | Chat WS, `/ask`, `/ask/retrieve`, `/beast/scan`, sessions CRUD | Turn-level sources/trace | `/turns/{id}/beast-commentary` (GET/POST), Beast modes |
 | Beast Counsel | `/beast/scan` | — | Full Beast commentary API, Beast modes |
 | Model Council | `/models/library`, `/models/slots` | Cohort tab does client-side multi-ask | `/beast/compare-models` |
-| Wiki/CODEX Home | `/wiki/articles`, `/wiki/articles/{id}`, `POST /wiki/articles`, `PATCH /wiki/articles/{id}`, `/wiki/backlinks/{id}`, `/wiki/stale`, `/wiki/contradictions`, `/wiki/stats` | — | Crosslink System (deferred) |
-| Crosslink System | — | — | Full crosslink API |
+| Wiki/CODEX Home | `/wiki/articles`, `/wiki/articles/{id}`, `POST /wiki/articles`, `PATCH /wiki/articles/{id}`, `/wiki/backlinks/{id}`, `/wiki/stale`, `/wiki/contradictions`, `/wiki/stats` | — | — |
+| Crosslink System | `/links` (GET/POST), `/links/{id}` (PATCH/DELETE), `/links/backlinks/{type}/{id}`, `/links/forward/{type}/{id}` | — | — |
 | Artifact Workbench | `/artifacts`, `/reviews` (approve/reject), `/ecs/graph` | `/artifacts/{id}/evaluation` | Needs-revision, export, force-export, source panel |
 | Corpus Workbench | `/corpus/*`, `/ingest/*`, `/sources/*`, `/admin/embeddings/backfill` | — | Document detail, chunk inspection, failed jobs |
 | Retrieval Lab | `/retrieval/dashboard`, `/retrieval/channels`, `/retrieval/traces` | `/ask/retrieve` (no per-channel detail) | `/retrieval/test` (interactive) |

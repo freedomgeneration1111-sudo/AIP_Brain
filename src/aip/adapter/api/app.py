@@ -60,6 +60,7 @@ from aip.adapter.api.routes import (
     health,
     ingest,
     knowledge,
+    links,
     memory,
     model_council,
     models,
@@ -1762,6 +1763,7 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(turns.router, prefix="/api/v1", tags=["turns"])
     app.include_router(beast_commentary.router, prefix="/api/v1", tags=["beast_commentary"])
     app.include_router(model_council.router, prefix="/api/v1", tags=["model_council"])
+    app.include_router(links.router, prefix="/api/v1", tags=["links"])
     app.include_router(graph.router, prefix="/api/v1", tags=["graph"])
     app.include_router(graph_viz.router, tags=["graph"])
 

@@ -200,6 +200,7 @@ async def wiki_page():
                     backlinks_data=backlinks_data,
                     on_edit=_on_article_edit,
                     on_create=editor.open_create,
+                    api_client=state.api_client,
                 )
             else:
                 render_wiki_article_view(

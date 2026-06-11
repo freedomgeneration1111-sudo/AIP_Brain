@@ -324,6 +324,7 @@ class WikiArticle(TypedDict, total=False):
     version: int
     word_count: int
     metadata: dict[str, Any]
+    storage_backend: str  # "artifact_store" | "sqlite_compat" | "unavailable"
 
 
 class WikiArticleListResponse(TypedDict, total=False):
@@ -333,6 +334,7 @@ class WikiArticleListResponse(TypedDict, total=False):
     total: int
     page: int
     page_size: int
+    storage_backend: str  # "artifact_store" | "sqlite_compat" | "unavailable"
 
 
 class WikiArticleCreateResponse(TypedDict, total=False):
@@ -347,6 +349,7 @@ class WikiArticleCreateResponse(TypedDict, total=False):
     state: str  # Always "GENERATED"
     message: str
     created_at: str
+    storage_backend: str  # "artifact_store" | "sqlite_compat"
 
 
 class WikiArticleUpdateResponse(TypedDict, total=False):
@@ -361,6 +364,7 @@ class WikiArticleUpdateResponse(TypedDict, total=False):
     state: str  # Unchanged from current
     message: str
     updated_at: str
+    storage_backend: str  # "artifact_store" | "sqlite_compat"
 
 
 class WikiBacklinkEntry(TypedDict, total=False):
@@ -379,6 +383,7 @@ class WikiBacklinksResponse(TypedDict, total=False):
     backlinks: list[WikiBacklinkEntry]
     total: int
     available: bool  # False if graph_edges table not present
+    storage_backend: str  # "artifact_store" | "sqlite_compat" | "unavailable"
 
 
 class WikiContradictionEntry(TypedDict, total=False):
@@ -407,6 +412,7 @@ class WikiContradictionsResponse(TypedDict, total=False):
     items: list[WikiContradictionEntry]
     total: int
     available: bool  # False if codex_contradictions table not present
+    storage_backend: str  # "artifact_store" | "sqlite_compat" | "unavailable"
 
 
 class WikiStaleEntry(TypedDict, total=False):
@@ -426,3 +432,121 @@ class WikiStaleResponse(TypedDict, total=False):
     items: list[WikiStaleEntry]
     total: int
     available: bool  # False if codex_topics table not present
+    storage_backend: str  # "artifact_store" | "sqlite_compat" | "unavailable"
+
+
+# ── UI Cycle 8: Crosslink System types ─────────────────────────────────
+
+
+class KnowledgeLink(TypedDict, total=False):
+    """A single knowledge link from the Crosslink System.
+
+    Links are first-class objects connecting knowledge entities.
+    Default status is 'suggested' — requires DEFINER approval to become 'approved'.
+    No linked objects are mutated by link creation.
+    No artifacts are approved/exported by link creation.
+    """
+
+    id: str  # Stable link ID: link:{hash}:{timestamp}
+    source_type: str  # e.g. "wiki_article", "artifact", "conversation_turn"
+    source_id: str
+    target_type: str
+    target_id: str
+    relation_type: str  # e.g. "supports", "contradicts", "mentions"
+    confidence: float  # 0.0 - 1.0
+    created_by: str  # "definer" | "beast" | "system"
+    created_at: str
+    updated_at: str
+    approved_by_definer: bool  # Always False for new links — explicit approval required
+    approved_at: str | None
+    status: str  # "suggested" | "approved" | "rejected" | "deleted"
+    provenance: str
+    notes: str
+    storage_backend: str  # "knowledge_link_store" | "unavailable"
+
+
+class KnowledgeLinkListResponse(TypedDict, total=False):
+    """Response from GET /api/v1/links."""
+
+    items: list[KnowledgeLink]
+    total: int
+    limit: int
+    offset: int
+    storage_backend: str  # "knowledge_link_store" | "unavailable"
+
+
+class KnowledgeLinkCreateResponse(TypedDict, total=False):
+    """Response from POST /api/v1/links.
+
+    Default status is 'suggested', approved_by_definer is False.
+    No linked objects are mutated.
+    """
+
+    id: str
+    source_type: str
+    source_id: str
+    target_type: str
+    target_id: str
+    relation_type: str
+    confidence: float
+    created_by: str
+    created_at: str
+    updated_at: str
+    approved_by_definer: bool  # Default False
+    approved_at: str | None
+    status: str  # Default "suggested"
+    provenance: str
+    notes: str
+    storage_backend: str
+
+
+class KnowledgeLinkUpdateResponse(TypedDict, total=False):
+    """Response from PATCH /api/v1/links/{link_id}.
+
+    Approval requires explicit approved_by_definer=True.
+    """
+
+    id: str
+    source_type: str
+    source_id: str
+    target_type: str
+    target_id: str
+    relation_type: str
+    confidence: float
+    created_by: str
+    created_at: str
+    updated_at: str
+    approved_by_definer: bool
+    approved_at: str | None
+    status: str
+    provenance: str
+    notes: str
+    storage_backend: str
+
+
+class KnowledgeLinkBacklinksResponse(TypedDict, total=False):
+    """Response from GET /api/v1/links/backlinks/{target_type}/{target_id}.
+
+    Returns honest empty list if no backlinks exist or storage unavailable.
+    """
+
+    target_type: str
+    target_id: str
+    backlinks: list[KnowledgeLink]
+    total: int
+    available: bool  # False if storage unavailable
+    storage_backend: str
+
+
+class KnowledgeLinkForwardLinksResponse(TypedDict, total=False):
+    """Response from GET /api/v1/links/forward/{source_type}/{source_id}.
+
+    Returns honest empty list if no forward links exist or storage unavailable.
+    """
+
+    source_type: str
+    source_id: str
+    forward_links: list[KnowledgeLink]
+    total: int
+    available: bool  # False if storage unavailable
+    storage_backend: str

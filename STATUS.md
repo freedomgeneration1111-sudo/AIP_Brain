@@ -6,7 +6,7 @@
 **Release:** Alpha Test Release
 **Project Mode:** MAINTENANCE — active development phase complete; see docs/Maintenance_Protocol.md
 
-> This document reflects the state after UI Cycle 7 (Wiki/CODEX Home v1) and Chunk 5 (retrieval honesty).
+> This document reflects the state after UI Cycle 8 (Crosslink System v1) and Chunk 5 (retrieval honesty).
 > The project has entered maintenance mode. No further feature sprints are planned.
 > See ROADMAP.md for the maintenance mode section and docs/Maintenance_Protocol.md for operational procedures.
 
@@ -429,29 +429,85 @@ via `aip ask` to ground future design work in prior decisions.
 | Cytoscape.js visualization | COMPLETE | /graph-viz standalone dark-mode page |
 | Chat augmentation | COMPLETE | Domain neighbor injection in augmented chat |
 
-## Wiki / CODEX Home Status (UI Cycle 7)
+## Wiki / CODEX Home Status (UI Cycle 7 + 7.1)
 
-Wiki/CODEX Home v1 is now implemented with full article CRUD, backlinks, contradictions, and stale article detection.
+Wiki/CODEX Home v1 is implemented with full article CRUD, backlinks, contradictions, and stale article detection. Cycle 7.1 hardens the storage boundary by routing wiki create/edit through `container.artifact_store` + `container.ecs_store` when available, with an explicitly isolated `sqlite_compat` fallback.
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| GET /api/v1/wiki/articles (enhanced) | ✅ Built | Added `search` param, stable WikiArticle schema |
-| GET /api/v1/wiki/articles/{id} | ✅ Built | Single article with full schema |
-| POST /api/v1/wiki/articles | ✅ Built | DEFINER action, state always set to GENERATED — never auto-approved |
-| PATCH /api/v1/wiki/articles/{id} | ✅ Built | DEFINER action, creates new version but does NOT change ECS state |
-| GET /api/v1/wiki/backlinks/{id} | ✅ Built | Returns honest empty list when no backlinks or CODEX tables don't exist |
+| GET /api/v1/wiki/articles (enhanced) | ✅ Built | Added `search` param, stable WikiArticle schema, `storage_backend` indicator |
+| GET /api/v1/wiki/articles/{id} | ✅ Built | Single article with full schema, `storage_backend` indicator |
+| POST /api/v1/wiki/articles | ✅ Hardened | Uses `container.artifact_store.write()` + `container.ecs_store.transition()` when available; falls back to `sqlite_compat` |
+| PATCH /api/v1/wiki/articles/{id} | ✅ Hardened | Uses `container.artifact_store.write()` when available; does NOT change ECS state |
+| GET /api/v1/wiki/backlinks/{id} | ✅ Built | Returns honest empty list when no backlinks or `graph_edges` table doesn't exist (`available: false`) |
 | GET /api/v1/wiki/stale | ✅ Built | Returns honest empty list when no stale articles or CODEX tables don't exist |
 | GET /api/v1/wiki/contradictions | ✅ Built | Returns honest empty list when no contradictions or CODEX tables don't exist |
-| GET /api/v1/wiki/stats (enhanced) | ✅ Built | Now includes stale_count, contradiction_count |
-| WikiArticle schema | ✅ Complete | Dedicated model with tags, aliases, linked_article_ids, open_questions, version |
-| gui/pages/wiki.py | ✅ Active | Full CODEX Home with article listing, viewing, create/edit, backlinks, contradictions, stale detection |
+| GET /api/v1/wiki/stats (enhanced) | ✅ Built | Now includes `storage_backend` indicator |
+| WikiArticle schema | ✅ Complete | Includes `storage_backend` field (artifact_store / sqlite_compat / unavailable) |
+| gui/pages/wiki.py | ✅ Active | Full CODEX Home with storage backend indicator in article view |
+| gui/components/wiki_article_view.py | ✅ Updated | Shows `Storage: artifact_store` or `Storage: sqlite_compat` badge |
 
-**Sovereignty guarantees:**
+**Storage path (Cycle 7.1):**
+- **Preferred**: `container.artifact_store.write()` + `container.ecs_store.transition()` — shared connection pool, validated ECS transitions, event provenance
+- **Fallback**: Direct `aiosqlite` to `state.db` (`sqlite_compat`) — explicitly isolated compatibility path
+- **Migration plan**: Once container is always available in production, the `sqlite_compat` path can be removed
+
+**Sovereignty guarantees (unchanged):**
 - CREATE always sets state to GENERATED — never auto-approved
 - EDIT creates new version but does NOT change ECS state
 - No fake article content — honest empty/unavailable states
 - No secret exposure in wiki responses
 - Backlinks/contradictions/stale return empty lists honestly when CODEX tables don't exist
+- `storage_backend` reported honestly in every response
+
+**Article identity / crosslink readiness:**
+- Article IDs follow stable format: `wiki:{domain}:{title_slug}:{timestamp}`
+- Cycle 8 Crosslinks MUST target `article_id`, never raw DB row IDs
+- IDs are deterministic, unique, and survive server restarts
+
+**Remaining Wiki/CODEX debt:**
+- `sqlite_compat` fallback path (documented, isolated, with migration plan)
+- CodexStore/Librarian not wired into container (not trivial — deferred)
+- ~~Crosslink System not yet implemented~~ — **RESOLVED (UI Cycle 8)** — full Crosslink System v1 now implemented
+
+## UI Cycle 8 — Crosslink System v1 (2026-06-13)
+
+UI Cycle 8 implements the Crosslink System v1 — knowledge links between first-class objects with full CRUD API, reusable UI components, and wiki sidebar integration. Links default to `suggested`/`approved_by_definer=false` — no auto-approve. Creating a link never mutates linked objects, approves artifacts, or triggers exports.
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| GET /api/v1/links | ✅ Built | List knowledge links with optional filters (source/target type/id, relation_type, status, pagination) |
+| POST /api/v1/links | ✅ Built | Create knowledge link; status defaults to `suggested`; no linked object mutation |
+| PATCH /api/v1/links/{link_id} | ✅ Built | Update link status/relation/metadata; approve requires explicit DEFINER action |
+| DELETE /api/v1/links/{link_id} | ✅ Built | Delete link; no linked object mutation |
+| GET /api/v1/links/backlinks/{target_type}/{target_id} | ✅ Built | Get all links pointing to an object |
+| GET /api/v1/links/forward/{source_type}/{source_id} | ✅ Built | Get all links pointing from an object |
+| KnowledgeLinkStore | ✅ Built | aiosqlite adapter-layer helper with dedicated `knowledge_links` table in state.db |
+| Valid object types (10) | ✅ Defined | wiki_article, artifact, turn, source, conversation, domain, entity, canonical, graph_node, project |
+| Valid relation types (12) | ✅ Defined | supports, contradicts, derives_from, related_to, references, prerequisite_of, supersedes, elaborates, summarizes, context_for, answer_to, question_about |
+| storage_backend field | ✅ Built | `"knowledge_link_store"` | `"unavailable"` in all responses |
+| gui/components/link_panel.py | ✅ Active | Reusable Link Panel component with status badges, approve/reject/delete actions |
+| gui/components/link_editor.py | ✅ Active | Manual link creation dialog with object type/relation type dropdowns |
+| Link panel in wiki article view sidebar | ✅ Active | Integrated into wiki article view |
+| Answer card "Link Wiki" button | ✅ Wired | No longer "not yet implemented" — opens link creation dialog |
+| gui/api_client.py (6 methods) | ✅ Active | list_knowledge_links, create_knowledge_link, update_knowledge_link, delete_knowledge_link, get_link_backlinks, get_link_forward_links |
+| gui/status_types.py (6 TypedDicts) | ✅ Active | KnowledgeLink, KnowledgeLinkListResponse, KnowledgeLinkCreateResponse, KnowledgeLinkUpdateResponse, KnowledgeLinkBacklinksResponse, KnowledgeLinkForwardLinksResponse |
+
+**Tests:** 56 tests in `tests/test_crosslink_system_cycle8.py`
+
+**Verdicts:**
+
+- **No auto-approve**: PASS — Links default to `suggested` with `approved_by_definer=false`; approving requires explicit DEFINER action via PATCH.
+- **No linked object mutation**: PASS — Creating/updating/deleting links never mutates linked objects, approves artifacts, or triggers exports.
+- **Sovereignty**: PASS — Link approval does not approve, export, or mutate any linked objects.
+- **Honest unavailable state**: PASS — `storage_backend: "unavailable"` when KnowledgeLinkStore not configured; no fake link data.
+- **Import-boundary**: PASS — gui/ never imports from aip.orchestration. All existing layer boundary tests still pass.
+- **Existing tests**: PASS — All wiki, import-boundary, and ECS graph tests still pass.
+
+**Remaining Crosslink debt:**
+- Auto-suggest links from Beast/Librarian (not yet implemented)
+- Bulk link operations (not yet implemented)
+- Link visualization in graph view (not yet implemented)
 
 ## Bug Registry
 

@@ -34,6 +34,7 @@ Comprehensive reference for all REST and WebSocket endpoints exposed by AIP 0.1 
 - [Vigil Quality](#vigil-quality)
 - [Turns](#turns)
 - [Retrieval Dashboard](#retrieval-dashboard)
+- [Crosslink System](#crosslink-system)
 - [Rate Limiting](#rate-limiting)
 - [Error Responses](#error-responses)
 
@@ -1336,9 +1337,15 @@ Get a specific compiled knowledge item by ID, including provenance chain.
 
 Wiki article CRUD, backlinks, contradictions, and stale article detection. Wiki articles follow the ECS lifecycle: `GENERATED → REVIEWED → APPROVED`. All mutations require DEFINER authorization.
 
+**Storage path (Cycle 7.1)**: Wiki articles are stored via two paths:
+- **Preferred**: `container.artifact_store.write()` + `container.ecs_store.transition()` — shares connection pool, validated ECS transitions, event provenance
+- **Fallback**: Direct `aiosqlite` to `state.db` (`sqlite_compat`) — used when container stores are not wired
+- **Reporting**: Every response includes `storage_backend` field: `"artifact_store"` | `"sqlite_compat"` | `"unavailable"`
+- **Crosslink readiness**: Article IDs are stable (`wiki:{domain}:{title_slug}:{timestamp}`) — Cycle 8 Crosslinks MUST target `article_id`, never raw DB row IDs
+
 ### `GET /api/v1/wiki/articles`
 
-List wiki articles with optional search filtering. Enhanced in UI Cycle 7 with `search` query parameter and stable `WikiArticle` response schema.
+List wiki articles with optional search filtering. Enhanced in UI Cycle 7 with `search` query parameter and stable `WikiArticle` response schema. Cycle 7.1 adds `storage_backend` indicator.
 
 **Auth**: None (read-only).
 
@@ -1348,34 +1355,44 @@ List wiki articles with optional search filtering. Enhanced in UI Cycle 7 with `
 |-----------|------|---------|-------------|
 | `domain` | string | null | Filter by domain prefix |
 | `search` | string | null | FTS5 search across title and content |
-| `limit` | int | 50 | Maximum results to return |
-| `offset` | int | 0 | Pagination offset |
+| `state` | string | null | Filter by ECS state (APPROVED, GENERATED, etc.) |
+| `page` | int | 1 | Page number |
+| `page_size` | int | 100 | Results per page |
 
 **Response**:
 ```json
 {
-  "articles": [
+  "items": [
     {
-      "article_id": "wiki-001",
+      "id": "wiki:aip_loom:architecture_decisions:20260612T100000",
       "title": "Architecture Decisions",
       "domain": "aip_loom",
-      "state": "APPROVED",
+      "status": "APPROVED",
       "tags": [],
       "aliases": [],
-      "linked_article_ids": [],
+      "linked_articles": [],
+      "backlinks": [],
+      "source_documents": [],
+      "related_artifacts": [],
+      "related_turns": [],
+      "related_beast_commentaries": [],
       "open_questions": [],
+      "contradictions": [],
+      "revision_history": [],
       "version": 1,
+      "storage_backend": "artifact_store",
       "created_at": "2026-06-12T10:00:00Z",
       "updated_at": "2026-06-12T11:00:00Z"
     }
   ],
   "total": 1,
-  "limit": 50,
-  "offset": 0
+  "page": 1,
+  "page_size": 100,
+  "storage_backend": "artifact_store"
 }
 ```
 
-**Sovereignty notes**: Returns honest empty list when no articles exist. No fake content. No secrets exposed.
+**Sovereignty notes**: Returns honest empty list when no articles exist. No fake content. No secrets exposed. `storage_backend` reports honestly which path was used.
 
 ---
 
@@ -1389,21 +1406,30 @@ Get a single wiki article by ID with the full `WikiArticle` schema including con
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `article_id` | string | Wiki article identifier |
+| `article_id` | string | Wiki article identifier (stable, crosslink-safe) |
 
 **Response**:
 ```json
 {
-  "article_id": "wiki-001",
+  "id": "wiki:aip_loom:architecture_decisions:20260612T100000",
   "title": "Architecture Decisions",
-  "content": "Full article content...",
+  "body": "Full article content...",
+  "summary": "Key architecture decisions",
   "domain": "aip_loom",
-  "state": "APPROVED",
+  "status": "APPROVED",
   "tags": ["architecture", "decisions"],
   "aliases": ["AD", "arch-decisions"],
-  "linked_article_ids": ["wiki-002"],
+  "linked_articles": [],
+  "backlinks": [],
+  "source_documents": [],
+  "related_artifacts": [],
+  "related_turns": [],
+  "related_beast_commentaries": [],
   "open_questions": ["Should we migrate to PostgreSQL?"],
+  "contradictions": [],
+  "revision_history": [],
   "version": 3,
+  "storage_backend": "artifact_store",
   "created_at": "2026-06-12T10:00:00Z",
   "updated_at": "2026-06-12T14:00:00Z"
 }
@@ -1411,7 +1437,7 @@ Get a single wiki article by ID with the full `WikiArticle` schema including con
 
 **Error**: `404` if article not found.
 
-**Sovereignty notes**: Returns full content only for existing articles. No fabrication of missing content.
+**Sovereignty notes**: Returns full content only for existing articles. No fabrication of missing content. `storage_backend` honestly reports path.
 
 ---
 
@@ -1423,20 +1449,33 @@ Create a new wiki article. **Auth: Definer** — requires DEFINER authorization.
 ```json
 {
   "title": "New Article Title",
-  "content": "Article body content",
   "domain": "aip_loom",
+  "summary": "Brief summary",
+  "body": "Article body content",
   "tags": ["tag1", "tag2"],
-  "aliases": ["alias1"],
-  "open_questions": ["What about X?"]
+  "aliases": ["alias1"]
 }
 ```
 
-**Response**: `201 Created` with full `WikiArticle` schema (state will always be `GENERATED`).
+**Response**: `201 Created`
+```json
+{
+  "id": "wiki:aip_loom:new_article_title:20260612T150000",
+  "title": "New Article Title",
+  "domain": "aip_loom",
+  "state": "GENERATED",
+  "message": "Article created as GENERATED — requires DEFINER review before approval.",
+  "created_at": "2026-06-12T15:00:00Z",
+  "storage_backend": "artifact_store"
+}
+```
 
 **Sovereignty notes**:
 - **CREATE always sets state to `GENERATED`** — never auto-approved. DEFINER must explicitly review and approve.
 - No silent state promotion.
 - No secret exposure in response.
+- When `storage_backend` is `"artifact_store"`, the create path uses `container.artifact_store.write()` + `container.ecs_store.transition()` with validated ECS guardrails and event provenance.
+- When `storage_backend` is `"sqlite_compat"`, the create path uses direct aiosqlite as an isolated compatibility fallback.
 
 ---
 
@@ -1448,25 +1487,37 @@ Update an existing wiki article. **Auth: Definer** — requires DEFINER authoriz
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `article_id` | string | Wiki article identifier |
+| `article_id` | string | Wiki article identifier (stable — does not change on update) |
 
 **Request Body** (partial update — only included fields are modified):
 ```json
 {
   "title": "Updated Title",
-  "content": "Updated content",
+  "summary": "Updated summary",
+  "body": "Updated content",
   "tags": ["updated-tag"],
-  "aliases": ["new-alias"],
-  "open_questions": ["Resolved question removed"]
+  "aliases": ["new-alias"]
 }
 ```
 
-**Response**: Full `WikiArticle` schema with incremented `version`.
+**Response**:
+```json
+{
+  "id": "wiki:aip_loom:article:20260612T100000",
+  "title": "Updated Title",
+  "version": 4,
+  "state": "APPROVED",
+  "message": "Article updated. ECS state unchanged — separate review/approve action required.",
+  "updated_at": "2026-06-12T16:00:00Z",
+  "storage_backend": "artifact_store"
+}
+```
 
 **Sovereignty notes**:
 - **EDIT creates a new version but does NOT change ECS state** — an APPROVED article stays APPROVED after edit; a GENERATED article stays GENERATED.
 - State transitions require explicit review/approval via the Reviews API.
 - No secret exposure in response.
+- Article ID is stable — updating never changes the ID. Crosslinks can safely reference it.
 
 ---
 
@@ -1485,19 +1536,22 @@ Get backlinks for a wiki article — other articles that reference this article.
 **Response**:
 ```json
 {
-  "article_id": "wiki-001",
+  "article_id": "wiki:aip_loom:architecture_decisions:20260612T100000",
   "backlinks": [
     {
-      "from_article_id": "wiki-003",
-      "from_title": "Related Article",
-      "context": "...referenced in Architecture Decisions..."
+      "source_id": "wiki:aip_loom:related_article:20260612T110000",
+      "source_type": "wiki_article",
+      "relation_type": "mentions",
+      "confidence": 0.9
     }
   ],
-  "total": 1
+  "total": 1,
+  "available": true,
+  "storage_backend": "artifact_store"
 }
 ```
 
-**Sovereignty notes**: Returns an honest empty `backlinks` list when no backlinks exist or when CODEX tables don't exist. Never fakes backlink data.
+**Sovereignty notes**: Returns an honest empty `backlinks` list when no backlinks exist or when `graph_edges` table doesn't exist (`available: false`). Never fakes backlink data. `storage_backend` honestly reports which path is active.
 
 ---
 
@@ -1507,30 +1561,26 @@ Get wiki articles that are potentially stale (not updated within a threshold per
 
 **Auth**: None (read-only).
 
-**Query Parameters**:
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `days` | int | 30 | Staleness threshold in days |
-
 **Response**:
 ```json
 {
-  "stale_articles": [
+  "items": [
     {
-      "article_id": "wiki-005",
+      "topic_id": "codex:outdated_topic",
       "title": "Outdated Article",
-      "last_updated": "2026-05-01T10:00:00Z",
-      "days_since_update": 42,
-      "reason": "linked_turns_updated_after_article"
+      "domain": "aip_loom",
+      "staleness_score": 0.85,
+      "last_activity_at": "2026-05-01T10:00:00Z",
+      "has_wiki_page": true
     }
   ],
   "total": 1,
-  "threshold_days": 30
+  "available": true,
+  "storage_backend": "artifact_store"
 }
 ```
 
-**Sovereignty notes**: Returns an honest empty list when no stale articles are detected or when CODEX tables don't exist. Never fabricates staleness signals.
+**Sovereignty notes**: Returns an honest empty list when no stale articles are detected or when CODEX tables don't exist (`available: false`). Never fabricates staleness signals.
 
 ---
 
@@ -1543,48 +1593,48 @@ Get detected contradictions between wiki articles.
 **Response**:
 ```json
 {
-  "contradictions": [
+  "items": [
     {
-      "article_a_id": "wiki-001",
-      "article_a_title": "Article A",
-      "article_b_id": "wiki-004",
-      "article_b_title": "Article B",
-      "description": "Conflicting statements about X",
-      "severity": "medium"
+      "contradiction_id": "contra-001",
+      "topic_id": "codex:topic",
+      "claim_a": "X is true",
+      "source_a_id": "wiki:aip_loom:article_a:20260612T100000",
+      "source_a_title": "Article A",
+      "claim_b": "X is false",
+      "source_b_id": "wiki:aip_loom:article_b:20260612T110000",
+      "source_b_title": "Article B",
+      "severity": "major",
+      "status": "open",
+      "context": "Conflicting statements about X",
+      "detected_at": "2026-06-12T12:00:00Z"
     }
   ],
-  "total": 1
+  "total": 1,
+  "available": true,
+  "storage_backend": "artifact_store"
 }
 ```
 
-**Sovereignty notes**: Returns an honest empty list when no contradictions are detected or when CODEX tables don't exist. Contradiction detection is advisory — it does not auto-resolve or auto-mutate articles.
-
----
+**Sovereignty notes**: Returns an honest empty list when no contradictions are detected or when CODEX tables don't exist (`available: false`). Contradiction detection is advisory — it does not auto-resolve or auto-mutate articles.
 
 ### `GET /api/v1/wiki/stats`
 
-Wiki statistics. Enhanced in UI Cycle 7 with additional metrics.
+Quick wiki statistics — article counts by state and domain.
 
 **Auth**: None (read-only).
 
 **Response**:
 ```json
 {
-  "total_articles": 24,
-  "by_state": {
-    "GENERATED": 5,
-    "APPROVED": 19
-  },
-  "by_domain": {
-    "aip_loom": 15,
-    "physics": 9
-  },
-  "stale_count": 2,
-  "contradiction_count": 0
+  "total": 10,
+  "approved": 7,
+  "generated": 3,
+  "domains": [
+    {"name": "aip_loom", "total": 5, "approved": 4, "generated": 1}
+  ],
+  "storage_backend": "artifact_store"
 }
 ```
-
-**Sovereignty notes**: Returns honest zeros when CODEX tables don't exist. No secret exposure.
 
 ---
 
@@ -2352,6 +2402,290 @@ Trigger an embedding backfill for documents that lack vector entries.
 
 ---
 
+## Crosslink System
+
+Knowledge links between first-class objects. Links are directional relations (`source → target`) with a `relation_type` and a `status` (`suggested` / `approved` / `rejected`). Links default to `suggested` with `approved_by_definer=false` — no auto-approve. Creating a link **never mutates** the linked objects, approves artifacts, or triggers exports.
+
+**Storage**: `KnowledgeLinkStore` adapter-layer helper using `aiosqlite` with a dedicated `knowledge_links` table in `state.db`. Every response includes a `storage_backend` field (`"knowledge_link_store"` or `"unavailable"`).
+
+**Valid Object Types** (10): `wiki_article`, `artifact`, `turn`, `source`, `conversation`, `domain`, `entity`, `canonical`, `graph_node`, `project`
+
+**Valid Relation Types** (12): `supports`, `contradicts`, `derives_from`, `related_to`, `references`, `prerequisite_of`, `supersedes`, `elaborates`, `summarizes`, `context_for`, `answer_to`, `question_about`
+
+---
+
+### `GET /api/v1/links`
+
+List knowledge links with optional filters.
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `source_type` | string | No | Filter by source object type (must be a valid object type) |
+| `source_id` | string | No | Filter by source object ID |
+| `target_type` | string | No | Filter by target object type (must be a valid object type) |
+| `target_id` | string | No | Filter by target object ID |
+| `relation_type` | string | No | Filter by relation type (must be a valid relation type) |
+| `status` | string | No | Filter by link status: `"suggested"`, `"approved"`, `"rejected"` |
+| `limit` | int | No | Max results (default: 100) |
+| `offset` | int | No | Offset for pagination (default: 0) |
+
+**Response**:
+```json
+{
+  "links": [
+    {
+      "link_id": "kl-abc123def456",
+      "source_type": "wiki_article",
+      "source_id": "wiki:physics:quantum-entanglement:20260610",
+      "target_type": "artifact",
+      "target_id": "art-turn-001",
+      "relation_type": "supports",
+      "status": "suggested",
+      "approved_by_definer": false,
+      "created_at": "2026-06-13T10:00:00+00:00",
+      "updated_at": "2026-06-13T10:00:00+00:00",
+      "created_by": "definer",
+      "metadata": {}
+    }
+  ],
+  "total": 1,
+  "limit": 100,
+  "offset": 0,
+  "storage_backend": "knowledge_link_store"
+}
+```
+
+**Error responses**: `400` (invalid filter values), `503` (KnowledgeLinkStore not available).
+
+---
+
+### `POST /api/v1/links`
+
+Create a new knowledge link. Links are created with `status: "suggested"` and `approved_by_definer: false` by default. No linked objects are mutated by link creation. No artifacts are approved or exported.
+
+**Auth**: Required
+
+**Request Body** (`KnowledgeLinkCreateRequest`):
+```json
+{
+  "source_type": "wiki_article",
+  "source_id": "wiki:physics:quantum-entanglement:20260610",
+  "target_type": "artifact",
+  "target_id": "art-turn-001",
+  "relation_type": "supports",
+  "metadata": {}
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `source_type` | string | Yes | Must be a valid object type |
+| `source_id` | string | Yes | ID of the source object |
+| `target_type` | string | Yes | Must be a valid object type |
+| `target_id` | string | Yes | ID of the target object |
+| `relation_type` | string | Yes | Must be a valid relation type |
+| `metadata` | object | No | Optional arbitrary metadata |
+
+**Response** (201 Created):
+```json
+{
+  "link_id": "kl-abc123def456",
+  "source_type": "wiki_article",
+  "source_id": "wiki:physics:quantum-entanglement:20260610",
+  "target_type": "artifact",
+  "target_id": "art-turn-001",
+  "relation_type": "supports",
+  "status": "suggested",
+  "approved_by_definer": false,
+  "created_at": "2026-06-13T10:00:00+00:00",
+  "updated_at": "2026-06-13T10:00:00+00:00",
+  "created_by": "definer",
+  "metadata": {},
+  "storage_backend": "knowledge_link_store"
+}
+```
+
+**Error responses**: `400` (invalid source_type, target_type, or relation_type; self-link), `409` (duplicate link), `503` (KnowledgeLinkStore not available).
+
+**Sovereignty guarantees**: Link creation never mutates linked objects, never auto-approves artifacts, and never triggers exports.
+
+---
+
+### `PATCH /api/v1/links/{link_id}`
+
+Update a knowledge link (status, relation_type, or metadata). Approving a link sets `approved_by_definer: true` and `status: "approved"` — this is the only way to approve a link and it requires explicit DEFINER action.
+
+**Auth**: Required
+
+**Path Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `link_id` | string | Yes | The link ID to update |
+
+**Request Body** (`KnowledgeLinkUpdateRequest`):
+```json
+{
+  "status": "approved",
+  "relation_type": "supports",
+  "metadata": {"note": "Verified by DEFINER"}
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `status` | string | No | New status: `"approved"`, `"rejected"`, `"suggested"` |
+| `relation_type` | string | No | New relation type (must be valid) |
+| `metadata` | object | No | Updated metadata (replaces existing) |
+
+**Response**:
+```json
+{
+  "link_id": "kl-abc123def456",
+  "source_type": "wiki_article",
+  "source_id": "wiki:physics:quantum-entanglement:20260610",
+  "target_type": "artifact",
+  "target_id": "art-turn-001",
+  "relation_type": "supports",
+  "status": "approved",
+  "approved_by_definer": true,
+  "created_at": "2026-06-13T10:00:00+00:00",
+  "updated_at": "2026-06-13T10:05:00+00:00",
+  "created_by": "definer",
+  "metadata": {"note": "Verified by DEFINER"},
+  "storage_backend": "knowledge_link_store"
+}
+```
+
+**Error responses**: `400` (invalid status or relation_type), `404` (link not found), `503` (KnowledgeLinkStore not available).
+
+**Sovereignty guarantees**: Approving a link does not approve, export, or mutate any linked objects.
+
+---
+
+### `DELETE /api/v1/links/{link_id}`
+
+Delete a knowledge link. This removes the link entirely — it does not affect the linked objects in any way.
+
+**Auth**: Required
+
+**Path Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `link_id` | string | Yes | The link ID to delete |
+
+**Response**:
+```json
+{
+  "status": "deleted",
+  "link_id": "kl-abc123def456",
+  "storage_backend": "knowledge_link_store"
+}
+```
+
+**Error responses**: `404` (link not found), `503` (KnowledgeLinkStore not available).
+
+---
+
+### `GET /api/v1/links/backlinks/{target_type}/{target_id}`
+
+Get all links pointing **to** a specific object (i.e., where the object is the target). Useful for answering "what links here?".
+
+**Path Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target_type` | string | Yes | Object type of the target (must be valid) |
+| `target_id` | string | Yes | ID of the target object |
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `status` | string | No | Filter by link status |
+| `limit` | int | No | Max results (default: 100) |
+
+**Response**:
+```json
+{
+  "links": [
+    {
+      "link_id": "kl-abc123def456",
+      "source_type": "wiki_article",
+      "source_id": "wiki:physics:quantum-entanglement:20260610",
+      "target_type": "artifact",
+      "target_id": "art-turn-001",
+      "relation_type": "supports",
+      "status": "suggested",
+      "approved_by_definer": false,
+      "created_at": "2026-06-13T10:00:00+00:00",
+      "updated_at": "2026-06-13T10:00:00+00:00",
+      "created_by": "definer",
+      "metadata": {}
+    }
+  ],
+  "target_type": "artifact",
+  "target_id": "art-turn-001",
+  "total": 1,
+  "storage_backend": "knowledge_link_store"
+}
+```
+
+**Error responses**: `400` (invalid target_type), `503` (KnowledgeLinkStore not available).
+
+---
+
+### `GET /api/v1/links/forward/{source_type}/{source_id}`
+
+Get all links pointing **from** a specific object (i.e., where the object is the source). Useful for answering "what does this link to?".
+
+**Path Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `source_type` | string | Yes | Object type of the source (must be valid) |
+| `source_id` | string | Yes | ID of the source object |
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `status` | string | No | Filter by link status |
+| `limit` | int | No | Max results (default: 100) |
+
+**Response**:
+```json
+{
+  "links": [
+    {
+      "link_id": "kl-abc123def456",
+      "source_type": "wiki_article",
+      "source_id": "wiki:physics:quantum-entanglement:20260610",
+      "target_type": "artifact",
+      "target_id": "art-turn-001",
+      "relation_type": "supports",
+      "status": "suggested",
+      "approved_by_definer": false,
+      "created_at": "2026-06-13T10:00:00+00:00",
+      "updated_at": "2026-06-13T10:00:00+00:00",
+      "created_by": "definer",
+      "metadata": {}
+    }
+  ],
+  "source_type": "wiki_article",
+  "source_id": "wiki:physics:quantum-entanglement:20260610",
+  "total": 1,
+  "storage_backend": "knowledge_link_store"
+}
+```
+
+**Error responses**: `400` (invalid source_type), `503` (KnowledgeLinkStore not available).
+
+---
+
 ## Rate Limiting
 
 All endpoints are rate-limited when `[rate_limit] enabled = true` (default). Response headers include:
@@ -2465,3 +2799,9 @@ Read-only (GET) requests are not rate-limited when `model_budget_protection = tr
 | `GET` | `/api/v1/performance/metrics` | Definer | No | System metrics |
 | `GET` | `/api/v1/performance/slow` | Definer | No | Slow operations |
 | `GET` | `/api/v1/performance/memory` | Definer | No | Memory usage |
+| `GET` | `/api/v1/links` | Optional | No | List knowledge links |
+| `POST` | `/api/v1/links` | Required | No | Create knowledge link |
+| `PATCH` | `/api/v1/links/{link_id}` | Required | No | Update knowledge link |
+| `DELETE` | `/api/v1/links/{link_id}` | Required | No | Delete knowledge link |
+| `GET` | `/api/v1/links/backlinks/{target_type}/{target_id}` | Optional | No | Get backlinks for object |
+| `GET` | `/api/v1/links/forward/{source_type}/{source_id}` | Optional | No | Get forward links for object |
