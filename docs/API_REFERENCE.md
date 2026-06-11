@@ -2607,6 +2607,184 @@ When no trace exists for the session:
 
 ---
 
+### `POST /api/v1/retrieval/test`
+
+Execute a standalone retrieval test without synthesizing an answer. Runs the retrieval pipeline with user-specified channel selection and returns detailed per-channel results, health, latency, fusion/ranking outcomes, and selected context — without dispatching to any model for answer synthesis.
+
+**Auth**: Optional
+
+**Request Body**:
+```json
+{
+  "query": "What have we decided about artifact storage?",
+  "selected_channels": ["fts", "vector", "corpus"],
+  "limit": 20,
+  "include_trace": true
+}
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `query` | string | Yes | — | The query text to test |
+| `selected_channels` | list[string] | No | `["fts", "vector", "corpus"]` | Channels to enable. Supported: `"fts"`, `"vector"`, `"graph"`, `"wiki"`, `"procedural"`, `"corpus"` |
+| `limit` | int | No | 20 | Max total hits after fusion |
+| `include_trace` | bool | No | true | Whether to include full trace detail |
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "query": "What have we decided about artifact storage?",
+  "selected_channels": ["fts", "vector", "corpus"],
+  "channel_results": {
+    "fts": {
+      "state": "active",
+      "result_count": 8,
+      "latency_ms": 12,
+      "items": ["..."],
+      "warning": null,
+      "error": null,
+      "backend_type": null,
+      "vss_available": null,
+      "embedding_provider_configured": null
+    },
+    "vector": {
+      "state": "degraded",
+      "result_count": 0,
+      "latency_ms": 5,
+      "items": [],
+      "warning": "Vector channel returned no results",
+      "error": null,
+      "backend_type": "sqlite_vss",
+      "vss_available": true,
+      "embedding_provider_configured": true
+    }
+  },
+  "channel_health": { "...": "per-channel health snapshot" },
+  "latency_ms": 42,
+  "per_channel_latency_ms": { "fts": 12, "vector": 5, "corpus": 8 },
+  "scores": {
+    "top_rrf_scores": [0.032, 0.028, 0.021],
+    "hits_before_fusion": 16,
+    "hits_after_fusion": 12,
+    "hits_after_quality_gate": 10,
+    "verdict": "ok"
+  },
+  "fusion_results": { "...": "fusion/ranking detail" },
+  "selected_context": ["..."],
+  "degraded_channels": ["vector"],
+  "failed_channels": [],
+  "warnings": ["Vector channel returned no results"],
+  "trace": { "...": "full trace when include_trace=true" },
+  "lexical_only": true,
+  "vector_contributed": false
+}
+```
+
+**No mutation**: No artifacts, wiki updates, corpus changes, or model synthesis.
+
+**Error responses**: `400` (empty query), `503` (retrieval pipeline not wired).
+
+---
+
+### `GET /api/v1/retrieval/health`
+
+Return per-channel retrieval health and availability. Provides a snapshot of each retrieval channel's health state, including whether the backing store is available, vector backend type and degradation status, embedding provider configuration, and reasons for any unavailable/degraded channels.
+
+**Auth**: Optional
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "channels": {
+    "lexical": {
+      "channel": "fts",
+      "state": "active",
+      "backend_type": null,
+      "available": true,
+      "degraded": false,
+      "degradation_reason": null,
+      "embedding_provider_configured": null,
+      "vss_available": null,
+      "vector_count": null
+    },
+    "vector": {
+      "channel": "vector",
+      "state": "degraded",
+      "backend_type": "sqlite_vss",
+      "available": true,
+      "degraded": true,
+      "degradation_reason": "low_embedding_coverage",
+      "embedding_provider_configured": true,
+      "vss_available": true,
+      "vector_count": 50
+    },
+    "graph": {
+      "channel": "graph",
+      "state": "unavailable",
+      "backend_type": null,
+      "available": false,
+      "degraded": false,
+      "degradation_reason": "not_configured",
+      "embedding_provider_configured": null,
+      "vss_available": null,
+      "vector_count": null
+    },
+    "wiki": {
+      "channel": "wiki",
+      "state": "unavailable",
+      "backend_type": null,
+      "available": false,
+      "degraded": false,
+      "degradation_reason": "not_configured",
+      "embedding_provider_configured": null,
+      "vss_available": null,
+      "vector_count": null
+    },
+    "procedural": {
+      "channel": "procedural",
+      "state": "unavailable",
+      "backend_type": null,
+      "available": false,
+      "degraded": false,
+      "degradation_reason": "not_configured",
+      "embedding_provider_configured": null,
+      "vss_available": null,
+      "vector_count": null
+    },
+    "corpus": {
+      "channel": "corpus",
+      "state": "active",
+      "backend_type": null,
+      "available": true,
+      "degraded": false,
+      "degradation_reason": null,
+      "embedding_provider_configured": null,
+      "vss_available": null,
+      "vector_count": null
+    }
+  },
+  "embedding_coverage": {
+    "status": "partial",
+    "coverage_percent": 1.8,
+    "total_turns": 5000,
+    "embedded_turns": 90
+  },
+  "vector_fallback_chain": ["sqlite_vss"],
+  "summary": {
+    "total_channels": 6,
+    "active": 2,
+    "degraded": 1,
+    "unavailable": 3
+  }
+}
+```
+
+**Error responses**: `503` (retrieval pipeline not wired).
+
+---
+
 ### `POST /api/v1/admin/embeddings/backfill`
 
 Trigger an embedding backfill for documents that lack vector entries.

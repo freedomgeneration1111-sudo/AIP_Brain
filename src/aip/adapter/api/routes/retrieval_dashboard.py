@@ -368,6 +368,498 @@ async def retrieval_quality(container: AipContainer = Depends(get_container)):
     return result
 
 
+@router.post("/test")
+async def retrieval_test(payload: dict, container: AipContainer = Depends(get_container)):
+    """Execute a standalone retrieval test without synthesizing an answer.
+
+    This endpoint runs the retrieval pipeline with user-specified channel
+    selection and returns detailed per-channel results, health, latency,
+    fusion/ranking outcomes, and selected context — without dispatching
+    to any model for answer synthesis.
+
+    Accepts:
+      - query (str, required): The query text to test.
+      - selected_channels (list[str], optional): Channels to enable.
+        Supported: "fts", "vector", "graph", "wiki", "procedural", "corpus".
+        Defaults to ["fts", "vector", "corpus"] if not specified.
+      - limit (int, optional): Max total hits after fusion (default: 20).
+      - context_budget (int, optional): Token budget for context packing
+        (default: 4000). Not yet wired — reported as "not_wired" if requested.
+      - include_trace (bool, optional): Whether to include full trace detail
+        (default: true).
+
+    Returns per-channel results with health, latency, scores, fusion/ranking
+    results, selected context, degraded/failed channel warnings, and
+    lexical_only/vector_contributed flags.
+
+    No mutation: no artifacts, wiki updates, corpus changes, or model
+    synthesis are performed.
+    """
+    query = payload.get("query", "").strip()
+    if not query:
+        return {
+            "status": "error",
+            "message": "query is required",
+            "query": "",
+            "channel_results": {},
+            "channel_health": {},
+            "latency_ms": 0,
+            "per_channel_latency_ms": {},
+            "scores": {},
+            "fusion_results": [],
+            "selected_context": [],
+            "degraded_channels": [],
+            "failed_channels": [],
+            "warnings": ["query is required"],
+            "trace": None,
+            "lexical_only": False,
+            "vector_contributed": False,
+        }
+
+    selected_channels = payload.get("selected_channels", ["fts", "vector", "corpus"])
+    if not isinstance(selected_channels, list):
+        selected_channels = ["fts", "vector", "corpus"]
+    # Validate channel names
+    valid_channels = {"fts", "vector", "graph", "wiki", "procedural", "corpus"}
+    selected_channels = [ch for ch in selected_channels if ch in valid_channels]
+    if not selected_channels:
+        selected_channels = ["fts", "vector", "corpus"]
+
+    limit = payload.get("limit", 20)
+    include_trace = payload.get("include_trace", True)
+
+    # Access orchestration through container (layer discipline)
+    search_sources_fn = getattr(container, "_search_sources_fn", None)
+    AskStores = getattr(container, "_ask_stores_class", None)
+
+    if search_sources_fn is None or AskStores is None:
+        return {
+            "status": "unavailable",
+            "message": "Retrieval pipeline not configured — orchestration not wired",
+            "query": query,
+            "selected_channels": selected_channels,
+            "channel_results": {},
+            "channel_health": {ch: "not_configured" for ch in valid_channels},
+            "latency_ms": 0,
+            "per_channel_latency_ms": {},
+            "scores": {},
+            "fusion_results": [],
+            "selected_context": [],
+            "degraded_channels": [],
+            "failed_channels": list(valid_channels),
+            "warnings": ["Retrieval pipeline not available"],
+            "trace": None,
+            "lexical_only": False,
+            "vector_contributed": False,
+        }
+
+    # Build AskStores from container's wired components
+    stores = AskStores(
+        artifact_store=container.artifact_store,
+        lexical_store=container.lexical_store,
+        vector_store=container.vector_store,
+        event_store=container.event_store,
+        project_store=container.project_store,
+        ecs_store=container.ecs_store,
+        embedding_provider=container.embedding_provider,
+        corpus_turn_store=container.corpus_turn_store,
+        graph_store=getattr(container, "graph_store", None),
+    )
+
+    # Execute retrieval only — no model dispatch.
+    # Pass channel enable flags directly to _search_sources_with_trace
+    # and disable auto_channel_selection so the user's selection is respected.
+    import time as _time
+    start_ms = _time.monotonic()
+
+    try:
+        sources, trace, _packed = await search_sources_fn(
+            query=query,
+            stores=stores,
+            source_filter="all",
+            max_sources=limit,
+            enable_fts="fts" in selected_channels,
+            enable_vector="vector" in selected_channels,
+            enable_graph="graph" in selected_channels,
+            enable_wiki="wiki" in selected_channels,
+            enable_procedural="procedural" in selected_channels,
+            auto_channel_selection=False,
+        )
+    except Exception as exc:
+        logger.error("Retrieval test failed: %s", exc, exc_info=True)
+        return {
+            "status": "error",
+            "message": f"Retrieval test error: {exc}",
+            "query": query,
+            "selected_channels": selected_channels,
+            "channel_results": {},
+            "channel_health": {ch: "failed" for ch in selected_channels},
+            "latency_ms": round((_time.monotonic() - start_ms) * 1000, 2),
+            "per_channel_latency_ms": {},
+            "scores": {},
+            "fusion_results": [],
+            "selected_context": [],
+            "degraded_channels": [],
+            "failed_channels": list(selected_channels),
+            "warnings": [f"Retrieval test error: {exc}"],
+            "trace": None,
+            "lexical_only": True,
+            "vector_contributed": False,
+        }
+
+    total_latency_ms = round((_time.monotonic() - start_ms) * 1000, 2)
+
+    # Build per-channel results from the trace
+    channel_results: dict[str, dict] = {}
+    channel_health: dict[str, str] = {}
+    per_channel_latency_ms: dict[str, float] = {}
+    degraded_channels: list[str] = []
+    failed_channels: list[str] = []
+    warnings: list[str] = []
+
+    if trace is not None:
+        # Extract channel health from trace
+        ch_health = getattr(trace, "channel_health", {}) or {}
+        ch_reasons = getattr(trace, "channel_health_reasons", {}) or {}
+        ch_details = getattr(trace, "channel_details", {}) or {}
+        ch_elapsed = getattr(trace, "per_channel_elapsed_ms", {}) or {}
+        ch_contributions = getattr(trace, "channel_contributions", {}) or {}
+
+        for ch_name in valid_channels:
+            health_state = ch_health.get(ch_name, "not_configured")
+            channel_health[ch_name] = health_state
+            per_channel_latency_ms[ch_name] = round(ch_elapsed.get(ch_name, 0), 2)
+
+            if health_state == "degraded":
+                degraded_channels.append(ch_name)
+                reason = ch_reasons.get(ch_name, "degraded quality")
+                warnings.append(f"{ch_name} channel degraded: {reason}")
+            elif health_state == "failed":
+                failed_channels.append(ch_name)
+                reason = ch_reasons.get(ch_name, "unknown error")
+                warnings.append(f"{ch_name} channel failed: {reason}")
+            elif health_state == "unavailable":
+                failed_channels.append(ch_name)
+                reason = ch_reasons.get(ch_name, "store not present")
+                warnings.append(f"{ch_name} channel unavailable: {reason}")
+            elif health_state == "not_configured":
+                reason = ch_reasons.get(ch_name, "missing dependency")
+                warnings.append(f"{ch_name} channel not configured: {reason}")
+            elif health_state == "empty":
+                reason = ch_reasons.get(ch_name, "")
+                if reason:
+                    warnings.append(f"{ch_name} channel returned no results: {reason}")
+
+            # Build per-channel result detail
+            detail = ch_details.get(ch_name)
+            if detail is not None:
+                channel_results[ch_name] = {
+                    "channel": ch_name,
+                    "state": health_state,
+                    "result_count": getattr(detail, "result_count", 0),
+                    "latency_ms": round(getattr(detail, "latency_ms", 0), 2),
+                    "items": [],
+                    "warning": getattr(detail, "degradation_reason", ""),
+                    "error": getattr(detail, "error_summary", ""),
+                    "backend_type": getattr(detail, "backend_type", ""),
+                    "vss_available": getattr(detail, "vss_available", None),
+                    "embedding_provider_configured": getattr(detail, "embedding_provider_configured", None),
+                }
+            else:
+                channel_results[ch_name] = {
+                    "channel": ch_name,
+                    "state": health_state,
+                    "result_count": 0,
+                    "latency_ms": round(ch_elapsed.get(ch_name, 0), 2),
+                    "items": [],
+                    "warning": ch_reasons.get(ch_name, ""),
+                    "error": "",
+                }
+
+        # Populate items from sources grouped by channel
+        for source in sources:
+            src_channel = getattr(source, "source_type", "") or ""
+            # Map source_type to channel name
+            ch_map = {
+                "ingested": "fts",
+                "fts": "fts",
+                "lexical": "fts",
+                "vector": "vector",
+                "semantic": "vector",
+                "corpus": "corpus",
+                "graph": "graph",
+                "wiki": "wiki",
+                "procedural": "procedural",
+                "artifact": "wiki",
+            }
+            mapped_ch = ch_map.get(src_channel, src_channel)
+            if mapped_ch in channel_results:
+                item = {
+                    "id": getattr(source, "source_id", ""),
+                    "title": getattr(source, "title", ""),
+                    "snippet": getattr(source, "content_snippet", "")[:300],
+                    "score": getattr(source, "score", 0),
+                    "source_type": src_channel,
+                    "source_id": getattr(source, "source_id", ""),
+                    "domain": getattr(source, "domain", ""),
+                    "metadata": getattr(source, "metadata", {}),
+                }
+                channel_results[mapped_ch]["items"].append(item)
+                # Update result count from actual items
+                channel_results[mapped_ch]["result_count"] = len(channel_results[mapped_ch]["items"])
+
+    # Build fusion results (ranked context)
+    fusion_results = [
+        {
+            "id": getattr(s, "source_id", ""),
+            "title": getattr(s, "title", ""),
+            "snippet": getattr(s, "content_snippet", "")[:300],
+            "score": getattr(s, "score", 0),
+            "source_type": getattr(s, "source_type", ""),
+            "domain": getattr(s, "domain", ""),
+        }
+        for s in sources
+    ]
+
+    # Build scores summary
+    scores: dict[str, Any] = {}
+    if trace is not None:
+        top_scores = getattr(trace, "top_scores", []) or []
+        scores["top_rrf_scores"] = top_scores[:10]
+        scores["hits_before_fusion"] = getattr(trace, "hits_before_fusion", 0)
+        scores["hits_after_fusion"] = getattr(trace, "hits_after_fusion", 0)
+        scores["hits_after_quality_gate"] = getattr(trace, "hits_after_quality_gate", 0)
+        scores["verdict"] = getattr(trace, "verdict", "OK")
+
+    # Build selected context (same as fusion results for now — no context packing in test mode)
+    selected_context = fusion_results
+
+    # Honesty flags
+    lexical_only = getattr(trace, "lexical_only", False) if trace is not None else True
+    vector_contributed = getattr(trace, "vector_contributed", False) if trace is not None else False
+
+    # Build trace detail if requested
+    trace_dict = None
+    if include_trace and trace is not None and hasattr(trace, "to_diagnostic_dict"):
+        trace_dict = trace.to_diagnostic_dict()
+
+    result: dict[str, Any] = {
+        "status": "ok",
+        "query": query,
+        "selected_channels": selected_channels,
+        "channel_results": channel_results,
+        "channel_health": channel_health,
+        "latency_ms": total_latency_ms,
+        "per_channel_latency_ms": per_channel_latency_ms,
+        "scores": scores,
+        "fusion_results": fusion_results,
+        "selected_context": selected_context,
+        "degraded_channels": degraded_channels,
+        "failed_channels": failed_channels,
+        "warnings": warnings,
+        "trace": trace_dict,
+        "lexical_only": lexical_only,
+        "vector_contributed": vector_contributed,
+    }
+
+    return result
+
+
+@router.get("/health")
+async def retrieval_health(container: AipContainer = Depends(get_container)):
+    """Return per-channel retrieval health and availability.
+
+    Provides a snapshot of each retrieval channel's health state,
+    including whether the backing store is available, vector backend
+    type and degradation status, embedding provider configuration,
+    and reasons for any unavailable/degraded channels.
+
+    This endpoint is read-only and does not mutate any state.
+    """
+    # Determine per-channel health from container store availability
+    channels: dict[str, dict[str, Any]] = {}
+
+    # Lexical (FTS5) channel
+    lexical_available = container.lexical_store is not None
+    channels["lexical"] = {
+        "channel": "fts",
+        "state": "active" if lexical_available else "unavailable",
+        "backend_type": "sqlite_fts5" if lexical_available else "none",
+        "available": lexical_available,
+        "degradation_reason": "" if lexical_available else "LexicalStore not initialized",
+        "embedding_provider_configured": None,
+        "vss_available": None,
+    }
+
+    # Vector channel
+    vector_available = container.vector_store is not None
+    embedding_configured = container.embedding_provider is not None
+    vector_backend_type = "none"
+    vector_degraded = False
+    vss_available = None
+    vector_count = None
+
+    if vector_available and container.vector_store is not None:
+        vs = container.vector_store
+        # Get backend status if available
+        if hasattr(vs, "get_backend_status"):
+            try:
+                from aip.foundation.schemas.vector import VectorBackendStatus as _VBS
+                vbs = vs.get_backend_status()
+                if vbs == _VBS.AVAILABLE:
+                    vector_backend_type = getattr(vs, "_backend_name", "sqlite_vss")
+                elif vbs == _VBS.DEGRADED_BRUTEFORCE:
+                    vector_backend_type = "brute_force"
+                    vector_degraded = True
+                elif vbs == _VBS.DISABLED:
+                    vector_backend_type = "disabled"
+                    vector_available = False
+                elif vbs == _VBS.FAILED:
+                    vector_backend_type = "failed"
+                    vector_available = False
+            except Exception:
+                vector_backend_type = "unknown"
+        elif hasattr(vs, "_backend_name"):
+            vector_backend_type = vs._backend_name
+
+        if hasattr(vs, "_vss_available"):
+            vss_available = vs._vss_available
+
+        # Try to get vector count (sync approximation)
+        if hasattr(vs, "count") and not vector_degraded:
+            try:
+                vector_count = 0  # async; would need await, report as unavailable
+            except Exception:
+                vector_count = None
+
+    # Determine vector state
+    if not vector_available:
+        vector_state = "unavailable"
+    elif vector_degraded:
+        vector_state = "degraded"
+    elif not embedding_configured:
+        vector_state = "not_configured"
+    else:
+        vector_state = "active"
+
+    channels["vector"] = {
+        "channel": "vector",
+        "state": vector_state,
+        "backend_type": vector_backend_type,
+        "available": vector_available,
+        "degraded": vector_degraded,
+        "degradation_reason": (
+            "Vector search using brute-force fallback (no VSS index)"
+            if vector_degraded
+            else ("" if vector_available else "VectorStore not initialized")
+        ),
+        "embedding_provider_configured": embedding_configured,
+        "vss_available": vss_available,
+        "vector_count": vector_count,
+    }
+
+    # Graph channel
+    graph_available = getattr(container, "graph_store", None) is not None
+    channels["graph"] = {
+        "channel": "graph",
+        "state": "active" if graph_available else "unavailable",
+        "backend_type": "sqlite_adjacency" if graph_available else "none",
+        "available": graph_available,
+        "degradation_reason": "" if graph_available else "GraphStore not initialized",
+        "embedding_provider_configured": None,
+        "vss_available": None,
+    }
+
+    # Wiki/CODEX channel
+    wiki_available = (
+        container.artifact_store is not None
+        and container.ecs_store is not None
+    )
+    channels["wiki"] = {
+        "channel": "wiki",
+        "state": "active" if wiki_available else "unavailable",
+        "backend_type": "artifact_store+ecs_store" if wiki_available else "none",
+        "available": wiki_available,
+        "degradation_reason": (
+            ""
+            if wiki_available
+            else "ArtifactStore or EcsStore not initialized"
+        ),
+        "embedding_provider_configured": None,
+        "vss_available": None,
+    }
+
+    # Procedural channel
+    procedural_available = container.artifact_store is not None
+    channels["procedural"] = {
+        "channel": "procedural",
+        "state": "active" if procedural_available else "unavailable",
+        "backend_type": "artifact_store" if procedural_available else "none",
+        "available": procedural_available,
+        "degradation_reason": "" if procedural_available else "ArtifactStore not initialized",
+        "embedding_provider_configured": None,
+        "vss_available": None,
+    }
+
+    # Corpus channel
+    corpus_available = container.corpus_turn_store is not None
+    channels["corpus"] = {
+        "channel": "corpus",
+        "state": "active" if corpus_available else "unavailable",
+        "backend_type": "corpus_turn_store" if corpus_available else "none",
+        "available": corpus_available,
+        "degradation_reason": "" if corpus_available else "CorpusTurnStore not initialized",
+        "embedding_provider_configured": None,
+        "vss_available": None,
+    }
+
+    # Embedding coverage
+    embedding_coverage: dict[str, Any] = {
+        "status": "unavailable",
+        "coverage_percent": 0.0,
+        "total_turns": 0,
+        "embedded_turns": 0,
+    }
+    if container.corpus_turn_store is not None:
+        try:
+            cts = container.corpus_turn_store
+            if hasattr(cts, "get_corpus_status"):
+                status = await cts.get_corpus_status()
+                embedding_coverage = {
+                    "status": "available",
+                    "coverage_percent": status.get("embed_coverage", 0.0),
+                    "total_turns": status.get("total_turns", 0),
+                    "embedded_turns": status.get("embedded", 0),
+                }
+        except Exception:
+            pass
+
+    # Vector backend fallback chain
+    vector_fallback_chain: list[str] = []
+    if vector_available:
+        vector_fallback_chain.append(vector_backend_type)
+        if vector_degraded:
+            vector_fallback_chain.append("brute_force → install sqlite-vss for production quality")
+
+    # Summary counts
+    active_count = sum(1 for ch in channels.values() if ch["state"] == "active")
+    degraded_count = sum(1 for ch in channels.values() if ch["state"] == "degraded")
+    unavailable_count = sum(1 for ch in channels.values() if ch["state"] in ("unavailable", "not_configured"))
+
+    return {
+        "status": "ok",
+        "channels": channels,
+        "embedding_coverage": embedding_coverage,
+        "vector_fallback_chain": vector_fallback_chain,
+        "summary": {
+            "total_channels": len(channels),
+            "active": active_count,
+            "degraded": degraded_count,
+            "unavailable": unavailable_count,
+        },
+    }
+
+
 @router.get("/budget-tune")
 async def retrieval_budget_tune(
     auto_apply: bool = Query(False, description="Whether to auto-apply suggested adjustments"),

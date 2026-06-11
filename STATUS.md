@@ -6,7 +6,7 @@
 **Release:** Alpha Test Release
 **Project Mode:** MAINTENANCE — active development phase complete; see docs/Maintenance_Protocol.md
 
-> This document reflects the state after UI Cycle 8 (Crosslink System v1) and Chunk 5 (retrieval honesty).
+> This document reflects the state after UI Cycle 11 (Retrieval Lab v1) and Chunk 5 (retrieval honesty).
 > The project has entered maintenance mode. No further feature sprints are planned.
 > See ROADMAP.md for the maintenance mode section and docs/Maintenance_Protocol.md for operational procedures.
 
@@ -508,6 +508,36 @@ UI Cycle 8 implements the Crosslink System v1 — knowledge links between first-
 - Auto-suggest links from Beast/Librarian (not yet implemented)
 - Bulk link operations (not yet implemented)
 - Link visualization in graph view (not yet implemented)
+
+## UI Cycle 11 — Retrieval Lab v1 (2026-06-14)
+
+UI Cycle 11 builds the Retrieval Lab v1 — a standalone retrieval testing interface that runs the retrieval pipeline without dispatching to any model for answer synthesis. The DEFINER can test queries, toggle channels, inspect per-channel results and health, and view fusion/ranking output — all without mutating artifacts, wiki, corpus, or any system state.
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| POST /api/v1/retrieval/test | ✅ Built | Standalone retrieval test without answer synthesis. Per-channel results, health, latency, fusion/ranking, selected context. No mutation. |
+| GET /api/v1/retrieval/health | ✅ Built | Per-channel retrieval health and availability snapshot |
+| gui/pages/retrieval_lab.py | ✅ Active | Full Retrieval Lab page with query panel, channel toggles, health cards, per-channel results, ranked context |
+| gui/components/retrieval_query_panel.py | ✅ Active | Query input with channel toggle checkboxes |
+| gui/components/retrieval_channel_results.py | ✅ Active | Per-channel results display with latency and hit counts |
+| gui/components/retrieval_health_cards.py | ✅ Active | Per-channel health state/availability cards |
+| gui/components/retrieval_ranked_context.py | ✅ Active | Ranked context view showing fusion output |
+| gui/status_types.py (8 TypedDicts) | ✅ Active | RetrievalTestRequest, RetrievalTestResponse, RetrievalChannelResult, RetrievalHealthResponse, RetrievalChannelHealth, RetrievalEmbeddingCoverage, RetrievalHealthSummary, RetrievalScores |
+| gui/api_client.py (3 methods) | ✅ Active | run_retrieval_test, get_retrieval_health, get_retrieval_test_result |
+
+**Tests:** 26 new tests passing
+
+**Verdicts:**
+
+- **No-synthesis verification**: PASS — `POST /retrieval/test` never dispatches to any model for answer synthesis; retrieval only, no mutation of artifacts, wiki, corpus, or system state.
+- **No-secret exposure verification**: PASS — No API keys, passwords, or tokens in any retrieval test or health response.
+- **Honest empty/unavailable states**: PASS — Unavailable channels report honestly; empty result sets are surfaced as empty, not faked.
+- **Sanitation scan**: 0 blockers, all hits legitimate.
+- **Existing tests**: PASS — All prior cycle tests still pass.
+
+**Remaining Retrieval Lab debt:**
+- `context_budget` parameter not yet wired
+- Auto-suggest channel configuration based on corpus state (not yet implemented)
 
 ## Bug Registry
 

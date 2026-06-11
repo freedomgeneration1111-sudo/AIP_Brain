@@ -217,6 +217,10 @@ def test_gui_components_importable():
     import gui.components.document_detail  # noqa: F401
     import gui.components.corpus_actions  # noqa: F401
     import gui.components.corpus_problems  # noqa: F401
+    import gui.components.retrieval_query_panel  # noqa: F401
+    import gui.components.retrieval_channel_results  # noqa: F401
+    import gui.components.retrieval_health_cards  # noqa: F401
+    import gui.components.retrieval_ranked_context  # noqa: F401
 
 
 def test_gui_pages_importable():

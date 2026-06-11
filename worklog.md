@@ -195,3 +195,34 @@ Blockers or dependencies affecting Cycle 8 Crosslinks:
   NONE — Article identity is stable, storage_backend is honestly reported,
   and the wiki route properly uses container stores when available.
   Crosslinks can safely reference article_id values.
+---
+Task ID: 11
+Agent: main
+Task: UI Cycle 11 — Retrieval Lab
+
+Work Log:
+- Read all 7 required documentation files
+- Inspected all frontend files (retrieval_lab.py, source_panel.py, trace_panel.py, api_client.py, status_types.py, components)
+- Inspected all backend retrieval code (routes, orchestrator, channels, registry, schemas, tests)
+- Determined v1 scope: use existing _search_sources_with_trace pipeline with channel enable flags, add standalone retrieval test endpoint, add retrieval health endpoint
+- Implemented POST /api/v1/retrieval/test — standalone retrieval test without synthesis, with channel selection, per-channel results, health, latency, fusion/ranking, selected context, degraded/failed channel warnings, lexical_only/vector_contributed flags
+- Implemented GET /api/v1/retrieval/health — per-channel health (lexical, vector, graph, wiki, procedural, corpus), embedding coverage, vector fallback chain, summary counts
+- Created 4 new frontend components: retrieval_query_panel.py, retrieval_channel_results.py, retrieval_health_cards.py, retrieval_ranked_context.py
+- Replaced placeholder retrieval_lab.py with full v1 page: query input, channel toggles, health cards, per-channel results, ranked context, trace detail, warnings, honest empty/unavailable states
+- Added 8 TypedDicts to status_types.py (RetrievalTestItem, RetrievalChannelResult, RetrievalTestScores, RetrievalTestResponse, RetrievalHealthChannel, RetrievalEmbeddingCoverage, RetrievalHealthSummary, RetrievalHealthResponse)
+- Added 3 API client methods (retrieval_test, retrieval_health, get_retrieval_recent_traces)
+- Updated gui_import_boundary tests to include new components
+- Wrote 26 new tests in test_retrieval_lab_cycle11.py covering all 14 verification items
+- All 26 new tests pass
+- All 106 tests (Cycle 10 + Cycle 11 + GUI boundary + retrieval orchestrator) pass
+- All 17 import boundary / layer discipline tests pass
+- Post-execution sanitation search: 0 blockers, all 46 hits legitimate (safety docs, existing schemas, test assertions)
+- Updated docs/API_REFERENCE.md, docs/ui/UI_CURRENT_STATE_AUDIT.md, STATUS.md, DOGFOOD_READY.md
+
+Stage Summary:
+- 2 new backend endpoints: POST /retrieval/test, GET /retrieval/health
+- 4 new frontend components + 1 full page replacement
+- 8 TypedDicts, 3 API client methods
+- 26 new tests passing
+- No blockers, no fake data, no secret exposure, no mutation, no synthesis
+- Sanitation clean: 0 fixes needed

@@ -45,7 +45,7 @@ The old `main.py` had a header-based navigation with buttons to `/models`, `/vec
 - `/` → Dashboard (default landing, "Can I trust AIP right now?")
 - `/ask` → Ask Workbench (preserved chat functionality)
 - `/corpus` → Corpus Workbench (**BUILT — UI Cycle 10**)
-- `/retrieval` → Retrieval Lab (placeholder)
+- `/retrieval` → Retrieval Lab v1 (UI Cycle 11)
 - `/wiki` → Wiki/CODEX Home (placeholder)
 - `/artifacts` → Artifact Workbench (**BUILT — UI Cycle 9**)
 - `/maintenance` → Maintenance Center (placeholder)
@@ -207,7 +207,7 @@ The backend has a rich API surface. Key endpoints relevant to the Operator Conso
 | ECS | `GET /ecs/graph`, `GET /ecs/artifacts`, `GET /ecs/artifacts/{id}` | Artifact Workbench |
 | Sources | `GET /sources`, `GET /sources/stats` | Corpus Workbench |
 | Memory | `GET /memory/trace/{session_id}`, `GET /memory/events/{project_id}`, `GET /memory/search`, `GET /memory/entities`, `GET /memory/canonical` | Retrieval Lab |
-| Retrieval Dashboard | `GET /retrieval/dashboard`, `GET /retrieval/traces`, `GET /retrieval/channels`, `GET /retrieval/stats`, `GET /retrieval/quality`, `GET /retrieval/budget-tune` | Retrieval Lab |
+| Retrieval Dashboard | `GET /retrieval/dashboard`, `GET /retrieval/traces`, `GET /retrieval/channels`, `GET /retrieval/stats`, `GET /retrieval/quality`, `GET /retrieval/budget-tune`, `POST /retrieval/test`, `GET /retrieval/health` | Retrieval Lab |
 | Vigil Quality | 17 endpoints for alerts, retention, rollups, mute rules, SSE/WS streams | Maintenance |
 | Admin | Config, Sexton classifications/audit/playbook, Beast status, router weights, budget, autonomy log, embedding backfill | Settings/Maintenance |
 | Ingest | `POST /ingest/conversation`, `POST /ingest/file` | Corpus Workbench |
@@ -329,7 +329,8 @@ The following API concepts are needed by the Operator Console but **do not exist
 
 | Needed | Status | Notes |
 |--------|--------|-------|
-| `POST /api/v1/retrieval/test` | **MISSING** | No interactive retrieval test endpoint. |
+| `POST /api/v1/retrieval/test` | **✅ BUILT (UI Cycle 11)** | Standalone retrieval test without answer synthesis. Per-channel results, health, latency, fusion/ranking, selected context. No mutation. |
+| `GET /api/v1/retrieval/health` | **✅ BUILT (UI Cycle 11)** | Per-channel retrieval health and availability snapshot. |
 
 ### 3.9 Maintenance Center
 
@@ -541,6 +542,21 @@ UI Cycle 10 builds the Corpus Workbench v1, enabling the DEFINER to ingest, insp
 - **Cycle 10 tests**: 30/30 pass — schema stability, honest unavailable states, empty corpus, document detail 404, ingest explicit, backfill honest, retry honest, no secret exposure, import boundary, existing tests still pass.
 - **Existing tests still pass**: 14 GUI import boundary, 106 crosslink/artifact/import-boundary tests all green.
 
+### UI Cycle 11 Progress Note
+
+UI Cycle 11 builds the Retrieval Lab v1, enabling the DEFINER to test retrieval independently from answer synthesis:
+
+- **Retrieval Lab page** (`gui/pages/retrieval_lab.py`): Replaced placeholder with full lab. Query panel with text input and channel toggle checkboxes, health cards showing per-channel state/availability, per-channel results display with latency and hit counts, and ranked context view showing fusion output.
+- **4 new frontend components**: `retrieval_query_panel.py`, `retrieval_channel_results.py`, `retrieval_health_cards.py`, `retrieval_ranked_context.py` in `gui/components/`.
+- **2 new backend endpoints**: `POST /api/v1/retrieval/test` (standalone retrieval test without synthesis), `GET /api/v1/retrieval/health` (per-channel health snapshot).
+- **8 new TypedDicts** in `gui/status_types.py`: RetrievalTestRequest, RetrievalTestResponse, RetrievalChannelResult, RetrievalHealthResponse, RetrievalChannelHealth, RetrievalEmbeddingCoverage, RetrievalHealthSummary, RetrievalScores.
+- **3 new API client methods** in `gui/api_client.py`: `run_retrieval_test`, `get_retrieval_health`, `get_retrieval_test_result`.
+- **No-synthesis verification**: `POST /retrieval/test` never dispatches to any model for answer synthesis — retrieval only, no mutation of artifacts, wiki, corpus, or any system state.
+- **No-secret exposure verification**: No API keys, passwords, or tokens in any retrieval test or health response.
+- **Honest empty/unavailable states**: Unavailable channels report honestly; empty result sets are surfaced as empty, not faked.
+- **Cycle 11 tests**: 26/26 pass — schema stability, honest unavailable states, no-synthesis verification, no-secret exposure, channel toggle handling, health snapshot, fusion output, import boundary, existing tests still pass.
+- **Sanitation scan**: 0 blockers, all hits legitimate.
+
 ---
 
 ## 5. Components/Pages to Reuse
@@ -657,7 +673,7 @@ Following the Development Cycle sequence, adapted based on current state:
 | 7 | **Crosslink System v1** | Wiki + Artifacts + Ask | **✅ BUILT (UI Cycle 8)** — full crosslink API, link panel, link editor, wiki sidebar integration | ~~High~~ Done |
 | 8 | **Artifact Workbench** | Shell + Crosslinks | **PARTIAL** — need needs-revision, export, force-export | Medium-High |
 | 9 | **Corpus Workbench** | Shell | **✅ BUILT (UI Cycle 10)** — full document-level API, problems, backfill, ingest actions | ~~Medium~~ Done |
-| 10 | **Retrieval Lab** | Shell | **PARTIAL** — need `POST /retrieval/test` with per-channel detail | Medium |
+| 10 | **Retrieval Lab** | Shell | **✅ BUILT (UI Cycle 11)** — `POST /retrieval/test` with per-channel detail, `GET /retrieval/health`, query panel, channel toggles, health cards, ranked context | ~~Medium~~ Done |
 | 11 | **Maintenance Center** | Shell | **MOSTLY READY** — actor status/trigger exists; need run history, rebuild endpoints | Medium |
 | 12 | **Settings** | Shell | **MOSTLY READY** — model slots, API key status, admin config exist | Low-Medium |
 | 13 | **Integration Pass** | All pages | All | Medium |

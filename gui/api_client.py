@@ -1968,6 +1968,105 @@ class AipApiClient:
             log.warning("get_corpus_stale_failed: %s", exc)
             return {"items": [], "total": 0, "available": False, "error": str(exc)}
 
+    # ------------------------------------------------------------------
+    # Retrieval Lab (UI Cycle 11)
+    # ------------------------------------------------------------------
+
+    async def retrieval_test(
+        self,
+        query: str,
+        selected_channels: list[str] | None = None,
+        limit: int = 20,
+        include_trace: bool = True,
+    ) -> dict[str, Any]:
+        """Run a standalone retrieval test via POST /api/v1/retrieval/test.
+
+        Returns per-channel results, health, latency, fusion/ranking,
+        selected context, degraded/failed channels, warnings, and
+        lexical_only/vector_contributed flags. No answer synthesis.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {
+            "query": query,
+            "limit": limit,
+            "include_trace": include_trace,
+        }
+        if selected_channels is not None:
+            payload["selected_channels"] = selected_channels
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/retrieval/test",
+                json=payload,
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("retrieval_test_failed: %s", exc)
+            return {
+                "status": "error",
+                "message": f"Retrieval test failed: {exc}",
+                "query": query,
+                "selected_channels": selected_channels or [],
+                "channel_results": {},
+                "channel_health": {},
+                "latency_ms": 0,
+                "per_channel_latency_ms": {},
+                "scores": {},
+                "fusion_results": [],
+                "selected_context": [],
+                "degraded_channels": [],
+                "failed_channels": [],
+                "warnings": [f"Backend unavailable: {exc}"],
+                "trace": None,
+                "lexical_only": False,
+                "vector_contributed": False,
+            }
+
+    async def retrieval_health(self) -> dict[str, Any]:
+        """Get retrieval channel health via GET /api/v1/retrieval/health.
+
+        Returns per-channel health state, vector backend type and
+        degradation status, embedding provider configuration, and
+        reasons for unavailable/degraded channels.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/retrieval/health",
+                timeout=8.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("retrieval_health_failed: %s", exc)
+            return {
+                "status": "error",
+                "message": f"Retrieval health unavailable: {exc}",
+                "channels": {},
+                "embedding_coverage": {"status": "unavailable"},
+                "vector_fallback_chain": [],
+                "summary": {"total_channels": 0, "active": 0, "degraded": 0, "unavailable": 0},
+            }
+
+    async def get_retrieval_recent_traces(self, limit: int = 10) -> dict[str, Any]:
+        """Get recent retrieval traces via GET /api/v1/retrieval/traces.
+
+        Returns list of recent traces with per-channel timing and verdict.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/retrieval/traces",
+                params={"limit": limit},
+                timeout=8.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_retrieval_recent_traces_failed: %s", exc)
+            return {"status": "error", "traces": [], "count": 0}
+
 
 # Module-level singleton for the GUI to use
 _api_client: AipApiClient | None = None

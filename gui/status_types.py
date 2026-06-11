@@ -875,3 +875,113 @@ class CorpusIngestResponse(TypedDict, total=False):
     warnings: list[str]
     errors: list[str]
     error: str
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# UI Cycle 11 — Retrieval Lab
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class RetrievalTestItem(TypedDict, total=False):
+    """A single result item from a retrieval test channel."""
+
+    id: str
+    title: str
+    snippet: str
+    score: float
+    source_type: str
+    source_id: str
+    domain: str
+    metadata: dict
+
+
+class RetrievalChannelResult(TypedDict, total=False):
+    """Per-channel result from a retrieval test."""
+
+    channel: str
+    state: str  # active, degraded, failed, disabled, unavailable, not_configured, empty
+    result_count: int
+    latency_ms: float
+    items: list[RetrievalTestItem]
+    warning: str
+    error: str
+    backend_type: str
+    vss_available: bool | None
+    embedding_provider_configured: bool | None
+
+
+class RetrievalTestScores(TypedDict, total=False):
+    """Scores summary from a retrieval test."""
+
+    top_rrf_scores: list[dict]
+    hits_before_fusion: int
+    hits_after_fusion: int
+    hits_after_quality_gate: int
+    verdict: str
+
+
+class RetrievalTestResponse(TypedDict, total=False):
+    """Response from POST /api/v1/retrieval/test.
+
+    Full retrieval diagnostic without answer synthesis.
+    """
+
+    status: str
+    message: str
+    query: str
+    selected_channels: list[str]
+    channel_results: dict[str, RetrievalChannelResult]
+    channel_health: dict[str, str]
+    latency_ms: float
+    per_channel_latency_ms: dict[str, float]
+    scores: RetrievalTestScores
+    fusion_results: list[dict]
+    selected_context: list[dict]
+    degraded_channels: list[str]
+    failed_channels: list[str]
+    warnings: list[str]
+    trace: dict | None
+    lexical_only: bool
+    vector_contributed: bool
+
+
+class RetrievalHealthChannel(TypedDict, total=False):
+    """Per-channel health from GET /api/v1/retrieval/health."""
+
+    channel: str
+    state: str  # active, degraded, unavailable, not_configured
+    backend_type: str
+    available: bool
+    degraded: bool
+    degradation_reason: str
+    embedding_provider_configured: bool | None
+    vss_available: bool | None
+    vector_count: int | None
+
+
+class RetrievalEmbeddingCoverage(TypedDict, total=False):
+    """Embedding coverage from retrieval health."""
+
+    status: str
+    coverage_percent: float
+    total_turns: int
+    embedded_turns: int
+
+
+class RetrievalHealthSummary(TypedDict, total=False):
+    """Summary counts from retrieval health."""
+
+    total_channels: int
+    active: int
+    degraded: int
+    unavailable: int
+
+
+class RetrievalHealthResponse(TypedDict, total=False):
+    """Response from GET /api/v1/retrieval/health."""
+
+    status: str
+    channels: dict[str, RetrievalHealthChannel]
+    embedding_coverage: RetrievalEmbeddingCoverage
+    vector_fallback_chain: list[str]
+    summary: RetrievalHealthSummary
