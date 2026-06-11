@@ -15,12 +15,12 @@ Error codes: NOT_FOUND, UNAUTHORIZED, FORBIDDEN, BACKEND_UNAVAILABLE,
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from aip.foundation.schemas import McpToolDef, coerce_autonomy_level, coerce_mcp_autonomy_level
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Error code constants for structured responses
 NOT_FOUND = "NOT_FOUND"

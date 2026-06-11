@@ -11,7 +11,6 @@ Sprint 5.25 additions:
 - Config watcher status (if ConfigWatcher is wired)
 """
 
-import logging
 import time
 from typing import Any, TypedDict
 
@@ -19,9 +18,10 @@ from fastapi import APIRouter, Depends
 
 from aip.adapter.api.dependencies import AipContainer, get_container
 from aip.config import DogfoodMode, get_dogfood_mode, validate_dogfood_readiness
+from aip.logging import get_logger
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class HealthEndpointResponse(TypedDict):

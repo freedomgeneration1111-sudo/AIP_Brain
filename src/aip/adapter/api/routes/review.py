@@ -8,7 +8,6 @@ POST /reviews/approve-all (bulk approve pending beast artifacts).
 from __future__ import annotations
 
 import json
-import logging
 from datetime import datetime, timezone
 
 import aiosqlite
@@ -16,9 +15,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from aip.adapter.api.dependencies import AipContainer, get_container, require_definer
 from aip.foundation.schemas import SurfaceConfig
+from aip.logging import get_logger
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Resolved lazily from container config so that test environments
 # and deployments with non-default db_path work correctly.

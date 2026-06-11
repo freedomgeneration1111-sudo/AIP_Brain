@@ -13,15 +13,15 @@ evaluation trend data, and adaptive per-channel budget tuning suggestions.
 from __future__ import annotations
 
 import json
-import logging
 import os
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 
 from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/retrieval", tags=["retrieval"])
 

@@ -11,14 +11,13 @@ directly from orchestration.
 
 from __future__ import annotations
 
-import logging
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from aip.adapter.api.dependencies import AipContainer, get_container
 from aip.foundation.schemas.ask import AskSource
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 

@@ -9,15 +9,15 @@
 
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 

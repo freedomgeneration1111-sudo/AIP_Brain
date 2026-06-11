@@ -12,13 +12,13 @@ Store access is through the container, not via direct orchestration imports.
 from __future__ import annotations
 
 import hashlib
-import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 
