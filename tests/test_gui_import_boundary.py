@@ -212,6 +212,11 @@ def test_gui_components_importable():
     import gui.components.artifact_detail  # noqa: F401
     import gui.components.artifact_review_panel  # noqa: F401
     import gui.components.artifact_state_badge  # noqa: F401
+    import gui.components.corpus_summary  # noqa: F401
+    import gui.components.document_table  # noqa: F401
+    import gui.components.document_detail  # noqa: F401
+    import gui.components.corpus_actions  # noqa: F401
+    import gui.components.corpus_problems  # noqa: F401
 
 
 def test_gui_pages_importable():

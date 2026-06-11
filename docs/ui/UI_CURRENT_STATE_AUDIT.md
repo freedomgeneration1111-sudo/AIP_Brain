@@ -44,7 +44,7 @@ The old `main.py` had a header-based navigation with buttons to `/models`, `/vec
 
 - `/` → Dashboard (default landing, "Can I trust AIP right now?")
 - `/ask` → Ask Workbench (preserved chat functionality)
-- `/corpus` → Corpus Workbench (placeholder)
+- `/corpus` → Corpus Workbench (**BUILT — UI Cycle 10**)
 - `/retrieval` → Retrieval Lab (placeholder)
 - `/wiki` → Wiki/CODEX Home (placeholder)
 - `/artifacts` → Artifact Workbench (**BUILT — UI Cycle 9**)
@@ -145,9 +145,25 @@ The chat flow is fully implemented and functional:
 
 ### 1.11 Corpus/Vector/Graph Pages
 
-- CORPUS tab shows stats (turns, tagged, untagged, embedded)
-- Domain distribution table
-- Top turns by importance
+- **Corpus Workbench v1 — Built UI Cycle 10:**
+  - Corpus summary cards (Documents, Chunks, Embeddings, Problems, Backfill State)
+  - Document table with search, chunk counts, embedding status, problem indicators
+  - Document detail panel with metadata, chunk/embedding summary, errors, sample turns
+  - Ingest action (explicit DEFINER action, requires path, reports honestly)
+  - Run Embedding Backfill action (explicit DEFINER action, reports not_wired if no provider)
+  - Retry Failed Embeds action (explicit DEFINER action, clears failure counters)
+  - Problems panel (failed jobs, unembedded chunks, stale docs, duplicate hashes)
+  - 7 new backend endpoints: /corpus/documents, /corpus/documents/{path}, /corpus/problems, /corpus/unembedded, /corpus/backfill, /corpus/retry-failed, /corpus/duplicates, /corpus/stale
+  - 3 new store methods: list_documents, get_document_detail, get_corpus_problems
+  - 12 API client methods for corpus operations
+  - 15 TypedDict classes for corpus response types
+  - Honest unavailable/not_wired states — never fake healthy
+  - No fake corpus counts, no fake embedding status
+  - No silent document deletion or overwrite
+  - No secrets exposed
+- CORPUS tab shows stats (turns, tagged, untagged, embedded) — superseded by Corpus Workbench
+- Domain distribution table — now part of Corpus Workbench summary
+- Top turns by importance — available via /corpus/stats
 - GRAPH tab shows node/edge counts
 - No document-level detail view
 - No chunk inspection
@@ -296,13 +312,26 @@ The following API concepts are needed by the Operator Console but **do not exist
 | `GET /api/v1/artifacts/dashboard` | **✅ BUILT (UI Cycle 9)** | Review queue summary with counts, NEEDS_REVISION count, force-export count |
 | Artifact evaluation scores | **HONEST UNAVAILABLE** | Returns status=unavailable instead of fake scores |
 
-### 3.7 Retrieval Lab
+### 3.7 Corpus Workbench
 
 | Needed | Status | Notes |
 |--------|--------|-------|
-| `POST /api/v1/retrieval/test` | **MISSING** | No interactive retrieval test endpoint. `/ask/retrieve` exists but doesn't expose per-channel results with latency/scores/fusion detail. |
+| `GET /api/v1/corpus/documents` | **✅ BUILT (UI Cycle 10)** | List documents with chunk counts, embedding status, search |
+| `GET /api/v1/corpus/documents/{source_path}` | **✅ BUILT (UI Cycle 10)** | Document detail with metadata, chunks, errors, sample turns |
+| `GET /api/v1/corpus/problems` | **✅ BUILT (UI Cycle 10)** | Failed jobs, unembedded count, duplicates, stale docs |
+| `GET /api/v1/corpus/unembedded` | **✅ BUILT (UI Cycle 10)** | List of unembedded turns |
+| `POST /api/v1/corpus/backfill` | **✅ BUILT (UI Cycle 10)** | Explicit DEFINER backfill trigger, wraps existing admin path |
+| `POST /api/v1/corpus/retry-failed` | **✅ BUILT (UI Cycle 10)** | Explicit DEFINER action, clears failure counters |
+| `GET /api/v1/corpus/duplicates` | **✅ BUILT (UI Cycle 10)** | Duplicate content hashes |
+| `GET /api/v1/corpus/stale` | **✅ BUILT (UI Cycle 10)** | Stale documents (30+ days) |
 
-### 3.8 Maintenance Center
+### 3.8 Retrieval Lab
+
+| Needed | Status | Notes |
+|--------|--------|-------|
+| `POST /api/v1/retrieval/test` | **MISSING** | No interactive retrieval test endpoint. |
+
+### 3.9 Maintenance Center
 
 | Needed | Status | Notes |
 |--------|--------|-------|
@@ -491,6 +520,27 @@ UI Cycle 6.1 adds explicit model slot selection to the Model Council panel:
 - **Cycle 6.1 tests**: 38/38 pass — selected_model_slots honored, embedding excluded even if requested, invalid slot handled honestly, text-generation-slots endpoint, frontend selector methods, panel toggle slot, minimum slot requirement, API client methods, TypedDict types, route registration, GUI import boundary, backend import boundary, existing Cycle 6 tests still pass, Beast Counsel tests still pass.
 - **Sanitation**: No fake council/comparison, no auto-approve, no wiki mutation, no secret exposure, no bare except-pass (fixed), no TODO/FIXME/placeholder, no orchestration imports from GUI.
 
+### UI Cycle 10 Progress Note
+
+UI Cycle 10 builds the Corpus Workbench v1, enabling the DEFINER to ingest, inspect, repair, and backfill the corpus from the Operator Console:
+
+- **Corpus Workbench page** (`gui/pages/corpus.py`): Replaced placeholder with full workbench. Summary cards (Documents, Chunks, Embeddings, Problems, Backfill State), document table with search, document detail panel, actions bar (Ingest, Backfill, Retry Failed), and problems panel (failed jobs, unembedded, stale docs, duplicates).
+- **5 new frontend components**: `corpus_summary.py`, `document_table.py`, `document_detail.py`, `corpus_actions.py`, `corpus_problems.py` in `gui/components/`.
+- **8 new backend endpoints**: `GET /corpus/documents`, `GET /corpus/documents/{source_path}`, `GET /corpus/problems`, `GET /corpus/unembedded`, `POST /corpus/backfill`, `POST /corpus/retry-failed`, `GET /corpus/duplicates`, `GET /corpus/stale`. All return honest unavailable/not_wired states when stores are not wired.
+- **3 new store methods** on `CorpusTurnStore`: `list_documents()`, `count_documents()`, `get_document_detail()`, `get_corpus_problems()` — document-level queries on the corpus_turns table.
+- **Ingest action**: Explicit DEFINER action (requires `require_definer` auth). Must provide path. Reports honestly: ingested, skipped, updated, failed counts. Never silently overwrites.
+- **Backfill action**: Explicit DEFINER action. Uses existing Sexton/admin backfill path. Returns `not_wired` if embedding provider not configured. Returns `already_running` if backfill in progress. Returns `accepted` when started.
+- **Retry failed**: Explicit DEFINER action. Clears embed failure counters for failed turns so they will be retried.
+- **12 API client methods** in `gui/api_client.py`: `get_corpus_status`, `get_corpus_embedding_progress`, `list_corpus_documents`, `get_corpus_document_detail`, `get_corpus_problems`, `get_corpus_unembedded`, `trigger_corpus_backfill`, `retry_failed_embeds`, `ingest_to_corpus`, `get_corpus_duplicates`, `get_corpus_stale`.
+- **15 TypedDict classes** in `gui/status_types.py`: CorpusStatusResponse, CorpusEmbeddingProgressResponse, CorpusDocumentItem, CorpusDocumentListResponse, CorpusDocumentDetailResponse, CorpusFailedJob, CorpusStaleDoc, CorpusDuplicateHash, CorpusProblemsResponse, CorpusUnembeddedResponse, CorpusBackfillResponse, CorpusRetryFailedResponse, CorpusIngestResponse.
+- **Embedding coverage computed honestly**: Zero coverage returns 0.0%, never fake healthy.
+- **No fake corpus counts**: All numbers come from real backend queries. Unavailable stores return honest zeros.
+- **No silent mutation**: All actions are explicit DEFINER actions with confirmation dialogs.
+- **No secrets exposed**: No API keys, passwords, or tokens in any corpus response.
+- **Crosslink integration deferred**: Link panel not yet integrated into document detail (deferred to integration pass).
+- **Cycle 10 tests**: 30/30 pass — schema stability, honest unavailable states, empty corpus, document detail 404, ingest explicit, backfill honest, retry honest, no secret exposure, import boundary, existing tests still pass.
+- **Existing tests still pass**: 14 GUI import boundary, 106 crosslink/artifact/import-boundary tests all green.
+
 ---
 
 ## 5. Components/Pages to Reuse
@@ -606,7 +656,7 @@ Following the Development Cycle sequence, adapted based on current state:
 | 6 | **Wiki/CODEX Home** | Shell | **✅ BUILT (UI Cycle 7)** — CRUD for articles, backlinks, contradictions, stale detection all implemented | ~~High~~ Done |
 | 7 | **Crosslink System v1** | Wiki + Artifacts + Ask | **✅ BUILT (UI Cycle 8)** — full crosslink API, link panel, link editor, wiki sidebar integration | ~~High~~ Done |
 | 8 | **Artifact Workbench** | Shell + Crosslinks | **PARTIAL** — need needs-revision, export, force-export | Medium-High |
-| 9 | **Corpus Workbench** | Shell | **MOSTLY READY** — corpus, ingest, backfill endpoints exist | Medium |
+| 9 | **Corpus Workbench** | Shell | **✅ BUILT (UI Cycle 10)** — full document-level API, problems, backfill, ingest actions | ~~Medium~~ Done |
 | 10 | **Retrieval Lab** | Shell | **PARTIAL** — need `POST /retrieval/test` with per-channel detail | Medium |
 | 11 | **Maintenance Center** | Shell | **MOSTLY READY** — actor status/trigger exists; need run history, rebuild endpoints | Medium |
 | 12 | **Settings** | Shell | **MOSTLY READY** — model slots, API key status, admin config exist | Low-Medium |
@@ -762,7 +812,7 @@ Note: The backend also serves its own HTML pages (chat.html, index.html, review.
 | Wiki/CODEX Home | `/wiki/articles`, `/wiki/articles/{id}`, `POST /wiki/articles`, `PATCH /wiki/articles/{id}`, `/wiki/backlinks/{id}`, `/wiki/stale`, `/wiki/contradictions`, `/wiki/stats` | — | — |
 | Crosslink System | `/links` (GET/POST), `/links/{id}` (PATCH/DELETE), `/links/backlinks/{type}/{id}`, `/links/forward/{type}/{id}` | — | — |
 | Artifact Workbench | `/artifacts`, `/reviews` (approve/reject), `/ecs/graph` | `/artifacts/{id}/evaluation` | Needs-revision, export, force-export, source panel |
-| Corpus Workbench | `/corpus/*`, `/ingest/*`, `/sources/*`, `/admin/embeddings/backfill` | — | Document detail, chunk inspection, failed jobs |
+| Corpus Workbench | `/corpus/*`, `/ingest/*`, `/sources/*`, `/admin/embeddings/backfill`, `/corpus/documents`, `/corpus/documents/{path}`, `/corpus/problems`, `/corpus/unembedded`, `/corpus/backfill`, `/corpus/retry-failed`, `/corpus/duplicates`, `/corpus/stale` | — | — (Document detail, chunk inspection, failed jobs now built — UI Cycle 10) |
 | Retrieval Lab | `/retrieval/dashboard`, `/retrieval/channels`, `/retrieval/traces` | `/ask/retrieve` (no per-channel detail) | `/retrieval/test` (interactive) |
 | Maintenance Center | `/actors/status`, `/actors/{name}/trigger` | Backfill trigger | Actor run history, rebuild endpoints, retrieval eval |
 | Settings | `/models/slots`, `/models/api_key_status`, `/admin/config` | `/admin/hot-reload/status` | `/settings/health`, secret source display |

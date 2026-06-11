@@ -1732,6 +1732,242 @@ class AipApiClient:
                 "error": str(exc),
             }
 
+    # ------------------------------------------------------------------
+    # UI Cycle 10: Corpus Workbench
+    # ------------------------------------------------------------------
+
+    async def get_corpus_status(self) -> dict[str, Any]:
+        """Get corpus status via GET /api/v1/corpus/status.
+
+        Returns total_turns, embedded, tagged, documents, conversations,
+        embed_failures, needs_reembed, embed_coverage, tag_coverage.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(f"{self.base_url}/api/v1/corpus/status", timeout=8.0)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_corpus_status_failed: %s", exc)
+            return {"total_turns": 0, "embedded": 0, "tagged": 0, "error": str(exc)}
+
+    async def get_corpus_embedding_progress(self) -> dict[str, Any]:
+        """Get embedding progress via GET /api/v1/corpus/embedding-progress.
+
+        Returns total, embedded, unembedded, needs_reembed, percentage,
+        last_embed_at, embedding_models, sexton_pass.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(f"{self.base_url}/api/v1/corpus/embedding-progress", timeout=8.0)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_corpus_embedding_progress_failed: %s", exc)
+            return {"total": 0, "embedded": 0, "unembedded": 0, "percentage": 0.0, "error": str(exc)}
+
+    async def list_corpus_documents(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        search: str = "",
+    ) -> dict[str, Any]:
+        """List corpus documents via GET /api/v1/corpus/documents.
+
+        Returns items (list of document summaries), total, limit, offset.
+        Each item has source_path, source_model, turn_count, embedded_count,
+        unembedded_count, embed_fail_count, needs_reembed_count,
+        primary_domains, last_updated, conversation_count.
+        """
+        client = self._get_http_client()
+        try:
+            params: dict[str, Any] = {"limit": limit, "offset": offset}
+            if search:
+                params["search"] = search
+            resp = await client.get(
+                f"{self.base_url}/api/v1/corpus/documents",
+                params=params,
+                timeout=8.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("list_corpus_documents_failed: %s", exc)
+            return {"items": [], "total": 0, "limit": limit, "offset": offset, "error": str(exc)}
+
+    async def get_corpus_document_detail(self, source_path: str) -> dict[str, Any]:
+        """Get document detail via GET /api/v1/corpus/documents/{source_path}.
+
+        Returns metadata, chunk summary, embedding status, errors, sample_turns.
+        Returns not_found=True honestly if document doesn't exist.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/corpus/documents/{source_path}",
+                timeout=8.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_corpus_document_detail_failed: %s", exc)
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            if status_code == 404:
+                return {"not_found": True, "source_path": source_path}
+            return {"not_found": True, "source_path": source_path, "error": str(exc)}
+
+    async def get_corpus_problems(self) -> dict[str, Any]:
+        """Get corpus problems via GET /api/v1/corpus/problems.
+
+        Returns failed_ingest_jobs, unembedded_count, needs_reembed_count,
+        duplicate_hashes, stale_docs.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(f"{self.base_url}/api/v1/corpus/problems", timeout=8.0)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_corpus_problems_failed: %s", exc)
+            return {
+                "failed_ingest_jobs": [],
+                "unembedded_count": 0,
+                "needs_reembed_count": 0,
+                "duplicate_hashes": [],
+                "stale_docs": [],
+                "available": False,
+                "error": str(exc),
+            }
+
+    async def get_corpus_unembedded(self, limit: int = 100) -> dict[str, Any]:
+        """Get unembedded chunks via GET /api/v1/corpus/unembedded.
+
+        Returns items (list of unembedded turns), count, available.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/corpus/unembedded",
+                params={"limit": limit},
+                timeout=8.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_corpus_unembedded_failed: %s", exc)
+            return {"items": [], "count": 0, "available": False, "error": str(exc)}
+
+    async def trigger_corpus_backfill(
+        self,
+        limit: int = 500,
+        batch_size: int = 20,
+        dry_run: bool = False,
+        domain: str | None = None,
+    ) -> dict[str, Any]:
+        """Trigger embedding backfill via POST /api/v1/corpus/backfill.
+
+        Explicit DEFINER action. Returns status: accepted, not_wired,
+        already_running, or error.
+        """
+        client = self._get_http_client()
+        try:
+            payload: dict[str, Any] = {
+                "limit": limit,
+                "batch_size": batch_size,
+                "dry_run": dry_run,
+            }
+            if domain:
+                payload["domain"] = domain
+            resp = await client.post(
+                f"{self.base_url}/api/v1/corpus/backfill",
+                json=payload,
+                timeout=15.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("trigger_corpus_backfill_failed: %s", exc)
+            return {"status": "error", "message": str(exc)}
+
+    async def retry_failed_embeds(self, limit: int = 50) -> dict[str, Any]:
+        """Retry failed embeds via POST /api/v1/corpus/retry-failed.
+
+        Explicit DEFINER action. Returns status: accepted, no_failed,
+        not_wired, or error.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/corpus/retry-failed",
+                json={"limit": limit},
+                timeout=15.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("retry_failed_embeds_failed: %s", exc)
+            return {"status": "error", "message": str(exc)}
+
+    async def ingest_to_corpus(
+        self,
+        path: str,
+        source_model: str = "",
+        source_account: str = "gui_ingest",
+        recursive: bool = False,
+    ) -> dict[str, Any]:
+        """Ingest file/directory via POST /api/v1/corpus/ingest.
+
+        Explicit DEFINER action. Must not silently overwrite existing documents.
+        Returns type, source_path, turns_ingested, turns_skipped,
+        turns_updated, turns_failed, warnings, errors honestly.
+        """
+        client = self._get_http_client()
+        try:
+            payload = {
+                "path": path,
+                "source_model": source_model,
+                "source_account": source_account,
+                "recursive": recursive,
+            }
+            resp = await client.post(
+                f"{self.base_url}/api/v1/corpus/ingest",
+                json=payload,
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("ingest_to_corpus_failed: %s", exc)
+            return {"type": "error", "error": str(exc)}
+
+    async def get_corpus_duplicates(self) -> dict[str, Any]:
+        """Get duplicate documents via GET /api/v1/corpus/duplicates.
+
+        Returns items (list of duplicate hash entries), total, available.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(f"{self.base_url}/api/v1/corpus/duplicates", timeout=8.0)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_corpus_duplicates_failed: %s", exc)
+            return {"items": [], "total": 0, "available": False, "error": str(exc)}
+
+    async def get_corpus_stale(self) -> dict[str, Any]:
+        """Get stale documents via GET /api/v1/corpus/stale.
+
+        Returns items (list of stale document entries), total, available.
+        """
+        client = self._get_http_client()
+        try:
+            resp = await client.get(f"{self.base_url}/api/v1/corpus/stale", timeout=8.0)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log.warning("get_corpus_stale_failed: %s", exc)
+            return {"items": [], "total": 0, "available": False, "error": str(exc)}
+
 
 # Module-level singleton for the GUI to use
 _api_client: AipApiClient | None = None

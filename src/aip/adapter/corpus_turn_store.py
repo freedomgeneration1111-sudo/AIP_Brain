@@ -1191,3 +1191,305 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
             raise
         finally:
             self._return_read_conn(conn)
+
+    # ------------------------------------------------------------------
+    # UI Cycle 10: Corpus Workbench document-level queries
+    # ------------------------------------------------------------------
+
+    async def list_documents(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        source_path_filter: str = "",
+    ) -> list[dict[str, Any]]:
+        """List documents (distinct source_paths) with per-document stats.
+
+        Each document row includes:
+          - source_path, source_model, turn_count, embedded_count,
+            unembedded_count, embed_fail_count, needs_reembed_count,
+            primary_domains, last_updated, conversation_count
+
+        Returns empty list honestly if no documents exist.
+        """
+        conn = await self._checkout_read_conn()
+        try:
+            where = "WHERE source_path IS NOT NULL AND source_path != ''"
+            params: list[Any] = []
+            if source_path_filter:
+                where += " AND source_path LIKE ?"
+                params.append(f"%{source_path_filter}%")
+
+            sql = f"""
+                SELECT
+                    source_path,
+                    source_model,
+                    COUNT(*) as turn_count,
+                    SUM(CASE WHEN embedded = 1 THEN 1 ELSE 0 END) as embedded_count,
+                    SUM(CASE WHEN embedded = 0 THEN 1 ELSE 0 END) as unembedded_count,
+                    SUM(CASE WHEN embed_fail_count > 0 THEN 1 ELSE 0 END) as embed_fail_count,
+                    SUM(CASE WHEN needs_reembed = 1 THEN 1 ELSE 0 END) as needs_reembed_count,
+                    GROUP_CONCAT(DISTINCT CASE WHEN primary_domain != '' THEN primary_domain ELSE NULL END) as primary_domains,
+                    MAX(updated_at) as last_updated,
+                    COUNT(DISTINCT conversation_id) as conversation_count
+                FROM corpus_turns
+                {where}
+                GROUP BY source_path
+                ORDER BY turn_count DESC
+                LIMIT ? OFFSET ?
+            """
+            params.extend([limit, offset])
+            cursor = await conn.execute(sql, params)
+            rows = await cursor.fetchall()
+
+            docs = []
+            for row in rows:
+                domains_str = row["primary_domains"] or ""
+                docs.append({
+                    "source_path": row["source_path"],
+                    "source_model": row["source_model"],
+                    "turn_count": int(row["turn_count"]),
+                    "embedded_count": int(row["embedded_count"]),
+                    "unembedded_count": int(row["unembedded_count"]),
+                    "embed_fail_count": int(row["embed_fail_count"]),
+                    "needs_reembed_count": int(row["needs_reembed_count"]),
+                    "primary_domains": [d.strip() for d in domains_str.split(",") if d.strip()],
+                    "last_updated": row["last_updated"],
+                    "conversation_count": int(row["conversation_count"]),
+                })
+            return docs
+        except Exception:
+            await self._reset_conn()
+            raise
+        finally:
+            self._return_read_conn(conn)
+
+    async def count_documents(self) -> int:
+        """Count distinct source_paths (documents) in the corpus."""
+        conn = await self._checkout_read_conn()
+        try:
+            cursor = await conn.execute(
+                "SELECT COUNT(DISTINCT source_path) as c FROM corpus_turns "
+                "WHERE source_path IS NOT NULL AND source_path != ''"
+            )
+            row = await cursor.fetchone()
+            return int(row["c"]) if row else 0
+        except Exception:
+            await self._reset_conn()
+            raise
+        finally:
+            self._return_read_conn(conn)
+
+    async def get_document_detail(self, source_path: str) -> dict[str, Any]:
+        """Get detailed information about a single document (source_path).
+
+        Returns metadata, chunk summary, embedding status, errors, and
+        sample turns. Returns empty dict with not_found=True if no turns
+        match the source_path.
+        """
+        conn = await self._checkout_read_conn()
+        try:
+            # Aggregate stats
+            cursor = await conn.execute(
+                """
+                SELECT
+                    source_path,
+                    source_model,
+                    source_account,
+                    COUNT(*) as turn_count,
+                    SUM(CASE WHEN embedded = 1 THEN 1 ELSE 0 END) as embedded_count,
+                    SUM(CASE WHEN embedded = 0 THEN 1 ELSE 0 END) as unembedded_count,
+                    SUM(CASE WHEN embed_fail_count > 0 THEN 1 ELSE 0 END) as embed_fail_count,
+                    SUM(CASE WHEN needs_reembed = 1 THEN 1 ELSE 0 END) as needs_reembed_count,
+                    GROUP_CONCAT(DISTINCT CASE WHEN primary_domain != '' THEN primary_domain ELSE NULL END) as primary_domains,
+                    MIN(created_at) as first_turn_at,
+                    MAX(updated_at) as last_updated,
+                    COUNT(DISTINCT conversation_id) as conversation_count,
+                    GROUP_CONCAT(DISTINCT embedding_model) as embedding_models,
+                    SUM(word_count) as total_word_count
+                FROM corpus_turns
+                WHERE source_path = ?
+                GROUP BY source_path
+                """,
+                [source_path],
+            )
+            row = await cursor.fetchone()
+            if row is None or int(row["turn_count"]) == 0:
+                return {"not_found": True, "source_path": source_path}
+
+            domains_str = row["primary_domains"] or ""
+            models_str = row["embedding_models"] or ""
+            turn_count = int(row["turn_count"])
+            embedded_count = int(row["embedded_count"])
+
+            result: dict[str, Any] = {
+                "not_found": False,
+                "source_path": row["source_path"],
+                "source_model": row["source_model"],
+                "source_account": row["source_account"],
+                "turn_count": turn_count,
+                "embedded_count": embedded_count,
+                "unembedded_count": int(row["unembedded_count"]),
+                "embed_fail_count": int(row["embed_fail_count"]),
+                "needs_reembed_count": int(row["needs_reembed_count"]),
+                "embed_coverage": round(embedded_count / turn_count * 100, 1) if turn_count > 0 else 0.0,
+                "primary_domains": [d.strip() for d in domains_str.split(",") if d.strip()],
+                "embedding_models": [m.strip() for m in models_str.split(",") if m.strip()],
+                "first_turn_at": row["first_turn_at"],
+                "last_updated": row["last_updated"],
+                "conversation_count": int(row["conversation_count"]),
+                "total_word_count": int(row["total_word_count"]),
+                "errors": [],
+                "sample_turns": [],
+            }
+
+            # Collect embed errors
+            cursor = await conn.execute(
+                """
+                SELECT turn_id, embed_fail_count, last_embed_error
+                FROM corpus_turns
+                WHERE source_path = ? AND embed_fail_count > 0
+                ORDER BY embed_fail_count DESC
+                LIMIT 10
+                """,
+                [source_path],
+            )
+            error_rows = await cursor.fetchall()
+            result["errors"] = [
+                {
+                    "turn_id": r["turn_id"],
+                    "fail_count": int(r["embed_fail_count"]),
+                    "last_error": r["last_embed_error"][:200] if r["last_embed_error"] else "",
+                }
+                for r in error_rows
+            ]
+
+            # Sample turns (first few)
+            cursor = await conn.execute(
+                """
+                SELECT turn_id, turn_index, primary_domain, embedded,
+                       importance, word_count
+                FROM corpus_turns
+                WHERE source_path = ?
+                ORDER BY turn_index ASC
+                LIMIT 5
+                """,
+                [source_path],
+            )
+            sample_rows = await cursor.fetchall()
+            result["sample_turns"] = [
+                {
+                    "turn_id": r["turn_id"],
+                    "turn_index": int(r["turn_index"]),
+                    "primary_domain": r["primary_domain"],
+                    "embedded": bool(r["embedded"]),
+                    "importance": float(r["importance"]),
+                    "word_count": int(r["word_count"]),
+                }
+                for r in sample_rows
+            ]
+
+            return result
+        except Exception:
+            await self._reset_conn()
+            raise
+        finally:
+            self._return_read_conn(conn)
+
+    async def get_corpus_problems(self) -> dict[str, Any]:
+        """Get corpus problems summary for the Corpus Workbench.
+
+        Returns:
+          - failed_ingest_jobs: turns with embed_fail_count > 0
+          - unembedded_chunks: turns without embeddings
+          - stale_docs: documents with no recent activity
+          - duplicate_hashes: content hash collisions
+        """
+        conn = await self._checkout_read_conn()
+        try:
+            result: dict[str, Any] = {}
+
+            # Failed embed jobs
+            cursor = await conn.execute(
+                """
+                SELECT turn_id, source_path, embed_fail_count, last_embed_error,
+                       source_model, primary_domain
+                FROM corpus_turns
+                WHERE embed_fail_count > 0
+                ORDER BY embed_fail_count DESC
+                LIMIT 50
+                """
+            )
+            rows = await cursor.fetchall()
+            result["failed_ingest_jobs"] = [
+                {
+                    "turn_id": r["turn_id"],
+                    "source_path": r["source_path"],
+                    "fail_count": int(r["embed_fail_count"]),
+                    "last_error": r["last_embed_error"][:200] if r["last_embed_error"] else "",
+                    "source_model": r["source_model"],
+                    "primary_domain": r["primary_domain"],
+                }
+                for r in rows
+            ]
+
+            # Unembedded count
+            cursor = await conn.execute(
+                "SELECT COUNT(*) as c FROM corpus_turns WHERE embedded = 0"
+            )
+            row = await cursor.fetchone()
+            result["unembedded_count"] = int(row["c"]) if row else 0
+
+            # Needs reembed count
+            cursor = await conn.execute(
+                "SELECT COUNT(*) as c FROM corpus_turns WHERE needs_reembed = 1"
+            )
+            row = await cursor.fetchone()
+            result["needs_reembed_count"] = int(row["c"]) if row else 0
+
+            # Duplicate hashes
+            cursor = await conn.execute(
+                """
+                SELECT content_hash, COUNT(*) as c
+                FROM corpus_turns
+                WHERE content_hash != ''
+                GROUP BY content_hash
+                HAVING c > 1
+                ORDER BY c DESC
+                LIMIT 20
+                """
+            )
+            rows = await cursor.fetchall()
+            result["duplicate_hashes"] = [
+                {"content_hash": r["content_hash"], "count": int(r["c"])}
+                for r in rows
+            ]
+
+            # Stale docs: documents not updated in the last 30 days
+            cursor = await conn.execute(
+                """
+                SELECT source_path, MAX(updated_at) as last_updated,
+                       COUNT(*) as turn_count
+                FROM corpus_turns
+                WHERE source_path IS NOT NULL AND source_path != ''
+                GROUP BY source_path
+                HAVING last_updated < datetime('now', '-30 days')
+                ORDER BY last_updated ASC
+                LIMIT 20
+                """
+            )
+            rows = await cursor.fetchall()
+            result["stale_docs"] = [
+                {
+                    "source_path": r["source_path"],
+                    "last_updated": r["last_updated"],
+                    "turn_count": int(r["turn_count"]),
+                }
+                for r in rows
+            ]
+
+            return result
+        except Exception:
+            await self._reset_conn()
+            raise
+        finally:
+            self._return_read_conn(conn)

@@ -679,3 +679,199 @@ class ArtifactDashboardResponse(TypedDict, total=False):
     total_active: int
     total_pending_review: int
     recent_events: list[dict[str, Any]]
+
+
+# ── UI Cycle 10: Corpus Workbench types ─────────────────────────────────
+
+
+class CorpusStatusResponse(TypedDict, total=False):
+    """Response from GET /api/v1/corpus/status.
+
+    Honest zeros if store unavailable.
+    """
+
+    total_turns: int
+    embedded: int
+    tagged: int
+    untagged: int
+    embed_failures: int
+    needs_reembed: int
+    documents: int
+    conversations: int
+    embed_coverage: float
+    tag_coverage: float
+    error: str
+
+
+class CorpusEmbeddingProgressResponse(TypedDict, total=False):
+    """Response from GET /api/v1/corpus/embedding-progress.
+
+    Honest zeros if store unavailable.
+    """
+
+    total: int
+    embedded: int
+    unembedded: int
+    needs_reembed: int
+    percentage: float
+    last_embed_at: str | None
+    embedding_models: dict[str, int]
+    sexton_pass: dict[str, Any] | None
+    error: str
+
+
+class CorpusDocumentItem(TypedDict, total=False):
+    """A single document item in the corpus document list response."""
+
+    source_path: str
+    source_model: str
+    turn_count: int
+    embedded_count: int
+    unembedded_count: int
+    embed_fail_count: int
+    needs_reembed_count: int
+    primary_domains: list[str]
+    last_updated: str
+    conversation_count: int
+
+
+class CorpusDocumentListResponse(TypedDict, total=False):
+    """Response from GET /api/v1/corpus/documents."""
+
+    items: list[CorpusDocumentItem]
+    total: int
+    limit: int
+    offset: int
+    error: str
+
+
+class CorpusDocumentDetailResponse(TypedDict, total=False):
+    """Response from GET /api/v1/corpus/documents/{source_path}.
+
+    Returns not_found=True honestly if document doesn't exist.
+    No fake data. No secrets exposed.
+    """
+
+    not_found: bool
+    source_path: str
+    source_model: str
+    source_account: str
+    turn_count: int
+    embedded_count: int
+    unembedded_count: int
+    embed_fail_count: int
+    needs_reembed_count: int
+    embed_coverage: float
+    primary_domains: list[str]
+    embedding_models: list[str]
+    first_turn_at: str
+    last_updated: str
+    conversation_count: int
+    total_word_count: int
+    errors: list[dict[str, Any]]
+    sample_turns: list[dict[str, Any]]
+    error: str
+
+
+class CorpusFailedJob(TypedDict, total=False):
+    """A single failed ingest/embed job from corpus problems."""
+
+    turn_id: str
+    source_path: str
+    fail_count: int
+    last_error: str
+    source_model: str
+    primary_domain: str
+
+
+class CorpusStaleDoc(TypedDict, total=False):
+    """A single stale document from corpus problems."""
+
+    source_path: str
+    last_updated: str
+    turn_count: int
+
+
+class CorpusDuplicateHash(TypedDict, total=False):
+    """A single duplicate content hash from corpus problems."""
+
+    content_hash: str
+    count: int
+
+
+class CorpusProblemsResponse(TypedDict, total=False):
+    """Response from GET /api/v1/corpus/problems.
+
+    Returns honest empty lists when no problems exist.
+    Never fakes healthy state.
+    """
+
+    failed_ingest_jobs: list[CorpusFailedJob]
+    unembedded_count: int
+    needs_reembed_count: int
+    duplicate_hashes: list[CorpusDuplicateHash]
+    stale_docs: list[CorpusStaleDoc]
+    available: bool
+    error: str
+
+
+class CorpusUnembeddedResponse(TypedDict, total=False):
+    """Response from GET /api/v1/corpus/unembedded.
+
+    Honest empty list when all chunks are embedded.
+    """
+
+    items: list[dict[str, Any]]
+    count: int
+    available: bool
+    error: str
+
+
+class CorpusBackfillResponse(TypedDict, total=False):
+    """Response from POST /api/v1/corpus/backfill.
+
+    Explicit DEFINER action. Status values:
+      - accepted: Backfill started
+      - not_wired: Embedding provider not configured
+      - already_running: Backfill in progress
+      - error: Failed to start
+    """
+
+    status: str  # accepted, not_wired, already_running, error
+    message: str
+    limit: int
+    batch_size: int
+    dry_run: bool
+
+
+class CorpusRetryFailedResponse(TypedDict, total=False):
+    """Response from POST /api/v1/corpus/retry-failed.
+
+    Explicit DEFINER action. Status values:
+      - accepted: Failures cleared, will retry in next cycle
+      - no_failed: No failed embed jobs found
+      - not_wired: CorpusTurnStore or embedding provider not wired
+      - error: Failed
+    """
+
+    status: str  # accepted, no_failed, not_wired, error
+    message: str
+    retried_count: int
+
+
+class CorpusIngestResponse(TypedDict, total=False):
+    """Response from POST /api/v1/corpus/ingest.
+
+    Explicit DEFINER action. Reports honestly: never fakes success.
+    """
+
+    type: str  # file, directory, error
+    source_path: str
+    source_type: str
+    turns_ingested: int
+    turns_skipped: int
+    turns_updated: int
+    turns_failed: int
+    warnings: list[str]
+    errors: list[str]
+    error: str
