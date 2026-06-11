@@ -538,7 +538,9 @@ Response: `{"type": "pong"}`
 
 ## Artifacts
 
-Read-only artifact browsing. No AutonomyGate required.
+Artifact lifecycle management — list, inspect, review, approve, reject, mark needs-revision,
+export, and force-export artifacts. All review/export actions require DEFINER auth and are
+explicit actions. No auto-approve. No auto-export. No silent state changes.
 
 ### `GET /api/v1/artifacts`
 
@@ -548,19 +550,66 @@ List artifacts with pagination and filtering.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `project_id` | string | null | Filter by project |
-| `ecs_state` | string | null | Filter by ECS state |
-| `domain` | string | null | Filter by domain |
+| `ecs_state` | string | null | Filter by ECS state (GENERATED, REVIEWED, APPROVED, REJECTED, SUPERSEDED, FAILED) or derived states (NEEDS_REVISION, EXPORTED) |
+| `artifact_type` | string | null | Filter by artifact type (ask_answer, beast_wiki, etc.) |
+| `created_by` | string | null | Filter by source/model name substring match |
+| `search` | string | null | Search across artifact_id, title, domain, type, project |
 | `page` | int | 1 | Page number |
 | `page_size` | int | 20 | Items per page (clamped by `surface.artifact_page_size`) |
 
 **Response**:
 ```json
 {
-  "items": [],
+  "items": [
+    {
+      "artifact_id": "art-001",
+      "title": "Research Summary",
+      "ecs_state": "GENERATED",
+      "has_needs_revision": false,
+      "has_export": false,
+      "artifact_type": "ask_answer",
+      "domain": "research",
+      "project": "alpha",
+      "model_slot": "primary",
+      "model_name": "gpt-4",
+      "source_count": 5,
+      "created_at": "2025-01-01T00:00:00",
+      "updated_at": ""
+    }
+  ],
   "page": 1,
   "page_size": 20,
-  "total": 0
+  "total": 1
+}
+```
+
+**Special filter values**:
+- `ecs_state=NEEDS_REVISION`: Returns artifacts with a NEEDS_REVISION review verdict event (typically in GENERATED state)
+- `ecs_state=EXPORTED`: Returns artifacts with an artifact_exported event (typically in APPROVED state)
+
+---
+
+### `GET /api/v1/artifacts/dashboard`
+
+Get artifact review queue summary with counts by state, NEEDS_REVISION count,
+force-export count, and recent activity. Honest zeros if stores unavailable.
+
+**Response**:
+```json
+{
+  "counts": {
+    "GENERATED": 5,
+    "REVIEWED": 2,
+    "APPROVED": 10,
+    "REJECTED": 1,
+    "SUPERSEDED": 0,
+    "FAILED": 0
+  },
+  "needs_revision_count": 2,
+  "force_export_count": 0,
+  "total_active": 17,
+  "total_pending_review": 7,
+  "recent_events": [...]
 }
 ```
 
@@ -568,9 +617,199 @@ List artifacts with pagination and filtering.
 
 ### `GET /api/v1/artifacts/{artifact_id}`
 
-Get artifact content and metadata.
+Get artifact detail including content, metadata, ECS state, sources, review history,
+export eligibility, and crosslinks. Returns honest 404 if not found.
 
-**Response**: `{"id": "art-001", "ecs_state": "GENERATED", "versions": 1}`
+**Response**:
+```json
+{
+  "artifact_id": "art-001",
+  "title": "Research Summary",
+  "ecs_state": "GENERATED",
+  "has_needs_revision": false,
+  "has_export": false,
+  "artifact_type": "ask_answer",
+  "content": "...",
+  "metadata": {...},
+  "source_ids": [...],
+  "source_count": 5,
+  "review_notes": [],
+  "transition_history": [...],
+  "export_eligible": false,
+  "export_requires_force": true,
+  "versions": [...]
+}
+```
+
+---
+
+### `GET /api/v1/artifacts/{artifact_id}/sources`
+
+Get source/provenance links for an artifact. Returns honest empty list if sources unavailable.
+
+**Response**:
+```json
+{
+  "artifact_id": "art-001",
+  "source_count": 2,
+  "sources": [
+    {
+      "source_id": "src-001",
+      "source_type": "lexical",
+      "title": "Research Paper A",
+      "snippet": "..."
+    }
+  ]
+}
+```
+
+---
+
+### `GET /api/v1/artifacts/{artifact_id}/reviews`
+
+Get full review history/ledger for an artifact. Returns honest empty list if unavailable.
+Includes ECS transitions, review verdicts, reviewer notes, export events, and force-export events.
+
+**Response**:
+```json
+{
+  "artifact_id": "art-001",
+  "ledger": [...],
+  "transition_count": 1,
+  "review_count": 0,
+  "note_count": 0,
+  "export_count": 0,
+  "force_export_count": 0
+}
+```
+
+---
+
+### `POST /api/v1/artifacts/{artifact_id}/approve`
+
+Approve an artifact — explicit DEFINER action only. Requires DEFINER auth.
+
+Transition path: GENERATED → REVIEWED → APPROVED (two transitions).
+If already REVIEWED: REVIEWED → APPROVED.
+Writes to CanonicalStore. Records event in EventStore.
+
+**Response**:
+```json
+{
+  "artifact_id": "art-001",
+  "previous_state": "GENERATED",
+  "new_state": "APPROVED",
+  "canonical_written": true,
+  "actor": "definer"
+}
+```
+
+**Errors**:
+- 404: Artifact not found
+- 400: Already APPROVED, REJECTED (needs re-generation), empty content, invalid state
+
+---
+
+### `POST /api/v1/artifacts/{artifact_id}/reject`
+
+Reject an artifact — explicit DEFINER action only. Requires DEFINER auth.
+Preserves artifact and source links. Records rejection note.
+
+**Request Body** (optional):
+```json
+{"note": "Insufficient source grounding"}
+```
+
+**Response**:
+```json
+{
+  "artifact_id": "art-001",
+  "previous_state": "GENERATED",
+  "new_state": "REJECTED",
+  "actor": "definer",
+  "note": "Insufficient source grounding",
+  "artifact_preserved": true
+}
+```
+
+---
+
+### `POST /api/v1/artifacts/{artifact_id}/needs-revision`
+
+Mark artifact as needing revision — explicit DEFINER action only.
+The artifact stays in its current ECS state. NEEDS_REVISION is a verdict stored as an event, not an ECS state.
+
+**Request Body** (optional):
+```json
+{"instruction": "Add more supporting sources"}
+```
+
+**Response**:
+```json
+{
+  "artifact_id": "art-001",
+  "ecs_state": "GENERATED",
+  "actor": "definer",
+  "instruction": "Add more supporting sources",
+  "artifact_preserved": true
+}
+```
+
+---
+
+### `POST /api/v1/artifacts/{artifact_id}/export`
+
+Export an APPROVED artifact — records export event. Requires DEFINER auth.
+Only APPROVED artifacts can be exported normally.
+
+**Response**:
+```json
+{
+  "artifact_id": "art-001",
+  "ecs_state": "APPROVED",
+  "exported": true,
+  "exported_at": "2025-01-01T00:00:00",
+  "force_bypass": false,
+  "actor": "definer"
+}
+```
+
+**Errors**:
+- 400: Artifact not in APPROVED state
+
+---
+
+### `POST /api/v1/artifacts/{artifact_id}/force-export`
+
+Force-export an artifact from a non-APPROVED state — SOVEREIGN OVERRIDE.
+Requires DEFINER auth. Requires explicit confirmation and mandatory reason.
+Every force-export writes a force_export audit event.
+
+**Request Body** (required):
+```json
+{
+  "force": true,
+  "reason": "Emergency debug export for production issue"
+}
+```
+
+**Response**:
+```json
+{
+  "artifact_id": "art-001",
+  "ecs_state": "GENERATED",
+  "exported": true,
+  "exported_at": "2025-01-01T00:00:00",
+  "force_bypass": true,
+  "force_bypass_state": "GENERATED",
+  "force_reason": "Emergency debug export for production issue",
+  "audit_recorded": true,
+  "actor": "definer"
+}
+```
+
+**Errors**:
+- 400: force not True, reason empty, artifact already APPROVED (use normal export)
 
 ---
 
@@ -584,14 +823,15 @@ List all versions of an artifact.
 
 ### `GET /api/v1/artifacts/{artifact_id}/evaluation`
 
-Get evaluation results (faithfulness, domain coherence, etc.) for an artifact.
+Get evaluation scores for an artifact. Returns honest unavailable if no evaluation backend exists.
+Never returns fake scores.
 
 **Response**:
 ```json
 {
   "artifact_id": "art-001",
-  "faithfulness": 0.92,
-  "domain_coherence": 0.85
+  "status": "unavailable",
+  "message": "Automated evaluation not yet available. Use the review actions to assess artifact quality."
 }
 ```
 

@@ -550,3 +550,132 @@ class KnowledgeLinkForwardLinksResponse(TypedDict, total=False):
     total: int
     available: bool  # False if storage unavailable
     storage_backend: str
+
+
+# ── UI Cycle 9: Artifact Workbench types ────────────────────────────────
+
+
+class ArtifactListItem(TypedDict, total=False):
+    """A single artifact item in the artifact list response."""
+
+    artifact_id: str
+    title: str
+    ecs_state: str  # GENERATED, REVIEWED, APPROVED, REJECTED, SUPERSEDED, FAILED
+    has_needs_revision: bool  # True if artifact has a NEEDS_REVISION verdict event
+    has_export: bool  # True if artifact has an export event
+    artifact_type: str  # ask_answer, beast_wiki, beast_domain_proposal, etc.
+    domain: str
+    project: str
+    model_slot: str
+    model_name: str
+    source_count: int
+    created_at: str
+    updated_at: str
+
+
+class ArtifactListResponse(TypedDict, total=False):
+    """Response from GET /api/v1/artifacts."""
+
+    items: list[ArtifactListItem]
+    page: int
+    page_size: int
+    total: int
+
+
+class ArtifactDetailResponse(TypedDict, total=False):
+    """Response from GET /api/v1/artifacts/{artifact_id}.
+
+    No fake data. Empty arrays if reviews/sources unavailable.
+    No secrets exposed.
+    """
+
+    artifact_id: str
+    title: str
+    ecs_state: str
+    has_needs_revision: bool
+    has_export: bool
+    artifact_type: str
+    content: str
+    metadata: dict[str, Any]
+    domain: str
+    project: str
+    prompt: str
+    model_slot: str
+    model_name: str
+    model_provider: str
+    generated_at: str
+    session_id: str
+    source_ids: list[str]
+    source_types: list[str]
+    source_count: int
+    review_notes: list[dict[str, Any]]
+    transition_history: list[dict[str, Any]]
+    export_events: list[dict[str, Any]]
+    force_export_events: list[dict[str, Any]]
+    export_eligible: bool  # Only True if ecs_state == APPROVED
+    export_requires_force: bool  # True if not APPROVED
+    versions: list[dict[str, Any]]
+    created_at: str
+    updated_at: str
+
+
+class ArtifactSourcesResponse(TypedDict, total=False):
+    """Response from GET /api/v1/artifacts/{artifact_id}/sources.
+
+    Returns honest empty list if sources unavailable.
+    """
+
+    artifact_id: str
+    source_count: int
+    sources: list[dict[str, Any]]
+
+
+class ArtifactReviewsResponse(TypedDict, total=False):
+    """Response from GET /api/v1/artifacts/{artifact_id}/reviews.
+
+    Returns honest empty list if reviews unavailable.
+    """
+
+    artifact_id: str
+    ledger: list[dict[str, Any]]
+    transition_count: int
+    review_count: int
+    note_count: int
+    export_count: int
+    force_export_count: int
+
+
+class ArtifactActionResponse(TypedDict, total=False):
+    """Response from approve/reject/needs-revision/export/force-export endpoints.
+
+    No auto-approve. No auto-export. All actions are explicit DEFINER actions.
+    """
+
+    artifact_id: str
+    previous_state: str
+    new_state: str
+    actor: str  # Always "definer"
+    canonical_written: bool  # Only for approve
+    artifact_preserved: bool  # Always True — artifacts are never deleted by review
+    note: str  # For reject
+    instruction: str  # For needs-revision
+    exported: bool  # For export/force-export
+    exported_at: str
+    force_bypass: bool  # True only for force-export
+    force_bypass_state: str  # The state that was bypassed
+    force_reason: str  # The reason given for override
+    audit_recorded: bool  # Always True for force-export
+
+
+class ArtifactDashboardResponse(TypedDict, total=False):
+    """Response from GET /api/v1/artifacts/dashboard.
+
+    Honest zeros if stores unavailable.
+    """
+
+    counts: dict[str, int]  # ECS state → count
+    needs_revision_count: int
+    force_export_count: int
+    total_active: int
+    total_pending_review: int
+    recent_events: list[dict[str, Any]]

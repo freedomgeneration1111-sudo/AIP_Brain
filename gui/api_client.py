@@ -1567,6 +1567,138 @@ class AipApiClient:
                 "error": str(exc),
             }
 
+    # ── Artifact Workbench methods (UI Cycle 9) ────────────────
+
+    async def list_artifacts(
+        self,
+        *,
+        ecs_state: str | None = None,
+        artifact_type: str | None = None,
+        created_by: str | None = None,
+        search: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict[str, Any]:
+        """List artifacts via GET /api/v1/artifacts.
+
+        Supports filtering by state, type, source, and search query.
+        Returns honest empty list if backend unavailable.
+        """
+        client = self._get_http_client()
+        params: dict[str, Any] = {"page": page, "page_size": page_size}
+        if ecs_state is not None:
+            params["ecs_state"] = ecs_state
+        if artifact_type is not None:
+            params["artifact_type"] = artifact_type
+        if created_by is not None:
+            params["created_by"] = created_by
+        if search is not None:
+            params["search"] = search
+        resp = await client.get(f"{self.base_url}/api/v1/artifacts", params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_artifact_detail(self, artifact_id: str) -> dict[str, Any]:
+        """Get artifact detail via GET /api/v1/artifacts/{artifact_id}.
+
+        Returns content, metadata, state, sources, review history, export eligibility.
+        """
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/artifacts/{artifact_id}")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_artifact_sources(self, artifact_id: str) -> dict[str, Any]:
+        """Get artifact sources via GET /api/v1/artifacts/{artifact_id}/sources."""
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/artifacts/{artifact_id}/sources")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_artifact_reviews(self, artifact_id: str) -> dict[str, Any]:
+        """Get artifact review history via GET /api/v1/artifacts/{artifact_id}/reviews."""
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/artifacts/{artifact_id}/reviews")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def approve_artifact(self, artifact_id: str) -> dict[str, Any]:
+        """Approve artifact via POST /api/v1/artifacts/{artifact_id}/approve.
+
+        Explicit DEFINER action. No auto-approve.
+        """
+        client = self._get_http_client()
+        resp = await client.post(f"{self.base_url}/api/v1/artifacts/{artifact_id}/approve")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def reject_artifact(self, artifact_id: str, note: str = "") -> dict[str, Any]:
+        """Reject artifact via POST /api/v1/artifacts/{artifact_id}/reject.
+
+        Explicit DEFINER action. No auto-reject.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {}
+        if note:
+            payload["note"] = note
+        resp = await client.post(
+            f"{self.base_url}/api/v1/artifacts/{artifact_id}/reject",
+            json=payload,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def needs_revision_artifact(
+        self, artifact_id: str, instruction: str = ""
+    ) -> dict[str, Any]:
+        """Mark artifact as needs-revision via POST /api/v1/artifacts/{artifact_id}/needs-revision.
+
+        Explicit DEFINER action. No ECS transition — NEEDS_REVISION is a verdict.
+        """
+        client = self._get_http_client()
+        payload: dict[str, Any] = {}
+        if instruction:
+            payload["instruction"] = instruction
+        resp = await client.post(
+            f"{self.base_url}/api/v1/artifacts/{artifact_id}/needs-revision",
+            json=payload,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def export_artifact(self, artifact_id: str) -> dict[str, Any]:
+        """Export APPROVED artifact via POST /api/v1/artifacts/{artifact_id}/export.
+
+        Only APPROVED artifacts can be exported normally.
+        """
+        client = self._get_http_client()
+        resp = await client.post(f"{self.base_url}/api/v1/artifacts/{artifact_id}/export")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def force_export_artifact(
+        self, artifact_id: str, reason: str = ""
+    ) -> dict[str, Any]:
+        """Force-export artifact via POST /api/v1/artifacts/{artifact_id}/force-export.
+
+        SOVEREIGN OVERRIDE — visibly exceptional and audited.
+        Requires explicit reason.
+        """
+        client = self._get_http_client()
+        resp = await client.post(
+            f"{self.base_url}/api/v1/artifacts/{artifact_id}/force-export",
+            json={"force": True, "reason": reason},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_artifact_dashboard(self) -> dict[str, Any]:
+        """Get artifact dashboard summary via GET /api/v1/artifacts/dashboard."""
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/artifacts/dashboard")
+        resp.raise_for_status()
+        return resp.json()
+
     async def get_link_forward_links(
         self,
         source_type: str,

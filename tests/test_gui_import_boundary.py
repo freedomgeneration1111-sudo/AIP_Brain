@@ -208,6 +208,10 @@ def test_gui_components_importable():
     import gui.components.buttons  # noqa: F401
     import gui.components.chat  # noqa: F401
     import gui.components.modals  # noqa: F401
+    import gui.components.artifact_list  # noqa: F401
+    import gui.components.artifact_detail  # noqa: F401
+    import gui.components.artifact_review_panel  # noqa: F401
+    import gui.components.artifact_state_badge  # noqa: F401
 
 
 def test_gui_pages_importable():

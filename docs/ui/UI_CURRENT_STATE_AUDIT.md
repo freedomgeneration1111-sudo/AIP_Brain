@@ -47,7 +47,7 @@ The old `main.py` had a header-based navigation with buttons to `/models`, `/vec
 - `/corpus` → Corpus Workbench (placeholder)
 - `/retrieval` → Retrieval Lab (placeholder)
 - `/wiki` → Wiki/CODEX Home (placeholder)
-- `/artifacts` → Artifact Workbench (placeholder)
+- `/artifacts` → Artifact Workbench (**BUILT — UI Cycle 9**)
 - `/maintenance` → Maintenance Center (placeholder)
 - `/settings` → Settings (placeholder)
 
@@ -113,11 +113,17 @@ The chat flow is fully implemented and functional:
 - REVIEW tab shows pending reviews + GENERATED knowledge items
 - Approve/Reject/Approve-All actions
 - Article expansion (preview/full toggle)
-- No artifact lifecycle tracking (GENERATED → REVIEWED → APPROVED → EXPORTED)
-- No artifact export
-- No needs-revision action
-- No artifact source panel
-- No artifact-to-wiki linking
+- **Artifact Workbench v1 — Built UI Cycle 9:**
+  - Artifact list with tab filtering (All, Generated, Needs Revision, Approved, Exported, Rejected, Overrides)
+  - Artifact detail panel (content preview, metadata, state badge, sources, review history, crosslinks)
+  - Review action panel (Approve, Reject, Needs Revision, Export, Force Export)
+  - Force-export with sovereign override dialog (requires confirmation + reason + audit trail)
+  - Dashboard summary endpoint with counts by state
+  - Full lifecycle tracking (GENERATED → REVIEWED → APPROVED, plus NEEDS_REVISION verdict and EXPORTED event)
+  - Artifact export from APPROVED state only
+  - Crosslink panel integration on artifact detail
+  - Honest empty/unavailable states
+  - No auto-approve, no auto-export, no silent state changes
 
 ### 1.10 Wiki/CODEX Pages
 
@@ -278,10 +284,17 @@ The following API concepts are needed by the Operator Console but **do not exist
 
 | Needed | Status | Notes |
 |--------|--------|-------|
-| `POST /api/v1/artifacts/{id}/needs-revision` | **MISSING** | No needs-revision transition |
-| `POST /api/v1/artifacts/{id}/export` | **MISSING** | No export endpoint (CLI has `aip export`, but no API endpoint) |
-| Force export with audit | **MISSING** | No force export mechanism |
-| Artifact source panel data | **PARTIAL** | `GET /artifacts/{id}/evaluation` exists for L3a/L3b but no source list endpoint |
+| `GET /api/v1/artifacts` | **✅ BUILT (UI Cycle 9)** | Full list with filtering by state, type, source, search query |
+| `GET /api/v1/artifacts/{id}` | **✅ BUILT (UI Cycle 9)** | Full detail with content, metadata, state, sources, review history, export eligibility |
+| `GET /api/v1/artifacts/{id}/sources` | **✅ BUILT (UI Cycle 9)** | Source provenance with batch reads |
+| `GET /api/v1/artifacts/{id}/reviews` | **✅ BUILT (UI Cycle 9)** | Full ledger (ECS transitions + review verdicts + notes + exports + force-exports) |
+| `POST /api/v1/artifacts/{id}/approve` | **✅ BUILT (UI Cycle 9)** | Explicit DEFINER action, GENERATED → REVIEWED → APPROVED, canonical write |
+| `POST /api/v1/artifacts/{id}/reject` | **✅ BUILT (UI Cycle 9)** | Explicit DEFINER action, preserves artifact |
+| `POST /api/v1/artifacts/{id}/needs-revision` | **✅ BUILT (UI Cycle 9)** | Stores NEEDS_REVISION verdict as event (no ECS transition) |
+| `POST /api/v1/artifacts/{id}/export` | **✅ BUILT (UI Cycle 9)** | Only APPROVED artifacts, records export event |
+| `POST /api/v1/artifacts/{id}/force-export` | **✅ BUILT (UI Cycle 9)** | Sovereign override, requires reason + confirmation, audit trail |
+| `GET /api/v1/artifacts/dashboard` | **✅ BUILT (UI Cycle 9)** | Review queue summary with counts, NEEDS_REVISION count, force-export count |
+| Artifact evaluation scores | **HONEST UNAVAILABLE** | Returns status=unavailable instead of fake scores |
 
 ### 3.7 Retrieval Lab
 
