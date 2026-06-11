@@ -21,7 +21,6 @@ Architecture:
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -31,9 +30,10 @@ from pydantic import BaseModel, Field
 from aip.adapter.api.dependencies import AipContainer, get_container, require_definer
 from aip.foundation.ecs_graph import ALL_STATES, InvalidTransitionError
 from aip.foundation.schemas import SurfaceConfig
+from aip.logging import get_logger
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Valid ECS states for filtering
 VALID_FILTER_STATES = ALL_STATES | {"NEEDS_REVISION"}

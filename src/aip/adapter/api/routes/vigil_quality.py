@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import asyncio
 import json as _json
-import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
@@ -36,9 +35,10 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.logging import get_logger
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @router.get("/vigil/quality")

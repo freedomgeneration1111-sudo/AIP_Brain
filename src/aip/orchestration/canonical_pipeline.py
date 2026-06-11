@@ -14,7 +14,6 @@ ci_fixture handling:
 
 from __future__ import annotations
 
-import logging
 import os
 
 from aip.foundation.protocols import (
@@ -30,8 +29,9 @@ from aip.foundation.protocols import (
     VigilStore,
 )
 from aip.foundation.schemas import CanonicalPromotionConfig, coerce_autonomy_level
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _is_ci_environment() -> bool:

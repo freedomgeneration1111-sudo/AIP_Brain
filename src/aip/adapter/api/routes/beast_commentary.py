@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -30,8 +29,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 
