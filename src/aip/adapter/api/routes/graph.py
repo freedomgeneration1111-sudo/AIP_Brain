@@ -29,10 +29,12 @@ async def _get_graph_store(container: AipContainer):
     if store is not None:
         return store
     from aip.adapter.graph_store import GraphStore
+
     db_path = container.config.get("db_path", "") or container.config.get("database", {}).get("db_path", "")
     if not db_path:
         try:
             from aip.cli._db_path import get_default_db_path
+
             db_path = get_default_db_path()
         except Exception:
             db_path = "db/state.db"
@@ -112,8 +114,7 @@ async def graph_neighbors(
         return {
             "node_id": node_id,
             "nodes": [
-                {"id": n.id, "canonical_name": n.canonical_name, "entity_type": n.entity_type}
-                for n in neighbors
+                {"id": n.id, "canonical_name": n.canonical_name, "entity_type": n.entity_type} for n in neighbors
             ],
             "edges": [],
         }

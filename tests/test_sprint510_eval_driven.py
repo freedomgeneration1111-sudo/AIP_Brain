@@ -33,6 +33,7 @@ class TestChannelContributions:
 
     async def test_channel_contributions_populated(self):
         """Channel contributions should be recorded after retrieval."""
+
         async def _fts_retriever(query):
             return [
                 RetrievalHit(id="fts:1", content="FTS hit 1", score=0.9, source_channel="fts"),
@@ -60,11 +61,14 @@ class TestChannelContributions:
 
     async def test_per_channel_hit_counts_populated(self):
         """Per-channel hit counts should be recorded before fusion."""
+
         async def _fts_retriever(query):
             return [RetrievalHit(id=f"fts:{i}", content=f"Hit {i}", score=0.9, source_channel="fts") for i in range(5)]
 
         async def _vector_retriever(query):
-            return [RetrievalHit(id=f"vec:{i}", content=f"Vec {i}", score=0.85, source_channel="vector") for i in range(3)]
+            return [
+                RetrievalHit(id=f"vec:{i}", content=f"Vec {i}", score=0.85, source_channel="vector") for i in range(3)
+            ]
 
         orch = RetrievalOrchestrator()
         orch.register_channel("fts", _fts_retriever)
@@ -79,6 +83,7 @@ class TestChannelContributions:
 
     async def test_channel_contributions_with_budget_limit(self):
         """Channel contributions should reflect budget-capped results."""
+
         async def _dominant_fts(query):
             return [RetrievalHit(id=f"fts:{i}", content=f"FTS {i}", score=0.9, source_channel="fts") for i in range(20)]
 
@@ -90,7 +95,8 @@ class TestChannelContributions:
         orch.register_channel("graph", _weak_graph)
 
         config = OrchestratorConfig(
-            enable_fts=True, enable_graph=True,
+            enable_fts=True,
+            enable_graph=True,
             fts_max_hits=3,
         )
         hits, trace = await orch.retrieve("test", config=config)
@@ -101,6 +107,7 @@ class TestChannelContributions:
 
     async def test_empty_channels_no_contributions(self):
         """When channels return no hits, contributions should be empty or zero."""
+
         async def _empty_fts(query):
             return []
 
@@ -133,9 +140,7 @@ class TestLLMEntityFn:
                 }
 
         llm_fn = create_llm_entity_fn(MockModelProvider(), slot_name="fast")
-        result = asyncio.run(
-            llm_fn("How does Knowledge Graph connect to AIP?")
-        )
+        result = asyncio.run(llm_fn("How does Knowledge Graph connect to AIP?"))
 
         assert isinstance(result, list)
         assert "KnowledgeGraph" in result
@@ -150,9 +155,7 @@ class TestLLMEntityFn:
                 raise RuntimeError("Model unavailable")
 
         llm_fn = create_llm_entity_fn(FailingModelProvider(), slot_name="fast")
-        result = asyncio.run(
-            llm_fn("test query")
-        )
+        result = asyncio.run(llm_fn("test query"))
 
         assert result == []  # graceful degradation
 
@@ -170,9 +173,7 @@ class TestLLMEntityFn:
                 }
 
         llm_fn = create_llm_entity_fn(PartialFailProvider(), slot_name="fast")
-        result = asyncio.run(
-            llm_fn("test query")
-        )
+        result = asyncio.run(llm_fn("test query"))
 
         assert isinstance(result, list)
         assert "Entity1" in result
@@ -183,30 +184,35 @@ class TestLLMResponseParsing:
 
     def test_parse_json_array(self):
         from aip.orchestration.entity_extractor import _parse_llm_entity_response
+
         result = _parse_llm_entity_response('["Knowledge Graph", "AIP"]')
         assert "Knowledge Graph" in result
         assert "AIP" in result
 
     def test_parse_markdown_json(self):
         from aip.orchestration.entity_extractor import _parse_llm_entity_response
+
         content = '```json\n["Entity1", "Entity2"]\n```'
         result = _parse_llm_entity_response(content)
         assert "Entity1" in result
 
     def test_parse_embedded_array(self):
         from aip.orchestration.entity_extractor import _parse_llm_entity_response
+
         content = 'Here are the entities: ["Alpha", "Beta"] and more text'
         result = _parse_llm_entity_response(content)
         assert "Alpha" in result
 
     def test_parse_comma_separated(self):
         from aip.orchestration.entity_extractor import _parse_llm_entity_response
+
         content = "Knowledge Graph, AIP, PageRank"
         result = _parse_llm_entity_response(content)
         assert "Knowledge Graph" in result
 
     def test_parse_empty_returns_empty(self):
         from aip.orchestration.entity_extractor import _parse_llm_entity_response
+
         result = _parse_llm_entity_response("")
         assert result == []
 
@@ -230,9 +236,7 @@ class TestEntityExtractorModes:
             llm_fn=fake_llm,
         )
         # "simple query" has no capitalized words → local finds 0 entities
-        result = asyncio.run(
-            ext.extract_async("simple query with no caps")
-        )
+        result = asyncio.run(ext.extract_async("simple query with no caps"))
         assert "LLMEntity1" in result
 
     def test_llm_primary_mode_uses_llm_first(self):
@@ -247,9 +251,7 @@ class TestEntityExtractorModes:
             ),
             llm_fn=fake_llm,
         )
-        result = asyncio.run(
-            ext.extract_async("How does Knowledge Graph work?")
-        )
+        result = asyncio.run(ext.extract_async("How does Knowledge Graph work?"))
         # LLM primary should return LLM entities directly
         assert "PrimaryEntity1" in result
 
@@ -266,9 +268,7 @@ class TestEntityExtractorModes:
             ),
             llm_fn=failing_llm,
         )
-        result = asyncio.run(
-            ext.extract_async("How does Knowledge Graph work?")
-        )
+        result = asyncio.run(ext.extract_async("How does Knowledge Graph work?"))
         # Should fall back to noun_phrase extraction
         assert "Knowledge Graph" in result
 
@@ -288,9 +288,7 @@ class TestEntityExtractorModes:
             ),
             llm_fn=tracking_llm,
         )
-        result = asyncio.run(
-            ext.extract_async("simple query")
-        )
+        result = asyncio.run(ext.extract_async("simple query"))
         assert llm_called is False
 
 
@@ -319,12 +317,15 @@ class TestRegressionProtection:
         )
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump({
-                "mean_recall_at_k": 0.7,
-                "mean_mrr": 0.6,
-                "mean_precision_at_k": 0.5,
-                "mean_entity_coverage": 0.4,
-            }, f)
+            json.dump(
+                {
+                    "mean_recall_at_k": 0.7,
+                    "mean_mrr": 0.6,
+                    "mean_precision_at_k": 0.5,
+                    "mean_entity_coverage": 0.4,
+                },
+                f,
+            )
             baseline_path = f.name
 
         try:
@@ -348,12 +349,15 @@ class TestRegressionProtection:
         )
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump({
-                "mean_recall_at_k": 0.7,
-                "mean_mrr": 0.7,
-                "mean_precision_at_k": 0.6,
-                "mean_entity_coverage": 0.5,
-            }, f)
+            json.dump(
+                {
+                    "mean_recall_at_k": 0.7,
+                    "mean_mrr": 0.7,
+                    "mean_precision_at_k": 0.6,
+                    "mean_entity_coverage": 0.5,
+                },
+                f,
+            )
             baseline_path = f.name
 
         try:
@@ -378,12 +382,15 @@ class TestRegressionProtection:
         )
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump({
-                "mean_recall_at_k": 0.7,
-                "mean_mrr": 0.7,
-                "mean_precision_at_k": 0.6,
-                "mean_entity_coverage": 0.5,
-            }, f)
+            json.dump(
+                {
+                    "mean_recall_at_k": 0.7,
+                    "mean_mrr": 0.7,
+                    "mean_precision_at_k": 0.6,
+                    "mean_entity_coverage": 0.5,
+                },
+                f,
+            )
             baseline_path = f.name
 
         try:
@@ -414,12 +421,15 @@ class TestRegressionProtection:
 
         current = EvalResult(mean_recall_at_k=0.8, mean_mrr=0.6)
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump({
-                "mean_recall_at_k": 0.7,
-                "mean_mrr": 0.7,
-                "mean_precision_at_k": 0.5,
-                "mean_entity_coverage": 0.4,
-            }, f)
+            json.dump(
+                {
+                    "mean_recall_at_k": 0.7,
+                    "mean_mrr": 0.7,
+                    "mean_precision_at_k": 0.5,
+                    "mean_entity_coverage": 0.4,
+                },
+                f,
+            )
             baseline_path = f.name
 
         try:
@@ -533,9 +543,7 @@ class TestEvalHarnessChannelContributions:
         ]
 
         harness = RetrievalEvalHarness(k=10)
-        result = asyncio.run(
-            harness.run(golden, _mock_retriever_with_trace)
-        )
+        result = asyncio.run(harness.run(golden, _mock_retriever_with_trace))
 
         assert result.channel_contribution_summary.get("fts", 0) >= 1
         assert result.channel_contribution_summary.get("graph", 0) >= 1
@@ -553,6 +561,7 @@ class TestCLIEvalCommand:
     def test_eval_command_registered(self):
         """The eval command group should be registered."""
         from aip.cli.main import cli
+
         # Check that 'eval' is a registered subcommand
         eval_group = None
         for name, cmd in cli.commands.items():
@@ -564,4 +573,5 @@ class TestCLIEvalCommand:
     def test_retrieval_subcommand_registered(self):
         """The eval retrieval subcommand should be registered."""
         from aip.cli.eval import eval_cmd
+
         assert "retrieval" in eval_cmd.commands

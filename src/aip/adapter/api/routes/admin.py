@@ -42,7 +42,9 @@ async def get_admin_config(
 
 
 @router.patch("/admin/config")
-async def patch_admin_config(payload: dict, container: AipContainer = Depends(get_container), _auth=Depends(require_definer)):
+async def patch_admin_config(
+    payload: dict, container: AipContainer = Depends(get_container), _auth=Depends(require_definer)
+):
     """Apply runtime configuration changes.
 
     Safe keys (intervals, thresholds) are applied immediately.
@@ -61,8 +63,13 @@ async def patch_admin_config(payload: dict, container: AipContainer = Depends(ge
 
     # Define safe keys that can be hot-reloaded
     safe_keys = {
-        "budget", "beast", "vigil", "sexton", "performance",
-        "rate_limit", "surface",
+        "budget",
+        "beast",
+        "vigil",
+        "sexton",
+        "performance",
+        "rate_limit",
+        "surface",
     }
     unsafe_keys = set(payload.keys()) - safe_keys
 
@@ -81,7 +88,9 @@ async def patch_admin_config(payload: dict, container: AipContainer = Depends(ge
         "updated": True,
         "applied": applied,
         "not_applied": not_applied,
-        "note": "Safe keys (budget, beast, vigil, sexton, performance, rate_limit, surface) are applied immediately. Other keys require a process restart." if not_applied else None,
+        "note": "Safe keys (budget, beast, vigil, sexton, performance, rate_limit, surface) are applied immediately. Other keys require a process restart."
+        if not_applied
+        else None,
     }
 
 
@@ -98,7 +107,11 @@ async def get_sexton_classifications(
                 classifications = await fc.classify_failures()
                 return {
                     "classifications": [
-                        {"failure_type": fc.failure_type, "trace_event_id": fc.trace_event_id, "confidence": fc.confidence}
+                        {
+                            "failure_type": fc.failure_type,
+                            "trace_event_id": fc.trace_event_id,
+                            "confidence": fc.confidence,
+                        }
                         for fc in classifications
                     ],
                 }
@@ -210,6 +223,7 @@ async def get_autonomy_log(
 
 class BackfillRequest(BaseModel):
     """Request body for POST /admin/embeddings/backfill."""
+
     domain: str | None = None
     limit: int = 500
     batch_size: int = 20
@@ -267,7 +281,13 @@ async def backfill_embeddings(
 
     # Schedule background work
     container.backfill_status["running"] = True
-    container.backfill_status["progress"] = {"scanned": 0, "embedded": 0, "skipped": 0, "failed": 0, "domain": body.domain or "all"}
+    container.backfill_status["progress"] = {
+        "scanned": 0,
+        "embedded": 0,
+        "skipped": 0,
+        "failed": 0,
+        "domain": body.domain or "all",
+    }
     container.backfill_status["last_result"] = None
 
     asyncio.create_task(
@@ -317,8 +337,7 @@ async def _run_backfill_in_background(body: BackfillRequest, container: AipConta
                 )
             else:
                 cursor = conn.execute(
-                    "SELECT doc_id, content, domain, metadata FROM fts_documents "
-                    "ORDER BY rowid ASC LIMIT ?",
+                    "SELECT doc_id, content, domain, metadata FROM fts_documents ORDER BY rowid ASC LIMIT ?",
                     (body.limit,),
                 )
             rows = cursor.fetchall()
@@ -331,8 +350,12 @@ async def _run_backfill_in_background(body: BackfillRequest, container: AipConta
 
                 scanned += 1
                 container.backfill_status["progress"] = {
-                    "scanned": scanned, "embedded": embedded, "skipped": skipped, "failed": failed,
-                    "domain": body.domain or "all", "current_doc": doc_id
+                    "scanned": scanned,
+                    "embedded": embedded,
+                    "skipped": skipped,
+                    "failed": failed,
+                    "domain": body.domain or "all",
+                    "current_doc": doc_id,
                 }
 
                 try:
@@ -456,6 +479,7 @@ async def get_hot_reload_status(
     # Auto-tuning policy status
     try:
         from aip.adapter.auto_tuning_policy import load_policy_from_config
+
         config = getattr(container, "config", {})
         policy = load_policy_from_config(config)
         result["auto_tuning_policy"] = {

@@ -72,8 +72,10 @@ async def maintenance_page():
     problem_panel = MaintenanceProblemPanel()
 
     # ── Main layout ────────────────────────────────────────────────────
-    with ui.column().classes("flex-1").style(
-        f"background:{C_GROUND}; padding:32px; overflow-y:auto; min-height:calc(100vh - 44px);"
+    with (
+        ui.column()
+        .classes("flex-1")
+        .style(f"background:{C_GROUND}; padding:32px; overflow-y:auto; min-height:calc(100vh - 44px);")
     ):
         # Title row
         with ui.row().classes("w-full items-center").style("gap:12px;"):
@@ -86,9 +88,7 @@ async def maintenance_page():
             )
 
         # Backend status (mutable)
-        backend_label = ui.label("").style(
-            f"font-size:11px; color:{C_MUTED}; font-family:{F_SANS}; margin-top:4px;"
-        )
+        backend_label = ui.label("").style(f"font-size:11px; color:{C_MUTED}; font-family:{F_SANS}; margin-top:4px;")
 
         # ── Problems panel ─────────────────────────────────────────────
         ui.label("PROBLEMS").style(
@@ -113,16 +113,16 @@ async def maintenance_page():
         backfill_container = ui.column().classes("w-full").style("margin-top:16px;")
 
         # ── Recent maintenance log ─────────────────────────────────────
-        with ui.expansion("Recent Maintenance Log", value=False).classes("w-full").style(
-            f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-            f"border-radius:{R_MD}; margin-top:20px;"
+        with (
+            ui.expansion("Recent Maintenance Log", value=False)
+            .classes("w-full")
+            .style(f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; border-radius:{R_MD}; margin-top:20px;")
         ):
             log_container = ui.column().classes("w-full").style("padding:8px; gap:0;")
 
         # ── Action result notification area ────────────────────────────
         action_result_label = ui.label("").style(
-            f"font-size:11px; color:{C_MUTED}; font-family:{F_SANS}; margin-top:12px; "
-            f"min-height:20px;"
+            f"font-size:11px; color:{C_MUTED}; font-family:{F_SANS}; margin-top:12px; min-height:20px;"
         )
 
     build_right_rail(state)
@@ -213,8 +213,7 @@ async def maintenance_page():
 
         with ui.row().classes("w-full items-center").style("gap:8px;"):
             ui.label("BACKFILL").style(
-                f"font-size:10px; font-weight:600; color:{C_AMBER}; font-family:{F_MONO}; "
-                f"letter-spacing:0.5px;"
+                f"font-size:10px; font-weight:600; color:{C_AMBER}; font-family:{F_MONO}; letter-spacing:0.5px;"
             )
             if running:
                 ui.label("RUNNING").style(
@@ -276,8 +275,11 @@ async def maintenance_page():
             ui.notify(f"No recent events for {actor_name.upper()}", type="info")
         else:
             # Show logs in a dialog
-            with ui.dialog() as dialog, ui.card().style(
-                f"background:{C_SURFACE}; border-radius:{R_MD}; padding:20px; min-width:500px; max-height:400px; overflow-y:auto;"
+            with (
+                ui.dialog() as dialog,
+                ui.card().style(
+                    f"background:{C_SURFACE}; border-radius:{R_MD}; padding:20px; min-width:500px; max-height:400px; overflow-y:auto;"
+                ),
             ):
                 ui.label(f"{actor_name.upper()} — Recent Events").style(
                     f"font-size:14px; font-weight:700; color:{C_CREAM}; font-family:{F_SANS}; margin-bottom:8px;"
@@ -290,9 +292,7 @@ async def maintenance_page():
                         ui.label(ts_short).style(
                             f"font-size:9px; color:{C_INK60}; font-family:{F_MONO}; min-width:64px;"
                         )
-                        ui.label(evt_type).style(
-                            f"font-size:9px; color:{C_CREAM}; font-family:{F_MONO};"
-                        )
+                        ui.label(evt_type).style(f"font-size:9px; color:{C_CREAM}; font-family:{F_MONO};")
                 ui.button("Close", on_click=dialog.close).props("flat dense").style(
                     f"color:{C_CREAM}; font-family:{F_SANS}; margin-top:12px;"
                 )
@@ -300,8 +300,9 @@ async def maintenance_page():
 
     async def _handle_backfill():
         """Handle Backfill Embeddings button. Explicit DEFINER action."""
-        with ui.dialog() as dialog, ui.card().style(
-            f"background:{C_SURFACE}; border-radius:{R_MD}; padding:20px; min-width:350px;"
+        with (
+            ui.dialog() as dialog,
+            ui.card().style(f"background:{C_SURFACE}; border-radius:{R_MD}; padding:20px; min-width:350px;"),
         ):
             ui.label("Run Embedding Backfill").style(
                 f"font-size:14px; font-weight:700; color:{C_CREAM}; font-family:{F_SANS};"

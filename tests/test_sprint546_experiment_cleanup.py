@@ -37,7 +37,7 @@ def _make_config(**overrides) -> AlertConfig:
     """Build an AlertConfig with sensible test defaults and optional overrides."""
     defaults = dict(
         enabled=True,
-        webhook_url="",          # No real transport needed
+        webhook_url="",  # No real transport needed
         email_to="",
         min_alert_interval_seconds=0,  # Disable rate-limiting for tests
         ab_experiment_enabled=True,
@@ -394,8 +394,7 @@ class TestPromotionRollback:
 
         # Find the rollback alert
         rollback_alerts = [
-            a for a in mgr.lifecycle_mgr._alert_history
-            if a.get("alert_type") == "ab_experiment_rollback"
+            a for a in mgr.lifecycle_mgr._alert_history if a.get("alert_type") == "ab_experiment_rollback"
         ]
         assert len(rollback_alerts) >= 1
         assert rollback_alerts[-1]["subject"] == "experiment:notify_rb"

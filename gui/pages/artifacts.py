@@ -51,56 +51,49 @@ async def artifacts_page():
     build_left_nav(state, active_page="/artifacts")
 
     from gui.api_client import get_api_client
+
     api_client = get_api_client()
 
     # Selected artifact state
     selected_artifact_id = {"id": None}
 
-    with ui.row().classes("flex-1").style(
-        f"background:{C_GROUND}; overflow:hidden; min-height:calc(100vh - 44px);"
-    ):
+    with ui.row().classes("flex-1").style(f"background:{C_GROUND}; overflow:hidden; min-height:calc(100vh - 44px);"):
         # ── Left: Artifact List ──────────────────────────────
-        with ui.column().classes("").style(
-            "width:360px; min-width:320px; max-width:400px; "
-            f"border-right:0.5px solid {C_INK40}; overflow-y:auto; "
-            f"padding:0; background:{C_GROUND};"
+        with (
+            ui.column()
+            .classes("")
+            .style(
+                "width:360px; min-width:320px; max-width:400px; "
+                f"border-right:0.5px solid {C_INK40}; overflow-y:auto; "
+                f"padding:0; background:{C_GROUND};"
+            )
         ):
             # Title
-            with ui.row().classes("w-full items-center").style(
-                f"padding:16px 16px 8px 16px;"
-            ):
+            with ui.row().classes("w-full items-center").style(f"padding:16px 16px 8px 16px;"):
                 ui.label("Artifact Workbench").style(
                     f"font-family:{F_SANS}; font-size:18px; font-weight:700; color:{C_CREAM};"
                 )
 
             # Dashboard summary
-            with ui.row().classes("w-full").style(
-                f"padding:0 16px 12px 16px;"
-            ):
-                summary_label = ui.label("Loading...").style(
-                    f"font-size:10px; color:{C_MUTED}; font-family:{F_MONO};"
-                )
+            with ui.row().classes("w-full").style(f"padding:0 16px 12px 16px;"):
+                summary_label = ui.label("Loading...").style(f"font-size:10px; color:{C_MUTED}; font-family:{F_MONO};")
 
             # Artifact list component
-            artifact_list_container = ui.column().classes("w-full").style(
-                "padding:0 8px 8px 8px; flex:1; overflow-y:auto;"
+            artifact_list_container = (
+                ui.column().classes("w-full").style("padding:0 8px 8px 8px; flex:1; overflow-y:auto;")
             )
 
             # Render artifact list into container
             def on_select(artifact_id: str):
                 """Handle artifact selection — show detail."""
                 selected_artifact_id["id"] = artifact_id
-                _render_detail(
-                    detail_area, selected_artifact_id, api_client, summary_label
-                )
+                _render_detail(detail_area, selected_artifact_id, api_client, summary_label)
 
             def on_refresh():
                 """Handle list refresh — also update summary."""
                 _update_summary(summary_label, api_client)
                 if selected_artifact_id["id"]:
-                    _render_detail(
-                        detail_area, selected_artifact_id, api_client, summary_label
-                    )
+                    _render_detail(detail_area, selected_artifact_id, api_client, summary_label)
 
             with artifact_list_container:
                 render_artifact_list(
@@ -110,15 +103,12 @@ async def artifacts_page():
                 )
 
         # ── Right: Artifact Detail ───────────────────────────
-        detail_area = ui.column().classes("flex-1").style(
-            f"padding:16px; overflow-y:auto; background:{C_GROUND};"
-        )
+        detail_area = ui.column().classes("flex-1").style(f"padding:16px; overflow-y:auto; background:{C_GROUND};")
 
         # Initial empty state
         with detail_area:
             ui.label("Select an artifact to view details").style(
-                f"font-size:14px; color:{C_MUTED}; font-family:{F_SANS}; "
-                f"margin-top:48px;"
+                f"font-size:14px; color:{C_MUTED}; font-family:{F_SANS}; margin-top:48px;"
             )
             ui.label(
                 "Use the list on the left to browse artifacts.\n"
@@ -166,9 +156,7 @@ def _update_summary(summary_label: ui.label, api_client: Any) -> None:
             total = sum(counts.values())
             pending = dashboard.get("total_pending_review", 0)
             approved = counts.get("APPROVED", 0)
-            summary_label.text = (
-                f"{total} artifacts | {pending} pending review | {approved} approved"
-            )
+            summary_label.text = f"{total} artifacts | {pending} pending review | {approved} approved"
         except Exception:
             summary_label.text = "Artifact summary unavailable"
 

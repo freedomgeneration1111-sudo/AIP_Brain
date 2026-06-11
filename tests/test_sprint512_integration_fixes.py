@@ -34,6 +34,7 @@ from aip.orchestration.llm_query_expansion import (
 # 1. BUG-003: Sexton actor ECS wiring
 # =====================================================================
 
+
 class TestBug003SextonEcsWiring:
     """Verify Sexton actor receives ecs_store properly after BUG-003 fix."""
 
@@ -63,23 +64,26 @@ class TestBug003SextonEcsWiring:
 
         # Apply the backfill fix
         ecs = FakeEcsStore()
-        if getattr(sexton, '_ecs', None) is None:
+        if getattr(sexton, "_ecs", None) is None:
             sexton._ecs = ecs
         assert sexton._ecs is ecs, "Backfill should set _ecs correctly"
 
     def test_app_initialization_order_comment(self):
         """Verify that app.py has the BUG-003 fix comment."""
         import aip.adapter.api.app as app_module
+
         source = open(app_module.__file__).read()
         # Check for the BUG-003 fix comment
         assert "BUG-003" in source, "app.py should contain BUG-003 fix reference"
-        assert "Must be initialized BEFORE Sexton actor" in source, \
+        assert "Must be initialized BEFORE Sexton actor" in source, (
             "app.py should document ECS init ordering requirement"
+        )
 
 
 # =====================================================================
 # 2. A/B Evaluation Comparison
 # =====================================================================
+
 
 class TestABEvaluationComparison:
     """Test A/B evaluation comparison logic."""
@@ -140,12 +144,8 @@ class TestABEvaluationComparison:
 
     def test_channel_delta(self):
         """Channel contribution deltas should be computed correctly."""
-        result_a = self._make_eval_result(
-            channel_contributions={"fts": 100, "vector": 50, "graph": 10}
-        )
-        result_b = self._make_eval_result(
-            channel_contributions={"fts": 80, "vector": 70, "graph": 30}
-        )
+        result_a = self._make_eval_result(channel_contributions={"fts": 100, "vector": 50, "graph": 10})
+        result_b = self._make_eval_result(channel_contributions={"fts": 80, "vector": 70, "graph": 30})
 
         comparison = compare_eval_results(result_a, result_b)
         assert comparison.channel_delta["fts"] == -20
@@ -201,6 +201,7 @@ class TestABEvaluationComparison:
 # 3. Adaptive Budget Tuning
 # =====================================================================
 
+
 class TestAdaptiveBudgetTuning:
     """Test adaptive budget tuning heuristics."""
 
@@ -240,9 +241,7 @@ class TestAdaptiveBudgetTuning:
             total_queries=20,
         )
 
-        graph_adj = next(
-            (a for a in result.adjustments if a.channel_name == "graph"), None
-        )
+        graph_adj = next((a for a in result.adjustments if a.channel_name == "graph"), None)
         assert graph_adj is not None
         assert graph_adj.suggested_budget > graph_adj.current_budget
         assert "High-value" in graph_adj.reason
@@ -259,9 +258,7 @@ class TestAdaptiveBudgetTuning:
             total_queries=20,
         )
 
-        proc_adj = next(
-            (a for a in result.adjustments if a.channel_name == "procedural"), None
-        )
+        proc_adj = next((a for a in result.adjustments if a.channel_name == "procedural"), None)
         assert proc_adj is not None
         assert proc_adj.suggested_budget < proc_adj.current_budget
         assert "Low contribution" in proc_adj.reason
@@ -284,9 +281,7 @@ class TestAdaptiveBudgetTuning:
             total_queries=20,
         )
 
-        proc_adj = next(
-            (a for a in result.adjustments if a.channel_name == "procedural"), None
-        )
+        proc_adj = next((a for a in result.adjustments if a.channel_name == "procedural"), None)
         if proc_adj is not None:
             assert proc_adj.suggested_budget >= 2, "Budget should not go below minimum"
 
@@ -301,9 +296,7 @@ class TestAdaptiveBudgetTuning:
             total_queries=20,
         )
 
-        vector_adj = next(
-            (a for a in result.adjustments if a.channel_name == "vector"), None
-        )
+        vector_adj = next((a for a in result.adjustments if a.channel_name == "vector"), None)
         assert vector_adj is None, "Unlimited budget (0) should be skipped"
 
     def test_apply_adjustments(self):
@@ -326,15 +319,14 @@ class TestAdaptiveBudgetTuning:
         # Check that at least one budget was modified if there were adjustments
         if result.adjustments:
             # At least one field should have changed
-            any_changed = any(
-                a.suggested_budget != a.current_budget for a in result.adjustments
-            )
+            any_changed = any(a.suggested_budget != a.current_budget for a in result.adjustments)
             assert any_changed or len(result.adjustments) == 0
 
 
 # =====================================================================
 # 4. LLM Query Expansion
 # =====================================================================
+
 
 class TestLLMQueryExpansion:
     """Test LLM query expansion with mock model provider."""
@@ -368,10 +360,12 @@ class TestLLMQueryExpansion:
             async def call(self, slot, messages):
                 return {"content": '["knowledge graph setup", "graph database configuration", "KG deployment"]'}
 
-        result = asyncio.run(expand_query_with_llm(
-            "how to configure knowledge graph",
-            model_provider=FakeProvider(),
-        ))
+        result = asyncio.run(
+            expand_query_with_llm(
+                "how to configure knowledge graph",
+                model_provider=FakeProvider(),
+            )
+        )
         assert result.success
         assert len(result.expanded_terms) == 3
         assert "knowledge graph setup" in result.expanded_terms
@@ -388,11 +382,13 @@ class TestLLMQueryExpansion:
                 await asyncio.sleep(10)
 
         # Use a very short timeout to trigger the timeout path
-        result = asyncio.run(expand_query_with_llm(
-            "test query for timeout",
-            model_provider=SlowProvider(),
-            timeout_seconds=0.05,
-        ))
+        result = asyncio.run(
+            expand_query_with_llm(
+                "test query for timeout",
+                model_provider=SlowProvider(),
+                timeout_seconds=0.05,
+            )
+        )
         assert not result.success
         assert result.error in ("timeout", "cancelled")
 
@@ -404,10 +400,12 @@ class TestLLMQueryExpansion:
             async def call(self, slot, messages):
                 return {"content": "This is not JSON at all"}
 
-        result = asyncio.run(expand_query_with_llm(
-            "test query",
-            model_provider=BadProvider(),
-        ))
+        result = asyncio.run(
+            expand_query_with_llm(
+                "test query",
+                model_provider=BadProvider(),
+            )
+        )
         assert not result.success
         assert result.expanded_terms == []
 
@@ -427,10 +425,12 @@ class TestLLMQueryExpansion:
             async def call(self, slot, messages):
                 raise RuntimeError("model unavailable")
 
-        result = asyncio.run(expand_query_with_llm(
-            "test query that is long enough",
-            model_provider=ErrorProvider(),
-        ))
+        result = asyncio.run(
+            expand_query_with_llm(
+                "test query that is long enough",
+                model_provider=ErrorProvider(),
+            )
+        )
         assert not result.success
         assert "model unavailable" in result.error
 
@@ -438,6 +438,7 @@ class TestLLMQueryExpansion:
 # =====================================================================
 # 5. OrchestratorConfig new fields
 # =====================================================================
+
 
 class TestOrchestratorConfigSprint512:
     """Test new OrchestratorConfig fields added in Sprint 5.12."""
@@ -486,6 +487,7 @@ class TestOrchestratorConfigSprint512:
 # 6. Sexton End-to-End Wiring
 # =====================================================================
 
+
 class TestSextonEndToEndWiring:
     """End-to-end verification that Sexton can process content through all stages."""
 
@@ -495,33 +497,49 @@ class TestSextonEndToEndWiring:
 
         class FakeCorpusTurnStore:
             _db_path = ":memory:"
-            async def get_untagged_turns(self, limit=200): return []
-            async def get_unembedded_turns(self, limit=50): return []
-            async def get_turns_for_retagging(self, **kw): return []
+
+            async def get_untagged_turns(self, limit=200):
+                return []
+
+            async def get_unembedded_turns(self, limit=50):
+                return []
+
+            async def get_turns_for_retagging(self, **kw):
+                return []
 
         class FakeEcsStore:
-            async def transition(self, **kw): pass
+            async def transition(self, **kw):
+                pass
 
         class FakeEventStore:
-            async def write_event(self, **kw): pass
-            async def query(self, **kw): return []
+            async def write_event(self, **kw):
+                pass
+
+            async def query(self, **kw):
+                return []
 
         class FakeArtifactStore:
-            async def write(self, **kw): pass
-            async def list_artifacts_by_metadata(self, **kw): return []
+            async def write(self, **kw):
+                pass
+
+            async def list_artifacts_by_metadata(self, **kw):
+                return []
 
         class FakeEmbeddingProvider:
-            async def embed(self, text): return [0.1] * 128
+            async def embed(self, text):
+                return [0.1] * 128
 
         class FakeVectorStore:
-            async def upsert(self, **kw): pass
+            async def upsert(self, **kw):
+                pass
 
         class FakeModelProvider:
             async def call(self, slot, messages):
                 return {"content": "[]"}
 
         class FakeTraceStore:
-            async def write_event(self, **kw): pass
+            async def write_event(self, **kw):
+                pass
 
         sexton = Sexton(
             sexton_provider=FakeModelProvider(),
@@ -535,6 +553,7 @@ class TestSextonEndToEndWiring:
         )
 
         import asyncio
+
         summary = asyncio.run(sexton.run_cycle())
 
         # Verify all 5 stages ran
@@ -577,6 +596,7 @@ class TestSextonEndToEndWiring:
 # 7. LLM Query Expansion Integration
 # =====================================================================
 
+
 class TestLLMQueryExpansionIntegration:
     """Verify LLM query expansion integrates with RetrievalOrchestrator."""
 
@@ -609,10 +629,12 @@ class TestLLMQueryExpansionIntegration:
             async def call(self, slot, messages):
                 return {"content": '["knowledge graph setup", "graph configuration"]'}
 
-        result = asyncio.run(expand_query_with_llm(
-            "how to configure knowledge graph",
-            model_provider=FakeProvider(),
-        ))
+        result = asyncio.run(
+            expand_query_with_llm(
+                "how to configure knowledge graph",
+                model_provider=FakeProvider(),
+            )
+        )
 
         assert result.success
         assert len(result.expanded_terms) == 2
@@ -623,6 +645,7 @@ class TestLLMQueryExpansionIntegration:
 # =====================================================================
 # 8. A/B Comparison Formatting
 # =====================================================================
+
 
 class TestABComparisonFormatting:
     """Test A/B comparison report output quality."""

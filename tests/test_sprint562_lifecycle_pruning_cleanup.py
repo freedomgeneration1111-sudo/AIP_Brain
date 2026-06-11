@@ -55,42 +55,40 @@ class TestWrapperRemoval:
         """Old ThrottleManager proxy properties no longer exist on AlertManager."""
         mgr = AlertManager(AlertConfig(enabled=True))
         # These should NOT exist as direct attributes on AlertManager
-        assert not hasattr(mgr, "_throttle_alert_timestamps") or \
-            getattr(type(mgr), "_throttle_alert_timestamps", None) is None
-        assert not hasattr(mgr, "_circuit_breaker_active") or \
-            getattr(type(mgr), "_circuit_breaker_active", None) is None
-        assert not hasattr(mgr, "_total_throttled_alerts") or \
-            getattr(type(mgr), "_total_throttled_alerts", None) is None
+        assert (
+            not hasattr(mgr, "_throttle_alert_timestamps")
+            or getattr(type(mgr), "_throttle_alert_timestamps", None) is None
+        )
+        assert (
+            not hasattr(mgr, "_circuit_breaker_active") or getattr(type(mgr), "_circuit_breaker_active", None) is None
+        )
+        assert (
+            not hasattr(mgr, "_total_throttled_alerts") or getattr(type(mgr), "_total_throttled_alerts", None) is None
+        )
 
     def test_prediction_proxies_removed(self):
         """Old PredictionManager proxy properties no longer exist on AlertManager."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        assert not hasattr(mgr, "_causal_predictions") or \
-            getattr(type(mgr), "_causal_predictions", None) is None
-        assert not hasattr(mgr, "_transition_counts") or \
-            getattr(type(mgr), "_transition_counts", None) is None
-        assert not hasattr(mgr, "_prediction_outcomes") or \
-            getattr(type(mgr), "_prediction_outcomes", None) is None
+        assert not hasattr(mgr, "_causal_predictions") or getattr(type(mgr), "_causal_predictions", None) is None
+        assert not hasattr(mgr, "_transition_counts") or getattr(type(mgr), "_transition_counts", None) is None
+        assert not hasattr(mgr, "_prediction_outcomes") or getattr(type(mgr), "_prediction_outcomes", None) is None
 
     def test_digest_proxies_removed(self):
         """Old DigestManager proxy properties no longer exist on AlertManager."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        assert not hasattr(mgr, "_digest_buffer") or \
-            getattr(type(mgr), "_digest_buffer", None) is None
-        assert not hasattr(mgr, "_digest_last_flush") or \
-            getattr(type(mgr), "_digest_last_flush", None) is None
-        assert not hasattr(mgr, "_total_digest_flushes") or \
-            getattr(type(mgr), "_total_digest_flushes", None) is None
+        assert not hasattr(mgr, "_digest_buffer") or getattr(type(mgr), "_digest_buffer", None) is None
+        assert not hasattr(mgr, "_digest_last_flush") or getattr(type(mgr), "_digest_last_flush", None) is None
+        assert not hasattr(mgr, "_total_digest_flushes") or getattr(type(mgr), "_total_digest_flushes", None) is None
 
     def test_ab_experiment_proxies_removed(self):
         """Old ABExperimentManager proxy properties no longer exist on AlertManager."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        assert not hasattr(mgr, "_ab_experiments") or \
-            getattr(type(mgr), "_ab_experiments", None) is None
-        assert not hasattr(mgr, "_bandit_state") or \
-            getattr(type(mgr), "_bandit_state", None) is None
-        assert not hasattr(mgr, "_confidence_calibration_map") or \
-            getattr(type(mgr), "_confidence_calibration_map", None) is None
+        assert not hasattr(mgr, "_ab_experiments") or getattr(type(mgr), "_ab_experiments", None) is None
+        assert not hasattr(mgr, "_bandit_state") or getattr(type(mgr), "_bandit_state", None) is None
+        assert (
+            not hasattr(mgr, "_confidence_calibration_map")
+            or getattr(type(mgr), "_confidence_calibration_map", None) is None
+        )
 
     def test_facade_methods_still_exist(self):
         """Public facade methods are preserved for API compatibility."""
@@ -203,10 +201,12 @@ class TestAlertLifecycleManager:
 
     def test_check_escalation(self):
         """check_escalation returns True when threshold is reached."""
-        mgr = AlertLifecycleManager(AlertConfig(
-            escalation_threshold=3,
-            escalation_window_seconds=3600,
-        ))
+        mgr = AlertLifecycleManager(
+            AlertConfig(
+                escalation_threshold=3,
+                escalation_window_seconds=3600,
+            )
+        )
         alert = Alert(alert_type="test", severity="info", subject="subj", message="m")
         now = time.time()
         assert mgr.check_escalation(alert, now) is False
@@ -279,16 +279,20 @@ class TestPruningManager:
 
     def test_start_prune_scheduler_disabled(self):
         """start_prune_scheduler returns False when interval is 0."""
-        mgr = PruningManager(AlertConfig(
-            delivery_status_prune_interval_seconds=0,
-        ))
+        mgr = PruningManager(
+            AlertConfig(
+                delivery_status_prune_interval_seconds=0,
+            )
+        )
         assert mgr.start_prune_scheduler() is False
 
     def test_start_stop_prune_scheduler(self):
         """start_prune_scheduler starts and stop_prune_scheduler stops."""
-        mgr = PruningManager(AlertConfig(
-            delivery_status_prune_interval_seconds=600,
-        ))
+        mgr = PruningManager(
+            AlertConfig(
+                delivery_status_prune_interval_seconds=600,
+            )
+        )
         assert mgr.start_prune_scheduler() is True
         assert mgr._prune_scheduler_running is True
         mgr.stop_prune_scheduler()
@@ -296,9 +300,11 @@ class TestPruningManager:
 
     def test_get_prune_scheduler_status(self):
         """get_prune_scheduler_status returns expected keys."""
-        mgr = PruningManager(AlertConfig(
-            delivery_status_prune_interval_seconds=600,
-        ))
+        mgr = PruningManager(
+            AlertConfig(
+                delivery_status_prune_interval_seconds=600,
+            )
+        )
         status = mgr.get_prune_scheduler_status()
         assert "running" in status
         assert "interval_seconds" in status
@@ -319,10 +325,7 @@ class TestPruningManager:
     def test_get_pruning_history_with_limit(self):
         """get_pruning_history respects limit parameter."""
         mgr = PruningManager(AlertConfig())
-        mgr._pruning_history = [
-            {"timestamp": float(i), "records_deleted": i}
-            for i in range(10)
-        ]
+        mgr._pruning_history = [{"timestamp": float(i), "records_deleted": i} for i in range(10)]
         history = mgr.get_pruning_history(limit=3)
         assert len(history) == 3
 
@@ -420,10 +423,12 @@ class TestSprint562Integration:
 
     def test_send_alert_uses_lifecycle_mgr(self):
         """send_alert() delegates to lifecycle_mgr for rate-limiting and history."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+            )
+        )
         alert = Alert(
             alert_type="quality_degradation",
             severity="info",
@@ -455,10 +460,12 @@ class TestSprint562Integration:
 
     def test_ab_experiment_via_sub_manager(self):
         """AB experiment operations work via sub-manager directly."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ab_experiment_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ab_experiment_enabled=True,
+            )
+        )
         result = mgr.ab_experiment_mgr.start_ab_experiment(
             name="test-exp",
             control_config={"threshold": 0.5},
@@ -468,10 +475,12 @@ class TestSprint562Integration:
 
     def test_throttle_via_sub_manager(self):
         """Throttle operations work via sub-manager directly."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+            )
+        )
         now = time.time()
         mgr.throttle_mgr.record_throttle_window(now)
         status = mgr.throttle_mgr.get_circuit_breaker_status()

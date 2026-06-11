@@ -387,7 +387,9 @@ class FakeVectorStore:
         self.upserted: list[dict] = []
 
     async def upsert(self, id, embedding, content, metadata, domain=None):
-        self.upserted.append({"id": id, "embedding": embedding, "content": content, "metadata": metadata, "domain": domain})
+        self.upserted.append(
+            {"id": id, "embedding": embedding, "content": content, "metadata": metadata, "domain": domain}
+        )
 
     async def retrieve(self, query_vector, domain=None, top_k=10):
         return []
@@ -422,6 +424,7 @@ class FakeEmbeddingProvider:
         self.embed_calls.append(text)
         # Simple deterministic vector
         import hashlib
+
         h = hashlib.sha256(text.encode()).digest()
         vec = [(h[i % len(h)] / 255.0) - 0.5 for i in range(self.dimensions)]
         return vec
@@ -434,14 +437,16 @@ class FakeEventStore:
         self.events: list[dict] = []
 
     async def write_event(self, event_type, actor, artifact_id, from_state=None, to_state=None, **kwargs):
-        self.events.append({
-            "event_type": event_type,
-            "actor": actor,
-            "artifact_id": artifact_id,
-            "from_state": from_state,
-            "to_state": to_state,
-            **kwargs,
-        })
+        self.events.append(
+            {
+                "event_type": event_type,
+                "actor": actor,
+                "artifact_id": artifact_id,
+                "from_state": from_state,
+                "to_state": to_state,
+                **kwargs,
+            }
+        )
 
     async def query(self, artifact_id=None, event_type=None, limit=100):
         return []
@@ -496,7 +501,9 @@ class TestIngestionPipeline:
         embed_provider = FakeEmbeddingProvider()
 
         result = await ingest_conversation(
-            conv, artifact_store, lexical_store,
+            conv,
+            artifact_store,
+            lexical_store,
             vector_store=vector_store,
             embedding_provider=embed_provider,
         )
@@ -522,7 +529,9 @@ class TestIngestionPipeline:
         event_store = FakeEventStore()
 
         result = await ingest_conversation(
-            conv, artifact_store, lexical_store,
+            conv,
+            artifact_store,
+            lexical_store,
             event_store=event_store,
         )
 
@@ -543,7 +552,9 @@ class TestIngestionPipeline:
             lexical_store = FakeLexicalStore()
 
             results = await ingest_file(
-                filepath, artifact_store, lexical_store,
+                filepath,
+                artifact_store,
+                lexical_store,
                 source_format="plaintext",
                 domain="test",
             )

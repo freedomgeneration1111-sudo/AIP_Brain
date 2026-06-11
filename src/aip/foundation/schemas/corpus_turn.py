@@ -153,16 +153,12 @@ class CorpusTurn:
             parts = [self.user_text, self.assistant_text]
             if self.thinking_text:
                 parts.append(self.thinking_text)
-            self.searchable_text = "\n\n".join(
-                p for p in parts if p.strip()
-            ).strip()
+            self.searchable_text = "\n\n".join(p for p in parts if p.strip()).strip()
         if not self.word_count:
             self.word_count = len(self.searchable_text.split())
         # Compute content_hash if not provided
         if not self.content_hash and self.searchable_text:
-            self.content_hash = hashlib.sha256(
-                self.searchable_text.encode()
-            ).hexdigest()[:32]
+            self.content_hash = hashlib.sha256(self.searchable_text.encode()).hexdigest()[:32]
 
 
 def make_turn_id(conversation_id: str, turn_index: int) -> str:
@@ -194,6 +190,7 @@ def make_document_conversation_id(source_path: str) -> str:
     """
     # Use basename + parent dir for stability across path prefixes
     import os
+
     # Normalize: use relative-ish path (last 3 components)
     parts = source_path.replace("\\", "/").split("/")
     stable_key = "/".join(parts[-3:]) if len(parts) > 3 else source_path

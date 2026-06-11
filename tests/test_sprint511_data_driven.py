@@ -33,6 +33,7 @@ class TestChannelSelectorTuning:
     def test_entity_threshold_lowered_to_zero(self):
         """Entity threshold default is now 0 — any entity triggers Graph."""
         from aip.orchestration.channel_selector import ChannelSelector
+
         selector = ChannelSelector()
         # Default entity_threshold should be 0
         assert selector._entity_threshold == 0
@@ -40,6 +41,7 @@ class TestChannelSelectorTuning:
     def test_graph_enabled_on_entity_with_threshold_zero(self):
         """With threshold=0, any entity signal should enable Graph."""
         from aip.orchestration.channel_selector import ChannelSelector
+
         selector = ChannelSelector()
         result = selector.select("Tell me about Python")
         # "Python" is a single entity → should enable Graph
@@ -49,6 +51,7 @@ class TestChannelSelectorTuning:
     def test_wiki_queries_also_enable_graph(self):
         """Wiki/definitional queries should also enable Graph channel."""
         from aip.orchestration.channel_selector import ChannelSelector
+
         selector = ChannelSelector()
         result = selector.select("What is AIP?")
         # "What is" is a wiki signal → should enable Wiki AND Graph
@@ -60,6 +63,7 @@ class TestChannelSelectorTuning:
     def test_procedural_queries_also_enable_graph(self):
         """Procedural queries should also enable Graph channel."""
         from aip.orchestration.channel_selector import ChannelSelector
+
         selector = ChannelSelector()
         result = selector.select("How do I configure the deployment?")
         # "How do I" is a procedural signal → should enable Procedural AND Graph
@@ -71,6 +75,7 @@ class TestChannelSelectorTuning:
     def test_cross_domain_signals_enable_all_channels(self):
         """Cross-domain queries should enable all channels."""
         from aip.orchestration.channel_selector import ChannelSelector
+
         selector = ChannelSelector()
         # Use a query with clearly 2+ entities and a cross-domain pattern
         result = selector.select("How does the Knowledge Graph connect to the Smart Context Packer?")
@@ -90,6 +95,7 @@ class TestChannelSelectorTuning:
     def test_cross_domain_with_vs(self):
         """Cross-domain 'vs' pattern should trigger cross-domain signals."""
         from aip.orchestration.channel_selector import analyze_query
+
         # Use query with clearly 2+ multi-word entities and 'vs'
         analysis = analyze_query("Knowledge Graph vs Smart Context Packer performance")
         assert analysis.has_cross_domain_signals is True
@@ -97,6 +103,7 @@ class TestChannelSelectorTuning:
     def test_cross_domain_requires_multiple_entities(self):
         """Cross-domain requires both a relationship word AND multiple entities."""
         from aip.orchestration.channel_selector import analyze_query
+
         # Single entity with "and" → not cross-domain
         analysis = analyze_query("What is AIP and how does it work?")
         assert analysis.has_cross_domain_signals is False
@@ -104,6 +111,7 @@ class TestChannelSelectorTuning:
     def test_graph_on_wiki_can_be_disabled(self):
         """The enable_graph_on_wiki flag can be turned off."""
         from aip.orchestration.channel_selector import ChannelSelector
+
         selector = ChannelSelector(enable_graph_on_wiki=False)
         result = selector.select("What is AIP?")
         # Wiki should be enabled but NOT Graph
@@ -124,6 +132,7 @@ class TestChannelSelectorTuning:
     def test_graph_on_procedural_can_be_disabled(self):
         """The enable_graph_on_procedural flag can be turned off."""
         from aip.orchestration.channel_selector import ChannelSelector
+
         selector = ChannelSelector(
             entity_threshold=999,  # disable entity-based Graph
             enable_graph_on_procedural=False,
@@ -249,6 +258,7 @@ class TestDashboardEvalIntegration:
     def test_quality_endpoint_returns_channel_budgets(self):
         """The /quality endpoint should return channel budget configuration."""
         from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
+
         config = OrchestratorConfig()
         budgets = {
             "fts": config.fts_max_hits,
@@ -275,9 +285,7 @@ class TestDashboardEvalIntegration:
         class MockContainer:
             event_store = None
 
-        result = asyncio.run(
-            _compute_channel_contribution_summary(MockContainer(), limit=10)
-        )
+        result = asyncio.run(_compute_channel_contribution_summary(MockContainer(), limit=10))
         assert isinstance(result, dict)
 
     def test_dashboard_includes_llm_entity_extraction_field(self):
@@ -287,9 +295,7 @@ class TestDashboardEvalIntegration:
         class MockContainer:
             event_store = None
 
-        result = asyncio.run(
-            _compute_llm_extraction_summary(MockContainer(), limit=10)
-        )
+        result = asyncio.run(_compute_llm_extraction_summary(MockContainer(), limit=10))
         assert isinstance(result, dict)
         assert "total_calls" in result
         assert "success_rate" in result
@@ -313,16 +319,19 @@ class TestDashboardEvalIntegration:
             # Create a fake eval result
             eval_path = os.path.join(tmpdir, "eval_20260607T143022.json")
             with open(eval_path, "w") as f:
-                json.dump({
-                    "timestamp": "2026-06-07T14:30:22Z",
-                    "total_queries": 20,
-                    "mean_recall_at_k": 0.75,
-                    "mean_precision_at_k": 0.6,
-                    "mean_mrr": 0.8,
-                    "mean_entity_coverage": 0.5,
-                    "channel_contribution_summary": {"fts": 10},
-                    "eval_harness_version": "5.12",
-                }, f)
+                json.dump(
+                    {
+                        "timestamp": "2026-06-07T14:30:22Z",
+                        "total_queries": 20,
+                        "mean_recall_at_k": 0.75,
+                        "mean_precision_at_k": 0.6,
+                        "mean_mrr": 0.8,
+                        "mean_entity_coverage": 0.5,
+                        "channel_contribution_summary": {"fts": 10},
+                        "eval_harness_version": "5.12",
+                    },
+                    f,
+                )
 
             # Temporarily override the eval dir
             old_env = os.environ.get("AIP_EVAL_DIR")
@@ -375,6 +384,7 @@ class TestLLMEntityExtractionObservability:
 
     async def test_orchestrator_extracts_llm_data_from_graph_hits(self):
         """Orchestrator should transfer LLM observability from graph hits to trace."""
+
         async def _graph_retriever_with_llm_data(query: str) -> list[RetrievalHit]:
             return [
                 RetrievalHit(
@@ -405,6 +415,7 @@ class TestLLMEntityExtractionObservability:
 
     async def test_orchestrator_no_llm_data_when_graph_absent(self):
         """When no graph channel is active, LLM observability should be defaults."""
+
         async def _fts_retriever(query: str) -> list[RetrievalHit]:
             return [RetrievalHit(id="fts:1", content="FTS hit", score=0.9, source_channel="fts")]
 
@@ -465,6 +476,7 @@ class TestPerChannelBudgetTuning:
 
     async def test_fts_budget_prevents_dominance(self):
         """FTS budget cap should prevent FTS from dominating results."""
+
         async def _large_fts(query: str) -> list[RetrievalHit]:
             return [
                 RetrievalHit(id=f"fts:{i}", content=f"FTS hit {i}", score=0.9 - i * 0.01, source_channel="fts")
@@ -499,12 +511,14 @@ class TestEvalHarnessVersion:
 
     def test_eval_harness_version_is_current(self):
         from aip.orchestration.retrieval_eval import EvalResult
+
         result = EvalResult()
         # Sprint 5.12: Version bumped to reflect A/B eval + budget tuning
         assert result.eval_harness_version >= "5.11"
 
     def test_eval_result_format_includes_channel_contribution_summary(self):
         from aip.orchestration.retrieval_eval import EvalResult
+
         result = EvalResult(
             channel_contribution_summary={"fts": 10, "graph": 5, "wiki": 3},
         )

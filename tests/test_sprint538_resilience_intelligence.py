@@ -49,6 +49,7 @@ class TestServiceWorkerMigration:
     def test_dashboard_html_contains_service_worker_code(self):
         """Dashboard HTML includes Service Worker registration code."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "serviceWorker" in _DASHBOARD_HTML
         assert "navigator.serviceWorker.register" in _DASHBOARD_HTML
         assert "initServiceWorker" in _DASHBOARD_HTML
@@ -56,12 +57,14 @@ class TestServiceWorkerMigration:
     def test_dashboard_html_contains_broadcast_channel(self):
         """Dashboard HTML uses BroadcastChannel for SW communication."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "BroadcastChannel" in _DASHBOARD_HTML
         assert "aip-dashboard-ws" in _DASHBOARD_HTML
 
     def test_dashboard_html_has_sharedworker_fallback(self):
         """Dashboard HTML retains SharedWorker as fallback."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "initSharedWorkerFallback" in _DASHBOARD_HTML
         # SharedWorker code still present for fallback
         assert "SharedWorker" in _DASHBOARD_HTML
@@ -69,12 +72,14 @@ class TestServiceWorkerMigration:
     def test_dashboard_html_has_service_worker_status_display(self):
         """Dashboard HTML shows Service Worker connection status."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "WS Connected (ServiceWorker)" in _DASHBOARD_HTML
         assert "WS Reconnecting (ServiceWorker)" in _DASHBOARD_HTML
 
     def test_dashboard_html_has_ws_compression_panel(self):
         """Dashboard HTML includes WebSocket compression panel."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "wsCompressionPanel" in _DASHBOARD_HTML
         assert "wsCompEnabled" in _DASHBOARD_HTML
         assert "Bytes Saved" in _DASHBOARD_HTML
@@ -82,6 +87,7 @@ class TestServiceWorkerMigration:
     def test_dashboard_html_has_circuit_breaker_panel(self):
         """Dashboard HTML includes circuit breaker status panel."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "circuitBreakerPanel" in _DASHBOARD_HTML
         assert "cbStatus" in _DASHBOARD_HTML
         assert "Circuit Breaker" in _DASHBOARD_HTML
@@ -89,6 +95,7 @@ class TestServiceWorkerMigration:
     def test_dashboard_html_has_delivery_receipts_panel(self):
         """Dashboard HTML includes delivery receipts panel."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "deliveryReceiptsPanel" in _DASHBOARD_HTML
         assert "Delivery Receipts" in _DASHBOARD_HTML
         assert "drEnabled" in _DASHBOARD_HTML
@@ -96,6 +103,7 @@ class TestServiceWorkerMigration:
     def test_dashboard_html_has_learned_prediction_panel(self):
         """Dashboard HTML includes learned prediction model panel."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "transition" in _DASHBOARD_HTML.lower() or "learned" in _DASHBOARD_HTML.lower()
 
 
@@ -219,12 +227,14 @@ class TestLearnedPredictionModel:
 
     def test_predict_causal_chain_learned_insufficient_data(self):
         """predict_causal_chain_learned falls back when insufficient data."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            learned_prediction_enabled=True,
-            learned_prediction_min_samples=100,
-            causal_prediction_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                learned_prediction_enabled=True,
+                learned_prediction_min_samples=100,
+                causal_prediction_enabled=True,
+            )
+        )
         # Add minimal data (not enough for learned model)
         mgr.prediction_mgr._transition_totals = {"pool_adjustment": 5}
         alert = Alert(alert_type="pool_adjustment", severity="warning", subject="test", message="test")
@@ -235,12 +245,14 @@ class TestLearnedPredictionModel:
 
     def test_predict_causal_chain_learned_with_data(self):
         """predict_causal_chain_learned generates predictions with confidence intervals."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            learned_prediction_enabled=True,
-            learned_prediction_min_samples=5,
-            learned_prediction_confidence_threshold=0.05,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                learned_prediction_enabled=True,
+                learned_prediction_min_samples=5,
+                learned_prediction_confidence_threshold=0.05,
+            )
+        )
         # Populate with sufficient transition data
         mgr.prediction_mgr._transition_counts = {
             ("pool_adjustment", "quality_degradation"): 15,
@@ -272,12 +284,14 @@ class TestLearnedPredictionModel:
 
     def test_predict_causal_chain_learned_threshold_filtering(self):
         """predict_causal_chain_learned filters below confidence threshold."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            learned_prediction_enabled=True,
-            learned_prediction_min_samples=5,
-            learned_prediction_confidence_threshold=0.5,  # High threshold
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                learned_prediction_enabled=True,
+                learned_prediction_min_samples=5,
+                learned_prediction_confidence_threshold=0.5,  # High threshold
+            )
+        )
         mgr.prediction_mgr._transition_counts = {
             ("pool_adjustment", "quality_degradation"): 15,  # 75%
             ("pool_adjustment", "batch_reduction"): 5,  # 25% — below threshold
@@ -293,11 +307,13 @@ class TestLearnedPredictionModel:
 
     def test_learned_predictions_tracked_for_accuracy(self):
         """Learned predictions are tracked in _prediction_outcomes for accuracy feedback."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            learned_prediction_enabled=True,
-            learned_prediction_min_samples=5,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                learned_prediction_enabled=True,
+                learned_prediction_min_samples=5,
+            )
+        )
         mgr.prediction_mgr._transition_counts = {
             ("pool_adjustment", "quality_degradation"): 10,
         }
@@ -314,10 +330,12 @@ class TestLearnedPredictionModel:
 
     def test_learned_prediction_in_status(self):
         """get_status() includes learned prediction model info."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            learned_prediction_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                learned_prediction_enabled=True,
+            )
+        )
         status = mgr.get_status()
         assert "learned_prediction" in status
         assert status["learned_prediction"]["enabled"] is True
@@ -352,10 +370,12 @@ class TestAlertThrottlingCircuitBreaker:
 
     def test_circuit_breaker_not_active_when_disabled(self):
         """Circuit breaker does not activate when disabled."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=False,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=False,
+            )
+        )
         now = time.time()
         # Even with many timestamps, should not activate
         mgr.throttle_mgr._throttle_alert_timestamps = [now] * 200
@@ -363,11 +383,13 @@ class TestAlertThrottlingCircuitBreaker:
 
     def test_circuit_breaker_activates_on_high_rate(self):
         """Circuit breaker activates when alert rate exceeds threshold."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            throttle_threshold_per_minute=50,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                throttle_threshold_per_minute=50,
+            )
+        )
         now = time.time()
         # Simulate 60 alerts in the last minute
         mgr.throttle_mgr._throttle_alert_timestamps = [now - i * 0.5 for i in range(60)]
@@ -377,23 +399,27 @@ class TestAlertThrottlingCircuitBreaker:
 
     def test_circuit_breaker_does_not_activate_below_threshold(self):
         """Circuit breaker stays inactive below threshold."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            throttle_threshold_per_minute=100,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                throttle_threshold_per_minute=100,
+            )
+        )
         now = time.time()
         mgr.throttle_mgr._throttle_alert_timestamps = [now - i for i in range(50)]
         assert mgr.throttle_mgr.check_circuit_breaker(now) is False
 
     def test_circuit_breaker_stays_active_during_cooldown(self):
         """Circuit breaker stays active during cooldown period."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            throttle_threshold_per_minute=10,
-            circuit_breaker_cooldown_seconds=300,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                throttle_threshold_per_minute=10,
+                circuit_breaker_cooldown_seconds=300,
+            )
+        )
         now = time.time()
         mgr.throttle_mgr._circuit_breaker_active = True
         mgr.throttle_mgr._circuit_breaker_activated_at = now - 10  # Activated 10s ago
@@ -404,12 +430,14 @@ class TestAlertThrottlingCircuitBreaker:
 
     def test_circuit_breaker_deactivates_after_cooldown(self):
         """Circuit breaker deactivates when cooldown expires and rate drops."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            throttle_threshold_per_minute=100,
-            circuit_breaker_cooldown_seconds=10,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                throttle_threshold_per_minute=100,
+                circuit_breaker_cooldown_seconds=10,
+            )
+        )
         now = time.time()
         mgr.throttle_mgr._circuit_breaker_active = True
         mgr.throttle_mgr._circuit_breaker_activated_at = now - 20  # 20s ago, past cooldown
@@ -420,12 +448,14 @@ class TestAlertThrottlingCircuitBreaker:
 
     def test_circuit_breaker_reactivates_if_still_high(self):
         """Circuit breaker reactivates after cooldown if rate is still high."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            throttle_threshold_per_minute=10,
-            circuit_breaker_cooldown_seconds=5,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                throttle_threshold_per_minute=10,
+                circuit_breaker_cooldown_seconds=5,
+            )
+        )
         now = time.time()
         mgr.throttle_mgr._circuit_breaker_active = True
         mgr.throttle_mgr._circuit_breaker_activated_at = now - 10  # Past cooldown
@@ -436,21 +466,23 @@ class TestAlertThrottlingCircuitBreaker:
 
     def test_send_alert_throttles_non_critical_during_storm(self):
         """send_alert throttles non-critical alerts during circuit breaker."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            throttle_threshold_per_minute=5,
-            circuit_breaker_cooldown_seconds=300,
-            min_alert_interval_seconds=0,
-            ws_batch_window_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                throttle_threshold_per_minute=5,
+                circuit_breaker_cooldown_seconds=300,
+                min_alert_interval_seconds=0,
+                ws_batch_window_seconds=0,
+            )
+        )
         now = time.time()
         mgr.throttle_mgr._throttle_alert_timestamps = [now] * 10
         mgr.throttle_mgr._circuit_breaker_active = True
         mgr.throttle_mgr._circuit_breaker_activated_at = now
 
         alert = Alert(alert_type="pool_adjustment", severity="info", subject="test", message="throttled")
-        with patch.object(mgr.realtime_bus, 'notify_realtime_subscribers'):
+        with patch.object(mgr.realtime_bus, "notify_realtime_subscribers"):
             result = mgr.send_alert(alert)
 
         assert result.startswith("throttled:")
@@ -458,14 +490,16 @@ class TestAlertThrottlingCircuitBreaker:
 
     def test_send_alert_passes_critical_during_storm(self):
         """send_alert allows critical alerts through circuit breaker."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            throttle_threshold_per_minute=5,
-            circuit_breaker_cooldown_seconds=300,
-            min_alert_interval_seconds=0,
-            slack_webhook_url="https://hooks.slack.com/services/test",
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                throttle_threshold_per_minute=5,
+                circuit_breaker_cooldown_seconds=300,
+                min_alert_interval_seconds=0,
+                slack_webhook_url="https://hooks.slack.com/services/test",
+            )
+        )
         # Simulate high alert rate
         now = time.time()
         mgr.throttle_mgr._throttle_alert_timestamps = [now] * 10
@@ -475,18 +509,20 @@ class TestAlertThrottlingCircuitBreaker:
 
         # Critical alert should NOT be throttled
         alert = Alert(alert_type="quality_degradation", severity="critical", subject="test", message="critical!")
-        with patch.object(mgr, '_dispatch_to_transports'):
+        with patch.object(mgr, "_dispatch_to_transports"):
             result = mgr.send_alert(alert)
         assert not result.startswith("throttled:")
 
     def test_circuit_breaker_status(self):
         """get_circuit_breaker_status returns complete status."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            throttle_threshold_per_minute=50,
-            circuit_breaker_cooldown_seconds=300,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                throttle_threshold_per_minute=50,
+                circuit_breaker_cooldown_seconds=300,
+            )
+        )
         mgr.throttle_mgr._circuit_breaker_active = True
         mgr.throttle_mgr._circuit_breaker_activated_at = time.time()
         mgr.throttle_mgr._total_circuit_breaker_activations = 3
@@ -502,10 +538,12 @@ class TestAlertThrottlingCircuitBreaker:
 
     def test_circuit_breaker_in_overall_status(self):
         """get_status() includes circuit breaker info."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+            )
+        )
         status = mgr.get_status()
         assert "circuit_breaker" in status
         assert status["circuit_breaker"]["enabled"] is True
@@ -618,13 +656,15 @@ class TestMultiChannelDeliveryReceipts:
 
     def test_slack_notification_returns_receipt(self):
         """_send_slack_notification returns receipt when enabled."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            slack_webhook_url="https://hooks.slack.com/services/test",
-            delivery_receipts_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                slack_webhook_url="https://hooks.slack.com/services/test",
+                delivery_receipts_enabled=True,
+            )
+        )
         alert = Alert(alert_type="test", severity="info", subject="s", message="m")
-        with patch('aip.adapter.alerting.urllib.request.urlopen') as mock_urlopen:
+        with patch("aip.adapter.alerting.urllib.request.urlopen") as mock_urlopen:
             mock_resp = MagicMock()
             mock_resp.status = 200
             mock_resp.read.return_value = b'{"ok":true,"ts":"1234567890.123456","channel":"C01"}'
@@ -638,13 +678,15 @@ class TestMultiChannelDeliveryReceipts:
 
     def test_pagerduty_notification_returns_receipt(self):
         """_send_pagerduty_notification returns receipt when enabled."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            pagerduty_integration_key="pd-key-123",
-            delivery_receipts_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                pagerduty_integration_key="pd-key-123",
+                delivery_receipts_enabled=True,
+            )
+        )
         alert = Alert(alert_type="test", severity="info", subject="s", message="m")
-        with patch('aip.adapter.alerting.urllib.request.urlopen') as mock_urlopen:
+        with patch("aip.adapter.alerting.urllib.request.urlopen") as mock_urlopen:
             mock_resp = MagicMock()
             mock_resp.status = 202
             mock_resp.read.return_value = b'{"dedup_key":"aip-brain-test-s-abc12345","status":"triggered"}'
@@ -658,13 +700,15 @@ class TestMultiChannelDeliveryReceipts:
 
     def test_dispatch_records_receipts_when_enabled(self):
         """_dispatch_to_transports records receipts when delivery_receipts_enabled."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            slack_webhook_url="https://hooks.slack.com/services/test",
-            delivery_receipts_enabled=True,
-            min_alert_interval_seconds=0,
-        ))
-        with patch.object(mgr, '_send_slack_notification', return_value={"message_ts": "ts123", "channel": "C01"}):
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                slack_webhook_url="https://hooks.slack.com/services/test",
+                delivery_receipts_enabled=True,
+                min_alert_interval_seconds=0,
+            )
+        )
+        with patch.object(mgr, "_send_slack_notification", return_value={"message_ts": "ts123", "channel": "C01"}):
             mgr._dispatch_to_transports(
                 Alert(alert_type="test", severity="info", subject="s", message="m"),
                 ["slack"],
@@ -706,7 +750,7 @@ class TestWebSocketCompression:
         """compress_ws_message compresses data when enabled and beneficial."""
         mgr = AlertManager(AlertConfig(enabled=True, ws_compression_enabled=True))
         # Create data that compresses well (repetitive)
-        data = '{"event":"batch_events","alerts":' + str(["alert_type_x"] * 100) + '}'
+        data = '{"event":"batch_events","alerts":' + str(["alert_type_x"] * 100) + "}"
         result, compressed = mgr.compress_ws_message(data)
         assert compressed is True
         assert len(result) < len(data)
@@ -741,7 +785,7 @@ class TestWebSocketCompression:
     def test_compress_ws_message_tracks_bytes_saved(self):
         """compress_ws_message tracks bytes saved estimate."""
         mgr = AlertManager(AlertConfig(enabled=True, ws_compression_enabled=True))
-        data = '{"event":"batch_events","alerts":' + str(["type_x"] * 50) + '}'
+        data = '{"event":"batch_events","alerts":' + str(["type_x"] * 50) + "}"
         mgr.compress_ws_message(data)
         assert mgr.realtime_bus._ws_compression_bytes_saved_estimate > 0
 
@@ -771,13 +815,15 @@ class TestSprint538Integration:
 
     def test_full_learned_prediction_flow(self):
         """Full flow: observe alerts → learn transitions → predict with confidence."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            learned_prediction_enabled=True,
-            learned_prediction_min_samples=5,
-            learned_prediction_confidence_threshold=0.05,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                learned_prediction_enabled=True,
+                learned_prediction_min_samples=5,
+                learned_prediction_confidence_threshold=0.05,
+                min_alert_interval_seconds=0,
+            )
+        )
         now = time.time()
 
         # Simulate a sequence of alerts
@@ -793,7 +839,7 @@ class TestSprint538Integration:
 
         # Now predict using the learned model
         alert = Alert(alert_type="pool_adjustment", severity="warning", subject="integration", message="trigger")
-        with patch.object(mgr.realtime_bus, 'notify_realtime_subscribers'):
+        with patch.object(mgr.realtime_bus, "notify_realtime_subscribers"):
             predictions = mgr.predict_causal_chain_learned(alert)
 
         assert len(predictions) > 0
@@ -804,15 +850,17 @@ class TestSprint538Integration:
 
     def test_full_circuit_breaker_flow(self):
         """Full flow: storm detected → breaker activates → non-critical throttled → critical passes."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            throttle_threshold_per_minute=5,
-            circuit_breaker_cooldown_seconds=300,
-            min_alert_interval_seconds=0,
-            slack_webhook_url="https://hooks.slack.com/services/test",
-            ws_batch_window_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                throttle_threshold_per_minute=5,
+                circuit_breaker_cooldown_seconds=300,
+                min_alert_interval_seconds=0,
+                slack_webhook_url="https://hooks.slack.com/services/test",
+                ws_batch_window_seconds=0,
+            )
+        )
 
         # Trigger circuit breaker
         now = time.time()
@@ -822,28 +870,39 @@ class TestSprint538Integration:
 
         # Non-critical alert should be throttled
         info_alert = Alert(alert_type="pool_adjustment", severity="info", subject="test", message="info alert")
-        with patch.object(mgr.realtime_bus, 'notify_realtime_subscribers'):
+        with patch.object(mgr.realtime_bus, "notify_realtime_subscribers"):
             result = mgr.send_alert(info_alert)
         assert result.startswith("throttled:")
 
         # Critical alert should pass through
-        critical_alert = Alert(alert_type="quality_degradation", severity="critical", subject="test", message="critical!")
-        with patch.object(mgr, '_dispatch_to_transports'), patch.object(mgr.realtime_bus, 'notify_realtime_subscribers'):
+        critical_alert = Alert(
+            alert_type="quality_degradation", severity="critical", subject="test", message="critical!"
+        )
+        with (
+            patch.object(mgr, "_dispatch_to_transports"),
+            patch.object(mgr.realtime_bus, "notify_realtime_subscribers"),
+        ):
             result = mgr.send_alert(critical_alert)
         assert not result.startswith("throttled:")
 
     def test_full_delivery_receipts_flow(self):
         """Full flow: send alert → deliver to channels → capture receipts → query."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            slack_webhook_url="https://hooks.slack.com/services/test",
-            pagerduty_integration_key="pd-key-123",
-            delivery_receipts_enabled=True,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                slack_webhook_url="https://hooks.slack.com/services/test",
+                pagerduty_integration_key="pd-key-123",
+                delivery_receipts_enabled=True,
+                min_alert_interval_seconds=0,
+            )
+        )
 
-        with patch.object(mgr, '_send_slack_notification', return_value={"message_ts": "1234.5678", "channel": "C01"}), \
-             patch.object(mgr, '_send_pagerduty_notification', return_value={"dedup_key": "dk-abc", "status": "triggered"}):
+        with (
+            patch.object(mgr, "_send_slack_notification", return_value={"message_ts": "1234.5678", "channel": "C01"}),
+            patch.object(
+                mgr, "_send_pagerduty_notification", return_value={"dedup_key": "dk-abc", "status": "triggered"}
+            ),
+        ):
             mgr._dispatch_to_transports(
                 Alert(alert_type="test", severity="critical", subject="s", message="m"),
                 ["slack", "pagerduty"],
@@ -858,13 +917,15 @@ class TestSprint538Integration:
 
     def test_status_includes_all_sprint538_metrics(self):
         """get_status() includes all Sprint 5.38 metrics."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            learned_prediction_enabled=True,
-            circuit_breaker_enabled=True,
-            delivery_receipts_enabled=True,
-            ws_compression_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                learned_prediction_enabled=True,
+                circuit_breaker_enabled=True,
+                delivery_receipts_enabled=True,
+                ws_compression_enabled=True,
+            )
+        )
         status = mgr.get_status()
 
         # Learned prediction

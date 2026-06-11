@@ -112,6 +112,7 @@ async def _search_corpus_turns(
     """Search corpus turns via FTS5 and return formatted source dicts."""
     try:
         from aip.adapter.api.dependencies import get_container as _get_container
+
         _container = _get_container(request)
         _sanitize_fn = _container._sanitize_fts_query_fn if _container else None
         if _sanitize_fn:
@@ -354,7 +355,9 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                     # Graph connections injection
                                     try:
                                         if query_domain:
-                                            graph_neighbors = await _get_graph_neighbors(query_domain, container=_container)
+                                            graph_neighbors = await _get_graph_neighbors(
+                                                query_domain, container=_container
+                                            )
                                             if graph_neighbors:
                                                 neighbors_str = ", ".join(graph_neighbors[:5])
                                                 messages.append(
@@ -387,7 +390,9 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                         ]
                                     else:
                                         # Use SmartContextPacker output
-                                        context = packed_ctx.context_text if packed_ctx else "No relevant sources found."
+                                        context = (
+                                            packed_ctx.context_text if packed_ctx else "No relevant sources found."
+                                        )
                                         response_sources = [
                                             {
                                                 "source_id": s.source_id,
@@ -552,15 +557,20 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                             ),
                             "latency_ms": result.get("latency_ms", 0),
                             "cost_usd": result.get("cost_usd", 0.0),
-                            "auto_save": auto_save_enabled and (
+                            "auto_save": auto_save_enabled
+                            and (
                                 (_container.artifact_store is not None and _container.lexical_store is not None)
                                 or _container.corpus_turn_store is not None
                             ),
                             "sources": response_sources,  # Empty in normal mode, populated in augmented mode
                             "mode": session_mode,  # Echo the mode so GUI knows how the response was generated
                             "trace_available": ret_trace is not None and bool(ret_trace),
-                            "lexical_only": getattr(ret_trace, "lexical_only", False) if ret_trace is not None else False,
-                            "vector_contributed": getattr(ret_trace, "vector_contributed", False) if ret_trace is not None else False,
+                            "lexical_only": getattr(ret_trace, "lexical_only", False)
+                            if ret_trace is not None
+                            else False,
+                            "vector_contributed": getattr(ret_trace, "vector_contributed", False)
+                            if ret_trace is not None
+                            else False,
                             "direct_model": False,  # WS path always goes through the backend
                         }
 
@@ -620,7 +630,9 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         # trigger background ingestion if auto_save is enabled
                         # and at least one storage path is available (legacy pipeline
                         # or corpus_turn_store for Sexton tagging).
-                        _has_legacy_stores = _container.artifact_store is not None and _container.lexical_store is not None
+                        _has_legacy_stores = (
+                            _container.artifact_store is not None and _container.lexical_store is not None
+                        )
                         _has_corpus_store = _container.corpus_turn_store is not None
                         if auto_save_enabled and (_has_legacy_stores or _has_corpus_store):
                             try:
@@ -631,9 +643,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                 _source_turn_ids: list[str] = []
                                 if session_mode == "augmented" and response_sources:
                                     _source_turn_ids = [
-                                        s.get("turn_id", "")
-                                        for s in (source_dicts or [])
-                                        if s.get("turn_id")
+                                        s.get("turn_id", "") for s in (source_dicts or []) if s.get("turn_id")
                                     ]
                                 asyncio.create_task(
                                     auto_save_chat_turn(

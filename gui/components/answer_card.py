@@ -187,9 +187,7 @@ def add_answer_card(
             label_text = f"**{display}**"
             if latency_ms is not None:
                 label_text += f"  ({latency_ms}ms)"
-            ui.markdown(label_text).style(
-                f"font-size:11px; color:{C_AMBER}; font-family:{F_MONO};"
-            )
+            ui.markdown(label_text).style(f"font-size:11px; color:{C_AMBER}; font-family:{F_MONO};")
 
         # ── Answer content ─────────────────────────────────────
         with ui.row().classes("w-full"):
@@ -200,31 +198,29 @@ def add_answer_card(
             )
 
         # ── Status strip ───────────────────────────────────────
-        with ui.row().classes("w-full items-center").style(
-            f"margin-top:4px; padding:3px 8px; "
-            f"background:{C_RAISED}; border-radius:{R_SM}; "
-            f"border:0.5px solid {C_INK40};"
+        with (
+            ui.row()
+            .classes("w-full items-center")
+            .style(
+                f"margin-top:4px; padding:3px 8px; "
+                f"background:{C_RAISED}; border-radius:{R_SM}; "
+                f"border:0.5px solid {C_INK40};"
+            )
         ):
             ui.label(status["label"]).style(
                 f"font-size:9px; font-weight:700; font-family:{F_MONO}; "
                 f"color:{status['color']}; letter-spacing:0.5px; margin-right:8px;"
             )
-            ui.label(status["detail"]).style(
-                f"font-size:9px; color:{C_INK60}; font-family:{F_MONO};"
-            )
+            ui.label(status["detail"]).style(f"font-size:9px; color:{C_INK60}; font-family:{F_MONO};")
 
         # ── Action bar ─────────────────────────────────────────
-        with ui.row().classes("w-full items-center").style(
-            f"margin-top:2px; padding:2px 0; gap:4px;"
-        ):
+        with ui.row().classes("w-full items-center").style(f"margin-top:2px; padding:2px 0; gap:4px;"):
             # Show Sources — available when sources exist
             if sources:
                 ui.button(
                     "Sources",
                     on_click=lambda: _safe_callback(on_show_sources, turn_data),
-                ).props("dense flat size=xs").style(
-                    f"color:{C_AMBER}; font-size:9px; font-family:{F_MONO};"
-                )
+                ).props("dense flat size=xs").style(f"color:{C_AMBER}; font-size:9px; font-family:{F_MONO};")
             else:
                 ui.button("No Sources").props("dense flat size=xs disable").style(
                     f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
@@ -235,9 +231,7 @@ def add_answer_card(
                 ui.button(
                     "Trace",
                     on_click=lambda: _safe_callback(on_show_trace, turn_data),
-                ).props("dense flat size=xs").style(
-                    f"color:{C_AMBER}; font-size:9px; font-family:{F_MONO};"
-                )
+                ).props("dense flat size=xs").style(f"color:{C_AMBER}; font-size:9px; font-family:{F_MONO};")
             else:
                 ui.button("Trace Unavailable").props("dense flat size=xs disable").style(
                     f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
@@ -248,9 +242,7 @@ def add_answer_card(
                 ui.button(
                     "Save Artifact",
                     on_click=lambda: _safe_callback(on_save_artifact, turn_data),
-                ).props("dense flat size=xs").style(
-                    f"color:{C_OK_FG}; font-size:9px; font-family:{F_MONO};"
-                )
+                ).props("dense flat size=xs").style(f"color:{C_OK_FG}; font-size:9px; font-family:{F_MONO};")
             else:
                 ui.button("Save Artifact").props("dense flat size=xs disable").style(
                     f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
@@ -261,9 +253,7 @@ def add_answer_card(
                 ui.button(
                     "Beast Counsel",
                     on_click=lambda: _safe_callback(on_beast_counsel, turn_data),
-                ).props("dense flat size=xs").style(
-                    f"color:{C_AMBER}; font-size:9px; font-family:{F_MONO};"
-                )
+                ).props("dense flat size=xs").style(f"color:{C_AMBER}; font-size:9px; font-family:{F_MONO};")
             else:
                 ui.button("Beast Counsel").props("dense flat size=xs disable").style(
                     f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
@@ -274,9 +264,7 @@ def add_answer_card(
                 ui.button(
                     "Link Wiki",
                     on_click=lambda: _safe_callback(on_link_wiki, turn_data),
-                ).props("dense flat size=xs").style(
-                    f"color:{C_AMBER}; font-size:9px; font-family:{F_MONO};"
-                )
+                ).props("dense flat size=xs").style(f"color:{C_AMBER}; font-size:9px; font-family:{F_MONO};")
             else:
                 ui.button("Link Wiki").props("dense flat size=xs disable").style(
                     f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
@@ -287,9 +275,7 @@ def add_answer_card(
                 ui.button(
                     "Model Council",
                     on_click=lambda: _safe_callback(on_run_model_council, turn_data),
-                ).props("dense flat size=xs").style(
-                    f"color:{C_AMBER}; font-size:9px; font-family:{F_MONO};"
-                )
+                ).props("dense flat size=xs").style(f"color:{C_AMBER}; font-size:9px; font-family:{F_MONO};")
             else:
                 ui.button("Model Council").props("dense flat size=xs disable").style(
                     f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"

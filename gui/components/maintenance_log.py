@@ -64,9 +64,13 @@ class MaintenanceLog:
                 return
 
             # Log header
-            with ui.row().classes("w-full").style(
-                f"background:{C_SURFACE}; border-bottom:1px solid {C_INK40}; "
-                f"padding:4px 8px; border-radius:{R_MD} {R_MD} 0 0;"
+            with (
+                ui.row()
+                .classes("w-full")
+                .style(
+                    f"background:{C_SURFACE}; border-bottom:1px solid {C_INK40}; "
+                    f"padding:4px 8px; border-radius:{R_MD} {R_MD} 0 0;"
+                )
             ):
                 for header, width in [
                     ("TIME", "80px"),
@@ -116,20 +120,18 @@ class MaintenanceLog:
                         detail_parts.append(f"{k}={v}")
                 detail = " | ".join(detail_parts) if detail_parts else ""
 
-                with ui.row().classes("w-full items-center").style(
-                    f"background:{C_RAISED}; border-bottom:0.5px solid {C_INK40}; "
-                    f"padding:2px 8px; min-height:22px;"
-                ):
-                    ui.label(time_str).style(
-                        f"font-size:9px; color:{C_INK60}; font-family:{F_MONO}; min-width:80px;"
+                with (
+                    ui.row()
+                    .classes("w-full items-center")
+                    .style(
+                        f"background:{C_RAISED}; border-bottom:0.5px solid {C_INK40}; padding:2px 8px; min-height:22px;"
                     )
+                ):
+                    ui.label(time_str).style(f"font-size:9px; color:{C_INK60}; font-family:{F_MONO}; min-width:80px;")
                     ui.label(actor.upper()[:6]).style(
-                        f"font-size:9px; color:{row_fg}; font-family:{F_MONO}; "
-                        f"font-weight:600; min-width:60px;"
+                        f"font-size:9px; color:{row_fg}; font-family:{F_MONO}; font-weight:600; min-width:60px;"
                     )
                     ui.label(event_type[:24]).style(
                         f"font-size:9px; color:{row_fg}; font-family:{F_MONO}; min-width:150px;"
                     )
-                    ui.label(detail[:50]).style(
-                        f"font-size:9px; color:{C_INK60}; font-family:{F_MONO}; flex:1;"
-                    )
+                    ui.label(detail[:50]).style(f"font-size:9px; color:{C_INK60}; font-family:{F_MONO}; flex:1;")

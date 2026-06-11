@@ -52,8 +52,7 @@ async def get_ecs_graph(container: AipContainer = Depends(get_container)):
 
     # Build serializable transitions
     transitions: dict[str, list[str]] = {
-        from_state: sorted(list(to_states))
-        for from_state, to_states in VALID_TRANSITIONS.items()
+        from_state: sorted(list(to_states)) for from_state, to_states in VALID_TRANSITIONS.items()
     }
 
     return {

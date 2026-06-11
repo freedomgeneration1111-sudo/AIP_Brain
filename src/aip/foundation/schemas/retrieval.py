@@ -75,7 +75,12 @@ class ChannelHealthState(enum.Enum):
     @property
     def was_attempted(self) -> bool:
         """True when the channel was dispatched (even if it returned nothing or failed)."""
-        return self in (ChannelHealthState.ACTIVE, ChannelHealthState.DEGRADED, ChannelHealthState.FAILED, ChannelHealthState.EMPTY)
+        return self in (
+            ChannelHealthState.ACTIVE,
+            ChannelHealthState.DEGRADED,
+            ChannelHealthState.FAILED,
+            ChannelHealthState.EMPTY,
+        )
 
 
 @dataclass
@@ -419,14 +424,10 @@ class RetrievalTrace:
                 "Install sqlite-vss for production-quality vector retrieval."
             )
         elif vdi.backend_status.value == "disabled":
-            parts.append(
-                "I answered from lexical/corpus memory only. "
-                "Semantic vector retrieval was unavailable."
-            )
+            parts.append("I answered from lexical/corpus memory only. Semantic vector retrieval was unavailable.")
         elif vdi.backend_status.value == "failed":
             parts.append(
-                f"Vector search failed: {vdi.reason or 'unknown error'}. "
-                "I answered from lexical/corpus memory only."
+                f"Vector search failed: {vdi.reason or 'unknown error'}. I answered from lexical/corpus memory only."
             )
         if vdi.embed_failures > 0:
             parts.append(

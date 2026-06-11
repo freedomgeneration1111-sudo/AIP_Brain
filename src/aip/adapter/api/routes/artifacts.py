@@ -85,11 +85,7 @@ def _resolve_state_db(container: AipContainer) -> str:
     if _STATE_DB is not None:
         return _STATE_DB
     cfg = getattr(container, "config", {}) or {}
-    return (
-        cfg.get("database", {}).get("db_path")
-        or cfg.get("db_path")
-        or "db/state.db"
-    )
+    return cfg.get("database", {}).get("db_path") or cfg.get("db_path") or "db/state.db"
 
 
 def _set_state_db(path: str | None) -> None:
@@ -297,13 +293,15 @@ async def list_artifacts(
         # Apply search filter
         if search:
             search_lower = search.lower()
-            searchable = " ".join([
-                item.get("artifact_id", ""),
-                item.get("title", ""),
-                item.get("domain", ""),
-                item.get("artifact_type", ""),
-                item.get("project", ""),
-            ]).lower()
+            searchable = " ".join(
+                [
+                    item.get("artifact_id", ""),
+                    item.get("title", ""),
+                    item.get("domain", ""),
+                    item.get("artifact_type", ""),
+                    item.get("project", ""),
+                ]
+            ).lower()
             if search_lower not in searchable:
                 continue
 
@@ -315,7 +313,7 @@ async def list_artifacts(
     # Paginate
     total = len(items)
     start = (page - 1) * effective_page_size
-    page_items = items[start: start + effective_page_size]
+    page_items = items[start : start + effective_page_size]
 
     return {
         "items": page_items,
@@ -385,12 +383,14 @@ async def get_artifact_dashboard(
         try:
             recent = await container.event_store.query(limit=10)
             for ev in recent:
-                recent_events.append({
-                    "event_type": ev.event_type,
-                    "artifact_id": ev.artifact_id,
-                    "actor": ev.actor,
-                    "timestamp": ev.timestamp,
-                })
+                recent_events.append(
+                    {
+                        "event_type": ev.event_type,
+                        "artifact_id": ev.artifact_id,
+                        "actor": ev.actor,
+                        "timestamp": ev.timestamp,
+                    }
+                )
         except Exception:
             logger.warning("Failed to get recent events", exc_info=True)
 
@@ -462,19 +462,19 @@ async def get_artifact(
     for ev in review_events_raw:
         meta = ev.metadata if hasattr(ev, "metadata") else {}
         if isinstance(meta, dict):
-            review_notes.append({
-                "verdict": meta.get("verdict", ""),
-                "detail": meta.get("detail", ""),
-                "actor": ev.actor,
-                "timestamp": ev.timestamp,
-                "instruction": meta.get("revision_instruction", ""),
-                "note": meta.get("rejection_note", ""),
-            })
+            review_notes.append(
+                {
+                    "verdict": meta.get("verdict", ""),
+                    "detail": meta.get("detail", ""),
+                    "actor": ev.actor,
+                    "timestamp": ev.timestamp,
+                    "instruction": meta.get("revision_instruction", ""),
+                    "note": meta.get("rejection_note", ""),
+                }
+            )
 
     # Check for NEEDS_REVISION verdict
-    has_needs_revision = any(
-        rn.get("verdict") == "NEEDS_REVISION" for rn in review_notes
-    )
+    has_needs_revision = any(rn.get("verdict") == "NEEDS_REVISION" for rn in review_notes)
 
     # Check for export events
     export_events_raw: list = []
@@ -615,12 +615,14 @@ async def get_artifact_sources(
             snippet = src_content[:200] if src_content else ""
             source_title = src_metadata.get("source_file", src_metadata.get("title", sid))
 
-        sources.append({
-            "source_id": sid,
-            "source_type": src_type,
-            "title": source_title,
-            "snippet": snippet[:200],
-        })
+        sources.append(
+            {
+                "source_id": sid,
+                "source_type": src_type,
+                "title": source_title,
+                "snippet": snippet[:200],
+            }
+        )
 
     return {
         "artifact_id": artifact_id,
@@ -714,68 +716,78 @@ async def get_artifact_reviews(
 
     # ECS transitions
     for t in transition_history:
-        ledger.append({
-            "event_type": "ecs_transition",
-            "from_state": t.get("from_state"),
-            "to_state": t.get("to_state"),
-            "actor": t.get("actor", ""),
-            "reason": t.get("reason", ""),
-            "timestamp": t.get("timestamp", ""),
-        })
+        ledger.append(
+            {
+                "event_type": "ecs_transition",
+                "from_state": t.get("from_state"),
+                "to_state": t.get("to_state"),
+                "actor": t.get("actor", ""),
+                "reason": t.get("reason", ""),
+                "timestamp": t.get("timestamp", ""),
+            }
+        )
 
     # Review verdicts
     for ev in review_events_raw:
         meta = ev.metadata if hasattr(ev, "metadata") else {}
         if not isinstance(meta, dict):
             meta = {}
-        ledger.append({
-            "event_type": "review_verdict",
-            "verdict": meta.get("verdict", ""),
-            "detail": meta.get("detail", ""),
-            "actor": ev.actor,
-            "timestamp": ev.timestamp,
-            "instruction": meta.get("revision_instruction", ""),
-            "note": meta.get("rejection_note", ""),
-        })
+        ledger.append(
+            {
+                "event_type": "review_verdict",
+                "verdict": meta.get("verdict", ""),
+                "detail": meta.get("detail", ""),
+                "actor": ev.actor,
+                "timestamp": ev.timestamp,
+                "instruction": meta.get("revision_instruction", ""),
+                "note": meta.get("rejection_note", ""),
+            }
+        )
 
     # Reviewer notes
     for ev in note_events_raw:
         meta = ev.metadata if hasattr(ev, "metadata") else {}
         if not isinstance(meta, dict):
             meta = {}
-        ledger.append({
-            "event_type": "reviewer_note",
-            "detail": meta.get("detail", ""),
-            "actor": ev.actor,
-            "timestamp": ev.timestamp,
-        })
+        ledger.append(
+            {
+                "event_type": "reviewer_note",
+                "detail": meta.get("detail", ""),
+                "actor": ev.actor,
+                "timestamp": ev.timestamp,
+            }
+        )
 
     # Export events
     for ev in export_events_raw:
         meta = ev.metadata if hasattr(ev, "metadata") else {}
         if not isinstance(meta, dict):
             meta = {}
-        ledger.append({
-            "event_type": "artifact_exported",
-            "format": meta.get("format", ""),
-            "detail": meta.get("detail", ""),
-            "actor": ev.actor,
-            "timestamp": ev.timestamp,
-        })
+        ledger.append(
+            {
+                "event_type": "artifact_exported",
+                "format": meta.get("format", ""),
+                "detail": meta.get("detail", ""),
+                "actor": ev.actor,
+                "timestamp": ev.timestamp,
+            }
+        )
 
     # Force-export events
     for ev in force_export_events_raw:
         meta = ev.metadata if hasattr(ev, "metadata") else {}
         if not isinstance(meta, dict):
             meta = {}
-        ledger.append({
-            "event_type": "force_export",
-            "bypassed_state": meta.get("bypassed_state", ""),
-            "reason": meta.get("reason", ""),
-            "detail": meta.get("detail", ""),
-            "actor": ev.actor,
-            "timestamp": ev.timestamp,
-        })
+        ledger.append(
+            {
+                "event_type": "force_export",
+                "bypassed_state": meta.get("bypassed_state", ""),
+                "reason": meta.get("reason", ""),
+                "detail": meta.get("detail", ""),
+                "actor": ev.actor,
+                "timestamp": ev.timestamp,
+            }
+        )
 
     # Sort by timestamp
     ledger.sort(key=lambda x: x.get("timestamp", ""))
@@ -984,7 +996,9 @@ async def reject_artifact(
                 from_state=current_state,
                 to_state="REJECTED",
                 actor="definer",
-                reason=f"DEFINER rejected via Artifact Workbench: {note}" if note else "DEFINER rejected via Artifact Workbench",
+                reason=f"DEFINER rejected via Artifact Workbench: {note}"
+                if note
+                else "DEFINER rejected via Artifact Workbench",
             )
     except InvalidTransitionError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -1064,7 +1078,9 @@ async def needs_revision_artifact(
         raise HTTPException(400, f"Artifact '{artifact_id}' has no ECS state recorded")
 
     if current_state == "APPROVED":
-        raise HTTPException(400, f"Artifact '{artifact_id}' is APPROVED — use reject instead if you want to change its state")
+        raise HTTPException(
+            400, f"Artifact '{artifact_id}' is APPROVED — use reject instead if you want to change its state"
+        )
 
     if current_state == "REJECTED":
         raise HTTPException(400, f"Artifact '{artifact_id}' is REJECTED — re-generate before requesting revision")
@@ -1237,7 +1253,9 @@ async def force_export_artifact(
 
     logger.warning(
         "Force-export: artifact %s exported from %s state. Reason: %s",
-        artifact_id, ecs_state, body.reason,
+        artifact_id,
+        ecs_state,
+        body.reason,
     )
 
     now = datetime.now(timezone.utc).isoformat()

@@ -172,10 +172,7 @@ class TestAlertingIntegration:
             alert_type="quality_degradation",
             severity="warning",
             subject="vigil_faithfulness",
-            message=(
-                "Faithfulness score dropped from 0.85 to 0.60 over 3 cycles. "
-                "Trend indicator: degrading."
-            ),
+            message=("Faithfulness score dropped from 0.85 to 0.60 over 3 cycles. Trend indicator: degrading."),
             data={
                 "previous_avg": 0.85,
                 "current_avg": 0.60,
@@ -208,9 +205,12 @@ class TestAlertingIntegration:
 
         store = FakeReadPoolMixin(pool_size=3)
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -224,10 +224,7 @@ class TestAlertingIntegration:
         assert store._read_pool_size > 3
         # Alert should have been sent
         assert manager.delivery_mgr._total_alerts_sent >= 1
-        pool_alerts = [
-            h for h in manager.lifecycle_mgr._alert_history
-            if h["alert_type"] == "pool_adjustment"
-        ]
+        pool_alerts = [h for h in manager.lifecycle_mgr._alert_history if h["alert_type"] == "pool_adjustment"]
         assert len(pool_alerts) >= 1
         assert "test_store" in pool_alerts[0]["subject"]
 
@@ -252,9 +249,12 @@ class TestAlertingIntegration:
 
         # Phase 1: High exhaustion to trigger auto-increase
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -267,9 +267,12 @@ class TestAlertingIntegration:
 
         # Phase 2: Low exhaustion to trigger auto-rollback
         low_health: ReadPoolHealth = {
-            "pool_size": increased_size, "pool_active": 1,
-            "checkout_count": 100, "fallback_count": 5,
-            "exhaustion_count": 5, "exhaustion_rate": 0.05,
+            "pool_size": increased_size,
+            "pool_active": 1,
+            "checkout_count": 100,
+            "fallback_count": 5,
+            "exhaustion_count": 5,
+            "exhaustion_rate": 0.05,
             "avg_checkout_latency_ms": 2.0,
             "p95_checkout_latency_ms": 5.0,
             "recommendation": "",
@@ -282,10 +285,7 @@ class TestAlertingIntegration:
 
         # Should have at least 2 alerts: increase + rollback
         assert manager.delivery_mgr._total_alerts_sent >= 2
-        rollback_alerts = [
-            h for h in manager.lifecycle_mgr._alert_history
-            if "rollback" in h.get("subject", "")
-        ]
+        rollback_alerts = [h for h in manager.lifecycle_mgr._alert_history if "rollback" in h.get("subject", "")]
         assert len(rollback_alerts) >= 1
 
     def test_batch_reduction_triggers_alert(self):
@@ -302,8 +302,7 @@ class TestAlertingIntegration:
             severity="warning",
             subject="sexton.graph_extraction",
             message=(
-                "Graph extraction batch size reduced from 4 to 3 due to "
-                "high failure rate (40.0% over last 5 batches)."
+                "Graph extraction batch size reduced from 4 to 3 due to high failure rate (40.0% over last 5 batches)."
             ),
             data={
                 "previous_batch_size": 4,
@@ -315,10 +314,7 @@ class TestAlertingIntegration:
 
         result = manager.send_alert(alert)
         assert result
-        batch_alerts = [
-            h for h in manager.lifecycle_mgr._alert_history
-            if h["alert_type"] == "batch_reduction"
-        ]
+        batch_alerts = [h for h in manager.lifecycle_mgr._alert_history if h["alert_type"] == "batch_reduction"]
         assert len(batch_alerts) == 1
         assert batch_alerts[0]["data"]["previous_batch_size"] == 4
 
@@ -440,12 +436,22 @@ class TestDashboardInteractivity:
         container = MagicMock()
         container.vigil = MagicMock()
         container.vigil._cycle_report_history = [
-            {"timestamp": "2025-01-01T00:00:00Z", "avg_citation_rate": 0.7,
-             "avg_grounding_rate": 0.8, "avg_llm_faithfulness": 0.75,
-             "evaluated_count": 10, "flagged_count": 3},
-            {"timestamp": "2025-06-01T00:00:00Z", "avg_citation_rate": 0.9,
-             "avg_grounding_rate": 0.95, "avg_llm_faithfulness": 0.92,
-             "evaluated_count": 20, "flagged_count": 1},
+            {
+                "timestamp": "2025-01-01T00:00:00Z",
+                "avg_citation_rate": 0.7,
+                "avg_grounding_rate": 0.8,
+                "avg_llm_faithfulness": 0.75,
+                "evaluated_count": 10,
+                "flagged_count": 3,
+            },
+            {
+                "timestamp": "2025-06-01T00:00:00Z",
+                "avg_citation_rate": 0.9,
+                "avg_grounding_rate": 0.95,
+                "avg_llm_faithfulness": 0.92,
+                "evaluated_count": 20,
+                "flagged_count": 1,
+            },
         ]
         container.vigil._llm_faithfulness_telemetry = {}
         container.vigil.config = MagicMock()
@@ -454,9 +460,7 @@ class TestDashboardInteractivity:
         container.vigil.config.llm_faithfulness_sample_size = 10
         container._vigil_quality_store = None
 
-        result = await vigil_quality(
-            last_n_cycles=50, since="2025-03-01T00:00:00Z", container=container
-        )
+        result = await vigil_quality(last_n_cycles=50, since="2025-03-01T00:00:00Z", container=container)
 
         assert result["status"] == "ok"
         assert len(result["cycles"]) == 1
@@ -492,9 +496,12 @@ class TestPolicyRuntimeEnforcement:
 
         # 0.4 exhaustion — below new threshold, should NOT trigger
         health_below: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 40,
-            "exhaustion_count": 40, "exhaustion_rate": 0.4,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 40,
+            "exhaustion_count": 40,
+            "exhaustion_rate": 0.4,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -505,9 +512,12 @@ class TestPolicyRuntimeEnforcement:
 
         # 0.6 exhaustion — above new threshold, should trigger
         health_above: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 60,
-            "exhaustion_count": 60, "exhaustion_rate": 0.6,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 60,
+            "exhaustion_count": 60,
+            "exhaustion_rate": 0.6,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -590,14 +600,16 @@ class TestQualityStoreRetention:
 
         # Insert 8 records
         for i in range(8):
-            store.record_cycle({
-                "timestamp": f"2025-06-{i+1:02d}T00:00:00Z",
-                "avg_citation_rate": 0.8 + i * 0.01,
-                "avg_grounding_rate": 0.9,
-                "avg_llm_faithfulness": 0.85,
-                "evaluated_count": 10,
-                "flagged_count": 1,
-            })
+            store.record_cycle(
+                {
+                    "timestamp": f"2025-06-{i + 1:02d}T00:00:00Z",
+                    "avg_citation_rate": 0.8 + i * 0.01,
+                    "avg_grounding_rate": 0.9,
+                    "avg_llm_faithfulness": 0.85,
+                    "evaluated_count": 10,
+                    "flagged_count": 1,
+                }
+            )
 
         # Should have pruned to 5 rows
         assert store.get_cycle_count() <= 5
@@ -607,24 +619,28 @@ class TestQualityStoreRetention:
         store = self._create_store(tmp_path, retention_days=30)
 
         # Insert an old record
-        store.record_cycle({
-            "timestamp": "2024-01-01T00:00:00Z",
-            "avg_citation_rate": 0.7,
-            "avg_grounding_rate": 0.8,
-            "avg_llm_faithfulness": 0.75,
-            "evaluated_count": 10,
-            "flagged_count": 3,
-        })
+        store.record_cycle(
+            {
+                "timestamp": "2024-01-01T00:00:00Z",
+                "avg_citation_rate": 0.7,
+                "avg_grounding_rate": 0.8,
+                "avg_llm_faithfulness": 0.75,
+                "evaluated_count": 10,
+                "flagged_count": 3,
+            }
+        )
 
         # Insert a recent record (this triggers pruning of the old one)
-        store.record_cycle({
-            "timestamp": "2025-06-01T00:00:00Z",
-            "avg_citation_rate": 0.9,
-            "avg_grounding_rate": 0.95,
-            "avg_llm_faithfulness": 0.92,
-            "evaluated_count": 20,
-            "flagged_count": 1,
-        })
+        store.record_cycle(
+            {
+                "timestamp": "2025-06-01T00:00:00Z",
+                "avg_citation_rate": 0.9,
+                "avg_grounding_rate": 0.95,
+                "avg_llm_faithfulness": 0.92,
+                "evaluated_count": 20,
+                "flagged_count": 1,
+            }
+        )
 
         # The old record should have been pruned
         cycles = store.get_cycles()
@@ -635,52 +651,62 @@ class TestQualityStoreRetention:
         """retention_days=0 means no time-based pruning."""
         store = self._create_store(tmp_path, retention_days=0)
 
-        store.record_cycle({
-            "timestamp": "2020-01-01T00:00:00Z",
-            "avg_citation_rate": 0.7,
-            "avg_grounding_rate": 0.8,
-            "avg_llm_faithfulness": 0.75,
-            "evaluated_count": 10,
-            "flagged_count": 3,
-        })
+        store.record_cycle(
+            {
+                "timestamp": "2020-01-01T00:00:00Z",
+                "avg_citation_rate": 0.7,
+                "avg_grounding_rate": 0.8,
+                "avg_llm_faithfulness": 0.75,
+                "evaluated_count": 10,
+                "flagged_count": 3,
+            }
+        )
 
-        store.record_cycle({
-            "timestamp": "2025-06-01T00:00:00Z",
-            "avg_citation_rate": 0.9,
-            "avg_grounding_rate": 0.95,
-            "avg_llm_faithfulness": 0.92,
-            "evaluated_count": 20,
-            "flagged_count": 1,
-        })
+        store.record_cycle(
+            {
+                "timestamp": "2025-06-01T00:00:00Z",
+                "avg_citation_rate": 0.9,
+                "avg_grounding_rate": 0.95,
+                "avg_llm_faithfulness": 0.92,
+                "evaluated_count": 20,
+                "flagged_count": 1,
+            }
+        )
 
         # Both records should be present
         assert store.get_cycle_count() == 2
 
     def test_daily_rollup_aggregation(self, tmp_path):
         """run_rollup aggregates old daily data into summary rows."""
-        store = self._create_store(tmp_path, rollup_age_days=0, retention_days=0)  # All data eligible, no time-based pruning
+        store = self._create_store(
+            tmp_path, rollup_age_days=0, retention_days=0
+        )  # All data eligible, no time-based pruning
 
         # Insert 5 records for the same day
         for i in range(5):
-            store.record_cycle({
-                "timestamp": f"2025-01-15T{10+i:02d}:00:00Z",
-                "avg_citation_rate": 0.80 + i * 0.02,
-                "avg_grounding_rate": 0.90,
-                "avg_llm_faithfulness": 0.85,
-                "evaluated_count": 10,
-                "flagged_count": 1 + i,
-            })
+            store.record_cycle(
+                {
+                    "timestamp": f"2025-01-15T{10 + i:02d}:00:00Z",
+                    "avg_citation_rate": 0.80 + i * 0.02,
+                    "avg_grounding_rate": 0.90,
+                    "avg_llm_faithfulness": 0.85,
+                    "evaluated_count": 10,
+                    "flagged_count": 1 + i,
+                }
+            )
 
         # Insert 3 records for a different day
         for i in range(3):
-            store.record_cycle({
-                "timestamp": f"2025-01-16T{10+i:02d}:00:00Z",
-                "avg_citation_rate": 0.85,
-                "avg_grounding_rate": 0.92,
-                "avg_llm_faithfulness": 0.88,
-                "evaluated_count": 15,
-                "flagged_count": 2,
-            })
+            store.record_cycle(
+                {
+                    "timestamp": f"2025-01-16T{10 + i:02d}:00:00Z",
+                    "avg_citation_rate": 0.85,
+                    "avg_grounding_rate": 0.92,
+                    "avg_llm_faithfulness": 0.88,
+                    "evaluated_count": 15,
+                    "flagged_count": 2,
+                }
+            )
 
         # Run rollup
         result = store.run_rollup()
@@ -705,15 +731,17 @@ class TestQualityStoreRetention:
         store = self._create_store(tmp_path, rollup_age_days=0, retention_days=0)
 
         for i in range(3):
-            store.record_cycle({
-                "timestamp": f"2025-01-10T{10+i:02d}:00:00Z",
-                "avg_citation_rate": 0.8 + i * 0.05,
-                "avg_grounding_rate": 0.9,
-                "avg_llm_faithfulness": 0.85,
-                "evaluated_count": 10,
-                "flagged_count": 1,
-                "trend_indicators": {"citation_rate_trend": "improving"},
-            })
+            store.record_cycle(
+                {
+                    "timestamp": f"2025-01-10T{10 + i:02d}:00:00Z",
+                    "avg_citation_rate": 0.8 + i * 0.05,
+                    "avg_grounding_rate": 0.9,
+                    "avg_llm_faithfulness": 0.85,
+                    "evaluated_count": 10,
+                    "flagged_count": 1,
+                    "trend_indicators": {"citation_rate_trend": "improving"},
+                }
+            )
 
         store.run_rollup()
 
@@ -727,14 +755,16 @@ class TestQualityStoreRetention:
         """get_retention_status provides monitoring visibility."""
         store = self._create_store(tmp_path, max_history_rows=100, retention_days=0, rollup_age_days=7)
 
-        store.record_cycle({
-            "timestamp": "2025-06-01T00:00:00Z",
-            "avg_citation_rate": 0.85,
-            "avg_grounding_rate": 0.90,
-            "avg_llm_faithfulness": 0.88,
-            "evaluated_count": 15,
-            "flagged_count": 2,
-        })
+        store.record_cycle(
+            {
+                "timestamp": "2025-06-01T00:00:00Z",
+                "avg_citation_rate": 0.85,
+                "avg_grounding_rate": 0.90,
+                "avg_llm_faithfulness": 0.88,
+                "evaluated_count": 15,
+                "flagged_count": 2,
+            }
+        )
 
         status = store.get_retention_status()
         assert status["total_rows"] == 1
@@ -799,14 +829,16 @@ class TestQualityStoreRetention:
 
         # Insert records and run rollup
         for i in range(3):
-            store.record_cycle({
-                "timestamp": f"2025-01-10T{10+i:02d}:00:00Z",
-                "avg_citation_rate": 0.85,
-                "avg_grounding_rate": 0.90,
-                "avg_llm_faithfulness": 0.88,
-                "evaluated_count": 15,
-                "flagged_count": 2,
-            })
+            store.record_cycle(
+                {
+                    "timestamp": f"2025-01-10T{10 + i:02d}:00:00Z",
+                    "avg_citation_rate": 0.85,
+                    "avg_grounding_rate": 0.90,
+                    "avg_llm_faithfulness": 0.88,
+                    "evaluated_count": 15,
+                    "flagged_count": 2,
+                }
+            )
 
         store.run_rollup()
 
@@ -872,11 +904,13 @@ class TestCrossComponentIntegration:
 
     def test_auto_sizer_alert_manager_cross_wiring(self):
         """ReadPoolAutoSizer can be wired with AlertManager for alert flow."""
-        alert_mgr = AlertManager(AlertConfig(
-            enabled=True,
-            alert_on_pool_adjustment=True,
-            min_alert_interval_seconds=0,
-        ))
+        alert_mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                alert_on_pool_adjustment=True,
+                min_alert_interval_seconds=0,
+            )
+        )
         sizer = ReadPoolAutoSizer(
             auto_apply_enabled=True,
             auto_apply_consecutive_threshold=3,
@@ -888,9 +922,12 @@ class TestCrossComponentIntegration:
         # Trigger auto-apply
         store = FakeReadPoolMixin(pool_size=3)
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -899,10 +936,7 @@ class TestCrossComponentIntegration:
             sizer.observe("wired_store", high_health, store=store)
 
         # Verify alert was dispatched through the wired manager
-        pool_alerts = [
-            h for h in alert_mgr.lifecycle_mgr._alert_history
-            if h["alert_type"] == "pool_adjustment"
-        ]
+        pool_alerts = [h for h in alert_mgr.lifecycle_mgr._alert_history if h["alert_type"] == "pool_adjustment"]
         assert len(pool_alerts) >= 1
         assert "wired_store" in pool_alerts[0]["subject"]
 
@@ -921,9 +955,12 @@ class TestCrossComponentIntegration:
         # Verify behavior change: 0.5 exhaustion no longer triggers
         store = FakeReadPoolMixin(pool_size=3)
         mid_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -945,14 +982,16 @@ class TestCrossComponentIntegration:
 
         # Record 8 cycles
         for i in range(8):
-            store.record_cycle({
-                "timestamp": f"2025-01-{i+1:02d}T12:00:00Z",
-                "avg_citation_rate": 0.8 + i * 0.01,
-                "avg_grounding_rate": 0.9,
-                "avg_llm_faithfulness": 0.85,
-                "evaluated_count": 10,
-                "flagged_count": 1,
-            })
+            store.record_cycle(
+                {
+                    "timestamp": f"2025-01-{i + 1:02d}T12:00:00Z",
+                    "avg_citation_rate": 0.8 + i * 0.01,
+                    "avg_grounding_rate": 0.9,
+                    "avg_llm_faithfulness": 0.85,
+                    "evaluated_count": 10,
+                    "flagged_count": 1,
+                }
+            )
 
         # Count-based pruning should have kicked in
         count = store.get_cycle_count()
@@ -965,20 +1004,24 @@ class TestCrossComponentIntegration:
 
     def test_alert_manager_status_report(self):
         """AlertManager.get_status provides comprehensive operational visibility."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://hooks.example.com/test",
-            alert_on_quality_degradation=True,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://hooks.example.com/test",
+                alert_on_quality_degradation=True,
+                min_alert_interval_seconds=0,
+            )
+        )
 
         # Send a test alert
-        mgr.send_alert(Alert(
-            alert_type="quality_degradation",
-            severity="warning",
-            subject="test_status",
-            message="Test alert for status check",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="quality_degradation",
+                severity="warning",
+                subject="test_status",
+                message="Test alert for status check",
+            )
+        )
 
         status = mgr.get_status()
         assert status["enabled"] is True

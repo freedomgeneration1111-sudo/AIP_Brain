@@ -111,17 +111,18 @@ class TraceStoreAdapter:
                     if meta_sid != session_id:
                         continue
 
-                results.append({
-                    "id": getattr(ev, "id", 0),
-                    "session_id": getattr(ev, "actor", session_id),
-                    "node_type": metadata.get("node_type", ""),
-                    "failure_type": metadata.get("failure_type", ""),
-                    "outcome": getattr(ev, "to_state", ""),
-                    "detail": metadata.get("detail", ""),
-                    "created_at": getattr(ev, "timestamp", ""),
-                    **{k: v for k, v in metadata.items()
-                       if k not in ("node_type", "failure_type", "detail")},
-                })
+                results.append(
+                    {
+                        "id": getattr(ev, "id", 0),
+                        "session_id": getattr(ev, "actor", session_id),
+                        "node_type": metadata.get("node_type", ""),
+                        "failure_type": metadata.get("failure_type", ""),
+                        "outcome": getattr(ev, "to_state", ""),
+                        "detail": metadata.get("detail", ""),
+                        "created_at": getattr(ev, "timestamp", ""),
+                        **{k: v for k, v in metadata.items() if k not in ("node_type", "failure_type", "detail")},
+                    }
+                )
             return results
         except Exception as exc:
             logger.debug("TraceStoreAdapter.query_events failed: %s", exc)
@@ -158,17 +159,18 @@ class TraceStoreAdapter:
                 if session_id and actor != session_id and meta_sid != session_id:
                     continue
 
-                results.append({
-                    "id": getattr(ev, "id", 0),
-                    "session_id": actor or meta_sid,
-                    "node_type": metadata.get("node_type", ev_type.replace("trace:", "")),
-                    "failure_type": metadata.get("failure_type", ""),
-                    "outcome": getattr(ev, "to_state", ""),
-                    "detail": metadata.get("detail", ""),
-                    "created_at": getattr(ev, "timestamp", ""),
-                    **{k: v for k, v in metadata.items()
-                       if k not in ("node_type", "failure_type", "detail")},
-                })
+                results.append(
+                    {
+                        "id": getattr(ev, "id", 0),
+                        "session_id": actor or meta_sid,
+                        "node_type": metadata.get("node_type", ev_type.replace("trace:", "")),
+                        "failure_type": metadata.get("failure_type", ""),
+                        "outcome": getattr(ev, "to_state", ""),
+                        "detail": metadata.get("detail", ""),
+                        "created_at": getattr(ev, "timestamp", ""),
+                        **{k: v for k, v in metadata.items() if k not in ("node_type", "failure_type", "detail")},
+                    }
+                )
 
                 if len(results) >= limit:
                     break
@@ -204,17 +206,18 @@ class TraceStoreAdapter:
                 failure_type = metadata.get("failure_type", "")
 
                 if outcome == "failure" and not failure_type:
-                    results.append({
-                        "id": getattr(ev, "id", 0),
-                        "session_id": getattr(ev, "actor", ""),
-                        "node_type": metadata.get("node_type", ev_type.replace("trace:", "")),
-                        "failure_type": failure_type,
-                        "outcome": outcome,
-                        "detail": metadata.get("detail", ""),
-                        "created_at": getattr(ev, "timestamp", ""),
-                        **{k: v for k, v in metadata.items()
-                           if k not in ("node_type", "failure_type", "detail")},
-                    })
+                    results.append(
+                        {
+                            "id": getattr(ev, "id", 0),
+                            "session_id": getattr(ev, "actor", ""),
+                            "node_type": metadata.get("node_type", ev_type.replace("trace:", "")),
+                            "failure_type": failure_type,
+                            "outcome": outcome,
+                            "detail": metadata.get("detail", ""),
+                            "created_at": getattr(ev, "timestamp", ""),
+                            **{k: v for k, v in metadata.items() if k not in ("node_type", "failure_type", "detail")},
+                        }
+                    )
 
                     if len(results) >= limit:
                         break
@@ -342,13 +345,15 @@ class TraceStoreAdapter:
             prompt = meta.get("prompt", "")[:100]
             timestamp = meta.get("created_at", "")
             session_id = meta.get("session_id", "")
-            recent_asks.append({
-                "prompt": prompt,
-                "verdict": verdict,
-                "timestamp": timestamp,
-                "session_id": session_id,
-                "hits_after_gate": meta.get("retrieval_hits_after_gate", 0),
-            })
+            recent_asks.append(
+                {
+                    "prompt": prompt,
+                    "verdict": verdict,
+                    "timestamp": timestamp,
+                    "session_id": session_id,
+                    "hits_after_gate": meta.get("retrieval_hits_after_gate", 0),
+                }
+            )
 
             # Sprint 10: Low-context answers (≤ 2 hits after gate)
             gate_hits = meta.get("retrieval_hits_after_gate", 0)
@@ -357,28 +362,34 @@ class TraceStoreAdapter:
             except (ValueError, TypeError):
                 gate_hits = 0
             if gate_hits <= 2 and verdict != "NO_RESULTS":
-                low_context_answers.append({
-                    "prompt": prompt,
-                    "verdict": verdict,
-                    "hits_after_gate": gate_hits,
-                })
+                low_context_answers.append(
+                    {
+                        "prompt": prompt,
+                        "verdict": verdict,
+                        "hits_after_gate": gate_hits,
+                    }
+                )
 
             # Sprint 10: Empty retrieval events
             if verdict == "NO_RESULTS" or gate_hits == 0:
-                empty_retrieval_events.append({
-                    "prompt": prompt,
-                    "verdict": verdict,
-                })
+                empty_retrieval_events.append(
+                    {
+                        "prompt": prompt,
+                        "verdict": verdict,
+                    }
+                )
 
             # Sprint 10: Vector fallback events
             vector_status = meta.get("retrieval_vector_backend_status", "")
             vector_degraded = meta.get("retrieval_vector_degraded", False)
             if vector_status in ("disabled", "failed") or vector_degraded:
-                vector_fallback_events.append({
-                    "prompt": prompt,
-                    "vector_status": vector_status,
-                    "vector_degraded": bool(vector_degraded),
-                })
+                vector_fallback_events.append(
+                    {
+                        "prompt": prompt,
+                        "vector_status": vector_status,
+                        "vector_degraded": bool(vector_degraded),
+                    }
+                )
 
             # Sprint 10: Channel health summary
             ch_health_raw = meta.get("retrieval_channel_health", "{}")
@@ -432,9 +443,7 @@ class TraceStoreAdapter:
                 cc = json.loads(cc_raw) if isinstance(cc_raw, str) else cc_raw
                 if isinstance(cc, dict):
                     for ch, count in cc.items():
-                        channel_contribution_summary[ch] = (
-                            channel_contribution_summary.get(ch, 0) + int(count)
-                        )
+                        channel_contribution_summary[ch] = channel_contribution_summary.get(ch, 0) + int(count)
             except (json.JSONDecodeError, TypeError, ValueError):
                 pass
 

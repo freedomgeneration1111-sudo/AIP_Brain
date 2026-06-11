@@ -351,7 +351,7 @@ def _split_at_headings(text: str) -> list[tuple[str, str]]:
     sections: list[tuple[str, str]] = []
 
     # Content before first heading (preamble)
-    preamble = text[:matches[0].start()].strip()
+    preamble = text[: matches[0].start()].strip()
     if preamble:
         sections.append(("Introduction", preamble))
 

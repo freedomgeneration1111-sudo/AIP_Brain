@@ -56,44 +56,52 @@ class MaintenanceProblemPanel:
             for name, entry in actors.items():
                 state = entry.get("state", "unknown")
                 if state == "failed":
-                    problems.append({
-                        "type": "failed",
-                        "source": name.upper(),
-                        "message": entry.get("last_error", "Actor is in failed state"),
-                    })
+                    problems.append(
+                        {
+                            "type": "failed",
+                            "source": name.upper(),
+                            "message": entry.get("last_error", "Actor is in failed state"),
+                        }
+                    )
                 elif state == "degraded":
                     reason = entry.get("degraded_reason", "No reason provided")
-                    problems.append({
-                        "type": "degraded",
-                        "source": name.upper(),
-                        "message": reason,
-                    })
+                    problems.append(
+                        {
+                            "type": "degraded",
+                            "source": name.upper(),
+                            "message": reason,
+                        }
+                    )
                 if entry.get("last_error") and state != "failed":
-                    problems.append({
-                        "type": "error",
-                        "source": name.upper(),
-                        "message": entry.get("last_error", ""),
-                    })
+                    problems.append(
+                        {
+                            "type": "error",
+                            "source": name.upper(),
+                            "message": entry.get("last_error", ""),
+                        }
+                    )
                 missing = entry.get("missing_core_dependencies", [])
                 if missing:
-                    problems.append({
-                        "type": "missing",
-                        "source": name.upper(),
-                        "message": f"Missing deps: {', '.join(missing[:3])}",
-                    })
+                    problems.append(
+                        {
+                            "type": "missing",
+                            "source": name.upper(),
+                            "message": f"Missing deps: {', '.join(missing[:3])}",
+                        }
+                    )
 
             # Add warnings
             for w in warnings[:5]:
-                problems.append({
-                    "type": "warning",
-                    "source": "SYSTEM",
-                    "message": w,
-                })
+                problems.append(
+                    {
+                        "type": "warning",
+                        "source": "SYSTEM",
+                        "message": w,
+                    }
+                )
 
             if not problems:
-                ui.label("No problems detected").style(
-                    f"font-size:11px; color:{C_OK_FG}; font-family:{F_SANS};"
-                )
+                ui.label("No problems detected").style(f"font-size:11px; color:{C_OK_FG}; font-family:{F_SANS};")
                 return
 
             # Render problems
@@ -118,9 +126,13 @@ class MaintenanceProblemPanel:
                     fg = C_INK60
                     badge = "WARN"
 
-                with ui.row().classes("w-full items-center").style(
-                    f"background:{C_RAISED}; border-left:2px solid {fg}; "
-                    f"border-radius:0 {R_SM} {R_SM} 0; padding:4px 8px; gap:8px;"
+                with (
+                    ui.row()
+                    .classes("w-full items-center")
+                    .style(
+                        f"background:{C_RAISED}; border-left:2px solid {fg}; "
+                        f"border-radius:0 {R_SM} {R_SM} 0; padding:4px 8px; gap:8px;"
+                    )
                 ):
                     ui.label(badge).style(
                         f"font-size:8px; font-weight:600; color:{fg}; "
@@ -129,9 +141,6 @@ class MaintenanceProblemPanel:
                         f"padding:0px 4px; letter-spacing:0.5px; min-width:56px; text-align:center;"
                     )
                     ui.label(source).style(
-                        f"font-size:10px; font-weight:600; color:{C_CREAM}; "
-                        f"font-family:{F_MONO}; min-width:56px;"
+                        f"font-size:10px; font-weight:600; color:{C_CREAM}; font-family:{F_MONO}; min-width:56px;"
                     )
-                    ui.label(message[:60]).style(
-                        f"font-size:10px; color:{fg}; font-family:{F_SANS}; flex:1;"
-                    )
+                    ui.label(message[:60]).style(f"font-size:10px; color:{fg}; font-family:{F_SANS}; flex:1;")

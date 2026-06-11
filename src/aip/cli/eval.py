@@ -69,7 +69,8 @@ def eval_cmd() -> None:
 
 @eval_cmd.command("retrieval")
 @click.option(
-    "--golden-queries", "-g",
+    "--golden-queries",
+    "-g",
     default=None,
     help="Path to golden queries JSON file. Defaults to tests/retrieval_goldens/golden_queries.json",
 )
@@ -77,15 +78,17 @@ def eval_cmd() -> None:
     "--gold",
     default=None,
     help="Path to gold evaluation YAML file (e.g. docs/evals/aip_alpha_gold.yaml). "
-         "Shortcut for --golden-queries with YAML support.",
+    "Shortcut for --golden-queries with YAML support.",
 )
 @click.option(
-    "--output-dir", "-o",
+    "--output-dir",
+    "-o",
     default="eval_results",
     help="Directory to save timestamped evaluation results (default: eval_results)",
 )
 @click.option(
-    "--baseline", "-b",
+    "--baseline",
+    "-b",
     default=None,
     help="Path to baseline evaluation JSON for regression comparison",
 )
@@ -107,11 +110,12 @@ def eval_cmd() -> None:
     help="Exit with non-zero code if regression check fails",
 )
 @click.option(
-    "--mode", "-m",
+    "--mode",
+    "-m",
     type=click.Choice(["hybrid", "fts-only", "all"], case_sensitive=False),
     default="hybrid",
     help="Retrieval mode: 'hybrid' (FTS+Vector+Corpus with RRF weights), "
-         "'fts-only' (FTS+Corpus, no Vector), 'all' (all channels incl. Graph/Wiki/Procedural)",
+    "'fts-only' (FTS+Corpus, no Vector), 'all' (all channels incl. Graph/Wiki/Procedural)",
 )
 @click.option(
     "--save-baseline",
@@ -124,7 +128,7 @@ def eval_cmd() -> None:
     is_flag=True,
     default=False,
     help="Show per-query diagnostic output: channel health, degradation warnings, "
-         "and blame assignment (ingestion/embedding/retrieval/ranking/synthesis/missing)",
+    "and blame assignment (ingestion/embedding/retrieval/ranking/synthesis/missing)",
 )
 def retrieval_eval(
     golden_queries: str | None,
@@ -172,9 +176,7 @@ def retrieval_eval(
         golden_queries = gold
     if golden_queries is None:
         project_root = os.environ.get("AIP_PROJECT_ROOT", ".")
-        golden_queries = os.path.join(
-            project_root, "tests", "retrieval_goldens", "golden_queries.json"
-        )
+        golden_queries = os.path.join(project_root, "tests", "retrieval_goldens", "golden_queries.json")
 
     click.echo(f"Running retrieval evaluation (k={k}, mode={mode})...")
     click.echo(f"  Golden queries: {golden_queries}")
@@ -185,13 +187,15 @@ def retrieval_eval(
 
     # Run the async evaluation
     try:
-        result = asyncio.run(_run_eval(
-            golden_path=golden_queries,
-            db_path=db_path,
-            k=k,
-            output_dir=output_dir,
-            mode=mode,
-        ))
+        result = asyncio.run(
+            _run_eval(
+                golden_path=golden_queries,
+                db_path=db_path,
+                k=k,
+                output_dir=output_dir,
+                mode=mode,
+            )
+        )
     except Exception as exc:
         click.echo(f"Error running evaluation: {exc}", err=True)
         raise SystemExit(1)
@@ -209,8 +213,10 @@ def retrieval_eval(
         for r in result.per_query_results:
             query_display = r.query[:60] + ("..." if len(r.query) > 60 else "")
             click.echo(f"\n  Q: {query_display}")
-            click.echo(f"     Recall={r.recall_at_k:.3f}  MRR={r.mrr:.3f}  "
-                        f"Retrieved={r.num_retrieved}  Relevant={r.num_relevant}")
+            click.echo(
+                f"     Recall={r.recall_at_k:.3f}  MRR={r.mrr:.3f}  "
+                f"Retrieved={r.num_retrieved}  Relevant={r.num_relevant}"
+            )
 
             # Determine blame assignment
             if r.num_retrieved == 0 and r.num_relevant > 0:
@@ -238,9 +244,7 @@ def retrieval_eval(
 
             # Check channel contributions for more specific diagnosis
             if r.channel_contributions:
-                ch_summary = ", ".join(
-                    f"{ch}={cnt}" for ch, cnt in sorted(r.channel_contributions.items())
-                )
+                ch_summary = ", ".join(f"{ch}={cnt}" for ch, cnt in sorted(r.channel_contributions.items()))
                 click.echo(f"     Channels: {ch_summary}")
 
                 # If vector contributed 0, flag embedding
@@ -276,6 +280,7 @@ def retrieval_eval(
     # Regression check
     if baseline:
         from aip.orchestration.retrieval_eval import compare_against_baseline
+
         check = compare_against_baseline(result, baseline)
         click.echo("")
         click.echo(check.format_report())
@@ -286,6 +291,7 @@ def retrieval_eval(
         # Also run self-comparison as sanity check
         baseline_path = os.path.join(output_dir, "baseline.json")
         from aip.orchestration.retrieval_eval import compare_against_baseline
+
         check = compare_against_baseline(result, baseline_path)
         click.echo(f"\nSelf-comparison check: {'PASSED' if check.passed else 'FAILED'}")
 
@@ -351,6 +357,7 @@ async def _run_eval(
     # Create stores and retriever function
     try:
         from aip.orchestration.ask_pipeline import AskStores, create_ask_stores
+
         stores = await create_ask_stores(db_path)
     except Exception as exc:
         click.echo(f"Warning: Could not create full stores ({exc}), using mock retriever", err=True)
@@ -459,12 +466,14 @@ async def _run_eval(
 
 @eval_cmd.command("retrieval-ab")
 @click.option(
-    "--config-a", "-a",
+    "--config-a",
+    "-a",
     required=True,
     help="Path to evaluation JSON for configuration A",
 )
 @click.option(
-    "--config-b", "-b",
+    "--config-b",
+    "-b",
     required=True,
     help="Path to evaluation JSON for configuration B",
 )
@@ -479,7 +488,8 @@ async def _run_eval(
     help="Human-readable label for config B (default: file path)",
 )
 @click.option(
-    "--output-dir", "-o",
+    "--output-dir",
+    "-o",
     default="eval_results",
     help="Directory to save A/B comparison results (default: eval_results)",
 )
@@ -545,18 +555,20 @@ def retrieval_ab_eval(
     def _reconstruct(data: dict) -> EvalResult:
         per_query = []
         for pq in data.get("per_query_results", []):
-            per_query.append(QueryEvalResult(
-                query=pq.get("query", ""),
-                recall_at_k=pq.get("recall_at_k", 0),
-                precision_at_k=pq.get("precision_at_k", 0),
-                mrr=pq.get("mrr", 0),
-                entity_coverage=pq.get("entity_coverage", 0),
-                num_retrieved=pq.get("num_retrieved", 0),
-                num_relevant=pq.get("num_relevant", 0),
-                retrieved_ids=pq.get("retrieved_ids", []),
-                elapsed_ms=pq.get("elapsed_ms", 0),
-                channel_contributions=pq.get("channel_contributions", {}),
-            ))
+            per_query.append(
+                QueryEvalResult(
+                    query=pq.get("query", ""),
+                    recall_at_k=pq.get("recall_at_k", 0),
+                    precision_at_k=pq.get("precision_at_k", 0),
+                    mrr=pq.get("mrr", 0),
+                    entity_coverage=pq.get("entity_coverage", 0),
+                    num_retrieved=pq.get("num_retrieved", 0),
+                    num_relevant=pq.get("num_relevant", 0),
+                    retrieved_ids=pq.get("retrieved_ids", []),
+                    elapsed_ms=pq.get("elapsed_ms", 0),
+                    channel_contributions=pq.get("channel_contributions", {}),
+                )
+            )
         return EvalResult(
             timestamp=data.get("timestamp", ""),
             total_queries=data.get("total_queries", 0),
@@ -616,10 +628,7 @@ def _load_channel_contributions_from_eval() -> tuple[dict[str, int], int]:
         return {}, 0
 
     try:
-        eval_files = [
-            f for f in os.listdir(eval_dir)
-            if f.startswith("eval_") and f.endswith(".json")
-        ]
+        eval_files = [f for f in os.listdir(eval_dir) if f.startswith("eval_") and f.endswith(".json")]
     except OSError:
         return {}, 0
 
@@ -656,6 +665,7 @@ async def _load_channel_contributions_from_trace_store(
     """
     try:
         from aip.orchestration.ask_pipeline import create_ask_stores
+
         stores = await create_ask_stores(db_path)
     except Exception:
         return {}, 0
@@ -789,9 +799,7 @@ def budget_tune(
     else:
         # Step 2: Fallback — try trace store
         click.echo("\n  No eval results found, trying trace store...")
-        channel_contributions, total_queries = asyncio.run(
-            _load_channel_contributions_from_trace_store(db_path)
-        )
+        channel_contributions, total_queries = asyncio.run(_load_channel_contributions_from_trace_store(db_path))
         if channel_contributions:
             click.echo(f"  Data source:   trace store")
             click.echo(f"  Total queries: {total_queries}")
@@ -838,7 +846,7 @@ def budget_tune(
 
         # Print a table of adjustments
         click.echo(f"  {'Channel':<14} {'Current':>8} {'Suggested':>10} {'Change':>8} {'Confidence':>10}")
-        click.echo(f"  {'-'*14} {'-'*8} {'-'*10} {'-'*8} {'-'*10}")
+        click.echo(f"  {'-' * 14} {'-' * 8} {'-' * 10} {'-' * 8} {'-' * 10}")
         for adj in result.adjustments:
             change = adj.suggested_budget - adj.current_budget
             change_str = f"{change:+d}"

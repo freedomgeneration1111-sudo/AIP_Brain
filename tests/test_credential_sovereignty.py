@@ -187,8 +187,7 @@ def test_models_route_no_os_environ_write():
     source = inspect.getsource(models_mod)
     # The module should NOT contain os.environ assignment
     assert "os.environ[" not in source, (
-        "models.py must not write to os.environ. "
-        "Use ModelSlotResolver.set_runtime_override() instead."
+        "models.py must not write to os.environ. Use ModelSlotResolver.set_runtime_override() instead."
     )
 
 
@@ -449,8 +448,7 @@ def test_no_os_environ_api_key_writes_in_models_route():
 
     source = inspect.getsource(models_mod)
     assert "os.environ[" not in source, (
-        "models route must not write to os.environ. "
-        "Use ModelSlotResolver.set_runtime_override() for runtime overrides."
+        "models route must not write to os.environ. Use ModelSlotResolver.set_runtime_override() for runtime overrides."
     )
 
 
@@ -460,9 +458,7 @@ def test_no_os_import_in_models_route():
     import inspect
 
     source = inspect.getsource(models_mod)
-    assert "import os" not in source, (
-        "models route should not import os since it no longer writes to os.environ"
-    )
+    assert "import os" not in source, "models route should not import os since it no longer writes to os.environ"
 
 
 # ----------------------------------------------------------------
@@ -521,9 +517,7 @@ async def test_require_definer_rejects_unauthenticated_when_auth_enabled():
     mock_request.state.auth_role = None
 
     identity = await get_current_identity(mock_request)
-    assert identity["role"] is None, (
-        "Unauthenticated request must NOT get definer role when auth is enabled"
-    )
+    assert identity["role"] is None, "Unauthenticated request must NOT get definer role when auth is enabled"
 
     # require_definer should reject
     with pytest.raises(Exception) as exc_info:

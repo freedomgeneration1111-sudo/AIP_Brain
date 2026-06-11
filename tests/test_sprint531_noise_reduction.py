@@ -45,17 +45,21 @@ class TestDeliveryStatusTracking:
 
     def test_send_alert_creates_delivery_status(self):
         """send_alert() creates a delivery status entry for the correlation ID."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            webhook_max_retries=0,
-        ))
-        correlation_id = mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="test",
-            message="Test alert",
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                webhook_max_retries=0,
+            )
+        )
+        correlation_id = mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="test",
+                message="Test alert",
+            )
+        )
 
         # Wait for background dispatch
         time.sleep(0.2)
@@ -74,18 +78,22 @@ class TestDeliveryStatusTracking:
 
     def test_delivery_status_contains_transport_results(self):
         """Delivery status includes per-transport results after dispatch."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            webhook_url="https://invalid-host.local/hook",
-            webhook_max_retries=0,
-        ))
-        correlation_id = mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="test",
-            message="Test alert for status tracking",
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                webhook_url="https://invalid-host.local/hook",
+                webhook_max_retries=0,
+            )
+        )
+        correlation_id = mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="test",
+                message="Test alert for status tracking",
+            )
+        )
 
         # Wait for background thread to complete
         time.sleep(0.5)
@@ -179,12 +187,14 @@ class TestAlertMuting:
             duration_seconds=3600,
         )
 
-        result = mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="graph_extraction",
-            message="Should be muted",
-        ))
+        result = mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="graph_extraction",
+                message="Should be muted",
+            )
+        )
 
         assert result == "muted"
 
@@ -198,12 +208,14 @@ class TestAlertMuting:
             duration_seconds=3600,
         )
 
-        result = mgr.send_alert(Alert(
-            alert_type="quality_degradation",
-            severity="warning",
-            subject="faithfulness",
-            message="Should not be muted",
-        ))
+        result = mgr.send_alert(
+            Alert(
+                alert_type="quality_degradation",
+                severity="warning",
+                subject="faithfulness",
+                message="Should not be muted",
+            )
+        )
 
         assert result != "muted"
         assert result.startswith("alert-")
@@ -219,12 +231,14 @@ class TestAlertMuting:
         )
 
         # Verify it's muted
-        result1 = mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="graph_extraction",
-            message="Muted",
-        ))
+        result1 = mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="graph_extraction",
+                message="Muted",
+            )
+        )
         assert result1 == "muted"
 
         # Remove the mute rule
@@ -232,12 +246,14 @@ class TestAlertMuting:
         assert removed is True
 
         # Should no longer be muted
-        result2 = mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="graph_extraction",
-            message="Not muted anymore",
-        ))
+        result2 = mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="graph_extraction",
+                message="Not muted anymore",
+            )
+        )
         assert result2.startswith("alert-")
 
     def test_remove_nonexistent_mute_rule(self):
@@ -267,12 +283,14 @@ class TestAlertMuting:
         time.sleep(1.5)
 
         # The alert should not be muted anymore
-        result = mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="graph",
-            message="Should not be muted",
-        ))
+        result = mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="graph",
+                message="Should not be muted",
+            )
+        )
 
         assert result != "muted"
 
@@ -303,14 +321,16 @@ class TestAlertMuting:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            rule_id = store.record_mute_rule({
-                "alert_type": "batch_reduction",
-                "subject": "graph",
-                "muted_by": "operator",
-                "duration_seconds": 3600,
-                "expires_at": time.time() + 3600,
-                "muted_at": datetime.now(timezone.utc).isoformat(),
-            })
+            rule_id = store.record_mute_rule(
+                {
+                    "alert_type": "batch_reduction",
+                    "subject": "graph",
+                    "muted_by": "operator",
+                    "duration_seconds": 3600,
+                    "expires_at": time.time() + 3600,
+                    "muted_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
 
             assert rule_id > 0
 
@@ -324,14 +344,16 @@ class TestAlertMuting:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            store.record_mute_rule({
-                "alert_type": "batch_reduction",
-                "subject": "graph",
-                "muted_by": "operator",
-                "duration_seconds": 3600,
-                "expires_at": time.time() + 3600,
-                "muted_at": datetime.now(timezone.utc).isoformat(),
-            })
+            store.record_mute_rule(
+                {
+                    "alert_type": "batch_reduction",
+                    "subject": "graph",
+                    "muted_by": "operator",
+                    "duration_seconds": 3600,
+                    "expires_at": time.time() + 3600,
+                    "muted_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
 
             deleted = store.delete_mute_rule("batch_reduction", "graph")
             assert deleted is True
@@ -404,6 +426,7 @@ class TestRetentionHotReload:
     def test_vigil_quality_in_hot_reloadable_keys(self):
         """vigil_quality is in the hot-reloadable key set."""
         from aip.adapter.config_watcher import _HOT_RELOADABLE_KEYS
+
         assert "vigil_quality" in _HOT_RELOADABLE_KEYS
 
     def test_vigil_quality_validation_ranges(self):
@@ -495,21 +518,25 @@ class TestDashboardSSE:
         """SSE subscribers receive events when alerts are dispatched."""
         import asyncio
 
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            webhook_max_retries=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                webhook_max_retries=0,
+            )
+        )
 
         queue = asyncio.Queue()
         mgr.realtime_bus.add_sse_subscriber(queue)
 
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="test",
-            message="SSE test",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="test",
+                message="SSE test",
+            )
+        )
 
         # Wait for dispatch
         time.sleep(0.3)
@@ -584,21 +611,25 @@ class TestAlertDigest:
 
     def test_info_alerts_buffered_when_digest_enabled(self):
         """Info-severity alerts are buffered when digest is enabled."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            digest_enabled=True,
-            digest_min_alerts=100,  # Set high so alerts stay buffered
-            digest_interval_minutes=60,  # Set long so time flush doesn't trigger
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                digest_enabled=True,
+                digest_min_alerts=100,  # Set high so alerts stay buffered
+                digest_interval_minutes=60,  # Set long so time flush doesn't trigger
+            )
+        )
 
         # Send an info-severity alert (no webhook configured, so no dispatch)
-        result = mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="info",
-            subject="test",
-            message="Should be buffered",
-        ))
+        result = mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="info",
+                subject="test",
+                message="Should be buffered",
+            )
+        )
 
         # The alert should be accepted and buffered
         assert result.startswith("alert-") or result.startswith("digest-")
@@ -608,20 +639,24 @@ class TestAlertDigest:
 
     def test_warning_alerts_not_buffered(self):
         """Warning/critical alerts are NOT buffered even when digest is enabled."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            digest_enabled=True,
-            digest_min_alerts=100,
-            digest_interval_minutes=60,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                digest_enabled=True,
+                digest_min_alerts=100,
+                digest_interval_minutes=60,
+            )
+        )
 
-        result = mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="test",
-            message="Should be dispatched immediately",
-        ))
+        result = mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="test",
+                message="Should be dispatched immediately",
+            )
+        )
 
         assert result.startswith("alert-")
         # Buffer should remain empty (warning not buffered)
@@ -629,22 +664,26 @@ class TestAlertDigest:
 
     def test_digest_flush_on_threshold(self):
         """Digest buffer is flushed when min_alerts threshold is reached."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            digest_enabled=True,
-            digest_min_alerts=3,
-            digest_interval_minutes=60,  # Long interval so count triggers first
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                digest_enabled=True,
+                digest_min_alerts=3,
+                digest_interval_minutes=60,  # Long interval so count triggers first
+            )
+        )
 
         # Send 3 info alerts to trigger the flush
         for i in range(3):
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="info",
-                subject=f"test_{i}",
-                message=f"Info alert {i}",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="info",
+                    subject=f"test_{i}",
+                    message=f"Info alert {i}",
+                )
+            )
 
         # After 3 alerts, the buffer should have been flushed
         # The buffer should be empty after flush
@@ -657,22 +696,26 @@ class TestAlertDigest:
 
     def test_check_digest_flush_time_based(self):
         """check_digest_flush() triggers flush based on elapsed time."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            digest_enabled=True,
-            digest_min_alerts=100,  # Set very high so only time triggers flush
-            digest_interval_minutes=0,  # Set to 0 so any elapsed time triggers
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                digest_enabled=True,
+                digest_min_alerts=100,  # Set very high so only time triggers flush
+                digest_interval_minutes=0,  # Set to 0 so any elapsed time triggers
+            )
+        )
 
         # Add an alert to the buffer manually
-        mgr.digest_mgr._digest_buffer.append({
-            "alert_type": "test",
-            "severity": "info",
-            "subject": "test",
-            "message": "Buffered alert",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        mgr.digest_mgr._digest_buffer.append(
+            {
+                "alert_type": "test",
+                "severity": "info",
+                "subject": "test",
+                "message": "Buffered alert",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         mgr.digest_mgr._digest_last_flush = time.time() - 100  # Simulate elapsed time
 
         mgr.check_digest_flush()
@@ -682,22 +725,26 @@ class TestAlertDigest:
 
     def test_check_digest_flush_disabled(self):
         """check_digest_flush() does nothing when digest is disabled."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            digest_enabled=False,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                digest_enabled=False,
+            )
+        )
 
         # Should not raise or do anything
         mgr.check_digest_flush()
 
     def test_digest_status_in_get_status(self):
         """AlertManager.get_status() includes digest configuration."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            digest_enabled=True,
-            digest_interval_minutes=30,
-            digest_min_alerts=5,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                digest_enabled=True,
+                digest_interval_minutes=30,
+                digest_min_alerts=5,
+            )
+        )
 
         status = mgr.get_status()
         assert status["digest"]["enabled"] is True
@@ -765,14 +812,16 @@ class TestSchemaMigrationV3:
             store.initialize()
 
             # Verify mute rules table exists
-            rule_id = store.record_mute_rule({
-                "alert_type": "test",
-                "subject": "test",
-                "muted_by": "operator",
-                "duration_seconds": 3600,
-                "expires_at": time.time() + 3600,
-                "muted_at": datetime.now(timezone.utc).isoformat(),
-            })
+            rule_id = store.record_mute_rule(
+                {
+                    "alert_type": "test",
+                    "subject": "test",
+                    "muted_by": "operator",
+                    "duration_seconds": 3600,
+                    "expires_at": time.time() + 3600,
+                    "muted_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
             assert rule_id > 0
 
     def test_migration_adds_delivery_status_table(self):
@@ -827,16 +876,18 @@ class TestSchemaMigrationV3:
             store.initialize()
 
             # Verify delivery status table works
-            result = store.record_delivery_status({
-                "correlation_id": "test-123",
-                "status": "delivered",
-                "alert_type": "test",
-                "severity": "info",
-                "subject": "test",
-                "transports": ["webhook"],
-                "transport_results": {"webhook": {"status": "delivered"}},
-                "dispatched_at": datetime.now(timezone.utc).isoformat(),
-            })
+            result = store.record_delivery_status(
+                {
+                    "correlation_id": "test-123",
+                    "status": "delivered",
+                    "alert_type": "test",
+                    "severity": "info",
+                    "subject": "test",
+                    "transports": ["webhook"],
+                    "transport_results": {"webhook": {"status": "delivered"}},
+                    "dispatched_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
             assert result is True
 
             # Query it back

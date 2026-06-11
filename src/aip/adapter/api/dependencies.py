@@ -180,11 +180,7 @@ class AipContainer:
             shared_dbs.setdefault(db_path, []).append(name)
 
         # Identify shared databases
-        shared_info = {
-            db_path: names
-            for db_path, names in shared_dbs.items()
-            if len(names) > 1
-        }
+        shared_info = {db_path: names for db_path, names in shared_dbs.items() if len(names) > 1}
 
         return {
             "architecture": "multi-file local datastore (Option B)",
@@ -215,6 +211,7 @@ class AipContainer:
         if old_provider is not None and hasattr(old_provider, "close"):
             try:
                 import asyncio
+
                 try:
                     loop = asyncio.get_running_loop()
                     loop.create_task(old_provider.close())
@@ -256,6 +253,7 @@ class AipContainer:
                 # Mark turns with different model for re-embedding
                 if hasattr(self.corpus_turn_store, "mark_all_for_reembed"):
                     import asyncio
+
                     try:
                         loop = asyncio.get_running_loop()
                         loop.create_task(self._trigger_reembed(new_model))
@@ -273,6 +271,7 @@ class AipContainer:
         try:
             count = await self.corpus_turn_store.mark_all_for_reembed(except_model=new_model)
             import logging
+
             logging.getLogger(__name__).info(
                 "reembed_triggered",
                 new_model=new_model,
@@ -280,6 +279,7 @@ class AipContainer:
             )
         except Exception as exc:
             import logging
+
             logging.getLogger(__name__).warning("reembed_trigger_failed", error=str(exc))
 
 

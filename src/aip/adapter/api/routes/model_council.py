@@ -54,6 +54,7 @@ _DEFAULT_COMPARISON_SLOTS = ["synthesis", "evaluation", "beast"]
 # Pydantic models
 # ---------------------------------------------------------------------------
 
+
 class PerModelResult(BaseModel):
     """Per-model result within a Model Council comparison."""
 
@@ -111,6 +112,7 @@ class ModelCouncilResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _council_artifact_id(turn_id: str, session_id: str) -> str:
     """Deterministic artifact ID for Model Council report.
@@ -191,6 +193,7 @@ def _resolve_comparison_slots(
 # POST endpoint — run model comparison
 # ---------------------------------------------------------------------------
 
+
 @router.post(
     "/beast/compare-models",
     response_model=ModelCouncilResponse,
@@ -227,9 +230,7 @@ async def compare_models(
         )
 
     # --- Resolve which slots to compare ---
-    comparison_slots = _resolve_comparison_slots(
-        container.model_provider, request.selected_model_slots
-    )
+    comparison_slots = _resolve_comparison_slots(container.model_provider, request.selected_model_slots)
 
     if len(comparison_slots) < 2:
         return ModelCouncilResponse(
@@ -273,9 +274,7 @@ async def compare_models(
     # --- Call each model slot concurrently ---
     per_model_tasks = {}
     for slot_name in comparison_slots:
-        per_model_tasks[slot_name] = _call_model_slot(
-            container.model_provider, slot_name, user_prompt
-        )
+        per_model_tasks[slot_name] = _call_model_slot(container.model_provider, slot_name, user_prompt)
 
     # Run all model calls concurrently
     results_map: dict[str, dict] = {}
@@ -312,28 +311,32 @@ async def compare_models(
 
         if is_error:
             failed_models.append(slot_name)
-            per_model_results.append(PerModelResult(
-                model_slot=slot_name,
-                model_id=model_id,
-                provider=provider,
-                status="failed",
-                error=r.get("error_message", "Model call failed"),
-                latency_ms=r.get("latency_ms"),
-            ))
+            per_model_results.append(
+                PerModelResult(
+                    model_slot=slot_name,
+                    model_id=model_id,
+                    provider=provider,
+                    status="failed",
+                    error=r.get("error_message", "Model call failed"),
+                    latency_ms=r.get("latency_ms"),
+                )
+            )
         else:
             successful_count += 1
-            per_model_results.append(PerModelResult(
-                model_slot=slot_name,
-                model_id=model_id,
-                provider=provider,
-                status="completed",
-                answer=r.get("content", ""),
-                latency_ms=r.get("latency_ms"),
-                prompt_tokens=usage.get("prompt_tokens"),
-                completion_tokens=usage.get("completion_tokens"),
-                total_tokens=usage.get("total_tokens"),
-                cost_usd=r.get("cost_usd"),
-            ))
+            per_model_results.append(
+                PerModelResult(
+                    model_slot=slot_name,
+                    model_id=model_id,
+                    provider=provider,
+                    status="completed",
+                    answer=r.get("content", ""),
+                    latency_ms=r.get("latency_ms"),
+                    prompt_tokens=usage.get("prompt_tokens"),
+                    completion_tokens=usage.get("completion_tokens"),
+                    total_tokens=usage.get("total_tokens"),
+                    cost_usd=r.get("cost_usd"),
+                )
+            )
 
     # --- Determine overall status ---
     if successful_count == 0:
@@ -503,17 +506,21 @@ Provide your synthesis as structured JSON."""
                 except Exception as exc:
                     logger.warning(
                         "council_ecs_transition_failed artifact_id=%s error=%s",
-                        artifact_id, str(exc),
+                        artifact_id,
+                        str(exc),
                     )
 
             logger.info(
                 "council_artifact_saved artifact_id=%s status=%s",
-                artifact_id, overall_status,
+                artifact_id,
+                overall_status,
             )
         except Exception as exc:
             logger.error(
                 "council_artifact_write_failed artifact_id=%s error=%s",
-                artifact_id, str(exc), exc_info=True,
+                artifact_id,
+                str(exc),
+                exc_info=True,
             )
             # Don't fail the whole response — just note the save failure
             response.error = f"Report generated but artifact save failed: {exc}"
@@ -524,6 +531,7 @@ Provide your synthesis as structured JSON."""
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 async def _call_model_slot(
     model_provider: Any,

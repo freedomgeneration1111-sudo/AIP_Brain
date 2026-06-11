@@ -68,9 +68,7 @@ def render_artifact_review_panel(
     Returns:
         The container column
     """
-    container = ui.column().classes("w-full").style(
-        f"padding:8px 12px; border-bottom:0.5px solid {C_INK40};"
-    )
+    container = ui.column().classes("w-full").style(f"padding:8px 12px; border-bottom:0.5px solid {C_INK40};")
 
     with container:
         # Section header
@@ -82,9 +80,7 @@ def render_artifact_review_panel(
 
         # State indicator
         with ui.row().classes("w-full items-center").style("margin-top:4px;"):
-            ui.label("State:").style(
-                f"font-size:9px; color:{C_INK60}; font-family:{F_MONO}; font-weight:600;"
-            )
+            ui.label("State:").style(f"font-size:9px; color:{C_INK60}; font-family:{F_MONO}; font-weight:600;")
             state_color = {
                 "GENERATED": C_AMBER,
                 "REVIEWED": C_AMBER,
@@ -94,43 +90,44 @@ def render_artifact_review_panel(
                 "FAILED": C_ERR_FG,
             }.get(ecs_state, C_MUTED)
             ui.label(ecs_state).style(
-                f"font-size:9px; color:{state_color}; font-family:{F_MONO}; "
-                f"font-weight:700; margin-left:4px;"
+                f"font-size:9px; color:{state_color}; font-family:{F_MONO}; font-weight:700; margin-left:4px;"
             )
 
             if has_needs_revision:
                 ui.label("(has revision request)").style(
-                    f"font-size:8px; color:{C_WARN_FG}; font-family:{F_MONO}; "
-                    f"font-style:italic; margin-left:6px;"
+                    f"font-size:8px; color:{C_WARN_FG}; font-family:{F_MONO}; font-style:italic; margin-left:6px;"
                 )
 
         # Action buttons
-        with ui.row().classes("w-full items-center").style(
-            "margin-top:8px; flex-wrap:wrap; gap:6px;"
-        ):
+        with ui.row().classes("w-full items-center").style("margin-top:8px; flex-wrap:wrap; gap:6px;"):
             # Approve — only for GENERATED/REVIEWED
             if ecs_state in ("GENERATED", "REVIEWED"):
-                ui.button("Approve", on_click=lambda: asyncio.ensure_future(
-                    _do_approve(artifact_id, api_client, on_action_complete)
-                )).props("dense unelevated size=sm").style(
+                ui.button(
+                    "Approve",
+                    on_click=lambda: asyncio.ensure_future(_do_approve(artifact_id, api_client, on_action_complete)),
+                ).props("dense unelevated size=sm").style(
                     f"background:{C_OK_FG}; color:#0E0800; border:0.5px solid {C_OK_FG}; "
                     f"border-radius:{R_SM}; font-size:10px; font-weight:600; "
                     f"font-family:{F_MONO}; padding:4px 10px;"
                 )
 
                 # Reject
-                ui.button("Reject", on_click=lambda: asyncio.ensure_future(
-                    _do_reject(artifact_id, api_client, on_action_complete)
-                )).props("dense unelevated size=sm").style(
+                ui.button(
+                    "Reject",
+                    on_click=lambda: asyncio.ensure_future(_do_reject(artifact_id, api_client, on_action_complete)),
+                ).props("dense unelevated size=sm").style(
                     f"background:{C_ERR_FG}; color:#0E0800; border:0.5px solid {C_ERR_FG}; "
                     f"border-radius:{R_SM}; font-size:10px; font-weight:600; "
                     f"font-family:{F_MONO}; padding:4px 10px;"
                 )
 
                 # Needs Revision
-                ui.button("Needs Revision", on_click=lambda: asyncio.ensure_future(
-                    _do_needs_revision(artifact_id, api_client, on_action_complete)
-                )).props("dense unelevated size=sm").style(
+                ui.button(
+                    "Needs Revision",
+                    on_click=lambda: asyncio.ensure_future(
+                        _do_needs_revision(artifact_id, api_client, on_action_complete)
+                    ),
+                ).props("dense unelevated size=sm").style(
                     f"background:transparent; color:{C_WARN_FG}; border:0.5px solid {C_WARN_FG}; "
                     f"border-radius:{R_SM}; font-size:10px; font-weight:500; "
                     f"font-family:{F_MONO}; padding:4px 10px;"
@@ -138,9 +135,10 @@ def render_artifact_review_panel(
 
             # Export — only for APPROVED
             if export_eligible and ecs_state == "APPROVED":
-                ui.button("Export", on_click=lambda: asyncio.ensure_future(
-                    _do_export(artifact_id, api_client, on_action_complete)
-                )).props("dense unelevated size=sm").style(
+                ui.button(
+                    "Export",
+                    on_click=lambda: asyncio.ensure_future(_do_export(artifact_id, api_client, on_action_complete)),
+                ).props("dense unelevated size=sm").style(
                     f"background:{C_AMBER}; color:#0E0800; border:0.5px solid {C_AMBER}; "
                     f"border-radius:{R_SM}; font-size:10px; font-weight:600; "
                     f"font-family:{F_MONO}; padding:4px 10px;"
@@ -148,9 +146,10 @@ def render_artifact_review_panel(
 
             # Force Export — visibly dangerous, available for non-APPROVED states
             if export_requires_force and ecs_state not in ("APPROVED", "SUPERSEDED"):
-                ui.button("Force Export", on_click=lambda: _open_force_export_dialog(
-                    artifact_id, ecs_state, api_client, on_action_complete
-                )).props("dense unelevated size=sm").style(
+                ui.button(
+                    "Force Export",
+                    on_click=lambda: _open_force_export_dialog(artifact_id, ecs_state, api_client, on_action_complete),
+                ).props("dense unelevated size=sm").style(
                     f"background:{C_ERR_BG}; color:{C_ERR_FG}; "
                     f"border:1px solid {C_ERR_FG}; "
                     f"border-radius:{R_SM}; font-size:10px; font-weight:700; "
@@ -180,37 +179,38 @@ def _open_force_export_dialog(
     on_action_complete: Callable[[], None] | None,
 ) -> None:
     """Open the force-export confirmation dialog."""
-    with ui.dialog().classes("") as dialog, ui.card().style(
-        f"background:{C_SURFACE}; border:1px solid {C_ERR_FG}; "
-        f"border-radius:{R_MD}; min-width:400px; padding:24px;"
+    with (
+        ui.dialog().classes("") as dialog,
+        ui.card().style(
+            f"background:{C_SURFACE}; border:1px solid {C_ERR_FG}; border-radius:{R_MD}; min-width:400px; padding:24px;"
+        ),
     ):
         # Danger header
         ui.label("SOVEREIGN OVERRIDE").style(
-            f"font-size:14px; font-weight:700; color:{C_ERR_FG}; "
-            f"font-family:{F_SANS}; letter-spacing:1px;"
+            f"font-size:14px; font-weight:700; color:{C_ERR_FG}; font-family:{F_SANS}; letter-spacing:1px;"
         )
         ui.label(
             f"Force-exporting artifact from {ecs_state} state (not APPROVED). "
             f"This bypass is a sovereign override that will be permanently recorded in the audit trail."
-        ).style(
-            f"font-size:11px; color:{C_CREAM}; font-family:{F_SANS}; "
-            f"margin-top:8px; line-height:1.5;"
-        )
+        ).style(f"font-size:11px; color:{C_CREAM}; font-family:{F_SANS}; margin-top:8px; line-height:1.5;")
 
         # Reason input
-        reason_input = ui.input(
-            label="Reason for override (required)",
-            placeholder="Explain why this artifact must be exported without approval..."
-        ).props("dense outlined").classes("w-full").style(
-            f"margin-top:16px; font-size:11px; font-family:{F_MONO}; color:{C_CREAM};"
+        reason_input = (
+            ui.input(
+                label="Reason for override (required)",
+                placeholder="Explain why this artifact must be exported without approval...",
+            )
+            .props("dense outlined")
+            .classes("w-full")
+            .style(f"margin-top:16px; font-size:11px; font-family:{F_MONO}; color:{C_CREAM};")
         )
 
         # Confirmation
-        confirm_input = ui.input(
-            label='Type "FORCE" to confirm',
-            placeholder="FORCE"
-        ).props("dense outlined").classes("w-full").style(
-            f"margin-top:8px; font-size:11px; font-family:{F_MONO}; color:{C_CREAM};"
+        confirm_input = (
+            ui.input(label='Type "FORCE" to confirm', placeholder="FORCE")
+            .props("dense outlined")
+            .classes("w-full")
+            .style(f"margin-top:8px; font-size:11px; font-family:{F_MONO}; color:{C_CREAM};")
         )
 
         # Action buttons
@@ -218,9 +218,12 @@ def _open_force_export_dialog(
             ui.button("Cancel", on_click=dialog.close).props("flat dense").style(
                 f"color:{C_MUTED}; font-size:11px; font-family:{F_MONO};"
             )
-            ui.button("FORCE EXPORT", on_click=lambda: asyncio.ensure_future(
-                _do_force_export(artifact_id, reason_input, confirm_input, dialog, api_client, on_action_complete)
-            )).props("dense unelevated").style(
+            ui.button(
+                "FORCE EXPORT",
+                on_click=lambda: asyncio.ensure_future(
+                    _do_force_export(artifact_id, reason_input, confirm_input, dialog, api_client, on_action_complete)
+                ),
+            ).props("dense unelevated").style(
                 f"background:{C_ERR_FG}; color:#0E0800; border:0.5px solid {C_ERR_FG}; "
                 f"border-radius:{R_SM}; font-size:11px; font-weight:700; "
                 f"font-family:{F_MONO}; padding:6px 14px; "
@@ -334,6 +337,7 @@ def _handle_action_error(action: str, artifact_id: str, exc: Exception) -> None:
     if hasattr(exc, "response") and hasattr(exc.response, "text"):
         try:
             import json
+
             detail = exc.response.json().get("detail", error_msg)
             error_msg = detail
         except Exception:

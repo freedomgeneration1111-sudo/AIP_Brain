@@ -105,32 +105,36 @@ class LinkEditorDialog:
 
     def open_create(self) -> None:
         """Open the link creation dialog."""
-        self._dialog = ui.dialog().props("maximized=false").classes("").style(
-            f"background:{C_GROUND}; border:1px solid {C_INK40}; "
-            f"border-radius:{R_MD}; min-width:420px;"
+        self._dialog = (
+            ui.dialog()
+            .props("maximized=false")
+            .classes("")
+            .style(f"background:{C_GROUND}; border:1px solid {C_INK40}; border-radius:{R_MD}; min-width:420px;")
         )
 
         with self._dialog:
-            with ui.card().classes("w-full").style(
-                f"background:{C_GROUND}; border:none; padding:0; "
-                f"max-width:500px; min-width:400px;"
+            with (
+                ui.card()
+                .classes("w-full")
+                .style(f"background:{C_GROUND}; border:none; padding:0; max-width:500px; min-width:400px;")
             ):
                 # Header
-                with ui.row().classes("w-full items-center").style(
-                    f"padding:12px 16px; border-bottom:0.5px solid {C_INK40};"
+                with (
+                    ui.row()
+                    .classes("w-full items-center")
+                    .style(f"padding:12px 16px; border-bottom:0.5px solid {C_INK40};")
                 ):
                     ui.label("CREATE LINK").style(
-                        f"font-size:13px; font-weight:700; font-family:{F_MONO}; "
-                        f"color:{C_AMBER}; letter-spacing:1px;"
+                        f"font-size:13px; font-weight:700; font-family:{F_MONO}; color:{C_AMBER}; letter-spacing:1px;"
                     )
                     ui.space()
-                    ui.button(icon="close", on_click=self._close).props(
-                        "dense flat size=xs"
-                    ).style(f"color:{C_INK60};")
+                    ui.button(icon="close", on_click=self._close).props("dense flat size=xs").style(f"color:{C_INK60};")
 
                 # Advisory label
-                with ui.row().classes("w-full items-center").style(
-                    f"padding:4px 16px; border-bottom:0.5px solid {C_INK40};"
+                with (
+                    ui.row()
+                    .classes("w-full items-center")
+                    .style(f"padding:4px 16px; border-bottom:0.5px solid {C_INK40};")
                 ):
                     ui.label("Links default to SUGGESTED — requires DEFINER approval").style(
                         f"font-size:9px; font-weight:600; font-family:{F_MONO}; "
@@ -141,8 +145,7 @@ class LinkEditorDialog:
                 with ui.column().classes("w-full").style(f"padding:16px; gap:12px;"):
                     # Source (pre-filled, read-only)
                     ui.label("SOURCE").style(
-                        f"font-size:8px; font-weight:700; font-family:{F_MONO}; "
-                        f"color:{C_INK60}; letter-spacing:0.5px;"
+                        f"font-size:8px; font-weight:700; font-family:{F_MONO}; color:{C_INK60}; letter-spacing:0.5px;"
                     )
                     with ui.row().classes("w-full").style("gap:8px;"):
                         ui.label(self._source_type).style(
@@ -163,11 +166,14 @@ class LinkEditorDialog:
                         f"font-size:8px; font-weight:700; font-family:{F_MONO}; "
                         f"color:{C_INK60}; letter-spacing:0.5px; margin-top:4px;"
                     )
-                    target_type_select = ui.select(
-                        options=OBJECT_TYPES,
-                        value="wiki_article",
-                    ).props("dense outlined dark").classes("w-full").style(
-                        f"font-size:10px; font-family:{F_MONO};"
+                    target_type_select = (
+                        ui.select(
+                            options=OBJECT_TYPES,
+                            value="wiki_article",
+                        )
+                        .props("dense outlined dark")
+                        .classes("w-full")
+                        .style(f"font-size:10px; font-family:{F_MONO};")
                     )
 
                     # Target object ID
@@ -175,12 +181,14 @@ class LinkEditorDialog:
                         f"font-size:8px; font-weight:700; font-family:{F_MONO}; "
                         f"color:{C_INK60}; letter-spacing:0.5px; margin-top:4px;"
                     )
-                    target_id_input = ui.input(
-                        placeholder="Enter object ID..."
-                    ).classes("w-full").style(
-                        f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-                        f"border-radius:{R_SM}; padding:6px 8px; color:{C_CREAM}; "
-                        f"font-size:10px; font-family:{F_MONO};"
+                    target_id_input = (
+                        ui.input(placeholder="Enter object ID...")
+                        .classes("w-full")
+                        .style(
+                            f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
+                            f"border-radius:{R_SM}; padding:6px 8px; color:{C_CREAM}; "
+                            f"font-size:10px; font-family:{F_MONO};"
+                        )
                     )
 
                     # Relation type
@@ -188,11 +196,14 @@ class LinkEditorDialog:
                         f"font-size:8px; font-weight:700; font-family:{F_MONO}; "
                         f"color:{C_INK60}; letter-spacing:0.5px; margin-top:4px;"
                     )
-                    relation_type_select = ui.select(
-                        options=RELATION_TYPES,
-                        value="related_to",
-                    ).props("dense outlined dark").classes("w-full").style(
-                        f"font-size:10px; font-family:{F_MONO};"
+                    relation_type_select = (
+                        ui.select(
+                            options=RELATION_TYPES,
+                            value="related_to",
+                        )
+                        .props("dense outlined dark")
+                        .classes("w-full")
+                        .style(f"font-size:10px; font-family:{F_MONO};")
                     )
 
                     # Confidence
@@ -200,10 +211,14 @@ class LinkEditorDialog:
                         f"font-size:8px; font-weight:700; font-family:{F_MONO}; "
                         f"color:{C_INK60}; letter-spacing:0.5px; margin-top:4px;"
                     )
-                    confidence_input = ui.input(value="1.0").classes("w-full").style(
-                        f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-                        f"border-radius:{R_SM}; padding:6px 8px; color:{C_CREAM}; "
-                        f"font-size:10px; font-family:{F_MONO};"
+                    confidence_input = (
+                        ui.input(value="1.0")
+                        .classes("w-full")
+                        .style(
+                            f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
+                            f"border-radius:{R_SM}; padding:6px 8px; color:{C_CREAM}; "
+                            f"font-size:10px; font-family:{F_MONO};"
+                        )
                     )
 
                     # Notes
@@ -211,12 +226,14 @@ class LinkEditorDialog:
                         f"font-size:8px; font-weight:700; font-family:{F_MONO}; "
                         f"color:{C_INK60}; letter-spacing:0.5px; margin-top:4px;"
                     )
-                    notes_input = ui.textarea(
-                        placeholder="Optional notes..."
-                    ).classes("w-full").style(
-                        f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-                        f"border-radius:{R_SM}; padding:6px 8px; color:{C_CREAM}; "
-                        f"font-size:10px; font-family:{F_MONO}; min-height:60px;"
+                    notes_input = (
+                        ui.textarea(placeholder="Optional notes...")
+                        .classes("w-full")
+                        .style(
+                            f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
+                            f"border-radius:{R_SM}; padding:6px 8px; color:{C_CREAM}; "
+                            f"font-size:10px; font-family:{F_MONO}; min-height:60px;"
+                        )
                     )
 
                     # Provenance
@@ -224,10 +241,14 @@ class LinkEditorDialog:
                         f"font-size:8px; font-weight:700; font-family:{F_MONO}; "
                         f"color:{C_INK60}; letter-spacing:0.5px; margin-top:4px;"
                     )
-                    provenance_input = ui.input(value="manual").classes("w-full").style(
-                        f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-                        f"border-radius:{R_SM}; padding:6px 8px; color:{C_CREAM}; "
-                        f"font-size:10px; font-family:{F_MONO};"
+                    provenance_input = (
+                        ui.input(value="manual")
+                        .classes("w-full")
+                        .style(
+                            f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
+                            f"border-radius:{R_SM}; padding:6px 8px; color:{C_CREAM}; "
+                            f"font-size:10px; font-family:{F_MONO};"
+                        )
                     )
 
                     # Submit button

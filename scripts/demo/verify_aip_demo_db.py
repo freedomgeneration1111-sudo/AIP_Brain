@@ -30,14 +30,14 @@ DEFAULT_DB_DIR = DEMO_ROOT / "db"
 
 # Private path patterns that should NEVER appear in demo data
 _PRIVATE_PATH_PATTERNS = [
-    re.compile(r"/home/[^/]+/"),       # /home/username/
-    re.compile(r"/Users/[^/]+/"),       # /Users/username/
-    re.compile(r"C:\\Users\\"),         # Windows user paths
-    re.compile(r"/var/lib/"),           # System data dirs
-    re.compile(r"/etc/"),               # System config
-    re.compile(r"ghp_[A-Za-z0-9]{36}"), # GitHub PATs
-    re.compile(r"sk-[A-Za-z0-9]{20,}"), # OpenAI API keys
-    re.compile(r"AKIA[A-Z0-9]{16}"),    # AWS access keys
+    re.compile(r"/home/[^/]+/"),  # /home/username/
+    re.compile(r"/Users/[^/]+/"),  # /Users/username/
+    re.compile(r"C:\\Users\\"),  # Windows user paths
+    re.compile(r"/var/lib/"),  # System data dirs
+    re.compile(r"/etc/"),  # System config
+    re.compile(r"ghp_[A-Za-z0-9]{36}"),  # GitHub PATs
+    re.compile(r"sk-[A-Za-z0-9]{20,}"),  # OpenAI API keys
+    re.compile(r"AKIA[A-Z0-9]{16}"),  # AWS access keys
 ]
 
 
@@ -103,7 +103,9 @@ def main() -> None:
     # 4. Check tags
     print("\n[4] Checking tags on turns...")
     tagged_count = conn.execute("SELECT COUNT(*) FROM corpus_turns WHERE tagging_version > 0").fetchone()[0]
-    turns_with_tags = conn.execute("SELECT COUNT(*) FROM corpus_turns WHERE tags != '[]' AND tags IS NOT NULL").fetchone()[0]
+    turns_with_tags = conn.execute(
+        "SELECT COUNT(*) FROM corpus_turns WHERE tags != '[]' AND tags IS NOT NULL"
+    ).fetchone()[0]
     if turns_with_tags > 0 and tagged_count > 0:
         print(f"  OK:   {tagged_count} turns tagged, {turns_with_tags} turns with tags")
     else:

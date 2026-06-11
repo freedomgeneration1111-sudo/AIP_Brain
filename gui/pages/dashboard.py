@@ -47,8 +47,10 @@ async def dashboard_page():
     build_left_nav(state, active_page="/")
 
     # Main content
-    with ui.column().classes("flex-1").style(
-        f"background:{C_GROUND}; padding:24px; overflow-y:auto; min-height:calc(100vh - 44px);"
+    with (
+        ui.column()
+        .classes("flex-1")
+        .style(f"background:{C_GROUND}; padding:24px; overflow-y:auto; min-height:calc(100vh - 44px);")
     ):
         # Heading
         ui.label("Can I trust AIP right now?").style(
@@ -89,17 +91,19 @@ async def dashboard_page():
 
 def _card(title: str):
     """Create a styled card container. Returns the card context."""
-    return ui.card().classes("w-full").style(
-        f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-        f"border-radius:{R_LG}; padding:0; min-width:260px; max-width:400px; flex:1;"
+    return (
+        ui.card()
+        .classes("w-full")
+        .style(
+            f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
+            f"border-radius:{R_LG}; padding:0; min-width:260px; max-width:400px; flex:1;"
+        )
     )
 
 
 def _card_header(title: str):
     """Render a card header row."""
-    with ui.row().classes("w-full items-center").style(
-        f"padding:12px 16px; border-bottom:0.5px solid {C_INK40};"
-    ):
+    with ui.row().classes("w-full items-center").style(f"padding:12px 16px; border-bottom:0.5px solid {C_INK40};"):
         ui.label(title).style(
             f"font-size:11px; font-weight:600; letter-spacing:1px; color:{C_AMBER}; text-transform:uppercase;"
         )
@@ -137,9 +141,7 @@ def _dogfood_card(state: GuiState) -> None:
                 "DIRECT MODEL ONLY": C_ERR_FG,
             }
             mc = mode_colors.get(mode, C_MUTED)
-            ui.label(mode).style(
-                f"font-size:22px; font-weight:700; color:{mc}; font-family:{F_MONO};"
-            )
+            ui.label(mode).style(f"font-size:22px; font-weight:700; color:{mc}; font-family:{F_MONO};")
             if mode == "DIRECT MODEL ONLY":
                 ui.label("Backend unreachable. No retrieval. No corpus. No actors. No artifact lifecycle.").style(
                     f"font-size:11px; color:{C_ERR_FG}; margin-top:4px;"
@@ -243,9 +245,7 @@ def _corpus_health_card(state: GuiState) -> None:
                     f"font-size:12px; font-weight:600; color:{pct_color}; font-family:{F_MONO};"
                 )
                 if pct < 50:
-                    ui.label("Low coverage — vector retrieval limited.").style(
-                        f"font-size:10px; color:{C_WARN_FG};"
-                    )
+                    ui.label("Low coverage — vector retrieval limited.").style(f"font-size:10px; color:{C_WARN_FG};")
 
 
 def _retrieval_health_card(state: GuiState) -> None:
@@ -287,9 +287,7 @@ def _retrieval_health_card(state: GuiState) -> None:
                 else:
                     status_text = ch_state.upper()
                     color = C_MUTED
-                ui.label(f"{ch_name}: {status_text}").style(
-                    f"font-size:11px; color:{color}; font-family:{F_MONO};"
-                )
+                ui.label(f"{ch_name}: {status_text}").style(f"font-size:11px; color:{color}; font-family:{F_MONO};")
 
             if total_count > 0:
                 ui.label(f"{available_count:.0f}/{total_count} channels OK").style(
@@ -341,6 +339,7 @@ def _actor_health_card(state: GuiState) -> None:
                     if last_cycle:
                         try:
                             import datetime
+
                             if isinstance(last_cycle, (int, float)):
                                 ts = datetime.datetime.fromtimestamp(last_cycle).strftime("%H:%M")
                                 cycle_info = f" (last: {ts})"
@@ -391,9 +390,7 @@ def _embedding_backfill_card(state: GuiState) -> None:
 
             pct = eb.get("percentage")
             if pct is not None:
-                ui.label(f"Coverage: {pct}%").style(
-                    f"font-size:11px; color:{C_CREAM}; font-family:{F_MONO};"
-                )
+                ui.label(f"Coverage: {pct}%").style(f"font-size:11px; color:{C_CREAM}; font-family:{F_MONO};")
 
 
 def _review_queue_card(state: GuiState) -> None:
@@ -421,11 +418,8 @@ def _review_queue_card(state: GuiState) -> None:
             else:
                 count = state.pending_gates_count
                 color = C_AMBER if count > 0 else C_OK_FG
-                ui.label(
-                    f"{count} pending review{'s' if count != 1 else ''}"
-                ).style(
-                    f"font-size:14px; font-weight:600; "
-                    f"color:{color}; font-family:{F_MONO};"
+                ui.label(f"{count} pending review{'s' if count != 1 else ''}").style(
+                    f"font-size:14px; font-weight:600; color:{color}; font-family:{F_MONO};"
                 )
 
 
@@ -449,16 +443,12 @@ def _wiki_codex_card(state: GuiState) -> None:
             generated = ws.get("generated", 0)
             wiki_state = ws.get("state", "")
 
-            ui.label(f"Total articles: {total}").style(
-                f"font-size:12px; color:{C_CREAM}; font-family:{F_MONO};"
-            )
+            ui.label(f"Total articles: {total}").style(f"font-size:12px; color:{C_CREAM}; font-family:{F_MONO};")
             ui.label(f"Approved: {approved}  |  Generated: {generated}").style(
                 f"font-size:11px; color:{C_CREAM}; font-family:{F_MONO};"
             )
             if wiki_state:
-                ui.label(f"State: {wiki_state}").style(
-                    f"font-size:11px; color:{C_CREAM}; font-family:{F_MONO};"
-                )
+                ui.label(f"State: {wiki_state}").style(f"font-size:11px; color:{C_CREAM}; font-family:{F_MONO};")
 
 
 def _model_slots_card(state: GuiState) -> None:
@@ -500,9 +490,7 @@ def _warnings_card(state: GuiState) -> None:
 
             if state.warnings:
                 for w in state.warnings[:8]:
-                    ui.label(f"! {w}").style(
-                        f"font-size:11px; color:{C_ERR_FG}; font-family:{F_MONO};"
-                    )
+                    ui.label(f"! {w}").style(f"font-size:11px; color:{C_ERR_FG}; font-family:{F_MONO};")
             else:
                 ui.label("None").style(f"font-size:11px; color:{C_MUTED}; font-family:{F_MONO};")
 
@@ -524,10 +512,6 @@ def _recent_activity_card(state: GuiState) -> None:
                         text = entry.get("description", entry.get("text", str(entry)))
                     else:
                         text = str(entry)
-                    ui.label(f"- {text}").style(
-                        f"font-size:11px; color:{C_CREAM}; font-family:{F_MONO};"
-                    )
+                    ui.label(f"- {text}").style(f"font-size:11px; color:{C_CREAM}; font-family:{F_MONO};")
             else:
-                ui.label("No recent activity data.").style(
-                    f"font-size:11px; color:{C_MUTED}; font-family:{F_MONO};"
-                )
+                ui.label("No recent activity data.").style(f"font-size:11px; color:{C_MUTED}; font-family:{F_MONO};")

@@ -103,16 +103,41 @@ _WIKI_PATTERNS = re.compile(
 )
 
 # Known sentence starters that should NOT be treated as entity signals
-_SENTENCE_STARTERS = frozenset({
-    "The", "This", "That", "These", "Those", "What", "Which", "Who",
-    "How", "When", "Where", "Why", "Is", "Are", "Was", "Were", "Can",
-    "Could", "Should", "Would", "Will", "Do", "Does", "Did", "Has",
-})
+_SENTENCE_STARTERS = frozenset(
+    {
+        "The",
+        "This",
+        "That",
+        "These",
+        "Those",
+        "What",
+        "Which",
+        "Who",
+        "How",
+        "When",
+        "Where",
+        "Why",
+        "Is",
+        "Are",
+        "Was",
+        "Were",
+        "Can",
+        "Could",
+        "Should",
+        "Would",
+        "Will",
+        "Do",
+        "Does",
+        "Did",
+        "Has",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
 # Query analysis result
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class QueryAnalysis:
@@ -192,6 +217,7 @@ def analyze_query(query: str) -> QueryAnalysis:
 # ---------------------------------------------------------------------------
 # ChannelSelector
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ChannelSelectionResult:

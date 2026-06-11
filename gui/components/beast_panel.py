@@ -121,11 +121,11 @@ class BeastPanel:
         # Close existing drawer if open
         self.close()
 
-        with ui.right_drawer(bordered=True).classes(
-            f"bg-{C_GROUND}"
-        ).style(
-            f"width: 420px; background: {C_GROUND}; border-left: 1px solid {C_INK40};"
-        ) as drawer:
+        with (
+            ui.right_drawer(bordered=True)
+            .classes(f"bg-{C_GROUND}")
+            .style(f"width: 420px; background: {C_GROUND}; border-left: 1px solid {C_INK40};") as drawer
+        ):
             self._drawer = drawer
 
             # Header with mode selector
@@ -133,8 +133,7 @@ class BeastPanel:
 
             # Loading state
             loading_label = ui.label("Loading commentary...").style(
-                f"font-size: 11px; color: {C_INK60}; font-family: {F_MONO}; "
-                f"padding: 16px;"
+                f"font-size: 11px; color: {C_INK60}; font-family: {F_MONO}; padding: 16px;"
             )
 
         # Fetch existing commentary for the selected mode
@@ -142,34 +141,27 @@ class BeastPanel:
 
     def _render_header(self, turn_id: str) -> None:
         """Render the panel header with mode selector."""
-        with ui.row().classes("w-full items-center").style(
-            f"padding: 12px 16px; border-bottom: 1px solid {C_INK40};"
-        ):
+        with ui.row().classes("w-full items-center").style(f"padding: 12px 16px; border-bottom: 1px solid {C_INK40};"):
             ui.label("BEAST COUNSEL").style(
-                f"font-size: 13px; font-weight: 700; font-family: {F_MONO}; "
-                f"color: {C_AMBER}; letter-spacing: 1px;"
+                f"font-size: 13px; font-weight: 700; font-family: {F_MONO}; color: {C_AMBER}; letter-spacing: 1px;"
             )
             ui.label(f"Turn: {turn_id[:12]}...").style(
                 f"font-size: 9px; font-family: {F_MONO}; color: {C_INK60}; margin-left: 8px;"
             )
             ui.space()
-            ui.button(icon="close", on_click=self.close).props(
-                "dense flat size=xs"
-            ).style(f"color: {C_INK60};")
+            ui.button(icon="close", on_click=self.close).props("dense flat size=xs").style(f"color: {C_INK60};")
 
         # Mode selector row
-        with ui.row().classes("w-full items-center").style(
-            f"padding: 8px 16px; border-bottom: 1px solid {C_INK40};"
-        ):
-            ui.label("Mode:").style(
-                f"font-size: 10px; color: {C_CREAM}; font-family: {F_MONO};"
-            )
-            mode_select = ui.select(
-                options=list(BEAST_MODES.keys()),
-                value=self._current_mode,
-                on_change=self._on_mode_change,
-            ).props("dense outlined size=sm").style(
-                f"margin-left: 8px; font-size: 10px; font-family: {F_MONO};"
+        with ui.row().classes("w-full items-center").style(f"padding: 8px 16px; border-bottom: 1px solid {C_INK40};"):
+            ui.label("Mode:").style(f"font-size: 10px; color: {C_CREAM}; font-family: {F_MONO};")
+            mode_select = (
+                ui.select(
+                    options=list(BEAST_MODES.keys()),
+                    value=self._current_mode,
+                    on_change=self._on_mode_change,
+                )
+                .props("dense outlined size=sm")
+                .style(f"margin-left: 8px; font-size: 10px; font-family: {F_MONO};")
             )
             self._mode_select = mode_select
 
@@ -184,16 +176,15 @@ class BeastPanel:
     async def _refresh_for_mode(self, mode: str) -> None:
         """Re-render the panel for a specific mode by fetching fresh data."""
         self.close()
-        with ui.right_drawer(bordered=True).classes(
-            f"bg-{C_GROUND}"
-        ).style(
-            f"width: 420px; background: {C_GROUND}; border-left: 1px solid {C_INK40};"
-        ) as drawer:
+        with (
+            ui.right_drawer(bordered=True)
+            .classes(f"bg-{C_GROUND}")
+            .style(f"width: 420px; background: {C_GROUND}; border-left: 1px solid {C_INK40};") as drawer
+        ):
             self._drawer = drawer
             self._render_header(self._current_turn_id)
             loading_label = ui.label("Loading commentary...").style(
-                f"font-size: 11px; color: {C_INK60}; font-family: {F_MONO}; "
-                f"padding: 16px;"
+                f"font-size: 11px; color: {C_INK60}; font-family: {F_MONO}; padding: 16px;"
             )
 
         await self._fetch_and_render(mode, loading_label)
@@ -202,9 +193,7 @@ class BeastPanel:
         """Fetch commentary for a mode and render the appropriate state."""
         # Fetch existing commentary for this turn + mode
         try:
-            result = await self._api_client.get_beast_commentary(
-                self._current_turn_id, mode=mode
-            )
+            result = await self._api_client.get_beast_commentary(self._current_turn_id, mode=mode)
         except Exception as exc:
             log.error("beast_counsel_fetch_failed: %s", exc)
             result = {"status": "error", "error": str(exc), "mode": mode}
@@ -220,10 +209,15 @@ class BeastPanel:
                 self._render_commentary(result)
             elif result.get("status") == "not_available":
                 self._render_no_commentary(
-                    self._current_turn_id, self._session_id, self._api_client,
-                    mode=mode, question_text=self._question_text,
-                    answer_text=self._answer_text, sources=self._sources,
-                    trace_available=self._trace_available, lexical_only=self._lexical_only,
+                    self._current_turn_id,
+                    self._session_id,
+                    self._api_client,
+                    mode=mode,
+                    question_text=self._question_text,
+                    answer_text=self._answer_text,
+                    sources=self._sources,
+                    trace_available=self._trace_available,
+                    lexical_only=self._lexical_only,
                     vector_contributed=self._vector_contributed,
                 )
             elif result.get("status") == "not_wired":
@@ -248,9 +242,7 @@ class BeastPanel:
         created_at = data.get("created_at", "")
 
         # Mode badge
-        with ui.row().classes("w-full items-center").style(
-            f"padding: 8px 16px;"
-        ):
+        with ui.row().classes("w-full items-center").style(f"padding: 8px 16px;"):
             ui.label(f"Mode: {mode.upper()}").style(
                 f"font-size: 10px; font-weight: 700; font-family: {F_MONO}; "
                 f"color: {C_OK_FG}; letter-spacing: 0.5px; "
@@ -287,9 +279,7 @@ class BeastPanel:
         if actions:
             self._render_section_label("Suggested Actions")
             for act in actions:
-                with ui.row().classes("w-full").style(
-                    f"padding: 4px 16px;"
-                ):
+                with ui.row().classes("w-full").style(f"padding: 4px 16px;"):
                     action_text = act.get("action", "")
                     target = act.get("target", "")
                     if target:
@@ -298,12 +288,9 @@ class BeastPanel:
                         f"font-size: 11px; color: {C_CREAM}; font-family: {F_SANS}; "
                         f"max-width: 300px; word-wrap: break-word;"
                     )
-                with ui.row().classes("w-full").style(
-                    f"padding: 0 16px 4px 16px;"
-                ):
+                with ui.row().classes("w-full").style(f"padding: 0 16px 4px 16px;"):
                     ui.label("advisory only — requires DEFINER approval").style(
-                        f"font-size: 8px; color: {C_WARN_FG}; font-family: {F_MONO}; "
-                        f"font-style: italic;"
+                        f"font-size: 8px; color: {C_WARN_FG}; font-family: {F_MONO}; font-style: italic;"
                     )
 
         # Suggested wiki links
@@ -311,21 +298,20 @@ class BeastPanel:
             self._render_section_label("Suggested Wiki Links")
             for link in wiki_links:
                 with ui.row().classes("w-full").style(f"padding: 2px 16px;"):
-                    ui.label(f"  {link}").style(
-                        f"font-size: 10px; color: {C_AMBER}; font-family: {F_MONO};"
-                    )
+                    ui.label(f"  {link}").style(f"font-size: 10px; color: {C_AMBER}; font-family: {F_MONO};")
 
         # Suggested artifacts
         if artifacts:
             self._render_section_label("Suggested Artifacts")
             for art in artifacts:
                 with ui.row().classes("w-full").style(f"padding: 2px 16px;"):
-                    ui.label(f"  {art}").style(
-                        f"font-size: 10px; color: {C_AMBER}; font-family: {F_MONO};"
-                    )
+                    ui.label(f"  {art}").style(f"font-size: 10px; color: {C_AMBER}; font-family: {F_MONO};")
 
     def _render_no_commentary(
-        self, turn_id: str, session_id: str, api_client: Any,
+        self,
+        turn_id: str,
+        session_id: str,
+        api_client: Any,
         **kwargs: Any,
     ) -> None:
         """Render the 'no commentary yet for this mode' state with a Run button."""
@@ -335,8 +321,7 @@ class BeastPanel:
                 f"font-size: 12px; color: {C_INK60}; font-family: {F_SANS};"
             )
             ui.label("Run Beast Counsel to generate advisory commentary.").style(
-                f"font-size: 11px; color: {C_INK60}; font-family: {F_SANS}; "
-                f"margin-top: 4px;"
+                f"font-size: 11px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;"
             )
 
             # Run button — uses the currently selected mode
@@ -347,12 +332,11 @@ class BeastPanel:
                 )
                 # Re-render with result
                 self.close()
-                with ui.right_drawer(bordered=True).classes(
-                    f"bg-{C_GROUND}"
-                ).style(
-                    f"width: 420px; background: {C_GROUND}; "
-                    f"border-left: 1px solid {C_INK40};"
-                ) as drawer:
+                with (
+                    ui.right_drawer(bordered=True)
+                    .classes(f"bg-{C_GROUND}")
+                    .style(f"width: 420px; background: {C_GROUND}; border-left: 1px solid {C_INK40};") as drawer
+                ):
                     self._drawer = drawer
                     self._render_header(turn_id)
 
@@ -365,9 +349,7 @@ class BeastPanel:
                     else:
                         self._render_error(result)
 
-            ui.button(f"Run Beast Counsel ({mode})", on_click=_run_counsel).props(
-                "dense unelevated size=sm"
-            ).style(
+            ui.button(f"Run Beast Counsel ({mode})", on_click=_run_counsel).props("dense unelevated size=sm").style(
                 f"margin-top: 12px; color: {C_CREAM}; background: {C_AMBER}; "
                 f"font-size: 10px; font-family: {F_MONO}; font-weight: 600;"
             )
@@ -382,9 +364,7 @@ class BeastPanel:
             ui.label(
                 "Beast commentary requires a configured model provider. "
                 "No model is currently available for the Beast slot."
-            ).style(
-                f"font-size: 11px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;"
-            )
+            ).style(f"font-size: 11px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;")
 
     def _render_unavailable(self, data: dict[str, Any]) -> None:
         """Render the 'unavailable' state — persistence or backend not available."""
@@ -398,20 +378,16 @@ class BeastPanel:
 
         with ui.column().classes("w-full").style(f"padding: 16px;"):
             ui.label("BEAST UNAVAILABLE").style(
-                f"font-size: 12px; font-weight: 700; font-family: {F_MONO}; "
-                f"color: {C_WARN_FG}; letter-spacing: 0.5px;"
+                f"font-size: 12px; font-weight: 700; font-family: {F_MONO}; color: {C_WARN_FG}; letter-spacing: 0.5px;"
             )
-            ui.label(msg).style(
-                f"font-size: 11px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;"
-            )
+            ui.label(msg).style(f"font-size: 11px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;")
 
     def _render_error(self, data: dict[str, Any]) -> None:
         """Render the 'error' state — generation or retrieval failed."""
         error_msg = data.get("error", "Unknown error")
         with ui.column().classes("w-full").style(f"padding: 16px;"):
             ui.label("BEAST ERROR").style(
-                f"font-size: 12px; font-weight: 700; font-family: {F_MONO}; "
-                f"color: {C_ERR_FG}; letter-spacing: 0.5px;"
+                f"font-size: 12px; font-weight: 700; font-family: {F_MONO}; color: {C_ERR_FG}; letter-spacing: 0.5px;"
             )
             ui.label(f"Commentary generation failed: {error_msg}").style(
                 f"font-size: 11px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;"
@@ -428,12 +404,9 @@ class BeastPanel:
 
     def _render_section_label(self, text: str) -> None:
         """Render a section label."""
-        with ui.row().classes("w-full").style(
-            f"padding: 8px 16px 2px 16px; margin-top: 4px;"
-        ):
+        with ui.row().classes("w-full").style(f"padding: 8px 16px 2px 16px; margin-top: 4px;"):
             ui.label(text.upper()).style(
-                f"font-size: 9px; font-weight: 700; font-family: {F_MONO}; "
-                f"color: {C_INK60}; letter-spacing: 0.5px;"
+                f"font-size: 9px; font-weight: 700; font-family: {F_MONO}; color: {C_INK60}; letter-spacing: 0.5px;"
             )
 
     def close(self) -> None:

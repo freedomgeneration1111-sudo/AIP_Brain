@@ -88,24 +88,26 @@ class FakeSexton:
                 # Alert on batch size reduction
                 if self._alert_manager is not None:
                     try:
-                        self._alert_manager.send_alert(Alert(
-                            alert_type="batch_reduction",
-                            severity="warning",
-                            subject="graph_extraction_batch_size",
-                            message=(
-                                f"Graph extraction batch size reduced from {old_size} to {new_size} "
-                                f"due to high parse failure rate ({failure_rate:.1%} over last "
-                                f"{len(recent)} batches). Operators should investigate LLM parse errors."
-                            ),
-                            data={
-                                "old_batch_size": old_size,
-                                "new_batch_size": new_size,
-                                "failure_rate": round(failure_rate, 3),
-                                "window_size": len(recent),
-                                "min_batch_size": min_size,
-                                "max_batch_size": max_size,
-                            },
-                        ))
+                        self._alert_manager.send_alert(
+                            Alert(
+                                alert_type="batch_reduction",
+                                severity="warning",
+                                subject="graph_extraction_batch_size",
+                                message=(
+                                    f"Graph extraction batch size reduced from {old_size} to {new_size} "
+                                    f"due to high parse failure rate ({failure_rate:.1%} over last "
+                                    f"{len(recent)} batches). Operators should investigate LLM parse errors."
+                                ),
+                                data={
+                                    "old_batch_size": old_size,
+                                    "new_batch_size": new_size,
+                                    "failure_rate": round(failure_rate, 3),
+                                    "window_size": len(recent),
+                                    "min_batch_size": min_size,
+                                    "max_batch_size": max_size,
+                                },
+                            )
+                        )
                     except Exception:
                         pass
 
@@ -129,11 +131,13 @@ class TestSextonBatchReductionAlert:
 
     def test_batch_reduction_automatically_sends_alert(self):
         """When batch size is reduced, an alert is automatically dispatched via AlertManager."""
-        alert_mgr = AlertManager(AlertConfig(
-            enabled=True,
-            alert_on_batch_reduction=True,
-            min_alert_interval_seconds=0,
-        ))
+        alert_mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                alert_on_batch_reduction=True,
+                min_alert_interval_seconds=0,
+            )
+        )
         sexton = FakeSexton(alert_manager=alert_mgr)
 
         # Record failures to trigger batch reduction (>30% failure rate)
@@ -145,10 +149,7 @@ class TestSextonBatchReductionAlert:
         assert result["new_batch_size"] == 3
 
         # Verify alert was dispatched
-        batch_alerts = [
-            a for a in alert_mgr.lifecycle_mgr._alert_history
-            if a["alert_type"] == "batch_reduction"
-        ]
+        batch_alerts = [a for a in alert_mgr.lifecycle_mgr._alert_history if a["alert_type"] == "batch_reduction"]
         assert len(batch_alerts) == 1
         assert batch_alerts[0]["data"]["old_batch_size"] == 4
         assert batch_alerts[0]["data"]["new_batch_size"] == 3
@@ -156,20 +157,19 @@ class TestSextonBatchReductionAlert:
 
     def test_batch_reduction_alert_includes_useful_context(self):
         """Batch reduction alert includes previous size, new size, and failure rate."""
-        alert_mgr = AlertManager(AlertConfig(
-            enabled=True,
-            alert_on_batch_reduction=True,
-            min_alert_interval_seconds=0,
-        ))
+        alert_mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                alert_on_batch_reduction=True,
+                min_alert_interval_seconds=0,
+            )
+        )
         sexton = FakeSexton(alert_manager=alert_mgr)
         sexton._batch_parse_results = [False, False, True, True, True]  # 40% failure
 
         sexton._auto_tune_batch_size()
 
-        batch_alerts = [
-            a for a in alert_mgr.lifecycle_mgr._alert_history
-            if a["alert_type"] == "batch_reduction"
-        ]
+        batch_alerts = [a for a in alert_mgr.lifecycle_mgr._alert_history if a["alert_type"] == "batch_reduction"]
         assert len(batch_alerts) == 1
         alert_data = batch_alerts[0]["data"]
         assert "old_batch_size" in alert_data
@@ -182,21 +182,20 @@ class TestSextonBatchReductionAlert:
 
     def test_no_alert_when_batch_size_stays_same(self):
         """No batch_reduction alert is sent when failure rate doesn't trigger reduction."""
-        alert_mgr = AlertManager(AlertConfig(
-            enabled=True,
-            alert_on_batch_reduction=True,
-            min_alert_interval_seconds=0,
-        ))
+        alert_mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                alert_on_batch_reduction=True,
+                min_alert_interval_seconds=0,
+            )
+        )
         sexton = FakeSexton(alert_manager=alert_mgr)
         sexton._batch_parse_results = [True, True, True, True, True]  # 0% failure
 
         result = sexton._auto_tune_batch_size()
         assert result["action"] in ("none", "increased")
 
-        batch_alerts = [
-            a for a in alert_mgr.lifecycle_mgr._alert_history
-            if a["alert_type"] == "batch_reduction"
-        ]
+        batch_alerts = [a for a in alert_mgr.lifecycle_mgr._alert_history if a["alert_type"] == "batch_reduction"]
         assert len(batch_alerts) == 0
 
     def test_alert_manager_history_method_filters_by_type(self):
@@ -263,17 +262,21 @@ class TestAlertingEndpoint:
         """The alerts endpoint returns alert history from the AlertManager."""
         from aip.adapter.api.routes.vigil_quality import vigil_alerts
 
-        alert_mgr = AlertManager(AlertConfig(
-            enabled=True,
-            alert_on_batch_reduction=True,
-            min_alert_interval_seconds=0,
-        ))
-        alert_mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="test_batch",
-            message="Batch reduced from 4 to 3",
-        ))
+        alert_mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                alert_on_batch_reduction=True,
+                min_alert_interval_seconds=0,
+            )
+        )
+        alert_mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="test_batch",
+                message="Batch reduced from 4 to 3",
+            )
+        )
 
         container = MagicMock()
         container._alert_manager = alert_mgr
@@ -317,12 +320,14 @@ class TestAlertingEndpoint:
         """The alerts endpoint includes alerting configuration status."""
         from aip.adapter.api.routes.vigil_quality import vigil_alerts
 
-        alert_mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://hooks.example.com/test",
-            alert_on_quality_degradation=True,
-            min_alert_interval_seconds=0,
-        ))
+        alert_mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://hooks.example.com/test",
+                alert_on_quality_degradation=True,
+                min_alert_interval_seconds=0,
+            )
+        )
 
         container = MagicMock()
         container._alert_manager = alert_mgr
@@ -366,14 +371,16 @@ class TestRetentionAdminAPI:
                 rollup_age_days=7,
             )
             store.initialize()
-            store.record_cycle({
-                "timestamp": "2025-06-01T00:00:00Z",
-                "avg_citation_rate": 0.85,
-                "avg_grounding_rate": 0.90,
-                "avg_llm_faithfulness": 0.88,
-                "evaluated_count": 15,
-                "flagged_count": 2,
-            })
+            store.record_cycle(
+                {
+                    "timestamp": "2025-06-01T00:00:00Z",
+                    "avg_citation_rate": 0.85,
+                    "avg_grounding_rate": 0.90,
+                    "avg_llm_faithfulness": 0.88,
+                    "evaluated_count": 15,
+                    "flagged_count": 2,
+                }
+            )
 
             container = MagicMock()
             container._vigil_quality_store = store
@@ -409,14 +416,16 @@ class TestRetentionAdminAPI:
 
             # Insert records
             for i in range(3):
-                store.record_cycle({
-                    "timestamp": f"2025-01-10T{10+i:02d}:00:00Z",
-                    "avg_citation_rate": 0.85,
-                    "avg_grounding_rate": 0.90,
-                    "avg_llm_faithfulness": 0.88,
-                    "evaluated_count": 15,
-                    "flagged_count": 2,
-                })
+                store.record_cycle(
+                    {
+                        "timestamp": f"2025-01-10T{10 + i:02d}:00:00Z",
+                        "avg_citation_rate": 0.85,
+                        "avg_grounding_rate": 0.90,
+                        "avg_llm_faithfulness": 0.88,
+                        "evaluated_count": 15,
+                        "flagged_count": 2,
+                    }
+                )
 
             container = MagicMock()
             container._vigil_quality_store = store
@@ -462,14 +471,16 @@ class TestRetentionAdminAPI:
 
             # Insert records and run daily rollup
             for i in range(3):
-                store.record_cycle({
-                    "timestamp": f"2025-01-10T{10+i:02d}:00:00Z",
-                    "avg_citation_rate": 0.85,
-                    "avg_grounding_rate": 0.90,
-                    "avg_llm_faithfulness": 0.88,
-                    "evaluated_count": 15,
-                    "flagged_count": 2,
-                })
+                store.record_cycle(
+                    {
+                        "timestamp": f"2025-01-10T{10 + i:02d}:00:00Z",
+                        "avg_citation_rate": 0.85,
+                        "avg_grounding_rate": 0.90,
+                        "avg_llm_faithfulness": 0.88,
+                        "evaluated_count": 15,
+                        "flagged_count": 2,
+                    }
+                )
             store.run_rollup()
 
             container = MagicMock()
@@ -509,26 +520,30 @@ class TestWeeklyRollup:
         # Insert records for 7 days (week 1)
         for day in range(1, 8):
             for hour in range(3):
-                store.record_cycle({
-                    "timestamp": f"2025-01-{day:02d}T{10+hour:02d}:00:00Z",
-                    "avg_citation_rate": 0.80 + day * 0.01,
-                    "avg_grounding_rate": 0.90,
-                    "avg_llm_faithfulness": 0.85,
-                    "evaluated_count": 10,
-                    "flagged_count": 1,
-                })
+                store.record_cycle(
+                    {
+                        "timestamp": f"2025-01-{day:02d}T{10 + hour:02d}:00:00Z",
+                        "avg_citation_rate": 0.80 + day * 0.01,
+                        "avg_grounding_rate": 0.90,
+                        "avg_llm_faithfulness": 0.85,
+                        "evaluated_count": 10,
+                        "flagged_count": 1,
+                    }
+                )
 
         # Insert records for 5 days (week 2)
         for day in range(8, 13):
             for hour in range(2):
-                store.record_cycle({
-                    "timestamp": f"2025-01-{day:02d}T{10+hour:02d}:00:00Z",
-                    "avg_citation_rate": 0.85,
-                    "avg_grounding_rate": 0.92,
-                    "avg_llm_faithfulness": 0.88,
-                    "evaluated_count": 12,
-                    "flagged_count": 1,
-                })
+                store.record_cycle(
+                    {
+                        "timestamp": f"2025-01-{day:02d}T{10 + hour:02d}:00:00Z",
+                        "avg_citation_rate": 0.85,
+                        "avg_grounding_rate": 0.92,
+                        "avg_llm_faithfulness": 0.88,
+                        "evaluated_count": 12,
+                        "flagged_count": 1,
+                    }
+                )
 
         # Run daily rollup first
         daily_result = store.run_rollup()
@@ -552,14 +567,16 @@ class TestWeeklyRollup:
 
         # Insert records for a full week
         for day in range(6, 12):
-            store.record_cycle({
-                "timestamp": f"2025-01-{day:02d}T10:00:00Z",
-                "avg_citation_rate": 0.80 + (day - 6) * 0.02,
-                "avg_grounding_rate": 0.90,
-                "avg_llm_faithfulness": 0.85,
-                "evaluated_count": 10,
-                "flagged_count": 1,
-            })
+            store.record_cycle(
+                {
+                    "timestamp": f"2025-01-{day:02d}T10:00:00Z",
+                    "avg_citation_rate": 0.80 + (day - 6) * 0.02,
+                    "avg_grounding_rate": 0.90,
+                    "avg_llm_faithfulness": 0.85,
+                    "evaluated_count": 10,
+                    "flagged_count": 1,
+                }
+            )
 
         # Run daily rollup
         store.run_rollup()
@@ -585,14 +602,16 @@ class TestWeeklyRollup:
 
         # Insert and run daily rollup
         for i in range(3):
-            store.record_cycle({
-                "timestamp": f"2025-01-{10+i:02d}T10:00:00Z",
-                "avg_citation_rate": 0.85,
-                "avg_grounding_rate": 0.90,
-                "avg_llm_faithfulness": 0.88,
-                "evaluated_count": 15,
-                "flagged_count": 2,
-            })
+            store.record_cycle(
+                {
+                    "timestamp": f"2025-01-{10 + i:02d}T10:00:00Z",
+                    "avg_citation_rate": 0.85,
+                    "avg_grounding_rate": 0.90,
+                    "avg_llm_faithfulness": 0.88,
+                    "evaluated_count": 15,
+                    "flagged_count": 2,
+                }
+            )
         store.run_rollup()
 
         # Weekly rollup with very high age threshold should find nothing
@@ -609,14 +628,16 @@ class TestWeeklyRollup:
 
         # Insert records and run daily rollup
         for i in range(3):
-            store.record_cycle({
-                "timestamp": f"2025-01-10T{10+i:02d}:00:00Z",
-                "avg_citation_rate": 0.85,
-                "avg_grounding_rate": 0.90,
-                "avg_llm_faithfulness": 0.88,
-                "evaluated_count": 15,
-                "flagged_count": 2,
-            })
+            store.record_cycle(
+                {
+                    "timestamp": f"2025-01-10T{10 + i:02d}:00:00Z",
+                    "avg_citation_rate": 0.85,
+                    "avg_grounding_rate": 0.90,
+                    "avg_llm_faithfulness": 0.88,
+                    "evaluated_count": 15,
+                    "flagged_count": 2,
+                }
+            )
         store.run_rollup()
 
         stats = store.get_rollup_stats()
@@ -692,40 +713,39 @@ class TestLifespanSmokeTest:
 
                 # Verify Sprint 5.27/5.28 operational components
                 # VigilQualityStore
-                assert container._vigil_quality_store is not None, \
-                    "VigilQualityStore should be initialized"
-                assert container._vigil_quality_store._weekly_rollup_age_weeks == 4, \
+                assert container._vigil_quality_store is not None, "VigilQualityStore should be initialized"
+                assert container._vigil_quality_store._weekly_rollup_age_weeks == 4, (
                     "VigilQualityStore should use configured weekly_rollup_age_weeks"
+                )
 
                 # AlertManager
-                assert container._alert_manager is not None, \
-                    "AlertManager should be initialized"
-                assert container._alert_manager._config.enabled is False, \
+                assert container._alert_manager is not None, "AlertManager should be initialized"
+                assert container._alert_manager._config.enabled is False, (
                     "AlertManager should be disabled in test config"
+                )
 
                 # ReadPoolAutoSizer
-                assert container._read_pool_auto_sizer is not None, \
-                    "ReadPoolAutoSizer should be initialized"
+                assert container._read_pool_auto_sizer is not None, "ReadPoolAutoSizer should be initialized"
 
                 # AutoTuningPolicy
-                assert container._auto_tuning_policy is not None, \
-                    "AutoTuningPolicy should be initialized"
+                assert container._auto_tuning_policy is not None, "AutoTuningPolicy should be initialized"
 
                 # Verify cross-wiring: AlertManager wired into Sexton
                 if container.sexton_actor is not None:
-                    assert container.sexton_actor._alert_manager is not None or \
-                        getattr(container.sexton_actor, '_alert_manager', None) is not None, \
-                        "AlertManager should be wired into Sexton actor"
+                    assert (
+                        container.sexton_actor._alert_manager is not None
+                        or getattr(container.sexton_actor, "_alert_manager", None) is not None
+                    ), "AlertManager should be wired into Sexton actor"
 
                 # Verify cross-wiring: AlertManager wired into ReadPoolAutoSizer
                 if container._read_pool_auto_sizer is not None and container._alert_manager is not None:
-                    assert container._read_pool_auto_sizer._alert_manager is not None, \
+                    assert container._read_pool_auto_sizer._alert_manager is not None, (
                         "AlertManager should be wired into ReadPoolAutoSizer"
+                    )
 
                 # Verify cross-wiring: AlertManager wired into Vigil
                 if container.vigil is not None and container._alert_manager is not None:
-                    assert container.vigil._alert_manager is not None, \
-                        "AlertManager should be wired into Vigil actor"
+                    assert container.vigil._alert_manager is not None, "AlertManager should be wired into Vigil actor"
 
                 # Verify required components are initialized
                 assert container.entity_store is not None, "Entity store should be initialized"
@@ -757,10 +777,12 @@ class TestLifespanSmokeTest:
                 container = app.state.container
                 # VigilQualityStore should have weekly_rollup_age_weeks configured
                 if container._vigil_quality_store is not None:
-                    assert hasattr(container._vigil_quality_store, 'run_weekly_rollup'), \
+                    assert hasattr(container._vigil_quality_store, "run_weekly_rollup"), (
                         "VigilQualityStore should have run_weekly_rollup method"
-                    assert hasattr(container._vigil_quality_store, 'get_rollup_stats'), \
+                    )
+                    assert hasattr(container._vigil_quality_store, "get_rollup_stats"), (
                         "VigilQualityStore should have get_rollup_stats method"
+                    )
                     assert container._vigil_quality_store._weekly_rollup_age_weeks == 4
 
 
@@ -795,7 +817,9 @@ class TestAlertManagerGetAlertHistory:
         mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
 
         for i in range(5):
-            mgr.send_alert(Alert(alert_type="quality_degradation", severity="warning", subject="test", message=f"alert_{i}"))
+            mgr.send_alert(
+                Alert(alert_type="quality_degradation", severity="warning", subject="test", message=f"alert_{i}")
+            )
 
         result = mgr.get_alert_history(limit=3)
         assert len(result) == 3

@@ -122,23 +122,19 @@ class AutoTuningPolicy:
         # Read pool policy validation
         if not (0.1 <= self.read_pool_exhaustion_threshold <= 0.9):
             errors.append(
-                f"read_pool_exhaustion_threshold={self.read_pool_exhaustion_threshold} "
-                f"must be between 0.1 and 0.9"
+                f"read_pool_exhaustion_threshold={self.read_pool_exhaustion_threshold} must be between 0.1 and 0.9"
             )
         if not (2 <= self.read_pool_auto_apply_consecutive <= 20):
             errors.append(
-                f"read_pool_auto_apply_consecutive={self.read_pool_auto_apply_consecutive} "
-                f"must be between 2 and 20"
+                f"read_pool_auto_apply_consecutive={self.read_pool_auto_apply_consecutive} must be between 2 and 20"
             )
         if not (1 <= self.read_pool_auto_apply_max_increase <= 10):
             errors.append(
-                f"read_pool_auto_apply_max_increase={self.read_pool_auto_apply_max_increase} "
-                f"must be between 1 and 10"
+                f"read_pool_auto_apply_max_increase={self.read_pool_auto_apply_max_increase} must be between 1 and 10"
             )
         if not (3 <= self.read_pool_auto_apply_max_pool <= 20):
             errors.append(
-                f"read_pool_auto_apply_max_pool={self.read_pool_auto_apply_max_pool} "
-                f"must be between 3 and 20"
+                f"read_pool_auto_apply_max_pool={self.read_pool_auto_apply_max_pool} must be between 3 and 20"
             )
         if not (2 <= self.read_pool_auto_rollback_consecutive <= 20):
             errors.append(
@@ -147,8 +143,7 @@ class AutoTuningPolicy:
             )
         if not (0.01 <= self.read_pool_auto_rollback_healthy <= 0.5):
             errors.append(
-                f"read_pool_auto_rollback_healthy={self.read_pool_auto_rollback_healthy} "
-                f"must be between 0.01 and 0.5"
+                f"read_pool_auto_rollback_healthy={self.read_pool_auto_rollback_healthy} must be between 0.01 and 0.5"
             )
 
         # Cross-field validation: rollback healthy must be less than exhaustion threshold
@@ -162,13 +157,11 @@ class AutoTuningPolicy:
         # Graph batch policy validation
         if not (0.1 <= self.graph_batch_decrease_threshold <= 0.8):
             errors.append(
-                f"graph_batch_decrease_threshold={self.graph_batch_decrease_threshold} "
-                f"must be between 0.1 and 0.8"
+                f"graph_batch_decrease_threshold={self.graph_batch_decrease_threshold} must be between 0.1 and 0.8"
             )
         if not (0.0 <= self.graph_batch_increase_threshold <= 0.5):
             errors.append(
-                f"graph_batch_increase_threshold={self.graph_batch_increase_threshold} "
-                f"must be between 0.0 and 0.5"
+                f"graph_batch_increase_threshold={self.graph_batch_increase_threshold} must be between 0.0 and 0.5"
             )
         if self.graph_batch_increase_threshold >= self.graph_batch_decrease_threshold:
             errors.append(
@@ -177,20 +170,11 @@ class AutoTuningPolicy:
                 f"({self.graph_batch_decrease_threshold})"
             )
         if not (2 <= self.graph_batch_auto_tune_window <= 20):
-            errors.append(
-                f"graph_batch_auto_tune_window={self.graph_batch_auto_tune_window} "
-                f"must be between 2 and 20"
-            )
+            errors.append(f"graph_batch_auto_tune_window={self.graph_batch_auto_tune_window} must be between 2 and 20")
         if not (1 <= self.graph_batch_min_size <= 4):
-            errors.append(
-                f"graph_batch_min_size={self.graph_batch_min_size} "
-                f"must be between 1 and 4"
-            )
+            errors.append(f"graph_batch_min_size={self.graph_batch_min_size} must be between 1 and 4")
         if not (2 <= self.graph_batch_max_size <= 16):
-            errors.append(
-                f"graph_batch_max_size={self.graph_batch_max_size} "
-                f"must be between 2 and 16"
-            )
+            errors.append(f"graph_batch_max_size={self.graph_batch_max_size} must be between 2 and 16")
         if self.graph_batch_min_size >= self.graph_batch_max_size:
             errors.append(
                 f"graph_batch_min_size ({self.graph_batch_min_size}) "
@@ -199,10 +183,7 @@ class AutoTuningPolicy:
 
         # General policy validation
         if not (0 <= self.cooldown_seconds <= 3600):
-            errors.append(
-                f"cooldown_seconds={self.cooldown_seconds} "
-                f"must be between 0 and 3600"
-            )
+            errors.append(f"cooldown_seconds={self.cooldown_seconds} must be between 0 and 3600")
 
         self._validation_errors = errors
         return errors

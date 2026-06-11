@@ -148,12 +148,14 @@ class TestWebSocketHeartbeat:
     def test_dashboard_html_has_heartbeat_pong(self):
         """Dashboard HTML includes heartbeat_pong response handler."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "heartbeat_pong" in _DASHBOARD_HTML
         assert "heartbeat_ping" in _DASHBOARD_HTML
 
     def test_dashboard_html_has_heartbeat_variables(self):
         """Dashboard HTML includes heartbeat tracking variables."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "wsLastHeartbeatSent" in _DASHBOARD_HTML
         assert "wsLastHeartbeatReceived" in _DASHBOARD_HTML
 
@@ -168,10 +170,12 @@ class TestAlertGroupMergeSplit:
 
     def test_merge_two_groups(self):
         """merge_alert_groups() moves CIDs from source to target."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+            )
+        )
 
         # Create two groups manually
         mgr._alert_groups["group_a"] = ["cid-1", "cid-2"]
@@ -198,10 +202,12 @@ class TestAlertGroupMergeSplit:
 
     def test_merge_creates_new_target(self):
         """merge_alert_groups() creates target group if it doesn't exist."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+            )
+        )
 
         mgr._alert_groups["source"] = ["cid-1"]
         mgr._alert_groups_metadata["source"] = time.time()
@@ -298,21 +304,31 @@ class TestAlertGroupMergeSplit:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-            ))
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                )
+            )
             mgr.attach_history_store(store)
 
             # Create groups with alerts
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction", severity="warning",
-                subject="merge_src", message="Source alert",
-            ))
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction", severity="warning",
-                subject="merge_tgt", message="Target alert",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="merge_src",
+                    message="Source alert",
+                )
+            )
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="merge_tgt",
+                    message="Target alert",
+                )
+            )
 
             # Verify groups exist in store
             groups_before = store.get_alert_groups()
@@ -331,18 +347,21 @@ class TestAlertGroupMergeSplit:
     def test_merge_endpoint_exists(self):
         """POST /vigil/quality/alerts/groups/merge endpoint exists."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/alerts/groups/merge" in route_paths
 
     def test_split_endpoint_exists(self):
         """POST /vigil/quality/alerts/groups/split endpoint exists."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/alerts/groups/split" in route_paths
 
     def test_dashboard_html_has_merge_split_controls(self):
         """Dashboard HTML includes merge/split UI controls."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "wsMergeGroups" in _DASHBOARD_HTML
         assert "wsSplitGroup" in _DASHBOARD_HTML
         assert "merge_groups" in _DASHBOARD_HTML
@@ -401,18 +420,21 @@ class TestDashboardStatePersistence:
     def test_dashboard_html_has_save_state_function(self):
         """Dashboard HTML includes saveDashboardState function."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "saveDashboardState" in _DASHBOARD_HTML
         assert "localStorage.setItem('aip_dashboard_state'" in _DASHBOARD_HTML
 
     def test_dashboard_html_has_restore_state_function(self):
         """Dashboard HTML includes restoreDashboardState function."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "restoreDashboardState" in _DASHBOARD_HTML
         assert "localStorage.getItem('aip_dashboard_state')" in _DASHBOARD_HTML
 
     def test_dashboard_html_saves_filter_state(self):
         """Dashboard HTML saves filter controls to localStorage."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "tog_citation" in _DASHBOARD_HTML
         assert "tog_grounding" in _DASHBOARD_HTML
         assert "tog_faithfulness" in _DASHBOARD_HTML
@@ -423,31 +445,37 @@ class TestDashboardStatePersistence:
     def test_dashboard_html_saves_panel_state(self):
         """Dashboard HTML saves panel collapsed state."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "causalCollapsed" in _DASHBOARD_HTML
 
     def test_dashboard_html_restores_on_load(self):
         """Dashboard HTML restores state on page load."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "restoreDashboardState()" in _DASHBOARD_HTML
 
     def test_dashboard_html_saves_periodically(self):
         """Dashboard HTML saves state periodically with setInterval."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "setInterval(saveDashboardState" in _DASHBOARD_HTML
 
     def test_dashboard_html_state_expiry(self):
         """Dashboard HTML expires old state after 24 hours."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "86400000" in _DASHBOARD_HTML  # 24 hours in ms
 
     def test_dashboard_html_saves_on_change(self):
         """Dashboard HTML saves state when filter controls change."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "addEventListener('change', saveDashboardState)" in _DASHBOARD_HTML
 
     def test_dashboard_html_does_not_restore_isLive(self):
         """Dashboard HTML does not restore isLive to prevent unexpected auto-refresh."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "Don't restore isLive" in _DASHBOARD_HTML
 
 
@@ -477,10 +505,12 @@ class TestPruningScheduler:
 
     def test_start_prune_scheduler_success(self):
         """start_prune_scheduler() starts the scheduler thread."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            delivery_status_prune_interval_seconds=86400,  # Long interval so it doesn't run during test
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                delivery_status_prune_interval_seconds=86400,  # Long interval so it doesn't run during test
+            )
+        )
         result = mgr.start_prune_scheduler()
         assert result is True
         assert mgr.pruning_mgr._prune_scheduler_running is True
@@ -490,9 +520,11 @@ class TestPruningScheduler:
 
     def test_start_prune_scheduler_idempotent(self):
         """start_prune_scheduler() returns False if already running."""
-        mgr = AlertManager(AlertConfig(
-            delivery_status_prune_interval_seconds=86400,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                delivery_status_prune_interval_seconds=86400,
+            )
+        )
         mgr.start_prune_scheduler()
         result = mgr.start_prune_scheduler()
         assert result is False
@@ -501,20 +533,24 @@ class TestPruningScheduler:
 
     def test_stop_prune_scheduler(self):
         """stop_prune_scheduler() stops the scheduler."""
-        mgr = AlertManager(AlertConfig(
-            delivery_status_prune_interval_seconds=86400,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                delivery_status_prune_interval_seconds=86400,
+            )
+        )
         mgr.start_prune_scheduler()
         mgr.stop_prune_scheduler()
         assert mgr.pruning_mgr._prune_scheduler_running is False
 
     def test_get_prune_scheduler_status(self):
         """get_prune_scheduler_status() returns scheduler state."""
-        mgr = AlertManager(AlertConfig(
-            delivery_status_prune_interval_seconds=3600,
-            delivery_status_max_age_days=14,
-            delivery_status_max_rows=1000,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                delivery_status_prune_interval_seconds=3600,
+                delivery_status_max_age_days=14,
+                delivery_status_max_rows=1000,
+            )
+        )
         status = mgr.get_prune_scheduler_status()
 
         assert "running" in status
@@ -534,12 +570,14 @@ class TestPruningScheduler:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                delivery_status_max_age_days=30,
-                delivery_status_max_rows=2000,
-            ))
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    delivery_status_max_age_days=30,
+                    delivery_status_max_rows=2000,
+                )
+            )
             mgr.attach_history_store(store)
 
             before = time.time()
@@ -562,25 +600,29 @@ class TestPruningScheduler:
     def test_scheduler_endpoint_exists(self):
         """GET /vigil/quality/alerts/delivery-status/prune/scheduler endpoint exists."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/alerts/delivery-status/prune/scheduler" in route_paths
 
     def test_scheduler_start_endpoint_exists(self):
         """POST /vigil/quality/alerts/delivery-status/prune/scheduler/start exists."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/alerts/delivery-status/prune/scheduler/start" in route_paths
 
     def test_scheduler_stop_endpoint_exists(self):
         """POST /vigil/quality/alerts/delivery-status/prune/scheduler/stop exists."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/alerts/delivery-status/prune/scheduler/stop" in route_paths
 
     def test_scheduler_config_endpoint_exists(self):
         """PATCH /vigil/quality/alerts/delivery-status/prune/scheduler/config exists."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/alerts/delivery-status/prune/scheduler/config" in route_paths
 
 
@@ -598,22 +640,32 @@ class TestCausalGroupingTimeWindow:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                causal_grouping_enabled=True,
-                causal_grouping_window_seconds=300,  # 5 minutes
-            ))
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    causal_grouping_enabled=True,
+                    causal_grouping_window_seconds=300,  # 5 minutes
+                )
+            )
             mgr.attach_history_store(store)
 
-            mgr.send_alert(Alert(
-                alert_type="pool_adjustment", severity="warning",
-                subject="window_test", message="First alert",
-            ))
-            mgr.send_alert(Alert(
-                alert_type="quality_degradation", severity="warning",
-                subject="window_test", message="Second alert",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="pool_adjustment",
+                    severity="warning",
+                    subject="window_test",
+                    message="First alert",
+                )
+            )
+            mgr.send_alert(
+                Alert(
+                    alert_type="quality_degradation",
+                    severity="warning",
+                    subject="window_test",
+                    message="Second alert",
+                )
+            )
 
             groups = mgr.get_alert_groups()
             causal_key = "causal:window_test"
@@ -626,29 +678,39 @@ class TestCausalGroupingTimeWindow:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                causal_grouping_enabled=True,
-                causal_grouping_window_seconds=300,  # 5 minutes
-            ))
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    causal_grouping_enabled=True,
+                    causal_grouping_window_seconds=300,  # 5 minutes
+                )
+            )
             mgr.attach_history_store(store)
 
             # Send first alert
-            mgr.send_alert(Alert(
-                alert_type="pool_adjustment", severity="warning",
-                subject="expire_test", message="First alert",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="pool_adjustment",
+                    severity="warning",
+                    subject="expire_test",
+                    message="First alert",
+                )
+            )
 
             # Manually expire the causal group
             causal_key = "causal:expire_test"
             mgr._alert_groups_metadata[causal_key] = time.time() - 600  # 10 minutes ago
 
             # Send another alert — should dissolve the old group and start fresh
-            mgr.send_alert(Alert(
-                alert_type="quality_degradation", severity="warning",
-                subject="expire_test", message="New alert after window",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="quality_degradation",
+                    severity="warning",
+                    subject="expire_test",
+                    message="New alert after window",
+                )
+            )
 
             groups = mgr.get_alert_groups()
             assert causal_key in groups
@@ -661,26 +723,36 @@ class TestCausalGroupingTimeWindow:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                causal_grouping_enabled=True,
-                causal_grouping_window_seconds=0,
-            ))
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    causal_grouping_enabled=True,
+                    causal_grouping_window_seconds=0,
+                )
+            )
             mgr.attach_history_store(store)
 
-            mgr.send_alert(Alert(
-                alert_type="pool_adjustment", severity="warning",
-                subject="zero_window", message="First",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="pool_adjustment",
+                    severity="warning",
+                    subject="zero_window",
+                    message="First",
+                )
+            )
 
             # With window=0, even a tiny delay means the next alert is "outside" the window
             # Actually with window=0, the group expires immediately
             # The second alert will dissolve and recreate
-            mgr.send_alert(Alert(
-                alert_type="quality_degradation", severity="warning",
-                subject="zero_window", message="Second",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="quality_degradation",
+                    severity="warning",
+                    subject="zero_window",
+                    message="Second",
+                )
+            )
 
             groups = mgr.get_alert_groups()
             causal_key = "causal:zero_window"
@@ -694,18 +766,24 @@ class TestCausalGroupingTimeWindow:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                causal_grouping_enabled=True,
-                causal_grouping_window_seconds=300,
-            ))
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    causal_grouping_enabled=True,
+                    causal_grouping_window_seconds=300,
+                )
+            )
             mgr.attach_history_store(store)
 
-            mgr.send_alert(Alert(
-                alert_type="pool_adjustment", severity="warning",
-                subject="persist_window", message="First",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="pool_adjustment",
+                    severity="warning",
+                    subject="persist_window",
+                    message="First",
+                )
+            )
 
             causal_key = "causal:persist_window"
             # Verify it was persisted
@@ -716,10 +794,14 @@ class TestCausalGroupingTimeWindow:
             mgr._alert_groups_metadata[causal_key] = time.time() - 600
 
             # Send another alert — triggers dissolution
-            mgr.send_alert(Alert(
-                alert_type="quality_degradation", severity="warning",
-                subject="persist_window", message="After window",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="quality_degradation",
+                    severity="warning",
+                    subject="persist_window",
+                    message="After window",
+                )
+            )
 
             # Old records should be deleted, new ones added
             groups_after = store.get_alert_groups()
@@ -733,27 +815,37 @@ class TestCausalGroupingTimeWindow:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                causal_grouping_enabled=False,  # Disabled
-                causal_grouping_window_seconds=1,  # Very short
-                alert_group_ttl_hours=0,  # Disable TTL so it doesn't clean up
-            ))
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    causal_grouping_enabled=False,  # Disabled
+                    causal_grouping_window_seconds=1,  # Very short
+                    alert_group_ttl_hours=0,  # Disable TTL so it doesn't clean up
+                )
+            )
             mgr.attach_history_store(store)
 
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction", severity="warning",
-                subject="regular_group", message="First",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="regular_group",
+                    message="First",
+                )
+            )
 
             # Wait for the window to pass
             time.sleep(0.1)
 
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction", severity="warning",
-                subject="regular_group", message="Second",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="regular_group",
+                    message="Second",
+                )
+            )
 
             groups = mgr.get_alert_groups()
             assert "regular_group" in groups

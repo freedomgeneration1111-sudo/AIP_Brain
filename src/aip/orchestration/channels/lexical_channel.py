@@ -29,15 +29,80 @@ def _sanitize_fts_query(query: str) -> str:
     """
     cleaned = re.sub(r'[?!.*+\-^(){}|~"\\]', " ", query)
     tokens = cleaned.split()
-    stop_words = {"a", "an", "the", "is", "are", "was", "were", "be", "been",
-                  "being", "have", "has", "had", "do", "does", "did", "will",
-                  "would", "could", "should", "may", "might", "shall", "can",
-                  "of", "in", "to", "for", "with", "on", "at", "by", "from",
-                  "it", "its", "we", "our", "you", "your", "this", "that",
-                  "what", "which", "who", "whom", "how", "when", "where", "why",
-                  "about", "there", "here", "these", "those", "been", "some",
-                  "very", "also", "just", "than", "then", "so", "if", "or",
-                  "not", "no", "but", "and", "up", "out", "into", "over"}
+    stop_words = {
+        "a",
+        "an",
+        "the",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "shall",
+        "can",
+        "of",
+        "in",
+        "to",
+        "for",
+        "with",
+        "on",
+        "at",
+        "by",
+        "from",
+        "it",
+        "its",
+        "we",
+        "our",
+        "you",
+        "your",
+        "this",
+        "that",
+        "what",
+        "which",
+        "who",
+        "whom",
+        "how",
+        "when",
+        "where",
+        "why",
+        "about",
+        "there",
+        "here",
+        "these",
+        "those",
+        "been",
+        "some",
+        "very",
+        "also",
+        "just",
+        "than",
+        "then",
+        "so",
+        "if",
+        "or",
+        "not",
+        "no",
+        "but",
+        "and",
+        "up",
+        "out",
+        "into",
+        "over",
+    }
     meaningful = [t for t in tokens if len(t) >= 2 and t.lower() not in stop_words]
 
     if not meaningful:
@@ -80,19 +145,23 @@ def register(
     async def _fts_retriever(query: str) -> list[RetrievalHit]:
         fts_query = _sanitize_fts_query(query)
         chunks = await lexical_store.search(
-            fts_query, domain=None, limit=30,
+            fts_query,
+            domain=None,
+            limit=30,
         )
         hits = []
         for i, chunk in enumerate(chunks):
-            hits.append(RetrievalHit(
-                id=chunk.id,
-                content=chunk.content or "",
-                score=chunk.score,
-                source_channel=CHANNEL_NAME,
-                domain=chunk.domain or "",
-                metadata=chunk.metadata or {},
-                rank_in_channel=i + 1,
-            ))
+            hits.append(
+                RetrievalHit(
+                    id=chunk.id,
+                    content=chunk.content or "",
+                    score=chunk.score,
+                    source_channel=CHANNEL_NAME,
+                    domain=chunk.domain or "",
+                    metadata=chunk.metadata or {},
+                    rank_in_channel=i + 1,
+                )
+            )
         return hits
 
     orchestrator.register_channel(

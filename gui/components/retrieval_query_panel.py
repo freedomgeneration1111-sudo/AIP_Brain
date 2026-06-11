@@ -62,42 +62,49 @@ class RetrievalQueryPanel:
 
     def render(self) -> None:
         """Render the query panel."""
-        with ui.card().classes("w-full p-4").style(
-            f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-            f"border-radius:{R_MD};"
+        with (
+            ui.card()
+            .classes("w-full p-4")
+            .style(f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; border-radius:{R_MD};")
         ):
             # Title
-            ui.label("Retrieval Test").style(
-                f"font-family:{F_SANS}; font-size:16px; font-weight:700; color:{C_CREAM};"
-            )
+            ui.label("Retrieval Test").style(f"font-family:{F_SANS}; font-size:16px; font-weight:700; color:{C_CREAM};")
             ui.label("Test retrieval quality independently of answer synthesis").style(
                 f"font-size:11px; color:{C_MUTED}; font-family:{F_SANS}; margin-bottom:8px;"
             )
 
             # Query input
             with ui.row().classes("w-full items-center gap-2"):
-                self._query_input = ui.input(
-                    placeholder="Enter a test query...",
-                ).classes("flex-1").style(
-                    f"font-family:{F_MONO}; font-size:13px; "
-                    f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
-                    f"border-radius:{R_SM};"
-                ).props('outlined dense')
+                self._query_input = (
+                    ui.input(
+                        placeholder="Enter a test query...",
+                    )
+                    .classes("flex-1")
+                    .style(
+                        f"font-family:{F_MONO}; font-size:13px; "
+                        f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
+                        f"border-radius:{R_SM};"
+                    )
+                    .props("outlined dense")
+                )
 
-                self._run_button = ui.button(
-                    "Run Test",
-                    on_click=self._handle_run,
-                ).style(
-                    f"font-family:{F_SANS}; font-weight:600; "
-                    f"background:{C_OK_FG}; color:white; "
-                    f"border-radius:{R_SM}; padding:6px 16px;"
-                ).props('unelevated')
+                self._run_button = (
+                    ui.button(
+                        "Run Test",
+                        on_click=self._handle_run,
+                    )
+                    .style(
+                        f"font-family:{F_SANS}; font-weight:600; "
+                        f"background:{C_OK_FG}; color:white; "
+                        f"border-radius:{R_SM}; padding:6px 16px;"
+                    )
+                    .props("unelevated")
+                )
 
             # Channel toggles
             with ui.row().classes("w-full mt-2 gap-2 flex-wrap items-center"):
                 ui.label("Channels:").style(
-                    f"font-size:11px; color:{C_MUTED}; font-family:{F_SANS}; "
-                    f"font-weight:600; margin-right:4px;"
+                    f"font-size:11px; color:{C_MUTED}; font-family:{F_SANS}; font-weight:600; margin-right:4px;"
                 )
                 for ch_key, ch_label, default in CHANNEL_DEFS:
                     toggle = ui.checkbox(ch_label, value=default).style(
@@ -109,14 +116,16 @@ class RetrievalQueryPanel:
             with ui.row().classes("w-full mt-2 gap-4 items-center"):
                 # Result limit
                 with ui.row().classes("items-center gap-1"):
-                    ui.label("Limit:").style(
-                        f"font-size:10px; color:{C_MUTED}; font-family:{F_SANS};"
+                    ui.label("Limit:").style(f"font-size:10px; color:{C_MUTED}; font-family:{F_SANS};")
+                    self._limit_input = (
+                        ui.number(value=20, min=1, max=100)
+                        .style(
+                            f"font-family:{F_MONO}; font-size:11px; width:60px; "
+                            f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
+                            f"border-radius:{R_SM};"
+                        )
+                        .props("outlined dense")
                     )
-                    self._limit_input = ui.number(value=20, min=1, max=100).style(
-                        f"font-family:{F_MONO}; font-size:11px; width:60px; "
-                        f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
-                        f"border-radius:{R_SM};"
-                    ).props('outlined dense')
 
                 # Include trace
                 self._trace_toggle = ui.checkbox("Include Trace", value=True).style(
@@ -125,8 +134,7 @@ class RetrievalQueryPanel:
 
                 # Warning banner
                 ui.label("No answer synthesis — retrieval diagnostic only").style(
-                    f"font-size:9px; color:{C_AMBER}; font-family:{F_MONO}; "
-                    f"margin-left:auto;"
+                    f"font-size:9px; color:{C_AMBER}; font-family:{F_MONO}; margin-left:auto;"
                 )
 
     async def _handle_run(self) -> None:
@@ -143,11 +151,7 @@ class RetrievalQueryPanel:
             if self._query_input is not None:
                 query = (self._query_input.value or "").strip()
 
-            selected_channels = [
-                ch_key
-                for ch_key, toggle in self._channel_toggles.items()
-                if toggle.value
-            ]
+            selected_channels = [ch_key for ch_key, toggle in self._channel_toggles.items() if toggle.value]
 
             limit = 20
             if self._limit_input is not None and self._limit_input.value is not None:

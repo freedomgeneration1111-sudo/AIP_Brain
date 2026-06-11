@@ -46,13 +46,15 @@ class FakeLexicalStore:
             # Simple token matching
             if any(t in content for t in query_lower.split() if len(t) >= 2):
                 if domain is None or doc.get("domain") == domain:
-                    results.append(Chunk(
-                        id=doc["doc_id"],
-                        content=doc["content"],
-                        score=0.8,
-                        metadata=doc.get("metadata", {}),
-                        domain=doc.get("domain"),
-                    ))
+                    results.append(
+                        Chunk(
+                            id=doc["doc_id"],
+                            content=doc["content"],
+                            score=0.8,
+                            metadata=doc.get("metadata", {}),
+                            domain=doc.get("domain"),
+                        )
+                    )
         return results[:limit]
 
 
@@ -65,13 +67,26 @@ class FakeVectorStore:
     async def retrieve(self, query_vector, domain=None, top_k=10):
         return self.chunks[:top_k]
 
-    async def upsert(self, *a, **kw): pass
-    async def delete(self, *a, **kw): pass
-    async def count(self, domain=None): return len(self.chunks)
-    async def store(self, chunk): return chunk.id
-    async def health_check(self): return {"connected": True}
-    async def list_stale_vectors(self, **kw): return []
-    async def list_all_ids(self, **kw): return []
+    async def upsert(self, *a, **kw):
+        pass
+
+    async def delete(self, *a, **kw):
+        pass
+
+    async def count(self, domain=None):
+        return len(self.chunks)
+
+    async def store(self, chunk):
+        return chunk.id
+
+    async def health_check(self):
+        return {"connected": True}
+
+    async def list_stale_vectors(self, **kw):
+        return []
+
+    async def list_all_ids(self, **kw):
+        return []
 
 
 class FakeEmbeddingProvider:
@@ -95,9 +110,14 @@ class FakeArtifactStore:
                 results.append(art)
         return results[:limit]
 
-    async def write(self, *a, **kw): pass
-    async def read(self, *a, **kw): return ""
-    async def list_versions(self, *a): return [1]
+    async def write(self, *a, **kw):
+        pass
+
+    async def read(self, *a, **kw):
+        return ""
+
+    async def list_versions(self, *a):
+        return [1]
 
 
 class FakeEcsStore:
@@ -109,7 +129,8 @@ class FakeEcsStore:
     async def current_state(self, artifact_id):
         return self._states.get(artifact_id)
 
-    async def transition(self, *a, **kw): pass
+    async def transition(self, *a, **kw):
+        pass
 
 
 class FakeCorpusTurnStore:
@@ -125,14 +146,18 @@ class FakeCorpusTurnStore:
 class FakeProjectStore:
     """Fake ProjectStore."""
 
-    async def list_projects(self, **kw): return []
+    async def list_projects(self, **kw):
+        return []
 
 
 class FakeEventStore:
     """Fake EventStore."""
 
-    async def write_event(self, **kw): pass
-    async def query(self, **kw): return []
+    async def write_event(self, **kw):
+        pass
+
+    async def query(self, **kw):
+        return []
 
 
 class FakeModelProvider:
@@ -211,9 +236,7 @@ class TestChannelResult:
         assert result.failed is False
 
     def test_failed_with_failure(self):
-        result = ChannelResult(
-            failure=ChannelFailure(channel="test", error_type="test", message="msg")
-        )
+        result = ChannelResult(failure=ChannelFailure(channel="test", error_type="test", message="msg"))
         assert result.succeeded is False
         assert result.failed is True
 
@@ -283,9 +306,16 @@ class TestLexicalChannel:
     async def test_register_and_retrieve(self):
         from aip.orchestration.channels.lexical_channel import register, CHANNEL_NAME
 
-        lexical = FakeLexicalStore(documents=[
-            {"doc_id": "doc:1", "content": "AIP uses a three-layer architecture", "domain": "test", "metadata": {"type": "project_artifact"}},
-        ])
+        lexical = FakeLexicalStore(
+            documents=[
+                {
+                    "doc_id": "doc:1",
+                    "content": "AIP uses a three-layer architecture",
+                    "domain": "test",
+                    "metadata": {"type": "project_artifact"},
+                },
+            ]
+        )
         stores = _FakeAskStores(lexical_store=lexical)
         orch = RetrievalOrchestrator()
         register(orch, stores)
@@ -310,6 +340,7 @@ class TestSanitizeFtsQuery:
 
     def test_basic_query(self):
         from aip.orchestration.channels.lexical_channel import _sanitize_fts_query
+
         result = _sanitize_fts_query("What is the AIP architecture?")
         assert "AIP" in result
         assert "architecture" in result
@@ -319,6 +350,7 @@ class TestSanitizeFtsQuery:
 
     def test_special_characters_removed(self):
         from aip.orchestration.channels.lexical_channel import _sanitize_fts_query
+
         result = _sanitize_fts_query("What?! How does *this* work?")
         assert "?" not in result
         assert "!" not in result
@@ -326,6 +358,7 @@ class TestSanitizeFtsQuery:
 
     def test_empty_query_returns_original(self):
         from aip.orchestration.channels.lexical_channel import _sanitize_fts_query
+
         result = _sanitize_fts_query("?!.")
         # Should return the original query when no meaningful tokens
         assert result == "?!."
@@ -342,9 +375,11 @@ class TestVectorChannel:
     async def test_register_with_deps(self):
         from aip.orchestration.channels.vector_channel import register, CHANNEL_NAME
 
-        vec_store = FakeVectorStore(chunks=[
-            Chunk(id="vec:1", content="Vector content", score=0.9, metadata={}),
-        ])
+        vec_store = FakeVectorStore(
+            chunks=[
+                Chunk(id="vec:1", content="Vector content", score=0.9, metadata={}),
+            ]
+        )
         stores = _FakeAskStores(
             vector_store=vec_store,
             embedding_provider=FakeEmbeddingProvider(),
@@ -370,9 +405,11 @@ class TestVectorChannel:
     async def test_retrieve_with_vector(self):
         from aip.orchestration.channels.vector_channel import register
 
-        vec_store = FakeVectorStore(chunks=[
-            Chunk(id="vec:1", content="Vector search content", score=0.9, metadata={}, domain="test"),
-        ])
+        vec_store = FakeVectorStore(
+            chunks=[
+                Chunk(id="vec:1", content="Vector search content", score=0.9, metadata={}, domain="test"),
+            ]
+        )
         stores = _FakeAskStores(
             vector_store=vec_store,
             embedding_provider=FakeEmbeddingProvider(),
@@ -436,13 +473,15 @@ class TestWikiChannel:
     async def test_register_with_deps(self):
         from aip.orchestration.channels.wiki_channel import register, CHANNEL_NAME
 
-        artifact_store = FakeArtifactStore(artifacts=[
-            {
-                "id": "wiki:1",
-                "content": "AIP is a knowledge engine for retrieval-augmented generation.",
-                "metadata": {"artifact_type": "beast_wiki", "domain": "test", "overview_text": "Overview of AIP"},
-            },
-        ])
+        artifact_store = FakeArtifactStore(
+            artifacts=[
+                {
+                    "id": "wiki:1",
+                    "content": "AIP is a knowledge engine for retrieval-augmented generation.",
+                    "metadata": {"artifact_type": "beast_wiki", "domain": "test", "overview_text": "Overview of AIP"},
+                },
+            ]
+        )
         ecs_store = FakeEcsStore(states={"wiki:1": "APPROVED"})
         stores = _FakeAskStores(artifact_store=artifact_store, ecs_store=ecs_store)
         orch = RetrievalOrchestrator()
@@ -466,13 +505,15 @@ class TestWikiChannel:
     async def test_retrieve_approved_wiki_articles(self):
         from aip.orchestration.channels.wiki_channel import register
 
-        artifact_store = FakeArtifactStore(artifacts=[
-            {
-                "id": "wiki:approved",
-                "content": "AIP knowledge engine architecture overview.",
-                "metadata": {"artifact_type": "beast_wiki", "domain": "aip", "overview_text": "AIP architecture"},
-            },
-        ])
+        artifact_store = FakeArtifactStore(
+            artifacts=[
+                {
+                    "id": "wiki:approved",
+                    "content": "AIP knowledge engine architecture overview.",
+                    "metadata": {"artifact_type": "beast_wiki", "domain": "aip", "overview_text": "AIP architecture"},
+                },
+            ]
+        )
         ecs_store = FakeEcsStore(states={"wiki:approved": "APPROVED"})
         stores = _FakeAskStores(
             artifact_store=artifact_store,
@@ -500,13 +541,15 @@ class TestProceduralChannel:
     async def test_register_with_deps(self):
         from aip.orchestration.channels.procedural_channel import register, CHANNEL_NAME
 
-        artifact_store = FakeArtifactStore(artifacts=[
-            {
-                "id": "proc:1",
-                "content": "Step by step guide to configure AIP. First, install dependencies.",
-                "metadata": {"artifact_type": "procedural_guide", "domain": "test"},
-            },
-        ])
+        artifact_store = FakeArtifactStore(
+            artifacts=[
+                {
+                    "id": "proc:1",
+                    "content": "Step by step guide to configure AIP. First, install dependencies.",
+                    "metadata": {"artifact_type": "procedural_guide", "domain": "test"},
+                },
+            ]
+        )
         stores = _FakeAskStores(artifact_store=artifact_store)
         orch = RetrievalOrchestrator()
         failures = register(orch, stores)
@@ -529,13 +572,15 @@ class TestProceduralChannel:
     async def test_retrieve_procedural_guides(self):
         from aip.orchestration.channels.procedural_channel import register
 
-        artifact_store = FakeArtifactStore(artifacts=[
-            {
-                "id": "proc:1",
-                "content": "Step by step guide: how to configure AIP for retrieval. Follow these instructions.",
-                "metadata": {"artifact_type": "procedural_guide", "domain": "aip"},
-            },
-        ])
+        artifact_store = FakeArtifactStore(
+            artifacts=[
+                {
+                    "id": "proc:1",
+                    "content": "Step by step guide: how to configure AIP for retrieval. Follow these instructions.",
+                    "metadata": {"artifact_type": "procedural_guide", "domain": "aip"},
+                },
+            ]
+        )
         stores = _FakeAskStores(
             artifact_store=artifact_store,
             lexical_store=FakeLexicalStore(),
@@ -637,12 +682,14 @@ class TestChannelRegistry:
                 custom_called = True
 
                 async def _custom_retriever(query: str) -> list[RetrievalHit]:
-                    return [RetrievalHit(
-                        id="custom:1",
-                        content=f"Custom result for: {query}",
-                        score=0.95,
-                        source_channel="custom",
-                    )]
+                    return [
+                        RetrievalHit(
+                            id="custom:1",
+                            content=f"Custom result for: {query}",
+                            score=0.95,
+                            source_channel="custom",
+                        )
+                    ]
 
                 orch.register_channel("custom", _custom_retriever)
                 return []
@@ -669,6 +716,7 @@ class TestChannelRegistry:
     async def test_custom_channel_failure_is_structured(self):
         """Custom channel registration failure produces a ChannelFailure."""
         try:
+
             def _failing_register(orch, stores, config):
                 raise ImportError("Custom backend not installed")
 
@@ -698,12 +746,21 @@ class TestRegistryIntegration:
     async def test_full_pipeline_with_fakes(self):
         """Verify that register_all_channels produces a working orchestrator
         with FTS + Vector channels that can retrieve results."""
-        lexical = FakeLexicalStore(documents=[
-            {"doc_id": "doc:1", "content": "AIP architecture overview", "domain": "test", "metadata": {"type": "project_artifact"}},
-        ])
-        vec = FakeVectorStore(chunks=[
-            Chunk(id="vec:1", content="Vector search architecture", score=0.9, metadata={}, domain="test"),
-        ])
+        lexical = FakeLexicalStore(
+            documents=[
+                {
+                    "doc_id": "doc:1",
+                    "content": "AIP architecture overview",
+                    "domain": "test",
+                    "metadata": {"type": "project_artifact"},
+                },
+            ]
+        )
+        vec = FakeVectorStore(
+            chunks=[
+                Chunk(id="vec:1", content="Vector search architecture", score=0.9, metadata={}, domain="test"),
+            ]
+        )
         stores = _FakeAskStores(
             lexical_store=lexical,
             vector_store=vec,

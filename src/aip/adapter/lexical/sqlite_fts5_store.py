@@ -52,6 +52,7 @@ class SqliteFts5LexicalStore(LexicalStore, StoreHealthMixin, ReadPoolMixin):
         self._tables_ready = False
         self._read_pool_config = config
         from aip.adapter.read_pool import resolve_pool_size
+
         self._init_read_pool(pool_size=resolve_pool_size("lexical_store", config))
 
     async def _get_conn(self) -> aiosqlite.Connection:

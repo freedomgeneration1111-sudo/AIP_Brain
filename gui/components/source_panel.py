@@ -68,12 +68,13 @@ class SourcePanel:
             self._drawer = drawer
 
             # Header
-            with ui.row().classes("w-full items-center").style(
-                f"border-bottom:0.5px solid {C_INK40}; padding-bottom:8px; margin-bottom:12px;"
+            with (
+                ui.row()
+                .classes("w-full items-center")
+                .style(f"border-bottom:0.5px solid {C_INK40}; padding-bottom:8px; margin-bottom:12px;")
             ):
                 ui.label(f"Sources ({len(sources)})").style(
-                    f"font-size:13px; font-weight:700; color:{C_AMBER}; "
-                    f"font-family:{F_MONO}; letter-spacing:0.5px;"
+                    f"font-size:13px; font-weight:700; color:{C_AMBER}; font-family:{F_MONO}; letter-spacing:0.5px;"
                 )
                 ui.space()
                 ui.button("Close", on_click=self.close).props("dense flat size=sm").style(
@@ -82,8 +83,7 @@ class SourcePanel:
 
             if not sources:
                 ui.label("No sources available for this answer.").style(
-                    f"font-size:11px; color:{C_MUTED}; font-family:{F_MONO}; "
-                    f"padding:16px; text-align:center;"
+                    f"font-size:11px; color:{C_MUTED}; font-family:{F_MONO}; padding:16px; text-align:center;"
                 )
                 return
 
@@ -108,24 +108,25 @@ class SourcePanel:
         else:
             score_color = C_WARN_FG
 
-        with ui.card().classes("w-full").style(
-            f"background:{C_RAISED}; border:0.5px solid {C_INK40}; "
-            f"border-radius:{R_MD}; margin-bottom:8px; padding:8px 12px;"
+        with (
+            ui.card()
+            .classes("w-full")
+            .style(
+                f"background:{C_RAISED}; border:0.5px solid {C_INK40}; "
+                f"border-radius:{R_MD}; margin-bottom:8px; padding:8px 12px;"
+            )
         ):
             # Source header: index + title + score
             with ui.row().classes("w-full items-center").style("margin-bottom:4px;"):
                 ui.label(f"#{index}").style(
-                    f"font-size:10px; font-weight:700; color:{C_AMBER}; "
-                    f"font-family:{F_MONO}; margin-right:6px;"
+                    f"font-size:10px; font-weight:700; color:{C_AMBER}; font-family:{F_MONO}; margin-right:6px;"
                 )
                 ui.label(title[:80]).style(
-                    f"font-size:11px; font-weight:600; color:{C_CREAM}; "
-                    f"font-family:{F_MONO}; flex:1;"
+                    f"font-size:11px; font-weight:600; color:{C_CREAM}; font-family:{F_MONO}; flex:1;"
                 )
                 if isinstance(score, (int, float)):
                     ui.label(f"{score:.2f}").style(
-                        f"font-size:10px; font-weight:600; color:{score_color}; "
-                        f"font-family:{F_MONO};"
+                        f"font-size:10px; font-weight:600; color:{score_color}; font-family:{F_MONO};"
                     )
 
             # Source metadata row
@@ -134,21 +135,16 @@ class SourcePanel:
                     f"font-size:9px; color:{C_INK60}; font-family:{F_MONO}; margin-right:8px;"
                 )
                 if domain:
-                    ui.label(f"domain: {domain}").style(
-                        f"font-size:9px; color:{C_INK60}; font-family:{F_MONO};"
-                    )
+                    ui.label(f"domain: {domain}").style(f"font-size:9px; color:{C_INK60}; font-family:{F_MONO};")
 
             # Snippet
             if snippet:
                 ui.label(snippet[:300]).style(
-                    f"font-size:10px; color:{C_MUTED}; font-family:{F_MONO}; "
-                    f"line-height:1.4; margin-top:4px;"
+                    f"font-size:10px; color:{C_MUTED}; font-family:{F_MONO}; line-height:1.4; margin-top:4px;"
                 )
 
             # Source ID (small, for reference)
-            ui.label(f"id: {source_id}").style(
-                f"font-size:8px; color:{C_INK60}; font-family:{F_MONO}; margin-top:2px;"
-            )
+            ui.label(f"id: {source_id}").style(f"font-size:8px; color:{C_INK60}; font-family:{F_MONO}; margin-top:2px;")
 
     def close(self) -> None:
         """Close the source panel drawer."""

@@ -94,12 +94,24 @@ class Vigil:
     _CITATION_THRESHOLD = 0.3
 
     # Contradiction / grounding thresholds
-    _HEDGING_PHRASES = frozenset({
-        "i'm not sure but", "i think", "i believe", "it might be",
-        "possibly", "perhaps", "it could be", "i'm guessing",
-        "i'm not certain", "not entirely sure", "it seems like",
-        "i would guess", "my guess is", "i assume",
-    })
+    _HEDGING_PHRASES = frozenset(
+        {
+            "i'm not sure but",
+            "i think",
+            "i believe",
+            "it might be",
+            "possibly",
+            "perhaps",
+            "it could be",
+            "i'm guessing",
+            "i'm not certain",
+            "not entirely sure",
+            "it seems like",
+            "i would guess",
+            "my guess is",
+            "i assume",
+        }
+    )
     _GROUNDING_THRESHOLD = 0.5  # Flag if < 50% of numeric claims are grounded
 
     # LLM faithfulness prompt
@@ -341,9 +353,7 @@ Be strict: if a specific number, date, or factual claim appears in the response 
                         flag_reasons.append("unwarranted_hedging")
 
                     # Also collect borderline turns for potential LLM evaluation
-                    is_borderline = (
-                        self._CITATION_THRESHOLD <= citation_rate < self._CITATION_THRESHOLD + 0.2
-                    )
+                    is_borderline = self._CITATION_THRESHOLD <= citation_rate < self._CITATION_THRESHOLD + 0.2
 
                     if flag_reasons:
                         flagged_count += 1
@@ -358,28 +368,32 @@ Be strict: if a specific number, date, or factual claim appears in the response 
                             flag_reasons=flag_reasons,
                         )
 
-                        flagged_turns.append({
-                            "turn": turn,
-                            "citation_rate": citation_rate,
-                            "cited_ids": cited_ids,
-                            "source_turn_ids": source_turn_ids,
-                            "grounding_rate": grounding_result["grounding_rate"],
-                            "ungrounded_claims": grounding_result["ungrounded_claims"],
-                            "hedging_detected": hedging_found,
-                            "flag_reasons": flag_reasons,
-                        })
+                        flagged_turns.append(
+                            {
+                                "turn": turn,
+                                "citation_rate": citation_rate,
+                                "cited_ids": cited_ids,
+                                "source_turn_ids": source_turn_ids,
+                                "grounding_rate": grounding_result["grounding_rate"],
+                                "ungrounded_claims": grounding_result["ungrounded_claims"],
+                                "hedging_detected": hedging_found,
+                                "flag_reasons": flag_reasons,
+                            }
+                        )
                     elif is_borderline:
                         # Borderline — may benefit from deeper LLM evaluation
-                        flagged_turns.append({
-                            "turn": turn,
-                            "citation_rate": citation_rate,
-                            "cited_ids": cited_ids,
-                            "source_turn_ids": source_turn_ids,
-                            "grounding_rate": grounding_result["grounding_rate"],
-                            "ungrounded_claims": grounding_result["ungrounded_claims"],
-                            "hedging_detected": hedging_found,
-                            "flag_reasons": ["borderline_citation_rate"],
-                        })
+                        flagged_turns.append(
+                            {
+                                "turn": turn,
+                                "citation_rate": citation_rate,
+                                "cited_ids": cited_ids,
+                                "source_turn_ids": source_turn_ids,
+                                "grounding_rate": grounding_result["grounding_rate"],
+                                "ungrounded_claims": grounding_result["ungrounded_claims"],
+                                "hedging_detected": hedging_found,
+                                "flag_reasons": ["borderline_citation_rate"],
+                            }
+                        )
 
                 except Exception as exc:
                     logger.warning(
@@ -395,29 +409,21 @@ Be strict: if a specific number, date, or factual claim appears in the response 
 
         if self.config.llm_faithfulness_enabled and flagged_turns:
             try:
-                llm_eval_count, llm_hallucinations, llm_faithfulness_scores = (
-                    await self._run_llm_faithfulness_evaluation(flagged_turns)
-                )
+                (
+                    llm_eval_count,
+                    llm_hallucinations,
+                    llm_faithfulness_scores,
+                ) = await self._run_llm_faithfulness_evaluation(flagged_turns)
             except Exception as exc:
                 logger.warning("vigil_llm_faithfulness_cycle_failed", error=str(exc))
                 self._recent_errors.append(f"llm_faithfulness: {exc}")
                 self._recent_errors = self._recent_errors[-10:]
 
         # Compute aggregate metrics
-        avg_citation_rate = (
-            round(sum(citation_rates) / len(citation_rates), 3)
-            if citation_rates
-            else 0.0
-        )
-        avg_grounding_rate = (
-            round(sum(grounding_rates) / len(grounding_rates), 3)
-            if grounding_rates
-            else 1.0
-        )
+        avg_citation_rate = round(sum(citation_rates) / len(citation_rates), 3) if citation_rates else 0.0
+        avg_grounding_rate = round(sum(grounding_rates) / len(grounding_rates), 3) if grounding_rates else 1.0
         avg_llm_faithfulness = (
-            round(sum(llm_faithfulness_scores) / len(llm_faithfulness_scores), 3)
-            if llm_faithfulness_scores
-            else 0.0
+            round(sum(llm_faithfulness_scores) / len(llm_faithfulness_scores), 3) if llm_faithfulness_scores else 0.0
         )
 
         # Record the vigil check (legacy compatibility)
@@ -469,30 +475,33 @@ Be strict: if a specific number, date, or factual claim appears in the response 
         ):
             try:
                 from aip.adapter.alerting import Alert
+
                 degrading_metrics = [
                     k.replace("_trend", "")
                     for k, v in trend_indicators.items()
                     if isinstance(v, str) and v == "degrading"
                 ]
-                self._alert_manager.send_alert(Alert(
-                    alert_type="quality_degradation",
-                    severity="warning",
-                    subject="vigil_quality",
-                    message=(
-                        f"Vigil detected degrading quality trend in: "
-                        f"{', '.join(degrading_metrics)}. "
-                        f"Current scores — citation: {avg_citation_rate:.1%}, "
-                        f"grounding: {avg_grounding_rate:.1%}, "
-                        f"faithfulness: {avg_llm_faithfulness:.1%}."
-                    ),
-                    data={
-                        "degrading_metrics": degrading_metrics,
-                        "avg_citation_rate": avg_citation_rate,
-                        "avg_grounding_rate": avg_grounding_rate,
-                        "avg_llm_faithfulness": avg_llm_faithfulness,
-                        "trend_indicators": trend_indicators,
-                    },
-                ))
+                self._alert_manager.send_alert(
+                    Alert(
+                        alert_type="quality_degradation",
+                        severity="warning",
+                        subject="vigil_quality",
+                        message=(
+                            f"Vigil detected degrading quality trend in: "
+                            f"{', '.join(degrading_metrics)}. "
+                            f"Current scores — citation: {avg_citation_rate:.1%}, "
+                            f"grounding: {avg_grounding_rate:.1%}, "
+                            f"faithfulness: {avg_llm_faithfulness:.1%}."
+                        ),
+                        data={
+                            "degrading_metrics": degrading_metrics,
+                            "avg_citation_rate": avg_citation_rate,
+                            "avg_grounding_rate": avg_grounding_rate,
+                            "avg_llm_faithfulness": avg_llm_faithfulness,
+                            "trend_indicators": trend_indicators,
+                        },
+                    )
+                )
             except Exception as exc:
                 logger.warning("vigil_alert_failed", error=str(exc))
 
@@ -582,24 +591,44 @@ Be strict: if a specific number, date, or factual claim appears in the response 
         cfg = self.config
         # Gate 1: sampling enabled?
         if not cfg.retrieval_quality_sampling_enabled:
-            return {"sampled_count": 0, "mean_precision_at_5": 0.0, "threshold": cfg.retrieval_quality_threshold, "degraded": False}
+            return {
+                "sampled_count": 0,
+                "mean_precision_at_5": 0.0,
+                "threshold": cfg.retrieval_quality_threshold,
+                "degraded": False,
+            }
 
         # Gate 2: interval cycle — only run every N cycles
         interval = cfg.retrieval_quality_sample_interval_cycles
         if interval > 0 and self._cycle_count % interval != 0:
-            return {"sampled_count": 0, "mean_precision_at_5": 0.0, "threshold": cfg.retrieval_quality_threshold, "degraded": False}
+            return {
+                "sampled_count": 0,
+                "mean_precision_at_5": 0.0,
+                "threshold": cfg.retrieval_quality_threshold,
+                "degraded": False,
+            }
 
         # Step 1: Load golden queries
         try:
             from aip.orchestration.retrieval_eval import load_golden_queries, compute_precision_at_k
         except ImportError:
             logger.warning("vigil_retrieval_quality_import_failed", error="retrieval_eval module not available")
-            return {"sampled_count": 0, "mean_precision_at_5": 0.0, "threshold": cfg.retrieval_quality_threshold, "degraded": False}
+            return {
+                "sampled_count": 0,
+                "mean_precision_at_5": 0.0,
+                "threshold": cfg.retrieval_quality_threshold,
+                "degraded": False,
+            }
 
         golden_queries = load_golden_queries()
         if not golden_queries:
             logger.info("vigil_retrieval_quality_no_golden_queries")
-            return {"sampled_count": 0, "mean_precision_at_5": 0.0, "threshold": cfg.retrieval_quality_threshold, "degraded": False}
+            return {
+                "sampled_count": 0,
+                "mean_precision_at_5": 0.0,
+                "threshold": cfg.retrieval_quality_threshold,
+                "degraded": False,
+            }
 
         # Step 2: Sample a subset
         sample_size = min(cfg.retrieval_quality_sample_size, len(golden_queries))
@@ -616,7 +645,12 @@ Be strict: if a specific number, date, or factual claim appears in the response 
                 stores = await create_ask_stores(db_path)
             except Exception as exc:
                 logger.info("vigil_retrieval_quality_stores_unavailable", error=str(exc))
-                return {"sampled_count": 0, "mean_precision_at_5": 0.0, "threshold": cfg.retrieval_quality_threshold, "degraded": False}
+                return {
+                    "sampled_count": 0,
+                    "mean_precision_at_5": 0.0,
+                    "threshold": cfg.retrieval_quality_threshold,
+                    "degraded": False,
+                }
 
             # Build hybrid OrchestratorConfig: FTS + Vector + Corpus
             orch_config = OrchestratorConfig(
@@ -637,7 +671,12 @@ Be strict: if a specific number, date, or factual claim appears in the response 
             )
         except Exception as exc:
             logger.info("vigil_retrieval_quality_infra_unavailable", error=str(exc))
-            return {"sampled_count": 0, "mean_precision_at_5": 0.0, "threshold": cfg.retrieval_quality_threshold, "degraded": False}
+            return {
+                "sampled_count": 0,
+                "mean_precision_at_5": 0.0,
+                "threshold": cfg.retrieval_quality_threshold,
+                "degraded": False,
+            }
 
         # Step 4: Run retrieval for each sampled query and compute precision@5
         precision_scores: list[float] = []
@@ -664,7 +703,12 @@ Be strict: if a specific number, date, or factual claim appears in the response 
 
         # Step 5: Compute mean precision@5
         if not precision_scores:
-            return {"sampled_count": 0, "mean_precision_at_5": 0.0, "threshold": cfg.retrieval_quality_threshold, "degraded": False}
+            return {
+                "sampled_count": 0,
+                "mean_precision_at_5": 0.0,
+                "threshold": cfg.retrieval_quality_threshold,
+                "degraded": False,
+            }
 
         mean_p5 = round(sum(precision_scores) / len(precision_scores), 4)
         threshold = cfg.retrieval_quality_threshold
@@ -681,23 +725,26 @@ Be strict: if a specific number, date, or factual claim appears in the response 
             if self._alert_manager is not None:
                 try:
                     from aip.adapter.alerting import Alert
-                    self._alert_manager.send_alert(Alert(
-                        alert_type="retrieval_quality_degradation",
-                        severity="warning",
-                        subject="retrieval_quality",
-                        message=(
-                            f"Vigil retrieval quality gate triggered: "
-                            f"mean precision@5 = {mean_p5:.2%} "
-                            f"(threshold = {threshold:.2%}). "
-                            f"Sampled {len(precision_scores)} golden queries."
-                        ),
-                        data={
-                            "mean_precision_at_5": mean_p5,
-                            "threshold": threshold,
-                            "sampled_count": len(precision_scores),
-                            "per_query_precision": precision_scores,
-                        },
-                    ))
+
+                    self._alert_manager.send_alert(
+                        Alert(
+                            alert_type="retrieval_quality_degradation",
+                            severity="warning",
+                            subject="retrieval_quality",
+                            message=(
+                                f"Vigil retrieval quality gate triggered: "
+                                f"mean precision@5 = {mean_p5:.2%} "
+                                f"(threshold = {threshold:.2%}). "
+                                f"Sampled {len(precision_scores)} golden queries."
+                            ),
+                            data={
+                                "mean_precision_at_5": mean_p5,
+                                "threshold": threshold,
+                                "sampled_count": len(precision_scores),
+                                "per_query_precision": precision_scores,
+                            },
+                        )
+                    )
                 except Exception as exc:
                     logger.warning("vigil_retrieval_quality_alert_failed", error=str(exc))
 
@@ -743,9 +790,7 @@ Be strict: if a specific number, date, or factual claim appears in the response 
     # LLM-Powered Faithfulness Evaluation (Phase 3.3, Sprint 5.23)
     # ------------------------------------------------------------------
 
-    async def _run_llm_faithfulness_evaluation(
-        self, flagged_turns: list[dict]
-    ) -> tuple[int, int, list[float]]:
+    async def _run_llm_faithfulness_evaluation(self, flagged_turns: list[dict]) -> tuple[int, int, list[float]]:
         """Run LLM-powered faithfulness evaluation on flagged/borderline turns.
 
         Uses the evaluation model slot to ask whether each response accurately
@@ -866,9 +911,7 @@ Be strict: if a specific number, date, or factual claim appears in the response 
 
                 # Update telemetry
                 self._llm_faithfulness_telemetry["total_llm_evaluations"] += 1
-                self._llm_faithfulness_telemetry["total_hallucinations_detected"] += (
-                    1 if hallucination_flags else 0
-                )
+                self._llm_faithfulness_telemetry["total_hallucinations_detected"] += 1 if hallucination_flags else 0
                 eval_summary = {
                     "turn_id": turn.turn_id,
                     "faithfulness_score": round(faithfulness_score, 3),
@@ -877,9 +920,9 @@ Be strict: if a specific number, date, or factual claim appears in the response 
                 }
                 self._llm_faithfulness_telemetry["last_llm_evaluations"].append(eval_summary)
                 # Keep only last 20 evaluations
-                self._llm_faithfulness_telemetry["last_llm_evaluations"] = (
-                    self._llm_faithfulness_telemetry["last_llm_evaluations"][-20:]
-                )
+                self._llm_faithfulness_telemetry["last_llm_evaluations"] = self._llm_faithfulness_telemetry[
+                    "last_llm_evaluations"
+                ][-20:]
 
             except Exception as exc:
                 logger.warning(
@@ -917,7 +960,7 @@ Be strict: if a specific number, date, or factual claim appears in the response 
         if s.startswith("```"):
             first_newline = s.find("\n")
             if first_newline != -1:
-                s = s[first_newline + 1:]
+                s = s[first_newline + 1 :]
             if s.rstrip().endswith("```"):
                 s = s.rstrip()[:-3].rstrip()
 
@@ -934,7 +977,7 @@ Be strict: if a specific number, date, or factual claim appears in the response 
         end = s.rfind("}")
         if start != -1 and end > start:
             try:
-                parsed = json.loads(s[start:end + 1])
+                parsed = json.loads(s[start : end + 1])
                 if isinstance(parsed, dict) and "faithfulness_score" in parsed:
                     return parsed
             except (json.JSONDecodeError, ValueError):
@@ -959,7 +1002,8 @@ Be strict: if a specific number, date, or factual claim appears in the response 
 
         # Extract numeric claims: numbers with optional decimal and percent sign
         import re as _re
-        numeric_pattern = _re.compile(r'\b\d+(?:\.\d+)?%?\b')
+
+        numeric_pattern = _re.compile(r"\b\d+(?:\.\d+)?%?\b")
         response_numbers = numeric_pattern.findall(response_text)
 
         if not response_numbers:
@@ -969,7 +1013,12 @@ Be strict: if a specific number, date, or factual claim appears in the response 
         nontrivial = [n for n in response_numbers if n not in ("0", "1", "2", "0%", "1%", "2%")]
 
         if not nontrivial:
-            return {"grounding_rate": 1.0, "total_claims": len(response_numbers), "grounded_claims": len(response_numbers), "ungrounded_claims": []}
+            return {
+                "grounding_rate": 1.0,
+                "total_claims": len(response_numbers),
+                "grounded_claims": len(response_numbers),
+                "ungrounded_claims": [],
+            }
 
         source_lower = source_text.lower()
         grounded = []
@@ -1032,7 +1081,7 @@ Be strict: if a specific number, date, or factual claim appears in the response 
                 continue
 
             # Check 3: [Source N] numbered pattern
-            source_num_pattern = re.findall(r'\[source\s+(\d+)\]', response_lower)
+            source_num_pattern = re.findall(r"\[source\s+(\d+)\]", response_lower)
             if source_num_pattern:
                 pass
 
@@ -1253,14 +1302,16 @@ Be strict: if a specific number, date, or factual claim appears in the response 
         }
 
         # Record in history (keep last 10 cycles)
-        self._cycle_report_history.append({
-            "avg_citation_rate": avg_citation_rate,
-            "avg_grounding_rate": avg_grounding_rate,
-            "avg_llm_faithfulness": avg_llm_faithfulness,
-            "evaluated_count": evaluated_count,
-            "flagged_count": flagged_count,
-            "timestamp": now_iso,
-        })
+        self._cycle_report_history.append(
+            {
+                "avg_citation_rate": avg_citation_rate,
+                "avg_grounding_rate": avg_grounding_rate,
+                "avg_llm_faithfulness": avg_llm_faithfulness,
+                "evaluated_count": evaluated_count,
+                "flagged_count": flagged_count,
+                "timestamp": now_iso,
+            }
+        )
         if len(self._cycle_report_history) > 10:
             self._cycle_report_history = self._cycle_report_history[-10:]
 
@@ -1279,11 +1330,7 @@ Be strict: if a specific number, date, or factual claim appears in the response 
             flagged_count > 0
             or avg_citation_rate < self._CITATION_THRESHOLD
             or avg_grounding_rate < self._GROUNDING_THRESHOLD
-            or any(
-                v in ("degrading",)
-                for v in trend_indicators.values()
-                if isinstance(v, str)
-            )
+            or any(v in ("degrading",) for v in trend_indicators.values() if isinstance(v, str))
         )
 
         if not has_concerns or self._artifacts is None:

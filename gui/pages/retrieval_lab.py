@@ -69,35 +69,35 @@ async def retrieval_lab_page():
     ranked_context = RetrievalRankedContext()
 
     # ── Layout ─────────────────────────────────────────────────────────
-    with ui.column().classes("flex-1").style(
-        f"background:{C_GROUND}; padding:24px 32px; overflow-y:auto; "
-        f"min-height:calc(100vh - 44px);"
+    with (
+        ui.column()
+        .classes("flex-1")
+        .style(f"background:{C_GROUND}; padding:24px 32px; overflow-y:auto; min-height:calc(100vh - 44px);")
     ):
         # Page title
         with ui.row().classes("items-center gap-3"):
-            ui.label("Retrieval Lab").style(
-                f"font-family:{F_SANS}; font-size:24px; font-weight:700; color:{C_CREAM};"
-            )
+            ui.label("Retrieval Lab").style(f"font-family:{F_SANS}; font-size:24px; font-weight:700; color:{C_CREAM};")
             ui.label("v1").style(
                 f"font-size:10px; color:{C_MUTED}; font-family:{F_MONO}; "
                 f"border:0.5px solid {C_INK40}; border-radius:2px; padding:1px 4px;"
             )
 
-        ui.label("Test retrieval quality independently of answer synthesis. "
-                 "No model dispatch, no corpus mutation.").style(
-            f"font-size:12px; color:{C_MUTED}; font-family:{F_SANS}; margin-bottom:12px;"
-        )
+        ui.label(
+            "Test retrieval quality independently of answer synthesis. No model dispatch, no corpus mutation."
+        ).style(f"font-size:12px; color:{C_MUTED}; font-family:{F_SANS}; margin-bottom:12px;")
 
         # Backend availability status
-        backend_status_label = ui.label("").style(
-            f"font-size:10px; font-family:{F_MONO}; margin-bottom:8px;"
-        )
+        backend_status_label = ui.label("").style(f"font-size:10px; font-family:{F_MONO}; margin-bottom:8px;")
 
         # ── Health Cards Section ───────────────────────────────────────
-        with ui.expansion("Channel Health", value=True).classes("w-full mb-2").style(
-            f"font-family:{F_SANS}; font-size:13px; font-weight:600; color:{C_CREAM}; "
-            f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-            f"border-radius:{R_MD};"
+        with (
+            ui.expansion("Channel Health", value=True)
+            .classes("w-full mb-2")
+            .style(
+                f"font-family:{F_SANS}; font-size:13px; font-weight:600; color:{C_CREAM}; "
+                f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
+                f"border-radius:{R_MD};"
+            )
         ):
             health_cards._container = ui.column().classes("w-full gap-1")
             # Will be populated by _load_health
@@ -113,27 +113,32 @@ async def retrieval_lab_page():
         warnings_container = ui.column().classes("w-full gap-1")
 
         # Channel results section
-        with ui.expansion("Per-Channel Results", value=True).classes("w-full").style(
-            f"font-family:{F_SANS}; font-size:13px; font-weight:600; color:{C_CREAM}; "
-            f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-            f"border-radius:{R_MD};"
+        with (
+            ui.expansion("Per-Channel Results", value=True)
+            .classes("w-full")
+            .style(
+                f"font-family:{F_SANS}; font-size:13px; font-weight:600; color:{C_CREAM}; "
+                f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
+                f"border-radius:{R_MD};"
+            )
         ):
             channel_results._container = ui.column().classes("w-full gap-1 p-2")
 
         # Ranked context section
-        with ui.expansion("Ranked Context (Fusion Results)", value=True).classes("w-full").style(
-            f"font-family:{F_SANS}; font-size:13px; font-weight:600; color:{C_CREAM}; "
-            f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-            f"border-radius:{R_MD};"
+        with (
+            ui.expansion("Ranked Context (Fusion Results)", value=True)
+            .classes("w-full")
+            .style(
+                f"font-family:{F_SANS}; font-size:13px; font-weight:600; color:{C_CREAM}; "
+                f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
+                f"border-radius:{R_MD};"
+            )
         ):
             ranked_context._container = ui.column().classes("w-full gap-1 p-2")
 
         # No-results-yet placeholder
-        no_results_placeholder = ui.label(
-            "Enter a query and click Run Test to see retrieval results."
-        ).style(
-            f"font-size:12px; color:{C_MUTED}; font-family:{F_MONO}; "
-            f"text-align:center; padding:32px;"
+        no_results_placeholder = ui.label("Enter a query and click Run Test to see retrieval results.").style(
+            f"font-size:12px; color:{C_MUTED}; font-family:{F_MONO}; text-align:center; padding:32px;"
         )
 
         # Trace detail (collapsible)
@@ -156,9 +161,7 @@ async def retrieval_lab_page():
                 active = summary.get("active", 0)
                 total = summary.get("total_channels", 0)
                 backend_status_label.text = f"Backend: connected | {active}/{total} channels active"
-                backend_status_label.style(
-                    f"font-size:10px; color:{C_OK_FG}; font-family:{F_MONO}; margin-bottom:8px;"
-                )
+                backend_status_label.style(f"font-size:10px; color:{C_OK_FG}; font-family:{F_MONO}; margin-bottom:8px;")
             else:
                 msg = health_data.get("message", "Backend unavailable")
                 backend_status_label.text = f"Backend: unavailable — {msg}"
@@ -168,9 +171,7 @@ async def retrieval_lab_page():
         except Exception as exc:
             backend_available = False
             backend_status_label.text = f"Backend: unreachable — {exc}"
-            backend_status_label.style(
-                f"font-size:10px; color:{C_ERR_FG}; font-family:{F_MONO}; margin-bottom:8px;"
-            )
+            backend_status_label.style(f"font-size:10px; color:{C_ERR_FG}; font-family:{F_MONO}; margin-bottom:8px;")
 
     async def _handle_run_test(
         query: str,
@@ -256,9 +257,7 @@ async def retrieval_lab_page():
                     f"font-size:10px; color:{C_ERR_FG}; font-family:{F_MONO};"
                 )
             for w in warnings:
-                ui.label(f"! {w[:200]}").style(
-                    f"font-size:9px; color:{C_AMBER}; font-family:{F_MONO};"
-                )
+                ui.label(f"! {w[:200]}").style(f"font-size:9px; color:{C_AMBER}; font-family:{F_MONO};")
 
             # Honesty warnings
             status = test_result.get("status", "")
@@ -276,10 +275,14 @@ async def retrieval_lab_page():
         trace_data = test_result.get("trace")
         if include_trace and trace_data:
             with trace_container:
-                with ui.expansion("Trace Detail", value=False).classes("w-full").style(
-                    f"font-family:{F_MONO}; font-size:11px; color:{C_CREAM}; "
-                    f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-                    f"border-radius:{R_SM};"
+                with (
+                    ui.expansion("Trace Detail", value=False)
+                    .classes("w-full")
+                    .style(
+                        f"font-family:{F_MONO}; font-size:11px; color:{C_CREAM}; "
+                        f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
+                        f"border-radius:{R_SM};"
+                    )
                 ):
                     # Show key trace fields
                     trace_fields = [

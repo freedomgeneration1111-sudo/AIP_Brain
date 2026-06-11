@@ -178,19 +178,14 @@ def parse_claude_export(
                             turn_timestamp=conv_timestamp,
                         )
                     )
-                    warnings.append(
-                        f"conv {conv_id[:8]} turn {turn_index}: "
-                        f"human message with no assistant response"
-                    )
+                    warnings.append(f"conv {conv_id[:8]} turn {turn_index}: human message with no assistant response")
                     turn_index += 1
 
                 current_user_text = content_text
                 current_thinking_text = ""
 
                 if not content_text:
-                    warnings.append(
-                        f"conv {conv_id[:8]}: empty human message skipped"
-                    )
+                    warnings.append(f"conv {conv_id[:8]}: empty human message skipped")
                     current_user_text = ""
 
             elif sender == "assistant":
@@ -223,9 +218,7 @@ def parse_claude_export(
                 current_thinking_text = ""
 
             else:
-                warnings.append(
-                    f"conv {conv_id[:8]}: unknown sender '{sender}', message skipped"
-                )
+                warnings.append(f"conv {conv_id[:8]}: unknown sender '{sender}', message skipped")
 
         if current_user_text:
             # Conversation ended on human message

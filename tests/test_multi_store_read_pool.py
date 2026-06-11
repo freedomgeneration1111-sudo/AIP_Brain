@@ -143,15 +143,15 @@ def _aggregate_read_pool_summary(
             summary["total_exhaustions"] += pool_data.get("exhaustion_count", 0)
             rate = pool_data.get("exhaustion_rate", 0.0)
             if rate > 0.3:
-                summary["stores_with_high_exhaustion"].append({
-                    "store": store_name,
-                    "exhaustion_rate": rate,
-                    "pool_size": pool_data.get("pool_size", 0),
-                })
+                summary["stores_with_high_exhaustion"].append(
+                    {
+                        "store": store_name,
+                        "exhaustion_rate": rate,
+                        "pool_size": pool_data.get("pool_size", 0),
+                    }
+                )
     total_co = summary["total_checkouts"]
-    summary["aggregate_exhaustion_rate"] = (
-        round(summary["total_exhaustions"] / total_co, 4) if total_co > 0 else 0.0
-    )
+    summary["aggregate_exhaustion_rate"] = round(summary["total_exhaustions"] / total_co, 4) if total_co > 0 else 0.0
 
     # Generate top-level recommendation when pool exhaustion is high
     high_exhaustion_stores = summary["stores_with_high_exhaustion"]
@@ -195,9 +195,7 @@ class TestMultiStoreReadPoolAggregation:
     """Tests that read pool metrics aggregate correctly across multiple stores."""
 
     @pytest.mark.asyncio
-    async def test_three_pool_stores_aggregate(
-        self, graph_store, corpus_turn_store, lexical_store
-    ):
+    async def test_three_pool_stores_aggregate(self, graph_store, corpus_turn_store, lexical_store):
         """When multiple pool-enabled stores are active, all appear in aggregation."""
         # Perform reads on each store to trigger pool checkouts
         _ = await graph_store.node_count()
@@ -231,9 +229,7 @@ class TestMultiStoreReadPoolAggregation:
         assert summary["aggregate_exhaustion_rate"] == 0.0
 
     @pytest.mark.asyncio
-    async def test_aggregate_exhaustion_rate_across_stores(
-        self, graph_store, corpus_turn_store, lexical_store
-    ):
+    async def test_aggregate_exhaustion_rate_across_stores(self, graph_store, corpus_turn_store, lexical_store):
         """Exhaustion events on one store should affect aggregate rate."""
         # Normal reads on corpus_turn_store and lexical_store
         _ = await corpus_turn_store.total_turns()
@@ -275,9 +271,7 @@ class TestMultiStoreReadPoolAggregation:
         assert summary["aggregate_exhaustion_rate"] > 0.0
 
     @pytest.mark.asyncio
-    async def test_per_store_pool_sizes_in_health(
-        self, graph_store, corpus_turn_store, lexical_store
-    ):
+    async def test_per_store_pool_sizes_in_health(self, graph_store, corpus_turn_store, lexical_store):
         """Each store's read_pool health should report its pool_size."""
         store_health = {}
         for name, store in [
@@ -294,9 +288,7 @@ class TestMultiStoreReadPoolAggregation:
             assert pool.get("pool_size") == 3, f"{name} should have pool_size=3"
 
     @pytest.mark.asyncio
-    async def test_stores_without_pool_not_in_aggregation(
-        self, graph_store, tmp_dir
-    ):
+    async def test_stores_without_pool_not_in_aggregation(self, graph_store, tmp_dir):
         """Stores without ReadPoolMixin should not appear in pool_stores."""
         # Create a store without ReadPoolMixin — use session_store
         from aip.adapter.auth.session_store import SqliteSessionStore
@@ -325,9 +317,7 @@ class TestMultiStoreReadPoolAggregation:
         await auth_store.close()
 
     @pytest.mark.asyncio
-    async def test_concurrent_reads_across_stores(
-        self, graph_store, corpus_turn_store, lexical_store
-    ):
+    async def test_concurrent_reads_across_stores(self, graph_store, corpus_turn_store, lexical_store):
         """Concurrent reads across multiple stores should exercise all pools."""
         import asyncio
 
@@ -357,9 +347,7 @@ class TestMultiStoreReadPoolAggregation:
             ("lexical_store", lexical_store),
         ]:
             health = store.read_pool_health()
-            assert health["checkout_count"] >= 5, (
-                f"{name} should have at least 5 checkouts from 5 concurrent reads"
-            )
+            assert health["checkout_count"] >= 5, f"{name} should have at least 5 checkouts from 5 concurrent reads"
 
     @pytest.mark.asyncio
     async def test_empty_pool_summary_when_no_pool_stores(self, tmp_dir):
@@ -397,9 +385,7 @@ class TestHealthEndpointReadPoolSummary:
     """
 
     @pytest.mark.asyncio
-    async def test_health_endpoint_aggregation_with_real_stores(
-        self, tmp_dir
-    ):
+    async def test_health_endpoint_aggregation_with_real_stores(self, tmp_dir):
         """Simulate the health endpoint with multiple real pool-enabled stores."""
         # Create and initialize stores
         graph_db = os.path.join(tmp_dir, "health_graph.db")
@@ -412,8 +398,11 @@ class TestHealthEndpointReadPoolSummary:
 
         # Seed some data
         node = GraphNode(
-            id="health_node", entity_type="CONCEPT",
-            canonical_name="HealthConcept", domain="test", confidence=0.9,
+            id="health_node",
+            entity_type="CONCEPT",
+            canonical_name="HealthConcept",
+            domain="test",
+            confidence=0.9,
         )
         await graph_store.upsert_node(node)
 
@@ -454,8 +443,11 @@ class TestHealthEndpointReadPoolSummary:
         # Seed data
         for i in range(5):
             node = GraphNode(
-                id=f"exhaust_node_{i}", entity_type="CONCEPT",
-                canonical_name=f"ExhaustConcept_{i}", domain="test", confidence=0.9,
+                id=f"exhaust_node_{i}",
+                entity_type="CONCEPT",
+                canonical_name=f"ExhaustConcept_{i}",
+                domain="test",
+                confidence=0.9,
             )
             await store.upsert_node(node)
 

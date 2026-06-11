@@ -50,40 +50,46 @@ router = APIRouter()
 
 # ── Constants ────────────────────────────────────────────────────────────
 
-VALID_OBJECT_TYPES = frozenset({
-    "source_document",
-    "chunk",
-    "conversation_turn",
-    "retrieval_trace",
-    "beast_commentary",
-    "wiki_article",
-    "artifact",
-    "review_event",
-    "actor_event",
-    "model_comparison_report",
-})
+VALID_OBJECT_TYPES = frozenset(
+    {
+        "source_document",
+        "chunk",
+        "conversation_turn",
+        "retrieval_trace",
+        "beast_commentary",
+        "wiki_article",
+        "artifact",
+        "review_event",
+        "actor_event",
+        "model_comparison_report",
+    }
+)
 
-VALID_RELATION_TYPES = frozenset({
-    "supports",
-    "contradicts",
-    "summarizes",
-    "extends",
-    "mentions",
-    "depends_on",
-    "implements",
-    "supersedes",
-    "related_to",
-    "generated_from",
-    "reviewed_by",
-    "approved_by",
-})
+VALID_RELATION_TYPES = frozenset(
+    {
+        "supports",
+        "contradicts",
+        "summarizes",
+        "extends",
+        "mentions",
+        "depends_on",
+        "implements",
+        "supersedes",
+        "related_to",
+        "generated_from",
+        "reviewed_by",
+        "approved_by",
+    }
+)
 
-VALID_STATUSES = frozenset({
-    "suggested",
-    "approved",
-    "rejected",
-    "deleted",
-})
+VALID_STATUSES = frozenset(
+    {
+        "suggested",
+        "approved",
+        "rejected",
+        "deleted",
+    }
+)
 
 # ── Pydantic models ──────────────────────────────────────────────────────
 
@@ -212,9 +218,7 @@ class KnowledgeLinkStore:
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT * FROM knowledge_links WHERE id = ?", (link_id,)
-            )
+            cursor = await db.execute("SELECT * FROM knowledge_links WHERE id = ?", (link_id,))
             row = await cursor.fetchone()
             if row is None:
                 return None
@@ -265,16 +269,13 @@ class KnowledgeLinkStore:
             db.row_factory = aiosqlite.Row
 
             # Count
-            count_cursor = await db.execute(
-                f"SELECT COUNT(*) FROM knowledge_links {where_clause}", params
-            )
+            count_cursor = await db.execute(f"SELECT COUNT(*) FROM knowledge_links {where_clause}", params)
             count_row = await count_cursor.fetchone()
             total = count_row[0]
 
             # Fetch
             fetch_cursor = await db.execute(
-                f"SELECT * FROM knowledge_links {where_clause} "
-                "ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                f"SELECT * FROM knowledge_links {where_clause} ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 params + [limit, offset],
             )
             rows = await fetch_cursor.fetchall()
@@ -286,17 +287,13 @@ class KnowledgeLinkStore:
         self, target_type: str, target_id: str, *, limit: int = 100
     ) -> tuple[list[dict[str, Any]], int]:
         """Get links pointing TO a given object (backlinks)."""
-        return await self.list_links(
-            target_type=target_type, target_id=target_id, limit=limit
-        )
+        return await self.list_links(target_type=target_type, target_id=target_id, limit=limit)
 
     async def get_forward_links(
         self, source_type: str, source_id: str, *, limit: int = 100
     ) -> tuple[list[dict[str, Any]], int]:
         """Get links pointing FROM a given object (forward links)."""
-        return await self.list_links(
-            source_type=source_type, source_id=source_id, limit=limit
-        )
+        return await self.list_links(source_type=source_type, source_id=source_id, limit=limit)
 
     async def update_link(self, link_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
         """Update a link. Returns updated link or None if not found."""
@@ -336,9 +333,7 @@ class KnowledgeLinkStore:
         await self._ensure_table()
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute("PRAGMA journal_mode=WAL")
-            cursor = await db.execute(
-                "DELETE FROM knowledge_links WHERE id = ?", (link_id,)
-            )
+            cursor = await db.execute("DELETE FROM knowledge_links WHERE id = ?", (link_id,))
             await db.commit()
             return cursor.rowcount > 0
 
@@ -372,6 +367,7 @@ def _generate_link_id(source_type: str, source_id: str, target_type: str, target
     """
     # Use hash for long IDs to keep the link ID manageable
     import hashlib
+
     raw = f"{source_type}:{source_id}|{relation_type}|{target_type}:{target_id}"
     h = hashlib.sha256(raw.encode()).hexdigest()[:12]
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
@@ -471,21 +467,19 @@ async def create_link(
     if body.source_type not in VALID_OBJECT_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid source_type: {body.source_type}. "
-                   f"Valid types: {', '.join(sorted(VALID_OBJECT_TYPES))}",
+            detail=f"Invalid source_type: {body.source_type}. Valid types: {', '.join(sorted(VALID_OBJECT_TYPES))}",
         )
     if body.target_type not in VALID_OBJECT_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid target_type: {body.target_type}. "
-                   f"Valid types: {', '.join(sorted(VALID_OBJECT_TYPES))}",
+            detail=f"Invalid target_type: {body.target_type}. Valid types: {', '.join(sorted(VALID_OBJECT_TYPES))}",
         )
     # Validate relation type
     if body.relation_type not in VALID_RELATION_TYPES:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid relation_type: {body.relation_type}. "
-                   f"Valid types: {', '.join(sorted(VALID_RELATION_TYPES))}",
+            f"Valid types: {', '.join(sorted(VALID_RELATION_TYPES))}",
         )
     # Prevent self-links
     if body.source_type == body.target_type and body.source_id == body.target_id:
@@ -517,8 +511,10 @@ async def create_link(
 
     now = datetime.now(timezone.utc).isoformat()
     link_id = _generate_link_id(
-        body.source_type, body.source_id,
-        body.target_type, body.target_id,
+        body.source_type,
+        body.source_id,
+        body.target_type,
+        body.target_id,
         body.relation_type,
     )
 
@@ -576,14 +572,13 @@ async def update_link(
         raise HTTPException(
             status_code=400,
             detail=f"Invalid relation_type: {body.relation_type}. "
-                   f"Valid types: {', '.join(sorted(VALID_RELATION_TYPES))}",
+            f"Valid types: {', '.join(sorted(VALID_RELATION_TYPES))}",
         )
     # Validate status if provided
     if body.status is not None and body.status not in VALID_STATUSES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid status: {body.status}. "
-                   f"Valid statuses: {', '.join(sorted(VALID_STATUSES))}",
+            detail=f"Invalid status: {body.status}. Valid statuses: {', '.join(sorted(VALID_STATUSES))}",
         )
 
     try:
@@ -678,8 +673,7 @@ async def get_backlinks(
     if target_type not in VALID_OBJECT_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid target_type: {target_type}. "
-                   f"Valid types: {', '.join(sorted(VALID_OBJECT_TYPES))}",
+            detail=f"Invalid target_type: {target_type}. Valid types: {', '.join(sorted(VALID_OBJECT_TYPES))}",
         )
 
     container = _get_container_from_request(request)
@@ -733,8 +727,7 @@ async def get_forward_links(
     if source_type not in VALID_OBJECT_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid source_type: {source_type}. "
-                   f"Valid types: {', '.join(sorted(VALID_OBJECT_TYPES))}",
+            detail=f"Invalid source_type: {source_type}. Valid types: {', '.join(sorted(VALID_OBJECT_TYPES))}",
         )
 
     container = _get_container_from_request(request)

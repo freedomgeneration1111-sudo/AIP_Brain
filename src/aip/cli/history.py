@@ -125,10 +125,7 @@ async def _history_list_async(project: str | None, limit: int) -> dict:
         if project:
             dom = _resolve_project_domain(project, db_path)
             target = dom or project  # fallback to name-as-domain
-            raw = [
-                a for a in raw
-                if (a.get("metadata") or {}).get("domain") == target
-            ]
+            raw = [a for a in raw if (a.get("metadata") or {}).get("domain") == target]
 
         # Already ordered DESC by created_at from the store query; apply limit
         raw = raw[:limit]
@@ -140,12 +137,7 @@ async def _history_list_async(project: str | None, limit: int) -> dict:
             created_at = art.get("created_at") or meta.get("created_at", "")
 
             # Derive mode / augmented_mode for display
-            mode = (
-                meta.get("augmented_mode")
-                or meta.get("mode")
-                or meta.get("source")
-                or "chat"
-            )
+            mode = meta.get("augmented_mode") or meta.get("mode") or meta.get("source") or "chat"
 
             # Parse content JSON to find first user turn's text (first 80 chars)
             first_user = ""
@@ -159,14 +151,16 @@ async def _history_list_async(project: str | None, limit: int) -> dict:
                 # If not json or parse fail, use prefix of raw content
                 first_user = content[:80].replace("\n", " ").strip()
 
-            items.append({
-                "turn_id": art["id"],
-                "timestamp": created_at,
-                "mode": mode,
-                "first_user": first_user or "(no user content)",
-                "domain": meta.get("domain", ""),
-                "session_id": meta.get("session_id") or meta.get("conversation_id", ""),
-            })
+            items.append(
+                {
+                    "turn_id": art["id"],
+                    "timestamp": created_at,
+                    "mode": mode,
+                    "first_user": first_user or "(no user content)",
+                    "domain": meta.get("domain", ""),
+                    "session_id": meta.get("session_id") or meta.get("conversation_id", ""),
+                }
+            )
 
         return {"artifacts": items, "count": len(items), "project": project}
     finally:

@@ -40,12 +40,14 @@ class TestAsyncAlertDispatch:
     def test_send_alert_returns_correlation_id(self):
         """send_alert() returns a correlation ID string."""
         mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-        result = mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="test",
-            message="Test alert",
-        ))
+        result = mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="test",
+                message="Test alert",
+            )
+        )
         assert isinstance(result, str)
         assert result.startswith("alert-")
         assert len(result) > 10
@@ -53,37 +55,45 @@ class TestAsyncAlertDispatch:
     def test_send_alert_returns_empty_when_disabled(self):
         """send_alert() returns empty string when alerting is disabled."""
         mgr = AlertManager(AlertConfig(enabled=False))
-        result = mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="test",
-            message="Test alert",
-        ))
+        result = mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="test",
+                message="Test alert",
+            )
+        )
         assert result == ""
 
     def test_send_alert_returns_rate_limited(self):
         """send_alert() returns 'rate_limited' when rate-limited."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=300,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=300,
+            )
+        )
         # First alert should go through
-        result1 = mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="test",
-            message="First alert",
-        ))
+        result1 = mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="test",
+                message="First alert",
+            )
+        )
         assert result1 != "rate_limited"
         assert result1 != ""
 
         # Second alert (same type+subject) should be rate-limited
-        result2 = mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="test",
-            message="Second alert",
-        ))
+        result2 = mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="test",
+                message="Second alert",
+            )
+        )
         assert result2 == "rate_limited"
 
     def test_send_alert_correlation_ids_are_unique(self):
@@ -91,12 +101,14 @@ class TestAsyncAlertDispatch:
         mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
         ids = set()
         for i in range(10):
-            result = mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="warning",
-                subject=f"test_{i}",  # Different subjects to avoid rate-limiting
-                message=f"Alert {i}",
-            ))
+            result = mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject=f"test_{i}",  # Different subjects to avoid rate-limiting
+                    message=f"Alert {i}",
+                )
+            )
             assert result not in ids
             ids.add(result)
         assert len(ids) == 10
@@ -107,19 +119,23 @@ class TestAsyncAlertDispatch:
         Since dispatch happens in a background thread, send_alert() should
         return almost immediately even if the webhook URL is invalid.
         """
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://invalid-host-that-does-not-exist.local/hook",
-            min_alert_interval_seconds=0,
-            webhook_max_retries=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://invalid-host-that-does-not-exist.local/hook",
+                min_alert_interval_seconds=0,
+                webhook_max_retries=0,
+            )
+        )
         start = time.time()
-        result = mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="test",
-            message="Should not block",
-        ))
+        result = mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="test",
+                message="Should not block",
+            )
+        )
         elapsed = time.time() - start
         # send_alert should return in < 1 second (dispatch is in background)
         assert elapsed < 1.0
@@ -135,12 +151,14 @@ class TestAsyncAlertDispatch:
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
             mgr.attach_history_store(store)
 
-            correlation_id = mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="warning",
-                subject="test",
-                message="With correlation ID",
-            ))
+            correlation_id = mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="test",
+                    message="With correlation ID",
+                )
+            )
 
             # Wait for background dispatch to complete
             time.sleep(0.1)
@@ -164,13 +182,15 @@ class TestAlertAcknowledgment:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "test",
-                "message": "Test alert",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "Test alert",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
 
             result = store.acknowledge_alert(1, acknowledged_by="operator")
             assert result is True
@@ -187,13 +207,15 @@ class TestAlertAcknowledgment:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "test",
-                "message": "Test alert",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "Test alert",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
 
             result = store.dismiss_alert(1, dismissed_by="admin")
             assert result is True
@@ -218,13 +240,15 @@ class TestAlertAcknowledgment:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            store.record_alert({
-                "alert_type": "quality_degradation",
-                "severity": "critical",
-                "subject": "faithfulness",
-                "message": "Score dropped",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            store.record_alert(
+                {
+                    "alert_type": "quality_degradation",
+                    "severity": "critical",
+                    "subject": "faithfulness",
+                    "message": "Score dropped",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
 
             alert = store.get_alert_by_id(1)
             assert alert is not None
@@ -249,12 +273,14 @@ class TestAlertAcknowledgment:
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
             mgr.attach_history_store(store)
 
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="warning",
-                subject="test",
-                message="Test alert",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="test",
+                    message="Test alert",
+                )
+            )
             time.sleep(0.1)
 
             # Get the alert ID from the store
@@ -277,12 +303,14 @@ class TestAlertAcknowledgment:
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
             mgr.attach_history_store(store)
 
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="warning",
-                subject="test",
-                message="Test alert",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="test",
+                    message="Test alert",
+                )
+            )
             time.sleep(0.1)
 
             alerts = store.get_alert_history()
@@ -306,13 +334,15 @@ class TestAlertAcknowledgment:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "test",
-                "message": "Test alert",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "Test alert",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
 
             store.acknowledge_alert(1, "operator")
 
@@ -337,13 +367,15 @@ class TestAlertAcknowledgment:
             container._alert_manager = mgr
 
             # Record an alert directly
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "test",
-                "message": "Test alert",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "Test alert",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
 
             request = AcknowledgeRequest(acknowledged_by="test_operator")
             result = await vigil_alert_acknowledge(alert_id=1, request=request, container=container)
@@ -365,13 +397,15 @@ class TestAlertAcknowledgment:
             container = MagicMock()
             container._alert_manager = mgr
 
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "test",
-                "message": "Test alert",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "Test alert",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
 
             request = DismissRequest(dismissed_by="test_admin")
             result = await vigil_alert_dismiss(alert_id=1, request=request, container=container)
@@ -411,31 +445,37 @@ class TestAlertEscalation:
 
     def test_escalation_triggers_after_threshold(self):
         """Alert is escalated after threshold occurrences within the window."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            escalation_threshold=3,
-            escalation_window_seconds=3600,
-            escalation_severity="critical",
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                escalation_threshold=3,
+                escalation_window_seconds=3600,
+                escalation_severity="critical",
+            )
+        )
 
         # Send 2 alerts below threshold — should not escalate
         for i in range(2):
-            result = mgr.send_alert(Alert(
-                alert_type="quality_degradation",
-                severity="warning",
-                subject="faithfulness",
-                message=f"Alert {i+1}",
-            ))
+            result = mgr.send_alert(
+                Alert(
+                    alert_type="quality_degradation",
+                    severity="warning",
+                    subject="faithfulness",
+                    message=f"Alert {i + 1}",
+                )
+            )
             assert isinstance(result, str) and result.startswith("alert-")
 
         # The 3rd alert should trigger escalation
-        result = mgr.send_alert(Alert(
-            alert_type="quality_degradation",
-            severity="warning",
-            subject="faithfulness",
-            message="Alert 3 — should escalate",
-        ))
+        result = mgr.send_alert(
+            Alert(
+                alert_type="quality_degradation",
+                severity="warning",
+                subject="faithfulness",
+                message="Alert 3 — should escalate",
+            )
+        )
         assert isinstance(result, str) and result.startswith("alert-")
 
         # Check that the alert was escalated in history
@@ -447,20 +487,24 @@ class TestAlertEscalation:
 
     def test_escalation_disabled_with_threshold_zero(self):
         """Escalation is disabled when threshold is 0."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            escalation_threshold=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                escalation_threshold=0,
+            )
+        )
 
         # Send many alerts — none should escalate
         for i in range(10):
-            mgr.send_alert(Alert(
-                alert_type="quality_degradation",
-                severity="warning",
-                subject="faithfulness",
-                message=f"Alert {i+1}",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="quality_degradation",
+                    severity="warning",
+                    subject="faithfulness",
+                    message=f"Alert {i + 1}",
+                )
+            )
 
         history = mgr.get_alert_history()
         for alert in history:
@@ -468,11 +512,13 @@ class TestAlertEscalation:
 
     def test_escalation_in_get_status(self):
         """AlertManager.get_status() includes escalation configuration."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            escalation_threshold=5,
-            escalation_severity="critical",
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                escalation_threshold=5,
+                escalation_severity="critical",
+            )
+        )
 
         status = mgr.get_status()
         assert "escalation" in status
@@ -499,19 +545,23 @@ class TestRestartDeduplication:
 
             # Record an alert with a recent timestamp (within rate-limit window)
             recent_ts = datetime.now(timezone.utc).isoformat()
-            store1.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "graph_extraction",
-                "message": "Recent alert",
-                "timestamp": recent_ts,
-            })
+            store1.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "graph_extraction",
+                    "message": "Recent alert",
+                    "timestamp": recent_ts,
+                }
+            )
 
             # Second instance: create a new AlertManager and attach the store
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=300,
-            ))
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=300,
+                )
+            )
             mgr.attach_history_store(store1)
 
             # The rate-limit state should be rebuilt from the store
@@ -527,28 +577,34 @@ class TestRestartDeduplication:
 
             # Record a very recent alert directly into the store
             recent_ts = datetime.now(timezone.utc).isoformat()
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "graph_extraction",
-                "message": "Just sent alert",
-                "timestamp": recent_ts,
-            })
+            store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "graph_extraction",
+                    "message": "Just sent alert",
+                    "timestamp": recent_ts,
+                }
+            )
 
             # Create a new AlertManager with the store
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=300,
-            ))
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=300,
+                )
+            )
             mgr.attach_history_store(store)
 
             # Try to send the same alert — should be rate-limited
-            result = mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="warning",
-                subject="graph_extraction",
-                message="Duplicate after restart",
-            ))
+            result = mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="graph_extraction",
+                    message="Duplicate after restart",
+                )
+            )
             assert result == "rate_limited"
 
     def test_get_recent_alerts_for_dedup(self):
@@ -559,22 +615,26 @@ class TestRestartDeduplication:
 
             # Record a recent alert
             recent_ts = datetime.now(timezone.utc).isoformat()
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "graph_extraction",
-                "message": "Recent alert",
-                "timestamp": recent_ts,
-            })
+            store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "graph_extraction",
+                    "message": "Recent alert",
+                    "timestamp": recent_ts,
+                }
+            )
 
             # Record an old alert (outside the window)
-            store.record_alert({
-                "alert_type": "quality_degradation",
-                "severity": "warning",
-                "subject": "faithfulness",
-                "message": "Old alert",
-                "timestamp": "2020-01-01T00:00:00Z",
-            })
+            store.record_alert(
+                {
+                    "alert_type": "quality_degradation",
+                    "severity": "warning",
+                    "subject": "faithfulness",
+                    "message": "Old alert",
+                    "timestamp": "2020-01-01T00:00:00Z",
+                }
+            )
 
             # Query with a 5-minute window
             recent = store.get_recent_alerts_for_dedup(window_seconds=300)

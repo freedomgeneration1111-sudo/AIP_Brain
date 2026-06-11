@@ -39,7 +39,7 @@ GUI_ROOT = PROJECT_ROOT / "gui"
 # Files that are allowed to import orchestration from the adapter layer
 # because they are the explicit composition root.
 COMPOSITION_ROOT_FILES = {
-    "adapter/api/app.py",          # wires orchestration into container
+    "adapter/api/app.py",  # wires orchestration into container
     "adapter/api/dependencies.py",  # DI container definition
 }
 
@@ -60,9 +60,8 @@ def _is_type_checking_block(node: ast.AST) -> bool:
     if not isinstance(node, ast.If):
         return False
     test = node.test
-    return (
-        (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING")
-        or (isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING")
+    return (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING") or (
+        isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
     )
 
 
@@ -112,11 +111,7 @@ def _collect_imports(filepath: Path) -> list[tuple[str, int, str]]:
                 func = child.func
                 mod_name: str | None = None
 
-                if (
-                    isinstance(func, ast.Attribute)
-                    and func.attr == "import_module"
-                    and child.args
-                ):
+                if isinstance(func, ast.Attribute) and func.attr == "import_module" and child.args:
                     # importlib.import_module("X")
                     arg = child.args[0]
                     if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
@@ -126,11 +121,7 @@ def _collect_imports(filepath: Path) -> list[tuple[str, int, str]]:
                     imports.append((mod_name, child.lineno, "importlib"))
 
                 # Also detect __import__("X")
-                if (
-                    isinstance(func, ast.Name)
-                    and func.id == "__import__"
-                    and child.args
-                ):
+                if isinstance(func, ast.Name) and func.id == "__import__" and child.args:
                     arg = child.args[0]
                     if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
                         imports.append((arg.value, child.lineno, "importlib"))
@@ -148,10 +139,7 @@ def _py_files(directory: Path) -> list[Path]:
     """Collect all .py files under a directory, excluding __pycache__."""
     if not directory.exists():
         return []
-    return sorted(
-        p for p in directory.rglob("*.py")
-        if "__pycache__" not in p.parts
-    )
+    return sorted(p for p in directory.rglob("*.py") if "__pycache__" not in p.parts)
 
 
 def _rel_path(filepath: Path) -> str:
@@ -179,20 +167,11 @@ def test_foundation_does_not_import_orchestration_or_adapter():
     for py_file in _py_files(foundation_dir):
         for module, lineno, style in _collect_imports(py_file):
             if module.startswith("aip.orchestration") or module == "aip.orchestration":
-                violations.append(
-                    f"{_rel_path(py_file)}:{lineno} ({style}) — "
-                    f"imports '{module}' from foundation layer"
-                )
+                violations.append(f"{_rel_path(py_file)}:{lineno} ({style}) — imports '{module}' from foundation layer")
             if module.startswith("aip.adapter") or module == "aip.adapter":
-                violations.append(
-                    f"{_rel_path(py_file)}:{lineno} ({style}) — "
-                    f"imports '{module}' from foundation layer"
-                )
+                violations.append(f"{_rel_path(py_file)}:{lineno} ({style}) — imports '{module}' from foundation layer")
 
-    assert not violations, (
-        "Foundation layer must not import orchestration or adapter:\n  "
-        + "\n  ".join(violations)
-    )
+    assert not violations, "Foundation layer must not import orchestration or adapter:\n  " + "\n  ".join(violations)
 
 
 # ---------------------------------------------------------------------------
@@ -222,14 +201,11 @@ def test_orchestration_does_not_import_adapter():
                 normalized = f"{rel} imports {module}"
                 if normalized not in acknowledged and key not in seen:
                     seen.add(key)
-                    violations.append(
-                        f"{rel}:{lineno} ({style}) — imports '{module}'"
-                    )
+                    violations.append(f"{rel}:{lineno} ({style}) — imports '{module}'")
 
     assert not violations, (
         "Orchestration must not import adapter (fix or add to "
-        "acknowledged_import_violations in test_governance_conformance.py):\n  "
-        + "\n  ".join(violations)
+        "acknowledged_import_violations in test_governance_conformance.py):\n  " + "\n  ".join(violations)
     )
 
 
@@ -286,15 +262,12 @@ def test_adapter_routes_do_not_import_orchestration():
                 # Check if acknowledged
                 ack_key = f"adapter/{rel} imports {module}"
                 if rel not in ACKNOWLEDGED_ROUTE_VIOLATIONS or module not in ACKNOWLEDGED_ROUTE_VIOLATIONS.get(rel, []):
-                    violations.append(
-                        f"{rel}:{lineno} ({style}) — imports '{module}' from route module"
-                    )
+                    violations.append(f"{rel}:{lineno} ({style}) — imports '{module}' from route module")
 
     assert not violations, (
         "Route modules must not import orchestration. "
         "Use container-mediated access (AipContainer) or importlib in "
-        "composition root (app.py).\n  "
-        + "\n  ".join(violations)
+        "composition root (app.py).\n  " + "\n  ".join(violations)
     )
 
 
@@ -325,14 +298,11 @@ def test_adapter_non_route_does_not_import_orchestration():
 
         for module, lineno, style in _collect_imports(py_file):
             if module.startswith("aip.orchestration"):
-                violations.append(
-                    f"{rel}:{lineno} ({style}) — imports '{module}'"
-                )
+                violations.append(f"{rel}:{lineno} ({style}) — imports '{module}'")
 
     assert not violations, (
         "Non-route adapter modules must not import orchestration "
-        "(composition root is exempt):\n  "
-        + "\n  ".join(violations)
+        "(composition root is exempt):\n  " + "\n  ".join(violations)
     )
 
 
@@ -356,8 +326,7 @@ def test_gui_does_not_import_orchestration():
         for module, lineno, style in _collect_imports(py_file):
             if module.startswith("aip.orchestration"):
                 violations.append(
-                    f"{py_file.relative_to(PROJECT_ROOT)}:{lineno} ({style}) — "
-                    f"imports '{module}' from GUI layer"
+                    f"{py_file.relative_to(PROJECT_ROOT)}:{lineno} ({style}) — imports '{module}' from GUI layer"
                 )
             # Also flag any direct aip.adapter imports from GUI
             # (GUI should only talk to the API, not import adapter internals)
@@ -367,10 +336,8 @@ def test_gui_does_not_import_orchestration():
                     f"imports '{module}' from GUI layer (should use API client)"
                 )
 
-    assert not violations, (
-        "GUI must not import orchestration internals — "
-        "use API client instead:\n  "
-        + "\n  ".join(violations)
+    assert not violations, "GUI must not import orchestration internals — use API client instead:\n  " + "\n  ".join(
+        violations
     )
 
 
@@ -396,8 +363,7 @@ def test_composition_root_uses_importlib_for_orchestration():
     for module, lineno, style in _collect_imports(app_file):
         if module.startswith("aip.orchestration") and style == "static":
             static_orch_imports.append(
-                f"app.py:{lineno} — static import of '{module}' "
-                f"(should use importlib.import_module())"
+                f"app.py:{lineno} — static import of '{module}' (should use importlib.import_module())"
             )
 
     # We allow a few known exceptions that were already present
@@ -431,22 +397,17 @@ def test_orchestration_does_not_use_importlib_to_import_adapter():
 
     for py_file in _py_files(orch_dir):
         for module, lineno, style in _collect_imports(py_file):
-            if style == "importlib" and (
-                module.startswith("aip.adapter") or module == "aip.adapter"
-            ):
+            if style == "importlib" and (module.startswith("aip.adapter") or module == "aip.adapter"):
                 rel = _rel_path(py_file)
                 key = (rel, module)
                 normalized = f"{rel} imports {module}"
                 if normalized not in acknowledged and key not in seen:
                     seen.add(key)
-                    violations.append(
-                        f"{rel}:{lineno} (importlib) — circumvention: imports '{module}'"
-                    )
+                    violations.append(f"{rel}:{lineno} (importlib) — circumvention: imports '{module}'")
 
     assert not violations, (
         "Orchestration must not use importlib to import adapter "
-        "(circumvention of layer boundary):\n  "
-        + "\n  ".join(violations)
+        "(circumvention of layer boundary):\n  " + "\n  ".join(violations)
     )
 
 
@@ -483,9 +444,7 @@ def test_import_boundary_summary():
     for py_file in _py_files(orch_dir):
         for module, lineno, style in _collect_imports(py_file):
             if module.startswith("aip.adapter"):
-                summary["orchestration → adapter"].append(
-                    f"  {_rel_path(py_file)}:{lineno} ({style}) → {module}"
-                )
+                summary["orchestration → adapter"].append(f"  {_rel_path(py_file)}:{lineno} ({style}) → {module}")
 
     # Adapter routes → orchestration
     routes_dir = SRC_ROOT / "adapter" / "api" / "routes"
@@ -504,9 +463,7 @@ def test_import_boundary_summary():
             continue
         for module, lineno, style in _collect_imports(py_file):
             if module.startswith("aip.orchestration"):
-                summary["adapter non-route → orchestration"].append(
-                    f"  {rel}:{lineno} ({style}) → {module}"
-                )
+                summary["adapter non-route → orchestration"].append(f"  {rel}:{lineno} ({style}) → {module}")
 
     # GUI
     if GUI_ROOT.exists():

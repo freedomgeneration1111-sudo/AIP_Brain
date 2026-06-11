@@ -38,9 +38,7 @@ def tmp_aip_env(tmp_path):
     # Write config with absolute db_path
     db_path = str(db_dir / "state.db")
     config_path = config_dir / "aip.config.toml"
-    config_path.write_text(
-        f'[vector_backend]\nprovider = "sqlite_vss"\n\n[database]\ndb_path = "{db_path}"\n'
-    )
+    config_path.write_text(f'[vector_backend]\nprovider = "sqlite_vss"\n\n[database]\ndb_path = "{db_path}"\n')
 
     return db_path
 
@@ -96,7 +94,10 @@ class MockModelProvider:
     """Mock model provider that returns a fixed answer."""
 
     async def call(self, slot, messages, **kwargs):
-        return {"content": "Based on the sources, artifact storage uses VersionedArtifactStore with DEFINER sovereignty.", "model": "mock"}
+        return {
+            "content": "Based on the sources, artifact storage uses VersionedArtifactStore with DEFINER sovereignty.",
+            "model": "mock",
+        }
 
 
 async def _save_artifact_with_mock(db_path: str, question: str = "artifact storage VersionedArtifactStore"):
@@ -372,8 +373,9 @@ async def test_review_approve_transitions_to_approved(tmp_aip_env, sample_markdo
     try:
         approve_result = await review_approve(artifact_id, review_stores)
         assert "error" not in approve_result, f"Approve error: {approve_result.get('error')}"
-        assert approve_result["lifecycle_state"] == "APPROVED", \
+        assert approve_result["lifecycle_state"] == "APPROVED", (
             f"Expected APPROVED, got {approve_result['lifecycle_state']}"
+        )
         assert approve_result.get("canonical_written"), "Canonical store should be written"
     finally:
         await review_stores.close()

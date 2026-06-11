@@ -70,26 +70,22 @@ async def wiki_page():
     editor = WikiEditorDialog(on_submit=wiki_state.handle_editor_submit)
 
     # Main content
-    with ui.column().classes("flex-1").style(
-        f"background:{C_GROUND}; padding:24px; overflow-y:auto; min-height:calc(100vh - 44px);"
+    with (
+        ui.column()
+        .classes("flex-1")
+        .style(f"background:{C_GROUND}; padding:24px; overflow-y:auto; min-height:calc(100vh - 44px);")
     ):
         # Page heading
         with ui.row().classes("w-full items-center").style("margin-bottom:16px;"):
-            ui.label("Wiki / CODEX").style(
-                f"font-family:{F_SANS}; font-size:28px; font-weight:700; color:{C_CREAM};"
-            )
+            ui.label("Wiki / CODEX").style(f"font-family:{F_SANS}; font-size:28px; font-weight:700; color:{C_CREAM};")
             ui.space()
-            ui.button("Create Article", on_click=editor.open_create).props(
-                "flat dense unelevated"
-            ).style(
+            ui.button("Create Article", on_click=editor.open_create).props("flat dense unelevated").style(
                 f"color:{C_GROUND}; background:{C_AMBER}; border-radius:{R_SM}; "
                 f"font-size:11px; font-family:{F_MONO}; font-weight:600; padding:6px 16px;"
             )
 
         # Status bar
-        with ui.row().classes("w-full items-center").style(
-            f"margin-bottom:16px; gap:12px; flex-wrap:wrap;"
-        ):
+        with ui.row().classes("w-full items-center").style(f"margin-bottom:16px; gap:12px; flex-wrap:wrap;"):
             # Backend status
             if not state.backend_reachable:
                 ui.label("UNAVAILABLE — backend unreachable").style(
@@ -108,16 +104,10 @@ async def wiki_page():
                 total = ws.get("total", 0)
                 approved = ws.get("approved", 0)
                 generated = ws.get("generated", 0)
-                ui.label(f"Articles: {total}").style(
-                    f"font-size:10px; color:{C_CREAM}; font-family:{F_MONO};"
-                )
-                ui.label(f"Approved: {approved}").style(
-                    f"font-size:10px; color:{C_OK_FG}; font-family:{F_MONO};"
-                )
+                ui.label(f"Articles: {total}").style(f"font-size:10px; color:{C_CREAM}; font-family:{F_MONO};")
+                ui.label(f"Approved: {approved}").style(f"font-size:10px; color:{C_OK_FG}; font-family:{F_MONO};")
                 if generated > 0:
-                    ui.label(f"Pending: {generated}").style(
-                        f"font-size:10px; color:{C_WARN_FG}; font-family:{F_MONO};"
-                    )
+                    ui.label(f"Pending: {generated}").style(f"font-size:10px; color:{C_WARN_FG}; font-family:{F_MONO};")
 
         # Main layout: three columns
         # Left: article list | Center: article view | Right: handled by article view sidebar
@@ -129,34 +119,46 @@ async def wiki_page():
                 f"max-height:calc(100vh - 180px); overflow-y:auto;"
             ):
                 # Search bar
-                with ui.row().classes("w-full items-center").style(
-                    f"padding:8px 12px; border-bottom:0.5px solid {C_INK40};"
+                with (
+                    ui.row()
+                    .classes("w-full items-center")
+                    .style(f"padding:8px 12px; border-bottom:0.5px solid {C_INK40};")
                 ):
-                    search_input = ui.input(placeholder="Search articles...").classes("flex-1").style(
-                        f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
-                        f"border-radius:{R_SM}; padding:4px 8px; color:{C_CREAM}; "
-                        f"font-size:11px; font-family:{F_MONO};"
+                    search_input = (
+                        ui.input(placeholder="Search articles...")
+                        .classes("flex-1")
+                        .style(
+                            f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
+                            f"border-radius:{R_SM}; padding:4px 8px; color:{C_CREAM}; "
+                            f"font-size:11px; font-family:{F_MONO};"
+                        )
                     )
 
                 # State filter
-                with ui.row().classes("w-full").style(
-                    f"padding:4px 12px; border-bottom:0.5px solid {C_INK40}; gap:4px;"
+                with (
+                    ui.row().classes("w-full").style(f"padding:4px 12px; border-bottom:0.5px solid {C_INK40}; gap:4px;")
                 ):
-                    state_select = ui.select(
-                        options=["all", "APPROVED", "GENERATED", "REVIEWED", "REJECTED"],
-                        value="all",
-                    ).props("dense flat").style(
-                        f"font-size:10px; color:{C_CREAM}; font-family:{F_MONO};"
+                    state_select = (
+                        ui.select(
+                            options=["all", "APPROVED", "GENERATED", "REVIEWED", "REJECTED"],
+                            value="all",
+                        )
+                        .props("dense flat")
+                        .style(f"font-size:10px; color:{C_CREAM}; font-family:{F_MONO};")
                     )
 
                 # Article list container
                 list_container = ui.column().classes("w-full").style("padding:8px;")
 
             # Center + right: article view
-            view_container = ui.column().classes("flex-1").style(
-                f"min-width:0; background:{C_SURFACE}; "
-                f"border:0.5px solid {C_INK40}; border-radius:{R_MD}; "
-                f"max-height:calc(100vh - 180px); overflow-y:auto;"
+            view_container = (
+                ui.column()
+                .classes("flex-1")
+                .style(
+                    f"min-width:0; background:{C_SURFACE}; "
+                    f"border:0.5px solid {C_INK40}; border-radius:{R_MD}; "
+                    f"max-height:calc(100vh - 180px); overflow-y:auto;"
+                )
             )
 
     build_right_rail(state)

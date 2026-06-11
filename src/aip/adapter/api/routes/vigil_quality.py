@@ -115,10 +115,7 @@ async def vigil_quality(
 
     # Apply since filter if not already handled by the store
     if since and not has_persistent_store:
-        cycle_history = [
-            c for c in cycle_history
-            if c.get("timestamp", "") > since
-        ]
+        cycle_history = [c for c in cycle_history if c.get("timestamp", "") > since]
 
     # Apply last_n_cycles filter if not already handled by the store
     if not has_persistent_store:
@@ -216,7 +213,9 @@ async def vigil_quality(
 
 @router.get("/vigil/quality/alerts")
 async def vigil_alerts(
-    alert_type: str | None = Query(default=None, description="Filter by alert type: quality_degradation, pool_adjustment, batch_reduction"),
+    alert_type: str | None = Query(
+        default=None, description="Filter by alert type: quality_degradation, pool_adjustment, batch_reduction"
+    ),
     severity: str | None = Query(default=None, description="Filter by severity: info, warning, critical"),
     since: str | None = Query(default=None, description="ISO 8601 datetime — only return alerts after this timestamp"),
     limit: int = Query(default=50, ge=1, le=200, description="Maximum number of alerts to return"),
@@ -245,12 +244,12 @@ async def vigil_alerts(
         }
 
     # Resolve Query parameters to plain values (direct test calls may pass Query objects)
-    _alert_type = alert_type.default if hasattr(alert_type, 'default') else alert_type
-    _severity = severity.default if hasattr(severity, 'default') else severity
-    _since = since.default if hasattr(since, 'default') else since
+    _alert_type = alert_type.default if hasattr(alert_type, "default") else alert_type
+    _severity = severity.default if hasattr(severity, "default") else severity
+    _since = since.default if hasattr(since, "default") else since
     if isinstance(limit, int):
         _limit = limit
-    elif hasattr(limit, 'default'):
+    elif hasattr(limit, "default"):
         _limit = limit.default
     else:
         _limit = int(limit)
@@ -566,11 +565,13 @@ def _get_ab_health_summary(alert_manager: Any) -> dict[str, Any]:
 
 class AcknowledgeRequest(BaseModel):
     """Request body for alert acknowledgment."""
+
     acknowledged_by: str = "operator"
 
 
 class DismissRequest(BaseModel):
     """Request body for alert dismissal."""
+
     dismissed_by: str = "operator"
 
 
@@ -665,6 +666,7 @@ async def vigil_alert_dismiss(
 
 class RetentionConfigUpdate(BaseModel):
     """Request body for updating retention configuration."""
+
     retention_days: int | None = None
     rollup_age_days: int | None = None
     weekly_rollup_age_weeks: int | None = None
@@ -830,6 +832,7 @@ async def vigil_delivery_status_stats(
 
 class MuteRuleRequest(BaseModel):
     """Request body for creating a mute rule."""
+
     alert_type: str
     subject: str
     duration_seconds: int = 3600
@@ -965,6 +968,7 @@ async def vigil_quality_sse(
                     # This sends keepalive comments to prevent connection drops
                     event = await asyncio.wait_for(queue.get(), timeout=30.0)
                     import json as _json
+
                     event_type = event.get("event", "update")
                     event_data = _json.dumps(event)
                     yield f"event: {event_type}\ndata: {event_data}\n\n"
@@ -1031,13 +1035,8 @@ async def vigil_quality_websocket(
             return
 
     # Sprint 5.39: Native permessage-deflate negotiation
-    native_deflate_requested = (
-        websocket.query_params.get("compression", "") == "deflate"
-    )
-    native_deflate_supported = (
-        alert_manager is not None
-        and alert_manager.config.ws_native_permessage_deflate_enabled
-    )
+    native_deflate_requested = websocket.query_params.get("compression", "") == "deflate"
+    native_deflate_supported = alert_manager is not None and alert_manager.config.ws_native_permessage_deflate_enabled
     use_native_deflate = native_deflate_requested and native_deflate_supported
 
     # Accept with permessage-deflate if both sides support it
@@ -1058,6 +1057,7 @@ async def vigil_quality_websocket(
     # Sprint 5.33: Rate limiting state per connection
     _ws_command_timestamps: list[float] = []
     import time as _time
+
     _ws_rate_limit = alert_manager.config.ws_rate_limit_per_minute if alert_manager else 60
 
     # Register as a WebSocket subscriber for real-time events
@@ -1066,6 +1066,7 @@ async def vigil_quality_websocket(
 
     # Sprint 5.34: Register WS session with unique ID
     import uuid as _uuid
+
     session_id = str(_uuid.uuid4())
     remote_addr = websocket.client.host if websocket.client else ""
     if alert_manager is not None:
@@ -1078,11 +1079,13 @@ async def vigil_quality_websocket(
 
     try:
         # Send initial connection confirmation
-        await websocket.send_json({
-            "event": "ws_connected",
-            "message": "WebSocket connection established",
-            "session_id": session_id,
-        })
+        await websocket.send_json(
+            {
+                "event": "ws_connected",
+                "message": "WebSocket connection established",
+                "session_id": session_id,
+            }
+        )
 
         # Run two concurrent tasks:
         # 1. Push events from the queue to the WebSocket
@@ -1094,16 +1097,11 @@ async def vigil_quality_websocket(
             instead of simple keepalives. The heartbeat interval is
             configured via ws_heartbeat_interval_seconds.
             """
-            heartbeat_interval = (
-                alert_manager.config.ws_heartbeat_interval_seconds
-                if alert_manager else 30
-            )
+            heartbeat_interval = alert_manager.config.ws_heartbeat_interval_seconds if alert_manager else 30
             try:
                 while True:
                     try:
-                        event = await asyncio.wait_for(
-                            event_queue.get(), timeout=float(heartbeat_interval)
-                        )
+                        event = await asyncio.wait_for(event_queue.get(), timeout=float(heartbeat_interval))
                         await websocket.send_json(event)
                     except asyncio.TimeoutError:
                         # Sprint 5.35: Send heartbeat ping instead of plain keepalive
@@ -1294,7 +1292,7 @@ async def vigil_quality_websocket(
                     elif action == "tab_register":
                         tab_id = command.get("tab_id", "")
                         if tab_id:
-                            if not hasattr(alert_manager, '_registered_tabs'):
+                            if not hasattr(alert_manager, "_registered_tabs"):
                                 alert_manager._registered_tabs = {}
                             alert_manager._registered_tabs[tab_id] = {
                                 "registered_at": _time.time(),
@@ -1309,7 +1307,7 @@ async def vigil_quality_websocket(
                     # Sprint 5.37: Tab unregistration
                     elif action == "tab_unregister":
                         tab_id = command.get("tab_id", "")
-                        if tab_id and hasattr(alert_manager, '_registered_tabs'):
+                        if tab_id and hasattr(alert_manager, "_registered_tabs"):
                             alert_manager._registered_tabs.pop(tab_id, None)
                             result["unregistered"] = True
                             result["tab_id"] = tab_id
@@ -1419,6 +1417,7 @@ async def vigil_alert_groups(
 
 class BulkActionRequest(BaseModel):
     """Request body for bulk alert actions."""
+
     group_key: str
     acted_by: str = "operator"
 
@@ -1489,6 +1488,7 @@ async def vigil_bulk_dismiss(
 
 class PruningConfigUpdate(BaseModel):
     """Request body for updating delivery status pruning configuration."""
+
     max_age_days: int | None = None
     max_rows: int | None = None
 
@@ -1517,11 +1517,15 @@ async def vigil_delivery_status_prune(
 
     try:
         # Use provided params or fall back to config defaults
-        prune_age = max_age_days if max_age_days is not None else (
-            alert_manager.config.delivery_status_max_age_days if alert_manager else 30
+        prune_age = (
+            max_age_days
+            if max_age_days is not None
+            else (alert_manager.config.delivery_status_max_age_days if alert_manager else 30)
         )
-        prune_rows = max_rows if max_rows is not None else (
-            alert_manager.config.delivery_status_max_rows if alert_manager else 2000
+        prune_rows = (
+            max_rows
+            if max_rows is not None
+            else (alert_manager.config.delivery_status_max_rows if alert_manager else 2000)
         )
 
         deleted = alert_history_store.prune_delivery_status(
@@ -1627,12 +1631,14 @@ async def vigil_ws_sessions(
 
 class MergeGroupsRequest(BaseModel):
     """Request body for merging two alert groups."""
+
     source_key: str
     target_key: str
 
 
 class SplitGroupRequest(BaseModel):
     """Request body for splitting an alert group."""
+
     group_key: str
     correlation_ids: list[str]
     new_group_key: str | None = None
@@ -1692,6 +1698,7 @@ async def vigil_split_group(
 
 class PruneSchedulerConfig(BaseModel):
     """Request body for updating pruning scheduler configuration."""
+
     interval_seconds: int | None = None
     max_age_days: int | None = None
     max_rows: int | None = None
@@ -1835,6 +1842,7 @@ async def vigil_auto_merge_suggestions(
 
 class ApplyAutoMergeRequest(BaseModel):
     """Request body for applying an auto-merge suggestion."""
+
     source_key: str
     target_key: str
 
@@ -2003,6 +2011,7 @@ async def vigil_prediction_accuracy(
 
 class AutoMergePolicyUpdate(BaseModel):
     """Request body for updating auto-merge policy."""
+
     mode: str | None = None
     cooldown_seconds: int | None = None
     type_thresholds: dict[str, float] | None = None
@@ -2412,6 +2421,7 @@ async def get_rollback_dry_run_status(
 
 class BanditContextRewardRequest(BaseModel):
     """Request body for recording a contextual bandit reward."""
+
     variant: str = "variant"
     reward: float = 0.0
     context: dict[str, str] | None = None

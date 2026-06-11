@@ -315,26 +315,31 @@ class TestMaintenancePageImport:
     def test_maintenance_page_imports(self):
         """gui.pages.maintenance must be importable."""
         import gui.pages.maintenance
+
         assert hasattr(gui.pages.maintenance, "maintenance_page")
 
     def test_actor_status_table_imports(self):
         """gui.components.actor_status_table must be importable."""
         import gui.components.actor_status_table
+
         assert hasattr(gui.components.actor_status_table, "ActorStatusTable")
 
     def test_maintenance_jobs_imports(self):
         """gui.components.maintenance_jobs must be importable."""
         import gui.components.maintenance_jobs
+
         assert hasattr(gui.components.maintenance_jobs, "MaintenanceJobs")
 
     def test_maintenance_log_imports(self):
         """gui.components.maintenance_log must be importable."""
         import gui.components.maintenance_log
+
         assert hasattr(gui.components.maintenance_log, "MaintenanceLog")
 
     def test_maintenance_problem_panel_imports(self):
         """gui.components.maintenance_problem_panel must be importable."""
         import gui.components.maintenance_problem_panel
+
         assert hasattr(gui.components.maintenance_problem_panel, "MaintenanceProblemPanel")
 
 
@@ -385,6 +390,7 @@ class TestGUIImportBoundary:
         parsing that skips strings/comments.
         """
         import ast
+
         source = module_path.read_text()
         try:
             tree = ast.parse(source)
@@ -394,46 +400,53 @@ class TestGUIImportBoundary:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    assert not alias.name.startswith("aip.orchestration"), \
+                    assert not alias.name.startswith("aip.orchestration"), (
                         f"Import aip.orchestration found in {module_path}: {alias.name}"
+                    )
             elif isinstance(node, ast.ImportFrom):
                 if node.module and node.module.startswith("aip.orchestration"):
-                    assert False, \
-                        f"From aip.orchestration import found in {module_path}: {node.module}"
+                    assert False, f"From aip.orchestration import found in {module_path}: {node.module}"
 
     def test_maintenance_page_no_orchestration_import(self):
         """gui.pages.maintenance must not import from aip.orchestration."""
         import gui.pages.maintenance
+
         self._check_no_orchestration_import(Path(gui.pages.maintenance.__file__))
 
     def test_actor_status_table_no_orchestration_import(self):
         """gui.components.actor_status_table must not import from aip.orchestration."""
         import gui.components.actor_status_table
+
         self._check_no_orchestration_import(Path(gui.components.actor_status_table.__file__))
 
     def test_maintenance_jobs_no_orchestration_import(self):
         """gui.components.maintenance_jobs must not import from aip.orchestration."""
         import gui.components.maintenance_jobs
+
         self._check_no_orchestration_import(Path(gui.components.maintenance_jobs.__file__))
 
     def test_maintenance_log_no_orchestration_import(self):
         """gui.components.maintenance_log must not import from aip.orchestration."""
         import gui.components.maintenance_log
+
         self._check_no_orchestration_import(Path(gui.components.maintenance_log.__file__))
 
     def test_maintenance_problem_panel_no_orchestration_import(self):
         """gui.components.maintenance_problem_panel must not import from aip.orchestration."""
         import gui.components.maintenance_problem_panel
+
         self._check_no_orchestration_import(Path(gui.components.maintenance_problem_panel.__file__))
 
     def test_status_types_no_orchestration_import(self):
         """gui.status_types must not import from aip.orchestration."""
         import gui.status_types
+
         self._check_no_orchestration_import(Path(gui.status_types.__file__))
 
     def test_api_client_no_orchestration_import(self):
         """gui.api_client must not import from aip.orchestration."""
         import gui.api_client
+
         self._check_no_orchestration_import(Path(gui.api_client.__file__))
 
 
@@ -448,6 +461,7 @@ class TestBackendImportBoundary:
     def test_maintenance_route_no_orchestration_import(self):
         """src/aip/adapter/api/routes/maintenance.py must not import from aip.orchestration."""
         import ast
+
         route_path = PROJECT_ROOT / "src" / "aip" / "adapter" / "api" / "routes" / "maintenance.py"
         if route_path.exists():
             source = route_path.read_text()
@@ -458,12 +472,12 @@ class TestBackendImportBoundary:
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
-                        assert not alias.name.startswith("aip.orchestration"), \
+                        assert not alias.name.startswith("aip.orchestration"), (
                             f"Direct import from aip.orchestration found: {alias.name}"
+                        )
                 elif isinstance(node, ast.ImportFrom):
                     if node.module and node.module.startswith("aip.orchestration"):
-                        assert False, \
-                            f"Direct from aip.orchestration import found: {node.module}"
+                        assert False, f"Direct from aip.orchestration import found: {node.module}"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -508,42 +522,52 @@ class TestMaintenanceApiClientMethods:
 
     def test_has_get_maintenance_status(self):
         from gui.api_client import AipApiClient
+
         assert hasattr(AipApiClient, "get_maintenance_status")
 
     def test_has_get_actor_runs(self):
         from gui.api_client import AipApiClient
+
         assert hasattr(AipApiClient, "get_actor_runs")
 
     def test_has_get_maintenance_logs(self):
         from gui.api_client import AipApiClient
+
         assert hasattr(AipApiClient, "get_maintenance_logs")
 
     def test_has_trigger_maintenance_backfill(self):
         from gui.api_client import AipApiClient
+
         assert hasattr(AipApiClient, "trigger_maintenance_backfill")
 
     def test_has_trigger_maintenance_rebuild_graph(self):
         from gui.api_client import AipApiClient
+
         assert hasattr(AipApiClient, "trigger_maintenance_rebuild_graph")
 
     def test_has_trigger_maintenance_rebuild_codex(self):
         from gui.api_client import AipApiClient
+
         assert hasattr(AipApiClient, "trigger_maintenance_rebuild_codex")
 
     def test_has_trigger_maintenance_retrieval_eval(self):
         from gui.api_client import AipApiClient
+
         assert hasattr(AipApiClient, "trigger_maintenance_retrieval_eval")
 
     def test_has_trigger_maintenance_check_stale_docs(self):
         from gui.api_client import AipApiClient
+
         assert hasattr(AipApiClient, "trigger_maintenance_check_stale_docs")
 
     def test_has_trigger_maintenance_check_contradictions(self):
         from gui.api_client import AipApiClient
+
         assert hasattr(AipApiClient, "trigger_maintenance_check_contradictions")
 
     def test_has_trigger_actor_run(self):
         from gui.api_client import AipApiClient
+
         assert hasattr(AipApiClient, "trigger_actor_run")
 
 
@@ -557,20 +581,25 @@ class TestMaintenanceTypedDicts:
 
     def test_has_maintenance_actor_entry(self):
         from gui.status_types import MaintenanceActorEntry
+
         assert MaintenanceActorEntry is not None
 
     def test_has_maintenance_status_response(self):
         from gui.status_types import MaintenanceStatusResponse
+
         assert MaintenanceStatusResponse is not None
 
     def test_has_actor_runs_response(self):
         from gui.status_types import ActorRunsResponse
+
         assert ActorRunsResponse is not None
 
     def test_has_maintenance_logs_response(self):
         from gui.status_types import MaintenanceLogsResponse
+
         assert MaintenanceLogsResponse is not None
 
     def test_has_maintenance_job_response(self):
         from gui.status_types import MaintenanceJobResponse
+
         assert MaintenanceJobResponse is not None

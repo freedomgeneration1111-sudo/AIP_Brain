@@ -99,8 +99,7 @@ class TestParallelDispatch:
         # We should have hits from both channels (deduped by RRF)
         fts_hits = [h for h in hits if h.source_channel == "fts" or "fts" in h.metadata.get("source_channels", [])]
         vec_hits = [
-            h for h in hits
-            if h.source_channel == "vector" or "vector" in h.metadata.get("source_channels", [])
+            h for h in hits if h.source_channel == "vector" or "vector" in h.metadata.get("source_channels", [])
         ]
         assert len(fts_hits) > 0, "Should have FTS hits"
         assert len(vec_hits) > 0, "Should have vector hits"
@@ -570,21 +569,35 @@ class TestSearchSourcesWithTrace:
         class FakeLexical:
             async def search(self, query, domain=None, limit=10):
                 return [
-                    Chunk(id="doc:1", content="AIP architecture document", score=0.8,
-                           metadata={"type": "project_artifact"}, domain="test"),
+                    Chunk(
+                        id="doc:1",
+                        content="AIP architecture document",
+                        score=0.8,
+                        metadata={"type": "project_artifact"},
+                        domain="test",
+                    ),
                 ]
 
         class FakeEvent:
-            async def write_event(self, **kwargs): pass
-            async def query(self, **kwargs): return []
+            async def write_event(self, **kwargs):
+                pass
+
+            async def query(self, **kwargs):
+                return []
 
         class FakeProject:
-            async def list_projects(self, **kwargs): return []
+            async def list_projects(self, **kwargs):
+                return []
 
         class FakeArtifact:
-            async def write(self, *a): pass
-            async def read(self, *a): return ""
-            async def list_versions(self, *a): return [1]
+            async def write(self, *a):
+                pass
+
+            async def read(self, *a):
+                return ""
+
+            async def list_versions(self, *a):
+                return [1]
 
         stores = AskStores(
             artifact_store=FakeArtifact(),
@@ -596,6 +609,7 @@ class TestSearchSourcesWithTrace:
 
         # Invalidate cache so we get a fresh orchestrator
         from aip.orchestration.ask_pipeline import _orchestrator_cache
+
         _orchestrator_cache.invalidate()
 
         sources, trace, packed = await _search_sources_with_trace(

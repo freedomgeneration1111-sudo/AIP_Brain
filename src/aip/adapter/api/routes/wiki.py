@@ -118,7 +118,9 @@ def _resolve_storage_backend(container: AipContainer | None) -> str:
 # ── Helper: extract WikiArticle schema from DB row ─────────────────────
 
 
-def _row_to_article(row: aiosqlite.Row, content_text: str = "", storage_backend: str = "sqlite_compat") -> dict[str, Any]:
+def _row_to_article(
+    row: aiosqlite.Row, content_text: str = "", storage_backend: str = "sqlite_compat"
+) -> dict[str, Any]:
     """Convert a DB row to the stable WikiArticle schema."""
     metadata = {}
     raw_meta = row["metadata_json"]
@@ -178,7 +180,9 @@ def _row_to_article(row: aiosqlite.Row, content_text: str = "", storage_backend:
         "approved_at": row["updated_at"] if current_state == "APPROVED" else None,
         # Convenience fields
         "domain": article_domain,
-        "artifact_type": "wiki" if artifact_id.startswith("beast:wiki:") or artifact_id.startswith("wiki:") else "proposal",
+        "artifact_type": "wiki"
+        if artifact_id.startswith("beast:wiki:") or artifact_id.startswith("wiki:")
+        else "proposal",
         "version": row["version"],
         "word_count": len(content_text.split()) if content_text else 0,
         "metadata": metadata,
@@ -269,7 +273,13 @@ async def list_wiki_articles(
     start = (page - 1) * page_size
     page_items = items[start : start + page_size]
 
-    return {"items": page_items, "total": total, "page": page, "page_size": page_size, "storage_backend": storage_backend}
+    return {
+        "items": page_items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "storage_backend": storage_backend,
+    }
 
 
 @router.get("/wiki/articles/{article_id:path}")
@@ -799,9 +809,7 @@ async def get_wiki_backlinks(
         conn.row_factory = aiosqlite.Row
         try:
             # Check if graph_edges table exists
-            cursor = await conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='graph_edges'"
-            )
+            cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='graph_edges'")
             table_exists = await cursor.fetchone()
 
             if table_exists:
@@ -872,9 +880,7 @@ async def get_stale_articles(
         conn.row_factory = aiosqlite.Row
         try:
             # Check if codex_topics table exists
-            cursor = await conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='codex_topics'"
-            )
+            cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='codex_topics'")
             table_exists = await cursor.fetchone()
 
             if table_exists:
@@ -972,7 +978,12 @@ async def get_wiki_contradictions(
         logger.warning("Contradictions query failed: %s", exc)
         return {"items": [], "total": 0, "available": False, "storage_backend": storage_backend}
 
-    return {"items": contradictions, "total": len(contradictions), "available": True, "storage_backend": storage_backend}
+    return {
+        "items": contradictions,
+        "total": len(contradictions),
+        "available": True,
+        "storage_backend": storage_backend,
+    }
 
 
 @router.get("/wiki/stats")

@@ -183,6 +183,7 @@ class TestLiveConfigReversionWiring:
         class FakePolicy:
             read_pool_exhaustion_threshold = 0.3
             cooldown_seconds = 60
+
             def to_dict(self):
                 return {
                     "read_pool_exhaustion_threshold": 0.3,
@@ -198,6 +199,7 @@ class TestLiveConfigReversionWiring:
                 # Reference policy so it's captured in the closure
                 _ = policy  # noqa: F841
                 return True
+
             return _revert
 
         mgr.set_auto_tuning_reverter(_make_reverter(fake_policy))
@@ -227,9 +229,7 @@ class TestStatisticalTestPersistence:
         """Schema v10 migration creates the ab_accuracy_timeseries table."""
         store = _make_store()
         with _connect(store) as conn:
-            cursor = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='ab_accuracy_timeseries'"
-            )
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ab_accuracy_timeseries'")
             assert cursor.fetchone() is not None
 
     def test_record_statistical_test_result(self):
@@ -258,11 +258,14 @@ class TestStatisticalTestPersistence:
         """Can retrieve all statistical test results."""
         store = _make_store()
         for i in range(3):
-            store.record_statistical_test_result(f"exp-{i}", {
-                "p_value": 0.01 * (i + 1),
-                "method": "z_test",
-                "significant": i < 2,
-            })
+            store.record_statistical_test_result(
+                f"exp-{i}",
+                {
+                    "p_value": 0.01 * (i + 1),
+                    "method": "z_test",
+                    "significant": i < 2,
+                },
+            )
         results = store.get_statistical_test_results()
         assert len(results) == 3
 
@@ -295,12 +298,15 @@ class TestStatisticalTestPersistence:
         # Write
         store1 = AlertHistoryStore(db_path)
         store1.initialize()
-        store1.record_statistical_test_result("exp-persist", {
-            "p_value": 0.02,
-            "method": "t_test",
-            "significant": True,
-            "confidence_interval": [-0.1, 0.05],
-        })
+        store1.record_statistical_test_result(
+            "exp-persist",
+            {
+                "p_value": 0.02,
+                "method": "t_test",
+                "significant": True,
+                "confidence_interval": [-0.1, 0.05],
+            },
+        )
 
         # Read from new store instance
         store2 = AlertHistoryStore(db_path)
@@ -379,14 +385,16 @@ class TestAccuracyTimeseries:
         store1 = AlertHistoryStore(db_path)
         store1.initialize()
         for i in range(3):
-            store1.record_accuracy_timeseries({
-                "experiment_name": "exp-restart",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "control_accuracy": 0.80 + i * 0.01,
-                "variant_accuracy": 0.90 + i * 0.01,
-                "control_samples": 50,
-                "variant_samples": 50,
-            })
+            store1.record_accuracy_timeseries(
+                {
+                    "experiment_name": "exp-restart",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "control_accuracy": 0.80 + i * 0.01,
+                    "variant_accuracy": 0.90 + i * 0.01,
+                    "control_samples": 50,
+                    "variant_samples": 50,
+                }
+            )
 
         # Read from new instance
         store2 = AlertHistoryStore(db_path)
@@ -399,23 +407,25 @@ class TestAccuracyTimeseries:
         store = _make_store()
 
         # Insert a snapshot with a past timestamp
-        old_timestamp = datetime.fromtimestamp(
-            time.time() - 200 * 3600, tz=timezone.utc
-        ).isoformat()
-        store.record_accuracy_timeseries({
-            "experiment_name": "exp-prune",
-            "timestamp": old_timestamp,
-            "control_accuracy": 0.85,
-            "variant_accuracy": 0.92,
-        })
+        old_timestamp = datetime.fromtimestamp(time.time() - 200 * 3600, tz=timezone.utc).isoformat()
+        store.record_accuracy_timeseries(
+            {
+                "experiment_name": "exp-prune",
+                "timestamp": old_timestamp,
+                "control_accuracy": 0.85,
+                "variant_accuracy": 0.92,
+            }
+        )
 
         # Insert a recent snapshot
-        store.record_accuracy_timeseries({
-            "experiment_name": "exp-prune",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "control_accuracy": 0.87,
-            "variant_accuracy": 0.94,
-        })
+        store.record_accuracy_timeseries(
+            {
+                "experiment_name": "exp-prune",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "control_accuracy": 0.87,
+                "variant_accuracy": 0.94,
+            }
+        )
 
         # Prune data older than 168 hours (7 days)
         pruned = store.prune_accuracy_timeseries(max_age_hours=168)
@@ -477,8 +487,7 @@ class TestMultiArmedBandit:
         _add_results(mgr, "test-exp", n=100, c_acc=0.70, v_acc=0.90)
 
         allocation = mgr.get_bandit_allocation("test-exp")
-        assert allocation["variant"] > allocation["control"], \
-            f"Expected variant allocation > control, got {allocation}"
+        assert allocation["variant"] > allocation["control"], f"Expected variant allocation > control, got {allocation}"
 
     def test_bandit_allocation_sums_to_1(self):
         """Bandit allocation fractions always sum to 1.0."""
@@ -650,7 +659,10 @@ class TestRollbackDryRun:
         if rollbacks:
             preview = rollbacks[0].get("config_reversion_preview", {})
             if preview:
-                assert preview.get("reason") == "no_pre_promotion_snapshot" or preview.get("would_revert_model_config") is not None
+                assert (
+                    preview.get("reason") == "no_pre_promotion_snapshot"
+                    or preview.get("would_revert_model_config") is not None
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -693,4 +705,5 @@ class TestMonitoringSummaryIntegration:
 def _connect(store: AlertHistoryStore):
     """Get a raw sqlite3 connection from the store for test queries."""
     import sqlite3
+
     return sqlite3.connect(store._db_path)

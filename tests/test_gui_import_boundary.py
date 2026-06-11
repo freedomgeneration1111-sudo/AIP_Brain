@@ -46,9 +46,8 @@ def _collect_imports(filepath: Path) -> list[tuple[str, int, str]]:
         # Skip TYPE_CHECKING blocks
         if isinstance(node, ast.If):
             test = node.test
-            is_type_checking = (
-                (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING")
-                or (isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING")
+            is_type_checking = (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING") or (
+                isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
             )
             if is_type_checking:
                 return
@@ -75,10 +74,7 @@ def _py_files(directory: Path) -> list[Path]:
     """Collect all .py files under a directory, excluding __pycache__."""
     if not directory.exists():
         return []
-    return sorted(
-        p for p in directory.rglob("*.py")
-        if "__pycache__" not in p.parts
-    )
+    return sorted(p for p in directory.rglob("*.py") if "__pycache__" not in p.parts)
 
 
 # ── Test: GUI must not import orchestration ────────────────────────────
@@ -94,8 +90,7 @@ def test_gui_does_not_import_orchestration():
         for module, lineno, style in _collect_imports(py_file):
             if module.startswith("aip.orchestration"):
                 violations.append(
-                    f"{py_file.relative_to(PROJECT_ROOT)}:{lineno} ({style}) — "
-                    f"imports '{module}' from GUI layer"
+                    f"{py_file.relative_to(PROJECT_ROOT)}:{lineno} ({style}) — imports '{module}' from GUI layer"
                 )
             # Also flag direct aip.adapter imports from GUI
             # (GUI should only talk to the API, not import adapter internals)
@@ -104,9 +99,8 @@ def test_gui_does_not_import_orchestration():
                     f"{py_file.relative_to(PROJECT_ROOT)}:{lineno} ({style}) — "
                     f"imports '{module}' from GUI layer (should use API client)"
                 )
-    assert not violations, (
-        "GUI must not import orchestration internals — "
-        "use API client instead:\n  " + "\n  ".join(violations)
+    assert not violations, "GUI must not import orchestration internals — use API client instead:\n  " + "\n  ".join(
+        violations
     )
 
 
@@ -137,10 +131,11 @@ def test_ui_run_guarded():
         if isinstance(node, ast.Call):
             func = node.func
             is_ui_run = (
-                (isinstance(func, ast.Attribute) and func.attr == "run"
-                 and isinstance(func.value, ast.Name) and func.value.id == "ui")
-                or (isinstance(func, ast.Name) and func.id == "ui.run")
-            )
+                isinstance(func, ast.Attribute)
+                and func.attr == "run"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "ui"
+            ) or (isinstance(func, ast.Name) and func.id == "ui.run")
             if is_ui_run:
                 # Check if it's inside an `if __name__ == "__main__":` block
                 guarded = _is_in_main_guard(node, tree)
@@ -166,10 +161,7 @@ def _is_in_main_guard(target_node: ast.AST, tree: ast.Module) -> bool:
                 isinstance(test, ast.Compare)
                 and isinstance(test.left, ast.Name)
                 and test.left.id == "__name__"
-                and any(
-                    isinstance(comp, ast.Constant) and comp.value == "__main__"
-                    for comp in test.comparators
-                )
+                and any(isinstance(comp, ast.Constant) and comp.value == "__main__" for comp in test.comparators)
             )
             if is_main_guard:
                 # Check if target_node is somewhere inside this if block
@@ -297,10 +289,7 @@ def test_gui_state_no_silent_exception_catching():
             for j in range(i - 1, max(i - 3, 0), -1):
                 prev = lines[j].strip()
                 if prev.startswith("except ") and "ImportError" not in prev:
-                    violations.append(
-                        f"Line {i + 1}: silent `except: pass` pattern "
-                        f"(should log error instead)"
-                    )
+                    violations.append(f"Line {i + 1}: silent `except: pass` pattern (should log error instead)")
                     break
                 elif prev and not prev.startswith("#"):
                     break
@@ -309,8 +298,7 @@ def test_gui_state_no_silent_exception_catching():
     # persistence functions log errors
     # This is a soft check
     assert "log.error" in source, (
-        "gui/state.py should use log.error() for exception handling "
-        "instead of silent `except: pass`"
+        "gui/state.py should use log.error() for exception handling instead of silent `except: pass`"
     )
 
 
@@ -332,25 +320,20 @@ def test_start_scripts_reference_gui_app():
         content = script.read_text(encoding="utf-8")
         # Check that gui.app is referenced
         if "gui.app" not in content:
-            violations.append(
-                f"{script.relative_to(PROJECT_ROOT)}: does not reference 'gui.app'"
-            )
+            violations.append(f"{script.relative_to(PROJECT_ROOT)}: does not reference 'gui.app'")
         # Check that gui.shell is NOT referenced as the primary GUI start
         if "python -m gui.shell" in content:
             violations.append(
-                f"{script.relative_to(PROJECT_ROOT)}: references 'python -m gui.shell' "
-                f"(should be 'python -m gui.app')"
+                f"{script.relative_to(PROJECT_ROOT)}: references 'python -m gui.shell' (should be 'python -m gui.app')"
             )
         # Check that gui.main is NOT referenced as the primary GUI start
         if "python -m gui.main" in content:
             violations.append(
-                f"{script.relative_to(PROJECT_ROOT)}: references 'python -m gui.main' "
-                f"(should be 'python -m gui.app')"
+                f"{script.relative_to(PROJECT_ROOT)}: references 'python -m gui.main' (should be 'python -m gui.app')"
             )
 
-    assert not violations, (
-        "Start scripts must reference gui.app as the default GUI entry point:\n  "
-        + "\n  ".join(violations)
+    assert not violations, "Start scripts must reference gui.app as the default GUI entry point:\n  " + "\n  ".join(
+        violations
     )
 
 
@@ -361,9 +344,7 @@ def test_legacy_shell_is_frozen():
         pytest.skip("gui/shell.py not found")
 
     docstring = _get_module_docstring(shell_file)
-    assert docstring and "FROZEN" in docstring.upper(), (
-        "gui/shell.py must be marked as FROZEN in its module docstring"
-    )
+    assert docstring and "FROZEN" in docstring.upper(), "gui/shell.py must be marked as FROZEN in its module docstring"
 
 
 def test_legacy_main_is_preserved():
@@ -381,9 +362,7 @@ def test_legacy_main_is_preserved():
 def test_archive_main_exists():
     """gui/archive/main.py must exist as the archived copy."""
     archive_main = GUI_ROOT / "archive" / "main.py"
-    assert archive_main.exists(), (
-        "gui/archive/main.py must exist as an archived copy of the original chat frontend"
-    )
+    assert archive_main.exists(), "gui/archive/main.py must exist as an archived copy of the original chat frontend"
 
 
 def _get_module_docstring(filepath: Path) -> str | None:

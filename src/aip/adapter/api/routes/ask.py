@@ -62,7 +62,7 @@ async def ask_query(payload: dict, container: AipContainer = Depends(get_contain
         raise HTTPException(
             status_code=503,
             detail="Lexical store not available — cannot perform knowledge queries. "
-                   "Ensure the AIP backend is configured with FTS5 support.",
+            "Ensure the AIP backend is configured with FTS5 support.",
         )
 
     if container.artifact_store is None:
@@ -139,8 +139,12 @@ async def ask_query(payload: dict, container: AipContainer = Depends(get_contain
         "prompt": result.prompt,
         "errors": result.errors,
         "trace_available": bool(result.sources),
-        "lexical_only": result.retrieval_degradation.get("lexical_only", False) if result.retrieval_degradation else False,
-        "vector_contributed": result.retrieval_degradation.get("vector_contributed", False) if result.retrieval_degradation else False,
+        "lexical_only": result.retrieval_degradation.get("lexical_only", False)
+        if result.retrieval_degradation
+        else False,
+        "vector_contributed": result.retrieval_degradation.get("vector_contributed", False)
+        if result.retrieval_degradation
+        else False,
     }
 
 

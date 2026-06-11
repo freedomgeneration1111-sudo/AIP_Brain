@@ -70,9 +70,13 @@ class DocumentTable:
             error = data.get("error", "")
 
             # Header row
-            with ui.row().classes("w-full").style(
-                f"font-size:11px; color:{C_MUTED}; text-transform:uppercase; "
-                f"letter-spacing:0.5px; padding:4px 8px; font-family:{F_SANS};"
+            with (
+                ui.row()
+                .classes("w-full")
+                .style(
+                    f"font-size:11px; color:{C_MUTED}; text-transform:uppercase; "
+                    f"letter-spacing:0.5px; padding:4px 8px; font-family:{F_SANS};"
+                )
             ):
                 ui.label("Source Path").style("flex:3; min-width:200px;")
                 ui.label("Model").style("flex:1; min-width:80px;")
@@ -82,20 +86,16 @@ class DocumentTable:
                 ui.label("Updated").style("flex:1; min-width:100px;")
 
             if error:
-                ui.label(f"Error loading documents: {error}").style(
-                    f"color:{C_ERR_FG}; font-size:12px; padding:12px;"
-                )
+                ui.label(f"Error loading documents: {error}").style(f"color:{C_ERR_FG}; font-size:12px; padding:12px;")
                 return
 
             if not items:
                 ui.label("No documents found in corpus.").style(
-                    f"color:{C_MUTED}; font-size:13px; padding:16px; "
-                    f"text-align:center; font-family:{F_SANS};"
+                    f"color:{C_MUTED}; font-size:13px; padding:16px; text-align:center; font-family:{F_SANS};"
                 )
                 if total == 0:
                     ui.label("Ingest documents using CLI or the Ingest action above.").style(
-                        f"color:{C_INK60}; font-size:11px; padding:0 16px; "
-                        f"font-family:{F_SANS};"
+                        f"color:{C_INK60}; font-size:11px; padding:0 16px; font-family:{F_SANS};"
                     )
                 return
 
@@ -122,30 +122,32 @@ class DocumentTable:
 
                 problem_count = embed_fail_count + needs_reembed
 
-                with ui.row().classes("w-full").style(
-                    f"padding:6px 8px; border-radius:{R_SM}; cursor:pointer; "
-                    f"border:0.5px solid transparent; "
-                    f"font-family:{F_SANS}; font-size:12px; "
-                    f"transition:background 0.15s;"
-                ).on("click", lambda sp=source_path: self._handle_select(sp)):
+                with (
+                    ui.row()
+                    .classes("w-full")
+                    .style(
+                        f"padding:6px 8px; border-radius:{R_SM}; cursor:pointer; "
+                        f"border:0.5px solid transparent; "
+                        f"font-family:{F_SANS}; font-size:12px; "
+                        f"transition:background 0.15s;"
+                    )
+                    .on("click", lambda sp=source_path: self._handle_select(sp))
+                ):
                     # Hover effect via classes
                     ui.label(source_path).style(
                         f"flex:3; min-width:200px; color:{C_CREAM}; "
                         f"overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
                     )
                     ui.label(source_model or "-").style(
-                        f"flex:1; min-width:80px; color:{C_INK60}; "
-                        f"font-family:{F_MONO}; font-size:10px;"
+                        f"flex:1; min-width:80px; color:{C_INK60}; font-family:{F_MONO}; font-size:10px;"
                     )
                     ui.label(str(turn_count)).style(
-                        f"flex:0.5; min-width:50px; text-align:right; "
-                        f"color:{C_CREAM}; font-family:{F_MONO};"
+                        f"flex:0.5; min-width:50px; text-align:right; color:{C_CREAM}; font-family:{F_MONO};"
                     )
                     # Embedded with color coding
                     embed_pct = (embedded_count / turn_count * 100) if turn_count > 0 else 0
                     ui.label(f"{embedded_count}/{turn_count}").style(
-                        f"flex:0.5; min-width:60px; text-align:right; "
-                        f"color:{status_color}; font-family:{F_MONO};"
+                        f"flex:0.5; min-width:60px; text-align:right; color:{status_color}; font-family:{F_MONO};"
                     )
                     ui.label(str(problem_count) if problem_count > 0 else "-").style(
                         f"flex:0.5; min-width:50px; text-align:right; "
@@ -153,14 +155,12 @@ class DocumentTable:
                         f"font-family:{F_MONO};"
                     )
                     ui.label(last_updated[:16] if last_updated else "-").style(
-                        f"flex:1; min-width:100px; color:{C_INK60}; "
-                        f"font-family:{F_MONO}; font-size:10px;"
+                        f"flex:1; min-width:100px; color:{C_INK60}; font-family:{F_MONO}; font-size:10px;"
                     )
 
             # Footer with total count
             ui.label(f"Total: {total} documents").style(
-                f"font-size:11px; color:{C_MUTED}; padding:8px; "
-                f"font-family:{F_SANS};"
+                f"font-size:11px; color:{C_MUTED}; padding:8px; font-family:{F_SANS};"
             )
 
     def _handle_select(self, source_path: str) -> None:

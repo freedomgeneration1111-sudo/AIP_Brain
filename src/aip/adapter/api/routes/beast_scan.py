@@ -102,9 +102,7 @@ async def beast_scan(
         best_domain = max(domain_counts, key=domain_counts.get)  # type: ignore[arg-type]
         result["domain"] = best_domain
         # Confidence: fraction of top turns in this domain
-        result["confidence"] = round(
-            domain_counts[best_domain] / max(len(result["top_turns"]), 1), 2
-        )
+        result["confidence"] = round(domain_counts[best_domain] / max(len(result["top_turns"]), 1), 2)
 
     # Step 2: Domain neighbors from graph_store
     graph_store = getattr(container, "graph_store", None)

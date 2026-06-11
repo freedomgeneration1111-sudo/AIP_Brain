@@ -76,7 +76,12 @@ def status() -> None:
             content = config_path.read_text()
             for line in content.splitlines():
                 stripped = line.strip()
-                if stripped.startswith("provider") or stripped.startswith("host") or stripped.startswith("port") or stripped.startswith("db_path"):
+                if (
+                    stripped.startswith("provider")
+                    or stripped.startswith("host")
+                    or stripped.startswith("port")
+                    or stripped.startswith("db_path")
+                ):
                     click.echo(f"  {stripped}")
         except Exception:
             click.echo("  (could not read config)")
@@ -145,6 +150,7 @@ def status() -> None:
     # Vector rows (for embedding pipeline verification)
     try:
         import sqlite3
+
         vdb = db_dir / "vectors.db"
         if vdb.exists():
             connv = sqlite3.connect(str(vdb))
@@ -169,9 +175,11 @@ def status() -> None:
         config_path = Path("config/aip.config.toml")
         if config_path.exists():
             import tomllib
+
             with open(config_path, "rb") as f:
                 cfg = tomllib.load(f)
             from aip.adapter.model_slot_resolver import ModelSlotResolver
+
             resolver = ModelSlotResolver(cfg)
             slot_names = resolver.list_slots()
             if slot_names:
@@ -207,6 +215,7 @@ def status() -> None:
             # We can't easily await in sync status; use a tiny runner or just count via direct sql for status
             # For simplicity and to keep status sync, do a direct read (status is best-effort)
             import sqlite3
+
             conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
             try:
                 total = conn.execute("SELECT COUNT(*) FROM corpus_turns").fetchone()[0]
@@ -239,7 +248,7 @@ def status() -> None:
                 proposals_pending = 0
                 try:
                     proposals_pending = conn.execute(
-                        "SELECT COUNT(*) FROM artifacts WHERE metadata_json LIKE '%\"artifact_type\": \"beast_domain_proposal\"%'"
+                        'SELECT COUNT(*) FROM artifacts WHERE metadata_json LIKE \'%"artifact_type": "beast_domain_proposal"%\''
                     ).fetchone()[0]
                 except Exception:
                     pass
@@ -251,7 +260,9 @@ def status() -> None:
                 click.echo(f"  embedded: {embedded}")
                 click.echo(f"  unembedded: {unembedded}")
                 click.echo(f"  by_domain: {dom_str}")
-                click.echo(f"  proposals_pending: {proposals_pending} (beast_domain_proposal artifacts in GENERATED state)")
+                click.echo(
+                    f"  proposals_pending: {proposals_pending} (beast_domain_proposal artifacts in GENERATED state)"
+                )
                 click.echo(f"  by_source: {by_src_str}")
             finally:
                 conn.close()
@@ -270,17 +281,22 @@ def status() -> None:
                 active_domains: list[str] = []
                 try:
                     import sys as _sys
+
                     _sys.path.insert(0, "src")
                     from aip.orchestration.actors.domain_registry import load_registry as _load_reg
+
                     _reg = _load_reg("docs/beast_domain_registry_v1.md")
                     _excluded = {"quarantine", "unclassified"}
                     active_domains = [d for d in _reg.get_domain_ids() if d not in _excluded]
                 except Exception:
                     pass
 
-                total_wiki = conn_w.execute(
-                    "SELECT COUNT(*) FROM artifacts WHERE metadata_json LIKE '%\"artifact_type\": \"beast_wiki\"%'"
-                ).fetchone()[0] or 0
+                total_wiki = (
+                    conn_w.execute(
+                        'SELECT COUNT(*) FROM artifacts WHERE metadata_json LIKE \'%"artifact_type": "beast_wiki"%\''
+                    ).fetchone()[0]
+                    or 0
+                )
 
                 # Per state counts require ECS — approximate from latest version metadata
                 # Use the ecs_transitions table if available
@@ -305,7 +321,7 @@ def status() -> None:
                 # Domains with any wiki (GENERATED or APPROVED)
                 wiki_domain_rows = conn_w.execute(
                     "SELECT DISTINCT json_extract(metadata_json, '$.domain') "
-                    "FROM artifacts WHERE metadata_json LIKE '%\"artifact_type\": \"beast_wiki\"%'"
+                    'FROM artifacts WHERE metadata_json LIKE \'%"artifact_type": "beast_wiki"%\''
                 ).fetchall()
                 domains_with_wiki = {r[0] for r in wiki_domain_rows if r[0]}
                 domains_without = sorted([d for d in active_domains if d not in domains_with_wiki])
@@ -328,14 +344,17 @@ def status() -> None:
     try:
         from aip.adapter.graph_store import GraphStore
         from aip.cli._db_path import get_default_db_path as _gdp
+
         _kg_path = _gdp()
         if Path(_kg_path).exists():
+
             async def _kg_status():
                 _kg_store = GraphStore(_kg_path)
                 _kg_nodes = await _kg_store.get_all_nodes()
                 _kg_edges = await _kg_store.get_all_edges()
                 await _kg_store.close()
                 return _kg_nodes, _kg_edges
+
             _kg_nodes, _kg_edges = asyncio.run(_kg_status())
             _by_source: dict[str, int] = {}
             _domain_nodes: set[str] = set()

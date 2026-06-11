@@ -21,9 +21,11 @@ import pytest
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_alert_config(**overrides):
     """Create an AlertConfig with sensible defaults for testing."""
     from aip.adapter.alerting import AlertConfig
+
     defaults = dict(
         enabled=True,
         ws_batch_window_seconds=0,
@@ -38,12 +40,14 @@ def _make_alert_config(**overrides):
 def _make_alert_manager(**config_overrides):
     """Create an AlertManager with test config."""
     from aip.adapter.alerting import AlertManager
+
     return AlertManager(_make_alert_config(**config_overrides))
 
 
 # ===========================================================================
 # 1. RealtimeEventBus extraction
 # ===========================================================================
+
 
 class TestRealtimeEventBusExtraction:
     """Verify that SSE/WS subscriber methods are on RealtimeEventBus."""
@@ -52,6 +56,7 @@ class TestRealtimeEventBusExtraction:
         mgr = _make_alert_manager()
         assert hasattr(mgr, "realtime_bus")
         from aip.adapter.alerting import RealtimeEventBus
+
         assert isinstance(mgr.realtime_bus, RealtimeEventBus)
 
     def test_add_remove_sse_subscriber_on_bus(self):
@@ -76,7 +81,10 @@ class TestRealtimeEventBusExtraction:
         """The old thin delegation wrappers should no longer exist on AlertManager."""
         mgr = _make_alert_manager()
         # These should NOT be direct methods on AlertManager anymore
-        assert not hasattr(type(mgr), "add_sse_subscriber") or callable(getattr(type(mgr), "add_sse_subscriber", None)) is False
+        assert (
+            not hasattr(type(mgr), "add_sse_subscriber")
+            or callable(getattr(type(mgr), "add_sse_subscriber", None)) is False
+        )
         assert not hasattr(type(mgr), "remove_sse_subscriber")
         assert not hasattr(type(mgr), "add_ws_subscriber")
         assert not hasattr(type(mgr), "remove_ws_subscriber")
@@ -109,12 +117,13 @@ class TestRealtimeEventBusExtraction:
         mgr = _make_alert_manager()
         bus = mgr.realtime_bus
         bus.remove_sse_subscriber(MagicMock())  # Should not raise
-        bus.remove_ws_subscriber(MagicMock())   # Should not raise
+        bus.remove_ws_subscriber(MagicMock())  # Should not raise
 
 
 # ===========================================================================
 # 2. DeliveryManager accessor cleanup
 # ===========================================================================
+
 
 class TestDeliveryManagerAccessors:
     """Verify that DeliveryManager exposes clean public accessors."""
@@ -123,6 +132,7 @@ class TestDeliveryManagerAccessors:
         mgr = _make_alert_manager()
         assert hasattr(mgr, "delivery_mgr")
         from aip.adapter.alerting import DeliveryManager
+
         assert isinstance(mgr.delivery_mgr, DeliveryManager)
 
     def test_increment_sent(self):
@@ -207,10 +217,13 @@ class TestDeliveryManagerAccessors:
             {"email": {"status": "sent", "receipt": {"msg_id": "abc"}}},
             config=None,
         )
-        dm.update_email_delivery_status("corr-1", {
-            "delivery_status": "read",
-            "email_poll_updated_at": "2025-01-01T00:00:00",
-        })
+        dm.update_email_delivery_status(
+            "corr-1",
+            {
+                "delivery_status": "read",
+                "email_poll_updated_at": "2025-01-01T00:00:00",
+            },
+        )
         receipts = dm.get_delivery_receipts("corr-1")
         assert receipts["email"]["delivery_status"] == "read"
 
@@ -241,12 +254,14 @@ class TestDeliveryManagerAccessors:
 # 3. StatusAggregator delegation
 # ===========================================================================
 
+
 class TestStatusAggregator:
     """Verify that get_status() delegates to StatusAggregator."""
 
     def test_status_aggregator_exists(self):
         mgr = _make_alert_manager()
         from aip.adapter.alerting import StatusAggregator
+
         assert isinstance(mgr._status_aggregator, StatusAggregator)
 
     def test_get_status_returns_dict(self):
@@ -291,11 +306,13 @@ class TestStatusAggregator:
 # 4. WebSocket batch flush deadlock fix
 # ===========================================================================
 
+
 class TestWebSocketDeadlockFix:
     """Verify that the RLock prevents deadlock in batch flush."""
 
     def test_realtime_bus_uses_rlock(self):
         from aip.adapter.alerting import RealtimeEventBus
+
         bus = RealtimeEventBus(_make_alert_config())
         assert isinstance(bus._lock, type(threading.RLock()))
 
@@ -356,35 +373,41 @@ class TestWebSocketDeadlockFix:
 # 5. asyncio.get_event_loop() elimination
 # ===========================================================================
 
+
 class TestAsyncioDeprecationElimination:
     """Verify that production code no longer uses deprecated asyncio patterns."""
 
     def test_no_get_event_loop_in_alerting_py(self):
         """The production alerting.py should not contain asyncio.get_event_loop() in code."""
         import aip.adapter.alerting as alerting_module
+
         source = open(alerting_module.__file__).read()
         # Only check lines that look like actual code (not docstrings/comments)
         import ast
+
         tree = ast.parse(source)
         code_uses_get_event_loop = False
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Attribute):
-                    if (node.func.attr == "get_event_loop"
-                            and isinstance(node.func.value, ast.Attribute)
-                            and node.func.value.attr == "asyncio"):
+                    if (
+                        node.func.attr == "get_event_loop"
+                        and isinstance(node.func.value, ast.Attribute)
+                        and node.func.value.attr == "asyncio"
+                    ):
                         code_uses_get_event_loop = True
-                    elif (node.func.attr == "get_event_loop"
-                          and isinstance(node.func.value, ast.Name)
-                          and node.func.value.id == "asyncio"):
+                    elif (
+                        node.func.attr == "get_event_loop"
+                        and isinstance(node.func.value, ast.Name)
+                        and node.func.value.id == "asyncio"
+                    ):
                         code_uses_get_event_loop = True
-        assert not code_uses_get_event_loop, (
-            "Found asyncio.get_event_loop() in production AST"
-        )
+        assert not code_uses_get_event_loop, "Found asyncio.get_event_loop() in production AST"
 
     def test_realtime_bus_uses_get_running_loop(self):
         """RealtimeEventBus should use asyncio.get_running_loop()."""
         import aip.adapter.alerting as alerting_module
+
         source = open(alerting_module.__file__).read()
         assert "asyncio.get_running_loop()" in source
         assert "_schedule_batch_flush" in source
@@ -393,6 +416,7 @@ class TestAsyncioDeprecationElimination:
         """The _async_send_json helper should use get_running_loop."""
         from aip.adapter.alerting import RealtimeEventBus
         import inspect
+
         source = inspect.getsource(RealtimeEventBus._async_send_json)
         assert "get_running_loop" in source
         assert "get_event_loop" not in source
@@ -401,6 +425,7 @@ class TestAsyncioDeprecationElimination:
 # ===========================================================================
 # 6. Core state consolidation — counters owned by DeliveryManager
 # ===========================================================================
+
 
 class TestCoreStateConsolidation:
     """Verify that core counters are now owned by DeliveryManager."""
@@ -475,6 +500,7 @@ class TestCoreStateConsolidation:
     def test_send_alert_increments_delivery_manager(self):
         """Verify that send_alert increments the DeliveryManager counter."""
         from aip.adapter.alerting import Alert, AlertConfig
+
         mgr = _make_alert_manager(webhook_url="")
         alert = Alert(
             alert_type="quality_degradation",

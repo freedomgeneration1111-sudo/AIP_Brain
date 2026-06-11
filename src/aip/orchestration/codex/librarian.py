@@ -297,9 +297,7 @@ class Librarian:
         from the corpus_turn primary_domain field.
         """
         try:
-            unclassified = await self._store.get_unclassified_sources(
-                limit=self._config.cycle_limit_sources
-            )
+            unclassified = await self._store.get_unclassified_sources(limit=self._config.cycle_limit_sources)
 
             if not unclassified:
                 return {"classified": 0, "note": "nothing_to_classify"}
@@ -329,6 +327,7 @@ class Librarian:
 
         try:
             from aip.adapter.corpus_turn_store import CorpusTurnStore
+
             if not isinstance(self._corpus, CorpusTurnStore):
                 return ""
 
@@ -439,6 +438,7 @@ class Librarian:
 
         try:
             from aip.adapter.corpus_turn_store import CorpusTurnStore
+
             if not isinstance(self._corpus, CorpusTurnStore):
                 return []
 
@@ -495,7 +495,7 @@ class Librarian:
 
                 # Link topics that share sources
                 for i, t1 in enumerate(domain_topics):
-                    for t2 in domain_topics[i + 1:]:
+                    for t2 in domain_topics[i + 1 :]:
                         shared = set(t1.source_ids) & set(t2.source_ids)
                         if shared:
                             await self._store.add_related_topic(t1.topic_id, t2.topic_id)
@@ -570,7 +570,7 @@ class Librarian:
                                         severity="apparent",
                                         status="open",
                                         context=f"Topic '{topic.title or topic.topic_id}' has both active and stale sources. "
-                                                f"The stale source may contain claims that contradict the current source.",
+                                        f"The stale source may contain claims that contradict the current source.",
                                         detected_at=now,
                                     )
                                     await self._store.upsert_contradiction(contradiction)
@@ -609,12 +609,14 @@ class Librarian:
                     # Get a sample of content from the corpus turns
                     sample = await self._get_source_content_sample(src)
                     if sample:
-                        source_samples.append({
-                            "source_id": src.source_id,
-                            "title": src.title or src.source_path,
-                            "status": src.status,
-                            "sample": sample[:500],  # Truncate for LLM context
-                        })
+                        source_samples.append(
+                            {
+                                "source_id": src.source_id,
+                                "title": src.title or src.source_path,
+                                "status": src.status,
+                                "sample": sample[:500],  # Truncate for LLM context
+                            }
+                        )
 
             if len(source_samples) < 2:
                 continue
@@ -623,10 +625,13 @@ class Librarian:
             prompt = _build_contradiction_detection_prompt(topic, source_samples)
 
             try:
-                result = await self._model.call("sexton", [
-                    {"role": "system", "content": CONTRADICTION_SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ])
+                result = await self._model.call(
+                    "sexton",
+                    [
+                        {"role": "system", "content": CONTRADICTION_SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                )
                 content = (result or {}).get("content", "").strip()
 
                 # Parse LLM response for contradictions
@@ -638,8 +643,7 @@ class Librarian:
                             topic_id=topic.topic_id, status="open", limit=10
                         )
                         already = any(
-                            (e.source_a_id == c.source_a_id and e.source_b_id == c.source_b_id)
-                            for e in existing
+                            (e.source_a_id == c.source_a_id and e.source_b_id == c.source_b_id) for e in existing
                         )
                         if not already:
                             await self._store.upsert_contradiction(c)
@@ -657,6 +661,7 @@ class Librarian:
 
         try:
             from aip.adapter.corpus_turn_store import CorpusTurnStore
+
             if not isinstance(self._corpus, CorpusTurnStore):
                 return ""
 
@@ -791,9 +796,7 @@ class Librarian:
             },
         }
 
-    async def _emit_event(
-        self, event_type: str, artifact_id: str, metadata: dict | None = None
-    ) -> None:
+    async def _emit_event(self, event_type: str, artifact_id: str, metadata: dict | None = None) -> None:
         """Write an event to the EventStore if available."""
         if self._events is None:
             return
@@ -811,6 +814,7 @@ class Librarian:
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
+
 
 def _make_source_id(source_key: str) -> str:
     """Generate a stable source_id from a source key."""
@@ -853,21 +857,16 @@ perspective, or scope. Apparent contradictions (where context might explain the
 difference) should be marked as "apparent" severity."""
 
 
-def _build_contradiction_detection_prompt(
-    topic: CodexTopic, source_samples: list[dict]
-) -> str:
+def _build_contradiction_detection_prompt(topic: CodexTopic, source_samples: list[dict]) -> str:
     """Build the user prompt for contradiction detection."""
     topic_title = topic.title or topic.topic_id
     source_blocks = []
     for i, s in enumerate(source_samples):
-        source_blocks.append(
-            f"SOURCE {chr(65 + i)}: {s['title']} (status: {s['status']})\n{s['sample']}"
-        )
+        source_blocks.append(f"SOURCE {chr(65 + i)}: {s['title']} (status: {s['status']})\n{s['sample']}")
 
     return (
         f"Topic: {topic_title} (domain: {topic.domain})\n\n"
-        f"Compare the following sources for factual contradictions:\n\n"
-        + "\n\n".join(source_blocks)
+        f"Compare the following sources for factual contradictions:\n\n" + "\n\n".join(source_blocks)
     )
 
 

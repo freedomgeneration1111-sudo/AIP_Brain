@@ -28,7 +28,7 @@ SRC_ROOT = PROJECT_ROOT / "src" / "aip"
 # layer boundaries at runtime (not statically importable).  These are the
 # known "wiring" modules that mediate between layers.
 _IMPORTLIB_ALLOWED = {
-    "aip/adapter/api/app.py",          # wires orchestration into container via importlib
+    "aip/adapter/api/app.py",  # wires orchestration into container via importlib
     "aip/orchestration/embed_providers.py",  # lazy adapter imports
 }
 
@@ -99,14 +99,11 @@ def test_orchestration_does_not_import_adapter_api_app():
         for module, symbol, lineno in _extract_static_imports(filepath):
             # Check for direct imports from adapter.api.app
             if module == "aip.adapter.api.app" or module.startswith("aip.adapter.api.app."):
-                violations.append(
-                    f"{module_path}:{lineno} — imports '{symbol}' from {module}"
-                )
+                violations.append(f"{module_path}:{lineno} — imports '{symbol}' from {module}")
 
     assert not violations, (
         "Orchestration must not import from aip.adapter.api.app. "
-        "Use aip.adapter.embedding.factory or aip.config.loader instead.\n"
-        + "\n".join(violations)
+        "Use aip.adapter.embedding.factory or aip.config.loader instead.\n" + "\n".join(violations)
     )
 
 
@@ -128,15 +125,12 @@ def test_routes_do_not_import_orchestration():
     for module_path, filepath in _collect_python_files(routes_root):
         for module, symbol, lineno in _extract_static_imports(filepath):
             if module.startswith("aip.orchestration"):
-                violations.append(
-                    f"{module_path}:{lineno} — imports '{symbol}' from {module}"
-                )
+                violations.append(f"{module_path}:{lineno} — imports '{symbol}' from {module}")
 
     assert not violations, (
         "Route modules must not import from aip.orchestration. "
         "Use container-mediated access (AipContainer._ask_fn, etc.) "
-        "or importlib.import_module() for runtime access.\n"
-        + "\n".join(violations)
+        "or importlib.import_module() for runtime access.\n" + "\n".join(violations)
     )
 
 
@@ -163,14 +157,11 @@ def test_adapter_does_not_import_orchestration():
 
         for module, symbol, lineno in _extract_static_imports(filepath):
             if module.startswith("aip.orchestration"):
-                violations.append(
-                    f"{module_path}:{lineno} — imports '{symbol}' from {module}"
-                )
+                violations.append(f"{module_path}:{lineno} — imports '{symbol}' from {module}")
 
     assert not violations, (
         "Adapter modules must not import from aip.orchestration. "
-        "Use container-mediated access or importlib.import_module().\n"
-        + "\n".join(violations)
+        "Use container-mediated access or importlib.import_module().\n" + "\n".join(violations)
     )
 
 
@@ -185,9 +176,7 @@ def test_canonical_embedding_factory_exists():
     assert factory_path.is_file(), f"Missing canonical module: {factory_path}"
 
     source = factory_path.read_text()
-    assert "def create_embedding_provider" in source, (
-        "factory.py must define create_embedding_provider function"
-    )
+    assert "def create_embedding_provider" in source, "factory.py must define create_embedding_provider function"
 
 
 def test_canonical_config_loader_exists():

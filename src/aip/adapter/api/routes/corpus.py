@@ -75,10 +75,7 @@ async def get_corpus_stats(container: AipContainer = Depends(get_container)):
 
     try:
         domain_counts = await cts.count_by_domain()
-        result["domains"] = [
-            {"name": name, "count": count}
-            for name, count in domain_counts.items()
-        ]
+        result["domains"] = [{"name": name, "count": count} for name, count in domain_counts.items()]
     except Exception as exc:
         logger.warning("CorpusTurnStore domain counts failed: %s", exc)
 
@@ -257,6 +254,7 @@ async def ingest_to_corpus(
         raise HTTPException(status_code=503, detail="CorpusTurnStore not wired")
 
     import os
+
     path = payload.get("path")
     if not path:
         raise HTTPException(status_code=400, detail="No path provided")
@@ -509,6 +507,7 @@ async def trigger_embedding_backfill(
 
         # Run backfill in background
         import asyncio
+
         asyncio.create_task(_run_backfill_in_background(request, container))
 
         return {

@@ -72,13 +72,19 @@ class RetrievalChannelResults:
         channel_results = test_result.get("channel_results", {})
         if not channel_results:
             with self._container:
-                ui.label("No channel results").style(
-                    f"font-size:12px; color:{C_MUTED}; font-family:{F_MONO};"
-                )
+                ui.label("No channel results").style(f"font-size:12px; color:{C_MUTED}; font-family:{F_MONO};")
             return
 
         # Sort channels: active first, then degraded, then empty, then failed, then unavailable/not_configured
-        order = {"active": 0, "degraded": 1, "empty": 2, "failed": 3, "disabled": 4, "unavailable": 5, "not_configured": 6}
+        order = {
+            "active": 0,
+            "degraded": 1,
+            "empty": 2,
+            "failed": 3,
+            "disabled": 4,
+            "unavailable": 5,
+            "not_configured": 6,
+        }
         sorted_channels = sorted(
             channel_results.keys(),
             key=lambda ch: order.get(channel_results[ch].get("state", "unavailable"), 7),
@@ -130,15 +136,16 @@ class RetrievalChannelResults:
         # Card background: slightly different for non-active channels
         bg = C_SURFACE if state in ("active", "empty") else C_GROUND
 
-        with ui.card().classes("w-full p-3 mb-2").style(
-            f"background:{bg}; border:0.5px solid {C_INK40}; "
-            f"border-radius:{R_SM}; border-left:3px solid {color};"
+        with (
+            ui.card()
+            .classes("w-full p-3 mb-2")
+            .style(
+                f"background:{bg}; border:0.5px solid {C_INK40}; border-radius:{R_SM}; border-left:3px solid {color};"
+            )
         ):
             # Header row
             with ui.row().classes("w-full items-center gap-2"):
-                ui.label(label).style(
-                    f"font-family:{F_SANS}; font-size:13px; font-weight:700; color:{C_CREAM};"
-                )
+                ui.label(label).style(f"font-family:{F_SANS}; font-size:13px; font-weight:700; color:{C_CREAM};")
 
                 # State badge
                 ui.label(state.upper().replace("_", " ")).style(
@@ -148,9 +155,7 @@ class RetrievalChannelResults:
                 )
 
                 # Result count and latency
-                ui.label(f"{result_count} results").style(
-                    f"font-size:10px; color:{C_CREAM}; font-family:{F_MONO};"
-                )
+                ui.label(f"{result_count} results").style(f"font-size:10px; color:{C_CREAM}; font-family:{F_MONO};")
                 if latency_ms > 0:
                     latency_color = C_OK_FG if latency_ms < 500 else C_AMBER if latency_ms < 2000 else C_ERR_FG
                     ui.label(f"{latency_ms:.0f}ms").style(
@@ -159,20 +164,16 @@ class RetrievalChannelResults:
 
                 # Backend type for vector
                 if backend_type and state not in ("unavailable", "not_configured"):
-                    ui.label(f"[{backend_type}]").style(
-                        f"font-size:9px; color:{C_MUTED}; font-family:{F_MONO};"
-                    )
+                    ui.label(f"[{backend_type}]").style(f"font-size:9px; color:{C_MUTED}; font-family:{F_MONO};")
 
             # Warning/error messages
             if warning:
                 ui.label(f"Warning: {warning[:120]}").style(
-                    f"font-size:10px; color:{C_AMBER}; font-family:{F_MONO}; "
-                    f"margin-top:2px;"
+                    f"font-size:10px; color:{C_AMBER}; font-family:{F_MONO}; margin-top:2px;"
                 )
             if error:
                 ui.label(f"Error: {error[:120]}").style(
-                    f"font-size:10px; color:{C_ERR_FG}; font-family:{F_MONO}; "
-                    f"margin-top:2px;"
+                    f"font-size:10px; color:{C_ERR_FG}; font-family:{F_MONO}; margin-top:2px;"
                 )
 
             # Vector-specific info
@@ -183,23 +184,21 @@ class RetrievalChannelResults:
                     if vss is not None:
                         vss_label = "VSS: available" if vss else "VSS: not available"
                         vss_color = C_OK_FG if vss else C_AMBER
-                        ui.label(vss_label).style(
-                            f"font-size:9px; color:{vss_color}; font-family:{F_MONO};"
-                        )
+                        ui.label(vss_label).style(f"font-size:9px; color:{vss_color}; font-family:{F_MONO};")
                     if emb is not None:
                         emb_label = "Embedding: configured" if emb else "Embedding: not configured"
                         emb_color = C_OK_FG if emb else C_ERR_FG
-                        ui.label(emb_label).style(
-                            f"font-size:9px; color:{emb_color}; font-family:{F_MONO};"
-                        )
+                        ui.label(emb_label).style(f"font-size:9px; color:{emb_color}; font-family:{F_MONO};")
 
             # Result items (collapsible if many)
             if items:
-                with ui.expansion(
-                    f"Show {len(items)} result(s)",
-                    value=len(items) <= 5,
-                ).classes("w-full mt-1").style(
-                    f"font-size:11px; color:{C_CREAM}; font-family:{F_SANS};"
+                with (
+                    ui.expansion(
+                        f"Show {len(items)} result(s)",
+                        value=len(items) <= 5,
+                    )
+                    .classes("w-full mt-1")
+                    .style(f"font-size:11px; color:{C_CREAM}; font-family:{F_SANS};")
                 ):
                     for i, item in enumerate(items):
                         self._render_item(i, item)
@@ -217,21 +216,13 @@ class RetrievalChannelResults:
         source_type = item.get("source_type", "")
         domain = item.get("domain", "")
 
-        with ui.row().classes("w-full items-start gap-1 py-1").style(
-            f"border-bottom:0.5px solid {C_INK40};"
-        ):
+        with ui.row().classes("w-full items-start gap-1 py-1").style(f"border-bottom:0.5px solid {C_INK40};"):
             # Index
-            ui.label(f"#{index + 1}").style(
-                f"font-size:9px; color:{C_MUTED}; font-family:{F_MONO}; "
-                f"min-width:20px;"
-            )
+            ui.label(f"#{index + 1}").style(f"font-size:9px; color:{C_MUTED}; font-family:{F_MONO}; min-width:20px;")
             # Content
             with ui.column().classes("flex-1").style("gap:1px;"):
                 if title:
-                    ui.label(title).style(
-                        f"font-size:11px; font-weight:600; color:{C_CREAM}; "
-                        f"font-family:{F_SANS};"
-                    )
+                    ui.label(title).style(f"font-size:11px; font-weight:600; color:{C_CREAM}; font-family:{F_SANS};")
                 if snippet:
                     ui.label(snippet).style(
                         f"font-size:9px; color:{C_MUTED}; font-family:{F_MONO}; "
@@ -240,6 +231,5 @@ class RetrievalChannelResults:
             # Score
             score_color = C_OK_FG if score >= 0.8 else C_AMBER if score >= 0.5 else C_MUTED
             ui.label(f"{score:.3f}").style(
-                f"font-size:10px; color:{score_color}; font-family:{F_MONO}; "
-                f"min-width:40px; text-align:right;"
+                f"font-size:10px; color:{score_color}; font-family:{F_MONO}; min-width:40px; text-align:right;"
             )

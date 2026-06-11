@@ -86,8 +86,7 @@ class OpenAICompatibleEmbeddingClient(EmbeddingProvider):
             vec = embedding_data[0].get("embedding", [])
             if not vec:
                 raise ConnectionError(
-                    f"No embedding vector in response from {self.base_url}/v1/embeddings "
-                    f"(model={self.model})."
+                    f"No embedding vector in response from {self.base_url}/v1/embeddings (model={self.model})."
                 )
 
             log.debug(
@@ -106,15 +105,13 @@ class OpenAICompatibleEmbeddingClient(EmbeddingProvider):
             ) from e
         except httpx.RequestError as e:
             raise ConnectionError(
-                f"Failed to connect to embedding API at {self.base_url}/v1/embeddings "
-                f"(model={self.model}): {e}"
+                f"Failed to connect to embedding API at {self.base_url}/v1/embeddings (model={self.model}): {e}"
             ) from e
         except ConnectionError:
             raise
         except Exception as e:
             raise ConnectionError(
-                f"Unexpected error embedding via {self.base_url}/v1/embeddings "
-                f"(model={self.model}): {e}"
+                f"Unexpected error embedding via {self.base_url}/v1/embeddings (model={self.model}): {e}"
             ) from e
 
     async def close(self) -> None:

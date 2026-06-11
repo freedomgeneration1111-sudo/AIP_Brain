@@ -22,28 +22,28 @@ from typing import Literal
 
 # Source status lifecycle
 CodexSourceStatus = Literal[
-    "active",       # Currently valid and up-to-date
-    "stale",        # Content may be outdated; needs review
-    "superseded",   # Replaced by a newer version
+    "active",  # Currently valid and up-to-date
+    "stale",  # Content may be outdated; needs review
+    "superseded",  # Replaced by a newer version
     "quarantined",  # Flagged for issues; excluded from retrieval
 ]
 
 # Contradiction severity
 ContradictionSeverity = Literal[
-    "critical",     # Direct factual conflict (e.g., "X is true" vs "X is false")
-    "major",        # Substantive disagreement on a claim
-    "minor",        # Minor inconsistency (wording, emphasis)
-    "apparent",     # Looks contradictory but may be context-dependent
+    "critical",  # Direct factual conflict (e.g., "X is true" vs "X is false")
+    "major",  # Substantive disagreement on a claim
+    "minor",  # Minor inconsistency (wording, emphasis)
+    "apparent",  # Looks contradictory but may be context-dependent
 ]
 
 # Contradiction resolution status
 ContradictionStatus = Literal[
-    "open",              # Unresolved contradiction
-    "investigating",     # DEFINER is reviewing
+    "open",  # Unresolved contradiction
+    "investigating",  # DEFINER is reviewing
     "resolved_correct",  # One source confirmed correct; other updated
-    "resolved_both",     # Both sources had partial truth; merged
-    "resolved_outdated", # One source was simply outdated
-    "dismissed",         # Not actually contradictory after review
+    "resolved_both",  # Both sources had partial truth; merged
+    "resolved_outdated",  # One source was simply outdated
+    "dismissed",  # Not actually contradictory after review
 ]
 
 
@@ -143,16 +143,16 @@ class CodexTopic:
     answers "what do I know about X?" by traversing the topic graph.
     """
 
-    topic_id: str = ""           # snake_case identifier
-    title: str = ""              # Human-readable title
-    domain: str = ""             # Parent domain
-    description: str = ""        # Brief summary of what this topic covers
+    topic_id: str = ""  # snake_case identifier
+    title: str = ""  # Human-readable title
+    domain: str = ""  # Parent domain
+    description: str = ""  # Brief summary of what this topic covers
     source_ids: list[str] = field(default_factory=list)  # Sources that discuss this topic
     related_topics: list[str] = field(default_factory=list)  # Connected topic_ids
     contradiction_count: int = 0  # Number of open contradictions
     staleness_score: float = 0.0  # 0.0 = fresh, 1.0 = very stale
-    last_activity_at: str = ""   # Most recent source update
-    is_wiki_page: bool = False   # Whether a wiki article exists for this topic
+    last_activity_at: str = ""  # Most recent source update
+    is_wiki_page: bool = False  # Whether a wiki article exists for this topic
     metadata: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -206,19 +206,19 @@ class CodexContradiction:
 
     contradiction_id: str = ""
     topic_id: str = ""
-    claim_a: str = ""           # The claim from source A
-    source_a_id: str = ""       # Source that makes claim A
-    source_a_title: str = ""    # Title of source A (for display)
-    claim_b: str = ""           # The conflicting claim from source B
-    source_b_id: str = ""       # Source that makes claim B
-    source_b_title: str = ""    # Title of source B (for display)
+    claim_a: str = ""  # The claim from source A
+    source_a_id: str = ""  # Source that makes claim A
+    source_a_title: str = ""  # Title of source A (for display)
+    claim_b: str = ""  # The conflicting claim from source B
+    source_b_id: str = ""  # Source that makes claim B
+    source_b_title: str = ""  # Title of source B (for display)
     severity: ContradictionSeverity | str = "major"
     status: ContradictionStatus | str = "open"
-    context: str = ""           # Additional context about the contradiction
+    context: str = ""  # Additional context about the contradiction
     resolution_notes: str = ""  # DEFINER's resolution notes
-    resolved_by: str = ""       # Actor who resolved (typically "definer")
-    resolved_at: str = ""       # When resolved
-    detected_at: str = ""       # When first detected
+    resolved_by: str = ""  # Actor who resolved (typically "definer")
+    resolved_at: str = ""  # When resolved
+    detected_at: str = ""  # When first detected
     metadata: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -292,10 +292,10 @@ class CodexDashboard:
     unclassified_sources: int = 0
     unclassified_turns: int = 0
 
-    recently_changed: list[dict] = field(default_factory=list)   # Last 10 updated topics
-    stale_documents: list[dict] = field(default_factory=list)    # Top stale sources
+    recently_changed: list[dict] = field(default_factory=list)  # Last 10 updated topics
+    stale_documents: list[dict] = field(default_factory=list)  # Top stale sources
     open_contradiction_list: list[dict] = field(default_factory=list)  # Open contradictions
-    topic_graph: dict = field(default_factory=dict)              # Domain -> topic_count
+    topic_graph: dict = field(default_factory=dict)  # Domain -> topic_count
 
     @property
     def health_score(self) -> float:
@@ -320,11 +320,11 @@ class CodexConfig:
     """
 
     # Staleness thresholds (days since last update)
-    stale_threshold_days: int = 90      # Mark as stale after 90 days
+    stale_threshold_days: int = 90  # Mark as stale after 90 days
     very_stale_threshold_days: int = 180  # Mark as very stale after 180 days
 
     # Maintenance cycle settings
-    cycle_limit_sources: int = 50       # Max sources to process per cycle
+    cycle_limit_sources: int = 50  # Max sources to process per cycle
     cycle_limit_contradictions: int = 20  # Max contradiction checks per cycle
 
     # Duplicate detection
@@ -332,12 +332,12 @@ class CodexConfig:
     min_content_length_for_dedup: int = 50  # Don't dedup very short content
 
     # Topic map settings
-    auto_create_topics: bool = True     # Auto-create topics from domain/tags
+    auto_create_topics: bool = True  # Auto-create topics from domain/tags
     topic_merge_threshold: float = 0.90  # Topic similarity above this = merge candidate
 
     # "What do I know about X?" settings
-    summary_max_sources: int = 10       # Max sources to include in a summary
-    summary_max_words: int = 500        # Target word count for summaries
+    summary_max_sources: int = 10  # Max sources to include in a summary
+    summary_max_words: int = 500  # Target word count for summaries
 
     # Model slot for LLM-assisted classification/contradiction detection
     librarian_model_slot: str = "sexton"  # Use the sexton slot (free-tier)

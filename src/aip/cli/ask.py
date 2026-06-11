@@ -77,7 +77,9 @@ def _run_ask(
     """Synchronous entry point that runs the async ask pipeline."""
     try:
         result = asyncio.run(
-            _ask_async(question, project, source, max_sources, save_artifact, model_slot, show_context, session, db_path)
+            _ask_async(
+                question, project, source, max_sources, save_artifact, model_slot, show_context, session, db_path
+            )
         )
         _print_result(result, show_context, project)
     except Exception as exc:
@@ -153,7 +155,7 @@ def _print_result(result, show_context: bool, project_name: str = "") -> None:
             click.echo(f"Create it with: aip project create --name {project_name} --domain {project_name}")
             click.echo(f"Then ingest: aip ingest directory <path> --project {project_name}")
         elif result.status == "NO_PROJECT_MEMORY":
-            domain = getattr(result, 'project_id', project_name)
+            domain = getattr(result, "project_id", project_name)
             click.echo()
             click.echo(f"Ingest conversations with: aip ingest directory <path> --project {project_name}")
             click.echo(f"  (or: aip ingest directory <path> --domain {domain})")

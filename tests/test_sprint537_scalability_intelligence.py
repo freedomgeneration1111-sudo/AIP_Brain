@@ -49,7 +49,7 @@ class TestWebSocketConnectionPooling:
         mgr = AlertManager(AlertConfig(enabled=True))
         # Simulate tab registration (done by WS command handler)
         tab_id = "tab-abc123"
-        if not hasattr(mgr, '_registered_tabs'):
+        if not hasattr(mgr, "_registered_tabs"):
             mgr._registered_tabs = {}
         mgr._registered_tabs[tab_id] = {
             "registered_at": time.time(),
@@ -63,7 +63,7 @@ class TestWebSocketConnectionPooling:
         """AlertManager can unregister tabs."""
         mgr = AlertManager(AlertConfig(enabled=True))
         tab_id = "tab-abc123"
-        if not hasattr(mgr, '_registered_tabs'):
+        if not hasattr(mgr, "_registered_tabs"):
             mgr._registered_tabs = {}
         mgr._registered_tabs[tab_id] = {
             "registered_at": time.time(),
@@ -76,7 +76,7 @@ class TestWebSocketConnectionPooling:
     def test_multiple_tab_registration(self):
         """Multiple tabs can be registered simultaneously."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        if not hasattr(mgr, '_registered_tabs'):
+        if not hasattr(mgr, "_registered_tabs"):
             mgr._registered_tabs = {}
         for i in range(5):
             tab_id = f"tab-{i}"
@@ -90,6 +90,7 @@ class TestWebSocketConnectionPooling:
     def test_dashboard_html_contains_sharedworker_code(self):
         """Dashboard HTML includes SharedWorker inline code."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "SharedWorker" in _DASHBOARD_HTML
         assert "broadcastToTabs" in _DASHBOARD_HTML
         assert "tab_register" in _DASHBOARD_HTML
@@ -98,6 +99,7 @@ class TestWebSocketConnectionPooling:
     def test_dashboard_html_has_tab_id_generation(self):
         """Dashboard HTML generates unique tab IDs."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "tabId" in _DASHBOARD_HTML
         assert "tab-" in _DASHBOARD_HTML
 
@@ -129,11 +131,13 @@ class TestPredictionAccuracy:
 
     def test_record_prediction_outcome_hit(self):
         """record_prediction_outcome marks a hit when alert matches prediction."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=True,
-            prediction_accuracy_window_seconds=600,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=True,
+                prediction_accuracy_window_seconds=600,
+            )
+        )
         # Simulate a pending prediction
         pred_id = "pred-test123"
         mgr.prediction_mgr._prediction_outcomes[pred_id] = {
@@ -160,11 +164,13 @@ class TestPredictionAccuracy:
 
     def test_record_prediction_outcome_miss(self):
         """record_prediction_outcome marks a miss when time window expires."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=True,
-            prediction_accuracy_window_seconds=1,  # Very short window
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=True,
+                prediction_accuracy_window_seconds=1,  # Very short window
+            )
+        )
         # Simulate an old pending prediction
         pred_id = "pred-old123"
         mgr.prediction_mgr._prediction_outcomes[pred_id] = {
@@ -222,11 +228,13 @@ class TestPredictionAccuracy:
 
     def test_predict_causal_chain_includes_prediction_id(self):
         """predict_causal_chain now includes prediction_id for tracking."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=True,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=True,
+                min_alert_interval_seconds=0,
+            )
+        )
         alert = Alert(
             alert_type="pool_adjustment",
             severity="warning",
@@ -241,11 +249,13 @@ class TestPredictionAccuracy:
 
     def test_predict_causal_chain_tracks_outcomes(self):
         """predict_causal_chain creates outcome tracking entries."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=True,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=True,
+                min_alert_interval_seconds=0,
+            )
+        )
         alert = Alert(
             alert_type="pool_adjustment",
             severity="warning",
@@ -271,10 +281,12 @@ class TestPredictionAccuracy:
 
     def test_expire_prediction_outcomes(self):
         """_expire_prediction_outcomes marks stale predictions as misses."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            prediction_accuracy_window_seconds=1,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                prediction_accuracy_window_seconds=1,
+            )
+        )
         mgr.prediction_mgr._prediction_outcomes = {
             "old_pred": {
                 "prediction_id": "old_pred",
@@ -325,13 +337,15 @@ class TestAutoMergePolicy:
 
     def test_suggest_mode_no_auto_apply(self):
         """In suggest mode, suggest_auto_merges does not auto-apply merges."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            auto_merge_mode="suggest",
-            auto_merge_window_seconds=3600,
-            auto_merge_similarity_threshold=0.3,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                auto_merge_mode="suggest",
+                auto_merge_window_seconds=3600,
+                auto_merge_similarity_threshold=0.3,
+                min_alert_interval_seconds=0,
+            )
+        )
         # Create two groups with similar names
         mgr._alert_groups["test_subject_a"] = ["cid-1"]
         mgr._alert_groups["test_subject_b"] = ["cid-2"]
@@ -345,14 +359,16 @@ class TestAutoMergePolicy:
 
     def test_auto_mode_applies_merges(self):
         """In auto mode, suggest_auto_merges auto-applies one merge per cooldown."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            auto_merge_mode="auto",
-            auto_merge_window_seconds=3600,
-            auto_merge_similarity_threshold=0.3,
-            auto_merge_cooldown_seconds=0,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                auto_merge_mode="auto",
+                auto_merge_window_seconds=3600,
+                auto_merge_similarity_threshold=0.3,
+                auto_merge_cooldown_seconds=0,
+                min_alert_interval_seconds=0,
+            )
+        )
         # Create two groups with identical names (100% similarity)
         mgr._alert_groups["test_subject"] = ["cid-1"]
         mgr._alert_groups["test_subject_copy"] = ["cid-2"]
@@ -366,14 +382,16 @@ class TestAutoMergePolicy:
 
     def test_cooldown_prevents_rapid_auto_merges(self):
         """Cooldown prevents auto-merges from happening too rapidly."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            auto_merge_mode="auto",
-            auto_merge_cooldown_seconds=300,
-            auto_merge_window_seconds=3600,
-            auto_merge_similarity_threshold=0.3,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                auto_merge_mode="auto",
+                auto_merge_cooldown_seconds=300,
+                auto_merge_window_seconds=3600,
+                auto_merge_similarity_threshold=0.3,
+                min_alert_interval_seconds=0,
+            )
+        )
         # Set last auto-merge time to recent
         mgr._last_auto_merge_time = time.time()
 
@@ -396,12 +414,14 @@ class TestAutoMergePolicy:
 
     def test_auto_merge_policy_in_status(self):
         """get_status() includes auto-merge policy information."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            auto_merge_mode="auto",
-            auto_merge_cooldown_seconds=600,
-            auto_merge_type_thresholds={"pool_adjustment": 0.7},
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                auto_merge_mode="auto",
+                auto_merge_cooldown_seconds=600,
+                auto_merge_type_thresholds={"pool_adjustment": 0.7},
+            )
+        )
         status = mgr.get_status()
         assert "auto_merge_policy" in status
         assert status["auto_merge_policy"]["mode"] == "auto"
@@ -411,15 +431,14 @@ class TestAutoMergePolicy:
     def test_auto_merge_policy_rest_endpoint_validation(self):
         """Auto-merge policy PATCH endpoint validates input."""
         from aip.adapter.api.routes.vigil_quality import AutoMergePolicyUpdate
+
         # Valid update
         update = AutoMergePolicyUpdate(mode="auto", cooldown_seconds=120)
         assert update.mode == "auto"
         assert update.cooldown_seconds == 120
 
         # Type thresholds with valid values
-        update2 = AutoMergePolicyUpdate(
-            type_thresholds={"quality_degradation": 0.8, "pool_adjustment": 0.6}
-        )
+        update2 = AutoMergePolicyUpdate(type_thresholds={"quality_degradation": 0.8, "pool_adjustment": 0.6})
         assert update2.type_thresholds == {"quality_degradation": 0.8, "pool_adjustment": 0.6}
 
 
@@ -451,31 +470,37 @@ class TestNotificationChannelDiversification:
 
     def test_get_transports_includes_slack(self):
         """_get_transports_for_alert includes slack when configured."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            slack_webhook_url="https://hooks.slack.com/services/test",
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                slack_webhook_url="https://hooks.slack.com/services/test",
+            )
+        )
         transports = mgr._get_transports_for_alert("quality_degradation")
         assert "slack" in transports
 
     def test_get_transports_includes_pagerduty(self):
         """_get_transports_for_alert includes pagerduty when configured."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            pagerduty_integration_key="pd-key-123",
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                pagerduty_integration_key="pd-key-123",
+            )
+        )
         transports = mgr._get_transports_for_alert("quality_degradation")
         assert "pagerduty" in transports
 
     def test_get_transports_notification_routes(self):
         """notification_routes take priority over default routing."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://example.com/webhook",
-            slack_webhook_url="https://hooks.slack.com/services/test",
-            pagerduty_integration_key="pd-key-123",
-            notification_routes={"quality_degradation": ["slack", "pagerduty"]},
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://example.com/webhook",
+                slack_webhook_url="https://hooks.slack.com/services/test",
+                pagerduty_integration_key="pd-key-123",
+                notification_routes={"quality_degradation": ["slack", "pagerduty"]},
+            )
+        )
         transports = mgr._get_transports_for_alert("quality_degradation")
         assert "slack" in transports
         assert "pagerduty" in transports
@@ -484,13 +509,15 @@ class TestNotificationChannelDiversification:
 
     def test_get_transports_no_notification_routes_fallback(self):
         """Without notification_routes, all configured transports are used."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://example.com/webhook",
-            email_to="ops@example.com",
-            slack_webhook_url="https://hooks.slack.com/services/test",
-            pagerduty_integration_key="pd-key-123",
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://example.com/webhook",
+                email_to="ops@example.com",
+                slack_webhook_url="https://hooks.slack.com/services/test",
+                pagerduty_integration_key="pd-key-123",
+            )
+        )
         transports = mgr._get_transports_for_alert("quality_degradation")
         assert "webhook" in transports
         assert "email" in transports
@@ -500,13 +527,13 @@ class TestNotificationChannelDiversification:
     def test_send_slack_notification_method_exists(self):
         """_send_slack_notification method exists on AlertManager."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        assert hasattr(mgr, '_send_slack_notification')
+        assert hasattr(mgr, "_send_slack_notification")
         assert callable(mgr._send_slack_notification)
 
     def test_send_pagerduty_notification_method_exists(self):
         """_send_pagerduty_notification method exists on AlertManager."""
         mgr = AlertManager(AlertConfig(enabled=True))
-        assert hasattr(mgr, '_send_pagerduty_notification')
+        assert hasattr(mgr, "_send_pagerduty_notification")
         assert callable(mgr._send_pagerduty_notification)
 
     def test_slack_notification_no_url_skips(self):
@@ -525,13 +552,15 @@ class TestNotificationChannelDiversification:
 
     def test_dispatch_to_transports_handles_slack(self):
         """_dispatch_to_transports handles slack transport."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            slack_webhook_url="https://hooks.slack.com/services/test",
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                slack_webhook_url="https://hooks.slack.com/services/test",
+                min_alert_interval_seconds=0,
+            )
+        )
         # Mock the actual HTTP calls
-        with patch.object(mgr, '_send_slack_notification'):
+        with patch.object(mgr, "_send_slack_notification"):
             mgr._dispatch_to_transports(
                 Alert(alert_type="test", severity="info", subject="s", message="m"),
                 ["slack"],
@@ -541,12 +570,14 @@ class TestNotificationChannelDiversification:
 
     def test_dispatch_to_transports_handles_pagerduty(self):
         """_dispatch_to_transports handles pagerduty transport."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            pagerduty_integration_key="pd-key-123",
-            min_alert_interval_seconds=0,
-        ))
-        with patch.object(mgr, '_send_pagerduty_notification'):
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                pagerduty_integration_key="pd-key-123",
+                min_alert_interval_seconds=0,
+            )
+        )
+        with patch.object(mgr, "_send_pagerduty_notification"):
             mgr._dispatch_to_transports(
                 Alert(alert_type="test", severity="info", subject="s", message="m"),
                 ["pagerduty"],
@@ -556,33 +587,35 @@ class TestNotificationChannelDiversification:
 
     def test_notification_channels_in_status(self):
         """get_status() includes notification channel configuration."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            slack_webhook_url="https://hooks.slack.com/services/test",
-            pagerduty_integration_key="pd-key-123",
-            notification_routes={"critical": ["slack", "pagerduty"]},
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                slack_webhook_url="https://hooks.slack.com/services/test",
+                pagerduty_integration_key="pd-key-123",
+                notification_routes={"critical": ["slack", "pagerduty"]},
+            )
+        )
         status = mgr.get_status()
         assert "notification_channels" in status
         assert status["notification_channels"]["slack_configured"] is True
         assert status["notification_channels"]["pagerduty_configured"] is True
-        assert status["notification_channels"]["notification_routes"] == {
-            "critical": ["slack", "pagerduty"]
-        }
+        assert status["notification_channels"]["notification_routes"] == {"critical": ["slack", "pagerduty"]}
 
     def test_slack_notification_sends_correct_payload(self):
         """_send_slack_notification formats the Slack payload correctly."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            slack_webhook_url="https://hooks.slack.com/services/test",
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                slack_webhook_url="https://hooks.slack.com/services/test",
+            )
+        )
         alert = Alert(
             alert_type="quality_degradation",
             severity="critical",
             subject="test_subject",
             message="Test critical alert",
         )
-        with patch('aip.adapter.alerting.urllib.request.urlopen') as mock_urlopen:
+        with patch("aip.adapter.alerting.urllib.request.urlopen") as mock_urlopen:
             mock_resp = MagicMock()
             mock_resp.status = 200
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -597,17 +630,19 @@ class TestNotificationChannelDiversification:
 
     def test_pagerduty_notification_sends_correct_payload(self):
         """_send_pagerduty_notification formats the PagerDuty payload correctly."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            pagerduty_integration_key="pd-key-123",
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                pagerduty_integration_key="pd-key-123",
+            )
+        )
         alert = Alert(
             alert_type="pool_adjustment",
             severity="warning",
             subject="test_pool",
             message="Pool adjusted",
         )
-        with patch('aip.adapter.alerting.urllib.request.urlopen') as mock_urlopen:
+        with patch("aip.adapter.alerting.urllib.request.urlopen") as mock_urlopen:
             mock_resp = MagicMock()
             mock_resp.status = 202
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -632,6 +667,7 @@ class TestDashboardPerformanceOptimization:
     def test_dashboard_html_has_virtual_scrolling(self):
         """Dashboard HTML includes virtual scrolling for alert list."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "virtual-alert-list" in _DASHBOARD_HTML
         assert "renderVirtualAlerts" in _DASHBOARD_HTML
         assert "virtual scroll" in _DASHBOARD_HTML.lower() or "maxVisible" in _DASHBOARD_HTML
@@ -639,6 +675,7 @@ class TestDashboardPerformanceOptimization:
     def test_dashboard_html_has_debounced_charts(self):
         """Dashboard HTML includes debounced chart rendering."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "debouncedRenderCharts" in _DASHBOARD_HTML
         assert "renderChartsImmediate" in _DASHBOARD_HTML
         assert "_chartRenderTimer" in _DASHBOARD_HTML
@@ -646,12 +683,14 @@ class TestDashboardPerformanceOptimization:
     def test_dashboard_html_has_ws_deduplication(self):
         """Dashboard HTML includes WS message deduplication."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "_wsMsgDedupSet" in _DASHBOARD_HTML
         assert "wsMsgsDeduped" in _DASHBOARD_HTML or "_perfMetrics" in _DASHBOARD_HTML
 
     def test_dashboard_html_has_performance_metrics(self):
         """Dashboard HTML includes performance metrics panel."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "perf-panel" in _DASHBOARD_HTML
         assert "perfRenderTime" in _DASHBOARD_HTML
         assert "perfWsMsgs" in _DASHBOARD_HTML
@@ -660,12 +699,14 @@ class TestDashboardPerformanceOptimization:
     def test_dashboard_html_has_debounced_alert_fetch(self):
         """Dashboard HTML includes debounced alert fetching."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "debouncedFetchAlerts" in _DASHBOARD_HTML
         assert "_fetchAlertsTimer" in _DASHBOARD_HTML
 
     def test_dashboard_html_has_prediction_accuracy_panel(self):
         """Dashboard HTML includes prediction accuracy panel."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "accuracy-panel" in _DASHBOARD_HTML
         assert "predHits" in _DASHBOARD_HTML
         assert "predMisses" in _DASHBOARD_HTML
@@ -675,6 +716,7 @@ class TestDashboardPerformanceOptimization:
     def test_dashboard_html_has_auto_merge_policy_controls(self):
         """Dashboard HTML includes auto-merge policy controls."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "policy-panel" in _DASHBOARD_HTML
         assert "policyMode" in _DASHBOARD_HTML
         assert "policyCooldown" in _DASHBOARD_HTML
@@ -683,6 +725,7 @@ class TestDashboardPerformanceOptimization:
     def test_dashboard_html_has_notification_channel_config(self):
         """Dashboard HTML includes notification channel configuration."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "channel-panel" in _DASHBOARD_HTML
         assert "slackWebhookUrl" in _DASHBOARD_HTML
         assert "pagerdutyKey" in _DASHBOARD_HTML
@@ -692,6 +735,7 @@ class TestDashboardPerformanceOptimization:
     def test_dashboard_html_has_tab_cleanup(self):
         """Dashboard HTML includes tab cleanup on page unload."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "beforeunload" in _DASHBOARD_HTML
         assert "tab_unregister" in _DASHBOARD_HTML
 
@@ -707,24 +751,28 @@ class TestSprint537RESTEndpoints:
     def test_prediction_accuracy_endpoint_exists(self):
         """GET /vigil/quality/alerts/predictions/accuracy endpoint is defined."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/alerts/predictions/accuracy" in route_paths
 
     def test_auto_merge_policy_get_endpoint_exists(self):
         """GET /vigil/quality/alerts/groups/auto-merge/policy endpoint is defined."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/alerts/groups/auto-merge/policy" in route_paths
 
     def test_auto_merge_policy_patch_endpoint_exists(self):
         """PATCH /vigil/quality/alerts/groups/auto-merge/policy endpoint is defined."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/alerts/groups/auto-merge/policy" in route_paths
 
     def test_auto_merge_policy_update_model(self):
         """AutoMergePolicyUpdate model validates correctly."""
         from aip.adapter.api.routes.vigil_quality import AutoMergePolicyUpdate
+
         # Valid
         update = AutoMergePolicyUpdate(mode="auto", cooldown_seconds=60)
         assert update.mode == "auto"
@@ -737,9 +785,7 @@ class TestSprint537RESTEndpoints:
         assert update2.type_thresholds is None
 
         # With thresholds
-        update3 = AutoMergePolicyUpdate(
-            type_thresholds={"quality_degradation": 0.9}
-        )
+        update3 = AutoMergePolicyUpdate(type_thresholds={"quality_degradation": 0.9})
         assert update3.type_thresholds == {"quality_degradation": 0.9}
 
 
@@ -753,12 +799,14 @@ class TestSprint537Integration:
 
     def test_full_prediction_accuracy_flow(self):
         """Full flow: predict → track → match → verify accuracy."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=True,
-            prediction_accuracy_window_seconds=600,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=True,
+                prediction_accuracy_window_seconds=600,
+                min_alert_interval_seconds=0,
+            )
+        )
 
         # Step 1: Trigger prediction via pool_adjustment alert
         trigger_alert = Alert(
@@ -789,14 +837,16 @@ class TestSprint537Integration:
 
     def test_auto_merge_policy_flow(self):
         """Full flow: configure policy → generate suggestions → verify behavior."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            auto_merge_mode="suggest",
-            auto_merge_cooldown_seconds=300,
-            auto_merge_window_seconds=3600,
-            auto_merge_similarity_threshold=0.3,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                auto_merge_mode="suggest",
+                auto_merge_cooldown_seconds=300,
+                auto_merge_window_seconds=3600,
+                auto_merge_similarity_threshold=0.3,
+                min_alert_interval_seconds=0,
+            )
+        )
 
         # Create groups
         mgr._alert_groups["alpha_test_subject"] = ["cid-1", "cid-2"]
@@ -811,13 +861,15 @@ class TestSprint537Integration:
 
     def test_notification_routing_flow(self):
         """Full flow: configure routes → send alert → verify routing."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            slack_webhook_url="https://hooks.slack.com/services/test",
-            pagerduty_integration_key="pd-key-123",
-            notification_routes={"critical": ["slack", "pagerduty"]},
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                slack_webhook_url="https://hooks.slack.com/services/test",
+                pagerduty_integration_key="pd-key-123",
+                notification_routes={"critical": ["slack", "pagerduty"]},
+                min_alert_interval_seconds=0,
+            )
+        )
 
         # Critical alert should route to slack and pagerduty only
         transports = mgr._get_transports_for_alert("critical")
@@ -831,13 +883,15 @@ class TestSprint537Integration:
 
     def test_status_includes_all_sprint537_metrics(self):
         """get_status() includes all Sprint 5.37 metrics."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            auto_merge_mode="auto",
-            slack_webhook_url="https://hooks.slack.com/services/test",
-            pagerduty_integration_key="pd-key-123",
-            notification_routes={"critical": ["slack", "pagerduty"]},
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                auto_merge_mode="auto",
+                slack_webhook_url="https://hooks.slack.com/services/test",
+                pagerduty_integration_key="pd-key-123",
+                notification_routes={"critical": ["slack", "pagerduty"]},
+            )
+        )
         status = mgr.get_status()
 
         # Prediction accuracy

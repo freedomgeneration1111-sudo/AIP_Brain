@@ -66,15 +66,17 @@ def register(
         chunks = await vec_store.retrieve(query_vec, domain=None, top_k=20)
         hits = []
         for i, chunk in enumerate(chunks):
-            hits.append(RetrievalHit(
-                id=chunk.id,
-                content=chunk.content or "",
-                score=chunk.score,
-                source_channel=CHANNEL_NAME,
-                domain=chunk.domain or "",
-                metadata=chunk.metadata or {},
-                rank_in_channel=i + 1,
-            ))
+            hits.append(
+                RetrievalHit(
+                    id=chunk.id,
+                    content=chunk.content or "",
+                    score=chunk.score,
+                    source_channel=CHANNEL_NAME,
+                    domain=chunk.domain or "",
+                    metadata=chunk.metadata or {},
+                    rank_in_channel=i + 1,
+                )
+            )
         return hits
 
     orchestrator.register_channel(

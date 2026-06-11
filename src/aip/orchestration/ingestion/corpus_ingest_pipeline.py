@@ -65,8 +65,16 @@ class CorpusIngestConfig:
     db_path: str = ""
     recursive: bool = False
     supported_extensions: tuple[str, ...] = (
-        ".md", ".markdown", ".txt", ".text", ".json", ".log",
-        ".toml", ".yaml", ".yml", ".pdf",
+        ".md",
+        ".markdown",
+        ".txt",
+        ".text",
+        ".json",
+        ".log",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".pdf",
     )
 
 
@@ -187,11 +195,13 @@ async def ingest_directory_to_corpus(
 
     files = _scan_directory(directory, config.supported_extensions, config.recursive)
     if not files:
-        results.append(CorpusIngestResult(
-            source_path=directory,
-            source_type="directory",
-            warnings=["No supported files found in directory"],
-        ))
+        results.append(
+            CorpusIngestResult(
+                source_path=directory,
+                source_type="directory",
+                warnings=["No supported files found in directory"],
+            )
+        )
         return results
 
     for fpath in sorted(files):
@@ -248,6 +258,7 @@ def _parse_conversation_file(path: str, config: CorpusIngestConfig) -> list[Corp
     if "claude" in config.source_model.lower() or "chat_messages" in _peek_content(path):
         try:
             from aip.orchestration.ingestion.parsers.claude_parser import parse_claude_export
+
             turns, warnings = parse_claude_export(path, config.source_account, config.export_date)
             # Add source_path to each turn
             for turn in turns:
@@ -260,6 +271,7 @@ def _parse_conversation_file(path: str, config: CorpusIngestConfig) -> list[Corp
     # ChatGPT export — convert to CorpusTurns via ImportedConversation
     try:
         from aip.orchestration.ingestion.parsers.chatgpt import parse_chatgpt_export
+
         with open(path, encoding="utf-8") as f:
             content = f.read()
         convs = parse_chatgpt_export(content, source_file=path)
@@ -279,6 +291,7 @@ def _parse_document_file(path: str, config: CorpusIngestConfig) -> list[CorpusTu
     """Parse a document file into CorpusTurns."""
     try:
         from aip.orchestration.ingestion.parsers.document_parser import parse_document_file
+
         return parse_document_file(path, config.source_account, config.export_date)
     except Exception as exc:
         logger.warning("Document parser failed for %s: %s", path, exc)

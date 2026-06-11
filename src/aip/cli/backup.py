@@ -130,9 +130,7 @@ def backup(db_dir: str, config_dir: str, output_dir: str, include_optional: bool
 
         if not source.exists():
             click.echo("skipped (not found)")
-            manifest["databases"].append({
-                "file": db_name, "status": "skipped", "reason": "not_found"
-            })
+            manifest["databases"].append({"file": db_name, "status": "skipped", "reason": "not_found"})
             skipped += 1
             continue
 
@@ -141,8 +139,7 @@ def backup(db_dir: str, config_dir: str, output_dir: str, include_optional: bool
 
         if result["status"] == "ok":
             click.echo(
-                f"ok ({result['source_size_mb']}MB → {result['backup_size_mb']}MB, "
-                f"ratio={result['compression_ratio']})"
+                f"ok ({result['source_size_mb']}MB → {result['backup_size_mb']}MB, ratio={result['compression_ratio']})"
             )
             backed_up += 1
         else:

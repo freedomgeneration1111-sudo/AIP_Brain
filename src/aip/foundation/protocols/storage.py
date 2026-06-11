@@ -445,9 +445,7 @@ class GraphStore(Protocol):
         """Record that a turn has been graph-extracted (dedup guard)."""
         ...
 
-    async def get_unextracted_high_importance_turns(
-        self, min_importance: float = 0.7, limit: int = 50
-    ) -> list[dict]:
+    async def get_unextracted_high_importance_turns(self, min_importance: float = 0.7, limit: int = 50) -> list[dict]:
         """Return high-importance corpus turns not yet graph-extracted."""
         ...
 

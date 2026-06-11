@@ -156,9 +156,18 @@ class SqliteSessionStore(SessionStore, StoreHealthMixin):
 
             # Extract known columns; put the rest into metadata_json
             known_keys = {
-                "session_id", "project_id", "role", "model_slot", "mode",
-                "turn_count", "context_tokens_estimate", "artifacts_produced",
-                "metadata_json", "created_at", "updated_at", "id",
+                "session_id",
+                "project_id",
+                "role",
+                "model_slot",
+                "mode",
+                "turn_count",
+                "context_tokens_estimate",
+                "artifacts_produced",
+                "metadata_json",
+                "created_at",
+                "updated_at",
+                "id",
             }
             extra_meta = {k: v for k, v in metadata.items() if k not in known_keys}
 

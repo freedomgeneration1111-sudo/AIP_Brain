@@ -147,6 +147,7 @@ class TestAlertingTransportHardening:
         # With 3 retries + exponential backoff (1s, 2s, 4s), need ~8s wait
         manager.send_alert(alert)
         import time
+
         time.sleep(10)  # Wait for background dispatch + all retries with backoff
 
         # Should have at least one failure recorded
@@ -215,6 +216,7 @@ class TestAlertingTransportHardening:
         # Sprint 5.30: dispatch is async, need to wait for background thread
         manager.send_alert(alert)
         import time
+
         time.sleep(3)  # Wait for background dispatch + retries
         # Should have attempted retries
         assert manager.delivery_mgr._total_webhook_retries >= 1
@@ -228,6 +230,7 @@ class TestAlertingTransportHardening:
         # Sprint 5.30: dispatch is async, need to wait for background thread
         manager.send_alert(alert)
         import time
+
         time.sleep(5)  # Wait for background dispatch + retries with backoff
 
         webhook_failures = manager.get_delivery_failures(transport="webhook")
@@ -248,6 +251,7 @@ class TestVigilQualityStore:
     def _create_store(self, tmp_path):
         """Helper to create a VigilQualityStore in a temp directory."""
         from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
+
         db_path = os.path.join(tmp_path, "vigil_quality.db")
         # Use retention_days=0 so test timestamps from 2025 are not pruned
         store = VigilQualityStore(db_path, retention_days=0)
@@ -261,9 +265,7 @@ class TestVigilQualityStore:
         # Verify table exists
         db_path = os.path.join(tmp_path, "vigil_quality.db")
         with sqlite3.connect(db_path) as conn:
-            cursor = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='vigil_quality_history'"
-            )
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='vigil_quality_history'")
             assert cursor.fetchone() is not None
 
     def test_record_cycle_persists_data(self, tmp_path):
@@ -297,22 +299,26 @@ class TestVigilQualityStore:
         """get_cycles supports 'since' filtering."""
         store = self._create_store(tmp_path)
 
-        store.record_cycle({
-            "timestamp": "2025-05-01T00:00:00Z",
-            "avg_citation_rate": 0.7,
-            "avg_grounding_rate": 0.8,
-            "avg_llm_faithfulness": 0.75,
-            "evaluated_count": 10,
-            "flagged_count": 3,
-        })
-        store.record_cycle({
-            "timestamp": "2025-06-01T00:00:00Z",
-            "avg_citation_rate": 0.9,
-            "avg_grounding_rate": 0.95,
-            "avg_llm_faithfulness": 0.92,
-            "evaluated_count": 20,
-            "flagged_count": 1,
-        })
+        store.record_cycle(
+            {
+                "timestamp": "2025-05-01T00:00:00Z",
+                "avg_citation_rate": 0.7,
+                "avg_grounding_rate": 0.8,
+                "avg_llm_faithfulness": 0.75,
+                "evaluated_count": 10,
+                "flagged_count": 3,
+            }
+        )
+        store.record_cycle(
+            {
+                "timestamp": "2025-06-01T00:00:00Z",
+                "avg_citation_rate": 0.9,
+                "avg_grounding_rate": 0.95,
+                "avg_llm_faithfulness": 0.92,
+                "evaluated_count": 20,
+                "flagged_count": 1,
+            }
+        )
 
         cycles = store.get_cycles(since="2025-05-15T00:00:00Z")
         assert len(cycles) == 1
@@ -323,14 +329,16 @@ class TestVigilQualityStore:
         store = self._create_store(tmp_path)
 
         for i in range(5):
-            store.record_cycle({
-                "timestamp": f"2025-06-0{i+1}T00:00:00Z",
-                "avg_citation_rate": 0.8 + i * 0.02,
-                "avg_grounding_rate": 0.9,
-                "avg_llm_faithfulness": 0.85,
-                "evaluated_count": 10,
-                "flagged_count": 1,
-            })
+            store.record_cycle(
+                {
+                    "timestamp": f"2025-06-0{i + 1}T00:00:00Z",
+                    "avg_citation_rate": 0.8 + i * 0.02,
+                    "avg_grounding_rate": 0.9,
+                    "avg_llm_faithfulness": 0.85,
+                    "evaluated_count": 10,
+                    "flagged_count": 1,
+                }
+            )
 
         cycles = store.get_cycles(last_n_cycles=3)
         assert len(cycles) == 3
@@ -342,14 +350,16 @@ class TestVigilQualityStore:
         store = self._create_store(tmp_path)
 
         assert store.get_cycle_count() == 0
-        store.record_cycle({
-            "timestamp": "2025-06-01T00:00:00Z",
-            "avg_citation_rate": 0.85,
-            "avg_grounding_rate": 0.9,
-            "avg_llm_faithfulness": 0.88,
-            "evaluated_count": 10,
-            "flagged_count": 2,
-        })
+        store.record_cycle(
+            {
+                "timestamp": "2025-06-01T00:00:00Z",
+                "avg_citation_rate": 0.85,
+                "avg_grounding_rate": 0.9,
+                "avg_llm_faithfulness": 0.88,
+                "evaluated_count": 10,
+                "flagged_count": 2,
+            }
+        )
         assert store.get_cycle_count() == 1
 
     def test_schema_version(self, tmp_path):
@@ -360,6 +370,7 @@ class TestVigilQualityStore:
     def test_graceful_degradation_on_bad_db(self, tmp_path):
         """VigilQualityStore handles DB errors gracefully."""
         from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
+
         # Point to a nonexistent directory
         store = VigilQualityStore("/nonexistent/path/quality.db")
         # Initialize should not crash
@@ -564,14 +575,16 @@ class TestVigilQualityDashboard:
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = VigilQualityStore(os.path.join(tmp_dir, "quality.db"), retention_days=0)
             store.initialize()
-            store.record_cycle({
-                "timestamp": "2025-06-01T00:00:00Z",
-                "avg_citation_rate": 0.88,
-                "avg_grounding_rate": 0.92,
-                "avg_llm_faithfulness": 0.90,
-                "evaluated_count": 20,
-                "flagged_count": 1,
-            })
+            store.record_cycle(
+                {
+                    "timestamp": "2025-06-01T00:00:00Z",
+                    "avg_citation_rate": 0.88,
+                    "avg_grounding_rate": 0.92,
+                    "avg_llm_faithfulness": 0.90,
+                    "evaluated_count": 20,
+                    "flagged_count": 1,
+                }
+            )
 
             container = MagicMock()
             container.vigil = MagicMock()
@@ -658,20 +671,16 @@ class TestConfigHotReloadSafety:
         """ConfigWatcher validates auto_tuning_policy values."""
         watcher = ConfigWatcher(config_path="/nonexistent/config.toml")
 
-        is_valid, _ = watcher._validate_value(
-            "auto_tuning_policy.read_pool_exhaustion_threshold", 0.5
-        )
+        is_valid, _ = watcher._validate_value("auto_tuning_policy.read_pool_exhaustion_threshold", 0.5)
         assert is_valid is True
 
-        is_valid, reason = watcher._validate_value(
-            "auto_tuning_policy.read_pool_exhaustion_threshold", 0.05
-        )
+        is_valid, reason = watcher._validate_value("auto_tuning_policy.read_pool_exhaustion_threshold", 0.05)
         assert is_valid is False
 
     def test_config_watcher_rejects_invalid_on_reload(self):
         """ConfigWatcher rejects invalid values and records them."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write('[read_pool]\npool_size = 3\n')
+            f.write("[read_pool]\npool_size = 3\n")
             f.flush()
 
             container = MagicMock()
@@ -687,7 +696,7 @@ class TestConfigHotReloadSafety:
             # Modify file with invalid pool_size
             time.sleep(0.1)
             with open(f.name, "w") as f2:
-                f2.write('[read_pool]\npool_size = 25\n')
+                f2.write("[read_pool]\npool_size = 25\n")
                 f2.flush()
 
             events = watcher.check_and_reload()
@@ -707,7 +716,7 @@ class TestConfigHotReloadSafety:
     def test_config_watcher_status_includes_rejections(self):
         """ConfigWatcher.get_status includes rejection history."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write('[read_pool]\npool_size = 3\n')
+            f.write("[read_pool]\npool_size = 3\n")
             f.flush()
 
             watcher = ConfigWatcher(config_path=f.name)
@@ -728,9 +737,8 @@ class TestConfigHotReloadSafety:
 
         # This is an async function, need to run it
         import asyncio
-        result = asyncio.run(
-            get_hot_reload_status(container=container)
-        )
+
+        result = asyncio.run(get_hot_reload_status(container=container))
 
         assert "config_watcher" in result
         assert "auto_tuning_policy" in result
@@ -765,9 +773,12 @@ class TestPolicyEngineIntegration:
         # Test that the sizer now uses the updated thresholds
         store = FakeReadPoolMixin(pool_size=3)
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",

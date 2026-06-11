@@ -109,9 +109,7 @@ class TestSextonHonestState:
         actor = _make_full_sexton()
         summary = actor.get_status_summary()
         # No cycle has run, so even with all deps, state is "degraded"
-        assert summary["state"] == "degraded", (
-            f"Expected 'degraded' (no cycle yet) but got '{summary['state']}'"
-        )
+        assert summary["state"] == "degraded", f"Expected 'degraded' (no cycle yet) but got '{summary['state']}'"
 
     def test_state_active_after_cycle_completed(self):
         """Sexton with all deps and at least one completed cycle reports 'active'."""
@@ -154,9 +152,7 @@ class TestStartupHonesty:
         actor = _make_full_sexton()
         summary = actor.get_status_summary()
         # Before any cycle runs, state should NOT be "active"
-        assert summary["state"] != "active", (
-            "Sexton should not claim 'active' before any cycle has completed"
-        )
+        assert summary["state"] != "active", "Sexton should not claim 'active' before any cycle has completed"
 
     def test_actor_details_state_not_fake(self):
         """The health endpoint's actors_status for Sexton should use honest state."""
@@ -200,10 +196,15 @@ class TestStartupHonesty:
         container._store_registry = {}
         # Mock async methods
         container.vector_store.count = AsyncMock(return_value=0)
-        container.vector_store.health_check = AsyncMock(return_value={
-            "backend_status": "available", "backend_name": "test",
-            "degraded": False, "vss_available": True, "degradation": {},
-        })
+        container.vector_store.health_check = AsyncMock(
+            return_value={
+                "backend_status": "available",
+                "backend_name": "test",
+                "degraded": False,
+                "vss_available": True,
+                "degradation": {},
+            }
+        )
         container.budget_manager.get_status = AsyncMock(return_value={})
         container.event_store.write_event = AsyncMock(return_value=None)
         container.corpus_turn_store.total_turns = AsyncMock(return_value=0)
@@ -212,6 +213,7 @@ class TestStartupHonesty:
         container.model_provider._ci_mode = True
 
         import asyncio
+
         result = asyncio.get_event_loop().run_until_complete(health(container=container))
         sexton_status = result["actors"]["sexton"]
         # Sexton has all deps but no cycle — should be "degraded", not "active"
@@ -286,9 +288,7 @@ class TestDogfoodHonestSextonState:
         response = await dogfood_health(mock_request, container)
         # Should NOT report "active" for a Sexton with missing core deps
         sexton_state = response.get("actors", {}).get("sexton", "unknown")
-        assert sexton_state != "active", (
-            f"Sexton with missing core deps should not be 'active'; got '{sexton_state}'"
-        )
+        assert sexton_state != "active", f"Sexton with missing core deps should not be 'active'; got '{sexton_state}'"
         assert sexton_state == "degraded", (
             f"Expected 'degraded' for Sexton with missing core deps; got '{sexton_state}'"
         )
@@ -315,8 +315,7 @@ class TestL4SextonSignature:
         params = list(sig.parameters.keys())
         # First param after self is 'config', not 'trace_store'
         assert params[1] == "config", (
-            f"Expected first param to be 'config', got '{params[1]}'. "
-            f"If this changed, update l4/reset.py call site."
+            f"Expected first param to be 'config', got '{params[1]}'. If this changed, update l4/reset.py call site."
         )
 
     def test_sexton_constructor_with_keyword_args(self):
@@ -338,12 +337,8 @@ class TestL4SextonSignature:
         trace_store = MagicMock()
         # This is the BUG: trace_store goes to config param
         sexton = FailureSexton(trace_store)
-        assert sexton._trace_store is None, (
-            "trace_store was passed positionally to config param — this is the bug"
-        )
-        assert sexton._config == trace_store, (
-            "trace_store ended up as config — confirms positional arg misattribution"
-        )
+        assert sexton._trace_store is None, "trace_store was passed positionally to config param — this is the bug"
+        assert sexton._config == trace_store, "trace_store ended up as config — confirms positional arg misattribution"
 
 
 # ---------------------------------------------------------------------------
@@ -364,10 +359,23 @@ class TestDogfoodReadinessSextonActor:
         container.config = {}
         container._store_registry = {}
         # Ensure other attributes exist (return None)
-        for attr in ["lexical_store", "vector_store", "embedding_provider", "ecs_store",
-                      "artifact_store", "project_store", "graph_store", "corpus_turn_store",
-                      "event_store", "model_provider", "budget_store", "session_store",
-                      "review_queue_store", "knowledge_store", "ace_playbook"]:
+        for attr in [
+            "lexical_store",
+            "vector_store",
+            "embedding_provider",
+            "ecs_store",
+            "artifact_store",
+            "project_store",
+            "graph_store",
+            "corpus_turn_store",
+            "event_store",
+            "model_provider",
+            "budget_store",
+            "session_store",
+            "review_queue_store",
+            "knowledge_store",
+            "ace_playbook",
+        ]:
             setattr(container, attr, None)
 
         check = validate_dogfood_readiness({"alpha": {"dogfood_mode": "full"}}, container)
@@ -382,10 +390,23 @@ class TestDogfoodReadinessSextonActor:
         container.sexton_actor = MagicMock()  # Present
         container.config = {}
         container._store_registry = {}
-        for attr in ["lexical_store", "vector_store", "embedding_provider", "ecs_store",
-                      "artifact_store", "project_store", "graph_store", "corpus_turn_store",
-                      "event_store", "model_provider", "budget_store", "session_store",
-                      "review_queue_store", "knowledge_store", "ace_playbook"]:
+        for attr in [
+            "lexical_store",
+            "vector_store",
+            "embedding_provider",
+            "ecs_store",
+            "artifact_store",
+            "project_store",
+            "graph_store",
+            "corpus_turn_store",
+            "event_store",
+            "model_provider",
+            "budget_store",
+            "session_store",
+            "review_queue_store",
+            "knowledge_store",
+            "ace_playbook",
+        ]:
             setattr(container, attr, MagicMock())
 
         check = validate_dogfood_readiness({"alpha": {"dogfood_mode": "full"}}, container)

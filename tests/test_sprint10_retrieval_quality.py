@@ -42,6 +42,7 @@ from aip.orchestration.ask_pipeline import _build_retrieval_warnings, _build_deg
 # 1. ChannelHealthState enum
 # ======================================================================
 
+
 class TestChannelHealthState:
     """Test ChannelHealthState enum values and properties."""
 
@@ -67,6 +68,7 @@ class TestChannelHealthState:
 # ======================================================================
 # 2. ChannelHealthReport
 # ======================================================================
+
 
 class TestChannelHealthReport:
     """Test ChannelHealthReport dataclass and methods."""
@@ -133,6 +135,7 @@ class TestChannelHealthReport:
 # ======================================================================
 # 3. Unified RetrievalTrace
 # ======================================================================
+
 
 class TestUnifiedRetrievalTrace:
     """Test Sprint 10 RetrievalTrace enhancements."""
@@ -234,6 +237,7 @@ class TestUnifiedRetrievalTrace:
 # ======================================================================
 # 4. Channel health states in retrieval orchestrator
 # ======================================================================
+
 
 class TestOrchestratorChannelHealth:
     """Test that the orchestrator populates channel_health on traces."""
@@ -404,6 +408,7 @@ class TestOrchestratorChannelHealth:
 # 5. Visible retrieval warnings on AskResult
 # ======================================================================
 
+
 class TestRetrievalWarnings:
     """Test _build_retrieval_warnings and AskResult.retrieval_warnings."""
 
@@ -532,6 +537,7 @@ class TestRetrievalWarnings:
 # 6. Enhanced degradation dict
 # ======================================================================
 
+
 class TestDegradationDict:
     """Test _build_degradation_dict includes Sprint 10 fields."""
 
@@ -568,6 +574,7 @@ class TestDegradationDict:
 # 7. Gold question YAML loading
 # ======================================================================
 
+
 class TestGoldQuestionLoading:
     """Test YAML and JSON golden query loading."""
 
@@ -580,6 +587,7 @@ class TestGoldQuestionLoading:
         json_path.write_text(json.dumps(queries_data))
 
         from aip.orchestration.retrieval_eval import load_golden_queries
+
         queries = load_golden_queries(str(json_path))
 
         assert len(queries) == 2
@@ -607,6 +615,7 @@ questions:
         yaml_path.write_text(yaml_content)
 
         from aip.orchestration.retrieval_eval import load_golden_queries
+
         queries = load_golden_queries(str(yaml_path))
 
         assert len(queries) == 2
@@ -622,6 +631,7 @@ questions:
         yml_path.write_text(yaml_content)
 
         from aip.orchestration.retrieval_eval import load_golden_queries
+
         queries = load_golden_queries(str(yml_path))
 
         assert len(queries) == 1
@@ -629,6 +639,7 @@ questions:
 
     def test_missing_file_returns_empty(self):
         from aip.orchestration.retrieval_eval import load_golden_queries
+
         queries = load_golden_queries("/nonexistent/path.json")
         assert queries == []
 
@@ -638,18 +649,18 @@ questions:
         yaml_path.write_text(yaml_content)
 
         from aip.orchestration.retrieval_eval import load_golden_queries
+
         queries = load_golden_queries(str(yaml_path))
         assert queries == []
 
     def test_alpha_gold_yaml_loads(self):
         """Test that the actual aip_alpha_gold.yaml file can be loaded."""
-        yaml_path = os.path.join(
-            os.path.dirname(__file__), "..", "docs", "evals", "aip_alpha_gold.yaml"
-        )
+        yaml_path = os.path.join(os.path.dirname(__file__), "..", "docs", "evals", "aip_alpha_gold.yaml")
         if not os.path.exists(yaml_path):
             pytest.skip("aip_alpha_gold.yaml not found")
 
         from aip.orchestration.retrieval_eval import load_golden_queries
+
         queries = load_golden_queries(yaml_path)
 
         # Should have 30+ questions
@@ -664,6 +675,7 @@ questions:
 # ======================================================================
 # 8. Blame assignment (gate criterion)
 # ======================================================================
+
 
 class TestBlameAssignment:
     """Test that weak answers can be diagnosed to identify the pipeline stage at fault.
@@ -772,6 +784,7 @@ class TestBlameAssignment:
 # ======================================================================
 # 9. Integration: full orchestrator round-trip
 # ======================================================================
+
 
 class TestOrchestratorIntegration:
     """Integration test: full retrieval round with channel health tracking."""

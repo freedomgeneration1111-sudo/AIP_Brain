@@ -47,7 +47,9 @@ def _make_mock_provider(slots: list[str], resolve_config=None, call_fn=None):
     if call_fn:
         provider.call = AsyncMock(side_effect=call_fn)
     else:
-        provider.call = AsyncMock(return_value={"content": "{}", "model": "test", "usage": {}, "latency_ms": 100, "error": False})
+        provider.call = AsyncMock(
+            return_value={"content": "{}", "model": "test", "usage": {}, "latency_ms": 100, "error": False}
+        )
     return provider
 
 
@@ -91,12 +93,26 @@ class TestModelCouncilSchema:
 
         resp = ModelCouncilResponse()
         fields = [
-            "id", "status", "prompt", "turn_id", "session_id",
-            "selected_models", "convergence", "disagreements",
-            "unique_contributions", "risks", "beast_conclusion",
-            "recommended_decision", "degraded_models", "failed_models",
-            "artifact_id", "created_at", "advisory_only",
-            "requires_DEFINER_approval", "error", "synthesis_status",
+            "id",
+            "status",
+            "prompt",
+            "turn_id",
+            "session_id",
+            "selected_models",
+            "convergence",
+            "disagreements",
+            "unique_contributions",
+            "risks",
+            "beast_conclusion",
+            "recommended_decision",
+            "degraded_models",
+            "failed_models",
+            "artifact_id",
+            "created_at",
+            "advisory_only",
+            "requires_DEFINER_approval",
+            "error",
+            "synthesis_status",
         ]
         for field in fields:
             assert hasattr(resp, field), f"Missing field: {field}"
@@ -123,9 +139,17 @@ class TestModelCouncilSchema:
 
         result = PerModelResult()
         fields = [
-            "model_slot", "model_id", "provider", "status", "answer",
-            "error", "latency_ms", "prompt_tokens", "completion_tokens",
-            "total_tokens", "cost_usd",
+            "model_slot",
+            "model_id",
+            "provider",
+            "status",
+            "answer",
+            "error",
+            "latency_ms",
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens",
+            "cost_usd",
         ]
         for field in fields:
             assert hasattr(result, field), f"Missing field: {field}"
@@ -173,8 +197,18 @@ class TestInsufficientModels:
         provider = _make_mock_provider(
             slots=["synthesis", "embedding"],
             resolve_config=lambda slot: {
-                "synthesis": {"provider": "openai_compatible", "model": "gpt-4", "base_url": "https://api.openai.com", "api_key": "test-key"},
-                "embedding": {"provider": "openai_compatible", "model": "text-embedding-3-small", "base_url": "https://api.openai.com", "api_key": "test-key"},
+                "synthesis": {
+                    "provider": "openai_compatible",
+                    "model": "gpt-4",
+                    "base_url": "https://api.openai.com",
+                    "api_key": "test-key",
+                },
+                "embedding": {
+                    "provider": "openai_compatible",
+                    "model": "text-embedding-3-small",
+                    "base_url": "https://api.openai.com",
+                    "api_key": "test-key",
+                },
             }.get(slot, {}),
         )
         container.model_provider = provider
@@ -242,19 +276,71 @@ class TestMultiModelExecution:
 
         def resolve_config(slot):
             return {
-                "synthesis": {"provider": "openai_compatible", "model": "gpt-4", "base_url": "https://api.openai.com", "api_key": "test-key"},
-                "evaluation": {"provider": "openai_compatible", "model": "claude-3-opus", "base_url": "https://api.openai.com", "api_key": "test-key"},
-                "beast": {"provider": "openai_compatible", "model": "deepseek-chat", "base_url": "https://api.openai.com", "api_key": "test-key"},
-                "embedding": {"provider": "openai_compatible", "model": "text-embedding-3-small", "base_url": "https://api.openai.com", "api_key": "test-key"},
+                "synthesis": {
+                    "provider": "openai_compatible",
+                    "model": "gpt-4",
+                    "base_url": "https://api.openai.com",
+                    "api_key": "test-key",
+                },
+                "evaluation": {
+                    "provider": "openai_compatible",
+                    "model": "claude-3-opus",
+                    "base_url": "https://api.openai.com",
+                    "api_key": "test-key",
+                },
+                "beast": {
+                    "provider": "openai_compatible",
+                    "model": "deepseek-chat",
+                    "base_url": "https://api.openai.com",
+                    "api_key": "test-key",
+                },
+                "embedding": {
+                    "provider": "openai_compatible",
+                    "model": "text-embedding-3-small",
+                    "base_url": "https://api.openai.com",
+                    "api_key": "test-key",
+                },
             }.get(slot, {})
 
         async def mock_call(slot_name, messages, **kwargs):
             slot_answers = {
-                "synthesis": {"content": json.dumps({"answer": "Synthesis says dogfood means..."}), "model": "gpt-4", "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}, "latency_ms": 1200, "cost_usd": 0.01, "error": False},
-                "evaluation": {"content": json.dumps({"answer": "Evaluation perspective..."}), "model": "claude-3-opus", "usage": {"prompt_tokens": 100, "completion_tokens": 60, "total_tokens": 160}, "latency_ms": 1800, "cost_usd": 0.02, "error": False},
-                "beast": {"content": json.dumps({"convergence": "Models agree on core definition.", "disagreements": "Synthesis emphasizes X, evaluation emphasizes Y.", "unique_contributions": "Each adds nuance.", "risks": "Over-reliance on single source.", "beast_conclusion": "Combined view is well-rounded.", "recommended_decision": "Synthesize both perspectives."}), "model": "deepseek-chat", "usage": {"prompt_tokens": 300, "completion_tokens": 200, "total_tokens": 500}, "latency_ms": 2000, "cost_usd": 0.005, "error": False},
+                "synthesis": {
+                    "content": json.dumps({"answer": "Synthesis says dogfood means..."}),
+                    "model": "gpt-4",
+                    "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+                    "latency_ms": 1200,
+                    "cost_usd": 0.01,
+                    "error": False,
+                },
+                "evaluation": {
+                    "content": json.dumps({"answer": "Evaluation perspective..."}),
+                    "model": "claude-3-opus",
+                    "usage": {"prompt_tokens": 100, "completion_tokens": 60, "total_tokens": 160},
+                    "latency_ms": 1800,
+                    "cost_usd": 0.02,
+                    "error": False,
+                },
+                "beast": {
+                    "content": json.dumps(
+                        {
+                            "convergence": "Models agree on core definition.",
+                            "disagreements": "Synthesis emphasizes X, evaluation emphasizes Y.",
+                            "unique_contributions": "Each adds nuance.",
+                            "risks": "Over-reliance on single source.",
+                            "beast_conclusion": "Combined view is well-rounded.",
+                            "recommended_decision": "Synthesize both perspectives.",
+                        }
+                    ),
+                    "model": "deepseek-chat",
+                    "usage": {"prompt_tokens": 300, "completion_tokens": 200, "total_tokens": 500},
+                    "latency_ms": 2000,
+                    "cost_usd": 0.005,
+                    "error": False,
+                },
             }
-            return slot_answers.get(slot_name, {"content": "", "error": True, "error_message": f"Unknown slot: {slot_name}"})
+            return slot_answers.get(
+                slot_name, {"content": "", "error": True, "error_message": f"Unknown slot: {slot_name}"}
+            )
 
         container = AipContainer({})
         container.model_provider = _make_mock_provider(
@@ -343,11 +429,38 @@ class TestPartialFailure:
 
         async def mock_call(slot_name, messages, **kwargs):
             if slot_name == "evaluation":
-                return {"content": "", "error": True, "error_message": "Provider rate limited", "model": "claude-3-opus", "latency_ms": 500}
+                return {
+                    "content": "",
+                    "error": True,
+                    "error_message": "Provider rate limited",
+                    "model": "claude-3-opus",
+                    "latency_ms": 500,
+                }
             elif slot_name == "beast":
-                return {"content": json.dumps({"convergence": "Partial agreement.", "disagreements": "N/A - one model failed", "unique_contributions": "Synthesis only.", "risks": "Incomplete comparison.", "beast_conclusion": "Comparison degraded.", "recommended_decision": "Retry failed model."}), "model": "deepseek-chat", "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}, "latency_ms": 1500, "error": False}
+                return {
+                    "content": json.dumps(
+                        {
+                            "convergence": "Partial agreement.",
+                            "disagreements": "N/A - one model failed",
+                            "unique_contributions": "Synthesis only.",
+                            "risks": "Incomplete comparison.",
+                            "beast_conclusion": "Comparison degraded.",
+                            "recommended_decision": "Retry failed model.",
+                        }
+                    ),
+                    "model": "deepseek-chat",
+                    "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+                    "latency_ms": 1500,
+                    "error": False,
+                }
             else:
-                return {"content": json.dumps({"answer": "Synthesis response..."}), "model": "gpt-4", "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}, "latency_ms": 1200, "error": False}
+                return {
+                    "content": json.dumps({"answer": "Synthesis response..."}),
+                    "model": "gpt-4",
+                    "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+                    "latency_ms": 1200,
+                    "error": False,
+                }
 
         container = AipContainer({})
         container.model_provider = _make_mock_provider(
@@ -404,7 +517,12 @@ class TestPartialFailure:
         container.model_provider = _make_mock_provider(
             slots=["synthesis", "evaluation"],
             resolve_config=lambda slot: {"provider": "test", "model": "test-model", "api_key": "key"},
-            call_fn=lambda slot_name, messages, **kwargs: {"content": "", "error": True, "error_message": "All models down", "latency_ms": 0},
+            call_fn=lambda slot_name, messages, **kwargs: {
+                "content": "",
+                "error": True,
+                "error_message": "All models down",
+                "latency_ms": 0,
+            },
         )
         container.artifact_store = AsyncMock()
 
@@ -478,8 +596,29 @@ class TestSaveAsArtifactSovereignty:
 
         async def mock_call(slot_name, messages, **kwargs):
             if slot_name == "beast":
-                return {"content": json.dumps({"convergence": "Agree", "disagreements": "None", "unique_contributions": "Each unique", "risks": "Low", "beast_conclusion": "Solid", "recommended_decision": "Proceed"}), "model": "deepseek", "usage": {}, "latency_ms": 1000, "error": False}
-            return {"content": json.dumps({"answer": f"Response from {slot_name}"}), "model": f"model-{slot_name}", "usage": {"total_tokens": 100}, "latency_ms": 800, "error": False}
+                return {
+                    "content": json.dumps(
+                        {
+                            "convergence": "Agree",
+                            "disagreements": "None",
+                            "unique_contributions": "Each unique",
+                            "risks": "Low",
+                            "beast_conclusion": "Solid",
+                            "recommended_decision": "Proceed",
+                        }
+                    ),
+                    "model": "deepseek",
+                    "usage": {},
+                    "latency_ms": 1000,
+                    "error": False,
+                }
+            return {
+                "content": json.dumps({"answer": f"Response from {slot_name}"}),
+                "model": f"model-{slot_name}",
+                "usage": {"total_tokens": 100},
+                "latency_ms": 800,
+                "error": False,
+            }
 
         container = AipContainer({})
         container.model_provider = _make_mock_provider(
@@ -708,6 +847,7 @@ class TestAnswerCardModelCouncil:
         from gui.components.answer_card import add_answer_card
 
         import inspect
+
         sig = inspect.signature(add_answer_card)
         assert "on_run_model_council" in sig.parameters
 
@@ -736,8 +876,7 @@ class TestGUIImportBoundary:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    assert not alias.name.startswith("aip.orchestration"), \
-                        f"Found orchestration import: {alias.name}"
+                    assert not alias.name.startswith("aip.orchestration"), f"Found orchestration import: {alias.name}"
             elif isinstance(node, ast.ImportFrom):
                 if node.module and node.module.startswith("aip.orchestration"):
                     pytest.fail(f"Found orchestration import from: {node.module}")
@@ -754,8 +893,9 @@ class TestGUIImportBoundary:
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
-                        assert not alias.name.startswith("aip.orchestration"), \
+                        assert not alias.name.startswith("aip.orchestration"), (
                             f"{module_name} imports from aip.orchestration: {alias.name}"
+                        )
                 elif isinstance(node, ast.ImportFrom):
                     if node.module and node.module.startswith("aip.orchestration"):
                         pytest.fail(f"{module_name} imports from aip.orchestration: {node.module}")
@@ -774,8 +914,7 @@ class TestBackendImportBoundary:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    assert not alias.name.startswith("aip.orchestration"), \
-                        f"Found orchestration import: {alias.name}"
+                    assert not alias.name.startswith("aip.orchestration"), f"Found orchestration import: {alias.name}"
             elif isinstance(node, ast.ImportFrom):
                 if node.module and node.module.startswith("aip.orchestration"):
                     pytest.fail(f"Found orchestration import from: {node.module}")
@@ -834,8 +973,20 @@ class TestBeastSynthesisUnavailable:
 
         async def mock_call(slot_name, messages, **kwargs):
             if slot_name == "beast":
-                return {"content": "", "error": True, "error_message": "Beast provider down", "model": "beast-model", "latency_ms": 100}
-            return {"content": json.dumps({"answer": f"Response from {slot_name}"}), "model": f"model-{slot_name}", "usage": {"total_tokens": 100}, "latency_ms": 800, "error": False}
+                return {
+                    "content": "",
+                    "error": True,
+                    "error_message": "Beast provider down",
+                    "model": "beast-model",
+                    "latency_ms": 100,
+                }
+            return {
+                "content": json.dumps({"answer": f"Response from {slot_name}"}),
+                "model": f"model-{slot_name}",
+                "usage": {"total_tokens": 100},
+                "latency_ms": 800,
+                "error": False,
+            }
 
         container = AipContainer({})
         container.model_provider = _make_mock_provider(
@@ -870,7 +1021,13 @@ class TestBeastSynthesisUnavailable:
                 return {"content": "", "error": True, "error_message": "Failed", "latency_ms": 100}
             elif slot_name == "beast":
                 return {"content": "", "error": True, "error_message": "Down", "latency_ms": 0}
-            return {"content": "Only synthesis answered", "model": "gpt-4", "usage": {"total_tokens": 50}, "latency_ms": 500, "error": False}
+            return {
+                "content": "Only synthesis answered",
+                "model": "gpt-4",
+                "usage": {"total_tokens": 50},
+                "latency_ms": 500,
+                "error": False,
+            }
 
         container = AipContainer({})
         container.model_provider = _make_mock_provider(
@@ -907,8 +1064,29 @@ class TestCustomSlotSelection:
 
         async def mock_call(slot_name, messages, **kwargs):
             if slot_name == "beast":
-                return {"content": json.dumps({"convergence": "Agree", "disagreements": "None", "unique_contributions": "Both unique", "risks": "Low", "beast_conclusion": "Good", "recommended_decision": "Accept"}), "model": "beast-model", "usage": {}, "latency_ms": 500, "error": False}
-            return {"content": f"Response from {slot_name}", "model": f"model-{slot_name}", "usage": {"total_tokens": 50}, "latency_ms": 300, "error": False}
+                return {
+                    "content": json.dumps(
+                        {
+                            "convergence": "Agree",
+                            "disagreements": "None",
+                            "unique_contributions": "Both unique",
+                            "risks": "Low",
+                            "beast_conclusion": "Good",
+                            "recommended_decision": "Accept",
+                        }
+                    ),
+                    "model": "beast-model",
+                    "usage": {},
+                    "latency_ms": 500,
+                    "error": False,
+                }
+            return {
+                "content": f"Response from {slot_name}",
+                "model": f"model-{slot_name}",
+                "usage": {"total_tokens": 50},
+                "latency_ms": 300,
+                "error": False,
+            }
 
         container = AipContainer({})
         container.model_provider = _make_mock_provider(

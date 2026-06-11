@@ -54,11 +54,15 @@ def register(
     async def _procedural_retriever(query: str) -> list[RetrievalHit]:
         # Search for procedural artifacts
         procs = await artifact_store.list_artifacts_by_metadata(
-            key="artifact_type", value="procedural_guide", limit=20,
+            key="artifact_type",
+            value="procedural_guide",
+            limit=20,
         )
         # Also search compiled_knowledge which may contain procedural content
         compiled = await artifact_store.list_artifacts_by_metadata(
-            key="artifact_type", value="compiled_knowledge", limit=20,
+            key="artifact_type",
+            value="compiled_knowledge",
+            limit=20,
         )
         all_arts = procs + compiled
 
@@ -66,8 +70,17 @@ def register(
             return []
 
         query_terms = set(query.lower().split())
-        procedural_keywords = {"step", "steps", "how to", "procedure", "guide",
-                               "instructions", "process", "method", "tutorial"}
+        procedural_keywords = {
+            "step",
+            "steps",
+            "how to",
+            "procedure",
+            "guide",
+            "instructions",
+            "process",
+            "method",
+            "tutorial",
+        }
         hits: list[RetrievalHit] = []
 
         for art in all_arts:
@@ -86,18 +99,20 @@ def register(
             score = overlap * 0.2 + proc_boost
 
             if score > 0:
-                hits.append(RetrievalHit(
-                    id=f"proc:{art_id}",
-                    content=(art.get("content", "") or "")[:2000],
-                    score=score,
-                    source_channel=CHANNEL_NAME,
-                    domain=meta.get("domain", ""),
-                    metadata={
-                        "type": "procedural_guide",
-                        "artifact_id": art_id,
-                        "domain": meta.get("domain", ""),
-                    },
-                ))
+                hits.append(
+                    RetrievalHit(
+                        id=f"proc:{art_id}",
+                        content=(art.get("content", "") or "")[:2000],
+                        score=score,
+                        source_channel=CHANNEL_NAME,
+                        domain=meta.get("domain", ""),
+                        metadata={
+                            "type": "procedural_guide",
+                            "artifact_id": art_id,
+                            "domain": meta.get("domain", ""),
+                        },
+                    )
+                )
 
         # Sort by score descending and assign ranks consistently
         hits.sort(key=lambda h: h.score, reverse=True)

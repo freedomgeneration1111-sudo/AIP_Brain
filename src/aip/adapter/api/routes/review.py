@@ -39,11 +39,7 @@ def _resolve_state_db(container: AipContainer) -> str:
     if _STATE_DB is not None:
         return _STATE_DB
     cfg = getattr(container, "config", {}) or {}
-    db_path = (
-        cfg.get("database", {}).get("db_path")
-        or cfg.get("db_path")
-        or "db/state.db"
-    )
+    db_path = cfg.get("database", {}).get("db_path") or cfg.get("db_path") or "db/state.db"
     return db_path
 
 
@@ -96,18 +92,20 @@ async def _query_beast_artifacts(state: str = "GENERATED", db_path: str = "db/st
                         metadata = json.loads(raw_meta)
                     except (json.JSONDecodeError, TypeError):
                         pass
-                items.append({
-                    "artifact_id": row["id"],
-                    "id": row["id"],
-                    "artifact_version": row["version"],
-                    "ecs_state": row["current_state"],
-                    "domain": metadata.get("domain", ""),
-                    "content": row["content"],
-                    "metadata": metadata,
-                    "artifact_type": "wiki" if row["id"].startswith("beast:wiki:") else "proposal",
-                    "created_at": row["created_at"],
-                    "updated_at": row["updated_at"],
-                })
+                items.append(
+                    {
+                        "artifact_id": row["id"],
+                        "id": row["id"],
+                        "artifact_version": row["version"],
+                        "ecs_state": row["current_state"],
+                        "domain": metadata.get("domain", ""),
+                        "content": row["content"],
+                        "metadata": metadata,
+                        "artifact_type": "wiki" if row["id"].startswith("beast:wiki:") else "proposal",
+                        "created_at": row["created_at"],
+                        "updated_at": row["updated_at"],
+                    }
+                )
         finally:
             await conn.close()
     except Exception:
@@ -274,9 +272,7 @@ async def approve_artifact(
         try:
             content = await container.artifact_store.read(artifact_id)
             if content:
-                await container.canonical_store.write_canonical(
-                    artifact_id, content, approved_by="definer"
-                )
+                await container.canonical_store.write_canonical(artifact_id, content, approved_by="definer")
                 canonical_written = True
         except Exception as exc:
             logger.warning("Canonical write failed after ECS transition: %s", exc)

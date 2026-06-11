@@ -289,6 +289,7 @@ async def auto_save_chat_turn(
             except Exception as corpus_exc:
                 # Non-critical — Sexton tagging is best-effort
                 import logging
+
                 logging.getLogger(__name__).warning(
                     "auto_save_corpus_turn_failed",
                     session_id=session_id,
@@ -312,6 +313,7 @@ async def auto_save_chat_turn(
     except Exception as exc:
         # Log but don't propagate — auto-save is non-critical
         import logging
+
         logging.getLogger(__name__).warning(
             "auto_save_failed",
             session_id=session_id,

@@ -47,8 +47,7 @@ class DefinerProfile:
             # Keep ## headers and content (do not strip headers which start with ##).
             lines = raw.splitlines()
             stripped = "\n".join(
-                line for line in lines
-                if not (line.strip().startswith("#") and not line.strip().startswith("##"))
+                line for line in lines if not (line.strip().startswith("#") and not line.strip().startswith("##"))
             )
             self._content = stripped.strip()
             self._loaded_at = now
@@ -75,8 +74,4 @@ class DefinerProfile:
         if len(content) > max_chars:
             content = content[:max_chars] + "\n[Profile truncated for context budget]"
 
-        return (
-            "=== DEFINER PROFILE ===\n"
-            f"{content}\n"
-            "=== END DEFINER PROFILE ===\n"
-        )
+        return f"=== DEFINER PROFILE ===\n{content}\n=== END DEFINER PROFILE ===\n"

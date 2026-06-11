@@ -97,9 +97,8 @@ async def get_maintenance_status(container: AipContainer = Depends(get_container
     capabilities: dict[str, Any] = {
         "embedding_backfill": {
             "available": getattr(container, "embedding_provider", None) is not None
-                         and getattr(container, "vector_store", None) is not None,
-            "status": "available" if getattr(container, "embedding_provider", None) is not None
-                      else "not_wired",
+            and getattr(container, "vector_store", None) is not None,
+            "status": "available" if getattr(container, "embedding_provider", None) is not None else "not_wired",
         },
         "graph_rebuild": {
             "available": False,
@@ -118,8 +117,7 @@ async def get_maintenance_status(container: AipContainer = Depends(get_container
         },
         "stale_docs_check": {
             "available": getattr(container, "corpus_turn_store", None) is not None,
-            "status": "available" if getattr(container, "corpus_turn_store", None) is not None
-                      else "not_wired",
+            "status": "available" if getattr(container, "corpus_turn_store", None) is not None else "not_wired",
         },
         "contradiction_check": {
             "available": False,
@@ -195,15 +193,17 @@ async def get_actor_runs(
         )
         runs = []
         for evt in events:
-            runs.append({
-                "event_type": evt.event_type,
-                "actor": evt.actor,
-                "artifact_id": evt.artifact_id,
-                "from_state": evt.from_state,
-                "to_state": evt.to_state,
-                "timestamp": evt.timestamp,
-                "metadata": evt.metadata if hasattr(evt, "metadata") else {},
-            })
+            runs.append(
+                {
+                    "event_type": evt.event_type,
+                    "actor": evt.actor,
+                    "artifact_id": evt.artifact_id,
+                    "from_state": evt.from_state,
+                    "to_state": evt.to_state,
+                    "timestamp": evt.timestamp,
+                    "metadata": evt.metadata if hasattr(evt, "metadata") else {},
+                }
+            )
         return {
             "actor": actor_name,
             "runs": runs,
@@ -254,15 +254,17 @@ async def get_maintenance_logs(
                 limit=limit,
             )
             for evt in events:
-                all_events.append({
-                    "event_type": evt.event_type,
-                    "actor": evt.actor,
-                    "artifact_id": evt.artifact_id,
-                    "from_state": evt.from_state,
-                    "to_state": evt.to_state,
-                    "timestamp": evt.timestamp,
-                    "metadata": evt.metadata if hasattr(evt, "metadata") else {},
-                })
+                all_events.append(
+                    {
+                        "event_type": evt.event_type,
+                        "actor": evt.actor,
+                        "artifact_id": evt.artifact_id,
+                        "from_state": evt.from_state,
+                        "to_state": evt.to_state,
+                        "timestamp": evt.timestamp,
+                        "metadata": evt.metadata if hasattr(evt, "metadata") else {},
+                    }
+                )
 
         # Sort by timestamp descending
         all_events.sort(key=lambda e: e.get("timestamp", ""), reverse=True)

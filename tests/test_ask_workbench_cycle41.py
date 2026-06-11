@@ -55,12 +55,14 @@ class FakeEcsStore:
         self._states: dict[str, str] = {}
 
     async def transition(self, artifact_id, new_state, actor, reason, **kwargs):
-        self.transitions.append({
-            "artifact_id": artifact_id,
-            "new_state": new_state,
-            "actor": actor,
-            "reason": reason,
-        })
+        self.transitions.append(
+            {
+                "artifact_id": artifact_id,
+                "new_state": new_state,
+                "actor": actor,
+                "reason": reason,
+            }
+        )
         self._states[artifact_id] = new_state
 
     async def current_state(self, artifact_id):
@@ -145,8 +147,7 @@ class TestSaveArtifactSovereignty:
         )
 
         assert result["ecs_state"] == "GENERATED", (
-            f"Expected ecs_state=GENERATED, got {result['ecs_state']}. "
-            "Artifacts must NEVER be auto-approved."
+            f"Expected ecs_state=GENERATED, got {result['ecs_state']}. Artifacts must NEVER be auto-approved."
         )
 
     @pytest.mark.asyncio
@@ -168,8 +169,7 @@ class TestSaveArtifactSovereignty:
 
         for transition in ecs_store.transitions:
             assert transition["new_state"] != "APPROVED", (
-                f"ECS transition to APPROVED found: {transition}. "
-                "Save-as-artifact must NEVER auto-approve."
+                f"ECS transition to APPROVED found: {transition}. Save-as-artifact must NEVER auto-approve."
             )
 
     @pytest.mark.asyncio
@@ -197,15 +197,13 @@ class TestSaveArtifactSovereignty:
         # No EXPORTED state in transitions
         for transition in ecs_store.transitions:
             assert transition["new_state"] != "EXPORTED", (
-                "Save-as-artifact triggered an EXPORTED state — "
-                "artifact should not be exported."
+                "Save-as-artifact triggered an EXPORTED state — artifact should not be exported."
             )
 
         # Response should not mention export
         response_str = json.dumps(result).lower()
         assert "export" not in response_str, (
-            "Save-as-artifact response mentions 'export' — "
-            "artifact should not be exported."
+            "Save-as-artifact response mentions 'export' — artifact should not be exported."
         )
 
     @pytest.mark.asyncio
@@ -291,13 +289,18 @@ class TestSaveArtifactSovereignty:
 
         response_str = json.dumps(result).lower()
         secret_patterns = [
-            "api_key", "apikey", "secret", "password", "token",
-            "authorization", "bearer", "sk-", "ghp_",
+            "api_key",
+            "apikey",
+            "secret",
+            "password",
+            "token",
+            "authorization",
+            "bearer",
+            "sk-",
+            "ghp_",
         ]
         for pattern in secret_patterns:
-            assert pattern not in response_str, (
-                f"Save-artifact response may expose secret: found '{pattern}'"
-            )
+            assert pattern not in response_str, f"Save-artifact response may expose secret: found '{pattern}'"
 
     @pytest.mark.asyncio
     async def test_save_artifact_503_when_stores_unavailable(self):
@@ -448,12 +451,8 @@ class TestRetrievalTraceEndpoint:
 
         assert result["status"] == "ok"
         trace = result["trace"]
-        assert trace["lexical_only"] is True, (
-            "lexical_only should be True for degraded retrieval"
-        )
-        assert trace["vector_contributed"] is False, (
-            "vector_contributed should be False when vector did not contribute"
-        )
+        assert trace["lexical_only"] is True, "lexical_only should be True for degraded retrieval"
+        assert trace["vector_contributed"] is False, "vector_contributed should be False when vector did not contribute"
 
     @pytest.mark.asyncio
     async def test_endpoint_does_not_fake_trace_data(self):
@@ -484,8 +483,7 @@ class TestRetrievalTraceEndpoint:
 
         assert result["status"] == "not_found"
         assert result["trace"] is None, (
-            "Endpoint returned a trace object when none should exist — "
-            "must not fake trace data."
+            "Endpoint returned a trace object when none should exist — must not fake trace data."
         )
 
     @pytest.mark.asyncio
@@ -539,15 +537,9 @@ class TestAskChatMetadataCompatibility:
         ask_file = Path(__file__).resolve().parent.parent / "src/aip/adapter/api/routes/ask.py"
         source = ask_file.read_text(encoding="utf-8")
 
-        assert "trace_available" in source, (
-            "ask.py must include trace_available in response dict"
-        )
-        assert "lexical_only" in source, (
-            "ask.py must include lexical_only in response dict"
-        )
-        assert "vector_contributed" in source, (
-            "ask.py must include vector_contributed in response dict"
-        )
+        assert "trace_available" in source, "ask.py must include trace_available in response dict"
+        assert "lexical_only" in source, "ask.py must include lexical_only in response dict"
+        assert "vector_contributed" in source, "ask.py must include vector_contributed in response dict"
 
     def test_ask_retrieve_includes_metadata(self):
         """POST /api/v1/ask/retrieve response must include metadata fields."""
@@ -558,9 +550,7 @@ class TestAskChatMetadataCompatibility:
         source = ask_file.read_text(encoding="utf-8")
 
         # The retrieve endpoint also returns trace_available, lexical_only, vector_contributed
-        assert "trace_available" in source, (
-            "ask.py retrieve endpoint must include trace_available"
-        )
+        assert "trace_available" in source, "ask.py retrieve endpoint must include trace_available"
 
     def test_websocket_chat_includes_direct_model_flag(self):
         """WebSocket chat response must include direct_model field."""
@@ -596,15 +586,9 @@ class TestAskChatMetadataCompatibility:
         chat_file = Path(__file__).resolve().parent.parent / "src/aip/adapter/api/routes/chat.py"
         source = chat_file.read_text(encoding="utf-8")
 
-        assert "trace_available" in source, (
-            "chat.py must include trace_available in response payload"
-        )
-        assert "lexical_only" in source, (
-            "chat.py must include lexical_only in response payload"
-        )
-        assert "vector_contributed" in source, (
-            "chat.py must include vector_contributed in response payload"
-        )
+        assert "trace_available" in source, "chat.py must include trace_available in response payload"
+        assert "lexical_only" in source, "chat.py must include lexical_only in response payload"
+        assert "vector_contributed" in source, "chat.py must include vector_contributed in response payload"
 
 
 # ---------------------------------------------------------------------------
@@ -861,9 +845,7 @@ class TestNewComponentsImportBoundary:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    assert not alias.name.startswith("aip.orchestration"), (
-                        f"ask.py imports orchestration: {alias.name}"
-                    )
+                    assert not alias.name.startswith("aip.orchestration"), f"ask.py imports orchestration: {alias.name}"
             elif isinstance(node, ast.ImportFrom):
                 if node.module and node.level == 0:
                     assert not node.module.startswith("aip.orchestration"), (
@@ -896,12 +878,8 @@ class TestApiClientNewMethods:
         from gui.api_client import AipApiClient
 
         client = AipApiClient()
-        assert hasattr(client, "save_turn_as_artifact"), (
-            "AipApiClient missing save_turn_as_artifact method"
-        )
-        assert callable(getattr(client, "save_turn_as_artifact")), (
-            "save_turn_as_artifact must be callable"
-        )
+        assert hasattr(client, "save_turn_as_artifact"), "AipApiClient missing save_turn_as_artifact method"
+        assert callable(getattr(client, "save_turn_as_artifact")), "save_turn_as_artifact must be callable"
 
     def test_save_turn_artifact_does_not_auto_approve(self):
         """api_client.save_turn_as_artifact docstring must mention no auto-approve."""
@@ -925,6 +903,7 @@ class TestTurnsRouteRegistration:
     def test_turns_router_importable(self):
         """The turns route module must be importable."""
         from aip.adapter.api.routes.turns import router
+
         assert router is not None
 
     def test_turns_route_registered_in_app(self):
@@ -942,9 +921,7 @@ class TestTurnsRouteRegistration:
 
         # Check the route is registered
         routes = [r.path for r in router.routes]
-        assert "/turns/save-artifact" in routes, (
-            f"Expected /turns/save-artifact in routes, got: {routes}"
-        )
+        assert "/turns/save-artifact" in routes, f"Expected /turns/save-artifact in routes, got: {routes}"
 
 
 # ---------------------------------------------------------------------------
@@ -985,12 +962,8 @@ class TestDirectModelFallback:
         ask_file = Path(__file__).resolve().parent.parent / "gui/pages/ask.py"
         source = ask_file.read_text(encoding="utf-8")
 
-        assert "DIRECT MODEL ONLY" in source, (
-            "ask.py must display DIRECT MODEL ONLY warning banner"
-        )
-        assert "NOT DOGFOOD" in source, (
-            "ask.py must display NOT DOGFOOD in direct model banner"
-        )
+        assert "DIRECT MODEL ONLY" in source, "ask.py must display DIRECT MODEL ONLY warning banner"
+        assert "NOT DOGFOOD" in source, "ask.py must display NOT DOGFOOD in direct model banner"
 
     def test_answer_card_direct_model_status(self):
         """Answer card must show error-level DIRECT MODEL ONLY status."""
@@ -1005,9 +978,5 @@ class TestDirectModelFallback:
             mode="normal",
         )
 
-        assert status["level"] == "error", (
-            "Direct model status must be error-level, not ok or warning"
-        )
-        assert "DIRECT" in status["label"], (
-            "Direct model status label must contain 'DIRECT'"
-        )
+        assert status["level"] == "error", "Direct model status must be error-level, not ok or warning"
+        assert "DIRECT" in status["label"], "Direct model status label must contain 'DIRECT'"

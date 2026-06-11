@@ -417,10 +417,7 @@ class TestCleanupAlertingAndMetrics:
         assert history_after > history_before
 
         # Find the TTL expiry alert
-        ttl_alerts = [
-            a for a in mgr.lifecycle_mgr._alert_history
-            if a.get("alert_type") == "ab_experiment_ttl_expired"
-        ]
+        ttl_alerts = [a for a in mgr.lifecycle_mgr._alert_history if a.get("alert_type") == "ab_experiment_ttl_expired"]
         assert len(ttl_alerts) >= 1
         assert "ttl_alert" in ttl_alerts[-1]["subject"]
 
@@ -440,7 +437,8 @@ class TestCleanupAlertingAndMetrics:
 
         # Should NOT send a TTL expiry alert (but may send other alerts)
         ttl_alerts = [
-            a for a in mgr.lifecycle_mgr._alert_history[history_before:]
+            a
+            for a in mgr.lifecycle_mgr._alert_history[history_before:]
             if a.get("alert_type") == "ab_experiment_ttl_expired"
         ]
         assert len(ttl_alerts) == 0

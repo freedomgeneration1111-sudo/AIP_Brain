@@ -27,9 +27,9 @@ log = get_logger(__name__)
 # Sprint 6.3: Embedding retry with exponential backoff
 # ---------------------------------------------------------------------------
 
-_EMBED_MAX_RETRIES = 3          # Maximum retry attempts for embedding API calls
-_EMBED_BASE_DELAY = 2.0         # Base delay in seconds for exponential backoff
-_EMBED_MAX_DELAY = 30.0         # Maximum delay between retries
+_EMBED_MAX_RETRIES = 3  # Maximum retry attempts for embedding API calls
+_EMBED_BASE_DELAY = 2.0  # Base delay in seconds for exponential backoff
+_EMBED_MAX_DELAY = 30.0  # Maximum delay between retries
 
 
 async def _embed_with_retry(
@@ -52,7 +52,7 @@ async def _embed_with_retry(
         except ConnectionError as exc:
             last_exc = exc
             if attempt < max_retries - 1:
-                delay = min(base_delay * (2 ** attempt), max_delay)
+                delay = min(base_delay * (2**attempt), max_delay)
                 log.warning(
                     "sexton_embedding_retry",
                     attempt=attempt + 1,
@@ -92,7 +92,7 @@ def _extract_json_array(text: str) -> list:
         # Remove opening fence (```json or ```)
         first_newline = s.find("\n")
         if first_newline != -1:
-            s = s[first_newline + 1:]
+            s = s[first_newline + 1 :]
         # Remove closing fence
         if s.rstrip().endswith("```"):
             s = s.rstrip()[:-3].rstrip()
@@ -110,7 +110,7 @@ def _extract_json_array(text: str) -> list:
     end = s.rfind("]")
     if start != -1 and end > start:
         try:
-            parsed = json.loads(s[start:end + 1])
+            parsed = json.loads(s[start : end + 1])
             if isinstance(parsed, list):
                 return parsed
         except (json.JSONDecodeError, ValueError):
@@ -194,11 +194,11 @@ class Sexton:
 
         # LLM batching telemetry — accumulates across cycles
         self._batch_telemetry = {
-            "total_batch_extractions": 0,   # number of batch-mode LLM calls
-            "total_per_turn_extractions": 0, # number of per-turn LLM calls
-            "total_turns_via_batch": 0,      # turns processed in batch mode
-            "total_turns_via_per_turn": 0,   # turns processed in per-turn mode
-            "total_estimated_tokens_saved": 0, # approximate tokens saved by batching
+            "total_batch_extractions": 0,  # number of batch-mode LLM calls
+            "total_per_turn_extractions": 0,  # number of per-turn LLM calls
+            "total_turns_via_batch": 0,  # turns processed in batch mode
+            "total_turns_via_per_turn": 0,  # turns processed in per-turn mode
+            "total_estimated_tokens_saved": 0,  # approximate tokens saved by batching
         }
 
         # Sprint 5.23: Batch size auto-tuning state
@@ -221,6 +221,7 @@ class Sexton:
         if trace_store is not None:
             try:
                 from aip.orchestration.sexton.sexton import Sexton as FailureSexton
+
                 self._failure_classifier = FailureSexton(
                     config=self._config,
                     model_resolver=sexton_provider,
@@ -303,6 +304,7 @@ class Sexton:
 
         # Sprint 6.3: Generate a unique cycle ID for restart recovery tracking
         import uuid
+
         self._current_cycle_id = f"sexton-cycle-{uuid.uuid4().hex[:12]}"
 
         # Sprint 6.2: Structured start event with cycle count
@@ -666,6 +668,7 @@ class Sexton:
         # Load registry once (authoritative; Sexton never invents domains)
         try:
             from .domain_registry import load_registry
+
             registry = load_registry("docs/beast_domain_registry_v1.md")
         except FileNotFoundError as exc:
             log.warning("sexton_tagging_skipped_no_registry", path="docs/beast_domain_registry_v1.md", error=str(exc))
@@ -792,10 +795,10 @@ Example response structure:
                 u = (getattr(turn, "user_text", "") or "")[:400]
                 a = (getattr(turn, "assistant_text", "") or "")[:600]
                 th_raw = getattr(turn, "thinking_text", "") or ""
-                th = (th_raw[:300] if th_raw else "(none)")
+                th = th_raw[:300] if th_raw else "(none)"
                 wc = getattr(turn, "word_count", 0)
                 blk = (
-                    f"--- TURN {j+1} ---\n"
+                    f"--- TURN {j + 1} ---\n"
                     f"turn_id: {uid}\n"
                     f"conversation: {cname}\n"
                     f"user: {u}\n"
@@ -814,19 +817,28 @@ Example response structure:
             ]
 
             if batch_idx % 5 == 1 or batch_idx == (total + BATCH_SIZE - 1) // BATCH_SIZE:
-                log.info("sexton_tagging_progress", batch=batch_idx, of=(total + BATCH_SIZE - 1) // BATCH_SIZE, turns=f"{b_start+1}-{min(b_start+BATCH_SIZE, total)}/{total}")
+                log.info(
+                    "sexton_tagging_progress",
+                    batch=batch_idx,
+                    of=(total + BATCH_SIZE - 1) // BATCH_SIZE,
+                    turns=f"{b_start + 1}-{min(b_start + BATCH_SIZE, total)}/{total}",
+                )
 
             try:
                 llm_result = await self._sexton_provider.call("sexton", messages)
                 content = (llm_result or {}).get("content", "").strip()
                 parsed = _extract_json_array(content)
             except Exception as exc:
-                log.warning("sexton_tagging_batch_parse_failed", batch=batch_idx, turn_ids=[getattr(t, "turn_id", "?") for t in batch], error=str(exc))
+                log.warning(
+                    "sexton_tagging_batch_parse_failed",
+                    batch=batch_idx,
+                    turn_ids=[getattr(t, "turn_id", "?") for t in batch],
+                    error=str(exc),
+                )
                 for t in batch:
                     try:
                         await self._corpus_turns.update_beast_tags(
-                            getattr(t, "turn_id", ""),
-                            [], "unclassified", [], 0.0, [], 0.0
+                            getattr(t, "turn_id", ""), [], "unclassified", [], 0.0, [], 0.0
                         )
                     except Exception:
                         pass
@@ -851,11 +863,19 @@ Example response structure:
                     item_conf = item.get("beast_confidence", 0.0)
 
                 doms = [d for d in (item.get("domains") or []) if isinstance(d, str) and registry.is_approved_domain(d)]
-                if primary not in doms and primary in ("unclassified", "quarantine") or registry.is_approved_domain(primary):
+                if (
+                    primary not in doms
+                    and primary in ("unclassified", "quarantine")
+                    or registry.is_approved_domain(primary)
+                ):
                     if primary not in ("unclassified", "quarantine") and primary not in doms:
                         doms = [primary] + doms
 
-                tgs = [str(t).lower().replace(" ", "_")[:64] for t in (item.get("tags") or []) if isinstance(t, (str, int, float))][:8]
+                tgs = [
+                    str(t).lower().replace(" ", "_")[:64]
+                    for t in (item.get("tags") or [])
+                    if isinstance(t, (str, int, float))
+                ][:8]
                 if not tgs:
                     tgs = ["unclassified"]
 
@@ -872,7 +892,7 @@ Example response structure:
                     pass
 
                 brs = []
-                for b in (item.get("bridges") or []):
+                for b in item.get("bridges") or []:
                     bs = str(b)
                     if registry.is_approved_bridge(bs):
                         brs.append(bs)
@@ -888,19 +908,19 @@ Example response structure:
                 prop = item.get("proposal")
                 if isinstance(prop, dict) and prop.get("proposed_id"):
                     ptype = prop.get("type", "domain")
-                    proposals.append({
-                        "type": ptype,
-                        "proposed_id": prop.get("proposed_id"),
-                        "description": prop.get("description", ""),
-                        "rationale": prop.get("rationale", ""),
-                        "evidence_turn_ids": [tid],
-                    })
+                    proposals.append(
+                        {
+                            "type": ptype,
+                            "proposed_id": prop.get("proposed_id"),
+                            "description": prop.get("description", ""),
+                            "rationale": prop.get("rationale", ""),
+                            "evidence_turn_ids": [tid],
+                        }
+                    )
 
                 # Persist
                 try:
-                    await self._corpus_turns.update_beast_tags(
-                        tid, doms, primary, tgs, imp, brs, bconf
-                    )
+                    await self._corpus_turns.update_beast_tags(tid, doms, primary, tgs, imp, brs, bconf)
                     tagged += 1
                     domain_counts[primary] = domain_counts.get(primary, 0) + 1
                     importance_sum += imp
@@ -922,14 +942,17 @@ Example response structure:
                 pid = p.get("proposed_id", "discovered")
                 ptype = p.get("type", "domain")
                 aid = f"sexton:proposal:{ptype}:{pid}:{short_ts}"
-                content = json.dumps({
-                    "proposed_id": pid,
-                    "proposal_type": ptype,
-                    "description": p.get("description", ""),
-                    "rationale": p.get("rationale", ""),
-                    "evidence_turn_ids": p.get("evidence_turn_ids", [])[:5],
-                    "suggested_connectors": p.get("suggested_connectors", []),
-                }, ensure_ascii=False)
+                content = json.dumps(
+                    {
+                        "proposed_id": pid,
+                        "proposal_type": ptype,
+                        "description": p.get("description", ""),
+                        "rationale": p.get("rationale", ""),
+                        "evidence_turn_ids": p.get("evidence_turn_ids", [])[:5],
+                        "suggested_connectors": p.get("suggested_connectors", []),
+                    },
+                    ensure_ascii=False,
+                )
                 meta = {
                     "artifact_type": "sexton_domain_proposal",
                     "proposal_type": ptype,
@@ -1025,9 +1048,7 @@ Example response structure:
         reembed_marked = 0
         if reembed and hasattr(self._corpus_turns, "mark_all_for_reembed"):
             try:
-                reembed_marked = await self._corpus_turns.mark_all_for_reembed(
-                    except_model=embedding_model
-                )
+                reembed_marked = await self._corpus_turns.mark_all_for_reembed(except_model=embedding_model)
                 log.info("sexton_reembed_marked", count=reembed_marked, current_model=embedding_model)
             except Exception as exc:
                 log.warning("sexton_reembed_mark_failed", error=str(exc))
@@ -1035,10 +1056,7 @@ Example response structure:
         # Query turns needing embedding (includes needs_reembed=1)
         try:
             turns = await self._corpus_turns.get_unembedded_turns(limit=limit)
-            to_embed = [
-                (t.turn_id, t.searchable_text, getattr(t, "needs_reembed", 0))
-                for t in turns
-            ]
+            to_embed = [(t.turn_id, t.searchable_text, getattr(t, "needs_reembed", 0)) for t in turns]
         except Exception as exc:
             log.error("sexton_get_unembedded_failed", error=str(exc))
             self._recent_errors.append(f"embedding_get_unembedded: {exc}")
@@ -1079,7 +1097,7 @@ Example response structure:
                     "sexton_embedding_progress",
                     batch=batch_idx,
                     of=(total + BATCH_SIZE - 1) // BATCH_SIZE,
-                    turns=f"{b_start+1}-{min(b_start+BATCH_SIZE, total)}/{total}",
+                    turns=f"{b_start + 1}-{min(b_start + BATCH_SIZE, total)}/{total}",
                 )
 
             for tid, stext, needs_re in batch:
@@ -1259,15 +1277,13 @@ Example response structure:
 
         try:
             from .domain_registry import load_registry
+
             registry = load_registry("docs/beast_domain_registry_v1.md")
         except Exception as exc:
             log.warning("sexton_wiki_skipped_no_registry", error=str(exc))
             return {"skipped": "registry_not_found", "error": str(exc)}
 
-        active_domains = [
-            d for d in registry.get_domain_ids()
-            if d not in self._WIKI_EXCLUDED_DOMAINS
-        ]
+        active_domains = [d for d in registry.get_domain_ids() if d not in self._WIKI_EXCLUDED_DOMAINS]
         if force_domains is not None:
             active_domains = [d for d in active_domains if d in force_domains]
 
@@ -1353,13 +1369,8 @@ Example response structure:
         """Return (needs_generation, last_wiki_created_at_or_None)."""
         last_wiki_ts: str | None = None
         try:
-            arts = await self._artifacts.list_artifacts_by_metadata(
-                key="artifact_type", value="sexton_wiki", limit=200
-            )
-            domain_arts = [
-                a for a in arts
-                if (a.get("metadata", {}) or {}).get("domain") == domain_id
-            ]
+            arts = await self._artifacts.list_artifacts_by_metadata(key="artifact_type", value="sexton_wiki", limit=200)
+            domain_arts = [a for a in arts if (a.get("metadata", {}) or {}).get("domain") == domain_id]
             if domain_arts:
                 domain_arts.sort(key=lambda a: a.get("created_at", ""), reverse=True)
                 last_wiki_ts = domain_arts[0].get("created_at", "")
@@ -1382,9 +1393,7 @@ Example response structure:
             log.warning("sexton_wiki_word_count_failed", domain=domain_id, error=str(exc))
             return False, last_wiki_ts
 
-    async def _get_wiki_domain_data(
-        self, domain_id: str, db_path: str | None, last_wiki_ts: str | None
-    ) -> dict:
+    async def _get_wiki_domain_data(self, domain_id: str, db_path: str | None, last_wiki_ts: str | None) -> dict:
         """Gather domain statistics and sample turns for wiki generation."""
         try:
             if hasattr(self._corpus_turns, "get_domain_stats"):
@@ -1635,13 +1644,15 @@ CRITICAL CONSTRAINTS:
         turns = await graph_store.get_unextracted_high_importance_turns(min_importance=0.7, limit=limit)
 
         if not turns:
-            return {"turns_processed": 0, "entities_created": 0, "relationships_created": 0, "note": "nothing_to_extract"}
+            return {
+                "turns_processed": 0,
+                "entities_created": 0,
+                "relationships_created": 0,
+                "note": "nothing_to_extract",
+            }
 
         # Determine batch vs per-turn mode
-        batch_enabled = (
-            self._config.graph_extraction_batch_enabled
-            and self._current_batch_size > 1
-        )
+        batch_enabled = self._config.graph_extraction_batch_enabled and self._current_batch_size > 1
         # Use the (potentially auto-tuned) current batch size
         batch_size = self._current_batch_size if batch_enabled else 1
 
@@ -1798,14 +1809,16 @@ Output format:
                     if existing is None:
                         domain_hint = registry.get_domain(resolved) if registry else primary_domain or None
                         et = registry.get_entity_type(resolved) if registry else entity_type
-                        batch_nodes.append(GraphNode(
-                            id=node_id,
-                            entity_type=et,
-                            canonical_name=resolved,
-                            domain=domain_hint,
-                            confidence=confidence,
-                            source="sexton_extraction",
-                        ))
+                        batch_nodes.append(
+                            GraphNode(
+                                id=node_id,
+                                entity_type=et,
+                                canonical_name=resolved,
+                                domain=domain_hint,
+                                confidence=confidence,
+                                source="sexton_extraction",
+                            )
+                        )
                         entities_this_turn += 1
 
                 elif "relationship_type" in item:
@@ -1834,15 +1847,17 @@ Output format:
                             )
 
                     edge_id = f"{src_id}__{rel_type}__{tgt_id}"
-                    batch_edges.append(GraphEdge(
-                        id=edge_id,
-                        source_id=src_id,
-                        target_id=tgt_id,
-                        relationship_type=rel_type,
-                        confidence=confidence,
-                        evidence_turn_ids=[turn_id],
-                        weight=1.0,
-                    ))
+                    batch_edges.append(
+                        GraphEdge(
+                            id=edge_id,
+                            source_id=src_id,
+                            target_id=tgt_id,
+                            relationship_type=rel_type,
+                            confidence=confidence,
+                            evidence_turn_ids=[turn_id],
+                            weight=1.0,
+                        )
+                    )
                     rels_this_turn += 1
 
             # Batch upsert: merge implied nodes (from edges) with explicit nodes
@@ -1925,7 +1940,7 @@ Output format:
                     dom = turn.get("primary_domain", "")
                     imp = turn.get("importance", 0.0)
                     blk = (
-                        f"--- TURN {j+1} ---\n"
+                        f"--- TURN {j + 1} ---\n"
                         f"turn_id: {tid}\n"
                         f"domain: {dom}\n"
                         f"importance: {imp}\n"
@@ -1937,8 +1952,7 @@ Output format:
 
                 user_prompt = (
                     f"Extract entities and relationships from the following "
-                    f"{len(batch)} conversation turns:\n\n"
-                    + "\n".join(turn_blocks)
+                    f"{len(batch)} conversation turns:\n\n" + "\n".join(turn_blocks)
                 )
 
                 messages = [
@@ -1951,7 +1965,7 @@ Output format:
                         "sexton_graph_extraction_batch_progress",
                         batch=batch_idx,
                         of=total_batches,
-                        turns=f"{b_start+1}-{min(b_start+batch_size, len(turns))}/{len(turns)}",
+                        turns=f"{b_start + 1}-{min(b_start + batch_size, len(turns))}/{len(turns)}",
                     )
 
                 try:
@@ -1969,15 +1983,17 @@ Output format:
                     self._batch_parse_results.append(False)
                     # Sprint 5.25: Per-batch telemetry — record failure
                     self._total_batch_failures += 1
-                    self._per_batch_telemetry.append({
-                        "batch_idx": batch_idx,
-                        "batch_size": len(batch),
-                        "success": False,
-                        "error_reason": str(exc)[:200],
-                        "turn_ids": [t["turn_id"] for t in batch][:5],
-                        "fell_back_to_per_turn": True,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    })
+                    self._per_batch_telemetry.append(
+                        {
+                            "batch_idx": batch_idx,
+                            "batch_size": len(batch),
+                            "success": False,
+                            "error_reason": str(exc)[:200],
+                            "turn_ids": [t["turn_id"] for t in batch][:5],
+                            "fell_back_to_per_turn": True,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
                     if len(self._per_batch_telemetry) > 30:
                         self._per_batch_telemetry = self._per_batch_telemetry[-30:]
                     # Fallback: process each turn individually
@@ -2009,14 +2025,16 @@ Output format:
                 self._batch_parse_results.append(True)
                 # Sprint 5.25: Per-batch telemetry — record success
                 self._total_batch_successes += 1
-                self._per_batch_telemetry.append({
-                    "batch_idx": batch_idx,
-                    "batch_size": len(batch),
-                    "success": True,
-                    "items_extracted": len(parsed),
-                    "has_turn_id_mapping": has_turn_id_mapping,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                })
+                self._per_batch_telemetry.append(
+                    {
+                        "batch_idx": batch_idx,
+                        "batch_size": len(batch),
+                        "success": True,
+                        "items_extracted": len(parsed),
+                        "has_turn_id_mapping": has_turn_id_mapping,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
                 if len(self._per_batch_telemetry) > 30:
                     self._per_batch_telemetry = self._per_batch_telemetry[-30:]
 
@@ -2042,9 +2060,7 @@ Output format:
                 for turn in batch:
                     tid = turn["turn_id"]
                     primary_domain = turn.get("primary_domain", "")
-                    ents, rels = await _process_turn_items(
-                        tid, primary_domain, items_by_turn.get(tid, [])
-                    )
+                    ents, rels = await _process_turn_items(tid, primary_domain, items_by_turn.get(tid, []))
                     total_processed += 1
                     batch_turns_count += 1
                     total_entities += ents
@@ -2165,24 +2181,27 @@ Output format:
                 if self._alert_manager is not None:
                     try:
                         from aip.adapter.alerting import Alert
-                        self._alert_manager.send_alert(Alert(
-                            alert_type="batch_reduction",
-                            severity="warning",
-                            subject="graph_extraction_batch_size",
-                            message=(
-                                f"Graph extraction batch size reduced from {old_size} to {new_size} "
-                                f"due to high parse failure rate ({failure_rate:.1%} over last "
-                                f"{len(recent)} batches). Operators should investigate LLM parse errors."
-                            ),
-                            data={
-                                "old_batch_size": old_size,
-                                "new_batch_size": new_size,
-                                "failure_rate": round(failure_rate, 3),
-                                "window_size": len(recent),
-                                "min_batch_size": min_size,
-                                "max_batch_size": max_size,
-                            },
-                        ))
+
+                        self._alert_manager.send_alert(
+                            Alert(
+                                alert_type="batch_reduction",
+                                severity="warning",
+                                subject="graph_extraction_batch_size",
+                                message=(
+                                    f"Graph extraction batch size reduced from {old_size} to {new_size} "
+                                    f"due to high parse failure rate ({failure_rate:.1%} over last "
+                                    f"{len(recent)} batches). Operators should investigate LLM parse errors."
+                                ),
+                                data={
+                                    "old_batch_size": old_size,
+                                    "new_batch_size": new_size,
+                                    "failure_rate": round(failure_rate, 3),
+                                    "window_size": len(recent),
+                                    "min_batch_size": min_size,
+                                    "max_batch_size": max_size,
+                                },
+                            )
+                        )
                     except Exception as exc:
                         log.warning("sexton_alert_failed", error=str(exc))
 
@@ -2251,7 +2270,9 @@ Output format:
     # ------------------------------------------------------------------
 
     async def _persist_embedding_failures(
-        self, failed_ids: list[str], embedding_model: str,
+        self,
+        failed_ids: list[str],
+        embedding_model: str,
     ) -> None:
         """Sprint 6.3: Persist failed embedding turn IDs to the event store.
         Sprint 9: Also record failures in CorpusTurnStore for backfill tracking.

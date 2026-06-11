@@ -129,6 +129,7 @@ class TestSqliteVssBackendStatus:
 # 3. Metadata-only storage stamps _embed_failure
 # ---------------------------------------------------------------------------
 
+
 class TestEmbedFailureStamping:
     """Verify that metadata-only storage records _embed_failure in chunk metadata."""
 
@@ -143,6 +144,7 @@ class TestEmbedFailureStamping:
         await store.initialize()
 
         from aip.foundation.schemas import Chunk
+
         chunk = Chunk(id="test-1", content="hello world", metadata={}, domain="test")
         result_id = await store.store(chunk)
 
@@ -161,6 +163,7 @@ class TestEmbedFailureStamping:
         await store.initialize()
 
         from aip.foundation.schemas import Chunk
+
         for i in range(3):
             chunk = Chunk(id=f"fail-{i}", content=f"content {i}", metadata={}, domain="test")
             await store.store(chunk)
@@ -173,6 +176,7 @@ class TestEmbedFailureStamping:
 # ---------------------------------------------------------------------------
 # 4. Brute-force scan limits and truncation signaling
 # ---------------------------------------------------------------------------
+
 
 class TestBruteForceScanLimits:
     """Verify brute-force scan limits and truncation metadata."""
@@ -269,6 +273,7 @@ class TestAskResultDegradation:
         )
         trace = RetrievalTrace(vector_degradation=vdi)
         from aip.orchestration.ask_pipeline import _build_degradation_dict
+
         degradation = _build_degradation_dict(trace)
         result = AskResult(
             status="OK",
@@ -282,6 +287,7 @@ class TestAskResultDegradation:
 # ---------------------------------------------------------------------------
 # 7. Performance smoke test with 1k+ rows and sqlite-vss absent
 # ---------------------------------------------------------------------------
+
 
 class TestBruteForcePerformance1k:
     """Performance smoke test: 1k+ embedded rows with brute-force (no sqlite-vss).
@@ -351,6 +357,7 @@ class TestBruteForcePerformance1k:
     async def test_brute_force_hard_cap_respected(self, db_path):
         """Verify that brute-force scan is capped at _BRUTE_FORCE_MAX_ROWS."""
         from aip.adapter.vector.sqlite_vss_store import _BRUTE_FORCE_MAX_ROWS
+
         dim = 8
         store = SqliteVssVectorStore(db_path=db_path, dimensions=dim)
         await store.initialize()

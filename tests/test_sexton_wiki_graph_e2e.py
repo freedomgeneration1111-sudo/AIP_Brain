@@ -61,19 +61,11 @@ class StubArtifactStore(ArtifactStore):
     async def read(self, artifact_id: str) -> dict | None:
         return self._artifacts.get(artifact_id)
 
-    async def list_artifacts_by_metadata(
-        self, key: str, value: Any, limit: int = 100
-    ) -> list[dict]:
-        return [
-            a for a in self._artifacts.values()
-            if a.get("metadata", {}).get(key) == value
-        ][:limit]
+    async def list_artifacts_by_metadata(self, key: str, value: Any, limit: int = 100) -> list[dict]:
+        return [a for a in self._artifacts.values() if a.get("metadata", {}).get(key) == value][:limit]
 
     async def list_artifacts_by_domain(self, domain: str, limit: int = 100) -> list[dict]:
-        return [
-            a for a in self._artifacts.values()
-            if a.get("metadata", {}).get("domain") == domain
-        ][:limit]
+        return [a for a in self._artifacts.values() if a.get("metadata", {}).get("domain") == domain][:limit]
 
     async def delete(self, artifact_id: str) -> None:
         self._artifacts.pop(artifact_id, None)
@@ -196,9 +188,7 @@ class StubLexicalStore(LexicalStore):
     async def close(self) -> None:
         pass
 
-    async def index_document(
-        self, doc_id: str, content: str, domain: str, metadata: dict | None = None
-    ) -> None:
+    async def index_document(self, doc_id: str, content: str, domain: str, metadata: dict | None = None) -> None:
         self._docs[doc_id] = {
             "id": doc_id,
             "content": content,
@@ -206,9 +196,7 @@ class StubLexicalStore(LexicalStore):
             "metadata": metadata or {},
         }
 
-    async def search(
-        self, query: str, domain: str | None = None, limit: int = 10
-    ) -> list[Chunk]:
+    async def search(self, query: str, domain: str | None = None, limit: int = 10) -> list[Chunk]:
         return []
 
     async def delete_document(self, doc_id: str) -> None:
@@ -246,24 +234,33 @@ class StubModelProvider:
             }
         elif "extracting entities" in system_msg.lower():
             return {
-                "content": json.dumps([
-                    {"entity_type": "CONCEPT", "canonical_name": "TestConcept", "confidence": 0.9},
-                    {"relationship_type": "CONNECTS", "source": "TestConcept", "target": "OtherConcept", "confidence": 0.8},
-                ]),
+                "content": json.dumps(
+                    [
+                        {"entity_type": "CONCEPT", "canonical_name": "TestConcept", "confidence": 0.9},
+                        {
+                            "relationship_type": "CONNECTS",
+                            "source": "TestConcept",
+                            "target": "OtherConcept",
+                            "confidence": 0.8,
+                        },
+                    ]
+                ),
             }
         else:
             return {
-                "content": json.dumps([
-                    {
-                        "turn_id": "test_turn_1",
-                        "primary_domain": "nbcm",
-                        "domains": ["nbcm"],
-                        "tags": ["test_tag"],
-                        "importance": 0.8,
-                        "bridges": [],
-                        "beast_confidence": 0.9,
-                    }
-                ]),
+                "content": json.dumps(
+                    [
+                        {
+                            "turn_id": "test_turn_1",
+                            "primary_domain": "nbcm",
+                            "domains": ["nbcm"],
+                            "tags": ["test_tag"],
+                            "importance": 0.8,
+                            "bridges": [],
+                            "beast_confidence": 0.9,
+                        }
+                    ]
+                ),
             }
 
 
@@ -397,15 +394,12 @@ async def test_sexton_wiki_generation_writes_artifact(corpus_turn_store, test_re
 
     # Patch load_registry to return our test registry
     with patch("aip.orchestration.actors.domain_registry.load_registry", return_value=test_registry):
-        result = await sexton._run_wiki_generation(
-            force_domains=["nbcm"], max_per_cycle=1
-        )
+        result = await sexton._run_wiki_generation(force_domains=["nbcm"], max_per_cycle=1)
 
     # Should have written at least one wiki artifact
     all_artifacts = artifact_store.get_all()
     wiki_artifacts = {
-        aid: a for aid, a in all_artifacts.items()
-        if a.get("metadata", {}).get("artifact_type") == "sexton_wiki"
+        aid: a for aid, a in all_artifacts.items() if a.get("metadata", {}).get("artifact_type") == "sexton_wiki"
     }
 
     assert len(wiki_artifacts) >= 1, f"Expected at least 1 wiki artifact, got {len(wiki_artifacts)}"
@@ -461,13 +455,12 @@ async def test_sexton_wiki_generation_ecs_transition(corpus_turn_store, test_reg
     )
 
     with patch("aip.orchestration.actors.domain_registry.load_registry", return_value=test_registry):
-        await sexton._run_wiki_generation(
-            force_domains=["nbcm"], max_per_cycle=1
-        )
+        await sexton._run_wiki_generation(force_domains=["nbcm"], max_per_cycle=1)
 
     # Check that ECS state was set to GENERATED for the wiki artifact
     wiki_arts = {
-        aid: a for aid, a in artifact_store.get_all().items()
+        aid: a
+        for aid, a in artifact_store.get_all().items()
         if a.get("metadata", {}).get("artifact_type") == "sexton_wiki"
     }
     for aid in wiki_arts:
@@ -534,12 +527,11 @@ async def test_sexton_wiki_overview_extraction(corpus_turn_store, test_registry)
     )
 
     with patch("aip.orchestration.actors.domain_registry.load_registry", return_value=test_registry):
-        await sexton._run_wiki_generation(
-            force_domains=["nbcm"], max_per_cycle=1
-        )
+        await sexton._run_wiki_generation(force_domains=["nbcm"], max_per_cycle=1)
 
     wiki_arts = {
-        aid: a for aid, a in artifact_store.get_all().items()
+        aid: a
+        for aid, a in artifact_store.get_all().items()
         if a.get("metadata", {}).get("artifact_type") == "sexton_wiki"
     }
     assert len(wiki_arts) >= 1
@@ -833,13 +825,13 @@ async def test_sexton_graph_extraction_writes_extraction_log(tmp_db):
     # Verify graph_extraction_log was written
     graph_store = GraphStore(tmp_db)
     await graph_store.initialize()
-    assert await graph_store.is_turn_extracted("extraction_log_test_turn_1"), \
+    assert await graph_store.is_turn_extracted("extraction_log_test_turn_1"), (
         "Turn should be logged in graph_extraction_log after extraction"
+    )
 
     # Verify nodes were created
     node_count = await graph_store.node_count()
-    assert node_count >= 1, \
-        f"Expected at least 1 graph node, got {node_count}"
+    assert node_count >= 1, f"Expected at least 1 graph node, got {node_count}"
     await graph_store.close()
 
 
@@ -897,8 +889,9 @@ async def test_sexton_graph_extraction_log_prevents_reduplication(tmp_db):
 
     # Second extraction — should skip the already-extracted turn
     result2 = await sexton._run_graph_extraction(limit=5)
-    assert result2["turns_processed"] == 0, \
+    assert result2["turns_processed"] == 0, (
         f"Second extraction should process 0 turns (already extracted), got {result2['turns_processed']}"
+    )
 
     # Verify graph_extraction_log has the entry
     graph_store = GraphStore(tmp_db)

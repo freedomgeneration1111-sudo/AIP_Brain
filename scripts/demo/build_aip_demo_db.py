@@ -145,6 +145,7 @@ def main() -> None:
 # Schema initialization (matches aip/cli/init.py exactly)
 # ---------------------------------------------------------------------------
 
+
 def _init_state_db(db_path: Path) -> None:
     """Initialize state.db with all required tables."""
     conn = sqlite3.connect(str(db_path))
@@ -491,6 +492,7 @@ def _create_default_project(db_path: Path) -> None:
 # Data ingestion
 # ---------------------------------------------------------------------------
 
+
 def _ingest_qa_turns(db_path: Path, qa_path: Path) -> int:
     """Ingest Q&A turns from JSONL into corpus_turns table."""
     conn = sqlite3.connect(str(db_path))
@@ -557,9 +559,9 @@ def _ingest_qa_turns(db_path: Path, qa_path: Path) -> int:
                     0,  # embedded=0 (pending)
                     json.dumps({"demo": True, "wiki_topic": turn.get("wiki_topic", "")}),
                     "",  # embedding_model
-                    0,   # needs_reembed
+                    0,  # needs_reembed
                     None,  # last_embed_at
-                    0,   # embed_fail_count
+                    0,  # embed_fail_count
                     "",  # last_embed_error
                     now,
                     now,
@@ -620,13 +622,15 @@ def _ingest_wiki_articles(db_path: Path, wiki_path: Path) -> int:
                 0.0,  # Fresh
                 now,
                 1,  # is_wiki_page
-                json.dumps({
-                    "tags": tags,
-                    "entities": entities,
-                    "importance": importance,
-                    "source_type": "curated",
-                    "demo": True,
-                }),
+                json.dumps(
+                    {
+                        "tags": tags,
+                        "entities": entities,
+                        "importance": importance,
+                        "source_type": "curated",
+                        "demo": True,
+                    }
+                ),
                 now,
             ),
         )
@@ -644,15 +648,17 @@ def _ingest_wiki_articles(db_path: Path, wiki_path: Path) -> int:
                 json.dumps([f"demo-qa-{i:03d}" for i in range(1, 61)]),
                 domain,
                 "APPROVED",
-                json.dumps({
-                    "title": title,
-                    "description": description,
-                    "tags": tags,
-                    "entities": entities,
-                    "importance": importance,
-                    "source_type": "curated",
-                    "demo": True,
-                }),
+                json.dumps(
+                    {
+                        "title": title,
+                        "description": description,
+                        "tags": tags,
+                        "entities": entities,
+                        "importance": importance,
+                        "source_type": "curated",
+                        "demo": True,
+                    }
+                ),
                 now,
                 now,
             ),
@@ -674,11 +680,11 @@ def _ingest_wiki_articles_manual(db_path: Path, wiki_path: Path) -> int:
     content = wiki_path.read_text(encoding="utf-8")
 
     # Split on article_id pattern
-    article_blocks = re.split(r'\n\s*-\s+article_id:', content)
+    article_blocks = re.split(r"\n\s*-\s+article_id:", content)
     count = 0
 
     for block in article_blocks[1:]:  # Skip the header before first article
-        lines = block.strip().split('\n')
+        lines = block.strip().split("\n")
         article_id = lines[0].strip().strip('"').strip("'")
 
         # Extract simple key: value pairs
@@ -808,8 +814,20 @@ def _create_graph_seed(db_path: Path) -> int:
     now = datetime.now(timezone.utc).isoformat()
 
     nodes = [
-        ("aip", "PROJECT", "AIP", "aip", ["AI Poiesis", "AIP_Brain", "AIP Brain", "the system", "the knowledge engine"]),
-        ("definer", "CONCEPT", "DEFINER", "aip", ["the DEFINER", "definer gate", "human-in-the-loop authority", "the sovereign"]),
+        (
+            "aip",
+            "PROJECT",
+            "AIP",
+            "aip",
+            ["AI Poiesis", "AIP_Brain", "AIP Brain", "the system", "the knowledge engine"],
+        ),
+        (
+            "definer",
+            "CONCEPT",
+            "DEFINER",
+            "aip",
+            ["the DEFINER", "definer gate", "human-in-the-loop authority", "the sovereign"],
+        ),
         ("beast", "PROJECT", "Beast", "aip", ["Beast actor", "the Beast", "beast agent", "the maintenance actor"]),
         ("vigil", "PROJECT", "Vigil", "aip", ["Vigil actor", "the Vigil", "vigil agent", "the quality monitor"]),
         ("sexton", "PROJECT", "Sexton", "aip", ["Sexton orchestrator", "sexton agent", "the orchestrator"]),
@@ -819,7 +837,13 @@ def _create_graph_seed(db_path: Path) -> int:
         ("model_slots", "CONCEPT", "Model slots", "aip", ["ModelSlotResolver", "slot resolution", "model dispatch"]),
         ("storage_model", "CONCEPT", "Storage model", "aip", ["SQLite", "multi-store", "local-first"]),
         ("dogfood_mode", "CONCEPT", "Dogfood mode", "aip", ["full dogfood", "diagnostic mode", "minimal mode"]),
-        ("no_silent_degradation", "CONCEPT", "No silent degradation", "aip", ["honest evaluation", "fail loudly", "no silent pass"]),
+        (
+            "no_silent_degradation",
+            "CONCEPT",
+            "No silent degradation",
+            "aip",
+            ["honest evaluation", "fail loudly", "no silent pass"],
+        ),
     ]
 
     edges = [
@@ -841,8 +865,18 @@ def _create_graph_seed(db_path: Path) -> int:
             (id, entity_type, canonical_name, domain, confidence, source, aliases_json, metadata_json, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (node_id, entity_type, canonical_name, domain, 1.0, "demo_seed",
-             json.dumps(aliases), json.dumps({"demo": True}), now, now),
+            (
+                node_id,
+                entity_type,
+                canonical_name,
+                domain,
+                1.0,
+                "demo_seed",
+                json.dumps(aliases),
+                json.dumps({"demo": True}),
+                now,
+                now,
+            ),
         )
 
     for edge_id, source_id, target_id, rel_type in edges:
@@ -852,8 +886,7 @@ def _create_graph_seed(db_path: Path) -> int:
             (id, source_id, target_id, relationship_type, bridge_tag, confidence, evidence_turn_ids_json, weight, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (edge_id, source_id, target_id, rel_type, f"{source_id}->{target_id}",
-             1.0, json.dumps([]), 1.0, now),
+            (edge_id, source_id, target_id, rel_type, f"{source_id}->{target_id}", 1.0, json.dumps([]), 1.0, now),
         )
 
     conn.commit()
@@ -866,9 +899,7 @@ def _index_lexical(lexical_db_path: Path, state_db_path: Path) -> int:
     """Index corpus turns and wiki articles into the lexical FTS5 store."""
     # Read turns from state.db
     state_conn = sqlite3.connect(str(state_db_path))
-    turns = state_conn.execute(
-        "SELECT turn_id, searchable_text, primary_domain FROM corpus_turns"
-    ).fetchall()
+    turns = state_conn.execute("SELECT turn_id, searchable_text, primary_domain FROM corpus_turns").fetchall()
     wiki = state_conn.execute(
         "SELECT topic_id, description, domain FROM codex_topics WHERE is_wiki_page = 1"
     ).fetchall()
@@ -902,6 +933,7 @@ def _try_embeddings(state_db_path: Path, vectors_db_path: Path) -> str:
     """Attempt to generate embeddings. Returns status string."""
     try:
         import tomllib
+
         config_path = PROJECT_ROOT / "config" / "aip.config.toml"
         cfg: dict = {}
         if config_path.exists():
@@ -914,6 +946,7 @@ def _try_embeddings(state_db_path: Path, vectors_db_path: Path) -> str:
 
         # Try to create and use the embedding provider
         from aip.adapter.api.app import _create_embedding_provider
+
         provider = _create_embedding_provider(cfg)
         if provider is None:
             return "PENDING — embedding provider creation failed. Check configuration."
@@ -943,8 +976,13 @@ def _try_embeddings(state_db_path: Path, vectors_db_path: Path) -> str:
                         # Store in vector_metadata (without actual VSS index, just metadata)
                         vec_conn.execute(
                             "INSERT OR REPLACE INTO vector_metadata (id, content, domain, metadata_json, created_at) VALUES (?, ?, ?, ?, ?)",
-                            (turn["turn_id"], turn["searchable_text"][:500], "aip",
-                             json.dumps({"dim": len(embedding), "demo": True}), now),
+                            (
+                                turn["turn_id"],
+                                turn["searchable_text"][:500],
+                                "aip",
+                                json.dumps({"dim": len(embedding), "demo": True}),
+                                now,
+                            ),
                         )
                         embedded_count += 1
                 except Exception:

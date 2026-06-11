@@ -39,6 +39,7 @@ _EXCLUDED_TEXT_GEN_SLOTS = {"embedding"}
 
 class ModelOverrideRequest(BaseModel):
     """Request body for PATCH /models/slots/{slot_name}/model."""
+
     model: str
     api_key: str | None = None
 
@@ -253,6 +254,7 @@ async def update_slot_model(
 
     if slot_name not in slot_names:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail=f"Unknown slot: {slot_name}")
 
     # Set in-memory runtime overrides — highest priority in the resolver.

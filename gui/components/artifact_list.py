@@ -75,9 +75,10 @@ def render_artifact_list(
     Returns:
         The container column
     """
-    container = ui.column().classes("w-full").style(
-        f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-        f"border-radius:{R_MD}; overflow:hidden;"
+    container = (
+        ui.column()
+        .classes("w-full")
+        .style(f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; border-radius:{R_MD}; overflow:hidden;")
     )
 
     state = {
@@ -93,43 +94,43 @@ def render_artifact_list(
 
     # ── Header ──────────────────────────────────────────────────
     with container:
-        with ui.row().classes("w-full items-center").style(
-            f"padding:8px 12px; border-bottom:0.5px solid {C_INK40};"
-        ):
+        with ui.row().classes("w-full items-center").style(f"padding:8px 12px; border-bottom:0.5px solid {C_INK40};"):
             ui.label("ARTIFACTS").style(
                 f"font-size:9px; font-weight:600; letter-spacing:1px; "
                 f"color:{C_AMBER}; text-transform:uppercase; font-family:{F_MONO};"
             )
             ui.space()
-            ui.button("↻", on_click=lambda: asyncio.ensure_future(_load(state, api_client, container, on_select, on_refresh))).props(
-                "flat dense unelevated size=xs"
-            ).style(
-                f"color:{C_INK60}; font-size:12px; font-family:{F_MONO};"
-            )
+            ui.button(
+                "↻", on_click=lambda: asyncio.ensure_future(_load(state, api_client, container, on_select, on_refresh))
+            ).props("flat dense unelevated size=xs").style(f"color:{C_INK60}; font-size:12px; font-family:{F_MONO};")
 
         # ── Search ──────────────────────────────────────────────
         with ui.row().classes("w-full").style(f"padding:8px 12px; border-bottom:0.5px solid {C_INK40};"):
-            search_input = ui.input(placeholder="Search artifacts...").props(
-                "dense flat outlined size=xs"
-            ).classes("w-full").style(
-                f"font-size:11px; font-family:{F_MONO}; color:{C_CREAM}; "
-                f"background:{C_GROUND}; border-radius:{R_SM};"
+            search_input = (
+                ui.input(placeholder="Search artifacts...")
+                .props("dense flat outlined size=xs")
+                .classes("w-full")
+                .style(
+                    f"font-size:11px; font-family:{F_MONO}; color:{C_CREAM}; "
+                    f"background:{C_GROUND}; border-radius:{R_SM};"
+                )
             )
-            search_input.on("update:model-value", lambda e: _on_search(e, state, api_client, container, on_select, on_refresh))
+            search_input.on(
+                "update:model-value", lambda e: _on_search(e, state, api_client, container, on_select, on_refresh)
+            )
 
         # ── Tabs ────────────────────────────────────────────────
-        with ui.row().classes("w-full").style(
-            f"padding:4px 8px; border-bottom:0.5px solid {C_INK40}; "
-            f"overflow-x:auto; flex-wrap:nowrap;"
+        with (
+            ui.row()
+            .classes("w-full")
+            .style(f"padding:4px 8px; border-bottom:0.5px solid {C_INK40}; overflow-x:auto; flex-wrap:nowrap;")
         ):
             for filter_val, label in TABS:
-                _render_tab(
-                    filter_val, label, state, api_client, container, on_select, on_refresh
-                )
+                _render_tab(filter_val, label, state, api_client, container, on_select, on_refresh)
 
         # ── Content area ───────────────────────────────────────
-        content_area = ui.column().classes("w-full").style(
-            "min-height:200px; max-height:calc(100vh - 320px); overflow-y:auto;"
+        content_area = (
+            ui.column().classes("w-full").style("min-height:200px; max-height:calc(100vh - 320px); overflow-y:auto;")
         )
         state["_content_area"] = content_area
 
@@ -154,9 +155,9 @@ def _render_tab(
     color = C_AMBER if is_active else C_INK60
     border = C_AMBER if is_active else "transparent"
 
-    ui.button(label, on_click=lambda: _on_tab_click(filter_val, state, api_client, container, on_select, on_refresh)).props(
-        "flat dense unelevated size=xs"
-    ).style(
+    ui.button(
+        label, on_click=lambda: _on_tab_click(filter_val, state, api_client, container, on_select, on_refresh)
+    ).props("flat dense unelevated size=xs").style(
         f"color:{color}; font-size:9px; font-family:{F_MONO}; "
         f"background:{bg}; border:1px solid {border}; "
         f"border-radius:{R_SM}; padding:3px 8px; margin:2px; "
@@ -261,9 +262,7 @@ def _render_content(
         # Loading state
         if state.get("loading"):
             with ui.row().classes("w-full items-center justify-center").style("padding:32px;"):
-                ui.label("Loading artifacts...").style(
-                    f"font-size:11px; color:{C_MUTED}; font-family:{F_MONO};"
-                )
+                ui.label("Loading artifacts...").style(f"font-size:11px; color:{C_MUTED}; font-family:{F_MONO};")
             return
 
         # Error state
@@ -282,9 +281,7 @@ def _render_content(
         # Empty state
         if not items:
             with ui.column().classes("w-full items-center").style("padding:32px;"):
-                ui.label("No artifacts found").style(
-                    f"font-size:12px; color:{C_MUTED}; font-family:{F_SANS};"
-                )
+                ui.label("No artifacts found").style(f"font-size:12px; color:{C_MUTED}; font-family:{F_SANS};")
                 active_tab = state.get("active_tab", "ALL")
                 if active_tab == "ALL":
                     ui.label("Create artifacts by asking questions and saving answers").style(
@@ -298,9 +295,7 @@ def _render_content(
 
         # Item count
         total = state.get("total", len(items))
-        with ui.row().classes("w-full items-center").style(
-            f"padding:4px 12px; border-bottom:0.5px solid {C_INK40};"
-        ):
+        with ui.row().classes("w-full items-center").style(f"padding:4px 12px; border-bottom:0.5px solid {C_INK40};"):
             ui.label(f"{total} artifact{'s' if total != 1 else ''}").style(
                 f"font-size:9px; color:{C_INK60}; font-family:{F_MONO};"
             )
@@ -327,17 +322,13 @@ def _render_item(
     # Truncate timestamp for display
     display_date = created_at[:16] if len(created_at) > 16 else created_at
 
-    with ui.row().classes("w-full items-center").style(
-        f"padding:8px 12px; border-bottom:0.5px solid {C_INK40}; "
-        f"cursor:pointer; transition:background 0.15s;"
-    ).on("click", lambda: on_select(artifact_id) if on_select else None).on(
-        "mouseenter", lambda: ui.run_javascript(
-            f"this.style.background='{C_RAISED}'"
-        )
-    ).on(
-        "mouseleave", lambda: ui.run_javascript(
-            f"this.style.background='transparent'"
-        )
+    with (
+        ui.row()
+        .classes("w-full items-center")
+        .style(f"padding:8px 12px; border-bottom:0.5px solid {C_INK40}; cursor:pointer; transition:background 0.15s;")
+        .on("click", lambda: on_select(artifact_id) if on_select else None)
+        .on("mouseenter", lambda: ui.run_javascript(f"this.style.background='{C_RAISED}'"))
+        .on("mouseleave", lambda: ui.run_javascript(f"this.style.background='transparent'"))
     ):
         # State badge
         render_artifact_state_badge(
@@ -363,16 +354,11 @@ def _render_item(
                     f"max-width:200px;"
                 )
                 if artifact_type:
-                    ui.label(f"  {artifact_type}").style(
-                        f"font-size:8px; color:{C_MUTED}; font-family:{F_MONO};"
-                    )
-                ui.label(f"  {source_count} sources").style(
-                    f"font-size:8px; color:{C_INK60}; font-family:{F_MONO};"
-                )
+                    ui.label(f"  {artifact_type}").style(f"font-size:8px; color:{C_MUTED}; font-family:{F_MONO};")
+                ui.label(f"  {source_count} sources").style(f"font-size:8px; color:{C_INK60}; font-family:{F_MONO};")
 
         # Date
         if display_date:
             ui.label(display_date).style(
-                f"font-size:9px; color:{C_INK60}; font-family:{F_MONO}; "
-                f"flex-shrink:0; margin-left:8px;"
+                f"font-size:9px; color:{C_INK60}; font-family:{F_MONO}; flex-shrink:0; margin-left:8px;"
             )

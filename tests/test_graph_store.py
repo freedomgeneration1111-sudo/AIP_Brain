@@ -111,20 +111,34 @@ class TestNodeCRUD:
         assert await graph_store.node_count() == 0
 
         for i in range(5):
-            await graph_store.upsert_node(GraphNode(
-                id=f"count_{i}", entity_type="CONCEPT", canonical_name=f"Node {i}",
-            ))
+            await graph_store.upsert_node(
+                GraphNode(
+                    id=f"count_{i}",
+                    entity_type="CONCEPT",
+                    canonical_name=f"Node {i}",
+                )
+            )
 
         assert await graph_store.node_count() == 5
 
     @pytest.mark.asyncio
     async def test_get_all_nodes_with_confidence_filter(self, graph_store):
-        await graph_store.upsert_node(GraphNode(
-            id="high_conf", entity_type="CONCEPT", canonical_name="High", confidence=0.9,
-        ))
-        await graph_store.upsert_node(GraphNode(
-            id="low_conf", entity_type="CONCEPT", canonical_name="Low", confidence=0.2,
-        ))
+        await graph_store.upsert_node(
+            GraphNode(
+                id="high_conf",
+                entity_type="CONCEPT",
+                canonical_name="High",
+                confidence=0.9,
+            )
+        )
+        await graph_store.upsert_node(
+            GraphNode(
+                id="low_conf",
+                entity_type="CONCEPT",
+                canonical_name="Low",
+                confidence=0.2,
+            )
+        )
 
         all_nodes = await graph_store.get_all_nodes(min_confidence=0.0)
         assert len(all_nodes) == 2
@@ -172,12 +186,14 @@ class TestEdgeCRUD:
         for i in range(3):
             await graph_store.upsert_node(GraphNode(id=f"n{i}", entity_type="CONCEPT", canonical_name=f"N{i}"))
             if i > 0:
-                await graph_store.upsert_edge(GraphEdge(
-                    id=f"n0__CONNECTS__n{i}",
-                    source_id="n0",
-                    target_id=f"n{i}",
-                    relationship_type="CONNECTS",
-                ))
+                await graph_store.upsert_edge(
+                    GraphEdge(
+                        id=f"n0__CONNECTS__n{i}",
+                        source_id="n0",
+                        target_id=f"n{i}",
+                        relationship_type="CONNECTS",
+                    )
+                )
 
         assert await graph_store.edge_count() == 2
 
@@ -187,14 +203,24 @@ class TestEdgeCRUD:
         await graph_store.upsert_node(GraphNode(id="y", entity_type="CONCEPT", canonical_name="Y"))
         await graph_store.upsert_node(GraphNode(id="z", entity_type="CONCEPT", canonical_name="Z"))
 
-        await graph_store.upsert_edge(GraphEdge(
-            id="x__CONNECTS__y", source_id="x", target_id="y",
-            relationship_type="CONNECTS", confidence=0.9,
-        ))
-        await graph_store.upsert_edge(GraphEdge(
-            id="x__CONNECTS__z", source_id="x", target_id="z",
-            relationship_type="CONNECTS", confidence=0.2,
-        ))
+        await graph_store.upsert_edge(
+            GraphEdge(
+                id="x__CONNECTS__y",
+                source_id="x",
+                target_id="y",
+                relationship_type="CONNECTS",
+                confidence=0.9,
+            )
+        )
+        await graph_store.upsert_edge(
+            GraphEdge(
+                id="x__CONNECTS__z",
+                source_id="x",
+                target_id="z",
+                relationship_type="CONNECTS",
+                confidence=0.2,
+            )
+        )
 
         all_edges = await graph_store.get_all_edges(min_confidence=0.0)
         assert len(all_edges) == 2
@@ -216,16 +242,24 @@ class TestNeighborsAndSearch:
         await graph_store.upsert_node(GraphNode(id="neighbor2", entity_type="CONCEPT", canonical_name="N2"))
         await graph_store.upsert_node(GraphNode(id="isolated", entity_type="CONCEPT", canonical_name="Isolated"))
 
-        await graph_store.upsert_edge(GraphEdge(
-            id="center__CONNECTS__neighbor1",
-            source_id="center", target_id="neighbor1",
-            relationship_type="CONNECTS", confidence=0.8,
-        ))
-        await graph_store.upsert_edge(GraphEdge(
-            id="neighbor2__CONNECTS__center",
-            source_id="neighbor2", target_id="center",
-            relationship_type="CONNECTS", confidence=0.8,
-        ))
+        await graph_store.upsert_edge(
+            GraphEdge(
+                id="center__CONNECTS__neighbor1",
+                source_id="center",
+                target_id="neighbor1",
+                relationship_type="CONNECTS",
+                confidence=0.8,
+            )
+        )
+        await graph_store.upsert_edge(
+            GraphEdge(
+                id="neighbor2__CONNECTS__center",
+                source_id="neighbor2",
+                target_id="center",
+                relationship_type="CONNECTS",
+                confidence=0.8,
+            )
+        )
 
         neighbors = await graph_store.get_neighbors("center", min_confidence=0.5)
         neighbor_ids = {n.id for n in neighbors}
@@ -240,14 +274,24 @@ class TestNeighborsAndSearch:
         await graph_store.upsert_node(GraphNode(id="high", entity_type="CONCEPT", canonical_name="High"))
         await graph_store.upsert_node(GraphNode(id="low", entity_type="CONCEPT", canonical_name="Low"))
 
-        await graph_store.upsert_edge(GraphEdge(
-            id="hub__CONNECTS__high", source_id="hub", target_id="high",
-            relationship_type="CONNECTS", confidence=0.9,
-        ))
-        await graph_store.upsert_edge(GraphEdge(
-            id="hub__CONNECTS__low", source_id="hub", target_id="low",
-            relationship_type="CONNECTS", confidence=0.2,
-        ))
+        await graph_store.upsert_edge(
+            GraphEdge(
+                id="hub__CONNECTS__high",
+                source_id="hub",
+                target_id="high",
+                relationship_type="CONNECTS",
+                confidence=0.9,
+            )
+        )
+        await graph_store.upsert_edge(
+            GraphEdge(
+                id="hub__CONNECTS__low",
+                source_id="hub",
+                target_id="low",
+                relationship_type="CONNECTS",
+                confidence=0.2,
+            )
+        )
 
         neighbors = await graph_store.get_neighbors("hub", min_confidence=0.5)
         neighbor_ids = {n.id for n in neighbors}
@@ -274,8 +318,12 @@ class TestNeighborsAndSearch:
 
     @pytest.mark.asyncio
     async def test_search_nodes_with_domain_filter(self, graph_store):
-        await graph_store.upsert_node(GraphNode(id="d1", entity_type="CONCEPT", canonical_name="Item", domain="physics"))
-        await graph_store.upsert_node(GraphNode(id="d2", entity_type="CONCEPT", canonical_name="Item", domain="biology"))
+        await graph_store.upsert_node(
+            GraphNode(id="d1", entity_type="CONCEPT", canonical_name="Item", domain="physics")
+        )
+        await graph_store.upsert_node(
+            GraphNode(id="d2", entity_type="CONCEPT", canonical_name="Item", domain="biology")
+        )
 
         results = await graph_store.search_nodes("Item", domain="physics")
         assert len(results) == 1
@@ -371,10 +419,7 @@ class TestConnectionLifecycle:
 class TestBatchOperations:
     @pytest.mark.asyncio
     async def test_upsert_nodes_batch(self, graph_store):
-        nodes = [
-            GraphNode(id=f"batch_{i}", entity_type="CONCEPT", canonical_name=f"Batch Node {i}")
-            for i in range(5)
-        ]
+        nodes = [GraphNode(id=f"batch_{i}", entity_type="CONCEPT", canonical_name=f"Batch Node {i}") for i in range(5)]
         count = await graph_store.upsert_nodes_batch(nodes)
         assert count == 5
 
@@ -397,9 +442,11 @@ class TestBatchOperations:
         original_created_at = original.created_at
 
         # Batch upsert same node with updated name
-        await graph_store.upsert_nodes_batch([
-            GraphNode(id="preserve_batch", entity_type="CONCEPT", canonical_name="Updated"),
-        ])
+        await graph_store.upsert_nodes_batch(
+            [
+                GraphNode(id="preserve_batch", entity_type="CONCEPT", canonical_name="Updated"),
+            ]
+        )
         updated = await graph_store.get_node("preserve_batch")
         assert updated is not None
         assert updated.canonical_name == "Updated"
@@ -456,6 +503,7 @@ class TestBusyRetry:
     @pytest.mark.asyncio
     async def test_retry_exhausted(self, graph_store):
         """Verify _execute_with_retry raises after exhausting retries."""
+
         async def always_busy():
             raise Exception("database is locked")
 
@@ -494,9 +542,11 @@ class TestOperationLatency:
 
     @pytest.mark.asyncio
     async def test_operation_tracking_after_batch(self, graph_store):
-        await graph_store.upsert_nodes_batch([
-            GraphNode(id="lat_batch_1", entity_type="CONCEPT", canonical_name="Batch Latency"),
-        ])
+        await graph_store.upsert_nodes_batch(
+            [
+                GraphNode(id="lat_batch_1", entity_type="CONCEPT", canonical_name="Batch Latency"),
+            ]
+        )
 
         health = graph_store.connection_health()
         assert health["total_ops"] >= 1

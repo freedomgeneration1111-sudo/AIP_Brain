@@ -88,6 +88,7 @@ def register_all_channels(
     for module_name in BUILTIN_CHANNELS:
         try:
             import importlib
+
             mod = importlib.import_module(module_name)
             failures = mod.register(orchestrator, stores, config)
             if failures:

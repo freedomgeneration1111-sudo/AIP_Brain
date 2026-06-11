@@ -195,9 +195,19 @@ async def test_lifespan_initialization_sequence(tmp_db):
 
     # Close all stores (lifespan shutdown)
     for store in [
-        entity_store, canonical_store, event_store, autonomy_gate,
-        artifact_store, lexical_store, corpus_turn_store, project_store,
-        budget_store, vigil_store, ecs_store, review_queue_store, session_store,
+        entity_store,
+        canonical_store,
+        event_store,
+        autonomy_gate,
+        artifact_store,
+        lexical_store,
+        corpus_turn_store,
+        project_store,
+        budget_store,
+        vigil_store,
+        ecs_store,
+        review_queue_store,
+        session_store,
     ]:
         await store.close()
 

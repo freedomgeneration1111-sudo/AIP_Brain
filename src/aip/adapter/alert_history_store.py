@@ -251,9 +251,7 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         # Add correlation_id, acknowledged, acknowledged_at, acknowledged_by columns
         current_version = 0
         try:
-            cursor = await conn.execute(
-                "SELECT value FROM alert_meta WHERE key = 'schema_version'"
-            )
+            cursor = await conn.execute("SELECT value FROM alert_meta WHERE key = 'schema_version'")
             row = await cursor.fetchone()
             if row:
                 current_version = int(row[0])
@@ -285,10 +283,13 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         """)
 
         # Record schema version
-        await conn.execute("""
+        await conn.execute(
+            """
             INSERT OR REPLACE INTO alert_meta (key, value)
             VALUES ('schema_version', ?)
-        """, (str(_SCHEMA_VERSION),))
+        """,
+            (str(_SCHEMA_VERSION),),
+        )
 
         # Sprint 5.31: Schema migration v2 -> v3
         # Add alert_mute_rules and alert_delivery_status tables
@@ -685,23 +686,26 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
             data_json = json.dumps(alert_dict.get("data", {}), default=str)
             correlation_id = alert_dict.get("correlation_id", "")
 
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT INTO alert_history (
                     alert_type, severity, subject, message, data,
                     timestamp, created_at, correlation_id,
                     acknowledged, acknowledged_at, acknowledged_by
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '', '')
-            """, (
-                alert_dict.get("alert_type", ""),
-                alert_dict.get("severity", ""),
-                alert_dict.get("subject", ""),
-                alert_dict.get("message", ""),
-                data_json,
-                ts,
-                now,
-                correlation_id,
-            ))
+            """,
+                (
+                    alert_dict.get("alert_type", ""),
+                    alert_dict.get("severity", ""),
+                    alert_dict.get("subject", ""),
+                    alert_dict.get("message", ""),
+                    data_json,
+                    ts,
+                    now,
+                    correlation_id,
+                ),
+            )
             await conn.commit()
 
             # Auto-prune if needed
@@ -731,21 +735,24 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
             now = datetime.now(timezone.utc).isoformat()
             ts = failure_dict.get("timestamp", now)
 
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT INTO alert_delivery_failures (
                     transport, alert_type, subject, error_message,
                     timestamp, retry_attempt, final, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                failure_dict.get("transport", ""),
-                failure_dict.get("alert_type", ""),
-                failure_dict.get("subject", ""),
-                failure_dict.get("error_message", ""),
-                ts,
-                failure_dict.get("retry_attempt", 0),
-                1 if failure_dict.get("final", True) else 0,
-                now,
-            ))
+            """,
+                (
+                    failure_dict.get("transport", ""),
+                    failure_dict.get("alert_type", ""),
+                    failure_dict.get("subject", ""),
+                    failure_dict.get("error_message", ""),
+                    ts,
+                    failure_dict.get("retry_attempt", 0),
+                    1 if failure_dict.get("final", True) else 0,
+                    now,
+                ),
+            )
             await conn.commit()
 
             # Auto-prune if needed
@@ -897,16 +904,18 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
 
             result = []
             for row in rows:
-                result.append({
-                    "id": row["id"],
-                    "transport": row["transport"],
-                    "alert_type": row["alert_type"],
-                    "subject": row["subject"],
-                    "error_message": row["error_message"],
-                    "timestamp": row["timestamp"],
-                    "retry_attempt": row["retry_attempt"],
-                    "final": bool(row["final"]),
-                })
+                result.append(
+                    {
+                        "id": row["id"],
+                        "transport": row["transport"],
+                        "alert_type": row["alert_type"],
+                        "subject": row["subject"],
+                        "error_message": row["error_message"],
+                        "timestamp": row["timestamp"],
+                        "retry_attempt": row["retry_attempt"],
+                        "final": bool(row["final"]),
+                    }
+                )
 
             return result
         except Exception as exc:
@@ -940,11 +949,14 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         try:
             conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 UPDATE alert_history
                 SET acknowledged = 1, acknowledged_at = ?, acknowledged_by = ?
                 WHERE id = ?
-            """, (now, acknowledged_by, alert_id))
+            """,
+                (now, acknowledged_by, alert_id),
+            )
             await conn.commit()
             if cursor.rowcount == 0:
                 return False
@@ -982,11 +994,14 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         try:
             conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 UPDATE alert_history
                 SET acknowledged = 2, acknowledged_at = ?, acknowledged_by = ?
                 WHERE id = ?
-            """, (now, dismissed_by, alert_id))
+            """,
+                (now, dismissed_by, alert_id),
+            )
             await conn.commit()
             if cursor.rowcount == 0:
                 return False
@@ -1020,12 +1035,15 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         """
         conn = await self._checkout_read_conn()
         try:
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 SELECT id, alert_type, severity, subject, message, data, timestamp,
                        correlation_id, acknowledged, acknowledged_at, acknowledged_by
                 FROM alert_history
                 WHERE id = ?
-            """, (alert_id,))
+            """,
+                (alert_id,),
+            )
             row = await cursor.fetchone()
 
             if row is None:
@@ -1078,16 +1096,18 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         conn = await self._checkout_read_conn()
         try:
             import time as _time
-            cutoff = datetime.fromtimestamp(
-                _time.time() - window_seconds, tz=timezone.utc
-            ).isoformat()
 
-            cursor = await conn.execute("""
+            cutoff = datetime.fromtimestamp(_time.time() - window_seconds, tz=timezone.utc).isoformat()
+
+            cursor = await conn.execute(
+                """
                 SELECT alert_type, subject, MAX(timestamp) as latest_ts
                 FROM alert_history
                 WHERE timestamp > ?
                 GROUP BY alert_type, subject
-            """, (cutoff,))
+            """,
+                (cutoff,),
+            )
             rows = await cursor.fetchall()
 
             result: dict[tuple[str, str], float] = {}
@@ -1125,21 +1145,24 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         try:
             conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 INSERT INTO alert_mute_rules (
                     alert_type, subject, muted_at, muted_by,
                     duration_seconds, expires_at, auto_mute_on_ack, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                rule.get("alert_type", ""),
-                rule.get("subject", ""),
-                rule.get("muted_at", now),
-                rule.get("muted_by", "operator"),
-                rule.get("duration_seconds", 3600),
-                rule.get("expires_at", 0),
-                1 if rule.get("auto_mute_on_ack", False) else 0,
-                now,
-            ))
+            """,
+                (
+                    rule.get("alert_type", ""),
+                    rule.get("subject", ""),
+                    rule.get("muted_at", now),
+                    rule.get("muted_by", "operator"),
+                    rule.get("duration_seconds", 3600),
+                    rule.get("expires_at", 0),
+                    1 if rule.get("auto_mute_on_ack", False) else 0,
+                    now,
+                ),
+            )
             await conn.commit()
             rule_id = cursor.lastrowid
 
@@ -1166,10 +1189,13 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         """
         try:
             conn = await self._get_conn()
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 DELETE FROM alert_mute_rules
                 WHERE alert_type = ? AND subject = ?
-            """, (alert_type, subject))
+            """,
+                (alert_type, subject),
+            )
             await conn.commit()
             return cursor.rowcount > 0
         except Exception as exc:
@@ -1200,16 +1226,18 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
 
             result = []
             for row in rows:
-                result.append({
-                    "id": row["id"],
-                    "alert_type": row["alert_type"],
-                    "subject": row["subject"],
-                    "muted_at": row["muted_at"],
-                    "muted_by": row["muted_by"],
-                    "duration_seconds": row["duration_seconds"],
-                    "expires_at": row["expires_at"],
-                    "auto_mute_on_ack": bool(row["auto_mute_on_ack"]),
-                })
+                result.append(
+                    {
+                        "id": row["id"],
+                        "alert_type": row["alert_type"],
+                        "subject": row["subject"],
+                        "muted_at": row["muted_at"],
+                        "muted_by": row["muted_by"],
+                        "duration_seconds": row["duration_seconds"],
+                        "expires_at": row["expires_at"],
+                        "auto_mute_on_ack": bool(row["auto_mute_on_ack"]),
+                    }
+                )
 
             return result
         except Exception as exc:
@@ -1237,24 +1265,27 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         try:
             conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT INTO alert_delivery_status (
                     correlation_id, status, alert_type, severity, subject,
                     transports, transport_results, dispatched_at,
                     completed_at, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                status_dict.get("correlation_id", ""),
-                status_dict.get("status", ""),
-                status_dict.get("alert_type", ""),
-                status_dict.get("severity", ""),
-                status_dict.get("subject", ""),
-                json.dumps(status_dict.get("transports", [])),
-                json.dumps(status_dict.get("transport_results", {})),
-                status_dict.get("dispatched_at", now),
-                status_dict.get("completed_at", ""),
-                now,
-            ))
+            """,
+                (
+                    status_dict.get("correlation_id", ""),
+                    status_dict.get("status", ""),
+                    status_dict.get("alert_type", ""),
+                    status_dict.get("severity", ""),
+                    status_dict.get("subject", ""),
+                    json.dumps(status_dict.get("transports", [])),
+                    json.dumps(status_dict.get("transport_results", {})),
+                    status_dict.get("dispatched_at", now),
+                    status_dict.get("completed_at", ""),
+                    now,
+                ),
+            )
             await conn.commit()
 
             # Sprint 5.33: Auto-prune delivery status after recording
@@ -1276,14 +1307,17 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         """
         conn = await self._checkout_read_conn()
         try:
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 SELECT correlation_id, status, alert_type, severity, subject,
                        transports, transport_results, dispatched_at, completed_at
                 FROM alert_delivery_status
                 WHERE correlation_id = ?
                 ORDER BY created_at DESC
                 LIMIT 1
-            """, (correlation_id,))
+            """,
+                (correlation_id,),
+            )
             row = await cursor.fetchone()
 
             if row is None:
@@ -1330,11 +1364,14 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         """
         try:
             conn = await self._get_conn()
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 UPDATE alert_delivery_status
                 SET status = ?, completed_at = ?
                 WHERE correlation_id = ?
-            """, (status, completed_at, correlation_id))
+            """,
+                (status, completed_at, correlation_id),
+            )
             await conn.commit()
             return cursor.rowcount > 0
         except Exception as exc:
@@ -1356,28 +1393,33 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         """
         conn = await self._checkout_read_conn()
         try:
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 SELECT correlation_id, status, alert_type, severity, subject,
                        transports, transport_results, dispatched_at, completed_at
                 FROM alert_delivery_status
                 ORDER BY created_at DESC
                 LIMIT ?
-            """, (limit,))
+            """,
+                (limit,),
+            )
             rows = await cursor.fetchall()
 
             result = []
             for row in rows:
-                result.append({
-                    "correlation_id": row["correlation_id"],
-                    "status": row["status"],
-                    "alert_type": row["alert_type"],
-                    "severity": row["severity"],
-                    "subject": row["subject"],
-                    "transports": json.loads(row["transports"]) if row["transports"] else [],
-                    "transport_results": json.loads(row["transport_results"]) if row["transport_results"] else {},
-                    "dispatched_at": row["dispatched_at"],
-                    "completed_at": row["completed_at"],
-                })
+                result.append(
+                    {
+                        "correlation_id": row["correlation_id"],
+                        "status": row["status"],
+                        "alert_type": row["alert_type"],
+                        "severity": row["severity"],
+                        "subject": row["subject"],
+                        "transports": json.loads(row["transports"]) if row["transports"] else [],
+                        "transport_results": json.loads(row["transport_results"]) if row["transport_results"] else {},
+                        "dispatched_at": row["dispatched_at"],
+                        "completed_at": row["completed_at"],
+                    }
+                )
 
             return result
         except Exception as exc:
@@ -1399,14 +1441,17 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         """
         conn = await self._checkout_read_conn()
         try:
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 SELECT id, alert_type, severity, subject, message, data, timestamp,
                        correlation_id, acknowledged, acknowledged_at, acknowledged_by
                 FROM alert_history
                 WHERE correlation_id = ?
                 ORDER BY created_at DESC
                 LIMIT 1
-            """, (correlation_id,))
+            """,
+                (correlation_id,),
+            )
             row = await cursor.fetchone()
 
             if row is None:
@@ -1474,9 +1519,9 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
             oldest_alert = None
             newest_alert = None
             if alert_count > 0:
-                row = await (await conn.execute(
-                    "SELECT MIN(timestamp) as oldest, MAX(timestamp) as newest FROM alert_history"
-                )).fetchone()
+                row = await (
+                    await conn.execute("SELECT MIN(timestamp) as oldest, MAX(timestamp) as newest FROM alert_history")
+                ).fetchone()
                 oldest_alert = row[0]
                 newest_alert = row[1]
 
@@ -1505,14 +1550,17 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
             conn = await self._get_conn()
             count = (await (await conn.execute("SELECT COUNT(*) FROM alert_history")).fetchone())[0]
             if count > self._max_alert_rows:
-                await conn.execute("""
+                await conn.execute(
+                    """
                     DELETE FROM alert_history
                     WHERE id NOT IN (
                         SELECT id FROM alert_history
                         ORDER BY timestamp DESC
                         LIMIT ?
                     )
-                """, (self._max_alert_rows,))
+                """,
+                    (self._max_alert_rows,),
+                )
                 await conn.commit()
         except Exception as exc:
             logger.warning("alert_history_store_prune_failed", error=str(exc))
@@ -1523,14 +1571,17 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
             conn = await self._get_conn()
             count = (await (await conn.execute("SELECT COUNT(*) FROM alert_delivery_failures")).fetchone())[0]
             if count > self._max_failure_rows:
-                await conn.execute("""
+                await conn.execute(
+                    """
                     DELETE FROM alert_delivery_failures
                     WHERE id NOT IN (
                         SELECT id FROM alert_delivery_failures
                         ORDER BY timestamp DESC
                         LIMIT ?
                     )
-                """, (self._max_failure_rows,))
+                """,
+                    (self._max_failure_rows,),
+                )
                 await conn.commit()
         except Exception as exc:
             logger.warning("alert_failure_store_prune_failed", error=str(exc))
@@ -1550,10 +1601,13 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         try:
             conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT OR IGNORE INTO alert_groups (group_key, correlation_id, created_at)
                 VALUES (?, ?, ?)
-            """, (group_key, correlation_id, now))
+            """,
+                (group_key, correlation_id, now),
+            )
             await conn.commit()
             return True
         except Exception as exc:
@@ -1606,9 +1660,12 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         """
         try:
             conn = await self._get_conn()
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 DELETE FROM alert_groups WHERE group_key = ?
-            """, (group_key,))
+            """,
+                (group_key,),
+            )
             await conn.commit()
             return cursor.rowcount > 0
         except Exception as exc:
@@ -1643,27 +1700,34 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
             # Delete records older than max_age_days
             if max_age_days > 0:
                 import time as _time
+
                 cutoff = datetime.fromtimestamp(
                     _time.time() - (max_age_days * 86400),
                     tz=timezone.utc,
                 ).isoformat()
-                cursor = await conn.execute("""
+                cursor = await conn.execute(
+                    """
                     DELETE FROM alert_delivery_status
                     WHERE created_at < ?
-                """, (cutoff,))
+                """,
+                    (cutoff,),
+                )
                 deleted += cursor.rowcount
 
             # If still over max_rows, delete oldest records
             count = (await (await conn.execute("SELECT COUNT(*) FROM alert_delivery_status")).fetchone())[0]
             if count > max_rows:
-                cursor = await conn.execute("""
+                cursor = await conn.execute(
+                    """
                     DELETE FROM alert_delivery_status
                     WHERE id NOT IN (
                         SELECT id FROM alert_delivery_status
                         ORDER BY created_at DESC
                         LIMIT ?
                     )
-                """, (max_rows,))
+                """,
+                    (max_rows,),
+                )
                 deleted += cursor.rowcount
 
             await conn.commit()
@@ -1724,11 +1788,14 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
             now = datetime.now(timezone.utc).isoformat()
             for (from_type, to_type), count in transition_counts.items():
                 total_from = transition_totals.get(from_type, 0)
-                await conn.execute("""
+                await conn.execute(
+                    """
                     INSERT OR REPLACE INTO transition_probabilities
                         (from_type, to_type, count, total_from, updated_at)
                     VALUES (?, ?, ?, ?, ?)
-                """, (from_type, to_type, count, total_from, now))
+                """,
+                    (from_type, to_type, count, total_from, now),
+                )
             await conn.commit()
 
             logger.info(
@@ -1776,9 +1843,7 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
                 total_from = row["total_from"]
                 transition_counts[(from_type, to_type)] = count
                 # Use the latest total_from for each from_type
-                transition_totals[from_type] = max(
-                    transition_totals.get(from_type, 0), total_from
-                )
+                transition_totals[from_type] = max(transition_totals.get(from_type, 0), total_from)
 
             logger.info(
                 "transition_probabilities_loaded",
@@ -1813,19 +1878,22 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         try:
             conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT INTO model_retraining_events (
                     trigger_reason, alerts_since_last_train,
                     transition_count, total_types, trained_at, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                event.get("trigger_reason", "unknown"),
-                event.get("alerts_since_last_train", 0),
-                event.get("transition_count", 0),
-                event.get("total_types", 0),
-                event.get("trained_at", now),
-                now,
-            ))
+            """,
+                (
+                    event.get("trigger_reason", "unknown"),
+                    event.get("alerts_since_last_train", 0),
+                    event.get("transition_count", 0),
+                    event.get("total_types", 0),
+                    event.get("trained_at", now),
+                    now,
+                ),
+            )
             await conn.commit()
 
             logger.info(
@@ -1856,26 +1924,31 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         """
         conn = await self._checkout_read_conn()
         try:
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 SELECT id, trigger_reason, alerts_since_last_train,
                        transition_count, total_types, trained_at, created_at
                 FROM model_retraining_events
                 ORDER BY created_at DESC
                 LIMIT ?
-            """, (limit,))
+            """,
+                (limit,),
+            )
             rows = await cursor.fetchall()
 
             result = []
             for row in rows:
-                result.append({
-                    "id": row["id"],
-                    "trigger_reason": row["trigger_reason"],
-                    "alerts_since_last_train": row["alerts_since_last_train"],
-                    "transition_count": row["transition_count"],
-                    "total_types": row["total_types"],
-                    "trained_at": row["trained_at"],
-                    "created_at": row["created_at"],
-                })
+                result.append(
+                    {
+                        "id": row["id"],
+                        "trigger_reason": row["trigger_reason"],
+                        "alerts_since_last_train": row["alerts_since_last_train"],
+                        "transition_count": row["transition_count"],
+                        "total_types": row["total_types"],
+                        "trained_at": row["trained_at"],
+                        "created_at": row["created_at"],
+                    }
+                )
 
             return result
         except Exception as exc:
@@ -1902,7 +1975,8 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         try:
             conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT OR REPLACE INTO ab_experiments (
                     name, control_config, variant_config, status,
                     started_at, stopped_at, result,
@@ -1911,25 +1985,27 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
                     promoted_variant, promotion_timestamp, auto_promoted,
                     metadata, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                experiment.get("name", ""),
-                json.dumps(experiment.get("control_config", {}), default=str),
-                json.dumps(experiment.get("variant_config", {}), default=str),
-                experiment.get("status", "running"),
-                experiment.get("started_at", now),
-                experiment.get("stopped_at", ""),
-                experiment.get("result", ""),
-                experiment.get("control_samples", 0),
-                experiment.get("variant_samples", 0),
-                experiment.get("control_accuracy", 0.0),
-                experiment.get("variant_accuracy", 0.0),
-                experiment.get("promoted_variant", ""),
-                experiment.get("promotion_timestamp", ""),
-                1 if experiment.get("auto_promoted", False) else 0,
-                json.dumps(experiment.get("metadata", {}), default=str),
-                experiment.get("created_at", now),
-                now,
-            ))
+            """,
+                (
+                    experiment.get("name", ""),
+                    json.dumps(experiment.get("control_config", {}), default=str),
+                    json.dumps(experiment.get("variant_config", {}), default=str),
+                    experiment.get("status", "running"),
+                    experiment.get("started_at", now),
+                    experiment.get("stopped_at", ""),
+                    experiment.get("result", ""),
+                    experiment.get("control_samples", 0),
+                    experiment.get("variant_samples", 0),
+                    experiment.get("control_accuracy", 0.0),
+                    experiment.get("variant_accuracy", 0.0),
+                    experiment.get("promoted_variant", ""),
+                    experiment.get("promotion_timestamp", ""),
+                    1 if experiment.get("auto_promoted", False) else 0,
+                    json.dumps(experiment.get("metadata", {}), default=str),
+                    experiment.get("created_at", now),
+                    now,
+                ),
+            )
             await conn.commit()
 
             return True
@@ -1990,24 +2066,26 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
                 except (json.JSONDecodeError, TypeError):
                     metadata = {}
 
-                result.append({
-                    "name": row["name"],
-                    "control_config": control_config,
-                    "variant_config": variant_config,
-                    "status": row["status"],
-                    "started_at": row["started_at"],
-                    "stopped_at": row["stopped_at"],
-                    "result": row["result"],
-                    "control_samples": row["control_samples"],
-                    "variant_samples": row["variant_samples"],
-                    "control_accuracy": row["control_accuracy"],
-                    "variant_accuracy": row["variant_accuracy"],
-                    "promoted_variant": row["promoted_variant"],
-                    "promotion_timestamp": row["promotion_timestamp"],
-                    "auto_promoted": bool(row["auto_promoted"]),
-                    "metadata": metadata,
-                    "created_at": row["created_at"],
-                })
+                result.append(
+                    {
+                        "name": row["name"],
+                        "control_config": control_config,
+                        "variant_config": variant_config,
+                        "status": row["status"],
+                        "started_at": row["started_at"],
+                        "stopped_at": row["stopped_at"],
+                        "result": row["result"],
+                        "control_samples": row["control_samples"],
+                        "variant_samples": row["variant_samples"],
+                        "control_accuracy": row["control_accuracy"],
+                        "variant_accuracy": row["variant_accuracy"],
+                        "promoted_variant": row["promoted_variant"],
+                        "promotion_timestamp": row["promotion_timestamp"],
+                        "auto_promoted": bool(row["auto_promoted"]),
+                        "metadata": metadata,
+                        "created_at": row["created_at"],
+                    }
+                )
 
             return result
         except Exception as exc:
@@ -2028,9 +2106,12 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         """
         try:
             conn = await self._get_conn()
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 DELETE FROM ab_experiments WHERE name = ?
-            """, (name,))
+            """,
+                (name,),
+            )
             await conn.commit()
             deleted = cursor.rowcount > 0
 
@@ -2058,15 +2139,17 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
 
         try:
             import time as _time
-            cutoff = datetime.fromtimestamp(
-                _time.time() - (retention_hours * 3600), tz=timezone.utc
-            ).isoformat()
+
+            cutoff = datetime.fromtimestamp(_time.time() - (retention_hours * 3600), tz=timezone.utc).isoformat()
 
             conn = await self._get_conn()
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 DELETE FROM ab_experiments
                 WHERE status != 'running' AND stopped_at != '' AND stopped_at < ?
-            """, (cutoff,))
+            """,
+                (cutoff,),
+            )
             pruned = cursor.rowcount
             await conn.commit()
 
@@ -2098,20 +2181,23 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         try:
             conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT INTO ab_rollback_history (
                     experiment_name, rolled_back_variant, rolled_back_at,
                     control_accuracy, variant_accuracy, auto, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                rollback.get("experiment_name", ""),
-                rollback.get("rolled_back_variant", ""),
-                rollback.get("rolled_back_at", now),
-                rollback.get("control_accuracy", 0.0),
-                rollback.get("variant_accuracy", 0.0),
-                1 if rollback.get("auto", True) else 0,
-                now,
-            ))
+            """,
+                (
+                    rollback.get("experiment_name", ""),
+                    rollback.get("rolled_back_variant", ""),
+                    rollback.get("rolled_back_at", now),
+                    rollback.get("control_accuracy", 0.0),
+                    rollback.get("variant_accuracy", 0.0),
+                    1 if rollback.get("auto", True) else 0,
+                    now,
+                ),
+            )
             await conn.commit()
             return True
         except Exception as exc:
@@ -2125,13 +2211,16 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         """
         conn = await self._checkout_read_conn()
         try:
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 SELECT experiment_name, rolled_back_variant, rolled_back_at,
                        control_accuracy, variant_accuracy, auto
                 FROM ab_rollback_history
                 ORDER BY created_at DESC
                 LIMIT ?
-            """, (limit,))
+            """,
+                (limit,),
+            )
             rows = await cursor.fetchall()
 
             return [
@@ -2161,18 +2250,21 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         try:
             conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT INTO decay_recovery_history (
                     subject, decay_amount, current_confidence,
                     actions_taken, created_at
                 ) VALUES (?, ?, ?, ?, ?)
-            """, (
-                recovery.get("subject", ""),
-                recovery.get("decay_amount", 0.0),
-                recovery.get("current_confidence", 0.0),
-                json.dumps(recovery.get("actions_taken", []), default=str),
-                now,
-            ))
+            """,
+                (
+                    recovery.get("subject", ""),
+                    recovery.get("decay_amount", 0.0),
+                    recovery.get("current_confidence", 0.0),
+                    json.dumps(recovery.get("actions_taken", []), default=str),
+                    now,
+                ),
+            )
             await conn.commit()
             return True
         except Exception as exc:
@@ -2186,13 +2278,16 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         """
         conn = await self._checkout_read_conn()
         try:
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 SELECT subject, decay_amount, current_confidence,
                        actions_taken, created_at
                 FROM decay_recovery_history
                 ORDER BY created_at DESC
                 LIMIT ?
-            """, (limit,))
+            """,
+                (limit,),
+            )
             rows = await cursor.fetchall()
 
             result = []
@@ -2201,13 +2296,15 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
                     actions = json.loads(row["actions_taken"]) if row["actions_taken"] else []
                 except (json.JSONDecodeError, TypeError):
                     actions = []
-                result.append({
-                    "subject": row["subject"],
-                    "decay_amount": row["decay_amount"],
-                    "current_confidence": row["current_confidence"],
-                    "actions_taken": actions,
-                    "timestamp": row["created_at"],
-                })
+                result.append(
+                    {
+                        "subject": row["subject"],
+                        "decay_amount": row["decay_amount"],
+                        "current_confidence": row["current_confidence"],
+                        "actions_taken": actions,
+                        "timestamp": row["created_at"],
+                    }
+                )
 
             return result
         except Exception as exc:
@@ -2236,7 +2333,8 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
             if ci is None:
                 ci = [None, None]
 
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT OR REPLACE INTO statistical_test_results (
                     experiment_name, p_value,
                     confidence_interval_lower, confidence_interval_upper,
@@ -2246,23 +2344,25 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
                     reason, test_result_json,
                     created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                experiment_name,
-                result.get("p_value"),
-                ci[0] if len(ci) > 0 else None,
-                ci[1] if len(ci) > 1 else None,
-                result.get("method", ""),
-                1 if result.get("significant", False) else 0,
-                result.get("statistic"),
-                result.get("control_mean"),
-                result.get("variant_mean"),
-                result.get("control_samples"),
-                result.get("variant_samples"),
-                result.get("reason", ""),
-                json.dumps(result, default=str),
-                result.get("created_at", now),
-                now,
-            ))
+            """,
+                (
+                    experiment_name,
+                    result.get("p_value"),
+                    ci[0] if len(ci) > 0 else None,
+                    ci[1] if len(ci) > 1 else None,
+                    result.get("method", ""),
+                    1 if result.get("significant", False) else 0,
+                    result.get("statistic"),
+                    result.get("control_mean"),
+                    result.get("variant_mean"),
+                    result.get("control_samples"),
+                    result.get("variant_samples"),
+                    result.get("reason", ""),
+                    json.dumps(result, default=str),
+                    result.get("created_at", now),
+                    now,
+                ),
+            )
             await conn.commit()
 
             return True
@@ -2321,20 +2421,22 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
                     full_result = {}
 
                 # Merge structured columns into the result
-                full_result.update({
-                    "experiment_name": row["experiment_name"],
-                    "p_value": row["p_value"],
-                    "method": row["method"],
-                    "significant": bool(row["significant"]),
-                    "statistic": row["statistic"],
-                    "control_mean": row["control_mean"],
-                    "variant_mean": row["variant_mean"],
-                    "control_samples": row["control_samples"],
-                    "variant_samples": row["variant_samples"],
-                    "confidence_interval": [row["confidence_interval_lower"], row["confidence_interval_upper"]],
-                    "reason": row["reason"],
-                    "persisted_at": row["updated_at"],
-                })
+                full_result.update(
+                    {
+                        "experiment_name": row["experiment_name"],
+                        "p_value": row["p_value"],
+                        "method": row["method"],
+                        "significant": bool(row["significant"]),
+                        "statistic": row["statistic"],
+                        "control_mean": row["control_mean"],
+                        "variant_mean": row["variant_mean"],
+                        "control_samples": row["control_samples"],
+                        "variant_samples": row["variant_samples"],
+                        "confidence_interval": [row["confidence_interval_lower"], row["confidence_interval_upper"]],
+                        "reason": row["reason"],
+                        "persisted_at": row["updated_at"],
+                    }
+                )
                 result.append(full_result)
 
             return result
@@ -2355,23 +2457,26 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         try:
             conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT INTO ab_accuracy_timeseries (
                     experiment_name, timestamp,
                     control_accuracy, variant_accuracy,
                     control_samples, variant_samples,
                     status, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                snapshot.get("experiment_name", ""),
-                snapshot.get("timestamp", now),
-                snapshot.get("control_accuracy", 0.0),
-                snapshot.get("variant_accuracy", 0.0),
-                snapshot.get("control_samples", 0),
-                snapshot.get("variant_samples", 0),
-                snapshot.get("status", "running"),
-                now,
-            ))
+            """,
+                (
+                    snapshot.get("experiment_name", ""),
+                    snapshot.get("timestamp", now),
+                    snapshot.get("control_accuracy", 0.0),
+                    snapshot.get("variant_accuracy", 0.0),
+                    snapshot.get("control_samples", 0),
+                    snapshot.get("variant_samples", 0),
+                    snapshot.get("status", "running"),
+                    now,
+                ),
+            )
             await conn.commit()
 
             return True
@@ -2389,7 +2494,8 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         """
         conn = await self._checkout_read_conn()
         try:
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 SELECT experiment_name, timestamp,
                        control_accuracy, variant_accuracy,
                        control_samples, variant_samples,
@@ -2398,20 +2504,24 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
                 WHERE experiment_name = ?
                 ORDER BY timestamp ASC
                 LIMIT ?
-            """, (experiment_name, limit))
+            """,
+                (experiment_name, limit),
+            )
             rows = await cursor.fetchall()
 
             result = []
             for row in rows:
-                result.append({
-                    "experiment_name": row["experiment_name"],
-                    "timestamp": row["timestamp"],
-                    "control_accuracy": row["control_accuracy"],
-                    "variant_accuracy": row["variant_accuracy"],
-                    "control_samples": row["control_samples"],
-                    "variant_samples": row["variant_samples"],
-                    "status": row["status"],
-                })
+                result.append(
+                    {
+                        "experiment_name": row["experiment_name"],
+                        "timestamp": row["timestamp"],
+                        "control_accuracy": row["control_accuracy"],
+                        "variant_accuracy": row["variant_accuracy"],
+                        "control_samples": row["control_samples"],
+                        "variant_samples": row["variant_samples"],
+                        "status": row["status"],
+                    }
+                )
 
             return result
         except Exception as exc:
@@ -2433,21 +2543,26 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
 
         try:
             import time as _time
-            cutoff = datetime.fromtimestamp(
-                _time.time() - (max_age_hours * 3600), tz=timezone.utc
-            ).isoformat()
+
+            cutoff = datetime.fromtimestamp(_time.time() - (max_age_hours * 3600), tz=timezone.utc).isoformat()
 
             conn = await self._get_conn()
             if experiment_name:
-                cursor = await conn.execute("""
+                cursor = await conn.execute(
+                    """
                     DELETE FROM ab_accuracy_timeseries
                     WHERE experiment_name = ? AND timestamp < ?
-                """, (experiment_name, cutoff))
+                """,
+                    (experiment_name, cutoff),
+                )
             else:
-                cursor = await conn.execute("""
+                cursor = await conn.execute(
+                    """
                     DELETE FROM ab_accuracy_timeseries
                     WHERE timestamp < ?
-                """, (cutoff,))
+                """,
+                    (cutoff,),
+                )
             pruned = cursor.rowcount
             await conn.commit()
 
@@ -2473,14 +2588,17 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         try:
             conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT OR REPLACE INTO confidence_calibration (
                     subject, calibration_factor, updated_at, created_at
                 ) VALUES (?, ?, ?, COALESCE(
                     (SELECT created_at FROM confidence_calibration WHERE subject = ?),
                     ?
                 ))
-            """, (subject, calibration_factor, updated_at, subject, now))
+            """,
+                (subject, calibration_factor, updated_at, subject, now),
+            )
             await conn.commit()
 
             return True
@@ -2535,14 +2653,17 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
             conn = await self._get_conn()
             now = datetime.now(timezone.utc).isoformat()
             snapshot_json = json.dumps(snapshot, default=str)
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT OR REPLACE INTO pre_promotion_snapshots (
                     experiment_name, snapshot_data, created_at, updated_at
                 ) VALUES (?, ?, COALESCE(
                     (SELECT created_at FROM pre_promotion_snapshots WHERE experiment_name = ?),
                     ?
                 ), ?)
-            """, (experiment_name, snapshot_json, experiment_name, now, now))
+            """,
+                (experiment_name, snapshot_json, experiment_name, now, now),
+            )
             await conn.commit()
 
             return True
@@ -2574,12 +2695,14 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
                     snapshot_data = json.loads(row["snapshot_data"]) if row["snapshot_data"] else {}
                 except (json.JSONDecodeError, TypeError):
                     snapshot_data = {}
-                result.append({
-                    "experiment_name": row["experiment_name"],
-                    "snapshot_data": snapshot_data,
-                    "created_at": row["created_at"],
-                    "updated_at": row["updated_at"],
-                })
+                result.append(
+                    {
+                        "experiment_name": row["experiment_name"],
+                        "snapshot_data": snapshot_data,
+                        "created_at": row["created_at"],
+                        "updated_at": row["updated_at"],
+                    }
+                )
 
             return result
         except Exception as exc:
@@ -2598,9 +2721,12 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
         """
         try:
             conn = await self._get_conn()
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 DELETE FROM pre_promotion_snapshots WHERE experiment_name = ?
-            """, (experiment_name,))
+            """,
+                (experiment_name,),
+            )
             await conn.commit()
             return cursor.rowcount > 0
         except Exception as exc:
@@ -2633,21 +2759,24 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
             context_json = json.dumps(decision.get("context_features", {}), default=str)
             sample_sizes_json = json.dumps(decision.get("sample_sizes", {}), default=str)
 
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT INTO bandit_decision_log (
                     experiment_name, method, allocation, confidence,
                     context_features, sample_sizes, timestamp, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                decision.get("experiment_name", ""),
-                decision.get("method", ""),
-                allocation_json,
-                decision.get("confidence"),
-                context_json,
-                sample_sizes_json,
-                decision.get("timestamp", now),
-                now,
-            ))
+            """,
+                (
+                    decision.get("experiment_name", ""),
+                    decision.get("method", ""),
+                    allocation_json,
+                    decision.get("confidence"),
+                    context_json,
+                    sample_sizes_json,
+                    decision.get("timestamp", now),
+                    now,
+                ),
+            )
             await conn.commit()
 
             return True
@@ -2733,17 +2862,19 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
                 except (json.JSONDecodeError, TypeError):
                     sample_sizes = {}
 
-                result.append({
-                    "id": row["id"],
-                    "experiment_name": row["experiment_name"],
-                    "method": row["method"],
-                    "allocation": allocation,
-                    "confidence": row["confidence"],
-                    "context_features": context_features,
-                    "sample_sizes": sample_sizes,
-                    "timestamp": row["timestamp"],
-                    "created_at": row["created_at"],
-                })
+                result.append(
+                    {
+                        "id": row["id"],
+                        "experiment_name": row["experiment_name"],
+                        "method": row["method"],
+                        "allocation": allocation,
+                        "confidence": row["confidence"],
+                        "context_features": context_features,
+                        "sample_sizes": sample_sizes,
+                        "timestamp": row["timestamp"],
+                        "created_at": row["created_at"],
+                    }
+                )
 
             return result
         except Exception as exc:
@@ -2802,22 +2933,27 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
                     conditions.append("promotion_timestamp < ?")
                     params.append(before)
                 where = "WHERE " + " AND ".join(conditions)
-                cursor = await conn.execute(f"""
+                cursor = await conn.execute(
+                    f"""
                     SELECT name, promoted_variant, promotion_timestamp,
                            control_accuracy, variant_accuracy, auto_promoted
                     FROM ab_experiments {where}
                     ORDER BY promotion_timestamp DESC LIMIT ?
-                """, params + [limit])
+                """,
+                    params + [limit],
+                )
                 for row in await cursor.fetchall():
-                    events.append({
-                        "event_type": "promotion",
-                        "experiment_name": row["name"],
-                        "timestamp": row["promotion_timestamp"],
-                        "variant": row["promoted_variant"],
-                        "auto_promoted": bool(row["auto_promoted"]),
-                        "control_accuracy": row["control_accuracy"],
-                        "variant_accuracy": row["variant_accuracy"],
-                    })
+                    events.append(
+                        {
+                            "event_type": "promotion",
+                            "experiment_name": row["name"],
+                            "timestamp": row["promotion_timestamp"],
+                            "variant": row["promoted_variant"],
+                            "auto_promoted": bool(row["auto_promoted"]),
+                            "control_accuracy": row["control_accuracy"],
+                            "variant_accuracy": row["variant_accuracy"],
+                        }
+                    )
 
             # Rollback events
             if event_type is None or event_type == "rollback":
@@ -2833,22 +2969,27 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
                     conditions.append("rolled_back_at < ?")
                     params.append(before)
                 where = "WHERE " + " AND ".join(conditions) if conditions else ""
-                cursor = await conn.execute(f"""
+                cursor = await conn.execute(
+                    f"""
                     SELECT experiment_name, rolled_back_variant, rolled_back_at,
                            control_accuracy, variant_accuracy, auto
                     FROM ab_rollback_history {where}
                     ORDER BY rolled_back_at DESC LIMIT ?
-                """, params + [limit])
+                """,
+                    params + [limit],
+                )
                 for row in await cursor.fetchall():
-                    events.append({
-                        "event_type": "rollback",
-                        "experiment_name": row["experiment_name"],
-                        "timestamp": row["rolled_back_at"],
-                        "rolled_back_variant": row["rolled_back_variant"],
-                        "control_accuracy": row["control_accuracy"],
-                        "variant_accuracy": row["variant_accuracy"],
-                        "auto": bool(row["auto"]),
-                    })
+                    events.append(
+                        {
+                            "event_type": "rollback",
+                            "experiment_name": row["experiment_name"],
+                            "timestamp": row["rolled_back_at"],
+                            "rolled_back_variant": row["rolled_back_variant"],
+                            "control_accuracy": row["control_accuracy"],
+                            "variant_accuracy": row["variant_accuracy"],
+                            "auto": bool(row["auto"]),
+                        }
+                    )
 
             # Decay recovery events
             if event_type is None or event_type == "decay_recovery":
@@ -2864,20 +3005,25 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
                     conditions.append("created_at < ?")
                     params.append(before)
                 where = "WHERE " + " AND ".join(conditions) if conditions else ""
-                cursor = await conn.execute(f"""
+                cursor = await conn.execute(
+                    f"""
                     SELECT subject, decay_amount, current_confidence, actions_taken, created_at
                     FROM decay_recovery_history {where}
                     ORDER BY created_at DESC LIMIT ?
-                """, params + [limit])
+                """,
+                    params + [limit],
+                )
                 for row in await cursor.fetchall():
-                    events.append({
-                        "event_type": "decay_recovery",
-                        "experiment_name": row["subject"],
-                        "timestamp": row["created_at"],
-                        "decay_amount": row["decay_amount"],
-                        "current_confidence": row["current_confidence"],
-                        "actions_taken": json.loads(row["actions_taken"]) if row["actions_taken"] else [],
-                    })
+                    events.append(
+                        {
+                            "event_type": "decay_recovery",
+                            "experiment_name": row["subject"],
+                            "timestamp": row["created_at"],
+                            "decay_amount": row["decay_amount"],
+                            "current_confidence": row["current_confidence"],
+                            "actions_taken": json.loads(row["actions_taken"]) if row["actions_taken"] else [],
+                        }
+                    )
 
             # Bandit decision events (most recent per experiment)
             if event_type is None or event_type == "bandit_decision":
@@ -2893,20 +3039,25 @@ class AlertHistoryStore(StoreHealthMixin, ReadPoolMixin):
                     conditions.append("timestamp < ?")
                     params.append(before)
                 where = "WHERE " + " AND ".join(conditions) if conditions else ""
-                cursor = await conn.execute(f"""
+                cursor = await conn.execute(
+                    f"""
                     SELECT experiment_name, method, allocation, confidence, timestamp
                     FROM bandit_decision_log {where}
                     ORDER BY timestamp DESC LIMIT ?
-                """, params + [limit])
+                """,
+                    params + [limit],
+                )
                 for row in await cursor.fetchall():
-                    events.append({
-                        "event_type": "bandit_decision",
-                        "experiment_name": row["experiment_name"],
-                        "timestamp": row["timestamp"],
-                        "method": row["method"],
-                        "allocation": json.loads(row["allocation"]) if row["allocation"] else {},
-                        "confidence": row["confidence"],
-                    })
+                    events.append(
+                        {
+                            "event_type": "bandit_decision",
+                            "experiment_name": row["experiment_name"],
+                            "timestamp": row["timestamp"],
+                            "method": row["method"],
+                            "allocation": json.loads(row["allocation"]) if row["allocation"] else {},
+                            "confidence": row["confidence"],
+                        }
+                    )
 
             # Sort all events by timestamp descending
             events.sort(key=lambda e: e.get("timestamp", ""), reverse=True)

@@ -42,9 +42,7 @@ class TestAlertHistoryStore:
             store.initialize()
 
             with sqlite3.connect(store._db_path) as conn:
-                tables = conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                ).fetchall()
+                tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
                 table_names = [t[0] for t in tables]
                 assert "alert_history" in table_names
                 assert "alert_delivery_failures" in table_names
@@ -55,14 +53,16 @@ class TestAlertHistoryStore:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            result = store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "graph_extraction",
-                "message": "Batch size reduced from 4 to 3",
-                "data": {"old": 4, "new": 3, "failure_rate": 0.6},
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            result = store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "graph_extraction",
+                    "message": "Batch size reduced from 4 to 3",
+                    "data": {"old": 4, "new": 3, "failure_rate": 0.6},
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
             assert result is True
 
             # Verify the alert was persisted
@@ -78,15 +78,17 @@ class TestAlertHistoryStore:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            result = store.record_delivery_failure({
-                "transport": "webhook",
-                "alert_type": "batch_reduction",
-                "subject": "test",
-                "error_message": "Connection refused",
-                "timestamp": "2025-06-01T12:00:00Z",
-                "retry_attempt": 2,
-                "final": True,
-            })
+            result = store.record_delivery_failure(
+                {
+                    "transport": "webhook",
+                    "alert_type": "batch_reduction",
+                    "subject": "test",
+                    "error_message": "Connection refused",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                    "retry_attempt": 2,
+                    "final": True,
+                }
+            )
             assert result is True
 
             failures = store.get_delivery_failures()
@@ -100,20 +102,24 @@ class TestAlertHistoryStore:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "test",
-                "message": "m1",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
-            store.record_alert({
-                "alert_type": "quality_degradation",
-                "severity": "warning",
-                "subject": "test",
-                "message": "m2",
-                "timestamp": "2025-06-01T12:01:00Z",
-            })
+            store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "m1",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
+            store.record_alert(
+                {
+                    "alert_type": "quality_degradation",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "m2",
+                    "timestamp": "2025-06-01T12:01:00Z",
+                }
+            )
 
             batch_only = store.get_alert_history(alert_type="batch_reduction")
             assert len(batch_only) == 1
@@ -125,20 +131,24 @@ class TestAlertHistoryStore:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "test",
-                "message": "m1",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "critical",
-                "subject": "test",
-                "message": "m2",
-                "timestamp": "2025-06-01T12:01:00Z",
-            })
+            store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "m1",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
+            store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "critical",
+                    "subject": "test",
+                    "message": "m2",
+                    "timestamp": "2025-06-01T12:01:00Z",
+                }
+            )
 
             critical_only = store.get_alert_history(severity="critical")
             assert len(critical_only) == 1
@@ -150,20 +160,24 @@ class TestAlertHistoryStore:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            store.record_alert({
-                "alert_type": "quality_degradation",
-                "severity": "warning",
-                "subject": "test",
-                "message": "old alert",
-                "timestamp": "2020-01-01T00:00:00Z",
-            })
-            store.record_alert({
-                "alert_type": "quality_degradation",
-                "severity": "warning",
-                "subject": "test",
-                "message": "new alert",
-                "timestamp": "2025-06-01T00:00:00Z",
-            })
+            store.record_alert(
+                {
+                    "alert_type": "quality_degradation",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "old alert",
+                    "timestamp": "2020-01-01T00:00:00Z",
+                }
+            )
+            store.record_alert(
+                {
+                    "alert_type": "quality_degradation",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "new alert",
+                    "timestamp": "2025-06-01T00:00:00Z",
+                }
+            )
 
             recent = store.get_alert_history(since="2025-01-01T00:00:00Z")
             assert len(recent) == 1
@@ -176,13 +190,15 @@ class TestAlertHistoryStore:
             store.initialize()
 
             for i in range(5):
-                store.record_alert({
-                    "alert_type": "batch_reduction",
-                    "severity": "warning",
-                    "subject": "test",
-                    "message": f"alert_{i}",
-                    "timestamp": f"2025-06-01T12:0{i}:00Z",
-                })
+                store.record_alert(
+                    {
+                        "alert_type": "batch_reduction",
+                        "severity": "warning",
+                        "subject": "test",
+                        "message": f"alert_{i}",
+                        "timestamp": f"2025-06-01T12:0{i}:00Z",
+                    }
+                )
 
             result = store.get_alert_history(limit=3)
             assert len(result) == 3
@@ -193,20 +209,24 @@ class TestAlertHistoryStore:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            store.record_delivery_failure({
-                "transport": "webhook",
-                "alert_type": "test",
-                "subject": "test",
-                "error_message": "err1",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
-            store.record_delivery_failure({
-                "transport": "email",
-                "alert_type": "test",
-                "subject": "test",
-                "error_message": "err2",
-                "timestamp": "2025-06-01T12:01:00Z",
-            })
+            store.record_delivery_failure(
+                {
+                    "transport": "webhook",
+                    "alert_type": "test",
+                    "subject": "test",
+                    "error_message": "err1",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
+            store.record_delivery_failure(
+                {
+                    "transport": "email",
+                    "alert_type": "test",
+                    "subject": "test",
+                    "error_message": "err2",
+                    "timestamp": "2025-06-01T12:01:00Z",
+                }
+            )
 
             webhook_only = store.get_delivery_failures(transport="webhook")
             assert len(webhook_only) == 1
@@ -221,20 +241,24 @@ class TestAlertHistoryStore:
             assert store.get_alert_count() == 0
             assert store.get_failure_count() == 0
 
-            store.record_alert({
-                "alert_type": "test",
-                "severity": "info",
-                "subject": "test",
-                "message": "m1",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
-            store.record_delivery_failure({
-                "transport": "webhook",
-                "alert_type": "test",
-                "subject": "test",
-                "error_message": "err",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            store.record_alert(
+                {
+                    "alert_type": "test",
+                    "severity": "info",
+                    "subject": "test",
+                    "message": "m1",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
+            store.record_delivery_failure(
+                {
+                    "transport": "webhook",
+                    "alert_type": "test",
+                    "subject": "test",
+                    "error_message": "err",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
 
             assert store.get_alert_count() == 1
             assert store.get_failure_count() == 1
@@ -259,14 +283,16 @@ class TestAlertHistoryStore:
             # First instance: write alerts
             store1 = AlertHistoryStore(db_path)
             store1.initialize()
-            store1.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "critical",
-                "subject": "graph_extraction",
-                "message": "Batch reduced to 1",
-                "data": {"old": 4, "new": 1},
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            store1.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "critical",
+                    "subject": "graph_extraction",
+                    "message": "Batch reduced to 1",
+                    "data": {"old": 4, "new": 1},
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
 
             # Simulate process restart: create new store instance
             store2 = AlertHistoryStore(db_path)
@@ -290,13 +316,15 @@ class TestAlertHistoryStore:
 
             # Insert more than max rows
             for i in range(10):
-                store.record_alert({
-                    "alert_type": "test",
-                    "severity": "info",
-                    "subject": "test",
-                    "message": f"alert_{i}",
-                    "timestamp": f"2025-06-01T12:{i:02d}:00Z",
-                })
+                store.record_alert(
+                    {
+                        "alert_type": "test",
+                        "severity": "info",
+                        "subject": "test",
+                        "message": f"alert_{i}",
+                        "timestamp": f"2025-06-01T12:{i:02d}:00Z",
+                    }
+                )
 
             # Should be pruned to max_alert_rows
             count = store.get_alert_count()
@@ -326,13 +354,15 @@ class TestAlertManagerWithHistoryStore:
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
             mgr.attach_history_store(store)
 
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="warning",
-                subject="test",
-                message="Batch reduced",
-                data={"old": 4, "new": 3},
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="test",
+                    message="Batch reduced",
+                    data={"old": 4, "new": 3},
+                )
+            )
 
             # Check in-memory (still maintained as buffer)
             assert len(mgr.lifecycle_mgr._alert_history) == 1
@@ -349,13 +379,15 @@ class TestAlertManagerWithHistoryStore:
             store.initialize()
 
             # Pre-populate the store with a historical alert
-            store.record_alert({
-                "alert_type": "quality_degradation",
-                "severity": "critical",
-                "subject": "faithfulness",
-                "message": "Pre-restart alert",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            store.record_alert(
+                {
+                    "alert_type": "quality_degradation",
+                    "severity": "critical",
+                    "subject": "faithfulness",
+                    "message": "Pre-restart alert",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
             mgr.attach_history_store(store)
@@ -373,25 +405,30 @@ class TestAlertManagerWithHistoryStore:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
             store.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                webhook_url="https://invalid-host-that-does-not-exist.local/hook",
-                min_alert_interval_seconds=0,
-                webhook_max_retries=0,
-            ))
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    webhook_url="https://invalid-host-that-does-not-exist.local/hook",
+                    min_alert_interval_seconds=0,
+                    webhook_max_retries=0,
+                )
+            )
             mgr.attach_history_store(store)
 
             # This will fail to deliver (invalid URL), recording a failure
             # Sprint 5.30: dispatch is async, need to wait for background thread
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="warning",
-                subject="test",
-                message="Will fail to deliver",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="test",
+                    message="Will fail to deliver",
+                )
+            )
 
             # Wait for background dispatch thread to complete
             import time
+
             time.sleep(0.5)
 
             # Check persistent store has the delivery failure
@@ -408,13 +445,15 @@ class TestAlertManagerWithHistoryStore:
             store.initialize()
 
             # Pre-populate with a historical alert
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "test",
-                "message": "Historical alert from before restart",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "Historical alert from before restart",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
             mgr.attach_history_store(store)
@@ -459,14 +498,16 @@ class TestRollupVerification:
 
         # Insert records for a day
         for i in range(3):
-            store.record_cycle({
-                "timestamp": f"2025-01-10T{10+i:02d}:00:00Z",
-                "avg_citation_rate": 0.85,
-                "avg_grounding_rate": 0.90,
-                "avg_llm_faithfulness": 0.88,
-                "evaluated_count": 15,
-                "flagged_count": 2,
-            })
+            store.record_cycle(
+                {
+                    "timestamp": f"2025-01-10T{10 + i:02d}:00:00Z",
+                    "avg_citation_rate": 0.85,
+                    "avg_grounding_rate": 0.90,
+                    "avg_llm_faithfulness": 0.88,
+                    "evaluated_count": 15,
+                    "flagged_count": 2,
+                }
+            )
 
         # Run rollup
         store.run_rollup()
@@ -485,47 +526,53 @@ class TestRollupVerification:
 
         # Insert records for a day
         for i in range(3):
-            store.record_cycle({
-                "timestamp": f"2025-01-10T{10+i:02d}:00:00Z",
-                "avg_citation_rate": 0.85,
-                "avg_grounding_rate": 0.90,
-                "avg_llm_faithfulness": 0.88,
-                "evaluated_count": 15,
-                "flagged_count": 2,
-            })
+            store.record_cycle(
+                {
+                    "timestamp": f"2025-01-10T{10 + i:02d}:00:00Z",
+                    "avg_citation_rate": 0.85,
+                    "avg_grounding_rate": 0.90,
+                    "avg_llm_faithfulness": 0.88,
+                    "evaluated_count": 15,
+                    "flagged_count": 2,
+                }
+            )
 
         # Run rollup
         store.run_rollup()
 
         # Manually insert an extra original row for the same day (simulating partial rollup)
         with sqlite3.connect(store._db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO vigil_quality_history (
                     cycle_timestamp, avg_citation_rate, avg_grounding_rate,
                     avg_llm_faithfulness, evaluated_count, flagged_count
                 ) VALUES (?, ?, ?, ?, ?, ?)
-            """, ("2025-01-10T15:00:00Z", 0.80, 0.85, 0.82, 10, 1))
+            """,
+                ("2025-01-10T15:00:00Z", 0.80, 0.85, 0.82, 10, 1),
+            )
 
         result = store.verify_rollup_integrity()
         # Should detect the remaining original row
         assert result["valid"] is False
         assert result["total_issues"] >= 1
         issue_types = [i["type"] for i in result["issues"]]
-        assert "daily_rollup_has_remaining_originals" in issue_types or \
-               "mixed_day_originals_and_rollups" in issue_types
+        assert "daily_rollup_has_remaining_originals" in issue_types or "mixed_day_originals_and_rollups" in issue_types
 
     def test_verify_returns_stats(self, tmp_path):
         """verify_rollup_integrity() includes verification statistics."""
         store = self._create_store(tmp_path)
 
-        store.record_cycle({
-            "timestamp": "2025-06-01T12:00:00Z",
-            "avg_citation_rate": 0.85,
-            "avg_grounding_rate": 0.90,
-            "avg_llm_faithfulness": 0.88,
-            "evaluated_count": 15,
-            "flagged_count": 2,
-        })
+        store.record_cycle(
+            {
+                "timestamp": "2025-06-01T12:00:00Z",
+                "avg_citation_rate": 0.85,
+                "avg_grounding_rate": 0.90,
+                "avg_llm_faithfulness": 0.88,
+                "evaluated_count": 15,
+                "flagged_count": 2,
+            }
+        )
 
         result = store.verify_rollup_integrity()
         assert "daily_rollups_verified" in result
@@ -637,15 +684,17 @@ class TestConfigDrivenAlertRouting:
 
     def test_get_transports_for_alert_with_routes(self):
         """_get_transports_for_alert() respects configured routes."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://example.com/hook",
-            email_to="ops@example.com",
-            routes={
-                "batch_reduction": ["webhook"],
-                "quality_degradation": ["email", "webhook"],
-            },
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://example.com/hook",
+                email_to="ops@example.com",
+                routes={
+                    "batch_reduction": ["webhook"],
+                    "quality_degradation": ["email", "webhook"],
+                },
+            )
+        )
 
         # batch_reduction should only use webhook
         assert mgr._get_transports_for_alert("batch_reduction") == ["webhook"]
@@ -657,11 +706,13 @@ class TestConfigDrivenAlertRouting:
 
     def test_get_transports_for_alert_without_routes(self):
         """_get_transports_for_alert() uses all configured transports when no routes."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://example.com/hook",
-            email_to="ops@example.com",
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://example.com/hook",
+                email_to="ops@example.com",
+            )
+        )
 
         # All types should get all transports
         transports = mgr._get_transports_for_alert("batch_reduction")
@@ -670,14 +721,16 @@ class TestConfigDrivenAlertRouting:
 
     def test_get_transports_for_alert_unknown_type_with_routes(self):
         """Unknown alert types use all configured transports when no route defined."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://example.com/hook",
-            email_to="ops@example.com",
-            routes={
-                "batch_reduction": ["webhook"],
-            },
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://example.com/hook",
+                email_to="ops@example.com",
+                routes={
+                    "batch_reduction": ["webhook"],
+                },
+            )
+        )
 
         # Unknown type has no route, so falls back to all transports
         transports = mgr._get_transports_for_alert("unknown_type")
@@ -686,14 +739,16 @@ class TestConfigDrivenAlertRouting:
 
     def test_get_transports_for_alert_ignores_unconfigured_transport(self):
         """Routes only return transports that are actually configured."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://example.com/hook",
-            # No email configured
-            routes={
-                "quality_degradation": ["email", "webhook"],
-            },
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://example.com/hook",
+                # No email configured
+                routes={
+                    "quality_degradation": ["email", "webhook"],
+                },
+            )
+        )
 
         # Only webhook should be returned since email is not configured
         transports = mgr._get_transports_for_alert("quality_degradation")
@@ -704,15 +759,17 @@ class TestConfigDrivenAlertRouting:
         """send_alert() respects routing — only dispatched transports receive the alert."""
         # We test this indirectly by checking that the routing logic
         # is used within send_alert (it calls _get_transports_for_alert)
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://example.com/hook",
-            email_to="ops@example.com",
-            routes={
-                "batch_reduction": ["webhook"],  # Only webhook for batch_reduction
-            },
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://example.com/hook",
+                email_to="ops@example.com",
+                routes={
+                    "batch_reduction": ["webhook"],  # Only webhook for batch_reduction
+                },
+                min_alert_interval_seconds=0,
+            )
+        )
 
         # Verify the transport selection
         transports = mgr._get_transports_for_alert("batch_reduction")
@@ -725,10 +782,12 @@ class TestConfigDrivenAlertRouting:
 
     def test_routes_in_get_status(self):
         """AlertManager.get_status() includes routes configuration."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            routes={"batch_reduction": ["webhook"]},
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                routes={"batch_reduction": ["webhook"]},
+            )
+        )
 
         status = mgr.get_status()
         assert "routes" in status
@@ -779,11 +838,13 @@ class TestHealthEndpoint:
         """Health endpoint includes alerting system status."""
         from aip.adapter.api.routes.vigil_quality import vigil_quality_health
 
-        alert_mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://example.com/hook",
-            min_alert_interval_seconds=0,
-        ))
+        alert_mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://example.com/hook",
+                min_alert_interval_seconds=0,
+            )
+        )
 
         container = MagicMock()
         container._alert_manager = alert_mgr

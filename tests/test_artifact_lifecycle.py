@@ -377,13 +377,10 @@ class TestExportAuditTrail:
             await review_approve(aid_normal, stores)
 
             # Normal export
-            normal_result = await export_artifact(
-                aid_normal, os.path.join(tmp, "normal.md"), stores
-            )
+            normal_result = await export_artifact(aid_normal, os.path.join(tmp, "normal.md"), stores)
             # Force export
             force_result = await export_artifact(
-                aid_force, os.path.join(tmp, "force.md"), stores,
-                force=True, force_reason="Emergency"
+                aid_force, os.path.join(tmp, "force.md"), stores, force=True, force_reason="Emergency"
             )
 
             # Normal export should NOT have force markers
@@ -649,8 +646,7 @@ class TestReviewDashboard:
             export_stores = await _create_export_stores(tmp)
             out_path = os.path.join(tmp, "force.md")
             await export_artifact(
-                create_result["artifact_id"], out_path, export_stores,
-                force=True, force_reason="Dashboard test"
+                create_result["artifact_id"], out_path, export_stores, force=True, force_reason="Dashboard test"
             )
             await export_stores.close()
 
@@ -694,9 +690,9 @@ class TestReviewDashboard:
 
             export_stores = await _create_export_stores(tmp)
             from aip.orchestration.review_export_pipeline import review_needs_revision
+
             await review_needs_revision(
-                create_result["artifact_id"], export_stores,
-                instruction="Please expand section 2"
+                create_result["artifact_id"], export_stores, instruction="Please expand section 2"
             )
 
             result = await review_dashboard(stores)
@@ -883,9 +879,7 @@ class TestFullLifecycle:
             assert create_result["lifecycle_state"] == "GENERATED"
 
             # 2. Add reviewer notes
-            note_result = await review_add_note(
-                aid, lifecycle_stores, note="Sources look solid. Minor style issues."
-            )
+            note_result = await review_add_note(aid, lifecycle_stores, note="Sources look solid. Minor style issues.")
             assert "error" not in note_result
             assert note_result["lifecycle_state"] == "GENERATED"  # Unchanged
 

@@ -365,16 +365,18 @@ async def artifact_ledger(
         else:
             detail = meta.get("detail", ev.event_type)
 
-        ledger_entries.append(ArtifactLedgerEntry(
-            event_type=ev.event_type,
-            actor=ev.actor,
-            artifact_id=artifact_id,
-            from_state=ev.from_state,
-            to_state=ev.to_state,
-            timestamp=ev.timestamp,
-            detail=detail,
-            metadata=meta,
-        ))
+        ledger_entries.append(
+            ArtifactLedgerEntry(
+                event_type=ev.event_type,
+                actor=ev.actor,
+                artifact_id=artifact_id,
+                from_state=ev.from_state,
+                to_state=ev.to_state,
+                timestamp=ev.timestamp,
+                detail=detail,
+                metadata=meta,
+            )
+        )
 
     # Build summary
     creation_event = next(
@@ -454,28 +456,32 @@ async def review_dashboard(
     force_export_summaries = []
     for ev in force_export_events:
         meta = ev.metadata if hasattr(ev, "metadata") and isinstance(ev.metadata, dict) else {}
-        force_export_summaries.append({
-            "artifact_id": ev.artifact_id,
-            "bypassed_state": meta.get("bypassed_state", ""),
-            "reason": meta.get("reason", ""),
-            "timestamp": ev.timestamp,
-            "actor": ev.actor,
-        })
+        force_export_summaries.append(
+            {
+                "artifact_id": ev.artifact_id,
+                "bypassed_state": meta.get("bypassed_state", ""),
+                "reason": meta.get("reason", ""),
+                "timestamp": ev.timestamp,
+                "actor": ev.actor,
+            }
+        )
 
     # Get recent events (all types)
     recent_events_raw = await stores.event_store.query(limit=recent_limit)
     recent_events = []
     for ev in recent_events_raw:
         meta = ev.metadata if hasattr(ev, "metadata") and isinstance(ev.metadata, dict) else {}
-        recent_events.append({
-            "event_type": ev.event_type,
-            "artifact_id": ev.artifact_id,
-            "actor": ev.actor,
-            "timestamp": ev.timestamp,
-            "from_state": ev.from_state,
-            "to_state": ev.to_state,
-            "detail": meta.get("detail", meta.get("note", meta.get("verdict", ""))),
-        })
+        recent_events.append(
+            {
+                "event_type": ev.event_type,
+                "artifact_id": ev.artifact_id,
+                "actor": ev.actor,
+                "timestamp": ev.timestamp,
+                "from_state": ev.from_state,
+                "to_state": ev.to_state,
+                "detail": meta.get("detail", meta.get("note", meta.get("verdict", ""))),
+            }
+        )
 
     summary = ReviewQueueSummary(
         generated_count=len(generated_ids),

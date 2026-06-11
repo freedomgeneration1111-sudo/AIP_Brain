@@ -183,9 +183,7 @@ class TestReviewSources:
             stores = await _create_test_stores(tmp)
             source_ids = ["chunk:conv1:0", "chunk:conv1:1"]
             source_types = ["conversation_chunk", "conversation_chunk"]
-            aid = await _create_project_and_artifact(
-                stores, source_ids=source_ids, source_types=source_types
-            )
+            aid = await _create_project_and_artifact(stores, source_ids=source_ids, source_types=source_types)
 
             result = await review_sources(aid, stores)
 
@@ -255,9 +253,7 @@ class TestApproveNoSources:
     async def test_approve_no_sources_ask_answer(self):
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
-            aid = await _create_project_and_artifact(
-                stores, source_ids=[], source_types=[]
-            )
+            aid = await _create_project_and_artifact(stores, source_ids=[], source_types=[])
 
             result = await review_approve(aid, stores)
 
@@ -307,9 +303,7 @@ class TestNeedsRevision:
             stores = await _create_test_stores(tmp)
             aid = await _create_project_and_artifact(stores)
 
-            result = await review_needs_revision(
-                aid, stores, instruction="Add more specific architecture details"
-            )
+            result = await review_needs_revision(aid, stores, instruction="Add more specific architecture details")
 
             assert "error" not in result
             assert result["lifecycle_state"] == "GENERATED"  # Unchanged
@@ -497,9 +491,7 @@ class TestExportProjectApproved:
     async def test_export_project_approved_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
-            aid1 = await _create_project_and_artifact(
-                stores, artifact_id="ask:approved1", content="Approved answer 1"
-            )
+            aid1 = await _create_project_and_artifact(stores, artifact_id="ask:approved1", content="Approved answer 1")
             await review_approve(aid1, stores)
 
             out_path = os.path.join(tmp, "project_export.md")
@@ -524,12 +516,8 @@ class TestExportProjectExcludesRejected:
     async def test_export_project_no_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
-            aid1 = await _create_project_and_artifact(
-                stores, artifact_id="ask:good1", content="Good answer"
-            )
-            aid2 = await _create_project_and_artifact(
-                stores, artifact_id="ask:bad1", content="Bad answer"
-            )
+            aid1 = await _create_project_and_artifact(stores, artifact_id="ask:good1", content="Good answer")
+            aid2 = await _create_project_and_artifact(stores, artifact_id="ask:bad1", content="Bad answer")
 
             # Approve first, reject second
             await review_approve(aid1, stores)
@@ -598,9 +586,7 @@ class TestMissingArtifact:
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
 
-            result = await export_artifact(
-                "nonexistent:artifact", os.path.join(tmp, "out.md"), stores, force=True
-            )
+            result = await export_artifact("nonexistent:artifact", os.path.join(tmp, "out.md"), stores, force=True)
             assert "error" in result
             assert result["error"]["code"] == "NOT_FOUND"
 

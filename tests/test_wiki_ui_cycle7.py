@@ -85,14 +85,16 @@ def wiki_db_with_articles(wiki_db: Path) -> Path:
             (
                 "beast:wiki:test_domain:20260611T120000",
                 "This is the test article content about the test domain.",
-                json.dumps({
-                    "title": "Test Domain Article",
-                    "domain": "test_domain",
-                    "summary": "A test article for verification",
-                    "tags": ["test", "verification"],
-                    "aliases": ["Test Article"],
-                    "source": "sexton_wiki",
-                }),
+                json.dumps(
+                    {
+                        "title": "Test Domain Article",
+                        "domain": "test_domain",
+                        "summary": "A test article for verification",
+                        "tags": ["test", "verification"],
+                        "aliases": ["Test Article"],
+                        "source": "sexton_wiki",
+                    }
+                ),
                 now,
             ),
         )
@@ -107,12 +109,14 @@ def wiki_db_with_articles(wiki_db: Path) -> Path:
             (
                 "beast:wiki:another_domain:20260611T130000",
                 "This is another generated article.",
-                json.dumps({
-                    "title": "Another Domain Article",
-                    "domain": "another_domain",
-                    "summary": "A generated article",
-                    "tags": ["generated"],
-                }),
+                json.dumps(
+                    {
+                        "title": "Another Domain Article",
+                        "domain": "another_domain",
+                        "summary": "A generated article",
+                        "tags": ["generated"],
+                    }
+                ),
                 now,
             ),
         )
@@ -127,14 +131,16 @@ def wiki_db_with_articles(wiki_db: Path) -> Path:
             (
                 "wiki:my_domain:user_article:20260611T140000",
                 "User created content here.",
-                json.dumps({
-                    "title": "User Created Article",
-                    "domain": "my_domain",
-                    "summary": "Created by DEFINER",
-                    "tags": ["user", "manual"],
-                    "source": "definer_create",
-                    "revision_history": [{"version": 1, "action": "created", "actor": "definer"}],
-                }),
+                json.dumps(
+                    {
+                        "title": "User Created Article",
+                        "domain": "my_domain",
+                        "summary": "Created by DEFINER",
+                        "tags": ["user", "manual"],
+                        "source": "definer_create",
+                        "revision_history": [{"version": 1, "action": "created", "actor": "definer"}],
+                    }
+                ),
                 now,
             ),
         )
@@ -276,9 +282,7 @@ class TestWikiArticleCreate:
             conn.commit()
 
             # Verify state is GENERATED
-            cursor = conn.execute(
-                "SELECT current_state FROM ecs_state WHERE artifact_id = ?", (article_id,)
-            )
+            cursor = conn.execute("SELECT current_state FROM ecs_state WHERE artifact_id = ?", (article_id,))
             row = cursor.fetchone()
             assert row is not None
             assert row[0] == "GENERATED", "Created article must be GENERATED, not auto-approved"
@@ -310,9 +314,7 @@ class TestWikiArticleUpdate:
             conn.commit()
 
             # Verify both versions exist
-            cursor = conn.execute(
-                "SELECT version FROM artifacts WHERE id = ? ORDER BY version", (article_id,)
-            )
+            cursor = conn.execute("SELECT version FROM artifacts WHERE id = ? ORDER BY version", (article_id,))
             versions = [row[0] for row in cursor.fetchall()]
             assert versions == [1, 2], f"Expected [1, 2], got {versions}"
         finally:
@@ -327,17 +329,13 @@ class TestWikiArticleUpdate:
             article_id = "beast:wiki:test_domain:20260611T120000"
 
             # Check initial state
-            cursor = conn.execute(
-                "SELECT current_state FROM ecs_state WHERE artifact_id = ?", (article_id,)
-            )
+            cursor = conn.execute("SELECT current_state FROM ecs_state WHERE artifact_id = ?", (article_id,))
             initial_state = cursor.fetchone()[0]
             assert initial_state == "APPROVED"
 
             # Simulate update (no ECS state change)
             # The PATCH route explicitly does NOT change ECS state
-            cursor = conn.execute(
-                "SELECT current_state FROM ecs_state WHERE artifact_id = ?", (article_id,)
-            )
+            cursor = conn.execute("SELECT current_state FROM ecs_state WHERE artifact_id = ?", (article_id,))
             final_state = cursor.fetchone()[0]
             assert final_state == initial_state, "ECS state should not change on edit"
         finally:
@@ -354,9 +352,7 @@ class TestWikiBacklinks:
         conn = sqlite3.connect(str(wiki_db))
         try:
             # Verify graph_edges doesn't exist
-            cursor = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='graph_edges'"
-            )
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='graph_edges'")
             assert cursor.fetchone() is None, "graph_edges should not exist in test DB"
         finally:
             conn.close()
@@ -381,7 +377,13 @@ class TestWikiBacklinks:
             # Insert a backlink
             conn.execute(
                 "INSERT INTO graph_edges (source_id, source_type, target_id, relation_type, confidence) VALUES (?, ?, ?, ?, ?)",
-                ("beast:wiki:another_domain:20260611T130000", "wiki_article", "beast:wiki:test_domain:20260611T120000", "mentions", 0.9),
+                (
+                    "beast:wiki:another_domain:20260611T130000",
+                    "wiki_article",
+                    "beast:wiki:test_domain:20260611T120000",
+                    "mentions",
+                    0.9,
+                ),
             )
             conn.commit()
 
@@ -406,9 +408,7 @@ class TestWikiStale:
 
         conn = sqlite3.connect(str(wiki_db))
         try:
-            cursor = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='codex_topics'"
-            )
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='codex_topics'")
             assert cursor.fetchone() is None
         finally:
             conn.close()
@@ -423,9 +423,7 @@ class TestWikiContradictions:
 
         conn = sqlite3.connect(str(wiki_db))
         try:
-            cursor = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='codex_contradictions'"
-            )
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='codex_contradictions'")
             assert cursor.fetchone() is None
         finally:
             conn.close()
@@ -455,12 +453,30 @@ class TestWikiArticleSchemaStability:
         from gui.status_types import WikiArticle
 
         required_fields = {
-            "id", "title", "summary", "body", "status",
-            "tags", "aliases", "linked_articles", "backlinks",
-            "source_documents", "related_artifacts", "related_turns",
-            "related_beast_commentaries", "open_questions", "contradictions",
-            "revision_history", "created_at", "updated_at", "approved_at",
-            "domain", "artifact_type", "version", "word_count", "metadata",
+            "id",
+            "title",
+            "summary",
+            "body",
+            "status",
+            "tags",
+            "aliases",
+            "linked_articles",
+            "backlinks",
+            "source_documents",
+            "related_artifacts",
+            "related_turns",
+            "related_beast_commentaries",
+            "open_questions",
+            "contradictions",
+            "revision_history",
+            "created_at",
+            "updated_at",
+            "approved_at",
+            "domain",
+            "artifact_type",
+            "version",
+            "word_count",
+            "metadata",
         }
 
         actual_fields = set(WikiArticle.__annotations__.keys())
@@ -580,10 +596,7 @@ class TestWikiBackendRouteImportBoundary:
         """Wiki route module must not import from aip.orchestration."""
         import ast
 
-        route_path = (
-            Path(__file__).parent.parent
-            / "src" / "aip" / "adapter" / "api" / "routes" / "wiki.py"
-        )
+        route_path = Path(__file__).parent.parent / "src" / "aip" / "adapter" / "api" / "routes" / "wiki.py"
         if not route_path.exists():
             pytest.skip("wiki.py route not found")
 
@@ -607,6 +620,7 @@ class TestWikiCreateNeverAutoApproves:
 
         # Find the WikiArticleCreateRequest class
         import re
+
         create_class_match = re.search(
             r"class WikiArticleCreateRequest.*?(?=class )",
             source,
@@ -630,6 +644,7 @@ class TestWikiCreateNeverAutoApproves:
         source = wiki_route_path.read_text()
 
         import re
+
         update_class_match = re.search(
             r"class WikiArticleUpdateRequest.*?(?=@router|class )",
             source,
@@ -652,6 +667,7 @@ class TestWikiCreateNeverAutoApproves:
         # Verify no auto-approve — no APPROVED state in the create function
         # Find the create function
         import re
+
         create_fn = re.search(r"async def create_wiki_article.*?(?=async def|@router)", source, re.DOTALL)
         assert create_fn, "Create function not found"
         create_fn_text = create_fn.group(0)

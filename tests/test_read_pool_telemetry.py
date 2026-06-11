@@ -161,9 +161,14 @@ class TestReadPoolTelemetry:
 
         health = graph_store.read_pool_health()
         expected_keys = {
-            "pool_size", "pool_active", "checkout_count",
-            "fallback_count", "exhaustion_count", "exhaustion_rate",
-            "avg_checkout_latency_ms", "p95_checkout_latency_ms",
+            "pool_size",
+            "pool_active",
+            "checkout_count",
+            "fallback_count",
+            "exhaustion_count",
+            "exhaustion_rate",
+            "avg_checkout_latency_ms",
+            "p95_checkout_latency_ms",
             "recommendation",
         }
         assert set(health.keys()) == expected_keys
@@ -382,11 +387,13 @@ class TestReadPoolBenchmark:
         assert len(results) == num_reads
         # Log the result for manual inspection
         health = store.read_pool_health()
-        print(f"\nWith pool: {num_reads} reads in {elapsed_pool:.3f}s "
-              f"({num_reads/elapsed_pool:.0f} reads/s), "
-              f"checkouts={health['checkout_count']}, "
-              f"fallbacks={health['fallback_count']}, "
-              f"exhaustions={health['exhaustion_count']}")
+        print(
+            f"\nWith pool: {num_reads} reads in {elapsed_pool:.3f}s "
+            f"({num_reads / elapsed_pool:.0f} reads/s), "
+            f"checkouts={health['checkout_count']}, "
+            f"fallbacks={health['fallback_count']}, "
+            f"exhaustions={health['exhaustion_count']}"
+        )
 
     @pytest.mark.asyncio
     async def test_concurrent_reads_without_pool(self, tmp_db):
@@ -414,9 +421,7 @@ class TestReadPoolBenchmark:
 
         async def read_via_write_conn(node_id: str):
             conn = await store._get_conn()
-            cursor = await conn.execute(
-                "SELECT * FROM graph_nodes WHERE id = ?", (node_id,)
-            )
+            cursor = await conn.execute("SELECT * FROM graph_nodes WHERE id = ?", (node_id,))
             return await cursor.fetchone()
 
         t0 = time.monotonic()
@@ -427,8 +432,9 @@ class TestReadPoolBenchmark:
         await store.close()
 
         assert len(results) == num_reads
-        print(f"\nWithout pool: {num_reads} reads in {elapsed_no_pool:.3f}s "
-              f"({num_reads/elapsed_no_pool:.0f} reads/s)")
+        print(
+            f"\nWithout pool: {num_reads} reads in {elapsed_no_pool:.3f}s ({num_reads / elapsed_no_pool:.0f} reads/s)"
+        )
 
     @pytest.mark.asyncio
     async def test_pool_reduces_fallbacks_under_load(self, tmp_db):
@@ -454,9 +460,11 @@ class TestReadPoolBenchmark:
         health = store.read_pool_health()
         # The majority of checkouts should use pool connections, not fallbacks
         fallback_ratio = health["fallback_count"] / max(health["checkout_count"], 1)
-        print(f"\nFallback ratio: {fallback_ratio:.2%} "
-              f"(checkouts={health['checkout_count']}, "
-              f"fallbacks={health['fallback_count']})")
+        print(
+            f"\nFallback ratio: {fallback_ratio:.2%} "
+            f"(checkouts={health['checkout_count']}, "
+            f"fallbacks={health['fallback_count']})"
+        )
 
         await store.close()
 
@@ -519,13 +527,15 @@ class TestAskLikeWorkloadBenchmark:
         health = store.read_pool_health()
         total_reads = num_asks * 3  # 3 reads per ask
 
-        print(f"\n{num_asks} concurrent asks ({total_reads} reads) in {elapsed:.3f}s "
-              f"({total_reads/elapsed:.0f} reads/s), "
-              f"checkouts={health['checkout_count']}, "
-              f"fallbacks={health['fallback_count']}, "
-              f"exhaustions={health['exhaustion_count']}, "
-              f"exhaustion_rate={health['exhaustion_rate']:.2%}, "
-              f"p95_latency={health['p95_checkout_latency_ms']:.3f}ms")
+        print(
+            f"\n{num_asks} concurrent asks ({total_reads} reads) in {elapsed:.3f}s "
+            f"({total_reads / elapsed:.0f} reads/s), "
+            f"checkouts={health['checkout_count']}, "
+            f"fallbacks={health['fallback_count']}, "
+            f"exhaustions={health['exhaustion_count']}, "
+            f"exhaustion_rate={health['exhaustion_rate']:.2%}, "
+            f"p95_latency={health['p95_checkout_latency_ms']:.3f}ms"
+        )
 
         # All reads should have completed
         assert len(results) == num_asks
@@ -565,11 +575,13 @@ class TestAskLikeWorkloadBenchmark:
         results = await asyncio.gather(*tasks)
 
         health = store.read_pool_health()
-        print(f"\nHigh concurrency ({num_reads} concurrent reads): "
-              f"checkouts={health['checkout_count']}, "
-              f"pool_served={health['checkout_count'] - health['fallback_count']}, "
-              f"fallbacks={health['fallback_count']}, "
-              f"exhaustion_rate={health['exhaustion_rate']:.2%}")
+        print(
+            f"\nHigh concurrency ({num_reads} concurrent reads): "
+            f"checkouts={health['checkout_count']}, "
+            f"pool_served={health['checkout_count'] - health['fallback_count']}, "
+            f"fallbacks={health['fallback_count']}, "
+            f"exhaustion_rate={health['exhaustion_rate']:.2%}"
+        )
 
         # The pool should serve at least some reads (not 100% fallback)
         pool_served = health["checkout_count"] - health["fallback_count"]
@@ -749,13 +761,19 @@ class TestConfigurablePoolSize:
         assert resolve_pool_size("graph_store", {"read_pool": {"pool_size": 5}}) == 5
 
         # Per-store override
-        assert resolve_pool_size(
-            "graph_store",
-            {"read_pool": {"pool_size": 7, "stores": {"graph_store": {"pool_size": 2}}}},
-        ) == 2
+        assert (
+            resolve_pool_size(
+                "graph_store",
+                {"read_pool": {"pool_size": 7, "stores": {"graph_store": {"pool_size": 2}}}},
+            )
+            == 2
+        )
 
         # Different store uses global default
-        assert resolve_pool_size(
-            "lexical_store",
-            {"read_pool": {"pool_size": 7, "stores": {"graph_store": {"pool_size": 2}}}},
-        ) == 7
+        assert (
+            resolve_pool_size(
+                "lexical_store",
+                {"read_pool": {"pool_size": 7, "stores": {"graph_store": {"pool_size": 2}}}},
+            )
+            == 7
+        )

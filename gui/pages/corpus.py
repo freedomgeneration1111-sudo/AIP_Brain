@@ -90,14 +90,13 @@ async def corpus_page():
 
     # ── Layout ─────────────────────────────────────────────────────
 
-    with ui.column().classes("flex-1").style(
-        f"background:{C_GROUND}; padding:24px; overflow-y:auto; "
-        f"min-height:calc(100vh - 44px);"
+    with (
+        ui.column()
+        .classes("flex-1")
+        .style(f"background:{C_GROUND}; padding:24px; overflow-y:auto; min-height:calc(100vh - 44px);")
     ):
         # Title
-        ui.label("Corpus Workbench").style(
-            f"font-family:{F_SANS}; font-size:24px; font-weight:700; color:{C_CREAM};"
-        )
+        ui.label("Corpus Workbench").style(f"font-family:{F_SANS}; font-size:24px; font-weight:700; color:{C_CREAM};")
         ui.label("Inspect, ingest, repair, and backfill the knowledge corpus.").style(
             f"font-size:12px; color:{C_MUTED}; margin-bottom:12px;"
         )
@@ -119,14 +118,16 @@ async def corpus_page():
 
         # Search bar
         with ui.row().classes("w-full").style("margin-top:12px; margin-bottom:8px; gap:8px;"):
-            search_input = ui.input(
-                placeholder="Search documents by path...",
-            ).props("dense outlined size=sm").style(
-                f"flex:1; font-family:{F_MONO};"
+            search_input = (
+                ui.input(
+                    placeholder="Search documents by path...",
+                )
+                .props("dense outlined size=sm")
+                .style(f"flex:1; font-family:{F_MONO};")
             )
-            ui.button("Search", on_click=lambda: _handle_search()).props(
-                "dense size=sm"
-            ).style(f"font-family:{F_SANS};")
+            ui.button("Search", on_click=lambda: _handle_search()).props("dense size=sm").style(
+                f"font-family:{F_SANS};"
+            )
 
         # Main content: document table + detail panel
         with ui.row().classes("w-full").style("gap:16px; min-height:300px;"):
@@ -134,17 +135,14 @@ async def corpus_page():
             table_container = ui.column().classes("flex-3").style("min-width:0;")
             with table_container:
                 ui.label("Documents").style(
-                    f"font-size:14px; font-weight:600; color:{C_CREAM}; "
-                    f"font-family:{F_SANS}; margin-bottom:4px;"
+                    f"font-size:14px; font-weight:600; color:{C_CREAM}; font-family:{F_SANS}; margin-bottom:4px;"
                 )
                 table_inner = ui.column().classes("w-full")
                 with table_inner:
                     document_table.render({"items": [], "total": 0})
 
             # Document detail (right, shown when selected)
-            detail_container = ui.column().classes("flex-2").style(
-                "min-width:280px; max-width:400px;"
-            )
+            detail_container = ui.column().classes("flex-2").style("min-width:280px; max-width:400px;")
             with detail_container:
                 detail_inner = ui.column().classes("w-full")
                 with detail_inner:
@@ -176,7 +174,9 @@ async def corpus_page():
         embedding_progress = await progress_task
 
         # Enrich corpus_status with backfill state from embedding progress
-        corpus_status["backfill_state"] = embedding_progress.get("sexton_pass", {}).get("state", "") if embedding_progress.get("sexton_pass") else ""
+        corpus_status["backfill_state"] = (
+            embedding_progress.get("sexton_pass", {}).get("state", "") if embedding_progress.get("sexton_pass") else ""
+        )
 
         _refresh_ui()
 
@@ -190,7 +190,9 @@ async def corpus_page():
         # Actions
         actions_container.clear()
         with actions_container:
-            backfill_running = embedding_progress.get("sexton_pass", {}) is not None and embedding_progress.get("sexton_pass", {}).get("running", False)
+            backfill_running = embedding_progress.get("sexton_pass", {}) is not None and embedding_progress.get(
+                "sexton_pass", {}
+            ).get("running", False)
             has_provider = corpus_status.get("error", "") == "" or bool(corpus_status.get("total_turns") is not None)
             corpus_actions.render(
                 backfill_running=backfill_running,
@@ -240,8 +242,9 @@ async def corpus_page():
 
     async def _handle_ingest():
         """Handle ingest action — show path input dialog."""
-        with ui.dialog() as dialog, ui.card().style(
-            f"background:{C_SURFACE}; border-radius:{R_MD}; padding:20px; min-width:400px;"
+        with (
+            ui.dialog() as dialog,
+            ui.card().style(f"background:{C_SURFACE}; border-radius:{R_MD}; padding:20px; min-width:400px;"),
         ):
             ui.label("Ingest File or Directory").style(
                 f"font-size:14px; font-weight:700; color:{C_CREAM}; font-family:{F_SANS};"
@@ -249,23 +252,29 @@ async def corpus_page():
             ui.label("Explicit DEFINER action. Will not silently overwrite existing documents.").style(
                 f"font-size:11px; color:{C_MUTED}; margin-bottom:8px;"
             )
-            path_input = ui.input(
-                label="File or directory path",
-                placeholder="/path/to/file.json",
-            ).props("dense outlined").style("width:100%;")
+            path_input = (
+                ui.input(
+                    label="File or directory path",
+                    placeholder="/path/to/file.json",
+                )
+                .props("dense outlined")
+                .style("width:100%;")
+            )
 
-            model_input = ui.input(
-                label="Source model (optional)",
-                placeholder="auto-detected",
-            ).props("dense outlined").style("width:100%;")
+            model_input = (
+                ui.input(
+                    label="Source model (optional)",
+                    placeholder="auto-detected",
+                )
+                .props("dense outlined")
+                .style("width:100%;")
+            )
 
             with ui.row().style("gap:8px; margin-top:12px;"):
-                ui.button("Ingest", on_click=lambda: _do_ingest()).props(
-                    "dense"
-                ).style(f"font-family:{F_SANS};")
-                ui.button("Cancel", on_click=dialog.close).props(
-                    "flat dense"
-                ).style(f"color:{C_MUTED}; font-family:{F_SANS};")
+                ui.button("Ingest", on_click=lambda: _do_ingest()).props("dense").style(f"font-family:{F_SANS};")
+                ui.button("Cancel", on_click=dialog.close).props("flat dense").style(
+                    f"color:{C_MUTED}; font-family:{F_SANS};"
+                )
 
             async def _do_ingest():
                 path = path_input.value or ""
@@ -290,8 +299,9 @@ async def corpus_page():
 
     async def _handle_backfill():
         """Handle backfill action — confirm and trigger."""
-        with ui.dialog() as dialog, ui.card().style(
-            f"background:{C_SURFACE}; border-radius:{R_MD}; padding:20px; min-width:350px;"
+        with (
+            ui.dialog() as dialog,
+            ui.card().style(f"background:{C_SURFACE}; border-radius:{R_MD}; padding:20px; min-width:350px;"),
         ):
             ui.label("Run Embedding Backfill").style(
                 f"font-size:14px; font-weight:700; color:{C_CREAM}; font-family:{F_SANS};"
@@ -300,18 +310,22 @@ async def corpus_page():
                 f"font-size:11px; color:{C_MUTED}; margin-bottom:8px;"
             )
 
-            limit_input = ui.number(
-                label="Limit (chunks to embed)",
-                value=500,
-            ).props("dense outlined").style("width:100%;")
+            limit_input = (
+                ui.number(
+                    label="Limit (chunks to embed)",
+                    value=500,
+                )
+                .props("dense outlined")
+                .style("width:100%;")
+            )
 
             with ui.row().style("gap:8px; margin-top:12px;"):
-                ui.button("Start Backfill", on_click=lambda: _do_backfill()).props(
-                    "dense"
-                ).style(f"font-family:{F_SANS};")
-                ui.button("Cancel", on_click=dialog.close).props(
-                    "flat dense"
-                ).style(f"color:{C_MUTED}; font-family:{F_SANS};")
+                ui.button("Start Backfill", on_click=lambda: _do_backfill()).props("dense").style(
+                    f"font-family:{F_SANS};"
+                )
+                ui.button("Cancel", on_click=dialog.close).props("flat dense").style(
+                    f"color:{C_MUTED}; font-family:{F_SANS};"
+                )
 
             async def _do_backfill():
                 dialog.close()
@@ -333,23 +347,22 @@ async def corpus_page():
 
     async def _handle_retry_failed():
         """Handle retry failed embeds action."""
-        with ui.dialog() as dialog, ui.card().style(
-            f"background:{C_SURFACE}; border-radius:{R_MD}; padding:20px; min-width:300px;"
+        with (
+            ui.dialog() as dialog,
+            ui.card().style(f"background:{C_SURFACE}; border-radius:{R_MD}; padding:20px; min-width:300px;"),
         ):
             ui.label("Retry Failed Embeds").style(
                 f"font-size:14px; font-weight:700; color:{C_CREAM}; font-family:{F_SANS};"
             )
-            ui.label("Explicit DEFINER action. Clears failure counters for failed embeds so they will be retried in the next cycle.").style(
-                f"font-size:11px; color:{C_MUTED}; margin-bottom:8px;"
-            )
+            ui.label(
+                "Explicit DEFINER action. Clears failure counters for failed embeds so they will be retried in the next cycle."
+            ).style(f"font-size:11px; color:{C_MUTED}; margin-bottom:8px;")
 
             with ui.row().style("gap:8px; margin-top:12px;"):
-                ui.button("Retry Failed", on_click=lambda: _do_retry()).props(
-                    "dense"
-                ).style(f"font-family:{F_SANS};")
-                ui.button("Cancel", on_click=dialog.close).props(
-                    "flat dense"
-                ).style(f"color:{C_MUTED}; font-family:{F_SANS};")
+                ui.button("Retry Failed", on_click=lambda: _do_retry()).props("dense").style(f"font-family:{F_SANS};")
+                ui.button("Cancel", on_click=dialog.close).props("flat dense").style(
+                    f"color:{C_MUTED}; font-family:{F_SANS};"
+                )
 
             async def _do_retry():
                 dialog.close()

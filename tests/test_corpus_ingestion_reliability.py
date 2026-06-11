@@ -864,9 +864,15 @@ class TestCorpusReliabilityIntegration:
 
         status = await store.get_corpus_status()
         expected_keys = [
-            "total_turns", "embedded", "tagged", "embed_failures",
-            "needs_reembed", "documents", "conversations",
-            "embed_coverage", "tag_coverage",
+            "total_turns",
+            "embedded",
+            "tagged",
+            "embed_failures",
+            "needs_reembed",
+            "documents",
+            "conversations",
+            "embed_coverage",
+            "tag_coverage",
         ]
         for key in expected_keys:
             assert key in status, f"Missing key: {key}"

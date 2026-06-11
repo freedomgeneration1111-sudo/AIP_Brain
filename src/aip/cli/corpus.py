@@ -250,8 +250,11 @@ def corpus_tag_cmd(limit: int, retag: bool, db_path: str | None) -> None:
             resolver = None
 
         if resolver is None:
-            click.echo("No [models.beast] slot with model configured (or AIP_BEAST_* env). "
-                       "Tagging requires a beast LLM. Configure and retry.", err=True)
+            click.echo(
+                "No [models.beast] slot with model configured (or AIP_BEAST_* env). "
+                "Tagging requires a beast LLM. Configure and retry.",
+                err=True,
+            )
             # Still proceed to exercise registry etc; _run will return skipped.
 
         # Stores (CorpusTurnStore required; artifact+ecs so proposals become GENERATED)
@@ -278,8 +281,10 @@ def corpus_tag_cmd(limit: int, retag: bool, db_path: str | None) -> None:
         class _DummyVectorStore:
             async def health_check(self) -> dict:
                 return {"connected": True}
+
             async def list_stale_vectors(self, **kwargs: Any) -> list[dict]:
                 return []
+
             async def upsert(self, **kwargs: Any) -> None:
                 return None
 
@@ -313,6 +318,7 @@ def corpus_tag_cmd(limit: int, retag: bool, db_path: str | None) -> None:
             # Load here too for the exact mandated CLI UX line (count + connectors)
             try:
                 from aip.orchestration.actors.domain_registry import load_registry
+
                 reg = load_registry("docs/beast_domain_registry_v1.md")
                 click.echo(f"Loading domain registry... {len(reg.domains)} domains, {len(reg.connectors)} connectors")
             except Exception as e:
@@ -353,7 +359,9 @@ def corpus_tag_cmd(limit: int, retag: bool, db_path: str | None) -> None:
 @corpus.command("wiki")
 @click.option("--domain", default=None, help="Generate wiki for one specific domain.")
 @click.option("--force", is_flag=True, default=False, help="Regenerate even if wiki exists and is recent.")
-@click.option("--all", "all_domains", is_flag=True, default=False, help="Generate for all domains (default if no --domain).")
+@click.option(
+    "--all", "all_domains", is_flag=True, default=False, help="Generate for all domains (default if no --domain)."
+)
 @click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
 def corpus_wiki_cmd(domain: str | None, force: bool, all_domains: bool, db_path: str | None) -> None:
     """Generate domain wiki articles from tagged corpus turns.
@@ -424,8 +432,10 @@ def corpus_wiki_cmd(domain: str | None, force: bool, all_domains: bool, db_path:
         class _DummyVectorStore:
             async def health_check(self) -> dict:
                 return {"connected": True}
+
             async def list_stale_vectors(self, **kwargs: Any) -> list[dict]:
                 return []
+
             async def upsert(self, **kwargs: Any) -> None:
                 return None
 
@@ -459,6 +469,7 @@ def corpus_wiki_cmd(domain: str | None, force: bool, all_domains: bool, db_path:
                     # Load registry to get all domain ids
                     try:
                         from aip.orchestration.actors.domain_registry import load_registry
+
                         reg = load_registry("docs/beast_domain_registry_v1.md")
                         excluded = {"quarantine", "unclassified"}
                         force_domains = [d for d in reg.get_domain_ids() if d not in excluded]
@@ -514,6 +525,7 @@ def corpus_clear_vectors_cmd(confirm: bool, db_path: str | None) -> None:
         import tomllib
         from pathlib import Path
         import sqlite3
+
         cfg: dict = {}
         config_p = Path("config/aip.config.toml")
         if config_p.exists():
@@ -537,6 +549,7 @@ def corpus_clear_vectors_cmd(confirm: bool, db_path: str | None) -> None:
         # Also reset embedded flags in main db so status reflects 0 after clear
         try:
             from aip.cli._db_path import get_default_db_path
+
             main_db = db_path or get_default_db_path()
             connm = sqlite3.connect(main_db)
             try:
@@ -590,14 +603,18 @@ def corpus_embed_cmd(limit: int, reembed: bool, db_path: str | None) -> None:
 
         eslot = cfg.get("models", {}).get("embedding", {}) if isinstance(cfg.get("models"), dict) else {}
         if not (isinstance(eslot, dict) and eslot.get("provider") and eslot.get("model")):
-            click.echo("No [models.embedding] slot configured (or AIP_EMBEDDING_* env). "
-                       "Embedding requires an embedding model. Configure and retry.", err=True)
+            click.echo(
+                "No [models.embedding] slot configured (or AIP_EMBEDDING_* env). "
+                "Embedding requires an embedding model. Configure and retry.",
+                err=True,
+            )
             sys.exit(1)
 
         cts = CorpusTurnStore(db_path=resolved_db_path)
         await cts.initialize()
 
         from aip.adapter.api.app import _create_embedding_provider
+
         embedding_provider = _create_embedding_provider(cfg)
         if embedding_provider is None:
             click.echo("Failed to create embedding provider.", err=True)
@@ -606,13 +623,16 @@ def corpus_embed_cmd(limit: int, reembed: bool, db_path: str | None) -> None:
         class _DummyVectorStore:
             async def health_check(self):
                 return {"connected": True}
+
             async def list_stale_vectors(self, **k):
                 return []
+
             async def upsert(self, **k):
                 return None
 
         bconf_dict = cfg.get("beast", {}) if isinstance(cfg.get("beast"), dict) else {}
         from aip.foundation.schemas import BeastCadenceConfig
+
         bconf = BeastCadenceConfig(
             **{k: v for k, v in bconf_dict.items() if k in BeastCadenceConfig.__dataclass_fields__}
         )
@@ -652,10 +672,14 @@ def corpus_embed_cmd(limit: int, reembed: bool, db_path: str | None) -> None:
 
 
 @corpus.command("graph")
-@click.option("--build-from-bridges", "build_bridges", is_flag=True, default=False,
-              help="Build seed graph from bridge tags in corpus_turns + entity alias registry.")
-@click.option("--extract", is_flag=True, default=False,
-              help="Run Beast entity extraction on high-importance turns.")
+@click.option(
+    "--build-from-bridges",
+    "build_bridges",
+    is_flag=True,
+    default=False,
+    help="Build seed graph from bridge tags in corpus_turns + entity alias registry.",
+)
+@click.option("--extract", is_flag=True, default=False, help="Run Beast entity extraction on high-importance turns.")
 @click.option("--limit", default=50, type=int, help="Max turns to extract (for --extract).")
 @click.option("--stats", is_flag=True, default=False, help="Show graph node/edge counts.")
 @click.option("--neighbors", "neighbors_node", default=None, help="Show direct neighbors of a domain/node.")
@@ -689,6 +713,7 @@ def corpus_graph_cmd(
 
     if stats:
         try:
+
             async def _stats():
                 store = GraphStore(resolved_db_path)
                 h = await store.health_check()
@@ -708,6 +733,7 @@ def corpus_graph_cmd(
                 bridge_edges = sum(1 for e in edges if e.bridge_tag is not None)
                 click.echo(f"  bridge_edges: {bridge_edges}")
                 await store.close()
+
             asyncio.run(_stats())
         except Exception as exc:
             click.echo(f"Error: {exc}", err=True)
@@ -716,6 +742,7 @@ def corpus_graph_cmd(
 
     if neighbors_node is not None:
         try:
+
             async def _neighbors():
                 store = GraphStore(resolved_db_path)
                 neighbors = await store.get_neighbors(neighbors_node, min_confidence=0.0)
@@ -726,6 +753,7 @@ def corpus_graph_cmd(
                     for n in neighbors:
                         click.echo(f"  {n.entity_type:12s} {n.canonical_name} (confidence: {n.confidence:.2f})")
                 await store.close()
+
             asyncio.run(_neighbors())
         except Exception as exc:
             click.echo(f"Error: {exc}", err=True)
@@ -778,9 +806,7 @@ def _run_build_from_bridges(db_path: str) -> None:
         # Read all bridge-tagged turns
         conn = sqlite3.connect(db_path)
         try:
-            rows = conn.execute(
-                "SELECT turn_id, bridges FROM corpus_turns WHERE bridges != '[]'"
-            ).fetchall()
+            rows = conn.execute("SELECT turn_id, bridges FROM corpus_turns WHERE bridges != '[]'").fetchall()
         finally:
             conn.close()
 
@@ -926,8 +952,10 @@ def _run_graph_extract(db_path: str, limit: int) -> None:
         class _DummyVectorStore:
             async def health_check(self) -> dict:
                 return {"connected": True}
+
             async def list_stale_vectors(self, **kw: Any) -> list[dict]:
                 return []
+
             async def upsert(self, **kw: Any) -> None:
                 return None
 
@@ -976,8 +1004,12 @@ def _run_graph_extract(db_path: str, limit: int) -> None:
 
 
 @corpus.command("verify")
-@click.option("--repair", is_flag=True, default=False,
-              help="Attempt to repair inconsistencies found (reset orphaned embedded flags, clear orphaned vectors).")
+@click.option(
+    "--repair",
+    is_flag=True,
+    default=False,
+    help="Attempt to repair inconsistencies found (reset orphaned embedded flags, clear orphaned vectors).",
+)
 @click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
 def corpus_verify_cmd(repair: bool, db_path: str | None) -> None:
     """Verify corpus integrity across corpus_turns, vector store, and FTS5 indexes.
@@ -1101,15 +1133,16 @@ def corpus_verify_cmd(repair: bool, db_path: str | None) -> None:
                 vec_conn = _sqlite3.connect(vec_db_path)
                 try:
                     cursor = vec_conn.execute(
-                        "DELETE FROM vector_metadata WHERE id IN "
-                        f"({','.join('?' * len(orphaned_vectors))})",
+                        f"DELETE FROM vector_metadata WHERE id IN ({','.join('?' * len(orphaned_vectors))})",
                         list(orphaned_vectors),
                     )
                     try:
-                        vec_conn.execute("DELETE FROM vss_vectors WHERE rowid IN "
-                                        "(SELECT rowid FROM vector_metadata WHERE id IN "
-                                        f"({','.join('?' * len(orphaned_vectors))}))",
-                                        list(orphaned_vectors))
+                        vec_conn.execute(
+                            "DELETE FROM vss_vectors WHERE rowid IN "
+                            "(SELECT rowid FROM vector_metadata WHERE id IN "
+                            f"({','.join('?' * len(orphaned_vectors))}))",
+                            list(orphaned_vectors),
+                        )
                     except Exception:
                         pass  # vss table may not exist
                     vec_conn.commit()
@@ -1178,14 +1211,17 @@ def corpus_verify_cmd(repair: bool, db_path: str | None) -> None:
 
         # Also check for very old needs_reembed flags (stale >7 days)
         from datetime import datetime as _dt, timezone as _tz
-        week_ago = (_dt.now(_tz.utc).isoformat())
+
+        week_ago = _dt.now(_tz.utc).isoformat()
         stale_old = main_conn.execute(
             "SELECT COUNT(*) FROM corpus_turns WHERE needs_reembed = 1 AND updated_at < ?",
             (week_ago,),
         ).fetchone()[0]
         if stale_old > 0:
-            click.echo(f"  NOTE: {stale_old} turns with needs_reembed=1 older than current session "
-                       "(may indicate interrupted re-embed pass)")
+            click.echo(
+                f"  NOTE: {stale_old} turns with needs_reembed=1 older than current session "
+                "(may indicate interrupted re-embed pass)"
+            )
     finally:
         main_conn.close()
 
@@ -1397,6 +1433,7 @@ def corpus_backfill_cmd(limit: int, db_path: str | None) -> None:
         # Create vector store
         from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
         import os
+
         vec_db = cfg.get("vector_backend", {}).get("db_path", "db/vectors.db")
         vector_store = SqliteVssVectorStore(
             db_path=vec_db,
@@ -1568,4 +1605,3 @@ def corpus_list_cmd(
 
     if len(turns) >= limit:
         click.echo(f"\n  (showing first {limit}; use --limit to show more)")
-

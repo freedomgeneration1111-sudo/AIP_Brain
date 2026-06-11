@@ -46,6 +46,7 @@ VALID_MODES = {"continuity", "critique", "strategy", "librarian", "risk"}
 # Pydantic models
 # ---------------------------------------------------------------------------
 
+
 class BeastCommentaryRequest(BaseModel):
     """Request body for Beast commentary generation."""
 
@@ -85,6 +86,7 @@ class BeastCommentaryResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _commentary_artifact_id(turn_id: str, mode: str = "") -> str:
     """Deterministic artifact ID for Beast commentary on a given turn + mode.
@@ -143,6 +145,7 @@ def _not_available_response(turn_id: str, **overrides: Any) -> BeastCommentaryRe
 # ---------------------------------------------------------------------------
 # GET endpoint — retrieve existing commentary
 # ---------------------------------------------------------------------------
+
 
 @router.get(
     "/turns/{turn_id}/beast-commentary",
@@ -228,6 +231,7 @@ async def get_beast_commentary(
 # ---------------------------------------------------------------------------
 # POST endpoint — generate commentary
 # ---------------------------------------------------------------------------
+
 
 @router.post(
     "/turns/{turn_id}/beast-commentary/run",
