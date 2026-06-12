@@ -351,14 +351,15 @@ class TestLayerDiscipline:
     """Verify that Phase 4 code maintains three-layer architecture."""
 
     def test_ask_route_no_orchestration_import(self):
-        """ask.py should import from orchestration (allowed in adapter for wiring)."""
+        """ask.py should NOT import from orchestration (container-mediated wiring)."""
         import importlib
 
         module = importlib.import_module("aip.adapter.api.routes.ask")
         source = open(module.__file__).read()
-        # It's acceptable for adapter routes to import from orchestration
-        # for wiring purposes — the key constraint is GUI never imports orchestration
-        assert "from aip.orchestration.ask_pipeline import" in source
+        # Routes must access orchestration through the container, not via
+        # direct imports.  This was refactored to container-mediated wiring
+        # so that the adapter layer never statically depends on orchestration.
+        assert "from aip.orchestration" not in source
 
     def test_knowledge_route_no_orchestration_import(self):
         """knowledge.py should NOT import from orchestration."""

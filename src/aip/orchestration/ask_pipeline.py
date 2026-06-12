@@ -489,6 +489,17 @@ async def ask(
     if project is not None:
         project_id = project.get("project_id", project_name)
         project_domain = project.get("domain") or project_name
+    else:
+        # Project not found — return explicit status so callers can distinguish
+        # "project doesn't exist" from "project exists but has no memory".
+        return AskResult(
+            status="NO_PROJECT",
+            answer=f"Project '{project_name}' not found. Create it first with: aip project create {project_name}",
+            prompt=question,
+            project_name=project_name,
+            project_id=project_id,
+            session_id=session_id,
+        )
 
     # Multi-channel retrieval via RetrievalOrchestrator + SmartContextPacker
     retrieval_trace: RetrievalTrace | None = None

@@ -952,8 +952,8 @@ class TestNoProject:
             stores=stores,
         )
 
-        assert result.status == "NO_PROJECT_MEMORY"
-        assert "No relevant sources" in result.answer
+        assert result.status == "NO_PROJECT"
+        assert "not found" in result.answer.lower()
         assert result.artifact_id == ""  # No orphan artifacts
 
 

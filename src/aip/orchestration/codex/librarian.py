@@ -33,6 +33,7 @@ from aip.foundation.schemas.codex import (
     CodexSource,
     CodexTopic,
 )
+from aip.foundation.source_types import CONVERSATION_SOURCE_TYPES, LEGACY_SOURCE_MODEL_MAP
 from aip.logging import get_logger
 
 log = get_logger(__name__)
@@ -217,9 +218,7 @@ class Librarian:
 
                 # Determine source type
                 source_type = "document"
-                if source_model in ("claude", "gpt", "deepseek", "glm", "gemini", "grok"):
-                    source_type = "conversation"
-                elif source_model == "aip_chat":
+                if source_model in CONVERSATION_SOURCE_TYPES or source_model in LEGACY_SOURCE_MODEL_MAP:
                     source_type = "conversation"
 
                 # Compute content hash from source_key + turn count

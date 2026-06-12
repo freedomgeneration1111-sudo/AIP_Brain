@@ -1482,9 +1482,9 @@ async def lifespan(app: FastAPI):
         container._ask_stores_class = _ask_mod.AskStores
         container._search_sources_fn = _ask_mod._search_sources_with_trace
         try:
-            from aip.orchestration.channels.lexical_channel import _sanitize_fts_query
+            from aip.foundation.sanitize_fts import sanitize_fts_query
 
-            container._sanitize_fts_query_fn = _sanitize_fts_query
+            container._sanitize_fts_query_fn = sanitize_fts_query
         except ImportError:
             container._sanitize_fts_query_fn = None
         log.info("orchestration_functions_wired", module="ask_pipeline")

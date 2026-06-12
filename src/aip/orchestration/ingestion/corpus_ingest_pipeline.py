@@ -31,6 +31,7 @@ from aip.foundation.schemas.corpus_turn import (
     compute_content_hash,
     make_turn_id,
 )
+from aip.foundation.source_types import CHAT_EXPORT_FORMAT, LEGACY_SOURCE_MODEL_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ class CorpusIngestResult:
 class CorpusIngestConfig:
     """Configuration for corpus ingestion."""
 
-    source_model: str = ""  # "claude" | "gpt" | "document" etc.
+    source_model: str = ""  # "chat_export" | "conversation_export" | "document" etc.
     source_account: str = "corpus_ingest"
     export_date: str = ""
     db_path: str = ""
@@ -252,8 +253,9 @@ def _parse_conversation_file(path: str, config: CorpusIngestConfig) -> list[Corp
     """Parse a conversation export file into CorpusTurns."""
     os.path.basename(path).lower()
 
-    # Claude export
-    if "claude" in config.source_model.lower() or "chat_messages" in _peek_content(path):
+    # Chat-export-format conversations (normalised provenance tag)
+    normalised_source = LEGACY_SOURCE_MODEL_MAP.get(config.source_model.lower(), config.source_model.lower())
+    if normalised_source == CHAT_EXPORT_FORMAT or "chat_messages" in _peek_content(path):
         try:
             from aip.orchestration.ingestion.parsers.claude_parser import parse_claude_export
 
@@ -263,7 +265,7 @@ def _parse_conversation_file(path: str, config: CorpusIngestConfig) -> list[Corp
                 turn.source_path = path
             return turns
         except Exception as exc:
-            logger.warning("Claude parser failed for %s: %s", path, exc)
+            logger.warning("Chat-export parser failed for %s: %s", path, exc)
             return []
 
     # ChatGPT export — convert to CorpusTurns via ImportedConversation

@@ -205,7 +205,7 @@ class TestVssStoreAsyncInit:
 
         if not store._vss_available:
             assert health["degraded"] is True
-            assert "fallback" in health["backend_name"]
+            assert "brute_force" in health["backend_name"]
 
 
 # ---------------------------------------------------------------------------
