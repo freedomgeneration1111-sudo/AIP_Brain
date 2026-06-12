@@ -44,10 +44,10 @@ jobs:
         # import sorting, line length, and whitespace issues.
         run: uv run ruff check .
 
-  test:
-    name: Tests
+  core-tests:
+    name: Tests — core (a–r)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -67,7 +67,98 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Run test suite
+      - name: Run core tests
         env:
           CI: "true"
-        run: uv run pytest -q --tb=short
+        run: >
+          uv run pytest
+          tests/test_a*.py tests/test_b*.py tests/test_c*.py tests/test_d*.py
+          tests/test_e*.py tests/test_f*.py tests/test_g*.py tests/test_i*.py
+          tests/test_k*.py tests/test_l*.py tests/test_m*.py tests/test_n*.py
+          tests/test_o*.py tests/test_p*.py tests/test_r*.py
+          -q --tb=short
+
+  sprint-tests-early:
+    name: Tests — sprint 510–539
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run sprint tests (early)
+        env:
+          CI: "true"
+        run: >
+          uv run pytest
+          tests/test_sprint510*.py tests/test_sprint511*.py
+          tests/test_sprint512*.py tests/test_sprint513*.py
+          tests/test_sprint514*.py tests/test_sprint516*.py
+          tests/test_sprint523*.py tests/test_sprint524*.py
+          tests/test_sprint525*.py tests/test_sprint526*.py
+          tests/test_sprint527*.py tests/test_sprint528*.py
+          tests/test_sprint529*.py tests/test_sprint530*.py
+          tests/test_sprint531*.py tests/test_sprint532*.py
+          tests/test_sprint533*.py tests/test_sprint534*.py
+          tests/test_sprint535*.py tests/test_sprint536*.py
+          tests/test_sprint537*.py tests/test_sprint538*.py
+          tests/test_sprint539*.py
+          -q --tb=short
+
+  sprint-tests-late:
+    name: Tests — sprint 546+ & remaining
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run sprint tests (late) + remaining tests
+        env:
+          CI: "true"
+        run: >
+          uv run pytest
+          tests/test_sprint546*.py tests/test_sprint547*.py
+          tests/test_sprint548*.py tests/test_sprint549*.py
+          tests/test_sprint550*.py tests/test_sprint560*.py
+          tests/test_sprint561*.py tests/test_sprint562*.py
+          tests/test_sprint563*.py tests/test_sprint58*.py
+          tests/test_sprint59*.py tests/test_sprint8*.py
+          tests/test_schemas*.py tests/test_session*.py
+          tests/test_sexton*.py tests/test_sqlite*.py
+          tests/test_stabilization.py tests/test_startup*.py
+          tests/test_store*.py tests/test_structural*.py
+          tests/test_surfaces*.py tests/test_synthesis*.py
+          tests/test_system*.py tests/test_t*.py
+          tests/test_v*.py tests/test_w*.py
+          -q --tb=short
