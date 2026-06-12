@@ -6186,6 +6186,14 @@ class StatusAggregator:
         self._cached_result: dict | None = None
         self._cache_timestamp: float = 0.0
 
+    def invalidate_cache(self) -> None:
+        """Invalidate the cached status result.
+
+        Called when state changes (e.g. WS session register/unregister)
+        so the next get_status() call reflects the current state.
+        """
+        self._cached_result = None
+
     def _collect_sub_manager_summaries(self) -> dict[str, dict[str, Any]]:
         """Collect all sub-manager status summaries.
 
@@ -7432,6 +7440,9 @@ class AlertManager:
                 "missed_heartbeats": 0,
             }
 
+        # Invalidate status cache so ws_sessions count is fresh
+        self._status_aggregator.invalidate_cache()
+
         # Notify other subscribers about the new session
         self._realtime_bus.notify_realtime_subscribers(
             {
@@ -7462,6 +7473,9 @@ class AlertManager:
 
         with self._lock:
             self._ws_sessions.pop(session_id, None)
+
+        # Invalidate status cache so ws_sessions count is fresh
+        self._status_aggregator.invalidate_cache()
 
         logger.info(
             "ws_session_unregistered",
@@ -8193,13 +8207,33 @@ class AlertManager:
         rate-limiting state from the persistent store so that duplicate
         alert storms are prevented immediately after a restart.
 
+        Sprint 13.3: If the store is a raw async AlertHistoryStore
+        (not already a SyncAlertHistoryBridge), it is automatically
+        wrapped in a SyncAlertHistoryBridge so that all synchronous
+        callers in AlertManager can invoke store methods without await.
+
         Parameters
         ----------
         store:
-            An AlertHistoryStore instance with record_alert(),
-            record_delivery_failure(), get_alert_history(), and
-            get_delivery_failures() methods.
+            An AlertHistoryStore instance, a SyncAlertHistoryBridge
+            instance, or any object with the expected store methods.
         """
+        # Auto-wrap raw async AlertHistoryStore in SyncAlertHistoryBridge
+        from aip.adapter.alert_history_store import SyncAlertHistoryBridge as _Bridge
+
+        if isinstance(store, _Bridge):
+            # Already a bridge — use as-is, but ensure initialized
+            store.initialize()
+        else:
+            from aip.adapter.alert_history_store import AlertHistoryStore as _AHS
+
+            if isinstance(store, _AHS):
+                bridge = _Bridge(store)
+                # Ensure DB tables are created (sync bridge awaits the
+                # async initialize() internally)
+                bridge.initialize()
+                store = bridge
+
         self._history_store = store
         # Sprint 5.61: Propagate store reference to ThrottleManager
         self._throttle_mgr._history_store = store

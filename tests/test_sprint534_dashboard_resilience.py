@@ -16,7 +16,7 @@ import tempfile
 import time
 from unittest.mock import MagicMock
 
-from aip.adapter.alert_history_store import AlertHistoryStore
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import (
     Alert,
     AlertConfig,
@@ -384,7 +384,8 @@ class TestAlertGroupTTL:
         """cleanup_expired_groups() removes groups older than TTL."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -393,7 +394,7 @@ class TestAlertGroupTTL:
                     alert_group_ttl_hours=1,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             # Create a group with a very old timestamp
             mgr.send_alert(
@@ -475,7 +476,8 @@ class TestAlertGroupTTL:
         """cleanup_expired_groups() also deletes groups from persistent store."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -484,7 +486,7 @@ class TestAlertGroupTTL:
                     alert_group_ttl_hours=1,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             mgr.send_alert(
                 Alert(
@@ -496,7 +498,8 @@ class TestAlertGroupTTL:
             )
 
             # Verify the group exists in SQLite
-            groups_before = store.get_alert_groups()
+            bridge = mgr._history_store  # bridge after auto-wrapping
+            groups_before = bridge.get_alert_groups()
             assert "persist_ttl_test" in groups_before
 
             # Expire the group
@@ -506,7 +509,7 @@ class TestAlertGroupTTL:
             assert dissolved == 1
 
             # Verify the group is gone from SQLite
-            groups_after = store.get_alert_groups()
+            groups_after = bridge.get_alert_groups()
             assert "persist_ttl_test" not in groups_after
 
     def test_cleanup_runs_on_add_alert_to_group(self):
@@ -600,7 +603,8 @@ class TestAlertGroupTTL:
         """Causal groups also get last_activity_at metadata."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -609,7 +613,7 @@ class TestAlertGroupTTL:
                     causal_grouping_enabled=True,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             before = time.time()
             mgr.send_alert(

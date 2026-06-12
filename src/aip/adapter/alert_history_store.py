@@ -3251,8 +3251,12 @@ class SyncAlertHistoryBridge:
     def prune_delivery_status(self, **kwargs) -> int:
         return self._call(self._store.prune_delivery_status(**kwargs))
 
-    def save_transition_probabilities(self, **kwargs) -> bool:
-        return self._call(self._store.save_transition_probabilities(**kwargs))
+    def save_transition_probabilities(
+        self,
+        transition_counts: dict[tuple[str, str], int],
+        transition_totals: dict[str, int],
+    ) -> bool:
+        return self._call(self._store.save_transition_probabilities(transition_counts, transition_totals))
 
     def load_transition_probabilities(self):
         return self._call(self._store.load_transition_probabilities())
@@ -3310,3 +3314,16 @@ class SyncAlertHistoryBridge:
 
     def get_status(self) -> dict:
         return self._call(self._store.get_status())
+
+    def initialize(self) -> None:
+        """Synchronous wrapper for AlertHistoryStore.initialize().
+
+        Must be called after construction to ensure DB tables exist.
+        """
+        self._call(self._store.initialize())
+
+    def get_delivery_status_count(self) -> int:
+        return self._call(self._store.get_delivery_status_count())
+
+    def get_retraining_events(self, limit: int = 20) -> list[dict]:
+        return self._call(self._store.get_retraining_events(limit))

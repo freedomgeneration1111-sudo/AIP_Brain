@@ -30,7 +30,7 @@ import tempfile
 import time
 from unittest.mock import MagicMock, patch
 
-from aip.adapter.alert_history_store import AlertHistoryStore
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import (
     Alert,
     AlertConfig,
@@ -144,12 +144,13 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             transition_counts = {("pool_adjustment", "quality_degradation"): 15}
             transition_totals = {"pool_adjustment": 20}
 
-            result = store.save_transition_probabilities(transition_counts, transition_totals)
+            result = bridge.save_transition_probabilities(transition_counts, transition_totals)
             assert result is True
 
     def test_load_transition_probabilities(self):
@@ -157,7 +158,8 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             transition_counts = {
                 ("pool_adjustment", "quality_degradation"): 15,
@@ -165,8 +167,8 @@ class TestTransitionProbabilityPersistence:
             }
             transition_totals = {"pool_adjustment": 20, "quality_degradation": 8}
 
-            store.save_transition_probabilities(transition_counts, transition_totals)
-            loaded_counts, loaded_totals = store.load_transition_probabilities()
+            bridge.save_transition_probabilities(transition_counts, transition_totals)
+            loaded_counts, loaded_totals = bridge.load_transition_probabilities()
 
             assert loaded_counts == transition_counts
             assert loaded_totals == transition_totals
@@ -176,9 +178,10 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            loaded_counts, loaded_totals = store.load_transition_probabilities()
+            loaded_counts, loaded_totals = bridge.load_transition_probabilities()
             assert loaded_counts == {}
             assert loaded_totals == {}
 
@@ -187,7 +190,8 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -195,7 +199,7 @@ class TestTransitionProbabilityPersistence:
                     transition_persistence_enabled=True,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
             mgr.prediction_mgr._transition_counts = {("a", "b"): 10}
             mgr.prediction_mgr._transition_totals = {"a": 10}
 
@@ -203,7 +207,7 @@ class TestTransitionProbabilityPersistence:
             assert result is True
 
             # Verify it was persisted
-            counts, totals = store.load_transition_probabilities()
+            counts, totals = bridge.load_transition_probabilities()
             assert counts == {("a", "b"): 10}
             assert totals == {"a": 10}
 
@@ -218,10 +222,11 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # First, save some data
-            store.save_transition_probabilities(
+            bridge.save_transition_probabilities(
                 {("x", "y"): 7},
                 {"x": 7},
             )
@@ -232,7 +237,7 @@ class TestTransitionProbabilityPersistence:
                     transition_persistence_enabled=True,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             result = mgr.load_transition_model()
             assert result is True
@@ -250,9 +255,10 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            result = store.record_retraining_event(
+            result = bridge.record_retraining_event(
                 {
                     "trigger_reason": "new_alerts_threshold",
                     "alerts_since_last_train": 150,
@@ -267,9 +273,10 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            store.record_retraining_event(
+            bridge.record_retraining_event(
                 {
                     "trigger_reason": "scheduled",
                     "alerts_since_last_train": 200,
@@ -278,7 +285,7 @@ class TestTransitionProbabilityPersistence:
                 }
             )
 
-            events = store.get_retraining_events()
+            events = bridge.get_retraining_events()
             assert len(events) == 1
             assert events[0]["trigger_reason"] == "scheduled"
             assert events[0]["alerts_since_last_train"] == 200
@@ -332,7 +339,8 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             import sqlite3
 
@@ -481,7 +489,8 @@ class TestCircuitBreakerAutoTuning:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -490,7 +499,7 @@ class TestCircuitBreakerAutoTuning:
                     throttle_threshold_per_minute=100,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
             mgr.throttle_mgr._cb_auto_tune_last_computed = 0  # Force recomputation
 
             result = mgr.update_cb_auto_tune()
@@ -940,7 +949,8 @@ class TestSprint539Integration:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # Phase 1: Learn transitions
             mgr = AlertManager(
@@ -953,7 +963,7 @@ class TestSprint539Integration:
                     min_alert_interval_seconds=0,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             now = time.time()
             for i in range(20):
@@ -978,7 +988,7 @@ class TestSprint539Integration:
                     transition_persistence_enabled=True,
                 )
             )
-            mgr2.attach_history_store(store)
+            mgr2.attach_history_store(bridge)
 
             # Load persisted model
             assert mgr2.load_transition_model() is True

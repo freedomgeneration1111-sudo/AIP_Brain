@@ -16,7 +16,7 @@ import sqlite3
 import tempfile
 from datetime import datetime, timezone
 
-from aip.adapter.alert_history_store import AlertHistoryStore
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import (
     Alert,
     AlertConfig,
@@ -116,22 +116,24 @@ class TestAlertGroupPersistence:
         """record_alert_group() persists a group membership."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            assert store.record_alert_group("my_subject", "alert-1-abc")
-            assert store.record_alert_group("my_subject", "alert-2-def")
+            assert bridge.record_alert_group("my_subject", "alert-1-abc")
+            assert bridge.record_alert_group("my_subject", "alert-2-def")
 
     def test_get_alert_groups(self):
         """get_alert_groups() returns persisted groups."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            store.record_alert_group("subject_a", "cid-1")
-            store.record_alert_group("subject_a", "cid-2")
-            store.record_alert_group("subject_b", "cid-3")
+            bridge.record_alert_group("subject_a", "cid-1")
+            bridge.record_alert_group("subject_a", "cid-2")
+            bridge.record_alert_group("subject_b", "cid-3")
 
-            groups = store.get_alert_groups()
+            groups = bridge.get_alert_groups()
             assert "subject_a" in groups
             assert "subject_b" in groups
             assert "cid-1" in groups["subject_a"]
@@ -142,13 +144,14 @@ class TestAlertGroupPersistence:
         """delete_alert_group() removes a group from storage."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            store.record_alert_group("to_delete", "cid-1")
-            store.record_alert_group("to_keep", "cid-2")
+            bridge.record_alert_group("to_delete", "cid-1")
+            bridge.record_alert_group("to_keep", "cid-2")
 
-            assert store.delete_alert_group("to_delete")
-            groups = store.get_alert_groups()
+            assert bridge.delete_alert_group("to_delete")
+            groups = bridge.get_alert_groups()
             assert "to_delete" not in groups
             assert "to_keep" in groups
 
@@ -158,12 +161,14 @@ class TestAlertGroupPersistence:
             db_path = os.path.join(tmp_dir, "alerts.db")
 
             store1 = AlertHistoryStore(db_path)
-            store1.initialize()
-            store1.record_alert_group("restart_test", "cid-restart-1")
+            bridge1 = SyncAlertHistoryBridge(store1)
+            bridge1.initialize()
+            bridge1.record_alert_group("restart_test", "cid-restart-1")
 
             store2 = AlertHistoryStore(db_path)
-            store2.initialize()
-            groups = store2.get_alert_groups()
+            bridge2 = SyncAlertHistoryBridge(store2)
+            bridge2.initialize()
+            groups = bridge2.get_alert_groups()
             assert "restart_test" in groups
             assert "cid-restart-1" in groups["restart_test"]
 
@@ -171,7 +176,8 @@ class TestAlertGroupPersistence:
         """_add_alert_to_group persists group membership when store is attached."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -179,7 +185,7 @@ class TestAlertGroupPersistence:
                     min_alert_interval_seconds=0,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             correlation_id = mgr.send_alert(
                 Alert(
@@ -190,7 +196,7 @@ class TestAlertGroupPersistence:
                 )
             )
 
-            groups = store.get_alert_groups()
+            groups = bridge.get_alert_groups()
             assert "persist_test" in groups
             assert correlation_id in groups["persist_test"]
 
@@ -201,9 +207,10 @@ class TestAlertGroupPersistence:
 
             # First instance: create some groups
             store = AlertHistoryStore(db_path)
-            store.initialize()
-            store.record_alert_group("loaded_group", "cid-loaded-1")
-            store.record_alert_group("loaded_group", "cid-loaded-2")
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
+            bridge.record_alert_group("loaded_group", "cid-loaded-1")
+            bridge.record_alert_group("loaded_group", "cid-loaded-2")
 
             # New manager attaches the store — should load groups
             mgr = AlertManager(
@@ -212,7 +219,7 @@ class TestAlertGroupPersistence:
                     min_alert_interval_seconds=0,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             groups = mgr.get_alert_groups()
             assert "loaded_group" in groups
@@ -283,7 +290,8 @@ class TestDeliveryStatusAutoPruning:
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = os.path.join(tmp_dir, "alerts.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # Insert an old record directly
             with sqlite3.connect(db_path) as conn:
@@ -311,23 +319,24 @@ class TestDeliveryStatusAutoPruning:
                     ("new-cid", "delivered", "batch_reduction", "warning", "test", "[]", "{}", now, now, now),
                 )
 
-            deleted = store.prune_delivery_status(max_rows=2000, max_age_days=30)
+            deleted = bridge.prune_delivery_status(max_rows=2000, max_age_days=30)
             assert deleted >= 1
 
             # The old record should be gone
-            assert store.get_delivery_status_by_correlation_id("old-cid") is None
+            assert bridge.get_delivery_status_by_correlation_id("old-cid") is None
             # The new record should remain
-            assert store.get_delivery_status_by_correlation_id("new-cid") is not None
+            assert bridge.get_delivery_status_by_correlation_id("new-cid") is not None
 
     def test_prune_delivery_status_by_count(self):
         """prune_delivery_status() deletes oldest records when over max_rows."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # Insert more records than max_rows
             for i in range(15):
-                store.record_delivery_status(
+                bridge.record_delivery_status(
                     {
                         "correlation_id": f"cid-prune-{i}",
                         "status": "delivered",
@@ -339,7 +348,7 @@ class TestDeliveryStatusAutoPruning:
 
             # Prune to max_rows=10 (but auto-pruning already happened in record)
             # Let's add more and check
-            count_before = store.get_delivery_status_count()
+            count_before = bridge.get_delivery_status_count()
             # Auto-pruning should have kept it at or below 2000 (default)
             assert count_before > 0
 
@@ -347,11 +356,12 @@ class TestDeliveryStatusAutoPruning:
         """get_delivery_status_count() returns total row count."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            assert store.get_delivery_status_count() == 0
+            assert bridge.get_delivery_status_count() == 0
 
-            store.record_delivery_status(
+            bridge.record_delivery_status(
                 {
                     "correlation_id": "cid-count-1",
                     "status": "delivered",
@@ -360,9 +370,9 @@ class TestDeliveryStatusAutoPruning:
                     "subject": "test",
                 }
             )
-            assert store.get_delivery_status_count() == 1
+            assert bridge.get_delivery_status_count() == 1
 
-            store.record_delivery_status(
+            bridge.record_delivery_status(
                 {
                     "correlation_id": "cid-count-2",
                     "status": "delivered",
@@ -371,13 +381,14 @@ class TestDeliveryStatusAutoPruning:
                     "subject": "test",
                 }
             )
-            assert store.get_delivery_status_count() == 2
+            assert bridge.get_delivery_status_count() == 2
 
     def test_auto_prune_after_record_delivery_status(self):
         """record_delivery_status() auto-prunes by calling prune_delivery_status()."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # Insert a record with a very old created_at to test age pruning
             with sqlite3.connect(os.path.join(tmp_dir, "alerts.db")) as conn:
@@ -404,7 +415,7 @@ class TestDeliveryStatusAutoPruning:
                 )
 
             # Recording a new status should trigger auto-pruning
-            store.record_delivery_status(
+            bridge.record_delivery_status(
                 {
                     "correlation_id": "new-auto-cid",
                     "status": "delivered",
@@ -415,7 +426,7 @@ class TestDeliveryStatusAutoPruning:
             )
 
             # The old record should be pruned (30 days default)
-            assert store.get_delivery_status_by_correlation_id("old-auto-cid") is None
+            assert bridge.get_delivery_status_by_correlation_id("old-auto-cid") is None
 
 
 # ============================================================================
@@ -452,7 +463,8 @@ class TestWebSocketAuthAndRateLimiting:
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = os.path.join(tmp_dir, "alerts.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # Verify the table exists
             with sqlite3.connect(db_path) as conn:
@@ -464,7 +476,8 @@ class TestWebSocketAuthAndRateLimiting:
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = os.path.join(tmp_dir, "alerts.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.execute("PRAGMA table_info(alert_groups)")
@@ -491,7 +504,8 @@ class TestCausalGrouping:
         """When causal_grouping_enabled=True, causal chain alerts are grouped."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -501,7 +515,7 @@ class TestCausalGrouping:
                     causal_grouping_window_seconds=300,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             # Send pool_adjustment alert
             cid1 = mgr.send_alert(
@@ -544,7 +558,8 @@ class TestCausalGrouping:
         """When causal_grouping_enabled=False, no causal groups are created."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -553,7 +568,7 @@ class TestCausalGrouping:
                     causal_grouping_enabled=False,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             mgr.send_alert(
                 Alert(
@@ -571,7 +586,8 @@ class TestCausalGrouping:
         """Non-causal-chain alert types don't create causal groups."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -580,7 +596,7 @@ class TestCausalGrouping:
                     causal_grouping_enabled=True,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             # Use an alert_type that's not in the causal chain
             mgr.send_alert(
@@ -599,7 +615,8 @@ class TestCausalGrouping:
         """Causal groups are isolated by subject."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -608,7 +625,7 @@ class TestCausalGrouping:
                     causal_grouping_enabled=True,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             cid1 = mgr.send_alert(
                 Alert(
@@ -639,7 +656,8 @@ class TestCausalGrouping:
         """Causal group membership is persisted to the AlertHistoryStore."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -648,7 +666,7 @@ class TestCausalGrouping:
                     causal_grouping_enabled=True,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             mgr.send_alert(
                 Alert(
@@ -660,7 +678,7 @@ class TestCausalGrouping:
             )
 
             # Check that the causal group was persisted
-            groups = store.get_alert_groups()
+            groups = bridge.get_alert_groups()
             assert "causal:persist_causal" in groups
 
     def test_causal_grouping_rebuilt_on_startup(self):
@@ -669,10 +687,11 @@ class TestCausalGrouping:
             db_path = os.path.join(tmp_dir, "alerts.db")
 
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # Persist a causal group
-            store.record_alert_group("causal:rebuild_test", "cid-rebuild-1")
+            bridge.record_alert_group("causal:rebuild_test", "cid-rebuild-1")
 
             # New manager loads the group
             mgr = AlertManager(
@@ -681,7 +700,7 @@ class TestCausalGrouping:
                     min_alert_interval_seconds=0,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             groups = mgr.get_alert_groups()
             assert "causal:rebuild_test" in groups
@@ -710,7 +729,8 @@ class TestCausalGrouping:
         """When causal grouping is enabled, both subject and causal groups exist."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -719,7 +739,7 @@ class TestCausalGrouping:
                     causal_grouping_enabled=True,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             cid = mgr.send_alert(
                 Alert(

@@ -24,7 +24,7 @@ import os
 import tempfile
 import time
 
-from aip.adapter.alert_history_store import AlertHistoryStore
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import (
     Alert,
     AlertConfig,
@@ -421,7 +421,8 @@ class TestPruningObservability:
         """_run_scheduled_prune() records a history entry."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -431,7 +432,7 @@ class TestPruningObservability:
                     delivery_status_max_rows=2000,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             mgr._run_scheduled_prune()
 
@@ -446,7 +447,8 @@ class TestPruningObservability:
         """Pruning history is capped at pruning_history_size."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -455,7 +457,7 @@ class TestPruningObservability:
                     pruning_history_size=3,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             for _ in range(5):
                 mgr._run_scheduled_prune()
@@ -467,7 +469,8 @@ class TestPruningObservability:
         """get_pruning_history() respects limit parameter."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -476,7 +479,7 @@ class TestPruningObservability:
                     pruning_history_size=20,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             for _ in range(5):
                 mgr._run_scheduled_prune()
@@ -488,7 +491,8 @@ class TestPruningObservability:
         """get_prune_scheduler_status() includes history and total_rows_pruned."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -496,7 +500,7 @@ class TestPruningObservability:
                     min_alert_interval_seconds=0,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             mgr._run_scheduled_prune()
 
@@ -735,7 +739,8 @@ class TestCausalChainPrediction:
         """predict_causal_chain() works with persistent store attached."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -745,7 +750,7 @@ class TestCausalChainPrediction:
                     causal_grouping_window_seconds=300,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             alert = Alert(
                 alert_type="pool_adjustment",

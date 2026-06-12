@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from aip.adapter.alert_history_store import AlertHistoryStore
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import (
     Alert,
     AlertConfig,
@@ -144,10 +144,11 @@ class TestAsyncAlertDispatch:
         """Correlation ID is persisted to the AlertHistoryStore."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             correlation_id = mgr.send_alert(
                 Alert(
@@ -161,7 +162,7 @@ class TestAsyncAlertDispatch:
             # Wait for background dispatch to complete
             time.sleep(0.1)
 
-            alerts = store.get_alert_history()
+            alerts = bridge.get_alert_history()
             assert len(alerts) == 1
             assert alerts[0]["correlation_id"] == correlation_id
 
@@ -178,9 +179,10 @@ class TestAlertAcknowledgment:
         """AlertHistoryStore.acknowledge_alert() updates the alert state."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            store.record_alert(
+            bridge.record_alert(
                 {
                     "alert_type": "batch_reduction",
                     "severity": "warning",
@@ -190,10 +192,10 @@ class TestAlertAcknowledgment:
                 }
             )
 
-            result = store.acknowledge_alert(1, acknowledged_by="operator")
+            result = bridge.acknowledge_alert(1, acknowledged_by="operator")
             assert result is True
 
-            alert = store.get_alert_by_id(1)
+            alert = bridge.get_alert_by_id(1)
             assert alert is not None
             assert alert["acknowledged"] == 1
             assert alert["acknowledged_by"] == "operator"
@@ -203,9 +205,10 @@ class TestAlertAcknowledgment:
         """AlertHistoryStore.dismiss_alert() updates the alert state."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            store.record_alert(
+            bridge.record_alert(
                 {
                     "alert_type": "batch_reduction",
                     "severity": "warning",
@@ -215,10 +218,10 @@ class TestAlertAcknowledgment:
                 }
             )
 
-            result = store.dismiss_alert(1, dismissed_by="admin")
+            result = bridge.dismiss_alert(1, dismissed_by="admin")
             assert result is True
 
-            alert = store.get_alert_by_id(1)
+            alert = bridge.get_alert_by_id(1)
             assert alert is not None
             assert alert["acknowledged"] == 2  # 2 = dismissed
             assert alert["acknowledged_by"] == "admin"
@@ -227,18 +230,20 @@ class TestAlertAcknowledgment:
         """Acknowledging a non-existent alert returns False."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            result = store.acknowledge_alert(9999)
+            result = bridge.acknowledge_alert(9999)
             assert result is False
 
     def test_get_alert_by_id(self):
         """AlertHistoryStore.get_alert_by_id() returns alert details."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            store.record_alert(
+            bridge.record_alert(
                 {
                     "alert_type": "quality_degradation",
                     "severity": "critical",
@@ -248,7 +253,7 @@ class TestAlertAcknowledgment:
                 }
             )
 
-            alert = store.get_alert_by_id(1)
+            alert = bridge.get_alert_by_id(1)
             assert alert is not None
             assert alert["alert_type"] == "quality_degradation"
             assert alert["acknowledged"] == 0  # Not yet acknowledged
@@ -257,19 +262,21 @@ class TestAlertAcknowledgment:
         """get_alert_by_id() returns None for non-existent ID."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            alert = store.get_alert_by_id(9999)
+            alert = bridge.get_alert_by_id(9999)
             assert alert is None
 
     def test_acknowledge_via_alert_manager(self):
         """AlertManager.acknowledge_alert() delegates to the store."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             mgr.send_alert(
                 Alert(
@@ -282,24 +289,25 @@ class TestAlertAcknowledgment:
             time.sleep(0.1)
 
             # Get the alert ID from the store
-            alerts = store.get_alert_history()
+            alerts = bridge.get_alert_history()
             assert len(alerts) == 1
             alert_id = alerts[0]["id"]
 
             result = mgr.acknowledge_alert(alert_id, "operator")
             assert result is True
 
-            alert = store.get_alert_by_id(alert_id)
+            alert = bridge.get_alert_by_id(alert_id)
             assert alert["acknowledged"] == 1
 
     def test_dismiss_via_alert_manager(self):
         """AlertManager.dismiss_alert() delegates to the store."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             mgr.send_alert(
                 Alert(
@@ -311,13 +319,13 @@ class TestAlertAcknowledgment:
             )
             time.sleep(0.1)
 
-            alerts = store.get_alert_history()
+            alerts = bridge.get_alert_history()
             alert_id = alerts[0]["id"]
 
             result = mgr.dismiss_alert(alert_id, "admin")
             assert result is True
 
-            alert = store.get_alert_by_id(alert_id)
+            alert = bridge.get_alert_by_id(alert_id)
             assert alert["acknowledged"] == 2
 
     def test_acknowledge_without_store_returns_false(self):
@@ -330,9 +338,10 @@ class TestAlertAcknowledgment:
         """Acknowledged alerts include the status in get_alert_history results."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            store.record_alert(
+            bridge.record_alert(
                 {
                     "alert_type": "batch_reduction",
                     "severity": "warning",
@@ -342,9 +351,9 @@ class TestAlertAcknowledgment:
                 }
             )
 
-            store.acknowledge_alert(1, "operator")
+            bridge.acknowledge_alert(1, "operator")
 
-            alerts = store.get_alert_history()
+            alerts = bridge.get_alert_history()
             assert len(alerts) == 1
             assert alerts[0]["acknowledged"] == 1
             assert alerts[0]["acknowledged_by"] == "operator"
@@ -356,16 +365,17 @@ class TestAlertAcknowledgment:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             container = MagicMock()
             container._alert_manager = mgr
 
             # Record an alert directly
-            store.record_alert(
+            bridge.record_alert(
                 {
                     "alert_type": "batch_reduction",
                     "severity": "warning",
@@ -387,15 +397,16 @@ class TestAlertAcknowledgment:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             container = MagicMock()
             container._alert_manager = mgr
 
-            store.record_alert(
+            bridge.record_alert(
                 {
                     "alert_type": "batch_reduction",
                     "severity": "warning",
@@ -539,11 +550,12 @@ class TestRestartDeduplication:
 
             # First instance: record alerts to the store
             store1 = AlertHistoryStore(db_path)
-            store1.initialize()
+            bridge1 = SyncAlertHistoryBridge(store1)
+            bridge1.initialize()
 
             # Record an alert with a recent timestamp (within rate-limit window)
             recent_ts = datetime.now(timezone.utc).isoformat()
-            store1.record_alert(
+            bridge1.record_alert(
                 {
                     "alert_type": "batch_reduction",
                     "severity": "warning",
@@ -560,7 +572,7 @@ class TestRestartDeduplication:
                     min_alert_interval_seconds=300,
                 )
             )
-            mgr.attach_history_store(store1)
+            mgr.attach_history_store(bridge1)
 
             # The rate-limit state should be rebuilt from the store
             assert len(mgr.lifecycle_mgr._last_alert_time) > 0
@@ -571,11 +583,12 @@ class TestRestartDeduplication:
             db_path = os.path.join(tmp_dir, "alerts.db")
 
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # Record a very recent alert directly into the store
             recent_ts = datetime.now(timezone.utc).isoformat()
-            store.record_alert(
+            bridge.record_alert(
                 {
                     "alert_type": "batch_reduction",
                     "severity": "warning",
@@ -592,7 +605,7 @@ class TestRestartDeduplication:
                     min_alert_interval_seconds=300,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             # Try to send the same alert — should be rate-limited
             result = mgr.send_alert(
@@ -609,11 +622,12 @@ class TestRestartDeduplication:
         """AlertHistoryStore.get_recent_alerts_for_dedup() returns recent alerts."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # Record a recent alert
             recent_ts = datetime.now(timezone.utc).isoformat()
-            store.record_alert(
+            bridge.record_alert(
                 {
                     "alert_type": "batch_reduction",
                     "severity": "warning",
@@ -624,7 +638,7 @@ class TestRestartDeduplication:
             )
 
             # Record an old alert (outside the window)
-            store.record_alert(
+            bridge.record_alert(
                 {
                     "alert_type": "quality_degradation",
                     "severity": "warning",
@@ -635,7 +649,7 @@ class TestRestartDeduplication:
             )
 
             # Query with a 5-minute window
-            recent = store.get_recent_alerts_for_dedup(window_seconds=300)
+            recent = bridge.get_recent_alerts_for_dedup(window_seconds=300)
 
             # Only the recent alert should be returned
             assert ("batch_reduction", "graph_extraction") in recent
@@ -802,10 +816,14 @@ class TestRetentionConfigAPI:
         result = await vigil_retention_config_update(update=update, container=container)
         assert result["status"] == "quality_store_not_configured"
 
-    def test_retention_status_includes_weekly_rollup_age(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_retention_status_includes_weekly_rollup_age(self, tmp_path):
         """get_retention_status() includes weekly_rollup_age_weeks."""
         store = self._create_store(tmp_path, weekly_rollup_age_weeks=8)
-        status = store.get_retention_status()
+        # initialize() is async and wasn't awaited in _create_store;
+        # we need DB tables for get_retention_status() which queries SQLite
+        await store.initialize()
+        status = await store.get_retention_status()
         assert status["weekly_rollup_age_weeks"] == 8
 
 
@@ -887,10 +905,11 @@ class TestSchemaMigrationV2:
 
             # Now open with AlertHistoryStore which should migrate v1→v2
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # The v1 alert should be queryable with acknowledged fields
-            alerts = store.get_alert_history()
+            alerts = bridge.get_alert_history()
             assert len(alerts) == 1
             assert alerts[0]["acknowledged"] == 0
             assert alerts[0]["acknowledged_by"] == ""

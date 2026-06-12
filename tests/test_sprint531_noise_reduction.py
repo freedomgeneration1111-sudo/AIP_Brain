@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from aip.adapter.alert_history_store import AlertHistoryStore
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import (
     Alert,
     AlertConfig,
@@ -120,10 +120,11 @@ class TestDeliveryStatusTracking:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             container = MagicMock()
             container._alert_manager = mgr
@@ -297,16 +298,17 @@ class TestAlertMuting:
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = os.path.join(tmp_dir, "alerts.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # First instance: add mute rule
             mgr1 = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr1.attach_history_store(store)
+            mgr1.attach_history_store(bridge)
             mgr1.add_mute_rule("batch_reduction", "graph", duration_seconds=7200)
 
             # Second instance: rebuild from store
             mgr2 = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr2.attach_history_store(store)
+            mgr2.attach_history_store(bridge)
 
             # The mute rule should be rebuilt
             rules = mgr2.get_mute_rules()
@@ -317,9 +319,10 @@ class TestAlertMuting:
         """AlertHistoryStore records and retrieves mute rules."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            rule_id = store.record_mute_rule(
+            rule_id = bridge.record_mute_rule(
                 {
                     "alert_type": "batch_reduction",
                     "subject": "graph",
@@ -332,7 +335,7 @@ class TestAlertMuting:
 
             assert rule_id > 0
 
-            rules = store.get_active_mute_rules()
+            rules = bridge.get_active_mute_rules()
             assert len(rules) == 1
             assert rules[0]["alert_type"] == "batch_reduction"
 
@@ -340,9 +343,10 @@ class TestAlertMuting:
         """AlertHistoryStore deletes mute rules."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            store.record_mute_rule(
+            bridge.record_mute_rule(
                 {
                     "alert_type": "batch_reduction",
                     "subject": "graph",
@@ -353,10 +357,10 @@ class TestAlertMuting:
                 }
             )
 
-            deleted = store.delete_mute_rule("batch_reduction", "graph")
+            deleted = bridge.delete_mute_rule("batch_reduction", "graph")
             assert deleted is True
 
-            rules = store.get_active_mute_rules()
+            rules = bridge.get_active_mute_rules()
             assert len(rules) == 0
 
     @pytest.mark.asyncio
@@ -808,10 +812,11 @@ class TestSchemaMigrationV3:
 
             # Now open with AlertHistoryStore which should migrate v2→v3
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # Verify mute rules table exists
-            rule_id = store.record_mute_rule(
+            rule_id = bridge.record_mute_rule(
                 {
                     "alert_type": "test",
                     "subject": "test",
@@ -872,10 +877,11 @@ class TestSchemaMigrationV3:
 
             # Migrate
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # Verify delivery status table works
-            result = store.record_delivery_status(
+            result = bridge.record_delivery_status(
                 {
                     "correlation_id": "test-123",
                     "status": "delivered",
@@ -890,6 +896,6 @@ class TestSchemaMigrationV3:
             assert result is True
 
             # Query it back
-            status = store.get_delivery_status_by_correlation_id("test-123")
+            status = bridge.get_delivery_status_by_correlation_id("test-123")
             assert status is not None
             assert status["status"] == "delivered"
