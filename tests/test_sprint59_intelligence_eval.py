@@ -236,19 +236,41 @@ class TestEntityExtractor:
 class TestOrchestratorConfigChannelBudget:
     """Verify OrchestratorConfig per-channel budget fields and get_channel_max_hits()."""
 
-    def test_default_no_limits(self):
+    def test_default_data_driven_budgets(self):
         config = OrchestratorConfig()
-        assert config.get_channel_max_hits("fts") == 0
-        assert config.get_channel_max_hits("graph") == 0
+        # Sprint 5.11 established data-driven per-channel defaults
+        assert config.get_channel_max_hits("fts") == 15
+        assert config.get_channel_max_hits("graph") == 10
+        assert config.get_channel_max_hits("wiki") == 8
+        assert config.get_channel_max_hits("procedural") == 5
+        assert config.get_channel_max_hits("corpus") == 15
+        # Vector remains unlimited by default
+        assert config.get_channel_max_hits("vector") == 0
 
     def test_global_per_channel_limit(self):
-        config = OrchestratorConfig(max_hits_per_channel=5)
+        # Zero out channel-specific defaults to test global fallback
+        config = OrchestratorConfig(
+            max_hits_per_channel=5,
+            fts_max_hits=0,
+            graph_max_hits=0,
+            wiki_max_hits=0,
+            procedural_max_hits=0,
+            corpus_max_hits=0,
+        )
         assert config.get_channel_max_hits("fts") == 5
         assert config.get_channel_max_hits("graph") == 5
         assert config.get_channel_max_hits("unknown") == 5
 
     def test_channel_specific_overrides_global(self):
-        config = OrchestratorConfig(max_hits_per_channel=5, fts_max_hits=10, graph_max_hits=2)
+        # Zero out other channel defaults to isolate the override test
+        config = OrchestratorConfig(
+            max_hits_per_channel=5,
+            fts_max_hits=10,
+            graph_max_hits=2,
+            wiki_max_hits=0,
+            procedural_max_hits=0,
+            corpus_max_hits=0,
+        )
         assert config.get_channel_max_hits("fts") == 10
         assert config.get_channel_max_hits("graph") == 2
         assert config.get_channel_max_hits("wiki") == 5  # falls back to global
@@ -315,12 +337,17 @@ class TestPerChannelBudgetEnforcement:
             enable_fts=True,
             enable_vector=True,
             max_hits_per_channel=3,
+            fts_max_hits=0,
+            graph_max_hits=0,
+            wiki_max_hits=0,
+            procedural_max_hits=0,
+            corpus_max_hits=0,
         )
         hits, trace = await orch.retrieve("test query", config=config)
         assert trace.hits_before_fusion <= 6  # 3 FTS + 3 vector
 
     async def test_no_limit_when_zero(self):
-        """When per-channel limit is 0 (default), all hits should pass through."""
+        """When per-channel limit is explicitly set to 0, all hits should pass through."""
 
         async def _many_fts_hits(query):
             return [RetrievalHit(id=f"fts:{i}", content=f"Hit {i}", score=0.9, source_channel="fts") for i in range(20)]
@@ -328,7 +355,8 @@ class TestPerChannelBudgetEnforcement:
         orch = RetrievalOrchestrator()
         orch.register_channel("fts", _many_fts_hits)
 
-        config = OrchestratorConfig(enable_fts=True)  # default: no per-channel limit
+        # Explicitly set fts_max_hits=0 to disable per-channel limit
+        config = OrchestratorConfig(enable_fts=True, fts_max_hits=0)
         hits, trace = await orch.retrieve("test query", config=config)
         assert trace.hits_before_fusion == 20
 
@@ -845,6 +873,11 @@ class TestPerChannelBudgetIntegration:
             enable_vector=True,
             enable_graph=True,
             max_hits_per_channel=5,
+            fts_max_hits=0,
+            graph_max_hits=0,
+            wiki_max_hits=0,
+            procedural_max_hits=0,
+            corpus_max_hits=0,
         )
         hits, trace = await orch.retrieve("test", config=config)
 
