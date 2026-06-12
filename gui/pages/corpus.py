@@ -39,6 +39,7 @@ from gui.components.document_table import DocumentTable
 from gui.components.layout import build_left_nav, build_right_rail, build_top_bar
 from gui.state import get_session_state
 from gui.theme import (
+    C_AMBER,
     C_CREAM,
     C_GROUND,
     C_INK40,
@@ -145,6 +146,11 @@ async def corpus_page():
                 with detail_inner:
                     document_detail_panel.render({"not_found": True, "source_path": ""})
 
+        # Retrieval Lab link
+        with ui.row().classes("w-full items-center").style("padding:8px 16px;"):
+            ui.label("Test retrieval quality:").style(f"font-size:10px; color:{C_MUTED};")
+            ui.link("Retrieval Lab", "/retrieval").style(f"font-size:10px; color:{C_AMBER}; text-decoration:underline;")
+
         # Problems panel
         ui.html("<hr>").style(f"border-color:{C_INK40}; margin:8px 0;")
         problems_container = ui.column().classes("w-full")
@@ -159,23 +165,48 @@ async def corpus_page():
         """Load all corpus data from backend API."""
         nonlocal corpus_status, corpus_problems, documents_data, embedding_progress
 
-        # Load in parallel
-        status_task = asyncio.create_task(api.get_corpus_status())
-        problems_task = asyncio.create_task(api.get_corpus_problems())
-        docs_task = asyncio.create_task(api.list_corpus_documents(limit=50))
-        progress_task = asyncio.create_task(api.get_corpus_embedding_progress())
+        try:
+            # Load in parallel
+            status_task = asyncio.create_task(api.get_corpus_status())
+            problems_task = asyncio.create_task(api.get_corpus_problems())
+            docs_task = asyncio.create_task(api.list_corpus_documents(limit=50))
+            progress_task = asyncio.create_task(api.get_corpus_embedding_progress())
 
-        corpus_status = await status_task
-        corpus_problems = await problems_task
-        documents_data = await docs_task
-        embedding_progress = await progress_task
+            corpus_status = await status_task
+            corpus_problems = await problems_task
+            documents_data = await docs_task
+            embedding_progress = await progress_task
 
-        # Enrich corpus_status with backfill state from embedding progress
-        corpus_status["backfill_state"] = (
-            embedding_progress.get("sexton_pass", {}).get("state", "") if embedding_progress.get("sexton_pass") else ""
-        )
+            # Enrich corpus_status with backfill state from embedding progress
+            corpus_status["backfill_state"] = (
+                embedding_progress.get("sexton_pass", {}).get("state", "")
+                if embedding_progress.get("sexton_pass")
+                else ""
+            )
 
-        _refresh_ui()
+            _refresh_ui()
+        except Exception as exc:
+            log.warning("corpus_load_all_failed: %s", exc)
+            state.backend_reachable = False
+            # Set fallback empty data so UI renders degraded state
+            corpus_status = corpus_status or {
+                "total_turns": 0,
+                "embedded": 0,
+                "tagged": 0,
+                "unembedded": 0,
+                "error": str(exc),
+            }
+            corpus_problems = corpus_problems or {"available": False, "problems": [], "error": str(exc)}
+            documents_data = documents_data or {"documents": [], "error": str(exc)}
+            embedding_progress = embedding_progress or {
+                "total": 0,
+                "embedded": 0,
+                "unembedded": 0,
+                "percentage": 0.0,
+                "error": str(exc),
+            }
+            _refresh_ui()
+            ui.notify("Failed to load corpus data — backend may be unavailable", color="warning")
 
     def _refresh_ui():
         """Refresh all UI components with current data."""

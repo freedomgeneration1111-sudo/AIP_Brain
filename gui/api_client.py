@@ -147,7 +147,7 @@ class AipApiClient:
             return resp.json()
         except Exception as exc:
             log.warning("text_generation_slots_fetch_failed: %s", exc)
-            return {"slots": [], "ci_mode": True, "sufficient_for_council": False}
+            return {"slots": [], "ci_mode": False, "sufficient_for_council": False, "error": str(exc)}
 
     async def list_model_library(self, enabled_only: bool = True) -> list[dict[str, Any]]:
         """Fetch model library from GET /api/v1/models/library.

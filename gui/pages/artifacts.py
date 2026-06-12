@@ -31,6 +31,7 @@ from gui.components.layout import build_left_nav, build_right_rail, build_top_ba
 from gui.state import get_session_state
 from gui.theme import (
     C_CREAM,
+    C_ERR_FG,
     C_GROUND,
     C_INK40,
     C_MUTED,
@@ -51,6 +52,9 @@ async def artifacts_page():
     from gui.api_client import get_api_client
 
     api_client = get_api_client()
+
+    # Refresh status summary for backend reachability check
+    await state.refresh_status_summary()
 
     # Selected artifact state
     selected_artifact_id = {"id": None}
@@ -85,13 +89,13 @@ async def artifacts_page():
             def on_select(artifact_id: str):
                 """Handle artifact selection — show detail."""
                 selected_artifact_id["id"] = artifact_id
-                _render_detail(detail_area, selected_artifact_id, api_client, summary_label)
+                _render_detail(detail_area, selected_artifact_id, api_client, summary_label, state)
 
             def on_refresh():
                 """Handle list refresh — also update summary."""
-                _update_summary(summary_label, api_client)
+                _update_summary(summary_label, api_client, state)
                 if selected_artifact_id["id"]:
-                    _render_detail(detail_area, selected_artifact_id, api_client, summary_label)
+                    _render_detail(detail_area, selected_artifact_id, api_client, summary_label, state)
 
             with artifact_list_container:
                 render_artifact_list(
@@ -117,7 +121,7 @@ async def artifacts_page():
             )
 
     # Load summary
-    _update_summary(summary_label, api_client)
+    _update_summary(summary_label, api_client, state)
 
     build_right_rail(state)
 
@@ -127,6 +131,7 @@ def _render_detail(
     selected_artifact_id: dict,
     api_client: Any,
     summary_label: ui.label,
+    state: Any,
 ) -> None:
     """Render artifact detail in the detail area."""
     artifact_id = selected_artifact_id.get("id")
@@ -139,16 +144,20 @@ def _render_detail(
         render_artifact_detail(
             artifact_id,
             api_client,
-            on_action_complete=lambda: _update_summary(summary_label, api_client),
+            on_action_complete=lambda: _update_summary(summary_label, api_client, state),
         )
 
 
-def _update_summary(summary_label: ui.label, api_client: Any) -> None:
+def _update_summary(summary_label: ui.label, api_client: Any, state: Any) -> None:
     """Update the dashboard summary label."""
     import asyncio
 
     async def _load():
         try:
+            if not state.backend_reachable:
+                summary_label.text = "UNAVAILABLE — backend unreachable"
+                summary_label.style(f"font-size:10px; color:{C_ERR_FG}; font-family:{F_MONO};")
+                return
             dashboard = await api_client.get_artifact_dashboard()
             counts = dashboard.get("counts", {})
             total = sum(counts.values())
@@ -156,6 +165,7 @@ def _update_summary(summary_label: ui.label, api_client: Any) -> None:
             approved = counts.get("APPROVED", 0)
             summary_label.text = f"{total} artifacts | {pending} pending review | {approved} approved"
         except Exception:
-            summary_label.text = "Artifact summary unavailable"
+            summary_label.text = "UNAVAILABLE — backend unreachable"
+            summary_label.style(f"font-size:10px; color:{C_ERR_FG}; font-family:{F_MONO};")
 
     asyncio.ensure_future(_load())

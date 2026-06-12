@@ -275,8 +275,8 @@ async def _load_model_slots(state: GuiState) -> list[dict[str, Any]]:
         return []
 
 
-def _on_chat_model_changed(model_id: str, state: GuiState) -> None:
-    """Handle chat model selection change."""
+async def _on_chat_model_changed(model_id: str, state: GuiState) -> None:
+    """Handle chat model selection change — awaits backend confirmation."""
     state.current_role = None
     set_role_model("synthesis", model_id)
     # Track in selected models
@@ -285,10 +285,14 @@ def _on_chat_model_changed(model_id: str, state: GuiState) -> None:
         selected.insert(0, model_id)
         set_selected_models(selected)
     state.reset_session()
-    asyncio.create_task(
-        state.api_client.update_slot_model("synthesis", model_id, api_key=state.api_client.get_openrouter_api_key())
-    )
-    ui.notify(f"Chat model -> {model_id}", color="info")
+    try:
+        await state.api_client.update_slot_model(
+            "synthesis", model_id, api_key=state.api_client.get_openrouter_api_key()
+        )
+        ui.notify(f"Chat model -> {model_id}", color="info")
+    except Exception as exc:
+        log.warning("model_slot_update_failed: %s", exc)
+        ui.notify("Model slot change failed — backend may not have updated", color="warning")
 
 
 def _set_mode(mode: str, state: GuiState, label: ui.label) -> None:
@@ -335,6 +339,30 @@ def _handle_beast_counsel(state: GuiState, turn_data: dict, panel: BeastPanel) -
     )
 
 
+async def _handle_link_wiki(state: GuiState, turn_data: dict) -> None:
+    """Handle linking an answer to a wiki article via the knowledge link API."""
+    session_id = turn_data.get("session_id", "")
+    turn_id = turn_data.get("turn_id", "")
+    if not session_id or not turn_id:
+        ui.notify("Cannot link wiki — missing session/turn info", color="warning")
+        return
+    try:
+        result = await state.api_client.create_knowledge_link(
+            source_type="turn",
+            source_id=turn_id,
+            target_type="wiki",
+            target_id="auto",
+            relation_type="references",
+        )
+        if result.get("error"):
+            ui.notify(f"Link failed: {result['error']}", color="negative")
+        else:
+            ui.notify("Wiki link created", color="positive")
+    except Exception as exc:
+        log.warning("link_wiki_failed: %s", exc)
+        ui.notify("Wiki link failed — backend may be unavailable", color="warning")
+
+
 def _handle_model_council(state: GuiState, turn_data: dict, panel: ModelCouncilPanel) -> None:
     """Open Model Council panel for the selected turn."""
     asyncio.ensure_future(
@@ -369,7 +397,7 @@ async def _save_artifact_async(state: GuiState, session_id: str, content: str) -
         )
         if result.get("artifact_id"):
             ui.notify(
-                f"Artifact saved: {result['artifact_id']} — requires DEFINER review",
+                "Artifact saved — requires DEFINER review. See Artifacts page.",
                 color="positive",
                 timeout=6000,
             )
@@ -536,7 +564,7 @@ async def _send_prompt_inner(
                 ),
                 on_save_artifact=lambda td: _handle_save_artifact(state, td),
                 on_beast_counsel=lambda td: _handle_beast_counsel(state, td, beast_panel),
-                on_link_wiki=None,  # Not wired — no backend endpoint
+                on_link_wiki=lambda td: asyncio.create_task(_handle_link_wiki(state, td)),
                 on_run_model_council=lambda td: _handle_model_council(state, td, model_council_panel),
                 turn_data=turn_data,
             )

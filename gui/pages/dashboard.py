@@ -89,16 +89,20 @@ async def dashboard_page():
 # ── Card helpers ───────────────────────────────────────────────────────
 
 
-def _card(title: str):
-    """Create a styled card container. Returns the card context."""
-    return (
+def _card(title: str, navigate_to: str | None = None):
+    """Create a styled card container with optional click-through navigation."""
+    card = (
         ui.card()
         .classes("w-full")
         .style(
             f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
             f"border-radius:{R_LG}; padding:0; min-width:260px; max-width:400px; flex:1;"
+            + ("cursor:pointer;" if navigate_to else "")
         )
     )
+    if navigate_to:
+        card.on("click", lambda: ui.navigate.to(navigate_to))
+    return card
 
 
 def _card_header(title: str):
@@ -209,7 +213,7 @@ def _backend_health_card(state: GuiState) -> None:
 
 def _corpus_health_card(state: GuiState) -> None:
     """Corpus Health card — turns, tagged, embedded, coverage %."""
-    with _card("Corpus Health"):
+    with _card("Corpus Health", navigate_to="/corpus"):
         _card_header("CORPUS HEALTH")
         with ui.column().style("padding:16px;"):
             if not state.backend_reachable:
@@ -250,7 +254,7 @@ def _corpus_health_card(state: GuiState) -> None:
 
 def _retrieval_health_card(state: GuiState) -> None:
     """Retrieval Health card — per-channel status from consolidated summary."""
-    with _card("Retrieval Health"):
+    with _card("Retrieval Health", navigate_to="/retrieval"):
         _card_header("RETRIEVAL HEALTH")
         with ui.column().style("padding:16px;"):
             if not state.backend_reachable:
@@ -359,7 +363,7 @@ def _actor_health_card(state: GuiState) -> None:
 
 def _embedding_backfill_card(state: GuiState) -> None:
     """Embedding / Backfill status card."""
-    with _card("Embedding / Backfill"):
+    with _card("Embedding / Backfill", navigate_to="/corpus"):
         _card_header("EMBEDDING / BACKFILL")
         with ui.column().style("padding:16px;"):
             if not state.backend_reachable:
@@ -395,7 +399,7 @@ def _embedding_backfill_card(state: GuiState) -> None:
 
 def _review_queue_card(state: GuiState) -> None:
     """Review Queue card."""
-    with _card("Review Queue"):
+    with _card("Review Queue", navigate_to="/artifacts"):
         _card_header("REVIEW QUEUE")
         with ui.column().style("padding:16px;"):
             if not state.backend_reachable:
@@ -425,7 +429,7 @@ def _review_queue_card(state: GuiState) -> None:
 
 def _wiki_codex_card(state: GuiState) -> None:
     """Wiki / CODEX Health card."""
-    with _card("Wiki / CODEX"):
+    with _card("Wiki / CODEX", navigate_to="/wiki"):
         _card_header("WIKI / CODEX")
         with ui.column().style("padding:16px;"):
             if not state.backend_reachable:
@@ -453,7 +457,7 @@ def _wiki_codex_card(state: GuiState) -> None:
 
 def _model_slots_card(state: GuiState) -> None:
     """Model Slots card — shows configured slots with API key status (not values)."""
-    with _card("Model Slots"):
+    with _card("Model Slots", navigate_to="/settings"):
         _card_header("MODEL SLOTS")
         with ui.column().style("padding:16px;"):
             if not state.backend_reachable:
@@ -481,7 +485,7 @@ def _model_slots_card(state: GuiState) -> None:
 
 def _warnings_card(state: GuiState) -> None:
     """Warnings card — shows current warnings from the summary."""
-    with _card("Warnings"):
+    with _card("Warnings", navigate_to="/maintenance"):
         _card_header("CURRENT WARNINGS")
         with ui.column().style("padding:16px;"):
             if not state.backend_reachable:
