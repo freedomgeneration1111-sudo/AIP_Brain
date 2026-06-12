@@ -35,11 +35,12 @@ from aip.adapter.alerting import (
 class TestDeliveryStatusPersistence:
     """Tests for delivery status persistence across restarts."""
 
-    def test_delivery_status_persisted_to_store(self):
+    @pytest.mark.asyncio
+    async def test_delivery_status_persisted_to_store(self):
         """Delivery status is persisted to AlertHistoryStore on creation."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -63,17 +64,18 @@ class TestDeliveryStatusPersistence:
             )
 
             # The status should be persisted in the store
-            persisted = store.get_delivery_status_by_correlation_id(correlation_id)
+            persisted = await store.get_delivery_status_by_correlation_id(correlation_id)
             assert persisted is not None
             assert persisted["status"] == "buffered_for_digest"
             assert persisted["alert_type"] == "batch_reduction"
 
-    def test_delivery_status_survives_restart(self):
+    @pytest.mark.asyncio
+    async def test_delivery_status_survives_restart(self):
         """Delivery status is queryable after a process restart via the store."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = os.path.join(tmp_dir, "alerts.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            await store.initialize()
 
             # First instance: send alert and persist status
             mgr1 = AlertManager(
@@ -97,7 +99,7 @@ class TestDeliveryStatusPersistence:
             )
 
             # Verify it was persisted
-            persisted = store.get_delivery_status_by_correlation_id(correlation_id)
+            persisted = await store.get_delivery_status_by_correlation_id(correlation_id)
             assert persisted is not None
 
             # Second instance: new AlertManager with same store
@@ -115,11 +117,12 @@ class TestDeliveryStatusPersistence:
             assert status["correlation_id"] == correlation_id
             assert status["status"] == "buffered_for_digest"
 
-    def test_delivery_status_updated_on_completion(self):
+    @pytest.mark.asyncio
+    async def test_delivery_status_updated_on_completion(self):
         """Delivery status is updated in the store when delivery completes."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -144,18 +147,19 @@ class TestDeliveryStatusPersistence:
             time.sleep(0.5)
 
             # The store should have an updated status (not "dispatching")
-            persisted = store.get_delivery_status_by_correlation_id(correlation_id)
+            persisted = await store.get_delivery_status_by_correlation_id(correlation_id)
             if persisted is not None:
                 assert persisted["status"] in ("delivered", "partial", "failed")
 
-    def test_update_delivery_status_in_store(self):
+    @pytest.mark.asyncio
+    async def test_update_delivery_status_in_store(self):
         """AlertHistoryStore.update_delivery_status() updates the record."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             # Record initial status
-            store.record_delivery_status(
+            await store.record_delivery_status(
                 {
                     "correlation_id": "test-corr-123",
                     "status": "dispatching",
@@ -169,7 +173,7 @@ class TestDeliveryStatusPersistence:
             )
 
             # Update to delivered
-            updated = store.update_delivery_status(
+            updated = await store.update_delivery_status(
                 correlation_id="test-corr-123",
                 status="delivered",
                 completed_at=datetime.now(timezone.utc).isoformat(),
@@ -177,20 +181,21 @@ class TestDeliveryStatusPersistence:
             assert updated is True
 
             # Verify the update
-            result = store.get_delivery_status_by_correlation_id("test-corr-123")
+            result = await store.get_delivery_status_by_correlation_id("test-corr-123")
             assert result is not None
             assert result["status"] == "delivered"
             assert result["completed_at"] != ""
 
-    def test_get_recent_delivery_statuses(self):
+    @pytest.mark.asyncio
+    async def test_get_recent_delivery_statuses(self):
         """AlertHistoryStore.get_recent_delivery_statuses() returns recent records."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             # Record several statuses
             for i in range(5):
-                store.record_delivery_status(
+                await store.record_delivery_status(
                     {
                         "correlation_id": f"test-corr-{i}",
                         "status": "delivered",
@@ -204,17 +209,18 @@ class TestDeliveryStatusPersistence:
                 )
 
             # Get recent statuses
-            recent = store.get_recent_delivery_statuses(limit=3)
+            recent = await store.get_recent_delivery_statuses(limit=3)
             assert len(recent) == 3
 
-    def test_get_alert_by_correlation_id(self):
+    @pytest.mark.asyncio
+    async def test_get_alert_by_correlation_id(self):
         """AlertHistoryStore.get_alert_by_correlation_id() looks up alerts."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             # Record an alert with a correlation ID
-            store.record_alert(
+            await store.record_alert(
                 {
                     "alert_type": "batch_reduction",
                     "severity": "warning",
@@ -226,18 +232,19 @@ class TestDeliveryStatusPersistence:
             )
 
             # Look up by correlation ID
-            alert = store.get_alert_by_correlation_id("test-corr-lookup")
+            alert = await store.get_alert_by_correlation_id("test-corr-lookup")
             assert alert is not None
             assert alert["alert_type"] == "batch_reduction"
             assert alert["correlation_id"] == "test-corr-lookup"
 
-    def test_get_alert_by_correlation_id_not_found(self):
+    @pytest.mark.asyncio
+    async def test_get_alert_by_correlation_id_not_found(self):
         """get_alert_by_correlation_id() returns None for unknown IDs."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
-            result = store.get_alert_by_correlation_id("nonexistent-corr-id")
+            result = await store.get_alert_by_correlation_id("nonexistent-corr-id")
             assert result is None
 
 
@@ -406,11 +413,12 @@ class TestAlertCorrelationGrouping:
         assert len(groups["subject_a"]) == 1
         assert len(groups["subject_b"]) == 1
 
-    def test_bulk_acknowledge_group(self):
+    @pytest.mark.asyncio
+    async def test_bulk_acknowledge_group(self):
         """bulk_acknowledge_group() acknowledges all alerts in a group."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -444,11 +452,12 @@ class TestAlertCorrelationGrouping:
             assert result["group_key"] == "shared_store"
             assert result["acknowledged"] == 2
 
-    def test_bulk_dismiss_group(self):
+    @pytest.mark.asyncio
+    async def test_bulk_dismiss_group(self):
         """bulk_dismiss_group() dismisses all alerts in a group."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -497,7 +506,7 @@ class TestAlertCorrelationGrouping:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
             mgr.attach_history_store(store)
@@ -529,7 +538,7 @@ class TestAlertCorrelationGrouping:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
             mgr.attach_history_store(store)
@@ -934,7 +943,8 @@ class TestHealthEndpointMetrics:
 class TestSchemaMigrationV4:
     """Tests for AlertHistoryStore schema migration from v3 to v4."""
 
-    def test_migration_v3_to_v4_adds_methods(self):
+    @pytest.mark.asyncio
+    async def test_migration_v3_to_v4_adds_methods(self):
         """Schema v3→v4 migration adds new method capabilities."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = os.path.join(tmp_dir, "alerts.db")
@@ -1011,10 +1021,10 @@ class TestSchemaMigrationV4:
 
             # Migrate to v4
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            await store.initialize()
 
             # Verify the new methods work
-            store.record_delivery_status(
+            await store.record_delivery_status(
                 {
                     "correlation_id": "migration-test",
                     "status": "dispatching",
@@ -1028,7 +1038,7 @@ class TestSchemaMigrationV4:
             )
 
             # Update the status
-            updated = store.update_delivery_status(
+            updated = await store.update_delivery_status(
                 correlation_id="migration-test",
                 status="delivered",
                 completed_at=datetime.now(timezone.utc).isoformat(),
@@ -1036,10 +1046,10 @@ class TestSchemaMigrationV4:
             assert updated is True
 
             # Get recent statuses
-            recent = store.get_recent_delivery_statuses(limit=10)
+            recent = await store.get_recent_delivery_statuses(limit=10)
             assert len(recent) >= 1
 
             # Get by correlation ID
-            result = store.get_delivery_status_by_correlation_id("migration-test")
+            result = await store.get_delivery_status_by_correlation_id("migration-test")
             assert result is not None
             assert result["status"] == "delivered"

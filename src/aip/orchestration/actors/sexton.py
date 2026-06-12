@@ -1604,6 +1604,7 @@ CRITICAL CONSTRAINTS:
         # creating a new GraphStore instance. Falls back to creating one only
         # when graph_store was not wired (e.g. during tests or partial startup).
         graph_store = self._graph_store
+        fallback_graph_store = graph_store is None
         if graph_store is None:
             db_path = getattr(self._corpus_turns, "_db_path", None)
             if not db_path:
@@ -1618,498 +1619,505 @@ CRITICAL CONSTRAINTS:
             log.info("sexton_graph_extraction_fallback_create", reason="no_container_graph_store")
 
         try:
-            from aip.adapter.entity_alias_loader import EntityAliasRegistry
-            from aip.adapter.graph_store import GraphEdge, GraphNode
-        except Exception as exc:
-            log.warning("sexton_graph_import_failed", error=str(exc))
-            return {"skipped": "import_error", "error": str(exc)}
-        try:
-            registry = EntityAliasRegistry("docs/entity_aliases.md")
-        except Exception as exc:
-            log.warning("sexton_alias_registry_failed", error=str(exc))
-            registry = None
-
-        # Build compact alias list for prompt
-        alias_lines = []
-        if registry is not None:
-            for cn in registry.all_canonical_names()[:40]:
-                entry = registry.get_entry(cn)
-                if entry:
-                    aliases_str = ", ".join(entry.aliases[:3]) if entry.aliases else ""
-                    alias_lines.append(f"  {cn} ({entry.entity_type}){': ' + aliases_str if aliases_str else ''}")
-        alias_registry_compact = "\n".join(alias_lines)
-
-        # Get unextracted high-importance turns
-        turns = await graph_store.get_unextracted_high_importance_turns(min_importance=0.7, limit=limit)
-
-        if not turns:
-            return {
-                "turns_processed": 0,
-                "entities_created": 0,
-                "relationships_created": 0,
-                "note": "nothing_to_extract",
-            }
-
-        # Determine batch vs per-turn mode
-        batch_enabled = self._config.graph_extraction_batch_enabled and self._current_batch_size > 1
-        # Use the (potentially auto-tuned) current batch size
-        batch_size = self._current_batch_size if batch_enabled else 1
-
-        if batch_enabled:
-            log.info(
-                "sexton_graph_extraction_batch_mode",
-                batch_size=batch_size,
-                total_turns=len(turns),
-            )
-
-        # Single-turn system prompt (used for per-turn and as base for batch)
-        _single_system_prompt = f"""You are AIP Sexton extracting entities and relationships
-from a conversation turn for a personal knowledge graph.
-
-CANONICAL ENTITY TYPES:
-- PERSON: Named individuals
-- PROJECT: Named projects, products, technologies, devices
-- CONCEPT: Named theoretical frameworks, principles, methodologies
-- PLACE: Named locations
-- ORGANIZATION: Named organizations, institutions, companies
-- MANUSCRIPT: Named documents, papers, books
-
-CANONICAL RELATIONSHIP TYPES:
-- CONNECTS: Two concepts or domains connect intellectually
-- WORKS_ON: A person works on a project/manuscript
-- FUNDED_BY: A project is funded by a mechanism
-- AUTHORED: A person authored a manuscript/document
-- LOCATED_IN: An entity is located in a place
-- RELATES_TO: Generic relationship when type unclear
-
-ENTITY ALIAS TABLE (resolve mentions to these canonical names):
-{alias_registry_compact}
-
-RULES:
-- Only extract named entities that appear explicitly in the text
-- Resolve aliases to canonical names before outputting
-- Do NOT extract generic concepts (e.g., "physics", "theology")
-  only named specific ones (e.g., "NBCM", "New Covenant Displaced")
-- Do NOT extract the DEFINER himself as an entity
-- Minimum confidence 0.5 to include
-- Return ONLY valid JSON array, no preamble
-
-Output format:
-[
-  {{
-    "entity_type": "CONCEPT",
-    "canonical_name": "NBCM",
-    "confidence": 0.95
-  }},
-  {{
-    "relationship_type": "CONNECTS",
-    "source": "NBCM",
-    "target": "EZ Water",
-    "confidence": 0.8
-  }}
-]
-"""
-
-        # Batch system prompt — adds turn_id requirement
-        _batch_system_prompt = f"""You are AIP Sexton extracting entities and relationships
-from multiple conversation turns for a personal knowledge graph.
-
-CANONICAL ENTITY TYPES:
-- PERSON: Named individuals
-- PROJECT: Named projects, products, technologies, devices
-- CONCEPT: Named theoretical frameworks, principles, methodologies
-- PLACE: Named locations
-- ORGANIZATION: Named organizations, institutions, companies
-- MANUSCRIPT: Named documents, papers, books
-
-CANONICAL RELATIONSHIP TYPES:
-- CONNECTS: Two concepts or domains connect intellectually
-- WORKS_ON: A person works on a project/manuscript
-- FUNDED_BY: A project is funded by a mechanism
-- AUTHORED: A person authored a manuscript/document
-- LOCATED_IN: An entity is located in a place
-- RELATES_TO: Generic relationship when type unclear
-
-ENTITY ALIAS TABLE (resolve mentions to these canonical names):
-{alias_registry_compact}
-
-RULES:
-- Only extract named entities that appear explicitly in the text
-- Resolve aliases to canonical names before outputting
-- Do NOT extract generic concepts (e.g., "physics", "theology")
-  only named specific ones (e.g., "NBCM", "New Covenant Displaced")
-- Do NOT extract the DEFINER himself as an entity
-- Minimum confidence 0.5 to include
-- Return ONLY valid JSON array, no preamble
-
-You will receive multiple turns. For EACH entity or relationship extracted,
-include a "turn_id" field that exactly matches the turn_id from the input.
-This is critical for mapping results back to the correct turn.
-
-Output format:
-[
-  {{
-    "turn_id": "abc123",
-    "entity_type": "CONCEPT",
-    "canonical_name": "NBCM",
-    "confidence": 0.95
-  }},
-  {{
-    "turn_id": "abc123",
-    "relationship_type": "CONNECTS",
-    "source": "NBCM",
-    "target": "EZ Water",
-    "confidence": 0.8
-  }},
-  {{
-    "turn_id": "def456",
-    "entity_type": "PROJECT",
-    "canonical_name": "Spectrometer",
-    "confidence": 0.9
-  }}
-]
-"""
-
-        total_processed = 0
-        total_entities = 0
-        total_relationships = 0
-
-        # ---- Helper: process parsed items for a single turn ----
-        async def _process_turn_items(
-            turn_id: str,
-            primary_domain: str,
-            items: list[dict],
-        ) -> tuple[int, int]:
-            """Process parsed entities/relationships for one turn. Returns (entities, rels)."""
-            entities_this_turn = 0
-            rels_this_turn = 0
-            batch_nodes: list[GraphNode] = []
-            batch_edges: list[GraphEdge] = []
-            implied_nodes: dict[str, GraphNode] = {}
-
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-
-                if "entity_type" in item:
-                    raw_name = (item.get("canonical_name") or "").strip()
-                    if not raw_name:
-                        continue
-                    resolved = registry.resolve(raw_name) if registry else raw_name
-                    if not resolved:
-                        continue
-                    node_id = resolved.lower().replace(" ", "_")
-                    entity_type = item.get("entity_type", "CONCEPT")
-                    confidence = max(0.0, min(1.0, float(item.get("confidence", 0.7))))
-                    if confidence < 0.5:
-                        continue
-
-                    existing = await graph_store.get_node(node_id)
-                    if existing is None:
-                        domain_hint = registry.get_domain(resolved) if registry else primary_domain or None
-                        et = registry.get_entity_type(resolved) if registry else entity_type
-                        batch_nodes.append(
-                            GraphNode(
-                                id=node_id,
-                                entity_type=et,
-                                canonical_name=resolved,
-                                domain=domain_hint,
-                                confidence=confidence,
-                                source="sexton_extraction",
-                            )
-                        )
-                        entities_this_turn += 1
-
-                elif "relationship_type" in item:
-                    src_raw = (item.get("source") or "").strip()
-                    tgt_raw = (item.get("target") or "").strip()
-                    rel_type = (item.get("relationship_type") or "RELATES_TO").strip()
-                    confidence = max(0.0, min(1.0, float(item.get("confidence", 0.7))))
-                    if confidence < 0.5 or not src_raw or not tgt_raw:
-                        continue
-
-                    src_resolved = registry.resolve(src_raw) if registry else src_raw
-                    tgt_resolved = registry.resolve(tgt_raw) if registry else tgt_raw
-                    src_id = src_resolved.lower().replace(" ", "_")
-                    tgt_id = tgt_resolved.lower().replace(" ", "_")
-
-                    # Track implied nodes for batch creation
-                    for nid, nname in ((src_id, src_resolved), (tgt_id, tgt_resolved)):
-                        if nid not in implied_nodes:
-                            implied_nodes[nid] = GraphNode(
-                                id=nid,
-                                entity_type="CONCEPT",
-                                canonical_name=nname,
-                                domain=primary_domain or None,
-                                confidence=0.6,
-                                source="sexton_extraction",
-                            )
-
-                    edge_id = f"{src_id}__{rel_type}__{tgt_id}"
-                    batch_edges.append(
-                        GraphEdge(
-                            id=edge_id,
-                            source_id=src_id,
-                            target_id=tgt_id,
-                            relationship_type=rel_type,
-                            confidence=confidence,
-                            evidence_turn_ids=[turn_id],
-                            weight=1.0,
-                        )
-                    )
-                    rels_this_turn += 1
-
-            # Batch upsert: merge implied nodes (from edges) with explicit nodes
-            all_new_nodes = {n.id: n for n in batch_nodes}
-            for nid, node in implied_nodes.items():
-                if nid not in all_new_nodes:
-                    # Only add if not already in the DB
-                    if await graph_store.get_node(nid) is None:
-                        all_new_nodes[nid] = node
-
-            if all_new_nodes:
-                await graph_store.upsert_nodes_batch(list(all_new_nodes.values()))
-            if batch_edges:
-                await graph_store.upsert_edges_batch(batch_edges)
-
-            await graph_store.log_turn_extracted(turn_id, entities_this_turn, rels_this_turn)
-            return entities_this_turn, rels_this_turn
-
-        # ---- Helper: extract a single turn via LLM (per-turn mode / fallback) ----
-        async def _extract_single_turn(turn: dict) -> tuple[int, int]:
-            """LLM call for one turn. Returns (entities, rels)."""
-            turn_id = turn["turn_id"]
-            user_text = (turn.get("user_text") or "")[:400]
-            assistant_text = (turn.get("assistant_text") or "")[:600]
-            primary_domain = turn.get("primary_domain", "")
-            importance = turn.get("importance", 0.0)
-
-            user_prompt = (
-                f"Extract entities and relationships from this turn:\n\n"
-                f"turn_id: {turn_id}\n"
-                f"domain: {primary_domain}\n"
-                f"importance: {importance}\n"
-                f"user: {user_text}\n"
-                f"assistant: {assistant_text}\n"
-            )
-
-            messages = [
-                {"role": "system", "content": _single_system_prompt},
-                {"role": "user", "content": user_prompt},
-            ]
-
             try:
-                result = await self._sexton_provider.call("sexton", messages)
-                content = (result or {}).get("content") or ""
-                parsed = _extract_json_array(content.strip())
+                from aip.adapter.entity_alias_loader import EntityAliasRegistry
+                from aip.adapter.graph_store import GraphEdge, GraphNode
             except Exception as exc:
-                log.warning("sexton_graph_extraction_parse_failed", turn_id=turn_id, error=str(exc))
-                await graph_store.log_turn_extracted(turn_id, 0, 0)
-                return 0, 0
+                log.warning("sexton_graph_import_failed", error=str(exc))
+                return {"skipped": "import_error", "error": str(exc)}
+            try:
+                registry = EntityAliasRegistry("docs/entity_aliases.md")
+            except Exception as exc:
+                log.warning("sexton_alias_registry_failed", error=str(exc))
+                registry = None
 
-            return await _process_turn_items(turn_id, primary_domain, parsed)
+            # Build compact alias list for prompt
+            alias_lines = []
+            if registry is not None:
+                for cn in registry.all_canonical_names()[:40]:
+                    entry = registry.get_entry(cn)
+                    if entry:
+                        aliases_str = ", ".join(entry.aliases[:3]) if entry.aliases else ""
+                        alias_lines.append(f"  {cn} ({entry.entity_type}){': ' + aliases_str if aliases_str else ''}")
+            alias_registry_compact = "\n".join(alias_lines)
 
-        if not batch_enabled:
-            # ---- Per-turn mode (default, identical to original behavior) ----
-            for turn in turns:
-                turn["turn_id"]
-                ents, rels = await _extract_single_turn(turn)
-                total_processed += 1
-                total_entities += ents
-                total_relationships += rels
-                self._batch_telemetry["total_per_turn_extractions"] += 1
-                self._batch_telemetry["total_turns_via_per_turn"] += 1
+            # Get unextracted high-importance turns
+            turns = await graph_store.get_unextracted_high_importance_turns(min_importance=0.7, limit=limit)
 
-                # Rate-limit: pause between sequential LLM calls
-                await asyncio.sleep(5)
+            if not turns:
+                return {
+                    "turns_processed": 0,
+                    "entities_created": 0,
+                    "relationships_created": 0,
+                    "note": "nothing_to_extract",
+                }
 
-        else:
-            # ---- Batch mode ----
-            for b_start in range(0, len(turns), batch_size):
-                batch = turns[b_start : b_start + batch_size]
-                batch_idx = (b_start // batch_size) + 1
-                total_batches = (len(turns) + batch_size - 1) // batch_size
+            # Determine batch vs per-turn mode
+            batch_enabled = self._config.graph_extraction_batch_enabled and self._current_batch_size > 1
+            # Use the (potentially auto-tuned) current batch size
+            batch_size = self._current_batch_size if batch_enabled else 1
 
-                # Build batch user prompt with all turns in the batch
-                turn_blocks = []
-                for j, turn in enumerate(batch):
-                    tid = turn["turn_id"]
-                    u = (turn.get("user_text") or "")[:400]
-                    a = (turn.get("assistant_text") or "")[:600]
-                    dom = turn.get("primary_domain", "")
-                    imp = turn.get("importance", 0.0)
-                    blk = (
-                        f"--- TURN {j + 1} ---\n"
-                        f"turn_id: {tid}\n"
-                        f"domain: {dom}\n"
-                        f"importance: {imp}\n"
-                        f"user: {u}\n"
-                        f"assistant: {a}\n"
-                        f"---"
-                    )
-                    turn_blocks.append(blk)
+            if batch_enabled:
+                log.info(
+                    "sexton_graph_extraction_batch_mode",
+                    batch_size=batch_size,
+                    total_turns=len(turns),
+                )
+
+            # Single-turn system prompt (used for per-turn and as base for batch)
+            _single_system_prompt = f"""You are AIP Sexton extracting entities and relationships
+    from a conversation turn for a personal knowledge graph.
+
+    CANONICAL ENTITY TYPES:
+    - PERSON: Named individuals
+    - PROJECT: Named projects, products, technologies, devices
+    - CONCEPT: Named theoretical frameworks, principles, methodologies
+    - PLACE: Named locations
+    - ORGANIZATION: Named organizations, institutions, companies
+    - MANUSCRIPT: Named documents, papers, books
+
+    CANONICAL RELATIONSHIP TYPES:
+    - CONNECTS: Two concepts or domains connect intellectually
+    - WORKS_ON: A person works on a project/manuscript
+    - FUNDED_BY: A project is funded by a mechanism
+    - AUTHORED: A person authored a manuscript/document
+    - LOCATED_IN: An entity is located in a place
+    - RELATES_TO: Generic relationship when type unclear
+
+    ENTITY ALIAS TABLE (resolve mentions to these canonical names):
+    {alias_registry_compact}
+
+    RULES:
+    - Only extract named entities that appear explicitly in the text
+    - Resolve aliases to canonical names before outputting
+    - Do NOT extract generic concepts (e.g., "physics", "theology")
+      only named specific ones (e.g., "NBCM", "New Covenant Displaced")
+    - Do NOT extract the DEFINER himself as an entity
+    - Minimum confidence 0.5 to include
+    - Return ONLY valid JSON array, no preamble
+
+    Output format:
+    [
+      {{
+        "entity_type": "CONCEPT",
+        "canonical_name": "NBCM",
+        "confidence": 0.95
+      }},
+      {{
+        "relationship_type": "CONNECTS",
+        "source": "NBCM",
+        "target": "EZ Water",
+        "confidence": 0.8
+      }}
+    ]
+    """
+
+            # Batch system prompt — adds turn_id requirement
+            _batch_system_prompt = f"""You are AIP Sexton extracting entities and relationships
+    from multiple conversation turns for a personal knowledge graph.
+
+    CANONICAL ENTITY TYPES:
+    - PERSON: Named individuals
+    - PROJECT: Named projects, products, technologies, devices
+    - CONCEPT: Named theoretical frameworks, principles, methodologies
+    - PLACE: Named locations
+    - ORGANIZATION: Named organizations, institutions, companies
+    - MANUSCRIPT: Named documents, papers, books
+
+    CANONICAL RELATIONSHIP TYPES:
+    - CONNECTS: Two concepts or domains connect intellectually
+    - WORKS_ON: A person works on a project/manuscript
+    - FUNDED_BY: A project is funded by a mechanism
+    - AUTHORED: A person authored a manuscript/document
+    - LOCATED_IN: An entity is located in a place
+    - RELATES_TO: Generic relationship when type unclear
+
+    ENTITY ALIAS TABLE (resolve mentions to these canonical names):
+    {alias_registry_compact}
+
+    RULES:
+    - Only extract named entities that appear explicitly in the text
+    - Resolve aliases to canonical names before outputting
+    - Do NOT extract generic concepts (e.g., "physics", "theology")
+      only named specific ones (e.g., "NBCM", "New Covenant Displaced")
+    - Do NOT extract the DEFINER himself as an entity
+    - Minimum confidence 0.5 to include
+    - Return ONLY valid JSON array, no preamble
+
+    You will receive multiple turns. For EACH entity or relationship extracted,
+    include a "turn_id" field that exactly matches the turn_id from the input.
+    This is critical for mapping results back to the correct turn.
+
+    Output format:
+    [
+      {{
+        "turn_id": "abc123",
+        "entity_type": "CONCEPT",
+        "canonical_name": "NBCM",
+        "confidence": 0.95
+      }},
+      {{
+        "turn_id": "abc123",
+        "relationship_type": "CONNECTS",
+        "source": "NBCM",
+        "target": "EZ Water",
+        "confidence": 0.8
+      }},
+      {{
+        "turn_id": "def456",
+        "entity_type": "PROJECT",
+        "canonical_name": "Spectrometer",
+        "confidence": 0.9
+      }}
+    ]
+    """
+
+            total_processed = 0
+            total_entities = 0
+            total_relationships = 0
+
+            # ---- Helper: process parsed items for a single turn ----
+            async def _process_turn_items(
+                turn_id: str,
+                primary_domain: str,
+                items: list[dict],
+            ) -> tuple[int, int]:
+                """Process parsed entities/relationships for one turn. Returns (entities, rels)."""
+                entities_this_turn = 0
+                rels_this_turn = 0
+                batch_nodes: list[GraphNode] = []
+                batch_edges: list[GraphEdge] = []
+                implied_nodes: dict[str, GraphNode] = {}
+
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+
+                    if "entity_type" in item:
+                        raw_name = (item.get("canonical_name") or "").strip()
+                        if not raw_name:
+                            continue
+                        resolved = registry.resolve(raw_name) if registry else raw_name
+                        if not resolved:
+                            continue
+                        node_id = resolved.lower().replace(" ", "_")
+                        entity_type = item.get("entity_type", "CONCEPT")
+                        confidence = max(0.0, min(1.0, float(item.get("confidence", 0.7))))
+                        if confidence < 0.5:
+                            continue
+
+                        existing = await graph_store.get_node(node_id)
+                        if existing is None:
+                            domain_hint = registry.get_domain(resolved) if registry else primary_domain or None
+                            et = registry.get_entity_type(resolved) if registry else entity_type
+                            batch_nodes.append(
+                                GraphNode(
+                                    id=node_id,
+                                    entity_type=et,
+                                    canonical_name=resolved,
+                                    domain=domain_hint,
+                                    confidence=confidence,
+                                    source="sexton_extraction",
+                                )
+                            )
+                            entities_this_turn += 1
+
+                    elif "relationship_type" in item:
+                        src_raw = (item.get("source") or "").strip()
+                        tgt_raw = (item.get("target") or "").strip()
+                        rel_type = (item.get("relationship_type") or "RELATES_TO").strip()
+                        confidence = max(0.0, min(1.0, float(item.get("confidence", 0.7))))
+                        if confidence < 0.5 or not src_raw or not tgt_raw:
+                            continue
+
+                        src_resolved = registry.resolve(src_raw) if registry else src_raw
+                        tgt_resolved = registry.resolve(tgt_raw) if registry else tgt_raw
+                        src_id = src_resolved.lower().replace(" ", "_")
+                        tgt_id = tgt_resolved.lower().replace(" ", "_")
+
+                        # Track implied nodes for batch creation
+                        for nid, nname in ((src_id, src_resolved), (tgt_id, tgt_resolved)):
+                            if nid not in implied_nodes:
+                                implied_nodes[nid] = GraphNode(
+                                    id=nid,
+                                    entity_type="CONCEPT",
+                                    canonical_name=nname,
+                                    domain=primary_domain or None,
+                                    confidence=0.6,
+                                    source="sexton_extraction",
+                                )
+
+                        edge_id = f"{src_id}__{rel_type}__{tgt_id}"
+                        batch_edges.append(
+                            GraphEdge(
+                                id=edge_id,
+                                source_id=src_id,
+                                target_id=tgt_id,
+                                relationship_type=rel_type,
+                                confidence=confidence,
+                                evidence_turn_ids=[turn_id],
+                                weight=1.0,
+                            )
+                        )
+                        rels_this_turn += 1
+
+                # Batch upsert: merge implied nodes (from edges) with explicit nodes
+                all_new_nodes = {n.id: n for n in batch_nodes}
+                for nid, node in implied_nodes.items():
+                    if nid not in all_new_nodes:
+                        # Only add if not already in the DB
+                        if await graph_store.get_node(nid) is None:
+                            all_new_nodes[nid] = node
+
+                if all_new_nodes:
+                    await graph_store.upsert_nodes_batch(list(all_new_nodes.values()))
+                if batch_edges:
+                    await graph_store.upsert_edges_batch(batch_edges)
+
+                await graph_store.log_turn_extracted(turn_id, entities_this_turn, rels_this_turn)
+                return entities_this_turn, rels_this_turn
+
+            # ---- Helper: extract a single turn via LLM (per-turn mode / fallback) ----
+            async def _extract_single_turn(turn: dict) -> tuple[int, int]:
+                """LLM call for one turn. Returns (entities, rels)."""
+                turn_id = turn["turn_id"]
+                user_text = (turn.get("user_text") or "")[:400]
+                assistant_text = (turn.get("assistant_text") or "")[:600]
+                primary_domain = turn.get("primary_domain", "")
+                importance = turn.get("importance", 0.0)
 
                 user_prompt = (
-                    f"Extract entities and relationships from the following "
-                    f"{len(batch)} conversation turns:\n\n" + "\n".join(turn_blocks)
+                    f"Extract entities and relationships from this turn:\n\n"
+                    f"turn_id: {turn_id}\n"
+                    f"domain: {primary_domain}\n"
+                    f"importance: {importance}\n"
+                    f"user: {user_text}\n"
+                    f"assistant: {assistant_text}\n"
                 )
 
                 messages = [
-                    {"role": "system", "content": _batch_system_prompt},
+                    {"role": "system", "content": _single_system_prompt},
                     {"role": "user", "content": user_prompt},
                 ]
-
-                if batch_idx % 5 == 1 or batch_idx == total_batches:
-                    log.info(
-                        "sexton_graph_extraction_batch_progress",
-                        batch=batch_idx,
-                        of=total_batches,
-                        turns=f"{b_start + 1}-{min(b_start + batch_size, len(turns))}/{len(turns)}",
-                    )
 
                 try:
                     result = await self._sexton_provider.call("sexton", messages)
                     content = (result or {}).get("content") or ""
                     parsed = _extract_json_array(content.strip())
                 except Exception as exc:
-                    log.warning(
-                        "sexton_graph_extraction_batch_parse_failed",
-                        batch=batch_idx,
-                        turn_ids=[t["turn_id"] for t in batch],
-                        error=str(exc),
+                    log.warning("sexton_graph_extraction_parse_failed", turn_id=turn_id, error=str(exc))
+                    await graph_store.log_turn_extracted(turn_id, 0, 0)
+                    return 0, 0
+
+                return await _process_turn_items(turn_id, primary_domain, parsed)
+
+            if not batch_enabled:
+                # ---- Per-turn mode (default, identical to original behavior) ----
+                for turn in turns:
+                    turn["turn_id"]
+                    ents, rels = await _extract_single_turn(turn)
+                    total_processed += 1
+                    total_entities += ents
+                    total_relationships += rels
+                    self._batch_telemetry["total_per_turn_extractions"] += 1
+                    self._batch_telemetry["total_turns_via_per_turn"] += 1
+
+                    # Rate-limit: pause between sequential LLM calls
+                    await asyncio.sleep(5)
+
+            else:
+                # ---- Batch mode ----
+                for b_start in range(0, len(turns), batch_size):
+                    batch = turns[b_start : b_start + batch_size]
+                    batch_idx = (b_start // batch_size) + 1
+                    total_batches = (len(turns) + batch_size - 1) // batch_size
+
+                    # Build batch user prompt with all turns in the batch
+                    turn_blocks = []
+                    for j, turn in enumerate(batch):
+                        tid = turn["turn_id"]
+                        u = (turn.get("user_text") or "")[:400]
+                        a = (turn.get("assistant_text") or "")[:600]
+                        dom = turn.get("primary_domain", "")
+                        imp = turn.get("importance", 0.0)
+                        blk = (
+                            f"--- TURN {j + 1} ---\n"
+                            f"turn_id: {tid}\n"
+                            f"domain: {dom}\n"
+                            f"importance: {imp}\n"
+                            f"user: {u}\n"
+                            f"assistant: {a}\n"
+                            f"---"
+                        )
+                        turn_blocks.append(blk)
+
+                    user_prompt = (
+                        f"Extract entities and relationships from the following "
+                        f"{len(batch)} conversation turns:\n\n" + "\n".join(turn_blocks)
                     )
-                    # Track batch parse failure for auto-tuning (Sprint 5.23)
-                    self._batch_parse_results.append(False)
-                    # Sprint 5.25: Per-batch telemetry — record failure
-                    self._total_batch_failures += 1
+
+                    messages = [
+                        {"role": "system", "content": _batch_system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ]
+
+                    if batch_idx % 5 == 1 or batch_idx == total_batches:
+                        log.info(
+                            "sexton_graph_extraction_batch_progress",
+                            batch=batch_idx,
+                            of=total_batches,
+                            turns=f"{b_start + 1}-{min(b_start + batch_size, len(turns))}/{len(turns)}",
+                        )
+
+                    try:
+                        result = await self._sexton_provider.call("sexton", messages)
+                        content = (result or {}).get("content") or ""
+                        parsed = _extract_json_array(content.strip())
+                    except Exception as exc:
+                        log.warning(
+                            "sexton_graph_extraction_batch_parse_failed",
+                            batch=batch_idx,
+                            turn_ids=[t["turn_id"] for t in batch],
+                            error=str(exc),
+                        )
+                        # Track batch parse failure for auto-tuning (Sprint 5.23)
+                        self._batch_parse_results.append(False)
+                        # Sprint 5.25: Per-batch telemetry — record failure
+                        self._total_batch_failures += 1
+                        self._per_batch_telemetry.append(
+                            {
+                                "batch_idx": batch_idx,
+                                "batch_size": len(batch),
+                                "success": False,
+                                "error_reason": str(exc)[:200],
+                                "turn_ids": [t["turn_id"] for t in batch][:5],
+                                "fell_back_to_per_turn": True,
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }
+                        )
+                        if len(self._per_batch_telemetry) > 30:
+                            self._per_batch_telemetry = self._per_batch_telemetry[-30:]
+                        # Fallback: process each turn individually
+                        for turn in batch:
+                            ents, rels = await _extract_single_turn(turn)
+                            total_processed += 1
+                            total_entities += ents
+                            total_relationships += rels
+                            self._batch_telemetry["total_per_turn_extractions"] += 1
+                            self._batch_telemetry["total_turns_via_per_turn"] += 1
+                        # Rate-limit after fallback processing
+                        await asyncio.sleep(5)
+                        continue
+
+                    # Group parsed items by turn_id
+                    batch_turn_ids = {t["turn_id"] for t in batch}
+                    items_by_turn: dict[str, list[dict]] = {tid: [] for tid in batch_turn_ids}
+                    has_turn_id_mapping = False
+
+                    for item in parsed:
+                        if not isinstance(item, dict):
+                            continue
+                        tid = item.get("turn_id")
+                        if tid and tid in batch_turn_ids:
+                            has_turn_id_mapping = True
+                            items_by_turn[tid].append(item)
+
+                    # Track batch parse success for auto-tuning (Sprint 5.23)
+                    self._batch_parse_results.append(True)
+                    # Sprint 5.25: Per-batch telemetry — record success
+                    self._total_batch_successes += 1
                     self._per_batch_telemetry.append(
                         {
                             "batch_idx": batch_idx,
                             "batch_size": len(batch),
-                            "success": False,
-                            "error_reason": str(exc)[:200],
-                            "turn_ids": [t["turn_id"] for t in batch][:5],
-                            "fell_back_to_per_turn": True,
+                            "success": True,
+                            "items_extracted": len(parsed),
+                            "has_turn_id_mapping": has_turn_id_mapping,
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         }
                     )
                     if len(self._per_batch_telemetry) > 30:
                         self._per_batch_telemetry = self._per_batch_telemetry[-30:]
-                    # Fallback: process each turn individually
-                    for turn in batch:
-                        ents, rels = await _extract_single_turn(turn)
-                        total_processed += 1
-                        total_entities += ents
-                        total_relationships += rels
-                        self._batch_telemetry["total_per_turn_extractions"] += 1
-                        self._batch_telemetry["total_turns_via_per_turn"] += 1
-                    # Rate-limit after fallback processing
-                    await asyncio.sleep(5)
-                    continue
 
-                # Group parsed items by turn_id
-                batch_turn_ids = {t["turn_id"] for t in batch}
-                items_by_turn: dict[str, list[dict]] = {tid: [] for tid in batch_turn_ids}
-                has_turn_id_mapping = False
-
-                for item in parsed:
-                    if not isinstance(item, dict):
+                    if not has_turn_id_mapping:
+                        # Batch response didn't include turn_id — fall back to per-turn
+                        log.warning(
+                            "sexton_graph_extraction_batch_no_turn_id",
+                            batch=batch_idx,
+                            note="falling_back_to_per_turn",
+                        )
+                        for turn in batch:
+                            ents, rels = await _extract_single_turn(turn)
+                            total_processed += 1
+                            total_entities += ents
+                            total_relationships += rels
+                            self._batch_telemetry["total_per_turn_extractions"] += 1
+                            self._batch_telemetry["total_turns_via_per_turn"] += 1
+                        await asyncio.sleep(5)
                         continue
-                    tid = item.get("turn_id")
-                    if tid and tid in batch_turn_ids:
-                        has_turn_id_mapping = True
-                        items_by_turn[tid].append(item)
 
-                # Track batch parse success for auto-tuning (Sprint 5.23)
-                self._batch_parse_results.append(True)
-                # Sprint 5.25: Per-batch telemetry — record success
-                self._total_batch_successes += 1
-                self._per_batch_telemetry.append(
-                    {
-                        "batch_idx": batch_idx,
-                        "batch_size": len(batch),
-                        "success": True,
-                        "items_extracted": len(parsed),
-                        "has_turn_id_mapping": has_turn_id_mapping,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    }
-                )
-                if len(self._per_batch_telemetry) > 30:
-                    self._per_batch_telemetry = self._per_batch_telemetry[-30:]
-
-                if not has_turn_id_mapping:
-                    # Batch response didn't include turn_id — fall back to per-turn
-                    log.warning(
-                        "sexton_graph_extraction_batch_no_turn_id",
-                        batch=batch_idx,
-                        note="falling_back_to_per_turn",
-                    )
+                    # Process each turn's items
+                    batch_turns_count = 0
                     for turn in batch:
-                        ents, rels = await _extract_single_turn(turn)
+                        tid = turn["turn_id"]
+                        primary_domain = turn.get("primary_domain", "")
+                        ents, rels = await _process_turn_items(tid, primary_domain, items_by_turn.get(tid, []))
                         total_processed += 1
+                        batch_turns_count += 1
                         total_entities += ents
                         total_relationships += rels
-                        self._batch_telemetry["total_per_turn_extractions"] += 1
-                        self._batch_telemetry["total_turns_via_per_turn"] += 1
+
+                    # Update batch telemetry
+                    self._batch_telemetry["total_batch_extractions"] += 1
+                    self._batch_telemetry["total_turns_via_batch"] += batch_turns_count
+                    # Estimate token savings: each per-turn call has ~800 tokens of
+                    # system prompt overhead. Batching N turns into 1 call saves
+                    # (N-1) * 800 prompt tokens.
+                    tokens_saved = max(0, (batch_turns_count - 1)) * 800
+                    self._batch_telemetry["total_estimated_tokens_saved"] += tokens_saved
+
+                    # Rate-limit: pause between batches (not between individual turns)
                     await asyncio.sleep(5)
-                    continue
 
-                # Process each turn's items
-                batch_turns_count = 0
-                for turn in batch:
-                    tid = turn["turn_id"]
-                    primary_domain = turn.get("primary_domain", "")
-                    ents, rels = await _process_turn_items(tid, primary_domain, items_by_turn.get(tid, []))
-                    total_processed += 1
-                    batch_turns_count += 1
-                    total_entities += ents
-                    total_relationships += rels
+            log.info(
+                "sexton_graph_extraction_complete",
+                turns=total_processed,
+                entities=total_entities,
+                relationships=total_relationships,
+                batch_mode=batch_enabled,
+                batch_size=batch_size if batch_enabled else 1,
+            )
 
-                # Update batch telemetry
-                self._batch_telemetry["total_batch_extractions"] += 1
-                self._batch_telemetry["total_turns_via_batch"] += batch_turns_count
-                # Estimate token savings: each per-turn call has ~800 tokens of
-                # system prompt overhead. Batching N turns into 1 call saves
-                # (N-1) * 800 prompt tokens.
-                tokens_saved = max(0, (batch_turns_count - 1)) * 800
-                self._batch_telemetry["total_estimated_tokens_saved"] += tokens_saved
+            # Sprint 5.23: Auto-tune batch size based on parse success rate
+            auto_tune_result = self._auto_tune_batch_size()
 
-                # Rate-limit: pause between batches (not between individual turns)
-                await asyncio.sleep(5)
+            await self._emit_event(
+                event_type="sexton_graph_extraction_complete",
+                artifact_id="system",
+                metadata={
+                    "turns_processed": total_processed,
+                    "entities_created": total_entities,
+                    "relationships_created": total_relationships,
+                    "batch_mode": batch_enabled,
+                    "batch_size": batch_size,
+                },
+            )
 
-        log.info(
-            "sexton_graph_extraction_complete",
-            turns=total_processed,
-            entities=total_entities,
-            relationships=total_relationships,
-            batch_mode=batch_enabled,
-            batch_size=batch_size if batch_enabled else 1,
-        )
-
-        # Sprint 5.23: Auto-tune batch size based on parse success rate
-        auto_tune_result = self._auto_tune_batch_size()
-
-        await self._emit_event(
-            event_type="sexton_graph_extraction_complete",
-            artifact_id="system",
-            metadata={
+            return {
                 "turns_processed": total_processed,
                 "entities_created": total_entities,
                 "relationships_created": total_relationships,
                 "batch_mode": batch_enabled,
                 "batch_size": batch_size,
-            },
-        )
-
-        return {
-            "turns_processed": total_processed,
-            "entities_created": total_entities,
-            "relationships_created": total_relationships,
-            "batch_mode": batch_enabled,
-            "batch_size": batch_size,
-            "batch_telemetry": dict(self._batch_telemetry),
-            "auto_tune": auto_tune_result,
-        }
+                "batch_telemetry": dict(self._batch_telemetry),
+                "auto_tune": auto_tune_result,
+            }
+        finally:
+            if fallback_graph_store:
+                try:
+                    await graph_store.close()
+                except Exception:
+                    pass
 
     # ------------------------------------------------------------------
     # Batch size auto-tuning (Sprint 5.23)

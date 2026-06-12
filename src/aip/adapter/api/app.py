@@ -959,7 +959,7 @@ async def lifespan(app: FastAPI):
     # and start the auto-promotion and cleanup checkers if configured.
     if container._alert_manager is not None and container._alert_history_store is not None:
         try:
-            stored_experiments = container._alert_history_store.get_ab_experiments()
+            stored_experiments = await container._alert_history_store.get_ab_experiments()
             if stored_experiments:
                 for exp in stored_experiments:
                     name = exp.get("name", "")
@@ -969,7 +969,7 @@ async def lifespan(app: FastAPI):
 
             # Restore statistical test results
             if hasattr(container._alert_history_store, "get_statistical_test_results"):
-                stored_stats = container._alert_history_store.get_statistical_test_results()
+                stored_stats = await container._alert_history_store.get_statistical_test_results()
                 for result in stored_stats:
                     exp_name = result.get("experiment_name", "")
                     if exp_name:
@@ -978,7 +978,7 @@ async def lifespan(app: FastAPI):
             # Restore accuracy timeseries
             if hasattr(container._alert_history_store, "get_accuracy_timeseries"):
                 for exp in container._alert_manager.ab_experiment_mgr._ab_experiments.values():
-                    ts = container._alert_history_store.get_accuracy_timeseries(exp.get("name", ""))
+                    ts = await container._alert_history_store.get_accuracy_timeseries(exp.get("name", ""))
                     if ts:
                         exp["accuracy_timeseries"] = ts
 
@@ -1418,7 +1418,7 @@ async def lifespan(app: FastAPI):
             log.info("quality_rollup_scheduler_starting", interval_s=rollup_interval)
             while True:
                 try:
-                    result = container._vigil_quality_store.run_rollup()
+                    result = await container._vigil_quality_store.run_rollup()
                     if result.get("rolled_up_days", 0) > 0:
                         log.info(
                             "quality_rollup_completed",
@@ -1453,7 +1453,7 @@ async def lifespan(app: FastAPI):
             log.info("quality_weekly_rollup_scheduler_starting", interval_s=weekly_rollup_interval)
             while True:
                 try:
-                    result = container._vigil_quality_store.run_weekly_rollup()
+                    result = await container._vigil_quality_store.run_weekly_rollup()
                     if result.get("rolled_up_weeks", 0) > 0:
                         log.info(
                             "quality_weekly_rollup_completed",
@@ -1481,7 +1481,12 @@ async def lifespan(app: FastAPI):
         container._ask_fn = _ask_mod.ask
         container._ask_stores_class = _ask_mod.AskStores
         container._search_sources_fn = _ask_mod._search_sources_with_trace
-        container._sanitize_fts_query_fn = _ask_mod._sanitize_fts_query
+        try:
+            from aip.orchestration.channels.lexical_channel import _sanitize_fts_query
+
+            container._sanitize_fts_query_fn = _sanitize_fts_query
+        except ImportError:
+            container._sanitize_fts_query_fn = None
         log.info("orchestration_functions_wired", module="ask_pipeline")
     except Exception as exc:
         log.warning("orchestration_functions_wiring_failed", module="ask_pipeline", error=str(exc))

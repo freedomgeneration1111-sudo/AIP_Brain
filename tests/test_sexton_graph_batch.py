@@ -7,6 +7,7 @@ batches, and fallback behavior on parse failures.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import tempfile
@@ -164,6 +165,25 @@ def _make_turn(turn_id: str, importance: float = 0.9, bridges: list[str] | None 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _fast_asyncio_sleep():
+    """Patch asyncio.sleep to be instant in tests.
+
+    The production Sexton._run_graph_extraction uses asyncio.sleep(5) for
+    rate-limiting between batches/turns. Without this patch each test would
+    take 5-10s per turn. We record sleep calls so the rate-limit test can
+    still verify sleeps happened.
+    """
+    original_sleep = asyncio.sleep
+
+    async def _instant_sleep(seconds):
+        # Don't actually sleep — just yield control briefly
+        await original_sleep(0)
+
+    with patch("asyncio.sleep", side_effect=_instant_sleep):
+        yield
 
 
 @pytest.fixture
@@ -373,10 +393,13 @@ async def test_batch_rate_limiting_sleeps_between_batches(tmp_db, corpus_turn_st
 
     # Patch asyncio.sleep to track calls without actually sleeping
     sleep_calls: list[float] = []
+    original_sleep = asyncio.sleep
 
-    with patch("asyncio.sleep") as mock_sleep:
-        mock_sleep.side_effect = lambda s: sleep_calls.append(s)
+    async def _tracked_sleep(seconds):
+        sleep_calls.append(seconds)
+        await original_sleep(0)  # Yield control but don't actually sleep
 
+    with patch("asyncio.sleep", side_effect=_tracked_sleep):
         await sexton._run_graph_extraction(limit=10)
 
     # Should have 2 batch calls (4 turns / batch_size 2), so 2 sleeps between batches

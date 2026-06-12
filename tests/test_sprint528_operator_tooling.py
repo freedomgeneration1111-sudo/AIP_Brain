@@ -367,8 +367,8 @@ class TestRetentionAdminAPI:
                 retention_days=0,  # No time-based pruning so test data survives
                 rollup_age_days=7,
             )
-            store.initialize()
-            store.record_cycle(
+            await store.initialize()
+            await store.record_cycle(
                 {
                     "timestamp": "2025-06-01T00:00:00Z",
                     "avg_citation_rate": 0.85,
@@ -409,11 +409,11 @@ class TestRetentionAdminAPI:
                 rollup_age_days=0,
                 retention_days=0,
             )
-            store.initialize()
+            await store.initialize()
 
             # Insert records
             for i in range(3):
-                store.record_cycle(
+                await store.record_cycle(
                     {
                         "timestamp": f"2025-01-10T{10 + i:02d}:00:00Z",
                         "avg_citation_rate": 0.85,
@@ -444,7 +444,7 @@ class TestRetentionAdminAPI:
                 retention_days=0,
                 weekly_rollup_age_weeks=0,
             )
-            store.initialize()
+            await store.initialize()
 
             container = MagicMock()
             container._vigil_quality_store = store
@@ -464,11 +464,11 @@ class TestRetentionAdminAPI:
                 rollup_age_days=0,
                 retention_days=0,
             )
-            store.initialize()
+            await store.initialize()
 
             # Insert records and run daily rollup
             for i in range(3):
-                store.record_cycle(
+                await store.record_cycle(
                     {
                         "timestamp": f"2025-01-10T{10 + i:02d}:00:00Z",
                         "avg_citation_rate": 0.85,
@@ -478,7 +478,7 @@ class TestRetentionAdminAPI:
                         "flagged_count": 2,
                     }
                 )
-            store.run_rollup()
+            await store.run_rollup()
 
             container = MagicMock()
             container._vigil_quality_store = store
@@ -498,16 +498,17 @@ class TestRetentionAdminAPI:
 class TestWeeklyRollup:
     """Tests for VigilQualityStore weekly rollup aggregation."""
 
-    def _create_store(self, tmp_path, **kwargs):
+    async def _create_store(self, tmp_path, **kwargs):
         """Helper to create a VigilQualityStore in a temp directory."""
         db_path = os.path.join(str(tmp_path), "vigil_quality.db")
         store = VigilQualityStore(db_path, **kwargs)
-        store.initialize()
+        await store.initialize()
         return store
 
-    def test_weekly_rollup_aggregates_daily_rollups(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_weekly_rollup_aggregates_daily_rollups(self, tmp_path):
         """Weekly rollup aggregates daily rollup rows into weekly summaries."""
-        store = self._create_store(
+        store = await self._create_store(
             tmp_path,
             rollup_age_days=0,
             retention_days=0,
@@ -517,7 +518,7 @@ class TestWeeklyRollup:
         # Insert records for 7 days (week 1)
         for day in range(1, 8):
             for hour in range(3):
-                store.record_cycle(
+                await store.record_cycle(
                     {
                         "timestamp": f"2025-01-{day:02d}T{10 + hour:02d}:00:00Z",
                         "avg_citation_rate": 0.80 + day * 0.01,
@@ -531,7 +532,7 @@ class TestWeeklyRollup:
         # Insert records for 5 days (week 2)
         for day in range(8, 13):
             for hour in range(2):
-                store.record_cycle(
+                await store.record_cycle(
                     {
                         "timestamp": f"2025-01-{day:02d}T{10 + hour:02d}:00:00Z",
                         "avg_citation_rate": 0.85,
@@ -543,19 +544,20 @@ class TestWeeklyRollup:
                 )
 
         # Run daily rollup first
-        daily_result = store.run_rollup()
+        daily_result = await store.run_rollup()
         assert daily_result["rolled_up_days"] >= 1
 
         # Now run weekly rollup
-        weekly_result = store.run_weekly_rollup()
+        weekly_result = await store.run_weekly_rollup()
         # The daily rollup rows should be aggregated into weekly summaries
         # (May be 0 or more weeks depending on the cutoff)
         assert "rolled_up_weeks" in weekly_result
         assert weekly_result["rolled_up_weeks"] >= 0
 
-    def test_weekly_rollup_preserves_trend_data(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_weekly_rollup_preserves_trend_data(self, tmp_path):
         """Weekly rollup rows preserve enough data for trend analysis."""
-        store = self._create_store(
+        store = await self._create_store(
             tmp_path,
             rollup_age_days=0,
             retention_days=0,
@@ -564,7 +566,7 @@ class TestWeeklyRollup:
 
         # Insert records for a full week
         for day in range(6, 12):
-            store.record_cycle(
+            await store.record_cycle(
                 {
                     "timestamp": f"2025-01-{day:02d}T10:00:00Z",
                     "avg_citation_rate": 0.80 + (day - 6) * 0.02,
@@ -576,21 +578,22 @@ class TestWeeklyRollup:
             )
 
         # Run daily rollup
-        store.run_rollup()
+        await store.run_rollup()
 
         # Run weekly rollup
-        weekly_result = store.run_weekly_rollup()
+        weekly_result = await store.run_weekly_rollup()
 
         if weekly_result.get("rolled_up_weeks", 0) > 0:
-            cycles = store.get_cycles(include_rollups=True)
+            cycles = await store.get_cycles(include_rollups=True)
             weekly_rollups = [c for c in cycles if c.get("rollup_period") == "weekly"]
             assert len(weekly_rollups) >= 1
             # Weekly rollup should have aggregated data
             assert weekly_rollups[0]["evaluated_count"] > 0
 
-    def test_weekly_rollup_configurable_age(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_weekly_rollup_configurable_age(self, tmp_path):
         """Weekly rollup respects weekly_rollup_age_weeks configuration."""
-        store = self._create_store(
+        store = await self._create_store(
             tmp_path,
             rollup_age_days=0,
             retention_days=0,
@@ -599,7 +602,7 @@ class TestWeeklyRollup:
 
         # Insert and run daily rollup
         for i in range(3):
-            store.record_cycle(
+            await store.record_cycle(
                 {
                     "timestamp": f"2025-01-{10 + i:02d}T10:00:00Z",
                     "avg_citation_rate": 0.85,
@@ -609,15 +612,16 @@ class TestWeeklyRollup:
                     "flagged_count": 2,
                 }
             )
-        store.run_rollup()
+        await store.run_rollup()
 
         # Weekly rollup with very high age threshold should find nothing
-        result = store.run_weekly_rollup()
+        result = await store.run_weekly_rollup()
         assert result["rolled_up_weeks"] == 0
 
-    def test_get_rollup_stats(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_get_rollup_stats(self, tmp_path):
         """get_rollup_stats returns comprehensive rollup statistics."""
-        store = self._create_store(
+        store = await self._create_store(
             tmp_path,
             rollup_age_days=0,
             retention_days=0,
@@ -625,7 +629,7 @@ class TestWeeklyRollup:
 
         # Insert records and run daily rollup
         for i in range(3):
-            store.record_cycle(
+            await store.record_cycle(
                 {
                     "timestamp": f"2025-01-10T{10 + i:02d}:00:00Z",
                     "avg_citation_rate": 0.85,
@@ -635,7 +639,7 @@ class TestWeeklyRollup:
                     "flagged_count": 2,
                 }
             )
-        store.run_rollup()
+        await store.run_rollup()
 
         stats = store.get_rollup_stats()
         assert "daily_rollups" in stats
@@ -645,9 +649,10 @@ class TestWeeklyRollup:
         assert stats["daily_rollups"]["count"] >= 1
         assert stats["weekly_rollups"]["count"] == 0  # No weekly rollup yet
 
-    def test_get_retention_status_includes_weekly_config(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_get_retention_status_includes_weekly_config(self, tmp_path):
         """get_retention_status includes weekly_rollup_age_weeks."""
-        store = self._create_store(
+        store = await self._create_store(
             tmp_path,
             weekly_rollup_age_weeks=8,
         )

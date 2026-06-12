@@ -134,7 +134,11 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
         who bypass ``initialize()`` still get a working schema.
         """
         if self._conn is None:
-            self._conn = await aiosqlite.connect(self._db_path)
+            try:
+                self._conn = await aiosqlite.connect(self._db_path)
+            except Exception as exc:
+                logger.warning("vigil_quality_store_connect_failed", db_path=self._db_path, error=str(exc))
+                raise
             self._conn.row_factory = sqlite3.Row
             await self._conn.execute("PRAGMA journal_mode=WAL")
             await self._conn.execute("PRAGMA busy_timeout=5000")
@@ -233,7 +237,15 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
         """
         if self._tables_ready:
             return
-        conn = await aiosqlite.connect(self._db_path)
+        try:
+            conn = await aiosqlite.connect(self._db_path)
+        except Exception as exc:
+            logger.warning(
+                "vigil_quality_store_init_failed",
+                db_path=self._db_path,
+                error=str(exc),
+            )
+            return
         try:
             await self._create_tables(conn)
             self._tables_ready = True

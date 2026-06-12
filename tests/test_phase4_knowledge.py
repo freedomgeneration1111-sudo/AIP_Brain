@@ -108,7 +108,8 @@ def _create_test_app():
     loop.close()
 
     # Wire orchestration function references (container-mediated layer discipline)
-    from aip.orchestration.ask_pipeline import AskStores, _sanitize_fts_query, _search_sources_with_trace, ask
+    from aip.orchestration.ask_pipeline import AskStores, _search_sources_with_trace, ask
+    from aip.orchestration.channels.lexical_channel import _sanitize_fts_query
 
     container._ask_stores_class = AskStores
     container._ask_fn = ask

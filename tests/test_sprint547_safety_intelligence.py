@@ -61,11 +61,11 @@ def _make_config(**overrides) -> AlertConfig:
     return AlertConfig(**defaults)
 
 
-def _make_store(tmp_path, db_name: str = "test_history.db") -> AlertHistoryStore:
+async def _make_store(tmp_path, db_name: str = "test_history.db") -> AlertHistoryStore:
     """Create and initialize a fresh AlertHistoryStore."""
     db_path = str(tmp_path / db_name)
     store = AlertHistoryStore(db_path)
-    store.initialize()
+    await store.initialize()
     return store
 
 

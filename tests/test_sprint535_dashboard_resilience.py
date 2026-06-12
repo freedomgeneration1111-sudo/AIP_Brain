@@ -16,6 +16,8 @@ import tempfile
 import time
 from unittest.mock import MagicMock
 
+import pytest
+
 from aip.adapter.alert_history_store import AlertHistoryStore
 from aip.adapter.alerting import (
     Alert,
@@ -292,11 +294,12 @@ class TestAlertGroupMergeSplit:
         assert "all" not in groups
         assert "new_all" in groups
 
-    def test_merge_with_persistent_store(self):
+    @pytest.mark.asyncio
+    async def test_merge_with_persistent_store(self):
         """merge_alert_groups() updates persistent store records."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -325,7 +328,7 @@ class TestAlertGroupMergeSplit:
             )
 
             # Verify groups exist in store
-            groups_before = store.get_alert_groups()
+            groups_before = await store.get_alert_groups()
             assert "merge_src" in groups_before
             assert "merge_tgt" in groups_before
 
@@ -334,7 +337,7 @@ class TestAlertGroupMergeSplit:
             assert result["status"] == "ok"
 
             # Verify store updated
-            groups_after = store.get_alert_groups()
+            groups_after = await store.get_alert_groups()
             assert "merge_src" not in groups_after
             assert "merge_tgt" in groups_after
 
@@ -558,11 +561,12 @@ class TestPruningScheduler:
         assert status["max_age_days"] == 14
         assert status["max_rows"] == 1000
 
-    def test_run_scheduled_prune(self):
+    @pytest.mark.asyncio
+    async def test_run_scheduled_prune(self):
         """_run_scheduled_prune() prunes and updates state."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -628,11 +632,12 @@ class TestPruningScheduler:
 class TestCausalGroupingTimeWindow:
     """Tests for causal grouping time-window enforcement."""
 
-    def test_causal_group_within_window(self):
+    @pytest.mark.asyncio
+    async def test_causal_group_within_window(self):
         """Alerts within the time window are grouped together."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -666,11 +671,12 @@ class TestCausalGroupingTimeWindow:
             assert causal_key in groups
             assert len(groups[causal_key]) == 2
 
-    def test_causal_group_outside_window_dissolves(self):
+    @pytest.mark.asyncio
+    async def test_causal_group_outside_window_dissolves(self):
         """Alerts outside the time window start a new causal group."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -711,11 +717,12 @@ class TestCausalGroupingTimeWindow:
             # The old group was dissolved, so only the new alert should be there
             assert len(groups[causal_key]) == 1
 
-    def test_causal_group_window_zero(self):
+    @pytest.mark.asyncio
+    async def test_causal_group_window_zero(self):
         """When window is 0, every alert creates a new group."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -754,11 +761,12 @@ class TestCausalGroupingTimeWindow:
             # With window=0, the first group was immediately expired when the second came in
             assert len(groups[causal_key]) == 1
 
-    def test_causal_group_persistent_store_cleared_on_window_expiry(self):
+    @pytest.mark.asyncio
+    async def test_causal_group_persistent_store_cleared_on_window_expiry(self):
         """When a causal group expires due to time window, persistent store is updated."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(
                 AlertConfig(
@@ -781,7 +789,7 @@ class TestCausalGroupingTimeWindow:
 
             causal_key = "causal:persist_window"
             # Verify it was persisted
-            groups_before = store.get_alert_groups()
+            groups_before = await store.get_alert_groups()
             assert causal_key in groups_before
 
             # Expire the group
@@ -798,16 +806,17 @@ class TestCausalGroupingTimeWindow:
             )
 
             # Old records should be deleted, new ones added
-            groups_after = store.get_alert_groups()
+            groups_after = await store.get_alert_groups()
             assert causal_key in groups_after  # New group created
             # Only the new alert should be in the store group
             assert len(groups_after[causal_key]) == 1
 
-    def test_non_causal_groups_not_affected_by_window(self):
+    @pytest.mark.asyncio
+    async def test_non_causal_groups_not_affected_by_window(self):
         """Regular (non-causal) groups are not affected by the time window."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(
                 AlertConfig(

@@ -5995,6 +5995,7 @@ class PruningManager:
 
         self._prune_scheduler_thread: threading.Thread | None = None
         self._prune_scheduler_running: bool = False
+        self._prune_scheduler_stop_event = threading.Event()
         self._last_prune_run: float = 0.0
         self._next_prune_run: float = 0.0
         self._total_scheduled_prunes: int = 0
@@ -6031,7 +6032,13 @@ class PruningManager:
                 interval_secs = mgr._config.delivery_status_prune_interval_seconds
                 if interval_secs <= 0:
                     break
-                time.sleep(interval_secs)
+                # Use Event.wait() instead of time.sleep() so stop() can
+                # interrupt the sleep immediately instead of waiting the full
+                # interval (which can be hours in production and causes 5s
+                # hangs in tests due to join(timeout=5.0)).
+                if mgr._prune_scheduler_stop_event.wait(timeout=interval_secs):
+                    # Event was set — stop requested during sleep
+                    break
                 if not mgr._prune_scheduler_running:
                     break
                 try:
@@ -6061,11 +6068,15 @@ class PruningManager:
         """Stop the delivery status pruning scheduler.
 
         Sprint 5.62: Moved from AlertManager.stop_prune_scheduler().
+        Sprint 13.2: Use Event to interrupt sleep immediately instead of
+        waiting for join(timeout=5.0) which caused 5s test delays.
         """
         self._prune_scheduler_running = False
+        self._prune_scheduler_stop_event.set()
         if self._prune_scheduler_thread is not None:
-            self._prune_scheduler_thread.join(timeout=5.0)
+            self._prune_scheduler_thread.join(timeout=2.0)
             self._prune_scheduler_thread = None
+        self._prune_scheduler_stop_event.clear()
 
         logger.info("prune_scheduler_stopped")
 

@@ -8,6 +8,7 @@ Verifies wiki artifacts are written and graph nodes/edges are created.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import tempfile
@@ -318,6 +319,23 @@ def _make_test_registry() -> DomainRegistry:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _fast_asyncio_sleep():
+    """Patch asyncio.sleep to be instant in tests.
+
+    The production Sexton._run_graph_extraction uses asyncio.sleep(5) for
+    rate-limiting between batches/turns. Without this patch each test would
+    take 5-10s per turn.
+    """
+    original_sleep = asyncio.sleep
+
+    async def _instant_sleep(seconds):
+        await original_sleep(0)
+
+    with patch("asyncio.sleep", side_effect=_instant_sleep):
+        yield
 
 
 @pytest.fixture

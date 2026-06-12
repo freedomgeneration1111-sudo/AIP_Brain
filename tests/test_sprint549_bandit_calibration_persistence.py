@@ -46,11 +46,11 @@ def _make_config(**overrides) -> AlertConfig:
     return AlertConfig(**defaults)
 
 
-def _make_store() -> AlertHistoryStore:
+async def _make_store() -> AlertHistoryStore:
     """Create an in-memory AlertHistoryStore for testing."""
     db_path = os.path.join(tempfile.mkdtemp(), "test_alert_history.db")
     store = AlertHistoryStore(db_path)
-    store.initialize()
+    await store.initialize()
     return store
 
 
