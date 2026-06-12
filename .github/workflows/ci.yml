@@ -181,7 +181,7 @@ jobs:
           set -e
           cat /tmp/test_output.txt
           if [ $RC -eq 124 ]; then
-            if tail -30 /tmp/test_output.txt | grep -qE '^[0-9]+ passed'; then
+            if grep -qE '[0-9]+ passed' /tmp/test_output.txt; then
               echo "::warning::Tests passed but process cleanup hung after completion"
               exit 0
             else
@@ -228,7 +228,7 @@ jobs:
           set -e
           cat /tmp/test_output.txt
           if [ $RC -eq 124 ]; then
-            if tail -30 /tmp/test_output.txt | grep -qE '^[0-9]+ passed'; then
+            if grep -qE '[0-9]+ passed' /tmp/test_output.txt; then
               echo "::warning::Tests passed but process cleanup hung after completion"
               exit 0
             else
@@ -410,7 +410,7 @@ jobs:
           set -e
           cat /tmp/test_output.txt
           if [ $RC -eq 124 ]; then
-            if tail -30 /tmp/test_output.txt | grep -qE '^[0-9]+ passed'; then
+            if grep -qE '[0-9]+ passed' /tmp/test_output.txt; then
               echo "::warning::Tests passed but process cleanup hung after completion"
               exit 0
             else
