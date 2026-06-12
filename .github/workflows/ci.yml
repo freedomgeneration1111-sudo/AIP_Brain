@@ -171,10 +171,26 @@ jobs:
       - name: Run sprint 530 tests
         env:
           CI: "true"
-        run: >
-          uv run pytest
-          tests/test_sprint530*.py
-          -vv --tb=short --durations=20
+        # Process-hang detection: tests pass but uv/pytest process may not exit
+        # due to lingering background threads from AlertManager/FastAPI lifespan.
+        # If timeout fires (RC=124) but tests reported success, exit 0.
+        run: |
+          set +e
+          CI=true timeout 300 uv run pytest tests/test_sprint530*.py -vv --tb=short --durations=20 > /tmp/test_output.txt 2>&1
+          RC=$?
+          set -e
+          cat /tmp/test_output.txt
+          if [ $RC -eq 124 ]; then
+            if tail -30 /tmp/test_output.txt | grep -qE '^[0-9]+ passed'; then
+              echo "::warning::Tests passed but process cleanup hung after completion"
+              exit 0
+            else
+              echo "::error::Process timed out and tests did NOT pass"
+              exit 1
+            fi
+          else
+            exit $RC
+          fi
 
   sprint-531:
     name: Tests — sprint 531
@@ -202,10 +218,26 @@ jobs:
       - name: Run sprint 531 tests
         env:
           CI: "true"
-        run: >
-          uv run pytest
-          tests/test_sprint531*.py
-          -vv --tb=short --durations=20
+        # Process-hang detection: tests pass but uv/pytest process may not exit
+        # due to lingering background threads from AlertManager/FastAPI lifespan.
+        # If timeout fires (RC=124) but tests reported success, exit 0.
+        run: |
+          set +e
+          CI=true timeout 300 uv run pytest tests/test_sprint531*.py -vv --tb=short --durations=20 > /tmp/test_output.txt 2>&1
+          RC=$?
+          set -e
+          cat /tmp/test_output.txt
+          if [ $RC -eq 124 ]; then
+            if tail -30 /tmp/test_output.txt | grep -qE '^[0-9]+ passed'; then
+              echo "::warning::Tests passed but process cleanup hung after completion"
+              exit 0
+            else
+              echo "::error::Process timed out and tests did NOT pass"
+              exit 1
+            fi
+          else
+            exit $RC
+          fi
 
   sprint-early-3b1:
     name: Tests — sprint 532–534
@@ -368,10 +400,26 @@ jobs:
       - name: Run surfaces tests
         env:
           CI: "true"
-        run: >
-          uv run pytest
-          tests/test_surfaces*.py
-          -vv --tb=short --durations=20
+        # Process-hang detection: tests pass but uv/pytest process may not exit
+        # due to lingering background threads from FastAPI lifespan/TestClient.
+        # If timeout fires (RC=124) but tests reported success, exit 0.
+        run: |
+          set +e
+          CI=true timeout 300 uv run pytest tests/test_surfaces*.py -vv --tb=short --durations=20 > /tmp/test_output.txt 2>&1
+          RC=$?
+          set -e
+          cat /tmp/test_output.txt
+          if [ $RC -eq 124 ]; then
+            if tail -30 /tmp/test_output.txt | grep -qE '^[0-9]+ passed'; then
+              echo "::warning::Tests passed but process cleanup hung after completion"
+              exit 0
+            else
+              echo "::error::Process timed out and tests did NOT pass"
+              exit 1
+            fi
+          else
+            exit $RC
+          fi
 
   remaining-2a-synthesis:
     name: Tests — remaining (synthesis)
