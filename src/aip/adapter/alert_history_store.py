@@ -3291,9 +3291,6 @@ class SyncAlertHistoryBridge:
     def get_experiment_event_timeline(self, **kwargs) -> list[dict]:
         return self._call(self._store.get_experiment_event_timeline(**kwargs))
 
-    def delete_pre_promotion_snapshot(self, name: str) -> bool:
-        return self._call(self._store.delete_pre_promotion_snapshot(name))
-
     def persist_confidence_calibration(self, store):
         return self._call(self._store.persist_confidence_calibration(store))
 
@@ -3364,3 +3361,14 @@ class SyncAlertHistoryBridge:
 
     def get_pre_promotion_snapshots(self) -> list[dict]:
         return self._call(self._store.get_pre_promotion_snapshots())
+
+    def delete_pre_promotion_snapshot(self, experiment_name: str) -> bool:
+        return self._call(self._store.delete_pre_promotion_snapshot(experiment_name))
+
+    def prune_accuracy_timeseries(self, experiment_name: str | None = None, max_age_hours: int = 168) -> int:
+        return self._call(self._store.prune_accuracy_timeseries(experiment_name, max_age_hours))
+
+    @property
+    def _db_path(self) -> str:
+        """Expose the underlying store's database path for test queries."""
+        return self._store._db_path

@@ -13,7 +13,7 @@ import tempfile
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from aip.adapter.alert_history_store import AlertHistoryStore
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import AlertConfig, AlertManager
 
 # ---------------------------------------------------------------------------
@@ -46,12 +46,16 @@ def _make_config(**overrides) -> AlertConfig:
     return AlertConfig(**defaults)
 
 
-async def _make_store() -> AlertHistoryStore:
-    """Create an in-memory AlertHistoryStore for testing."""
-    db_path = os.path.join(tempfile.mkdtemp(), "test_alert_history.db")
+def _make_store(tmp_path=None, db_name: str = "test_alert_history.db") -> SyncAlertHistoryBridge:
+    """Create and initialize a fresh AlertHistoryStore via SyncAlertHistoryBridge."""
+    if tmp_path is not None:
+        db_path = str(tmp_path / db_name)
+    else:
+        db_path = os.path.join(tempfile.mkdtemp(), db_name)
     store = AlertHistoryStore(db_path)
-    await store.initialize()
-    return store
+    bridge = SyncAlertHistoryBridge(store)
+    bridge.initialize()
+    return bridge
 
 
 def _start_experiment(mgr: AlertManager, name: str = "test-exp", **meta) -> dict:
@@ -343,7 +347,7 @@ class TestConfidenceCalibrationPersistence:
         db_path = os.path.join(db_dir, "test_calib.db")
 
         # First session: create manager, update calibration, persist
-        store1 = AlertHistoryStore(db_path)
+        store1 = SyncAlertHistoryBridge(AlertHistoryStore(db_path))
         store1.initialize()
         mgr1 = AlertManager(_make_config())
         mgr1.attach_history_store(store1)
@@ -351,7 +355,7 @@ class TestConfidenceCalibrationPersistence:
         mgr1.persist_confidence_calibration(store1)
 
         # Second session: new manager, restore from same store
-        store2 = AlertHistoryStore(db_path)
+        store2 = SyncAlertHistoryBridge(AlertHistoryStore(db_path))
         store2.initialize()
         mgr2 = AlertManager(_make_config())
         count = mgr2.restore_confidence_calibration(store2)
@@ -469,7 +473,7 @@ class TestPrePromotionSnapshotPersistence:
         db_path = os.path.join(db_dir, "test_snap.db")
 
         # First session: create experiment, promote, persist snapshot
-        store1 = AlertHistoryStore(db_path)
+        store1 = SyncAlertHistoryBridge(AlertHistoryStore(db_path))
         store1.initialize()
         mgr1 = AlertManager(_make_config())
         mgr1.attach_history_store(store1)
@@ -480,7 +484,7 @@ class TestPrePromotionSnapshotPersistence:
         mgr1.persist_pre_promotion_snapshots(store1)
 
         # Second session: new manager, restore snapshot
-        store2 = AlertHistoryStore(db_path)
+        store2 = SyncAlertHistoryBridge(AlertHistoryStore(db_path))
         store2.initialize()
         mgr2 = AlertManager(_make_config())
         mgr2.attach_history_store(store2)

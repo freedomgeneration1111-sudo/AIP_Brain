@@ -14,7 +14,7 @@ import time
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from aip.adapter.alert_history_store import AlertHistoryStore
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import AlertConfig, AlertManager
 
 # ---------------------------------------------------------------------------
@@ -47,12 +47,16 @@ def _make_config(**overrides) -> AlertConfig:
     return AlertConfig(**defaults)
 
 
-async def _make_store() -> AlertHistoryStore:
-    """Create an in-memory AlertHistoryStore for testing."""
-    db_path = os.path.join(tempfile.mkdtemp(), "test_alert_history.db")
+def _make_store(tmp_path=None, db_name: str = "test_alert_history.db") -> SyncAlertHistoryBridge:
+    """Create and initialize a fresh AlertHistoryStore via SyncAlertHistoryBridge."""
+    if tmp_path is not None:
+        db_path = str(tmp_path / db_name)
+    else:
+        db_path = os.path.join(tempfile.mkdtemp(), db_name)
     store = AlertHistoryStore(db_path)
-    await store.initialize()
-    return store
+    bridge = SyncAlertHistoryBridge(store)
+    bridge.initialize()
+    return bridge
 
 
 def _start_experiment(mgr: AlertManager, name: str = "test-exp") -> dict:
@@ -291,7 +295,7 @@ class TestStatisticalTestPersistence:
         db_path = os.path.join(db_dir, "test_stat.db")
 
         # Write
-        store1 = AlertHistoryStore(db_path)
+        store1 = SyncAlertHistoryBridge(AlertHistoryStore(db_path))
         store1.initialize()
         store1.record_statistical_test_result(
             "exp-persist",
@@ -304,7 +308,7 @@ class TestStatisticalTestPersistence:
         )
 
         # Read from new store instance
-        store2 = AlertHistoryStore(db_path)
+        store2 = SyncAlertHistoryBridge(AlertHistoryStore(db_path))
         store2.initialize()
         results = store2.get_statistical_test_results("exp-persist")
         assert len(results) == 1
@@ -377,7 +381,7 @@ class TestAccuracyTimeseries:
         db_path = os.path.join(db_dir, "test_ts.db")
 
         # Write
-        store1 = AlertHistoryStore(db_path)
+        store1 = SyncAlertHistoryBridge(AlertHistoryStore(db_path))
         store1.initialize()
         for i in range(3):
             store1.record_accuracy_timeseries(
@@ -392,7 +396,7 @@ class TestAccuracyTimeseries:
             )
 
         # Read from new instance
-        store2 = AlertHistoryStore(db_path)
+        store2 = SyncAlertHistoryBridge(AlertHistoryStore(db_path))
         store2.initialize()
         results = store2.get_accuracy_timeseries("exp-restart")
         assert len(results) == 3

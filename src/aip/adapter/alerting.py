@@ -9365,6 +9365,112 @@ class AlertManager:
         """
         return ABExperimentManager.normal_cdf(x)
 
+    # ------------------------------------------------------------------
+    # Sprint 5.48/5.49: Bandit, persistence, and accuracy facade methods
+    # ------------------------------------------------------------------
+
+    def _get_auto_tuning_snapshot(self) -> dict[str, Any]:
+        """Capture auto-tuning policy snapshot for rollback.
+
+        Sprint 5.48: Internal facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_auto_tuning_snapshot()
+
+    def record_accuracy_snapshot(self, name: str) -> dict[str, Any] | None:
+        """Record an accuracy snapshot for time-series visualization.
+
+        Sprint 5.48: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.record_accuracy_snapshot(name)
+
+    def get_accuracy_timeseries(self, name: str) -> list[dict[str, Any]]:
+        """Return accuracy time-series data for an experiment.
+
+        Sprint 5.48: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_accuracy_timeseries(name)
+
+    def get_bandit_status(self) -> dict[str, Any]:
+        """Return the status of multi-armed bandit allocation.
+
+        Sprint 5.48: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_bandit_status()
+
+    def get_rollback_dry_run_status(self) -> dict[str, Any]:
+        """Return the status of rollback dry-run mode.
+
+        Sprint 5.48: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_rollback_dry_run_status()
+
+    def persist_statistical_test_results(self, store: Any = None) -> int:
+        """Persist in-memory statistical test results to the history store.
+
+        Sprint 5.48: Public facade — delegates to ABExperimentManager.
+        If *store* is omitted, the manager's attached history store is used.
+        """
+        target = store if store is not None else self._ab_experiment_mgr._history_store
+        return self._ab_experiment_mgr.persist_statistical_test_results(target)
+
+    def persist_confidence_calibration(self, store: Any = None) -> int:
+        """Persist confidence calibration data to the history store.
+
+        Sprint 5.49: Public facade — delegates to ABExperimentManager.
+        If *store* is omitted, the manager's attached history store is used.
+        """
+        target = store if store is not None else self._ab_experiment_mgr._history_store
+        return self._ab_experiment_mgr.persist_confidence_calibration(target)
+
+    def persist_pre_promotion_snapshots(self, store: Any = None) -> int:
+        """Persist pre-promotion config snapshots to the history store.
+
+        Sprint 5.49: Public facade — delegates to ABExperimentManager.
+        If *store* is omitted, the manager's attached history store is used.
+        """
+        target = store if store is not None else self._ab_experiment_mgr._history_store
+        return self._ab_experiment_mgr.persist_pre_promotion_snapshots(target)
+
+    def record_bandit_context_reward(
+        self, name: str, variant: str, reward: float, context: dict[str, str] | None = None
+    ) -> None:
+        """Record a reward observation for contextual bandit learning.
+
+        Sprint 5.49: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.record_bandit_context_reward(name, variant, reward, context)
+
+    # ------------------------------------------------------------------
+    # Sprint 5.48/5.49: Property proxies for sub-manager state
+    # ------------------------------------------------------------------
+
+    @property
+    def _confidence_calibration_map(self) -> dict[str, float]:
+        """Proxy to ABExperimentManager's calibration map."""
+        return self._ab_experiment_mgr._confidence_calibration_map
+
+    @_confidence_calibration_map.setter
+    def _confidence_calibration_map(self, value: dict[str, float]) -> None:
+        self._ab_experiment_mgr._confidence_calibration_map = value
+
+    @property
+    def _pre_promotion_config_snapshots(self) -> dict[str, Any]:
+        """Proxy to ABExperimentManager's pre-promotion snapshots."""
+        return self._ab_experiment_mgr._pre_promotion_config_snapshots
+
+    @_pre_promotion_config_snapshots.setter
+    def _pre_promotion_config_snapshots(self, value: dict[str, Any]) -> None:
+        self._ab_experiment_mgr._pre_promotion_config_snapshots = value
+
+    @property
+    def _last_accuracy_snapshot_time(self) -> float:
+        """Proxy to ABExperimentManager's last accuracy snapshot timestamp."""
+        return self._ab_experiment_mgr._last_accuracy_snapshot_time
+
+    @_last_accuracy_snapshot_time.setter
+    def _last_accuracy_snapshot_time(self, value: float) -> None:
+        self._ab_experiment_mgr._last_accuracy_snapshot_time = value
+
     @property
     def ab_experiment_mgr(self) -> "ABExperimentManager":
         """The A/B experiment sub-manager.
