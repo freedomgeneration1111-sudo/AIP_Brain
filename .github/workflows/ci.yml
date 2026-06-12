@@ -146,7 +146,7 @@ jobs:
           -q --tb=short
 
   sprint-early-3a:
-    name: Tests — sprint 530–534
+    name: Tests — sprint 530–531
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -168,12 +168,42 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Run sprint tests (530–534)
+      - name: Run sprint tests (530–531)
         env:
           CI: "true"
         run: >
           uv run pytest
           tests/test_sprint530*.py tests/test_sprint531*.py
+          -q --tb=short
+
+  sprint-early-3b1:
+    name: Tests — sprint 532–534
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run sprint tests (532–534)
+        env:
+          CI: "true"
+        run: >
+          uv run pytest
           tests/test_sprint532*.py tests/test_sprint533*.py
           tests/test_sprint534*.py
           -q --tb=short
@@ -281,8 +311,8 @@ jobs:
           tests/test_store*.py tests/test_structural*.py
           -q --tb=short
 
-  remaining-2:
-    name: Tests — remaining (surfaces–workflow)
+  remaining-2a:
+    name: Tests — remaining (surfaces–system)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -304,12 +334,42 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Run remaining tests (part 2)
+      - name: Run remaining tests (part 2a)
         env:
           CI: "true"
         run: >
           uv run pytest
           tests/test_surfaces*.py tests/test_synthesis*.py
           tests/test_system*.py tests/test_t*.py
+          -q --tb=short
+
+  remaining-2b:
+    name: Tests — remaining (vector–workflow)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run remaining tests (part 2b)
+        env:
+          CI: "true"
+        run: >
+          uv run pytest
           tests/test_v*.py tests/test_w*.py
           -q --tb=short
