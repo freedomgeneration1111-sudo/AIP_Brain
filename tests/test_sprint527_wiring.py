@@ -767,7 +767,7 @@ class TestQualityStoreRetention:
             }
         )
 
-        status = store.get_retention_status()
+        status = await store.get_retention_status()
         assert status["total_rows"] == 1
         assert status["original_rows"] == 1
         assert status["rollup_rows"] == 0

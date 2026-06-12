@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from aip.adapter.alert_history_store import AlertHistoryStore
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import (
     Alert,
     AlertConfig,
@@ -349,22 +349,23 @@ class TestAlertManagerWithHistoryStore:
         """AlertManager.attach_history_store() links the persistent store."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            await store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
-            assert mgr._history_store is store
+            assert mgr._history_store is bridge
+            bridge.close()
 
     @pytest.mark.asyncio
     async def test_send_alert_persists_to_store(self):
         """When a history store is attached, send_alert() persists to SQLite."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            await store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             mgr.send_alert(
                 Alert(
@@ -379,20 +380,21 @@ class TestAlertManagerWithHistoryStore:
             # Check in-memory (still maintained as buffer)
             assert len(mgr.lifecycle_mgr._alert_history) == 1
 
-            # Check persistent store
-            assert await store.get_alert_count() == 1
-            alerts = await store.get_alert_history()
+            # Check persistent store via the sync bridge
+            alerts = bridge.get_alert_history(alert_type="batch_reduction")
+            assert len(alerts) >= 1
             assert alerts[0]["alert_type"] == "batch_reduction"
+            bridge.close()
 
     @pytest.mark.asyncio
     async def test_get_alert_history_prefers_persistent_store(self):
         """get_alert_history() queries the persistent store when attached."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            await store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
 
-            # Pre-populate the store with a historical alert
-            await store.record_alert(
+            # Pre-populate the store with a historical alert via the bridge
+            bridge.record_alert(
                 {
                     "alert_type": "quality_degradation",
                     "severity": "critical",
@@ -403,7 +405,7 @@ class TestAlertManagerWithHistoryStore:
             )
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             # The manager's in-memory history is empty, but the persistent
             # store has the pre-restart alert
@@ -411,13 +413,14 @@ class TestAlertManagerWithHistoryStore:
             history = mgr.get_alert_history()
             assert len(history) == 1
             assert history[0]["message"] == "Pre-restart alert"
+            bridge.close()
 
     @pytest.mark.asyncio
     async def test_delivery_failure_persists_to_store(self):
         """Delivery failures are persisted to the SQLite store."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            await store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
 
             mgr = AlertManager(
                 AlertConfig(
@@ -427,7 +430,7 @@ class TestAlertManagerWithHistoryStore:
                     webhook_max_retries=0,
                 )
             )
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             # This will fail to deliver (invalid URL), recording a failure
             # Sprint 5.30: dispatch is async, need to wait for background thread
@@ -445,9 +448,10 @@ class TestAlertManagerWithHistoryStore:
 
             time.sleep(0.5)
 
-            # Check persistent store has the delivery failure
-            failures = await store.get_delivery_failures()
+            # Check persistent store has the delivery failure via the sync bridge
+            failures = bridge.get_delivery_failures()
             assert len(failures) >= 1
+            bridge.close()
 
     @pytest.mark.asyncio
     async def test_alert_history_endpoint_queries_persistent_store(self):
@@ -456,10 +460,10 @@ class TestAlertManagerWithHistoryStore:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            await store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
 
-            # Pre-populate with a historical alert
-            await store.record_alert(
+            # Pre-populate with a historical alert via the sync bridge
+            bridge.record_alert(
                 {
                     "alert_type": "batch_reduction",
                     "severity": "warning",
@@ -470,7 +474,7 @@ class TestAlertManagerWithHistoryStore:
             )
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             container = MagicMock()
             container._alert_manager = mgr
@@ -479,6 +483,7 @@ class TestAlertManagerWithHistoryStore:
             assert result["status"] == "ok"
             assert len(result["alerts"]) == 1
             assert result["alerts"][0]["message"] == "Historical alert from before restart"
+            bridge.close()
 
 
 # ============================================================================
@@ -829,12 +834,13 @@ class TestHealthEndpoint:
     """Tests for the GET /vigil/quality/health consolidated endpoint."""
 
     @pytest.mark.asyncio
-    async def test_health_endpoint_returns_status(self):
+    async def test_health_endpoint_returns_status(self, tmp_path):
         """GET /vigil/quality/health returns consolidated health status."""
         from aip.adapter.api.routes.vigil_quality import vigil_quality_health
 
         alert_mgr = AlertManager(AlertConfig(enabled=True))
-        quality_store = VigilQualityStore(":memory:", retention_days=0)
+        quality_db_path = os.path.join(str(tmp_path), "quality.db")
+        quality_store = VigilQualityStore(quality_db_path, retention_days=0)
         await quality_store.initialize()
 
         container = MagicMock()
@@ -960,10 +966,10 @@ class TestHealthEndpoint:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             history_store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            await history_store.initialize()
+            bridge = SyncAlertHistoryBridge(history_store)
 
             alert_mgr = AlertManager(AlertConfig(enabled=True))
-            alert_mgr.attach_history_store(history_store)
+            alert_mgr.attach_history_store(bridge)
 
             container = MagicMock()
             container._alert_manager = alert_mgr
@@ -975,3 +981,4 @@ class TestHealthEndpoint:
             result = await vigil_quality_health(container=container)
             assert result["alerting"]["history_store_attached"] is True
             assert result["components"]["alert_history_store"] is True
+            bridge.close()

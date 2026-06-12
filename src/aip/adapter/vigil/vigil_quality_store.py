@@ -939,12 +939,13 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
             daily_oldest = None
             daily_newest = None
             if daily_count > 0:
-                row = await conn.execute(
+                daily_range_cursor = await conn.execute(
                     (
                         "SELECT MIN(cycle_timestamp) as oldest, MAX(cycle_timestamp) as newest "
                         "FROM vigil_quality_history WHERE is_rollup = 1 AND rollup_period = 'daily'"
                     )
-                ).fetchone()
+                )
+                row = await daily_range_cursor.fetchone()
                 daily_oldest = row[0] if row else None
                 daily_newest = row[1] if row else None
 
@@ -957,12 +958,13 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
             weekly_oldest = None
             weekly_newest = None
             if weekly_count > 0:
-                row = await conn.execute(
+                weekly_range_cursor = await conn.execute(
                     (
                         "SELECT MIN(cycle_timestamp) as oldest, MAX(cycle_timestamp) as newest "
                         "FROM vigil_quality_history WHERE is_rollup = 1 AND rollup_period = 'weekly'"
                     )
-                ).fetchone()
+                )
+                row = await weekly_range_cursor.fetchone()
                 weekly_oldest = row[0] if row else None
                 weekly_newest = row[1] if row else None
 

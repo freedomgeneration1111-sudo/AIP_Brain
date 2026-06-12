@@ -641,7 +641,7 @@ class TestWeeklyRollup:
             )
         await store.run_rollup()
 
-        stats = store.get_rollup_stats()
+        stats = await store.get_rollup_stats()
         assert "daily_rollups" in stats
         assert "weekly_rollups" in stats
         assert "original_rows" in stats
@@ -656,7 +656,7 @@ class TestWeeklyRollup:
             tmp_path,
             weekly_rollup_age_weeks=8,
         )
-        status = store.get_retention_status()
+        status = await store.get_retention_status()
         assert "weekly_rollup_age_weeks" in status or "rollup_age_days" in status
 
 
@@ -681,7 +681,9 @@ class TestLifespanSmokeTest:
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = os.path.join(tmp_dir, "state.db")
             config = {
-                "db_path": db_path,
+                "database": {
+                    "db_path": db_path,
+                },
                 "vigil_quality": {
                     "max_history_rows": 100,
                     "retention_days": 30,
@@ -761,7 +763,9 @@ class TestLifespanSmokeTest:
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = os.path.join(tmp_dir, "state.db")
             config = {
-                "db_path": db_path,
+                "database": {
+                    "db_path": db_path,
+                },
                 "vigil_quality": {
                     "max_history_rows": 100,
                     "retention_days": 30,
