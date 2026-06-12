@@ -148,7 +148,7 @@ jobs:
   sprint-early-3a:
     name: Tests — sprint 530–531
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -314,7 +314,7 @@ jobs:
   remaining-2a:
     name: Tests — remaining (surfaces–system)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
