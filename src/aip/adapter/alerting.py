@@ -9206,6 +9206,165 @@ class AlertManager:
         """
         return self._ab_experiment_mgr.get_bandit_allocation(name)
 
+    # -------------------------------------------------------------------
+    # Sprint 5.46/5.47: AB Experiment public facade delegates
+    # -------------------------------------------------------------------
+
+    def promote_variant(self, name: str, variant: str = "variant") -> dict[str, Any] | None:
+        """Promote a variant in an A/B experiment.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.promote_variant(name, variant)
+
+    def cleanup_expired_experiments(self) -> dict[str, int]:
+        """Clean up old/stopped A/B experiments.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.cleanup_expired_experiments()
+
+    def get_ab_cleanup_status(self) -> dict[str, Any]:
+        """Return the status of the A/B experiment cleanup checker.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_ab_cleanup_status()
+
+    def notify_decay_event(self, subject: str, decay_amount: float, current_confidence: float) -> str:
+        """Record and notify a significant confidence decay event.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.notify_decay_event(subject, decay_amount, current_confidence)
+
+    def get_decay_events(self, limit: int = 50) -> list[dict]:
+        """Return recent decay events.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_decay_events(limit)
+
+    def get_decay_recovery_status(self) -> dict[str, Any]:
+        """Return the status of decay recovery.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_decay_recovery_status()
+
+    def restore_ab_experiments_from_store(self) -> int:
+        """Restore A/B experiment state from the persistent store.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.restore_ab_experiments_from_store()
+
+    def persist_all_ab_experiments(self) -> int:
+        """Persist all running A/B experiments and stop background checkers.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.persist_all_ab_experiments()
+
+    def get_experiment_monitoring_summary(self) -> dict[str, Any]:
+        """Return a comprehensive experiment monitoring summary.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_experiment_monitoring_summary()
+
+    def get_promotion_rollback_status(self) -> dict[str, Any]:
+        """Return the status of promotion rollback.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_promotion_rollback_status()
+
+    def _check_auto_promotion(self) -> None:
+        """Check all running experiments for auto-promotion eligibility.
+
+        Sprint 5.46: Internal facade — delegates to ABExperimentManager.check_auto_promotion.
+        """
+        self._ab_experiment_mgr.check_auto_promotion()
+
+    def get_ab_promotion_checker_status(self) -> dict[str, Any]:
+        """Return the status of the auto-promotion checker.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_ab_promotion_checker_status()
+
+    def run_decay_recovery_orchestrator(self) -> list[dict[str, Any]]:
+        """Run the decay recovery orchestrator.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.run_decay_recovery_orchestrator()
+
+    # -------------------------------------------------------------------
+    # Sprint 5.47: Statistical significance & calibration facade delegates
+    # -------------------------------------------------------------------
+
+    def compute_statistical_significance(self, name: str) -> dict[str, Any] | None:
+        """Compute statistical significance for an A/B experiment.
+
+        Sprint 5.47: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.compute_statistical_significance(name)
+
+    def get_statistical_significance_status(self) -> dict[str, Any]:
+        """Return the status of statistical significance testing.
+
+        Sprint 5.47: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_statistical_significance_status()
+
+    def update_confidence_calibration(
+        self, subject: str, observed_accuracy: float, predicted_confidence: float
+    ) -> float:
+        """Update confidence calibration mapping from A/B experiment results.
+
+        Sprint 5.47: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.update_confidence_calibration(subject, observed_accuracy, predicted_confidence)
+
+    def get_calibrated_confidence(self, subject: str, raw_confidence: float) -> float:
+        """Apply confidence calibration to a raw confidence value.
+
+        Sprint 5.47: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_calibrated_confidence(subject, raw_confidence)
+
+    def get_config_reversion_status(self) -> dict[str, Any]:
+        """Return the status of config reversion for rollback.
+
+        Sprint 5.47: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_config_reversion_status()
+
+    def get_cleanup_metrics(self) -> dict[str, Any]:
+        """Return cumulative cleanup metrics.
+
+        Sprint 5.47: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_cleanup_metrics()
+
+    def get_confidence_calibration_status(self) -> dict[str, Any]:
+        """Return the status of confidence calibration.
+
+        Sprint 5.47: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_confidence_calibration_status()
+
+    @staticmethod
+    def _normal_cdf(x: float) -> float:
+        """Approximate the standard normal CDF.
+
+        Sprint 5.47: Static helper — delegates to ABExperimentManager.normal_cdf.
+        Used by statistical significance tests.
+        """
+        return ABExperimentManager.normal_cdf(x)
+
     @property
     def ab_experiment_mgr(self) -> "ABExperimentManager":
         """The A/B experiment sub-manager.

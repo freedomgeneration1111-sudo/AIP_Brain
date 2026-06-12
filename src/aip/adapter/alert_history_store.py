@@ -3327,3 +3327,40 @@ class SyncAlertHistoryBridge:
 
     def get_retraining_events(self, limit: int = 20) -> list[dict]:
         return self._call(self._store.get_retraining_events(limit))
+
+    # -------------------------------------------------------------------
+    # Sprint 5.46/5.47: AB experiment store bridge methods
+    # -------------------------------------------------------------------
+
+    def record_ab_rollback(self, rollback: dict) -> bool:
+        return self._call(self._store.record_ab_rollback(rollback))
+
+    def get_ab_rollback_history(self, limit: int = 50) -> list[dict]:
+        return self._call(self._store.get_ab_rollback_history(limit))
+
+    def record_decay_recovery(self, recovery: dict) -> bool:
+        return self._call(self._store.record_decay_recovery(recovery))
+
+    def get_decay_recovery_history(self, limit: int = 50) -> list[dict]:
+        return self._call(self._store.get_decay_recovery_history(limit))
+
+    def prune_stopped_ab_experiments(self, retention_hours: int) -> int:
+        return self._call(self._store.prune_stopped_ab_experiments(retention_hours))
+
+    def record_statistical_test_result(self, experiment_name: str, result: dict) -> bool:
+        return self._call(self._store.record_statistical_test_result(experiment_name, result))
+
+    def get_statistical_test_results(self, experiment_name: str | None = None) -> list[dict]:
+        return self._call(self._store.get_statistical_test_results(experiment_name))
+
+    def record_confidence_calibration(self, subject: str, calibration_factor: float, updated_at: str) -> bool:
+        return self._call(self._store.record_confidence_calibration(subject, calibration_factor, updated_at))
+
+    def get_confidence_calibrations(self) -> list[dict]:
+        return self._call(self._store.get_confidence_calibrations())
+
+    def record_pre_promotion_snapshot(self, experiment_name: str, snapshot: dict) -> bool:
+        return self._call(self._store.record_pre_promotion_snapshot(experiment_name, snapshot))
+
+    def get_pre_promotion_snapshots(self) -> list[dict]:
+        return self._call(self._store.get_pre_promotion_snapshots())

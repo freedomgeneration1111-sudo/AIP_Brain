@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from aip.adapter.alert_history_store import AlertHistoryStore
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import AlertConfig, AlertManager
 
 # ---------------------------------------------------------------------------
@@ -57,15 +57,16 @@ def _make_config(**overrides) -> AlertConfig:
     return AlertConfig(**defaults)
 
 
-def _make_store(tmp_path, db_name: str = "test_history.db") -> AlertHistoryStore:
-    """Create and initialize a fresh AlertHistoryStore."""
+def _make_store(tmp_path, db_name: str = "test_history.db") -> SyncAlertHistoryBridge:
+    """Create and initialize a fresh AlertHistoryStore via SyncAlertHistoryBridge."""
     db_path = str(tmp_path / db_name)
     store = AlertHistoryStore(db_path)
-    store.initialize()
-    return store
+    bridge = SyncAlertHistoryBridge(store)
+    bridge.initialize()
+    return bridge
 
 
-def _make_manager(config: AlertConfig | None = None, store: AlertHistoryStore | None = None) -> AlertManager:
+def _make_manager(config: AlertConfig | None = None, store: SyncAlertHistoryBridge | None = None) -> AlertManager:
     """Create an AlertManager with optional config and store."""
     cfg = config or _make_config()
     mgr = AlertManager(cfg)
