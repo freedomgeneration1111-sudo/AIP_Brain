@@ -79,14 +79,23 @@ class TestWrapperRemoval:
         assert not hasattr(mgr, "_total_digest_flushes") or getattr(type(mgr), "_total_digest_flushes", None) is None
 
     def test_ab_experiment_proxies_removed(self):
-        """Old ABExperimentManager proxy properties no longer exist on AlertManager."""
+        """Old ABExperimentManager proxy properties no longer exist on AlertManager.
+
+        Sprint 13.3F-2/3 re-added _confidence_calibration_map as a property
+        proxy that delegates to the sub-manager. The intent of this test —
+        that AlertManager does not store its own copy — still holds: the
+        property is a read/write proxy to ab_experiment_mgr, not a separate
+        instance attribute.
+        """
         mgr = AlertManager(AlertConfig(enabled=True))
         assert not hasattr(mgr, "_ab_experiments") or getattr(type(mgr), "_ab_experiments", None) is None
         assert not hasattr(mgr, "_bandit_state") or getattr(type(mgr), "_bandit_state", None) is None
-        assert (
-            not hasattr(mgr, "_confidence_calibration_map")
-            or getattr(type(mgr), "_confidence_calibration_map", None) is None
-        )
+        # _confidence_calibration_map is now a property proxy to ab_experiment_mgr
+        # (not a separate instance dict), so it correctly delegates.
+        prop = getattr(type(mgr), "_confidence_calibration_map", None)
+        if prop is not None:
+            # Must be a property (descriptor), not a plain attribute
+            assert isinstance(prop, property)
 
     def test_facade_methods_still_exist(self):
         """Public facade methods are preserved for API compatibility."""
@@ -439,23 +448,31 @@ class TestSprint562Integration:
         assert mgr.lifecycle_mgr._correlation_counter > 0
 
     def test_attach_history_store_propagates(self):
-        """attach_history_store propagates to lifecycle and pruning managers."""
+        """attach_history_store propagates to lifecycle and pruning managers.
+
+        Sprint 13.3: Raw async AlertHistoryStore is now automatically
+        wrapped in SyncAlertHistoryBridge on attach. Verify that the
+        bridge wraps the original store and sub-managers receive the bridge.
+        """
         import os
         import tempfile
 
-        from aip.adapter.alert_history_store import AlertHistoryStore
+        from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
 
             mgr = AlertManager(AlertConfig(enabled=True))
             mgr.attach_history_store(store)
 
-            assert mgr._history_store is store
-            assert mgr.lifecycle_mgr._history_store is store
-            assert mgr.pruning_mgr._history_store is store
+            # After attach, _history_store is a SyncAlertHistoryBridge
+            assert isinstance(mgr._history_store, SyncAlertHistoryBridge)
+            # The bridge wraps the original store
+            assert mgr._history_store._store is store
+            # Sub-managers receive the bridge
+            assert mgr.lifecycle_mgr._history_store is mgr._history_store
+            assert mgr.pruning_mgr._history_store is mgr._history_store
 
     def test_ab_experiment_via_sub_manager(self):
         """AB experiment operations work via sub-manager directly."""

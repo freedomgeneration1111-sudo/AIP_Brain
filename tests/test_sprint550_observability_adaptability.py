@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from aip.adapter.alert_history_store import AlertHistoryStore
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import AlertConfig, AlertManager
 
 # ---------------------------------------------------------------------------
@@ -56,12 +56,16 @@ def _make_config(**overrides) -> AlertConfig:
     return AlertConfig(**defaults)
 
 
-async def _make_store() -> AlertHistoryStore:
-    """Create an in-memory AlertHistoryStore for testing."""
-    db_path = os.path.join(tempfile.mkdtemp(), "test_alert_history.db")
+def _make_store(tmp_path=None, db_name: str = "test_alert_history.db") -> SyncAlertHistoryBridge:
+    """Create and initialize a fresh AlertHistoryStore via SyncAlertHistoryBridge."""
+    if tmp_path is not None:
+        db_path = str(tmp_path / db_name)
+    else:
+        db_path = os.path.join(tempfile.mkdtemp(), db_name)
     store = AlertHistoryStore(db_path)
-    await store.initialize()
-    return store
+    bridge = SyncAlertHistoryBridge(store)
+    bridge.initialize()
+    return bridge
 
 
 def _start_experiment(mgr: AlertManager, name: str = "test-exp", **meta) -> dict:
@@ -89,18 +93,16 @@ def _add_results(mgr: AlertManager, name: str, n: int = 50, c_acc: float = 0.85,
 class TestBanditDecisionLogging:
     """Tests for bandit decision logging and replay."""
 
-    @pytest.mark.asyncio
-    async def test_schema_v12_creates_bandit_decision_log_table(self):
+    def test_schema_v12_creates_bandit_decision_log_table(self):
         """Schema v12 migration creates the bandit_decision_log table."""
-        store = await _make_store()
+        store = _make_store()
         with sqlite3.connect(store._db_path) as conn:
             cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bandit_decision_log'")
             assert cursor.fetchone() is not None
 
-    @pytest.mark.asyncio
-    async def test_record_bandit_decision(self):
+    def test_record_bandit_decision(self):
         """Bandit decisions can be persisted and retrieved."""
-        store = await _make_store()
+        store = _make_store()
         now_iso = datetime.now(timezone.utc).isoformat()
 
         decision = {
@@ -113,23 +115,22 @@ class TestBanditDecisionLogging:
             "timestamp": now_iso,
         }
 
-        assert await store.record_bandit_decision(decision) is True
+        assert store.record_bandit_decision(decision) is True
 
-        results = await store.get_bandit_decisions(experiment_name="log-exp")
+        results = store.get_bandit_decisions(experiment_name="log-exp")
         assert len(results) == 1
         assert results[0]["experiment_name"] == "log-exp"
         assert results[0]["method"] == "thompson"
         assert results[0]["allocation"]["control"] == 0.4
         assert results[0]["confidence"] == 0.2
 
-    @pytest.mark.asyncio
-    async def test_bandit_decision_filters(self):
+    def test_bandit_decision_filters(self):
         """Bandit decisions support filtering by method and date range."""
-        store = await _make_store()
+        store = _make_store()
         now_iso = datetime.now(timezone.utc).isoformat()
 
         for method in ["thompson", "ucb", "epsilon_greedy"]:
-            await store.record_bandit_decision(
+            store.record_bandit_decision(
                 {
                     "experiment_name": f"filter-{method}",
                     "method": method,
@@ -139,12 +140,11 @@ class TestBanditDecisionLogging:
             )
 
         # Filter by method
-        ucb_results = await store.get_bandit_decisions(method="ucb")
+        ucb_results = store.get_bandit_decisions(method="ucb")
         assert len(ucb_results) == 1
         assert ucb_results[0]["method"] == "ucb"
 
-    @pytest.mark.asyncio
-    async def test_bandit_decision_logging_in_get_bandit_allocation(self):
+    def test_bandit_decision_logging_in_get_bandit_allocation(self):
         """When decision logging is enabled, get_bandit_allocation logs decisions."""
         mgr = AlertManager(
             _make_config(
@@ -153,7 +153,7 @@ class TestBanditDecisionLogging:
                 ab_bandit_decision_logging_enabled=True,
             )
         )
-        store = await _make_store()
+        store = _make_store()
         mgr.attach_history_store(store)
 
         _start_experiment(mgr, "decision-log-exp")
@@ -163,12 +163,11 @@ class TestBanditDecisionLogging:
         mgr.get_bandit_allocation("decision-log-exp")
 
         # Verify decision was logged
-        decisions = await store.get_bandit_decisions(experiment_name="decision-log-exp")
+        decisions = store.get_bandit_decisions(experiment_name="decision-log-exp")
         assert len(decisions) >= 1
         assert decisions[0]["method"] == "thompson"
 
-    @pytest.mark.asyncio
-    async def test_replay_bandit_decisions(self):
+    def test_replay_bandit_decisions(self):
         """Replay returns decisions in chronological order."""
         mgr = AlertManager(
             _make_config(
@@ -177,7 +176,7 @@ class TestBanditDecisionLogging:
                 ab_bandit_decision_logging_enabled=True,
             )
         )
-        store = await _make_store()
+        store = _make_store()
         mgr.attach_history_store(store)
 
         _start_experiment(mgr, "replay-exp")
@@ -194,8 +193,7 @@ class TestBanditDecisionLogging:
         for i in range(1, len(decisions)):
             assert decisions[i]["timestamp"] >= decisions[i - 1]["timestamp"]
 
-    @pytest.mark.asyncio
-    async def test_decision_logging_disabled_by_default(self):
+    def test_decision_logging_disabled_by_default(self):
         """When decision logging is disabled, decisions are not logged."""
         mgr = AlertManager(
             _make_config(
@@ -203,18 +201,17 @@ class TestBanditDecisionLogging:
                 ab_bandit_decision_logging_enabled=False,
             )
         )
-        store = await _make_store()
+        store = _make_store()
         mgr.attach_history_store(store)
 
         _start_experiment(mgr, "no-log-exp")
         _add_results(mgr, "no-log-exp", n=50)
         mgr.get_bandit_allocation("no-log-exp")
 
-        decisions = await store.get_bandit_decisions()
+        decisions = store.get_bandit_decisions()
         assert len(decisions) == 0
 
-    @pytest.mark.asyncio
-    async def test_decision_log_counter_incremented(self):
+    def test_decision_log_counter_incremented(self):
         """The total_bandit_decisions_logged counter is incremented on each log."""
         mgr = AlertManager(
             _make_config(
@@ -222,7 +219,7 @@ class TestBanditDecisionLogging:
                 ab_bandit_decision_logging_enabled=True,
             )
         )
-        store = await _make_store()
+        store = _make_store()
         mgr.attach_history_store(store)
 
         _start_experiment(mgr, "counter-exp")
@@ -241,10 +238,9 @@ class TestBanditDecisionLogging:
 class TestHistoricalPromotionTimeline:
     """Tests for the unified event timeline view."""
 
-    @pytest.mark.asyncio
-    async def test_event_timeline_returns_promotion_events(self):
+    def test_event_timeline_returns_promotion_events(self):
         """Event timeline includes promotion events from ab_experiments."""
-        store = await _make_store()
+        store = _make_store()
         now_iso = datetime.now(timezone.utc).isoformat()
 
         # Create a promoted experiment in the store
@@ -259,16 +255,15 @@ class TestHistoricalPromotionTimeline:
                 ("timeline-promo-exp", now_iso, now_iso, now_iso),
             )
 
-        events = await store.get_experiment_event_timeline(event_type="promotion")
+        events = store.get_experiment_event_timeline(event_type="promotion")
         assert len(events) >= 1
         promo = [e for e in events if e["event_type"] == "promotion"]
         assert len(promo) >= 1
         assert promo[0]["experiment_name"] == "timeline-promo-exp"
 
-    @pytest.mark.asyncio
-    async def test_event_timeline_returns_rollback_events(self):
+    def test_event_timeline_returns_rollback_events(self):
         """Event timeline includes rollback events."""
-        store = await _make_store()
+        store = _make_store()
         now_iso = datetime.now(timezone.utc).isoformat()
 
         with sqlite3.connect(store._db_path) as conn:
@@ -281,19 +276,18 @@ class TestHistoricalPromotionTimeline:
                 ("timeline-rollback-exp", now_iso, now_iso),
             )
 
-        events = await store.get_experiment_event_timeline(event_type="rollback")
+        events = store.get_experiment_event_timeline(event_type="rollback")
         assert len(events) >= 1
         rb = [e for e in events if e["event_type"] == "rollback"]
         assert len(rb) >= 1
         assert rb[0]["experiment_name"] == "timeline-rollback-exp"
 
-    @pytest.mark.asyncio
-    async def test_event_timeline_returns_bandit_decision_events(self):
+    def test_event_timeline_returns_bandit_decision_events(self):
         """Event timeline includes bandit decision events."""
-        store = await _make_store()
+        store = _make_store()
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        await store.record_bandit_decision(
+        store.record_bandit_decision(
             {
                 "experiment_name": "timeline-bandit-exp",
                 "method": "thompson",
@@ -303,20 +297,19 @@ class TestHistoricalPromotionTimeline:
             }
         )
 
-        events = await store.get_experiment_event_timeline(event_type="bandit_decision")
+        events = store.get_experiment_event_timeline(event_type="bandit_decision")
         assert len(events) >= 1
         bd = [e for e in events if e["event_type"] == "bandit_decision"]
         assert len(bd) >= 1
         assert bd[0]["experiment_name"] == "timeline-bandit-exp"
         assert bd[0]["method"] == "thompson"
 
-    @pytest.mark.asyncio
-    async def test_event_timeline_filter_by_experiment_name(self):
+    def test_event_timeline_filter_by_experiment_name(self):
         """Event timeline supports filtering by experiment name."""
-        store = await _make_store()
+        store = _make_store()
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        await store.record_bandit_decision(
+        store.record_bandit_decision(
             {
                 "experiment_name": "filter-exp-a",
                 "method": "thompson",
@@ -324,7 +317,7 @@ class TestHistoricalPromotionTimeline:
                 "timestamp": now_iso,
             }
         )
-        await store.record_bandit_decision(
+        store.record_bandit_decision(
             {
                 "experiment_name": "filter-exp-b",
                 "method": "ucb",
@@ -333,17 +326,16 @@ class TestHistoricalPromotionTimeline:
             }
         )
 
-        events = await store.get_experiment_event_timeline(experiment_name="filter-exp-a")
+        events = store.get_experiment_event_timeline(experiment_name="filter-exp-a")
         assert all(e["experiment_name"] == "filter-exp-a" for e in events)
 
-    @pytest.mark.asyncio
-    async def test_event_timeline_all_types_combined(self):
+    def test_event_timeline_all_types_combined(self):
         """Event timeline returns all event types when no filter is specified."""
-        store = await _make_store()
+        store = _make_store()
         now_iso = datetime.now(timezone.utc).isoformat()
 
         # Add a bandit decision
-        await store.record_bandit_decision(
+        store.record_bandit_decision(
             {
                 "experiment_name": "combined-exp",
                 "method": "thompson",
@@ -363,16 +355,15 @@ class TestHistoricalPromotionTimeline:
                 ("combined-exp", now_iso),
             )
 
-        events = await store.get_experiment_event_timeline()
+        events = store.get_experiment_event_timeline()
         types = {e["event_type"] for e in events}
         assert "bandit_decision" in types
         assert "decay_recovery" in types
 
-    @pytest.mark.asyncio
-    async def test_manager_get_experiment_event_timeline(self):
+    def test_manager_get_experiment_event_timeline(self):
         """AlertManager.get_experiment_event_timeline delegates to the store."""
         mgr = AlertManager(_make_config())
-        store = await _make_store()
+        store = _make_store()
         mgr.attach_history_store(store)
 
         events = mgr.get_experiment_event_timeline()
@@ -509,10 +500,9 @@ class TestAdaptiveBanditMethodSelection:
 class TestSnapshotGarbageCollection:
     """Tests for automatic cleanup of stale pre-promotion snapshots."""
 
-    @pytest.mark.asyncio
-    async def test_gc_removes_stale_snapshots_by_age(self):
+    def test_gc_removes_stale_snapshots_by_age(self):
         """Snapshot GC removes snapshots older than max_age_hours."""
-        store = await _make_store()
+        store = _make_store()
 
         # Create an old snapshot
         old_time = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat()
@@ -525,52 +515,49 @@ class TestSnapshotGarbageCollection:
                 ("old-exp", old_time, old_time),
             )
 
-        removed = await store.cleanup_stale_pre_promotion_snapshots(
+        removed = store.cleanup_stale_pre_promotion_snapshots(
             active_experiment_names=set(),
             max_age_hours=72,
         )
         assert removed >= 1
 
         # Verify it was removed
-        results = await store.get_pre_promotion_snapshots()
+        results = store.get_pre_promotion_snapshots()
         names = {r["experiment_name"] for r in results}
         assert "old-exp" not in names
 
-    @pytest.mark.asyncio
-    async def test_gc_keeps_active_experiment_snapshots(self):
+    def test_gc_keeps_active_experiment_snapshots(self):
         """Snapshot GC keeps snapshots for active experiments."""
-        store = await _make_store()
+        store = _make_store()
         datetime.now(timezone.utc).isoformat()
 
-        await store.record_pre_promotion_snapshot("active-exp", {"test": True})
+        store.record_pre_promotion_snapshot("active-exp", {"test": True})
 
-        removed = await store.cleanup_stale_pre_promotion_snapshots(
+        removed = store.cleanup_stale_pre_promotion_snapshots(
             active_experiment_names={"active-exp"},
             max_age_hours=72,
         )
         assert removed == 0
 
         # Verify it was kept
-        results = await store.get_pre_promotion_snapshots()
+        results = store.get_pre_promotion_snapshots()
         names = {r["experiment_name"] for r in results}
         assert "active-exp" in names
 
-    @pytest.mark.asyncio
-    async def test_gc_removes_inactive_experiment_snapshots(self):
+    def test_gc_removes_inactive_experiment_snapshots(self):
         """Snapshot GC removes snapshots for experiments not in the active set."""
-        store = await _make_store()
+        store = _make_store()
         datetime.now(timezone.utc).isoformat()
 
-        await store.record_pre_promotion_snapshot("inactive-exp", {"test": True})
+        store.record_pre_promotion_snapshot("inactive-exp", {"test": True})
 
-        removed = await store.cleanup_stale_pre_promotion_snapshots(
+        removed = store.cleanup_stale_pre_promotion_snapshots(
             active_experiment_names={"some-other-exp"},
             max_age_hours=72,
         )
         assert removed >= 1
 
-    @pytest.mark.asyncio
-    async def test_manager_snapshot_gc_run(self):
+    def test_manager_snapshot_gc_run(self):
         """AlertManager._run_snapshot_gc cleans in-memory stale snapshots."""
         mgr = AlertManager(
             _make_config(
@@ -578,7 +565,7 @@ class TestSnapshotGarbageCollection:
                 ab_snapshot_gc_max_age_hours=72,
             )
         )
-        store = await _make_store()
+        store = _make_store()
         mgr.attach_history_store(store)
 
         # Create an experiment that's been stopped
@@ -700,7 +687,8 @@ class TestCalibrationDriftDetection:
 
         mgr.ab_experiment_mgr._confidence_calibration_map["alert_subject"] = 1.50
 
-        # Mock send_alert to track calls
+        # Mock send_alert to track calls — must also update the
+        # ABExperimentManager's alert_sender which was wired during init.
         sent_alerts = []
 
         def mock_send(alert):
@@ -708,6 +696,7 @@ class TestCalibrationDriftDetection:
             return "test-correlation-id"
 
         mgr.send_alert = mock_send
+        mgr.ab_experiment_mgr.set_alert_sender(mock_send)
 
         mgr.check_calibration_drift()
         assert len(sent_alerts) >= 1
@@ -827,10 +816,9 @@ class TestBanditStatusSprint550:
 class TestStoreSprint550Integration:
     """Integration tests for store-level Sprint 5.50 methods."""
 
-    @pytest.mark.asyncio
-    async def test_bandit_decision_with_context_features(self):
+    def test_bandit_decision_with_context_features(self):
         """Bandit decision log preserves context features."""
-        store = await _make_store()
+        store = _make_store()
 
         decision = {
             "experiment_name": "ctx-log-exp",
@@ -842,21 +830,20 @@ class TestStoreSprint550Integration:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-        await store.record_bandit_decision(decision)
-        results = await store.get_bandit_decisions(experiment_name="ctx-log-exp")
+        store.record_bandit_decision(decision)
+        results = store.get_bandit_decisions(experiment_name="ctx-log-exp")
         assert len(results) == 1
         assert results[0]["context_features"]["alert_type"] == "quality"
         assert results[0]["sample_sizes"]["control"] == 100
 
-    @pytest.mark.asyncio
-    async def test_timeline_events_sorted_by_timestamp(self):
+    def test_timeline_events_sorted_by_timestamp(self):
         """Timeline events are sorted by timestamp descending."""
-        store = await _make_store()
+        store = _make_store()
 
         # Add events at different times
         for i in range(5):
             ts = (datetime.now(timezone.utc) - timedelta(hours=5 - i)).isoformat()
-            await store.record_bandit_decision(
+            store.record_bandit_decision(
                 {
                     "experiment_name": f"sort-exp-{i}",
                     "method": "thompson",
@@ -865,20 +852,19 @@ class TestStoreSprint550Integration:
                 }
             )
 
-        events = await store.get_experiment_event_timeline(limit=10)
+        events = store.get_experiment_event_timeline(limit=10)
         # Most recent should be first
         for i in range(1, len(events)):
             assert events[i]["timestamp"] <= events[i - 1]["timestamp"]
 
-    @pytest.mark.asyncio
-    async def test_snapshot_gc_with_multiple_experiments(self):
+    def test_snapshot_gc_with_multiple_experiments(self):
         """Snapshot GC correctly handles multiple experiments with mixed status."""
-        store = await _make_store()
+        store = _make_store()
         datetime.now(timezone.utc).isoformat()
         old_iso = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat()
 
         # Active experiment (recent)
-        await store.record_pre_promotion_snapshot("active-recent", {"test": "recent"})
+        store.record_pre_promotion_snapshot("active-recent", {"test": "recent"})
         # Inactive experiment (old)
         with sqlite3.connect(store._db_path) as conn:
             conn.execute(
@@ -889,14 +875,14 @@ class TestStoreSprint550Integration:
                 ("inactive-old", old_iso, old_iso),
             )
 
-        removed = await store.cleanup_stale_pre_promotion_snapshots(
+        removed = store.cleanup_stale_pre_promotion_snapshots(
             active_experiment_names={"active-recent"},
             max_age_hours=72,
         )
         assert removed >= 1
 
         # Active should remain
-        results = await store.get_pre_promotion_snapshots()
+        results = store.get_pre_promotion_snapshots()
         names = {r["experiment_name"] for r in results}
         assert "active-recent" in names
         assert "inactive-old" not in names

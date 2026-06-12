@@ -9471,6 +9471,71 @@ class AlertManager:
     def _last_accuracy_snapshot_time(self, value: float) -> None:
         self._ab_experiment_mgr._last_accuracy_snapshot_time = value
 
+    # ------------------------------------------------------------------
+    # Sprint 5.50: Observability, adaptability, and data hygiene facades
+    # ------------------------------------------------------------------
+
+    def replay_bandit_decisions(self, experiment_name: str, limit: int = 50) -> list[dict]:
+        """Replay bandit decisions for an experiment from the history store.
+
+        Sprint 5.50: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.replay_bandit_decisions(experiment_name, limit)
+
+    def get_experiment_event_timeline(self, **kwargs) -> list[dict]:
+        """Return a unified event timeline from the history store.
+
+        Sprint 5.50: Public facade — delegates to ABExperimentManager
+        which in turn queries the SyncAlertHistoryBridge.
+        """
+        return self._ab_experiment_mgr.get_experiment_event_timeline(**kwargs)
+
+    def _select_adaptive_bandit_method(
+        self, name: str, c_samples: int, v_samples: int, c_acc: float, v_acc: float
+    ) -> str:
+        """Select the best bandit method based on experiment characteristics.
+
+        Sprint 5.50: Internal facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.select_adaptive_bandit_method(name, c_samples, v_samples, c_acc, v_acc)
+
+    def _run_snapshot_gc(self) -> int:
+        """Run snapshot garbage collection to clean up stale data.
+
+        Sprint 5.50: Internal facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.run_snapshot_gc()
+
+    def get_snapshot_gc_status(self) -> dict[str, Any]:
+        """Return the status of snapshot garbage collection.
+
+        Sprint 5.50: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_snapshot_gc_status()
+
+    def get_calibration_drift_status(self) -> dict[str, Any]:
+        """Return the status of calibration drift detection.
+
+        Sprint 5.50: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_calibration_drift_status()
+
+    def get_adaptive_bandit_status(self) -> dict[str, Any]:
+        """Return the status of adaptive bandit method selection.
+
+        Sprint 5.50: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_adaptive_bandit_status()
+
+    @property
+    def _total_adaptive_method_switches(self) -> int:
+        """Proxy to ABExperimentManager's adaptive method switch count."""
+        return self._ab_experiment_mgr._total_adaptive_method_switches
+
+    @_total_adaptive_method_switches.setter
+    def _total_adaptive_method_switches(self, value: int) -> None:
+        self._ab_experiment_mgr._total_adaptive_method_switches = value
+
     @property
     def ab_experiment_mgr(self) -> "ABExperimentManager":
         """The A/B experiment sub-manager.

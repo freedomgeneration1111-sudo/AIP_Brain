@@ -180,16 +180,15 @@ class OrchestratorConfig:
     llm_query_expansion_max_terms: int = 5
 
     # Per-channel budget: caps each channel's contribution to RRF fusion.
-    # 0 = no limit (use global max_hits).  FTS/corpus are capped because
-    # they tend to dominate RRF scores; Graph/Wiki have high precision
-    # but low recall and need generous limits.
+    # 0 = no limit (use global max_hits).  Set <channel>_max_hits to a
+    # positive value to enforce a per-channel cap before RRF fusion.
     max_hits_per_channel: int = 0
-    fts_max_hits: int = 15
+    fts_max_hits: int = 0
     vector_max_hits: int = 0
-    graph_max_hits: int = 10
-    wiki_max_hits: int = 8
-    procedural_max_hits: int = 5
-    corpus_max_hits: int = 15
+    graph_max_hits: int = 0
+    wiki_max_hits: int = 0
+    procedural_max_hits: int = 0
+    corpus_max_hits: int = 0
 
     # Per-channel RRF weights for hybrid retrieval tuning.
     # Higher weight = channel contributes more to the final RRF score.
