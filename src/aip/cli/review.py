@@ -215,7 +215,8 @@ async def _review_list_async(
             result = await review_list_by_type(artifact_type, stores, states=states)
             # Further filter by project
             filtered = [
-                a for a in result.get("artifacts", [])
+                a
+                for a in result.get("artifacts", [])
                 if a.get("project") == project or project in (a.get("artifact_id", ""))
             ]
             return {"artifacts": filtered, "project": project, "type": artifact_type}
@@ -309,12 +310,12 @@ def _print_list_result(result: dict, project_name: str = "") -> None:
         sys.exit(1)
 
     artifacts = result.get("artifacts", [])
-    project = result.get("project", project_name)
+    result.get("project", project_name)
 
     if not artifacts:
         click.echo(f"No artifacts found for '{project_name}'.")
         if not any(c in project_name for c in [":", "type"]):
-            click.echo(f"Generate one with: aip ask \"<question>\" --project {project_name} --save-artifact")
+            click.echo(f'Generate one with: aip ask "<question>" --project {project_name} --save-artifact')
         return
 
     click.echo(f"Artifacts for '{project_name}':")
@@ -370,7 +371,10 @@ def _print_show_result(result: dict) -> None:
     elif result.get("export_blocked"):
         click.echo("  Export:         BLOCKED (rejected — requires --force with audit trail)")
     elif result.get("export_requires_force"):
-        click.echo(f"  Export:         REQUIRES --force ({result.get('lifecycle_state', '')} — sovereign override with audit trail)")
+        click.echo(
+            f"  Export:         REQUIRES --force ({result.get('lifecycle_state', '')} "
+            f"— sovereign override with audit trail)"
+        )
     elif result.get("export_warn"):
         click.echo("  Export:         WARNING (unreviewed — requires --force with audit trail)")
     else:

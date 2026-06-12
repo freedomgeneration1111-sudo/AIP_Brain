@@ -166,8 +166,7 @@ def get_dogfood_mode(config: dict[str, Any]) -> DogfoodMode:
     # Invalid value — warn and fall back
     valid_values = ", ".join(m.value for m in DogfoodMode)
     logger.warning(
-        "Invalid dogfood_mode '%s' from %s. Must be one of: %s. "
-        "Falling back to MINIMAL.",
+        "Invalid dogfood_mode '%s' from %s. Must be one of: %s. Falling back to MINIMAL.",
         raw,
         source,
         valid_values,
@@ -257,7 +256,10 @@ class DogfoodReadinessCheck:
         actor_total = len(self.required_actors)
         lines.append(f"Actors: {actor_ok}/{actor_total} active")
 
-        lines.append(f"Embedding provider: {'active' if self.embedding_provider_active else 'INACTIVE'} ({self.embedding_provider_type})")
+        lines.append(
+            f"Embedding provider: {'active' if self.embedding_provider_active else 'INACTIVE'} "
+            f"({self.embedding_provider_type})"
+        )
         lines.append(f"Embedding backfill: {self.embedding_backfill_state}")
 
         ch_ok = sum(1 for v in self.retrieval_channels.values() if v)
@@ -421,7 +423,9 @@ def validate_dogfood_readiness(
     # Wiki channel requires graph_store (wiki articles stored as graph nodes)
     retrieval_channels["wiki"] = required_components.get("graph_store", False)
     # Procedural channel requires ace_playbook
-    retrieval_channels["procedural"] = hasattr(container, "ace_playbook") and getattr(container, "ace_playbook", None) is not None
+    retrieval_channels["procedural"] = (
+        hasattr(container, "ace_playbook") and getattr(container, "ace_playbook", None) is not None
+    )
 
     # --- DB path validation ---
     db_paths_valid, db_path_details = _validate_db_paths(container)
@@ -443,21 +447,18 @@ def validate_dogfood_readiness(
         for name, ok in required_components.items():
             if not ok:
                 logger.warning(
-                    "Dogfood FULL mode: component '%s' is not initialized. "
-                    "System will run in degraded mode.",
+                    "Dogfood FULL mode: component '%s' is not initialized. System will run in degraded mode.",
                     name,
                 )
         for name, ok in required_actors.items():
             if not ok:
                 logger.warning(
-                    "Dogfood FULL mode: actor '%s' is not active. "
-                    "System will run in degraded mode.",
+                    "Dogfood FULL mode: actor '%s' is not active. System will run in degraded mode.",
                     name,
                 )
         if not embedding_provider_active:
             logger.warning(
-                "Dogfood FULL mode: embedding_provider is not active. "
-                "System will run in degraded mode.",
+                "Dogfood FULL mode: embedding_provider is not active. System will run in degraded mode.",
             )
         elif embedding_provider_type in ("mock", "fake", "ci", "fixture"):
             logger.warning(
@@ -468,15 +469,13 @@ def validate_dogfood_readiness(
         # Chunk 4: Warn on degraded backfill states
         if embedding_backfill_state in ("not_configured", "degraded", "failed"):
             logger.warning(
-                "Dogfood FULL mode: embedding backfill state is '%s'. "
-                "Vector retrieval will be limited or unavailable.",
+                "Dogfood FULL mode: embedding backfill state is '%s'. Vector retrieval will be limited or unavailable.",
                 embedding_backfill_state,
             )
         for name, ok in retrieval_channels.items():
             if not ok:
                 logger.warning(
-                    "Dogfood FULL mode: retrieval channel '%s' is not available. "
-                    "System will run in degraded mode.",
+                    "Dogfood FULL mode: retrieval channel '%s' is not available. System will run in degraded mode.",
                     name,
                 )
         if not db_paths_valid:

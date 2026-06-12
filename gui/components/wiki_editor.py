@@ -24,8 +24,6 @@ from gui.theme import (
     C_INK40,
     C_INK60,
     C_MUTED,
-    C_OK_FG,
-    C_RAISED,
     C_SURFACE,
     C_WARN_FG,
     F_MONO,
@@ -56,88 +54,97 @@ class WikiEditorDialog:
 
         # Build dialog
         self._dialog = ui.dialog().props("persistent")
-        with self._dialog, ui.card().style(
-            f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-            f"border-radius:{R_MD}; min-width:560px; max-width:700px;"
+        with (
+            self._dialog,
+            ui.card().style(
+                f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
+                f"border-radius:{R_MD}; min-width:560px; max-width:700px;"
+            ),
         ):
             # Header
-            with ui.row().classes("w-full items-center").style(
-                f"padding:12px 16px; border-bottom:0.5px solid {C_INK40};"
+            with (
+                ui.row()
+                .classes("w-full items-center")
+                .style(f"padding:12px 16px; border-bottom:0.5px solid {C_INK40};")
             ):
                 self._header_label = ui.label("Create Article").style(
-                    f"font-size:14px; font-weight:600; color:{C_AMBER}; "
-                    f"font-family:{F_SANS}; letter-spacing:0.5px;"
+                    f"font-size:14px; font-weight:600; color:{C_AMBER}; font-family:{F_SANS}; letter-spacing:0.5px;"
                 )
                 ui.space()
-                ui.button(icon="close", on_click=self._close).props(
-                    "flat dense unelevated round"
-                ).style(f"color:{C_MUTED};")
+                ui.button(icon="close", on_click=self._close).props("flat dense unelevated round").style(
+                    f"color:{C_MUTED};"
+                )
 
             # Form
             with ui.column().style("padding:16px; gap:12px;"):
                 # Title
                 ui.label("Title").style(
-                    f"font-size:9px; font-weight:600; letter-spacing:1px; "
-                    f"color:{C_INK60}; text-transform:uppercase;"
+                    f"font-size:9px; font-weight:600; letter-spacing:1px; color:{C_INK60}; text-transform:uppercase;"
                 )
-                self._title_input = ui.input(
-                    placeholder="Article title"
-                ).classes("w-full").style(
-                    f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
-                    f"border-radius:{R_SM}; padding:8px 12px; color:{C_CREAM}; "
-                    f"font-family:{F_SANS}; font-size:13px;"
+                self._title_input = (
+                    ui.input(placeholder="Article title")
+                    .classes("w-full")
+                    .style(
+                        f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
+                        f"border-radius:{R_SM}; padding:8px 12px; color:{C_CREAM}; "
+                        f"font-family:{F_SANS}; font-size:13px;"
+                    )
                 )
 
                 # Domain
                 ui.label("Domain").style(
-                    f"font-size:9px; font-weight:600; letter-spacing:1px; "
-                    f"color:{C_INK60}; text-transform:uppercase;"
+                    f"font-size:9px; font-weight:600; letter-spacing:1px; color:{C_INK60}; text-transform:uppercase;"
                 )
-                self._domain_input = ui.input(
-                    placeholder="Domain classification (e.g. aip_loom)"
-                ).classes("w-full").style(
-                    f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
-                    f"border-radius:{R_SM}; padding:8px 12px; color:{C_CREAM}; "
-                    f"font-family:{F_MONO}; font-size:12px;"
+                self._domain_input = (
+                    ui.input(placeholder="Domain classification (e.g. aip_loom)")
+                    .classes("w-full")
+                    .style(
+                        f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
+                        f"border-radius:{R_SM}; padding:8px 12px; color:{C_CREAM}; "
+                        f"font-family:{F_MONO}; font-size:12px;"
+                    )
                 )
 
                 # Summary
                 ui.label("Summary").style(
-                    f"font-size:9px; font-weight:600; letter-spacing:1px; "
-                    f"color:{C_INK60}; text-transform:uppercase;"
+                    f"font-size:9px; font-weight:600; letter-spacing:1px; color:{C_INK60}; text-transform:uppercase;"
                 )
-                self._summary_input = ui.textarea(
-                    placeholder="Brief summary of the article"
-                ).classes("w-full").style(
-                    f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
-                    f"border-radius:{R_SM}; padding:8px 12px; color:{C_CREAM}; "
-                    f"font-family:{F_SANS}; font-size:12px; min-height:60px;"
+                self._summary_input = (
+                    ui.textarea(placeholder="Brief summary of the article")
+                    .classes("w-full")
+                    .style(
+                        f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
+                        f"border-radius:{R_SM}; padding:8px 12px; color:{C_CREAM}; "
+                        f"font-family:{F_SANS}; font-size:12px; min-height:60px;"
+                    )
                 )
 
                 # Tags
                 ui.label("Tags (comma-separated)").style(
-                    f"font-size:9px; font-weight:600; letter-spacing:1px; "
-                    f"color:{C_INK60}; text-transform:uppercase;"
+                    f"font-size:9px; font-weight:600; letter-spacing:1px; color:{C_INK60}; text-transform:uppercase;"
                 )
-                self._tags_input = ui.input(
-                    placeholder="tag1, tag2, tag3"
-                ).classes("w-full").style(
-                    f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
-                    f"border-radius:{R_SM}; padding:8px 12px; color:{C_CREAM}; "
-                    f"font-family:{F_MONO}; font-size:12px;"
+                self._tags_input = (
+                    ui.input(placeholder="tag1, tag2, tag3")
+                    .classes("w-full")
+                    .style(
+                        f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
+                        f"border-radius:{R_SM}; padding:8px 12px; color:{C_CREAM}; "
+                        f"font-family:{F_MONO}; font-size:12px;"
+                    )
                 )
 
                 # Body
                 ui.label("Content").style(
-                    f"font-size:9px; font-weight:600; letter-spacing:1px; "
-                    f"color:{C_INK60}; text-transform:uppercase;"
+                    f"font-size:9px; font-weight:600; letter-spacing:1px; color:{C_INK60}; text-transform:uppercase;"
                 )
-                self._body_input = ui.textarea(
-                    placeholder="Article body content..."
-                ).classes("w-full").style(
-                    f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
-                    f"border-radius:{R_SM}; padding:8px 12px; color:{C_CREAM}; "
-                    f"font-family:{F_MONO}; font-size:12px; min-height:150px;"
+                self._body_input = (
+                    ui.textarea(placeholder="Article body content...")
+                    .classes("w-full")
+                    .style(
+                        f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
+                        f"border-radius:{R_SM}; padding:8px 12px; color:{C_CREAM}; "
+                        f"font-family:{F_MONO}; font-size:12px; min-height:150px;"
+                    )
                 )
 
                 # Sovereignty notice
@@ -155,21 +162,23 @@ class WikiEditorDialog:
                 )
 
             # Action buttons
-            with ui.row().classes("w-full justify-end").style(
-                f"padding:12px 16px; border-top:0.5px solid {C_INK40}; gap:8px;"
+            with (
+                ui.row()
+                .classes("w-full justify-end")
+                .style(f"padding:12px 16px; border-top:0.5px solid {C_INK40}; gap:8px;")
             ):
-                ui.button("Cancel", on_click=self._close).props(
-                    "flat dense unelevated"
-                ).style(
+                ui.button("Cancel", on_click=self._close).props("flat dense unelevated").style(
                     f"color:{C_MUTED}; border:0.5px solid {C_INK40}; "
                     f"border-radius:{R_SM}; font-size:11px; font-family:{F_MONO}; padding:6px 16px;"
                 )
-                self._submit_btn = ui.button("Create Article", on_click=self._submit).props(
-                    "flat dense unelevated"
-                ).style(
-                    f"color:{C_GROUND}; background:{C_AMBER}; "
-                    f"border-radius:{R_SM}; font-size:11px; font-family:{F_MONO}; "
-                    f"font-weight:600; padding:6px 20px;"
+                self._submit_btn = (
+                    ui.button("Create Article", on_click=self._submit)
+                    .props("flat dense unelevated")
+                    .style(
+                        f"color:{C_GROUND}; background:{C_AMBER}; "
+                        f"border-radius:{R_SM}; font-size:11px; font-family:{F_MONO}; "
+                        f"font-weight:600; padding:6px 20px;"
+                    )
                 )
 
     def open_create(self) -> None:
@@ -182,9 +191,7 @@ class WikiEditorDialog:
         self._summary_input.value = ""
         self._tags_input.value = ""
         self._body_input.value = ""
-        self._notice_label.text = (
-            "New articles are created as GENERATED — requiring DEFINER review before approval."
-        )
+        self._notice_label.text = "New articles are created as GENERATED — requiring DEFINER review before approval."
         self._submit_btn.text = "Create Article"
         self._error_label.style("display:none;")
         self._dialog.open()
@@ -201,8 +208,7 @@ class WikiEditorDialog:
         self._tags_input.value = ", ".join(tags)
         self._body_input.value = article.get("body", "")
         self._notice_label.text = (
-            "Editing creates a new version. ECS state is NOT changed — "
-            "separate review/approve action required."
+            "Editing creates a new version. ECS state is NOT changed — separate review/approve action required."
         )
         self._submit_btn.text = "Save Changes"
         self._error_label.style("display:none;")

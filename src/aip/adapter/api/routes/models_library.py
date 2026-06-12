@@ -19,8 +19,7 @@ import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from aip.adapter.api.dependencies import get_container, require_definer
-from aip.adapter.api.dependencies import AipContainer
+from aip.adapter.api.dependencies import require_definer
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -143,9 +142,7 @@ async def fetch_model_library(
                 cost_in = _parse_float(model.get("pricing", {}).get("prompt"))
                 cost_out = _parse_float(model.get("pricing", {}).get("completion"))
                 context_length = model.get("context_length")
-                supports_vision = 1 if model.get("modality") in (
-                    "text+image", "multimodal"
-                ) else 0
+                supports_vision = 1 if model.get("modality") in ("text+image", "multimodal") else 0
                 supports_tools = 1 if model.get("supports_tools") else 0
 
                 cursor = await conn.execute(

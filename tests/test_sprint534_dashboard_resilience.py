@@ -12,22 +12,16 @@ Deliverable 5: Alert Group TTL & Auto-Cleanup (TTL config, metadata tracking, cl
 from __future__ import annotations
 
 import os
-import sqlite3
 import tempfile
 import time
-from datetime import datetime, timezone
-from typing import Any
 from unittest.mock import MagicMock
 
-import pytest
-
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
 )
-from aip.adapter.alert_history_store import AlertHistoryStore
-
 
 # ============================================================================
 # Deliverable 1: WebSocket Reconnection Logic
@@ -40,6 +34,7 @@ class TestWebSocketReconnection:
     def test_dashboard_html_has_reconnect_variables(self):
         """Dashboard HTML includes exponential backoff reconnection variables."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "wsReconnectAttempts" in _DASHBOARD_HTML
         assert "wsMaxReconnectAttempts" in _DASHBOARD_HTML
         assert "wsBaseReconnectDelay" in _DASHBOARD_HTML
@@ -48,23 +43,27 @@ class TestWebSocketReconnection:
     def test_dashboard_html_has_exponential_backoff_logic(self):
         """Dashboard HTML calculates exponential backoff delay."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "Math.pow(2, wsReconnectAttempts)" in _DASHBOARD_HTML
         assert "30000" in _DASHBOARD_HTML  # 30 second cap
 
     def test_dashboard_html_resets_reconnect_on_success(self):
         """Dashboard HTML resets reconnect counter on successful connect."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "wsReconnectAttempts = 0" in _DASHBOARD_HTML
 
     def test_dashboard_html_shows_reconnection_status(self):
         """Dashboard HTML shows reconnection status to user."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "Reconnecting in" in _DASHBOARD_HTML
         assert "attempt" in _DASHBOARD_HTML
 
     def test_dashboard_html_saves_connection_preference(self):
         """Dashboard HTML persists connection method to localStorage."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "localStorage.setItem('aip_dashboard_connection'" in _DASHBOARD_HTML
         assert "'websocket'" in _DASHBOARD_HTML
         assert "'sse'" in _DASHBOARD_HTML
@@ -72,16 +71,19 @@ class TestWebSocketReconnection:
     def test_dashboard_html_reads_connection_preference(self):
         """Dashboard HTML reads connection preference from localStorage on load."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "localStorage.getItem('aip_dashboard_connection')" in _DASHBOARD_HTML
 
     def test_dashboard_html_max_retries_fallback_to_sse(self):
         """Dashboard HTML falls back to SSE after max retries."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "Max retries" in _DASHBOARD_HTML
 
     def test_dashboard_html_clears_reconnect_timer(self):
         """Dashboard HTML clears pending reconnect timer on new connect attempt."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "clearTimeout(wsReconnectTimer)" in _DASHBOARD_HTML
 
 
@@ -96,12 +98,14 @@ class TestCausalGroupingVisualization:
     def test_dashboard_html_has_causal_panel(self):
         """Dashboard HTML includes a causal group visualization panel."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "causalPanel" in _DASHBOARD_HTML
         assert "causal-chains" in _DASHBOARD_HTML
 
     def test_dashboard_html_has_causal_chain_css(self):
         """Dashboard HTML includes CSS for causal chain visualization."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "causal-node" in _DASHBOARD_HTML
         assert "causal-arrow" in _DASHBOARD_HTML
         assert "causal-chain" in _DASHBOARD_HTML
@@ -109,18 +113,21 @@ class TestCausalGroupingVisualization:
     def test_dashboard_html_has_collapse_functionality(self):
         """Dashboard HTML has collapsible sections for causal groups."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "toggleCausalPanel" in _DASHBOARD_HTML
         assert "collapsed" in _DASHBOARD_HTML
 
     def test_dashboard_html_has_fetch_causal_groups(self):
         """Dashboard HTML has JavaScript to fetch and render causal groups."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "fetchCausalGroups" in _DASHBOARD_HTML
         assert "fetchCausalChainDetails" in _DASHBOARD_HTML
 
     def test_dashboard_html_differentiates_causal_groups(self):
         """Dashboard HTML differentiates causal groups from regular groups."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "causal:" in _DASHBOARD_HTML
         assert "isCausal" in _DASHBOARD_HTML
         assert "startsWith('causal:')" in _DASHBOARD_HTML
@@ -128,6 +135,7 @@ class TestCausalGroupingVisualization:
     def test_dashboard_html_shows_chain_with_arrows(self):
         """Dashboard HTML shows alert chain with arrows between nodes."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "→" in _DASHBOARD_HTML or "&#8594;" in _DASHBOARD_HTML
         assert "node-type" in _DASHBOARD_HTML
         assert "node-severity" in _DASHBOARD_HTML
@@ -145,13 +153,15 @@ class TestDeliveryStatusPruningAPI:
     def test_prune_endpoint_exists(self):
         """POST /vigil/quality/alerts/delivery-status/prune endpoint exists."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/alerts/delivery-status/prune" in route_paths
 
     def test_config_endpoint_exists(self):
         """PATCH /vigil/quality/alerts/delivery-status/config endpoint exists."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/alerts/delivery-status/config" in route_paths
 
     def test_delivery_status_max_rows_config(self):
@@ -173,15 +183,18 @@ class TestDeliveryStatusPruningAPI:
     def test_prune_endpoint_returns_stats(self):
         """Prune endpoint returns pruning stats with pruned count and remaining."""
         from aip.adapter.api.routes.vigil_quality import vigil_delivery_status_prune
+
         assert vigil_delivery_status_prune is not None
 
     def test_config_update_modifies_alert_config(self):
         """PATCH config endpoint updates AlertConfig pruning parameters."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            delivery_status_max_age_days=30,
-            delivery_status_max_rows=2000,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                delivery_status_max_age_days=30,
+                delivery_status_max_rows=2000,
+            )
+        )
         # Simulate the PATCH endpoint logic
         mgr.config.delivery_status_max_age_days = 14
         mgr.config.delivery_status_max_rows = 500
@@ -192,6 +205,7 @@ class TestDeliveryStatusPruningAPI:
     def test_pruning_config_update_model(self):
         """PruningConfigUpdate model accepts optional fields."""
         from aip.adapter.api.routes.vigil_quality import PruningConfigUpdate
+
         update = PruningConfigUpdate(max_age_days=7, max_rows=1000)
         assert update.max_age_days == 7
         assert update.max_rows == 1000
@@ -276,7 +290,8 @@ class TestWebSocketSessionManagement:
     def test_ws_sessions_endpoint_exists(self):
         """GET /vigil/quality/dashboard/ws/sessions endpoint exists."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/dashboard/ws/sessions" in route_paths
 
     def test_register_ws_session_broadcasts_event(self):
@@ -342,19 +357,23 @@ class TestAlertGroupTTL:
 
     def test_add_alert_to_group_updates_metadata(self):
         """_add_alert_to_group() updates last_activity_at for the group."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            alert_group_ttl_hours=24,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                alert_group_ttl_hours=24,
+            )
+        )
 
         before = time.time()
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="ttl_test",
-            message="Test TTL metadata",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="ttl_test",
+                message="Test TTL metadata",
+            )
+        )
         after = time.time()
 
         assert "ttl_test" in mgr._alert_groups_metadata
@@ -365,22 +384,27 @@ class TestAlertGroupTTL:
         """cleanup_expired_groups() removes groups older than TTL."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                alert_group_ttl_hours=1,
-            ))
-            mgr.attach_history_store(store)
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    alert_group_ttl_hours=1,
+                )
+            )
+            mgr.attach_history_store(bridge)
 
             # Create a group with a very old timestamp
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="warning",
-                subject="old_group",
-                message="Old alert",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="old_group",
+                    message="Old alert",
+                )
+            )
 
             # Manually set the group's last_activity_at to be expired
             mgr._alert_groups_metadata["old_group"] = time.time() - 7200  # 2 hours ago
@@ -395,19 +419,23 @@ class TestAlertGroupTTL:
 
     def test_cleanup_expired_groups_keeps_active_groups(self):
         """cleanup_expired_groups() keeps groups within TTL."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            alert_group_ttl_hours=24,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                alert_group_ttl_hours=24,
+            )
+        )
 
         # Create a recent group
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="active_group",
-            message="Active alert",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="active_group",
+                message="Active alert",
+            )
+        )
 
         dissolved = mgr.cleanup_expired_groups()
         assert dissolved == 0
@@ -417,19 +445,23 @@ class TestAlertGroupTTL:
 
     def test_cleanup_expired_groups_disabled_when_ttl_zero(self):
         """cleanup_expired_groups() does nothing when TTL is 0 (disabled)."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            alert_group_ttl_hours=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                alert_group_ttl_hours=0,
+            )
+        )
 
         # Create a group with an old timestamp
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="disabled_ttl_group",
-            message="Test disabled TTL",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="disabled_ttl_group",
+                message="Test disabled TTL",
+            )
+        )
 
         # Manually set the group's last_activity_at to be very old
         mgr._alert_groups_metadata["disabled_ttl_group"] = time.time() - 7200
@@ -444,24 +476,30 @@ class TestAlertGroupTTL:
         """cleanup_expired_groups() also deletes groups from persistent store."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                alert_group_ttl_hours=1,
-            ))
-            mgr.attach_history_store(store)
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    alert_group_ttl_hours=1,
+                )
+            )
+            mgr.attach_history_store(bridge)
 
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="warning",
-                subject="persist_ttl_test",
-                message="Test persist TTL",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="persist_ttl_test",
+                    message="Test persist TTL",
+                )
+            )
 
             # Verify the group exists in SQLite
-            groups_before = store.get_alert_groups()
+            bridge = mgr._history_store  # bridge after auto-wrapping
+            groups_before = bridge.get_alert_groups()
             assert "persist_ttl_test" in groups_before
 
             # Expire the group
@@ -471,33 +509,39 @@ class TestAlertGroupTTL:
             assert dissolved == 1
 
             # Verify the group is gone from SQLite
-            groups_after = store.get_alert_groups()
+            groups_after = bridge.get_alert_groups()
             assert "persist_ttl_test" not in groups_after
 
     def test_cleanup_runs_on_add_alert_to_group(self):
         """cleanup_expired_groups() is called during _add_alert_to_group()."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            alert_group_ttl_hours=1,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                alert_group_ttl_hours=1,
+            )
+        )
 
         # Create a group and make it old
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="auto_cleanup_test",
-            message="Test auto cleanup",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="auto_cleanup_test",
+                message="Test auto cleanup",
+            )
+        )
         mgr._alert_groups_metadata["auto_cleanup_test"] = time.time() - 7200
 
         # Send another alert — this should trigger cleanup and remove the old group
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="new_alert",
-            message="New alert triggers cleanup",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="new_alert",
+                message="New alert triggers cleanup",
+            )
+        )
 
         groups = mgr.get_alert_groups()
         assert "auto_cleanup_test" not in groups
@@ -505,10 +549,12 @@ class TestAlertGroupTTL:
 
     def test_get_status_includes_group_ttl_info(self):
         """get_status() includes alert_group_ttl info."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            alert_group_ttl_hours=48,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                alert_group_ttl_hours=48,
+            )
+        )
         status = mgr.get_status()
 
         assert "alert_group_ttl" in status
@@ -518,25 +564,31 @@ class TestAlertGroupTTL:
 
     def test_groups_cleaned_counter_increments(self):
         """_total_groups_cleaned counter increments on each cleanup."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            alert_group_ttl_hours=1,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                alert_group_ttl_hours=1,
+            )
+        )
 
         # Create and expire two groups
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="counter1",
-            message="Counter test 1",
-        ))
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="counter2",
-            message="Counter test 2",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="counter1",
+                message="Counter test 1",
+            )
+        )
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="counter2",
+                message="Counter test 2",
+            )
+        )
 
         mgr._alert_groups_metadata["counter1"] = time.time() - 7200
         mgr._alert_groups_metadata["counter2"] = time.time() - 7200
@@ -551,22 +603,27 @@ class TestAlertGroupTTL:
         """Causal groups also get last_activity_at metadata."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                causal_grouping_enabled=True,
-            ))
-            mgr.attach_history_store(store)
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    causal_grouping_enabled=True,
+                )
+            )
+            mgr.attach_history_store(bridge)
 
             before = time.time()
-            mgr.send_alert(Alert(
-                alert_type="pool_adjustment",
-                severity="warning",
-                subject="causal_meta_test",
-                message="Pool adjusted",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="pool_adjustment",
+                    severity="warning",
+                    subject="causal_meta_test",
+                    message="Pool adjusted",
+                )
+            )
             after = time.time()
 
             causal_key = "causal:causal_meta_test"

@@ -59,7 +59,9 @@ def register(
 
     async def _wiki_retriever(query: str) -> list[RetrievalHit]:
         arts = await artifact_store.list_artifacts_by_metadata(
-            key="artifact_type", value="beast_wiki", limit=50,
+            key="artifact_type",
+            value="beast_wiki",
+            limit=50,
         )
 
         if not arts:
@@ -79,7 +81,9 @@ def register(
                 state = await ecs_store.current_state(art_id)
             except Exception as ecs_exc:
                 logger.debug(
-                    "ECS state lookup failed for '%s': %s", art_id, ecs_exc,
+                    "ECS state lookup failed for '%s': %s",
+                    art_id,
+                    ecs_exc,
                 )
                 state = None
             if state not in ("APPROVED", "GENERATED"):
@@ -106,20 +110,22 @@ def register(
             art_id = art.get("id", "")
             content = art.get("content", "") or ""
             meta = art.get("metadata", {}) or {}
-            hits.append(RetrievalHit(
-                id=f"wiki:{art_id}",
-                content=content[:2000],
-                score=score,
-                source_channel=CHANNEL_NAME,
-                domain=meta.get("domain", ""),
-                metadata={
-                    "type": "wiki_article",
-                    "artifact_id": art_id,
-                    "domain": meta.get("domain", ""),
-                    "overview_text": meta.get("overview_text", "")[:500],
-                },
-                rank_in_channel=i + 1,
-            ))
+            hits.append(
+                RetrievalHit(
+                    id=f"wiki:{art_id}",
+                    content=content[:2000],
+                    score=score,
+                    source_channel=CHANNEL_NAME,
+                    domain=meta.get("domain", ""),
+                    metadata={
+                        "type": "wiki_article",
+                        "artifact_id": art_id,
+                        "domain": meta.get("domain", ""),
+                        "overview_text": meta.get("overview_text", "")[:500],
+                    },
+                    rank_in_channel=i + 1,
+                )
+            )
         return hits
 
     orchestrator.register_channel(

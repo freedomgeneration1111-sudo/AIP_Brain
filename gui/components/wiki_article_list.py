@@ -15,7 +15,6 @@ from gui.theme import (
     C_AMBER,
     C_CREAM,
     C_ERR_FG,
-    C_GROUND,
     C_INK40,
     C_INK60,
     C_MUTED,
@@ -27,7 +26,6 @@ from gui.theme import (
     F_SANS,
     R_MD,
     R_SM,
-    BORDER,
 )
 
 log = logging.getLogger("gui.components.wiki_article_list")
@@ -55,7 +53,8 @@ def render_wiki_article_list(
     if search_text:
         search_lower = search_text.lower()
         filtered = [
-            a for a in filtered
+            a
+            for a in filtered
             if search_lower in (a.get("title", "")).lower()
             or search_lower in (a.get("domain", "")).lower()
             or search_lower in (a.get("summary", "")).lower()
@@ -65,9 +64,7 @@ def render_wiki_article_list(
 
     if not filtered:
         if not articles:
-            ui.label("No wiki articles yet.").style(
-                f"font-size:12px; color:{C_MUTED}; font-family:{F_SANS};"
-            )
+            ui.label("No wiki articles yet.").style(f"font-size:12px; color:{C_MUTED}; font-family:{F_SANS};")
             ui.label("Create your first article or wait for Sexton to generate one.").style(
                 f"font-size:10px; color:{C_INK60}; font-family:{F_MONO}; margin-top:4px;"
             )
@@ -85,13 +82,17 @@ def render_wiki_article_list(
 
     # Render grouped
     for domain, domain_articles in sorted(domain_groups.items()):
-        with ui.column().classes("w-full").style(
-            f"margin-bottom:8px; background:{C_SURFACE}; "
-            f"border:0.5px solid {C_INK40}; border-radius:{R_MD}; padding:0;"
+        with (
+            ui.column()
+            .classes("w-full")
+            .style(
+                f"margin-bottom:8px; background:{C_SURFACE}; "
+                f"border:0.5px solid {C_INK40}; border-radius:{R_MD}; padding:0;"
+            )
         ):
             # Domain header
-            with ui.row().classes("w-full items-center").style(
-                f"padding:8px 12px; border-bottom:0.5px solid {C_INK40};"
+            with (
+                ui.row().classes("w-full items-center").style(f"padding:8px 12px; border-bottom:0.5px solid {C_INK40};")
             ):
                 ui.icon("folder", size="14px").style(f"color:{C_AMBER}; margin-right:6px;")
                 ui.label(domain).style(
@@ -122,7 +123,7 @@ def _render_article_row(
     article_id = article.get("id", "")
     title = article.get("title", article_id)
     state = article.get("status", article.get("state", "UNKNOWN"))
-    word_count = article.get("word_count", 0)
+    article.get("word_count", 0)
 
     # State color mapping
     state_colors = {
@@ -138,13 +139,14 @@ def _render_article_row(
     bg = C_RAISED if is_selected else "transparent"
     border_left = f"2px solid {C_AMBER}" if is_selected else "2px solid transparent"
 
-    with ui.row().classes("w-full items-center cursor-pointer").style(
-        f"padding:6px 12px; background:{bg}; border-left:{border_left}; transition:background 0.15s;"
-    ).on("click", lambda aid=article_id: on_select(aid) if on_select else None):
+    with (
+        ui.row()
+        .classes("w-full items-center cursor-pointer")
+        .style(f"padding:6px 12px; background:{bg}; border-left:{border_left}; transition:background 0.15s;")
+        .on("click", lambda aid=article_id: on_select(aid) if on_select else None)
+    ):
         # State indicator dot
-        ui.label("●").style(
-            f"font-size:8px; color:{state_color}; margin-right:6px;"
-        )
+        ui.label("●").style(f"font-size:8px; color:{state_color}; margin-right:6px;")
 
         # Title
         ui.label(title[:48] + ("..." if len(title) > 48 else "")).style(

@@ -19,16 +19,13 @@ from gui.theme import (
     C_CREAM,
     C_ERR_BG,
     C_ERR_FG,
-    C_GROUND,
     C_INK40,
     C_INK60,
     C_MUTED,
     C_OK_BG,
     C_OK_FG,
-    C_RAISED,
     C_SURFACE,
     C_WARN_BG,
-    C_WARN_FG,
     F_MONO,
     F_SANS,
     R_MD,
@@ -45,23 +42,21 @@ def _stat_card(
     bg_color: str = C_SURFACE,
 ) -> ui.card:
     """Create a single stat card."""
-    with ui.card().classes("q-pa-sm").style(
-        f"background:{bg_color}; border:0.5px solid {C_INK40}; "
-        f"border-radius:{R_MD}; min-width:120px; flex:1; "
-        f"font-family:{F_SANS};"
-    ) as card:
+    with (
+        ui.card()
+        .classes("q-pa-sm")
+        .style(
+            f"background:{bg_color}; border:0.5px solid {C_INK40}; "
+            f"border-radius:{R_MD}; min-width:120px; flex:1; "
+            f"font-family:{F_SANS};"
+        ) as card
+    ):
         ui.label(label).style(
-            f"font-size:10px; color:{C_MUTED}; text-transform:uppercase; "
-            f"letter-spacing:0.5px; margin-bottom:4px;"
+            f"font-size:10px; color:{C_MUTED}; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;"
         )
-        ui.label(value).style(
-            f"font-size:22px; font-weight:700; color:{color}; "
-            f"font-family:{F_MONO}; line-height:1;"
-        )
+        ui.label(value).style(f"font-size:22px; font-weight:700; color:{color}; font-family:{F_MONO}; line-height:1;")
         if subtitle:
-            ui.label(subtitle).style(
-                f"font-size:10px; color:{C_INK60}; margin-top:2px;"
-            )
+            ui.label(subtitle).style(f"font-size:10px; color:{C_INK60}; margin-top:2px;")
     return card
 
 
@@ -80,9 +75,7 @@ class CorpusSummaryCards:
         if self._container is not None:
             self._container.clear()
 
-        with ui.row().classes("w-full q-gutter-sm no-wrap").style(
-            "overflow-x:auto; padding-bottom:8px;"
-        ) as row:
+        with ui.row().classes("w-full q-gutter-sm no-wrap").style("overflow-x:auto; padding-bottom:8px;") as row:
             self._container = row
 
             # Documents card
@@ -130,14 +123,20 @@ class CorpusSummaryCards:
 
             # Backfill state card
             backfill_status = status.get("backfill_state", "")
-            sexton_active = bool(status.get("needs_reembed", 0) >= 0)  # status was returned
-            bf_label = "ACTIVE" if backfill_status in ("backfill_running", "configured_idle") else (
-                "SCHEDULED" if backfill_status in ("backfill_pending",) else (
-                    "IDLE" if backfill_status in ("not_configured", "embedded", "") else backfill_status.upper()
+            bool(status.get("needs_reembed", 0) >= 0)  # status was returned
+            bf_label = (
+                "ACTIVE"
+                if backfill_status in ("backfill_running", "configured_idle")
+                else (
+                    "SCHEDULED"
+                    if backfill_status in ("backfill_pending",)
+                    else ("IDLE" if backfill_status in ("not_configured", "embedded", "") else backfill_status.upper())
                 )
             )
-            bf_color = C_OK_FG if backfill_status in ("embedded", "configured_idle") else (
-                C_AMBER if backfill_status in ("backfill_running", "backfill_pending") else C_MUTED
+            bf_color = (
+                C_OK_FG
+                if backfill_status in ("embedded", "configured_idle")
+                else (C_AMBER if backfill_status in ("backfill_running", "backfill_pending") else C_MUTED)
             )
             _stat_card(
                 "Backfill",

@@ -13,19 +13,17 @@ from __future__ import annotations
 import os
 import sqlite3
 import tempfile
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
 )
-from aip.adapter.alert_history_store import AlertHistoryStore
 from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
-
 
 # ============================================================================
 # Deliverable 1: Alerting Durability — AlertHistoryStore
@@ -35,330 +33,379 @@ from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
 class TestAlertHistoryStore:
     """Tests for the SQLite-backed AlertHistoryStore."""
 
-    def test_initialize_creates_tables(self):
+    @pytest.mark.asyncio
+    async def test_initialize_creates_tables(self):
         """AlertHistoryStore.initialize() creates the required tables."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             with sqlite3.connect(store._db_path) as conn:
-                tables = conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                ).fetchall()
+                tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
                 table_names = [t[0] for t in tables]
                 assert "alert_history" in table_names
                 assert "alert_delivery_failures" in table_names
 
-    def test_record_alert_persists_to_sqlite(self):
+    @pytest.mark.asyncio
+    async def test_record_alert_persists_to_sqlite(self):
         """record_alert() writes alert data to the SQLite database."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
-            result = store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "graph_extraction",
-                "message": "Batch size reduced from 4 to 3",
-                "data": {"old": 4, "new": 3, "failure_rate": 0.6},
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            result = await store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "graph_extraction",
+                    "message": "Batch size reduced from 4 to 3",
+                    "data": {"old": 4, "new": 3, "failure_rate": 0.6},
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
             assert result is True
 
             # Verify the alert was persisted
-            alerts = store.get_alert_history()
+            alerts = await store.get_alert_history()
             assert len(alerts) == 1
             assert alerts[0]["alert_type"] == "batch_reduction"
             assert alerts[0]["severity"] == "warning"
             assert alerts[0]["data"]["old"] == 4
 
-    def test_record_delivery_failure_persists_to_sqlite(self):
+    @pytest.mark.asyncio
+    async def test_record_delivery_failure_persists_to_sqlite(self):
         """record_delivery_failure() writes failure data to the SQLite database."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
-            result = store.record_delivery_failure({
-                "transport": "webhook",
-                "alert_type": "batch_reduction",
-                "subject": "test",
-                "error_message": "Connection refused",
-                "timestamp": "2025-06-01T12:00:00Z",
-                "retry_attempt": 2,
-                "final": True,
-            })
+            result = await store.record_delivery_failure(
+                {
+                    "transport": "webhook",
+                    "alert_type": "batch_reduction",
+                    "subject": "test",
+                    "error_message": "Connection refused",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                    "retry_attempt": 2,
+                    "final": True,
+                }
+            )
             assert result is True
 
-            failures = store.get_delivery_failures()
+            failures = await store.get_delivery_failures()
             assert len(failures) == 1
             assert failures[0]["transport"] == "webhook"
             assert failures[0]["retry_attempt"] == 2
 
-    def test_get_alert_history_filters_by_type(self):
+    @pytest.mark.asyncio
+    async def test_get_alert_history_filters_by_type(self):
         """get_alert_history() filters by alert_type."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "test",
-                "message": "m1",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
-            store.record_alert({
-                "alert_type": "quality_degradation",
-                "severity": "warning",
-                "subject": "test",
-                "message": "m2",
-                "timestamp": "2025-06-01T12:01:00Z",
-            })
-
-            batch_only = store.get_alert_history(alert_type="batch_reduction")
-            assert len(batch_only) == 1
-            assert batch_only[0]["alert_type"] == "batch_reduction"
-
-    def test_get_alert_history_filters_by_severity(self):
-        """get_alert_history() filters by severity."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
-
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "test",
-                "message": "m1",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "critical",
-                "subject": "test",
-                "message": "m2",
-                "timestamp": "2025-06-01T12:01:00Z",
-            })
-
-            critical_only = store.get_alert_history(severity="critical")
-            assert len(critical_only) == 1
-            assert critical_only[0]["severity"] == "critical"
-
-    def test_get_alert_history_filters_by_since(self):
-        """get_alert_history() filters by timestamp with since parameter."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
-
-            store.record_alert({
-                "alert_type": "quality_degradation",
-                "severity": "warning",
-                "subject": "test",
-                "message": "old alert",
-                "timestamp": "2020-01-01T00:00:00Z",
-            })
-            store.record_alert({
-                "alert_type": "quality_degradation",
-                "severity": "warning",
-                "subject": "test",
-                "message": "new alert",
-                "timestamp": "2025-06-01T00:00:00Z",
-            })
-
-            recent = store.get_alert_history(since="2025-01-01T00:00:00Z")
-            assert len(recent) == 1
-            assert recent[0]["message"] == "new alert"
-
-    def test_get_alert_history_respects_limit(self):
-        """get_alert_history() respects the limit parameter."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
-
-            for i in range(5):
-                store.record_alert({
+            await store.record_alert(
+                {
                     "alert_type": "batch_reduction",
                     "severity": "warning",
                     "subject": "test",
-                    "message": f"alert_{i}",
-                    "timestamp": f"2025-06-01T12:0{i}:00Z",
-                })
+                    "message": "m1",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
+            await store.record_alert(
+                {
+                    "alert_type": "quality_degradation",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "m2",
+                    "timestamp": "2025-06-01T12:01:00Z",
+                }
+            )
 
-            result = store.get_alert_history(limit=3)
+            batch_only = await store.get_alert_history(alert_type="batch_reduction")
+            assert len(batch_only) == 1
+            assert batch_only[0]["alert_type"] == "batch_reduction"
+
+    @pytest.mark.asyncio
+    async def test_get_alert_history_filters_by_severity(self):
+        """get_alert_history() filters by severity."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
+            await store.initialize()
+
+            await store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "m1",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
+            await store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "critical",
+                    "subject": "test",
+                    "message": "m2",
+                    "timestamp": "2025-06-01T12:01:00Z",
+                }
+            )
+
+            critical_only = await store.get_alert_history(severity="critical")
+            assert len(critical_only) == 1
+            assert critical_only[0]["severity"] == "critical"
+
+    @pytest.mark.asyncio
+    async def test_get_alert_history_filters_by_since(self):
+        """get_alert_history() filters by timestamp with since parameter."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
+            await store.initialize()
+
+            await store.record_alert(
+                {
+                    "alert_type": "quality_degradation",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "old alert",
+                    "timestamp": "2020-01-01T00:00:00Z",
+                }
+            )
+            await store.record_alert(
+                {
+                    "alert_type": "quality_degradation",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "new alert",
+                    "timestamp": "2025-06-01T00:00:00Z",
+                }
+            )
+
+            recent = await store.get_alert_history(since="2025-01-01T00:00:00Z")
+            assert len(recent) == 1
+            assert recent[0]["message"] == "new alert"
+
+    @pytest.mark.asyncio
+    async def test_get_alert_history_respects_limit(self):
+        """get_alert_history() respects the limit parameter."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
+            await store.initialize()
+
+            for i in range(5):
+                await store.record_alert(
+                    {
+                        "alert_type": "batch_reduction",
+                        "severity": "warning",
+                        "subject": "test",
+                        "message": f"alert_{i}",
+                        "timestamp": f"2025-06-01T12:0{i}:00Z",
+                    }
+                )
+
+            result = await store.get_alert_history(limit=3)
             assert len(result) == 3
 
-    def test_get_delivery_failures_filters_by_transport(self):
+    @pytest.mark.asyncio
+    async def test_get_delivery_failures_filters_by_transport(self):
         """get_delivery_failures() filters by transport."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
-            store.record_delivery_failure({
-                "transport": "webhook",
-                "alert_type": "test",
-                "subject": "test",
-                "error_message": "err1",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
-            store.record_delivery_failure({
-                "transport": "email",
-                "alert_type": "test",
-                "subject": "test",
-                "error_message": "err2",
-                "timestamp": "2025-06-01T12:01:00Z",
-            })
+            await store.record_delivery_failure(
+                {
+                    "transport": "webhook",
+                    "alert_type": "test",
+                    "subject": "test",
+                    "error_message": "err1",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
+            await store.record_delivery_failure(
+                {
+                    "transport": "email",
+                    "alert_type": "test",
+                    "subject": "test",
+                    "error_message": "err2",
+                    "timestamp": "2025-06-01T12:01:00Z",
+                }
+            )
 
-            webhook_only = store.get_delivery_failures(transport="webhook")
+            webhook_only = await store.get_delivery_failures(transport="webhook")
             assert len(webhook_only) == 1
             assert webhook_only[0]["transport"] == "webhook"
 
-    def test_alert_count_and_failure_count(self):
+    @pytest.mark.asyncio
+    async def test_alert_count_and_failure_count(self):
         """get_alert_count() and get_failure_count() return correct counts."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
-            assert store.get_alert_count() == 0
-            assert store.get_failure_count() == 0
+            assert await store.get_alert_count() == 0
+            assert await store.get_failure_count() == 0
 
-            store.record_alert({
-                "alert_type": "test",
-                "severity": "info",
-                "subject": "test",
-                "message": "m1",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
-            store.record_delivery_failure({
-                "transport": "webhook",
-                "alert_type": "test",
-                "subject": "test",
-                "error_message": "err",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            await store.record_alert(
+                {
+                    "alert_type": "test",
+                    "severity": "info",
+                    "subject": "test",
+                    "message": "m1",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
+            await store.record_delivery_failure(
+                {
+                    "transport": "webhook",
+                    "alert_type": "test",
+                    "subject": "test",
+                    "error_message": "err",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
 
-            assert store.get_alert_count() == 1
-            assert store.get_failure_count() == 1
+            assert await store.get_alert_count() == 1
+            assert await store.get_failure_count() == 1
 
-    def test_get_status_returns_store_info(self):
+    @pytest.mark.asyncio
+    async def test_get_status_returns_store_info(self):
         """get_status() returns comprehensive store status."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
-            status = store.get_status()
+            status = await store.get_status()
             assert status["initialized"] is True
             assert "total_alerts" in status
             assert "total_delivery_failures" in status
             assert "max_alert_rows" in status
 
-    def test_alert_history_survives_restart(self):
+    @pytest.mark.asyncio
+    async def test_alert_history_survives_restart(self):
         """Alert history persists across store restarts (core durability test)."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = os.path.join(tmp_dir, "alerts.db")
 
             # First instance: write alerts
             store1 = AlertHistoryStore(db_path)
-            store1.initialize()
-            store1.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "critical",
-                "subject": "graph_extraction",
-                "message": "Batch reduced to 1",
-                "data": {"old": 4, "new": 1},
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            await store1.initialize()
+            await store1.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "critical",
+                    "subject": "graph_extraction",
+                    "message": "Batch reduced to 1",
+                    "data": {"old": 4, "new": 1},
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
 
             # Simulate process restart: create new store instance
             store2 = AlertHistoryStore(db_path)
-            store2.initialize()
+            await store2.initialize()
 
             # The alert should be queryable from the new instance
-            alerts = store2.get_alert_history()
+            alerts = await store2.get_alert_history()
             assert len(alerts) == 1
             assert alerts[0]["alert_type"] == "batch_reduction"
             assert alerts[0]["severity"] == "critical"
             assert alerts[0]["data"]["old"] == 4
 
-    def test_auto_prune_alerts(self):
+    @pytest.mark.asyncio
+    async def test_auto_prune_alerts(self):
         """Alert history is auto-pruned when exceeding max_alert_rows."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(
                 os.path.join(tmp_dir, "alerts.db"),
                 max_alert_rows=5,
             )
-            store.initialize()
+            await store.initialize()
 
             # Insert more than max rows
             for i in range(10):
-                store.record_alert({
-                    "alert_type": "test",
-                    "severity": "info",
-                    "subject": "test",
-                    "message": f"alert_{i}",
-                    "timestamp": f"2025-06-01T12:{i:02d}:00Z",
-                })
+                await store.record_alert(
+                    {
+                        "alert_type": "test",
+                        "severity": "info",
+                        "subject": "test",
+                        "message": f"alert_{i}",
+                        "timestamp": f"2025-06-01T12:{i:02d}:00Z",
+                    }
+                )
 
             # Should be pruned to max_alert_rows
-            count = store.get_alert_count()
+            count = await store.get_alert_count()
             assert count <= 5
 
 
 class TestAlertManagerWithHistoryStore:
     """Tests for AlertManager integration with AlertHistoryStore."""
 
-    def test_attach_history_store(self):
+    @pytest.mark.asyncio
+    async def test_attach_history_store(self):
         """AlertManager.attach_history_store() links the persistent store."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
-            assert mgr._history_store is store
+            assert mgr._history_store is bridge
+            bridge.close()
 
-    def test_send_alert_persists_to_store(self):
+    @pytest.mark.asyncio
+    async def test_send_alert_persists_to_store(self):
         """When a history store is attached, send_alert() persists to SQLite."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="warning",
-                subject="test",
-                message="Batch reduced",
-                data={"old": 4, "new": 3},
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="test",
+                    message="Batch reduced",
+                    data={"old": 4, "new": 3},
+                )
+            )
 
             # Check in-memory (still maintained as buffer)
             assert len(mgr.lifecycle_mgr._alert_history) == 1
 
-            # Check persistent store
-            assert store.get_alert_count() == 1
-            alerts = store.get_alert_history()
+            # Check persistent store via the sync bridge
+            alerts = bridge.get_alert_history(alert_type="batch_reduction")
+            assert len(alerts) >= 1
             assert alerts[0]["alert_type"] == "batch_reduction"
+            bridge.close()
 
-    def test_get_alert_history_prefers_persistent_store(self):
+    @pytest.mark.asyncio
+    async def test_get_alert_history_prefers_persistent_store(self):
         """get_alert_history() queries the persistent store when attached."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
 
-            # Pre-populate the store with a historical alert
-            store.record_alert({
-                "alert_type": "quality_degradation",
-                "severity": "critical",
-                "subject": "faithfulness",
-                "message": "Pre-restart alert",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            # Pre-populate the store with a historical alert via the bridge
+            bridge.record_alert(
+                {
+                    "alert_type": "quality_degradation",
+                    "severity": "critical",
+                    "subject": "faithfulness",
+                    "message": "Pre-restart alert",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             # The manager's in-memory history is empty, but the persistent
             # store has the pre-restart alert
@@ -366,37 +413,45 @@ class TestAlertManagerWithHistoryStore:
             history = mgr.get_alert_history()
             assert len(history) == 1
             assert history[0]["message"] == "Pre-restart alert"
+            bridge.close()
 
-    def test_delivery_failure_persists_to_store(self):
+    @pytest.mark.asyncio
+    async def test_delivery_failure_persists_to_store(self):
         """Delivery failures are persisted to the SQLite store."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                webhook_url="https://invalid-host-that-does-not-exist.local/hook",
-                min_alert_interval_seconds=0,
-                webhook_max_retries=0,
-            ))
-            mgr.attach_history_store(store)
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    webhook_url="https://invalid-host-that-does-not-exist.local/hook",
+                    min_alert_interval_seconds=0,
+                    webhook_max_retries=0,
+                )
+            )
+            mgr.attach_history_store(bridge)
 
             # This will fail to deliver (invalid URL), recording a failure
             # Sprint 5.30: dispatch is async, need to wait for background thread
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="warning",
-                subject="test",
-                message="Will fail to deliver",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="test",
+                    message="Will fail to deliver",
+                )
+            )
 
             # Wait for background dispatch thread to complete
             import time
+
             time.sleep(0.5)
 
-            # Check persistent store has the delivery failure
-            failures = store.get_delivery_failures()
+            # Check persistent store has the delivery failure via the sync bridge
+            failures = bridge.get_delivery_failures()
             assert len(failures) >= 1
+            bridge.close()
 
     @pytest.mark.asyncio
     async def test_alert_history_endpoint_queries_persistent_store(self):
@@ -405,19 +460,21 @@ class TestAlertManagerWithHistoryStore:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
 
-            # Pre-populate with a historical alert
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "test",
-                "message": "Historical alert from before restart",
-                "timestamp": "2025-06-01T12:00:00Z",
-            })
+            # Pre-populate with a historical alert via the sync bridge
+            bridge.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "test",
+                    "message": "Historical alert from before restart",
+                    "timestamp": "2025-06-01T12:00:00Z",
+                }
+            )
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
-            mgr.attach_history_store(store)
+            mgr.attach_history_store(bridge)
 
             container = MagicMock()
             container._alert_manager = mgr
@@ -426,6 +483,7 @@ class TestAlertManagerWithHistoryStore:
             assert result["status"] == "ok"
             assert len(result["alerts"]) == 1
             assert result["alerts"][0]["message"] == "Historical alert from before restart"
+            bridge.close()
 
 
 # ============================================================================
@@ -436,22 +494,24 @@ class TestAlertManagerWithHistoryStore:
 class TestRollupVerification:
     """Tests for VigilQualityStore.verify_rollup_integrity()."""
 
-    def _create_store(self, tmp_path, **kwargs):
+    async def _create_store(self, tmp_path, **kwargs):
         db_path = os.path.join(str(tmp_path), "quality.db")
         store = VigilQualityStore(db_path, **kwargs)
-        store.initialize()
+        await store.initialize()
         return store
 
-    def test_verify_empty_database(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_verify_empty_database(self, tmp_path):
         """verify_rollup_integrity() returns valid for an empty database."""
-        store = self._create_store(tmp_path)
-        result = store.verify_rollup_integrity()
+        store = await self._create_store(tmp_path)
+        result = await store.verify_rollup_integrity()
         assert result["valid"] is True
         assert result["total_issues"] == 0
 
-    def test_verify_clean_rollup(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_verify_clean_rollup(self, tmp_path):
         """verify_rollup_integrity() returns valid after clean rollup."""
-        store = self._create_store(
+        store = await self._create_store(
             tmp_path,
             rollup_age_days=0,
             retention_days=0,
@@ -459,25 +519,28 @@ class TestRollupVerification:
 
         # Insert records for a day
         for i in range(3):
-            store.record_cycle({
-                "timestamp": f"2025-01-10T{10+i:02d}:00:00Z",
-                "avg_citation_rate": 0.85,
-                "avg_grounding_rate": 0.90,
-                "avg_llm_faithfulness": 0.88,
-                "evaluated_count": 15,
-                "flagged_count": 2,
-            })
+            await store.record_cycle(
+                {
+                    "timestamp": f"2025-01-10T{10 + i:02d}:00:00Z",
+                    "avg_citation_rate": 0.85,
+                    "avg_grounding_rate": 0.90,
+                    "avg_llm_faithfulness": 0.88,
+                    "evaluated_count": 15,
+                    "flagged_count": 2,
+                }
+            )
 
         # Run rollup
-        store.run_rollup()
+        await store.run_rollup()
 
-        result = store.verify_rollup_integrity()
+        result = await store.verify_rollup_integrity()
         assert result["valid"] is True
         assert result["daily_rollups_verified"] >= 1
 
-    def test_verify_detects_remaining_originals(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_verify_detects_remaining_originals(self, tmp_path):
         """verify_rollup_integrity() detects original rows left after rollup."""
-        store = self._create_store(
+        store = await self._create_store(
             tmp_path,
             rollup_age_days=0,
             retention_days=0,
@@ -485,49 +548,56 @@ class TestRollupVerification:
 
         # Insert records for a day
         for i in range(3):
-            store.record_cycle({
-                "timestamp": f"2025-01-10T{10+i:02d}:00:00Z",
-                "avg_citation_rate": 0.85,
-                "avg_grounding_rate": 0.90,
-                "avg_llm_faithfulness": 0.88,
-                "evaluated_count": 15,
-                "flagged_count": 2,
-            })
+            await store.record_cycle(
+                {
+                    "timestamp": f"2025-01-10T{10 + i:02d}:00:00Z",
+                    "avg_citation_rate": 0.85,
+                    "avg_grounding_rate": 0.90,
+                    "avg_llm_faithfulness": 0.88,
+                    "evaluated_count": 15,
+                    "flagged_count": 2,
+                }
+            )
 
         # Run rollup
-        store.run_rollup()
+        await store.run_rollup()
 
         # Manually insert an extra original row for the same day (simulating partial rollup)
         with sqlite3.connect(store._db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO vigil_quality_history (
                     cycle_timestamp, avg_citation_rate, avg_grounding_rate,
                     avg_llm_faithfulness, evaluated_count, flagged_count
                 ) VALUES (?, ?, ?, ?, ?, ?)
-            """, ("2025-01-10T15:00:00Z", 0.80, 0.85, 0.82, 10, 1))
+            """,
+                ("2025-01-10T15:00:00Z", 0.80, 0.85, 0.82, 10, 1),
+            )
 
-        result = store.verify_rollup_integrity()
+        result = await store.verify_rollup_integrity()
         # Should detect the remaining original row
         assert result["valid"] is False
         assert result["total_issues"] >= 1
         issue_types = [i["type"] for i in result["issues"]]
-        assert "daily_rollup_has_remaining_originals" in issue_types or \
-               "mixed_day_originals_and_rollups" in issue_types
+        assert "daily_rollup_has_remaining_originals" in issue_types or "mixed_day_originals_and_rollups" in issue_types
 
-    def test_verify_returns_stats(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_verify_returns_stats(self, tmp_path):
         """verify_rollup_integrity() includes verification statistics."""
-        store = self._create_store(tmp_path)
+        store = await self._create_store(tmp_path)
 
-        store.record_cycle({
-            "timestamp": "2025-06-01T12:00:00Z",
-            "avg_citation_rate": 0.85,
-            "avg_grounding_rate": 0.90,
-            "avg_llm_faithfulness": 0.88,
-            "evaluated_count": 15,
-            "flagged_count": 2,
-        })
+        await store.record_cycle(
+            {
+                "timestamp": "2025-06-01T12:00:00Z",
+                "avg_citation_rate": 0.85,
+                "avg_grounding_rate": 0.90,
+                "avg_llm_faithfulness": 0.88,
+                "evaluated_count": 15,
+                "flagged_count": 2,
+            }
+        )
 
-        result = store.verify_rollup_integrity()
+        result = await store.verify_rollup_integrity()
         assert "daily_rollups_verified" in result
         assert "weekly_rollups_verified" in result
         assert "total_rows" in result
@@ -543,7 +613,7 @@ class TestRollupVerification:
                 rollup_age_days=0,
                 retention_days=0,
             )
-            store.initialize()
+            await store.initialize()
 
             container = MagicMock()
             container._vigil_quality_store = store
@@ -637,15 +707,17 @@ class TestConfigDrivenAlertRouting:
 
     def test_get_transports_for_alert_with_routes(self):
         """_get_transports_for_alert() respects configured routes."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://example.com/hook",
-            email_to="ops@example.com",
-            routes={
-                "batch_reduction": ["webhook"],
-                "quality_degradation": ["email", "webhook"],
-            },
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://example.com/hook",
+                email_to="ops@example.com",
+                routes={
+                    "batch_reduction": ["webhook"],
+                    "quality_degradation": ["email", "webhook"],
+                },
+            )
+        )
 
         # batch_reduction should only use webhook
         assert mgr._get_transports_for_alert("batch_reduction") == ["webhook"]
@@ -657,11 +729,13 @@ class TestConfigDrivenAlertRouting:
 
     def test_get_transports_for_alert_without_routes(self):
         """_get_transports_for_alert() uses all configured transports when no routes."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://example.com/hook",
-            email_to="ops@example.com",
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://example.com/hook",
+                email_to="ops@example.com",
+            )
+        )
 
         # All types should get all transports
         transports = mgr._get_transports_for_alert("batch_reduction")
@@ -670,14 +744,16 @@ class TestConfigDrivenAlertRouting:
 
     def test_get_transports_for_alert_unknown_type_with_routes(self):
         """Unknown alert types use all configured transports when no route defined."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://example.com/hook",
-            email_to="ops@example.com",
-            routes={
-                "batch_reduction": ["webhook"],
-            },
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://example.com/hook",
+                email_to="ops@example.com",
+                routes={
+                    "batch_reduction": ["webhook"],
+                },
+            )
+        )
 
         # Unknown type has no route, so falls back to all transports
         transports = mgr._get_transports_for_alert("unknown_type")
@@ -686,14 +762,16 @@ class TestConfigDrivenAlertRouting:
 
     def test_get_transports_for_alert_ignores_unconfigured_transport(self):
         """Routes only return transports that are actually configured."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://example.com/hook",
-            # No email configured
-            routes={
-                "quality_degradation": ["email", "webhook"],
-            },
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://example.com/hook",
+                # No email configured
+                routes={
+                    "quality_degradation": ["email", "webhook"],
+                },
+            )
+        )
 
         # Only webhook should be returned since email is not configured
         transports = mgr._get_transports_for_alert("quality_degradation")
@@ -704,15 +782,17 @@ class TestConfigDrivenAlertRouting:
         """send_alert() respects routing — only dispatched transports receive the alert."""
         # We test this indirectly by checking that the routing logic
         # is used within send_alert (it calls _get_transports_for_alert)
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://example.com/hook",
-            email_to="ops@example.com",
-            routes={
-                "batch_reduction": ["webhook"],  # Only webhook for batch_reduction
-            },
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://example.com/hook",
+                email_to="ops@example.com",
+                routes={
+                    "batch_reduction": ["webhook"],  # Only webhook for batch_reduction
+                },
+                min_alert_interval_seconds=0,
+            )
+        )
 
         # Verify the transport selection
         transports = mgr._get_transports_for_alert("batch_reduction")
@@ -725,10 +805,12 @@ class TestConfigDrivenAlertRouting:
 
     def test_routes_in_get_status(self):
         """AlertManager.get_status() includes routes configuration."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            routes={"batch_reduction": ["webhook"]},
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                routes={"batch_reduction": ["webhook"]},
+            )
+        )
 
         status = mgr.get_status()
         assert "routes" in status
@@ -752,13 +834,14 @@ class TestHealthEndpoint:
     """Tests for the GET /vigil/quality/health consolidated endpoint."""
 
     @pytest.mark.asyncio
-    async def test_health_endpoint_returns_status(self):
+    async def test_health_endpoint_returns_status(self, tmp_path):
         """GET /vigil/quality/health returns consolidated health status."""
         from aip.adapter.api.routes.vigil_quality import vigil_quality_health
 
         alert_mgr = AlertManager(AlertConfig(enabled=True))
-        quality_store = VigilQualityStore(":memory:", retention_days=0)
-        quality_store.initialize()
+        quality_db_path = os.path.join(str(tmp_path), "quality.db")
+        quality_store = VigilQualityStore(quality_db_path, retention_days=0)
+        await quality_store.initialize()
 
         container = MagicMock()
         container._alert_manager = alert_mgr
@@ -779,11 +862,13 @@ class TestHealthEndpoint:
         """Health endpoint includes alerting system status."""
         from aip.adapter.api.routes.vigil_quality import vigil_quality_health
 
-        alert_mgr = AlertManager(AlertConfig(
-            enabled=True,
-            webhook_url="https://example.com/hook",
-            min_alert_interval_seconds=0,
-        ))
+        alert_mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                webhook_url="https://example.com/hook",
+                min_alert_interval_seconds=0,
+            )
+        )
 
         container = MagicMock()
         container._alert_manager = alert_mgr
@@ -807,7 +892,7 @@ class TestHealthEndpoint:
                 os.path.join(tmp_dir, "quality.db"),
                 retention_days=30,
             )
-            quality_store.initialize()
+            await quality_store.initialize()
 
             container = MagicMock()
             container._alert_manager = None
@@ -881,10 +966,10 @@ class TestHealthEndpoint:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             history_store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            history_store.initialize()
+            bridge = SyncAlertHistoryBridge(history_store)
 
             alert_mgr = AlertManager(AlertConfig(enabled=True))
-            alert_mgr.attach_history_store(history_store)
+            alert_mgr.attach_history_store(bridge)
 
             container = MagicMock()
             container._alert_manager = alert_mgr
@@ -896,3 +981,4 @@ class TestHealthEndpoint:
             result = await vigil_quality_health(container=container)
             assert result["alerting"]["history_store_attached"] is True
             assert result["components"]["alert_history_store"] is True
+            bridge.close()

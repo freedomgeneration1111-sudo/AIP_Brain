@@ -458,7 +458,9 @@ nodes:
     # Workflow 0.1 convenience path (CI mode for smoke test)
     from aip.orchestration.nodes.definer_gate import DefinerGateMode
 
-    result2 = await engine.run_workflow_01(query="Test query", domain="test", ci_mode=True, gate_mode=DefinerGateMode.AUTO_APPROVE_STUB)
+    result2 = await engine.run_workflow_01(
+        query="Test query", domain="test", ci_mode=True, gate_mode=DefinerGateMode.AUTO_APPROVE_STUB
+    )
     assert result2 is not None
 
 

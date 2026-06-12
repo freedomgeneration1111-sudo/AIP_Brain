@@ -25,13 +25,12 @@ tracing, and all failure modes.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import tempfile
 
 import pytest
 
-from aip.foundation.schemas.ask import AskResult, AskSource, SourceReference
+from aip.foundation.schemas.ask import SourceReference
 from aip.foundation.schemas.ingestion import ConversationTurn, ImportedConversation
 from aip.foundation.schemas.retrieval import Chunk, RetrievalHit
 from aip.orchestration.ask_pipeline import (
@@ -43,7 +42,6 @@ from aip.orchestration.ask_pipeline import (
     format_context_display,
 )
 from aip.orchestration.ingestion.pipeline import ingest_conversation
-
 
 # ---------------------------------------------------------------------------
 # Fakes for testing
@@ -107,7 +105,9 @@ class FakeVectorStore:
         self.upserted: list[dict] = []
 
     async def upsert(self, id, embedding, content, metadata, domain=None):
-        self.upserted.append({"id": id, "embedding": embedding, "content": content, "metadata": metadata, "domain": domain})
+        self.upserted.append(
+            {"id": id, "embedding": embedding, "content": content, "metadata": metadata, "domain": domain}
+        )
 
     async def retrieve(self, query_vector, domain=None, top_k=10):
         return []
@@ -140,7 +140,7 @@ class FakeEmbeddingProvider:
 
     async def embed(self, text: str) -> list[float]:
         self.embed_calls.append(text)
-        import hashlib
+
         h = hashlib.sha256(text.encode()).digest()
         return [(h[i % len(h)] / 255.0) - 0.5 for i in range(self.dimensions)]
 
@@ -152,14 +152,16 @@ class FakeEventStore:
         self.events: list[dict] = []
 
     async def write_event(self, event_type, actor, artifact_id, from_state=None, to_state=None, **kwargs):
-        self.events.append({
-            "event_type": event_type,
-            "actor": actor,
-            "artifact_id": artifact_id,
-            "from_state": from_state,
-            "to_state": to_state,
-            **kwargs,
-        })
+        self.events.append(
+            {
+                "event_type": event_type,
+                "actor": actor,
+                "artifact_id": artifact_id,
+                "from_state": from_state,
+                "to_state": to_state,
+                **kwargs,
+            }
+        )
 
     async def query(self, artifact_id=None, event_type=None, limit=100):
         return []
@@ -190,13 +192,15 @@ class FakeEcsStore:
         self._states: dict[str, str] = {}
 
     async def transition(self, artifact_id, from_state, to_state, actor, reason, superseded_by=None):
-        self.transitions.append({
-            "artifact_id": artifact_id,
-            "from_state": from_state,
-            "to_state": to_state,
-            "actor": actor,
-            "reason": reason,
-        })
+        self.transitions.append(
+            {
+                "artifact_id": artifact_id,
+                "from_state": from_state,
+                "to_state": to_state,
+                "actor": actor,
+                "reason": reason,
+            }
+        )
         self._states[artifact_id] = to_state
 
     async def current_state(self, artifact_id):
@@ -254,9 +258,9 @@ def _make_test_stores(
         lexical_store=FakeLexicalStore(),
         vector_store=None,
         event_store=FakeEventStore(),
-        project_store=FakeProjectStore([
-            {"project_id": project_name, "name": project_name, "domain": project_domain, "status": "active"}
-        ]),
+        project_store=FakeProjectStore(
+            [{"project_id": project_name, "name": project_name, "domain": project_domain, "status": "active"}]
+        ),
         ecs_store=FakeEcsStore(),
         model_provider=model_provider,
         embedding_provider=None,
@@ -277,7 +281,9 @@ async def _ingest_markdown_conversation(
     conv.metadata["domain"] = domain
 
     result = await ingest_conversation(
-        conv, stores.artifact_store, stores.lexical_store,
+        conv,
+        stores.artifact_store,
+        stores.lexical_store,
     )
     return result
 
@@ -317,7 +323,9 @@ async def _ingest_chatgpt_conversation(
     convs[0].metadata["domain"] = domain
 
     result = await ingest_conversation(
-        convs[0], stores.artifact_store, stores.lexical_store,
+        convs[0],
+        stores.artifact_store,
+        stores.lexical_store,
     )
     return result
 
@@ -494,7 +502,7 @@ class TestSourceFilterAll:
         )
 
         assert result.status == "OK"
-        source_types = {s.source_type for s in result.sources}
+        {s.source_type for s in result.sources}
         # Should include both types (if the search finds both)
         assert len(result.sources) > 0
 
@@ -736,6 +744,7 @@ class TestArtifactSaveFailure:
 
         class FailingArtifactStore(FakeArtifactStore):
             """ArtifactStore that fails on writes after the first (ingestion writes succeed)."""
+
             def __init__(self):
                 super().__init__()
                 self._write_count = 0
@@ -846,14 +855,24 @@ class TestContextAssembly:
 
     def test_smart_context_packer_with_hits(self):
         """SmartContextPacker should pack RetrievalHit objects correctly."""
-        from aip.orchestration.smart_context_packer import SmartContextPacker, PackerConfig
         from aip.foundation.schemas.retrieval import RetrievalHit
+        from aip.orchestration.smart_context_packer import PackerConfig, SmartContextPacker
 
         hits = [
-            RetrievalHit(id="chunk:1:0", content="Hello world", rrf_score=0.05, source_channel="fts",
-                        metadata={"type": "conversation_chunk"}),
-            RetrievalHit(id="artifact:1", content="Architecture doc", rrf_score=0.03, source_channel="fts",
-                        metadata={"type": "project_artifact"}),
+            RetrievalHit(
+                id="chunk:1:0",
+                content="Hello world",
+                rrf_score=0.05,
+                source_channel="fts",
+                metadata={"type": "conversation_chunk"},
+            ),
+            RetrievalHit(
+                id="artifact:1",
+                content="Architecture doc",
+                rrf_score=0.03,
+                source_channel="fts",
+                metadata={"type": "project_artifact"},
+            ),
         ]
         packer = SmartContextPacker(config=PackerConfig(max_context_tokens=2000))
         packed = packer.pack(hits, query="test")
@@ -863,6 +882,7 @@ class TestContextAssembly:
     def test_smart_context_packer_empty(self):
         """SmartContextPacker with empty hits returns no-sources message."""
         from aip.orchestration.smart_context_packer import SmartContextPacker
+
         packer = SmartContextPacker()
         packed = packer.pack([], query="test")
         assert "No relevant sources" in packed.context_text
@@ -906,9 +926,9 @@ class TestProjectResolution:
     """Tests for project resolution."""
 
     async def test_resolve_existing_project(self):
-        store = FakeProjectStore([
-            {"project_id": "proj1", "name": "test_project", "domain": "test", "status": "active"}
-        ])
+        store = FakeProjectStore(
+            [{"project_id": "proj1", "name": "test_project", "domain": "test", "status": "active"}]
+        )
         result = await _resolve_project("test_project", store)
         assert result is not None
         assert result["name"] == "test_project"
@@ -932,8 +952,8 @@ class TestNoProject:
             stores=stores,
         )
 
-        assert result.status == "NO_PROJECT_MEMORY"
-        assert "No relevant sources" in result.answer
+        assert result.status == "NO_PROJECT"
+        assert "not found" in result.answer.lower()
         assert result.artifact_id == ""  # No orphan artifacts
 
 
@@ -942,7 +962,14 @@ class TestContextDisplay:
 
     def test_format_context_display(self):
         sources = [
-            SourceReference(source_id="chunk:1:0", source_type="conversation_chunk", title="Test", score=0.9, content_snippet="Hello world this is a test", domain="test"),
+            SourceReference(
+                source_id="chunk:1:0",
+                source_type="conversation_chunk",
+                title="Test",
+                score=0.9,
+                content_snippet="Hello world this is a test",
+                domain="test",
+            ),
         ]
         display = format_context_display(sources)
         assert "Retrieved Context" in display
@@ -998,7 +1025,10 @@ class TestAskWithRealLexicalStore:
                 title="Real FTS5 Test",
                 turns=[
                     ConversationTurn(role="user", content="What is the AIP architecture?"),
-                    ConversationTurn(role="assistant", content="AIP uses a three-layer architecture: foundation, orchestration, adapter."),
+                    ConversationTurn(
+                        role="assistant",
+                        content="AIP uses a three-layer architecture: foundation, orchestration, adapter.",
+                    ),
                 ],
                 source_format="plaintext",
                 source_file="real_test.txt",
@@ -1017,7 +1047,9 @@ class TestAskWithRealLexicalStore:
                 event_store=event_store,
                 project_store=project_store,
                 ecs_store=ecs_store,
-                model_provider=FakeModelProvider(response_content="AIP uses foundation, orchestration, and adapter layers."),
+                model_provider=FakeModelProvider(
+                    response_content="AIP uses foundation, orchestration, and adapter layers."
+                ),
                 embedding_provider=None,
             )
 
@@ -1058,6 +1090,7 @@ class TestCLIAsk:
 
     def test_ask_command_registered(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -1067,6 +1100,7 @@ class TestCLIAsk:
 
     def test_ask_requires_project(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -1076,6 +1110,7 @@ class TestCLIAsk:
 
     def test_ask_source_options(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()

@@ -8,19 +8,13 @@ Covers all 5 deliverables:
 5. Bandit Enhancements (epsilon-greedy + Contextual)
 """
 
-import json
-import math
 import os
 import tempfile
-import time
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
-
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import AlertConfig, AlertManager
-from aip.adapter.alert_history_store import AlertHistoryStore
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -52,12 +46,16 @@ def _make_config(**overrides) -> AlertConfig:
     return AlertConfig(**defaults)
 
 
-def _make_store() -> AlertHistoryStore:
-    """Create an in-memory AlertHistoryStore for testing."""
-    db_path = os.path.join(tempfile.mkdtemp(), "test_alert_history.db")
+def _make_store(tmp_path=None, db_name: str = "test_alert_history.db") -> SyncAlertHistoryBridge:
+    """Create and initialize a fresh AlertHistoryStore via SyncAlertHistoryBridge."""
+    if tmp_path is not None:
+        db_path = str(tmp_path / db_name)
+    else:
+        db_path = os.path.join(tempfile.mkdtemp(), db_name)
     store = AlertHistoryStore(db_path)
-    store.initialize()
-    return store
+    bridge = SyncAlertHistoryBridge(store)
+    bridge.initialize()
+    return bridge
 
 
 def _start_experiment(mgr: AlertManager, name: str = "test-exp", **meta) -> dict:
@@ -87,12 +85,14 @@ class TestBanditAutoPromotion:
 
     def test_check_auto_promotion_uses_bandit_allocation(self):
         """When bandit is enabled, _check_auto_promotion queries bandit allocation."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_method="thompson",
-            ab_auto_promote_confidence_threshold=0.90,
-            ab_auto_promote_min_samples=10,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_method="thompson",
+                ab_auto_promote_confidence_threshold=0.90,
+                ab_auto_promote_min_samples=10,
+            )
+        )
         _start_experiment(mgr, "bandit-exp")
         _add_results(mgr, "bandit-exp", n=50, c_acc=0.70, v_acc=0.95)
 
@@ -104,11 +104,13 @@ class TestBanditAutoPromotion:
 
     def test_accuracy_snapshots_recorded_in_promotion_checker(self):
         """When snapshot interval > 0, promotion checker records accuracy snapshots."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_accuracy_snapshot_interval_seconds=1,
-            ab_auto_promote_min_samples=100,  # Prevent auto-promotion
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_accuracy_snapshot_interval_seconds=1,
+                ab_auto_promote_min_samples=100,  # Prevent auto-promotion
+            )
+        )
         store = _make_store()
         mgr.attach_history_store(store)
 
@@ -126,12 +128,14 @@ class TestBanditAutoPromotion:
 
     def test_bandit_boost_helps_borderline_experiments(self):
         """Bandit allocation >70% gives a slight boost to borderline experiments."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_method="thompson",
-            ab_auto_promote_confidence_threshold=0.95,
-            ab_auto_promote_min_samples=30,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_method="thompson",
+                ab_auto_promote_confidence_threshold=0.95,
+                ab_auto_promote_min_samples=30,
+            )
+        )
         _start_experiment(mgr, "borderline-exp")
         # Set up borderline results where bandit signal can help
         _add_results(mgr, "borderline-exp", n=50, c_acc=0.85, v_acc=0.94)
@@ -145,12 +149,14 @@ class TestBanditAutoPromotion:
 
     def test_promoted_experiment_includes_bandit_winner(self):
         """When auto-promotion uses bandit, the experiment records bandit_winner."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_method="ucb",
-            ab_auto_promote_confidence_threshold=0.90,
-            ab_auto_promote_min_samples=10,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_method="ucb",
+                ab_auto_promote_confidence_threshold=0.90,
+                ab_auto_promote_min_samples=10,
+            )
+        )
         _start_experiment(mgr, "winner-exp")
         _add_results(mgr, "winner-exp", n=50, c_acc=0.70, v_acc=0.95)
 
@@ -163,9 +169,11 @@ class TestBanditAutoPromotion:
 
     def test_snapshot_interval_zero_disables_auto_snapshots(self):
         """When snapshot interval is 0, no auto-snapshots are taken in promotion checker."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_accuracy_snapshot_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_accuracy_snapshot_interval_seconds=0,
+            )
+        )
         _start_experiment(mgr, "no-snap-exp")
         _add_results(mgr, "no-snap-exp", n=50)
 
@@ -239,15 +247,17 @@ class TestDashboardMiniChartRealData:
         store = _make_store()
 
         for i in range(3):
-            store.record_accuracy_timeseries({
-                "experiment_name": "dashboard-exp",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "control_accuracy": 0.80 + i * 0.01,
-                "variant_accuracy": 0.90 + i * 0.01,
-                "control_samples": 50,
-                "variant_samples": 50,
-                "status": "running",
-            })
+            store.record_accuracy_timeseries(
+                {
+                    "experiment_name": "dashboard-exp",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "control_accuracy": 0.80 + i * 0.01,
+                    "variant_accuracy": 0.90 + i * 0.01,
+                    "control_samples": 50,
+                    "variant_samples": 50,
+                    "status": "running",
+                }
+            )
 
         results = store.get_accuracy_timeseries("dashboard-exp")
         assert len(results) == 3
@@ -269,10 +279,9 @@ class TestConfidenceCalibrationPersistence:
         """Schema v11 migration creates the confidence_calibration table."""
         store = _make_store()
         import sqlite3
+
         with sqlite3.connect(store._db_path) as conn:
-            cursor = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='confidence_calibration'"
-            )
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='confidence_calibration'")
             assert cursor.fetchone() is not None
 
     def test_record_confidence_calibration(self):
@@ -338,7 +347,7 @@ class TestConfidenceCalibrationPersistence:
         db_path = os.path.join(db_dir, "test_calib.db")
 
         # First session: create manager, update calibration, persist
-        store1 = AlertHistoryStore(db_path)
+        store1 = SyncAlertHistoryBridge(AlertHistoryStore(db_path))
         store1.initialize()
         mgr1 = AlertManager(_make_config())
         mgr1.attach_history_store(store1)
@@ -346,7 +355,7 @@ class TestConfidenceCalibrationPersistence:
         mgr1.persist_confidence_calibration(store1)
 
         # Second session: new manager, restore from same store
-        store2 = AlertHistoryStore(db_path)
+        store2 = SyncAlertHistoryBridge(AlertHistoryStore(db_path))
         store2.initialize()
         mgr2 = AlertManager(_make_config())
         count = mgr2.restore_confidence_calibration(store2)
@@ -391,6 +400,7 @@ class TestPrePromotionSnapshotPersistence:
         """Schema v11 migration creates the pre_promotion_snapshots table."""
         store = _make_store()
         import sqlite3
+
         with sqlite3.connect(store._db_path) as conn:
             cursor = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='pre_promotion_snapshots'"
@@ -453,7 +463,9 @@ class TestPrePromotionSnapshotPersistence:
         count = mgr.restore_pre_promotion_snapshots(store)
         assert count == 1
         assert "restored-exp" in mgr.ab_experiment_mgr._pre_promotion_config_snapshots
-        assert mgr.ab_experiment_mgr._pre_promotion_config_snapshots["restored-exp"]["control_config"]["model"] == "gpt-4"
+        assert (
+            mgr.ab_experiment_mgr._pre_promotion_config_snapshots["restored-exp"]["control_config"]["model"] == "gpt-4"
+        )
 
     def test_rollback_after_restart_uses_persisted_snapshot(self):
         """After restart, rollback can use a persisted snapshot to revert config."""
@@ -461,7 +473,7 @@ class TestPrePromotionSnapshotPersistence:
         db_path = os.path.join(db_dir, "test_snap.db")
 
         # First session: create experiment, promote, persist snapshot
-        store1 = AlertHistoryStore(db_path)
+        store1 = SyncAlertHistoryBridge(AlertHistoryStore(db_path))
         store1.initialize()
         mgr1 = AlertManager(_make_config())
         mgr1.attach_history_store(store1)
@@ -472,7 +484,7 @@ class TestPrePromotionSnapshotPersistence:
         mgr1.persist_pre_promotion_snapshots(store1)
 
         # Second session: new manager, restore snapshot
-        store2 = AlertHistoryStore(db_path)
+        store2 = SyncAlertHistoryBridge(AlertHistoryStore(db_path))
         store2.initialize()
         mgr2 = AlertManager(_make_config())
         mgr2.attach_history_store(store2)
@@ -529,11 +541,13 @@ class TestEpsilonGreedyBandit:
 
     def test_epsilon_greedy_returns_valid_allocation(self):
         """Epsilon-greedy returns valid allocation fractions."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_method="epsilon_greedy",
-            ab_bandit_explore_rate=0.1,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_method="epsilon_greedy",
+                ab_bandit_explore_rate=0.1,
+            )
+        )
         _start_experiment(mgr, "egreedy-exp")
         _add_results(mgr, "egreedy-exp", n=100, c_acc=0.70, v_acc=0.90)
 
@@ -545,11 +559,13 @@ class TestEpsilonGreedyBandit:
 
     def test_epsilon_greedy_favors_better_variant_on_exploit(self):
         """Epsilon-greedy with low epsilon mostly favors the better variant."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_method="epsilon_greedy",
-            ab_bandit_explore_rate=0.01,  # Very low epsilon = mostly exploit
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_method="epsilon_greedy",
+                ab_bandit_explore_rate=0.01,  # Very low epsilon = mostly exploit
+            )
+        )
         _start_experiment(mgr, "egreedy-exploit")
         _add_results(mgr, "egreedy-exploit", n=100, c_acc=0.70, v_acc=0.90)
 
@@ -565,11 +581,13 @@ class TestEpsilonGreedyBandit:
 
     def test_epsilon_greedy_equal_accuracy_explores(self):
         """Epsilon-greedy with equal accuracy produces valid allocations."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_method="epsilon_greedy",
-            ab_bandit_explore_rate=0.5,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_method="epsilon_greedy",
+                ab_bandit_explore_rate=0.5,
+            )
+        )
         _start_experiment(mgr, "egreedy-equal")
         _add_results(mgr, "egreedy-equal", n=100, c_acc=0.80, v_acc=0.80)
 
@@ -601,10 +619,12 @@ class TestContextualBandit:
 
     def test_record_bandit_context_reward(self):
         """Contextual bandit rewards can be recorded."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_contextual_enabled=True,
-            ab_bandit_contextual_features=["alert_type", "subject"],
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_contextual_enabled=True,
+                ab_bandit_contextual_features=["alert_type", "subject"],
+            )
+        )
         _start_experiment(mgr, "ctx-exp", alert_type="quality_degradation", subject="vigil")
 
         mgr.record_bandit_context_reward("ctx-exp", "variant", 0.92)
@@ -625,12 +645,14 @@ class TestContextualBandit:
 
     def test_context_adjusts_allocation(self):
         """Contextual bandit adjusts allocation based on historical rewards."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_method="thompson",
-            ab_bandit_contextual_enabled=True,
-            ab_bandit_contextual_features=["alert_type"],
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_method="thompson",
+                ab_bandit_contextual_enabled=True,
+                ab_bandit_contextual_features=["alert_type"],
+            )
+        )
         _start_experiment(mgr, "adj-exp", alert_type="quality_degradation")
         _add_results(mgr, "adj-exp", n=50, c_acc=0.70, v_acc=0.90)
 
@@ -645,10 +667,12 @@ class TestContextualBandit:
 
     def test_bandit_status_includes_contextual_info(self):
         """Bandit status includes contextual bandit information."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_contextual_enabled=True,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_contextual_enabled=True,
+            )
+        )
         status = mgr.get_bandit_status()
         assert status["contextual_enabled"] is True
         assert "contextual_features" in status
@@ -656,10 +680,12 @@ class TestContextualBandit:
 
     def test_context_reward_capped_at_100(self):
         """Contextual reward history is capped at 100 entries per context key."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_contextual_enabled=True,
-            ab_bandit_contextual_features=["alert_type"],
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_contextual_enabled=True,
+                ab_bandit_contextual_features=["alert_type"],
+            )
+        )
         _start_experiment(mgr, "cap-exp", alert_type="test")
 
         for i in range(150):
@@ -671,10 +697,12 @@ class TestContextualBandit:
 
     def test_context_reward_with_no_metadata(self):
         """Contextual reward with no matching metadata is silently ignored."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_contextual_enabled=True,
-            ab_bandit_contextual_features=["nonexistent_feature"],
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_contextual_enabled=True,
+                ab_bandit_contextual_features=["nonexistent_feature"],
+            )
+        )
         _start_experiment(mgr, "nometa-exp")
 
         mgr.record_bandit_context_reward("nometa-exp", "variant", 0.9)

@@ -15,12 +15,10 @@ from nicegui import ui
 from gui.theme import (
     C_AMBER,
     C_CREAM,
-    C_ERR_FG,
     C_INK40,
     C_INK60,
     C_MUTED,
     C_OK_FG,
-    C_RAISED,
     C_SURFACE,
     C_WARN_FG,
     F_MONO,
@@ -117,10 +115,14 @@ class MaintenanceJobs:
                     status = cap.get("status", "unknown")
                     message = cap.get("message", "")
 
-                    with ui.card().classes("q-pa-sm").style(
-                        f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-                        f"border-radius:{R_MD}; min-width:180px; max-width:220px; "
-                        f"flex:1; font-family:{F_SANS};"
+                    with (
+                        ui.card()
+                        .classes("q-pa-sm")
+                        .style(
+                            f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
+                            f"border-radius:{R_MD}; min-width:180px; max-width:220px; "
+                            f"flex:1; font-family:{F_SANS};"
+                        )
                     ):
                         # Job title row
                         with ui.row().classes("w-full items-center").style("gap:6px;"):
@@ -172,9 +174,7 @@ class MaintenanceJobs:
                             f"color:{C_CREAM if btn_enabled else C_MUTED}; "
                             f"border-color:{C_INK40}; font-family:{F_SANS}; font-size:10px; "
                             f"margin-top:6px;"
-                        ) if btn_enabled else ui.button(btn_label).props(
-                            "outline dense size=sm disabled"
-                        ).style(
+                        ) if btn_enabled else ui.button(btn_label).props("outline dense size=sm disabled").style(
                             f"color:{C_MUTED}; border-color:{C_INK40}; "
                             f"font-family:{F_SANS}; font-size:10px; margin-top:6px;"
                         )
@@ -183,6 +183,5 @@ class MaintenanceJobs:
                         if message:
                             with ui.row().style("margin-top:2px;"):
                                 ui.label(message[:60]).style(
-                                    f"font-size:9px; color:{C_INK60}; font-family:{F_SANS}; "
-                                    f"line-height:1.2;"
+                                    f"font-size:9px; color:{C_INK60}; font-family:{F_SANS}; line-height:1.2;"
                                 )

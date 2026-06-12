@@ -11,19 +11,17 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
 
 import pytest
 
-from aip.foundation.schemas import SextonConfig, VigilConfig
-from aip.orchestration.actors.vigil import Vigil
 from aip.adapter.read_pool import (
-    ReadPoolAutoSizer,
-    ReadPoolHealth,
     PoolSizeAdjustment,
     PoolSizeSuggestion,
+    ReadPoolAutoSizer,
+    ReadPoolHealth,
 )
-
+from aip.foundation.schemas import SextonConfig, VigilConfig
+from aip.orchestration.actors.vigil import Vigil
 
 # ============================================================================
 # Shared fakes (reused from Sprint 5.23 test infrastructure)
@@ -86,6 +84,7 @@ class FakeTraceStore:
 @dataclass
 class FakeTurn:
     """Minimal turn object for Vigil evaluation tests."""
+
     turn_id: str = "turn-001"
     conversation_id: str = "conv-001"
     user_text: str = "What is the population of Tokyo?"
@@ -126,12 +125,14 @@ class FakeECSStore:
         self.transitions = []
 
     async def transition(self, artifact_id, to_state, actor, detail=None, **kwargs):
-        self.transitions.append({
-            "artifact_id": artifact_id,
-            "to_state": to_state,
-            "actor": actor,
-            "detail": detail,
-        })
+        self.transitions.append(
+            {
+                "artifact_id": artifact_id,
+                "to_state": to_state,
+                "actor": actor,
+                "detail": detail,
+            }
+        )
 
 
 class FakeEventStore:
@@ -179,12 +180,14 @@ class TestLLMFaithfulnessDefaultOn:
     @pytest.mark.asyncio
     async def test_llm_faithfulness_called_by_default_with_flagged_turns(self):
         """When using default config (LLM enabled), Vigil attempts LLM evaluation on flagged turns."""
-        llm_response = json.dumps({
-            "faithfulness_score": 0.9,
-            "hallucination_flags": [],
-            "grounding_assessment": "mostly_grounded",
-            "explanation": "Response accurately reflects sources.",
-        })
+        llm_response = json.dumps(
+            {
+                "faithfulness_score": 0.9,
+                "hallucination_flags": [],
+                "grounding_assessment": "mostly_grounded",
+                "explanation": "Response accurately reflects sources.",
+            }
+        )
         model_provider = FakeModelProvider(response_content=llm_response)
         config = VigilConfig()  # Default: llm_faithfulness_enabled=True
         assert config.llm_faithfulness_enabled is True
@@ -266,9 +269,12 @@ class TestReadPoolAutoApply:
         store = FakeReadPoolMixin(pool_size=3)
 
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -293,9 +299,12 @@ class TestReadPoolAutoApply:
         store = FakeReadPoolMixin(pool_size=3)
 
         critical_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 90,
-            "exhaustion_count": 90, "exhaustion_rate": 0.9,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 90,
+            "exhaustion_count": 90,
+            "exhaustion_rate": 0.9,
             "avg_checkout_latency_ms": 10.0,
             "p95_checkout_latency_ms": 20.0,
             "recommendation": "",
@@ -318,9 +327,12 @@ class TestReadPoolAutoApply:
         store = FakeReadPoolMixin(pool_size=3)
 
         critical_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 90,
-            "exhaustion_count": 90, "exhaustion_rate": 0.9,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 90,
+            "exhaustion_count": 90,
+            "exhaustion_rate": 0.9,
             "avg_checkout_latency_ms": 10.0,
             "p95_checkout_latency_ms": 20.0,
             "recommendation": "",
@@ -337,9 +349,12 @@ class TestReadPoolAutoApply:
         store = FakeReadPoolMixin(pool_size=3)
 
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -359,9 +374,12 @@ class TestReadPoolAutoApply:
         store = FakeReadPoolMixin(pool_size=3)
 
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -390,9 +408,12 @@ class TestReadPoolAutoApply:
         store = FakeReadPoolMixin(pool_size=3)
 
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -413,9 +434,12 @@ class TestReadPoolAutoApply:
         store = FakeReadPoolMixin(pool_size=3)
 
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -434,9 +458,12 @@ class TestReadPoolAutoApply:
         sizer = ReadPoolAutoSizer(auto_apply_consecutive_threshold=3)
 
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -511,13 +538,15 @@ class TestVigilCycleQualityReport:
         """Trend indicators detect improving quality between cycles."""
         vigil, _, _, _, _ = self._make_vigil()
         # Simulate a previous cycle with lower scores
-        vigil._cycle_report_history.append({
-            "avg_citation_rate": 0.5,
-            "avg_grounding_rate": 0.6,
-            "avg_llm_faithfulness": 0.5,
-            "evaluated_count": 10,
-            "flagged_count": 5,
-        })
+        vigil._cycle_report_history.append(
+            {
+                "avg_citation_rate": 0.5,
+                "avg_grounding_rate": 0.6,
+                "avg_llm_faithfulness": 0.5,
+                "evaluated_count": 10,
+                "flagged_count": 5,
+            }
+        )
 
         trend = vigil._compute_trend_indicators(
             avg_citation_rate=0.8,
@@ -531,13 +560,15 @@ class TestVigilCycleQualityReport:
     def test_trend_indicators_detect_degradation(self):
         """Trend indicators detect degrading quality between cycles."""
         vigil, _, _, _, _ = self._make_vigil()
-        vigil._cycle_report_history.append({
-            "avg_citation_rate": 0.8,
-            "avg_grounding_rate": 0.9,
-            "avg_llm_faithfulness": 0.85,
-            "evaluated_count": 10,
-            "flagged_count": 1,
-        })
+        vigil._cycle_report_history.append(
+            {
+                "avg_citation_rate": 0.8,
+                "avg_grounding_rate": 0.9,
+                "avg_llm_faithfulness": 0.85,
+                "evaluated_count": 10,
+                "flagged_count": 1,
+            }
+        )
 
         trend = vigil._compute_trend_indicators(
             avg_citation_rate=0.5,
@@ -550,13 +581,15 @@ class TestVigilCycleQualityReport:
     def test_trend_indicators_stable_when_small_change(self):
         """Trend indicators report 'stable' when change is within 5%."""
         vigil, _, _, _, _ = self._make_vigil()
-        vigil._cycle_report_history.append({
-            "avg_citation_rate": 0.8,
-            "avg_grounding_rate": 0.9,
-            "avg_llm_faithfulness": 0.85,
-            "evaluated_count": 10,
-            "flagged_count": 1,
-        })
+        vigil._cycle_report_history.append(
+            {
+                "avg_citation_rate": 0.8,
+                "avg_grounding_rate": 0.9,
+                "avg_llm_faithfulness": 0.85,
+                "evaluated_count": 10,
+                "flagged_count": 1,
+            }
+        )
 
         trend = vigil._compute_trend_indicators(
             avg_citation_rate=0.81,
@@ -583,10 +616,7 @@ class TestVigilCycleQualityReport:
         assert result["flagged_count"] > 0
 
         # A vigil-report artifact should have been created
-        report_artifacts = [
-            aid for aid in artifacts.artifacts
-            if aid.startswith("vigil-report-")
-        ]
+        report_artifacts = [aid for aid in artifacts.artifacts if aid.startswith("vigil-report-")]
         assert len(report_artifacts) > 0
 
         # Verify the report content
@@ -613,10 +643,7 @@ class TestVigilCycleQualityReport:
         assert result["flagged_count"] == 0
 
         # No vigil-report artifact should have been created
-        report_artifacts = [
-            aid for aid in artifacts.artifacts
-            if aid.startswith("vigil-report-")
-        ]
+        report_artifacts = [aid for aid in artifacts.artifacts if aid.startswith("vigil-report-")]
         assert len(report_artifacts) == 0
 
     @pytest.mark.asyncio
@@ -724,9 +751,12 @@ class TestHealthEndpointAutoTuningStatus:
         sizer = ReadPoolAutoSizer(auto_apply_enabled=True)
 
         health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 1,
-            "checkout_count": 100, "fallback_count": 5,
-            "exhaustion_count": 5, "exhaustion_rate": 0.05,
+            "pool_size": 3,
+            "pool_active": 1,
+            "checkout_count": 100,
+            "fallback_count": 5,
+            "exhaustion_count": 5,
+            "exhaustion_rate": 0.05,
             "avg_checkout_latency_ms": 1.0,
             "p95_checkout_latency_ms": 2.0,
             "recommendation": "",
@@ -748,9 +778,12 @@ class TestHealthEndpointAutoTuningStatus:
         store = FakeReadPoolMixin(pool_size=3)
 
         health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 1,
-            "checkout_count": 100, "fallback_count": 5,
-            "exhaustion_count": 5, "exhaustion_rate": 0.05,
+            "pool_size": 3,
+            "pool_active": 1,
+            "checkout_count": 100,
+            "fallback_count": 5,
+            "exhaustion_count": 5,
+            "exhaustion_rate": 0.05,
             "avg_checkout_latency_ms": 1.0,
             "p95_checkout_latency_ms": 2.0,
             "recommendation": "",
@@ -801,16 +834,26 @@ class TestHealthEndpointAutoTuningStatus:
         sizer = ReadPoolAutoSizer(auto_apply_consecutive_threshold=3)
 
         # Manually add adjustments
-        sizer._adjustment_history.append(PoolSizeAdjustment(
-            store_name="graph_store", configured_pool_size=3,
-            previous_pool_size=3, new_pool_size=4,
-            exhaustion_rate=0.5, reason="test",
-        ))
-        sizer._adjustment_history.append(PoolSizeAdjustment(
-            store_name="vector_store", configured_pool_size=3,
-            previous_pool_size=3, new_pool_size=5,
-            exhaustion_rate=0.6, reason="test",
-        ))
+        sizer._adjustment_history.append(
+            PoolSizeAdjustment(
+                store_name="graph_store",
+                configured_pool_size=3,
+                previous_pool_size=3,
+                new_pool_size=4,
+                exhaustion_rate=0.5,
+                reason="test",
+            )
+        )
+        sizer._adjustment_history.append(
+            PoolSizeAdjustment(
+                store_name="vector_store",
+                configured_pool_size=3,
+                previous_pool_size=3,
+                new_pool_size=5,
+                exhaustion_rate=0.6,
+                reason="test",
+            )
+        )
 
         graph_history = sizer.get_adjustment_history("graph_store")
         assert len(graph_history) == 1

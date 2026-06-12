@@ -8,13 +8,11 @@ Covers:
 5. AI fingerprint cleanup smoke test (just checks imports work)
 """
 
-import asyncio
 import hashlib
 import json
 import math
 import os
 import sqlite3
-import tempfile
 
 import pytest
 
@@ -52,9 +50,7 @@ class TestFts5StoreAsyncInit:
 
         # Verify tables exist by opening the DB directly
         conn = sqlite3.connect(db_path)
-        tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' OR type='view'"
-        ).fetchall()
+        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table' OR type='view'").fetchall()
         table_names = [t[0] for t in tables]
         conn.close()
         assert "fts_documents" in table_names
@@ -120,9 +116,7 @@ class TestVssStoreAsyncInit:
         assert store._tables_ready is True
 
         conn = sqlite3.connect(db_path)
-        tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
+        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         table_names = [t[0] for t in tables]
         conn.close()
         assert "vector_metadata" in table_names
@@ -174,8 +168,8 @@ class TestVssStoreAsyncInit:
     async def test_brute_force_respects_scan_limit(self, tmp_path):
         """Brute-force retrieval must cap scans at _BRUTE_FORCE_SCAN_LIMIT."""
         from aip.adapter.vector.sqlite_vss_store import (
-            SqliteVssVectorStore,
             _BRUTE_FORCE_SCAN_LIMIT,
+            SqliteVssVectorStore,
         )
 
         db_path = str(tmp_path / "vectors_limit.db")
@@ -211,7 +205,7 @@ class TestVssStoreAsyncInit:
 
         if not store._vss_available:
             assert health["degraded"] is True
-            assert "fallback" in health["backend_name"]
+            assert "brute_force" in health["backend_name"]
 
 
 # ---------------------------------------------------------------------------
@@ -274,9 +268,7 @@ class TestVectorPersistence:
 
         # Directly inspect the database
         conn = sqlite3.connect(db_path)
-        row = conn.execute(
-            "SELECT embedding_json FROM vector_metadata WHERE id = 'emb-check'"
-        ).fetchone()
+        row = conn.execute("SELECT embedding_json FROM vector_metadata WHERE id = 'emb-check'").fetchone()
         conn.close()
 
         assert row is not None
@@ -335,17 +327,19 @@ class _FakeModelProvider:
     async def call(self, slot: str, messages: list[dict]) -> dict:
         # Return a valid tagging response for any LLM call
         return {
-            "content": json.dumps([
-                {
-                    "turn_id": "turn-1",
-                    "primary_domain": "unclassified",
-                    "domains": ["unclassified"],
-                    "tags": ["test"],
-                    "importance": 0.3,
-                    "bridges": [],
-                    "beast_confidence": 0.5,
-                }
-            ])
+            "content": json.dumps(
+                [
+                    {
+                        "turn_id": "turn-1",
+                        "primary_domain": "unclassified",
+                        "domains": ["unclassified"],
+                        "tags": ["test"],
+                        "importance": 0.3,
+                        "bridges": [],
+                        "beast_confidence": 0.5,
+                    }
+                ]
+            )
         }
 
 
@@ -372,6 +366,7 @@ class TestSextonE2EWithRealStores:
         # Create a minimal CorpusTurnStore with one unembedded turn
         from aip.adapter.corpus_turn_store import CorpusTurnStore
         from aip.foundation.schemas.corpus_turn import CorpusTurn
+
         cts = CorpusTurnStore(db_path)
         await cts.initialize()
 
@@ -488,14 +483,16 @@ class TestAIFingerprintCleanup:
 
     def test_ask_pipeline_imports(self):
         """ask_pipeline.py must import cleanly after cleanup."""
-        from aip.orchestration.ask_pipeline import ask, create_ask_stores, AskStores
+        from aip.orchestration.ask_pipeline import AskStores, ask, create_ask_stores
+
         assert callable(ask)
         assert callable(create_ask_stores)
         assert AskStores is not None
 
     def test_ingestion_pipeline_imports(self):
         """ingestion/pipeline.py must import cleanly after cleanup."""
-        from aip.orchestration.ingestion.pipeline import ingest_file, ingest_conversation, create_ingestion_stores
+        from aip.orchestration.ingestion.pipeline import create_ingestion_stores, ingest_conversation, ingest_file
+
         assert callable(ingest_file)
         assert callable(ingest_conversation)
         assert callable(create_ingestion_stores)
@@ -503,6 +500,7 @@ class TestAIFingerprintCleanup:
     def test_fts5_store_no_sync_init(self):
         """SqliteFts5LexicalStore must NOT have _ensure_tables_sync method."""
         from aip.adapter.lexical.sqlite_fts5_store import SqliteFts5LexicalStore
+
         assert not hasattr(SqliteFts5LexicalStore, "_ensure_tables_sync"), (
             "_ensure_tables_sync should have been removed in Sprint 5.13"
         )
@@ -510,6 +508,7 @@ class TestAIFingerprintCleanup:
     def test_vss_store_no_sync_init(self):
         """SqliteVssVectorStore must NOT have _init_vss_sync method."""
         from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
+
         assert not hasattr(SqliteVssVectorStore, "_init_vss_sync"), (
             "_init_vss_sync should have been removed in Sprint 5.13"
         )

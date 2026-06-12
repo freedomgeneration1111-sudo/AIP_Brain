@@ -15,12 +15,12 @@ Error codes: NOT_FOUND, UNAUTHORIZED, FORBIDDEN, BACKEND_UNAVAILABLE,
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from aip.foundation.schemas import McpToolDef, coerce_autonomy_level, coerce_mcp_autonomy_level
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Error code constants for structured responses
 NOT_FOUND = "NOT_FOUND"
@@ -214,7 +214,8 @@ class AipMcpServer:
             if self.container.autonomy_gate is None:
                 return _error(
                     FORBIDDEN,
-                    f"Autonomy gate unavailable: {level}-level tool '{name}' requires an active gate for DEFINER sovereignty enforcement. "
+                    f"Autonomy gate unavailable: {level}-level tool '{name}' requires an active gate "
+                    f"for DEFINER sovereignty enforcement. "
                     f"Wire AutonomyGate into the container before using this tool.",
                     {"tool_name": name, "required_level": level, "gate_status": "unavailable"},
                 )

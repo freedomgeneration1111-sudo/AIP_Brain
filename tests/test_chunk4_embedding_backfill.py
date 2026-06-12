@@ -15,13 +15,12 @@ Validates:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from aip.orchestration.actors.sexton import Sexton
 from aip.foundation.schemas import SextonConfig
-
+from aip.orchestration.actors.sexton import Sexton
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -45,15 +44,20 @@ def _make_mock_embedding_provider(is_mock: bool = True) -> object:
                  class name looks like a real provider.
     """
     if is_mock:
+
         class MockOllamaEmbeddingClient:
             async def embed(self, text: str) -> list[float]:
                 return [0.1] * 768
+
         return MockOllamaEmbeddingClient()
     else:
+
         class OpenAICompatibleEmbeddingClient:
             model = "text-embedding-3-small"
+
             async def embed(self, text: str) -> list[float]:
                 return [0.1] * 768
+
         return OpenAICompatibleEmbeddingClient()
 
 
@@ -96,18 +100,14 @@ class TestEmbeddingBackfillStateMachine:
         mock_provider = _make_mock_embedding_provider(is_mock=True)
         actor = _make_full_sexton(embedding_provider=mock_provider)
         state = actor._compute_embedding_backfill_state()
-        assert state == "degraded", (
-            f"Mock provider should yield 'degraded', got '{state}'"
-        )
+        assert state == "degraded", f"Mock provider should yield 'degraded', got '{state}'"
 
     def test_configured_idle_when_real_provider_but_no_cycle(self):
         """Sexton with real provider but no cycle run reports 'configured_idle'."""
         real_provider = _make_mock_embedding_provider(is_mock=False)
         actor = _make_full_sexton(embedding_provider=real_provider)
         state = actor._compute_embedding_backfill_state()
-        assert state == "configured_idle", (
-            f"Real provider with no cycle should yield 'configured_idle', got '{state}'"
-        )
+        assert state == "configured_idle", f"Real provider with no cycle should yield 'configured_idle', got '{state}'"
 
     def test_backfill_running_when_embedding_pass_active(self):
         """Sexton during active embedding pass reports 'backfill_running'."""
@@ -303,9 +303,7 @@ class TestUnembeddedDetection:
         await actor.refresh_embedding_backfill_state()
 
         # Should not crash, state should still be computed from available data
-        assert actor._embedding_backfill_state in (
-            "configured_idle", "partially_embedded", "backfill_pending"
-        )
+        assert actor._embedding_backfill_state in ("configured_idle", "partially_embedded", "backfill_pending")
 
 
 # ---------------------------------------------------------------------------
@@ -480,6 +478,7 @@ class TestAdapterHealthHonesty:
     def test_health_module_reports_honest_embedding_status(self):
         """Verify that adapter/health.py no longer has hardcoded 'healthy' embedding."""
         import inspect
+
         from aip.adapter import health as health_mod
 
         source = inspect.getsource(health_mod.system_health_check)
@@ -488,17 +487,14 @@ class TestAdapterHealthHonesty:
             "adapter/health.py still has hardcoded 'healthy' embedding status"
         )
         # Must contain 'not_configured' for mock providers
-        assert "not_configured" in source, (
-            "adapter/health.py must report 'not_configured' for mock/fake providers"
-        )
+        assert "not_configured" in source, "adapter/health.py must report 'not_configured' for mock/fake providers"
         # Must contain 'degraded' field
-        assert "degraded" in source, (
-            "adapter/health.py must include 'degraded' field in embedding status"
-        )
+        assert "degraded" in source, "adapter/health.py must include 'degraded' field in embedding status"
 
     def test_health_module_no_hardcoded_ollama(self):
         """adapter/health.py must not hardcode 'ollama' backend."""
         import inspect
+
         from aip.adapter import health as health_mod
 
         source = inspect.getsource(health_mod.system_health_check)
@@ -528,9 +524,11 @@ class TestMockProviderDegraded:
 
     def test_fake_embed_provider_backfill_state_degraded(self):
         """Sexton with FakeEmbedProvider reports 'degraded'."""
+
         class FakeEmbedProvider:
             async def embed(self, text: str) -> list[float]:
                 return [0.1] * 768
+
         fake_provider = FakeEmbedProvider()
         actor = _make_full_sexton(embedding_provider=fake_provider)
         assert actor._compute_embedding_backfill_state() == "degraded"

@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from aip.adapter.api.dependencies import AipContainer, get_container
 
@@ -51,13 +51,15 @@ async def list_sources(
                 entity_domain = entity.get("domain", "")
                 if domain and entity_domain != domain:
                     continue
-                sources.append({
-                    "source_id": entity.get("entity_id", entity.get("id", "")),
-                    "source_type": etype,
-                    "domain": entity_domain,
-                    "title": entity.get("name", entity.get("title", "")),
-                    "metadata": entity,
-                })
+                sources.append(
+                    {
+                        "source_id": entity.get("entity_id", entity.get("id", "")),
+                        "source_type": etype,
+                        "domain": entity_domain,
+                        "title": entity.get("name", entity.get("title", "")),
+                        "metadata": entity,
+                    }
+                )
         except Exception as exc:
             logger.warning("Failed to list entities for sources: %s", exc)
 
@@ -66,18 +68,20 @@ async def list_sources(
         try:
             knowledge_items = await container.knowledge_store.list_compiled(domain=domain)
             for item in knowledge_items:
-                sources.append({
-                    "source_id": item.get("knowledge_id", ""),
-                    "source_type": "compiled_knowledge",
-                    "domain": item.get("domain", ""),
-                    "title": item.get("knowledge_id", ""),
-                    "state": item.get("state", ""),
-                    "metadata": {
-                        "source_canonical_ids": item.get("source_canonical_ids", []),
-                        "created_at": item.get("created_at", ""),
-                        "updated_at": item.get("updated_at", ""),
-                    },
-                })
+                sources.append(
+                    {
+                        "source_id": item.get("knowledge_id", ""),
+                        "source_type": "compiled_knowledge",
+                        "domain": item.get("domain", ""),
+                        "title": item.get("knowledge_id", ""),
+                        "state": item.get("state", ""),
+                        "metadata": {
+                            "source_canonical_ids": item.get("source_canonical_ids", []),
+                            "created_at": item.get("created_at", ""),
+                            "updated_at": item.get("updated_at", ""),
+                        },
+                    }
+                )
         except Exception as exc:
             logger.warning("Failed to list knowledge for sources: %s", exc)
 

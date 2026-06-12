@@ -11,15 +11,13 @@ directly from orchestration.
 
 from __future__ import annotations
 
-import logging
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from aip.adapter.api.dependencies import AipContainer, get_container
 from aip.foundation.schemas.ask import AskSource
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -62,7 +60,7 @@ async def ask_query(payload: dict, container: AipContainer = Depends(get_contain
         raise HTTPException(
             status_code=503,
             detail="Lexical store not available — cannot perform knowledge queries. "
-                   "Ensure the AIP backend is configured with FTS5 support.",
+            "Ensure the AIP backend is configured with FTS5 support.",
         )
 
     if container.artifact_store is None:
@@ -139,8 +137,12 @@ async def ask_query(payload: dict, container: AipContainer = Depends(get_contain
         "prompt": result.prompt,
         "errors": result.errors,
         "trace_available": bool(result.sources),
-        "lexical_only": result.retrieval_degradation.get("lexical_only", False) if result.retrieval_degradation else False,
-        "vector_contributed": result.retrieval_degradation.get("vector_contributed", False) if result.retrieval_degradation else False,
+        "lexical_only": result.retrieval_degradation.get("lexical_only", False)
+        if result.retrieval_degradation
+        else False,
+        "vector_contributed": result.retrieval_degradation.get("vector_contributed", False)
+        if result.retrieval_degradation
+        else False,
     }
 
 
@@ -162,7 +164,7 @@ async def ask_retrieve_only(payload: dict, container: AipContainer = Depends(get
     if not question:
         raise HTTPException(status_code=400, detail="question is required")
 
-    domain = payload.get("domain") or payload.get("project_name")
+    payload.get("domain") or payload.get("project_name")
     source: AskSource = payload.get("source", "all")  # type: ignore[assignment]
     if source not in ("ingested", "artifacts", "all"):
         source = "all"

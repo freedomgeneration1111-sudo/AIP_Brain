@@ -59,6 +59,7 @@ def register(
     if stores.model_provider is not None:
         try:
             from aip.orchestration.entity_extractor import create_llm_entity_fn
+
             llm_entity_fn = create_llm_entity_fn(
                 model_provider=stores.model_provider,
                 slot_name=entity_extractor_config.llm_entity_extraction_model,
@@ -68,12 +69,14 @@ def register(
             entity_extractor_config.entity_extraction_mode = "hybrid_llm"
         except Exception as exc:
             logger.debug("LLM entity extraction wiring failed (non-fatal): %s", exc)
-            failures.append(ChannelFailure(
-                channel=CHANNEL_NAME,
-                error_type="initialization",
-                message=f"LLM entity extraction wiring failed: {exc}",
-                exception_type=type(exc).__qualname__,
-            ))
+            failures.append(
+                ChannelFailure(
+                    channel=CHANNEL_NAME,
+                    error_type="initialization",
+                    message=f"LLM entity extraction wiring failed: {exc}",
+                    exception_type=type(exc).__qualname__,
+                )
+            )
 
     async def _graph_retriever(query: str) -> list[RetrievalHit]:
         """Graph retriever: extract entities from query, run PPR, surface related nodes.
@@ -95,6 +98,7 @@ def register(
             if _db_path is None:
                 _db_path = os.environ.get("AIP_DB_PATH", "db/state.db")
             from aip.adapter.graph_store import GraphStore
+
             _graph_store = GraphStore(_db_path)
             await _graph_store.initialize()
 
@@ -111,7 +115,8 @@ def register(
         # Use EntityExtractor for robust entity extraction
         # (noun-phrase + graph-fuzzy + optional LLM fallback)
         seed_entities = await extractor.extract_async(
-            query, graph_store=_graph_store,
+            query,
+            graph_store=_graph_store,
         )
 
         ext_elapsed = (_time.monotonic() - ext_start) * 1000.0
@@ -154,14 +159,16 @@ def register(
                 meta["_llm_entity_extraction_ms"] = llm_ext_ms
                 meta["_llm_entity_extraction_status"] = llm_ext_status
                 meta["_llm_entity_count"] = llm_ext_count
-            hits.append(RetrievalHit(
-                id=f"graph:{entity_name}",
-                content=f"Graph entity: {entity_name} — connected to query entities via knowledge graph.",
-                score=1.0 - (i / max(len(expanded), 1)) * 0.5,
-                source_channel=CHANNEL_NAME,
-                metadata=meta,
-                rank_in_channel=i + 1,
-            ))
+            hits.append(
+                RetrievalHit(
+                    id=f"graph:{entity_name}",
+                    content=f"Graph entity: {entity_name} — connected to query entities via knowledge graph.",
+                    score=1.0 - (i / max(len(expanded), 1)) * 0.5,
+                    source_channel=CHANNEL_NAME,
+                    metadata=meta,
+                    rank_in_channel=i + 1,
+                )
+            )
         return hits
 
     orchestrator.register_channel(

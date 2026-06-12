@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,7 @@ LLMEntityFn = Callable[[str], Awaitable[list[str]]]
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class EntityExtractorConfig:
@@ -106,34 +107,115 @@ class EntityExtractorConfig:
 
 # Pattern for capitalised phrases: one or more capitalised words in sequence.
 # E.g. "Knowledge Graph", "New York", "AIP Brain"
-_CAP_PHRASE_RE = re.compile(
-    r'\b([A-Z][a-z]*(?:\s+[A-Z][a-z]*)+)\b'
-)
+_CAP_PHRASE_RE = re.compile(r"\b([A-Z][a-z]*(?:\s+[A-Z][a-z]*)+)\b")
 
 # Pattern for single capitalised words that look like proper nouns
 # (excludes common sentence starters after filtering)
-_SINGLE_CAP_RE = re.compile(
-    r'\b([A-Z][a-zA-Z]{2,})\b'
-)
+_SINGLE_CAP_RE = re.compile(r"\b([A-Z][a-zA-Z]{2,})\b")
 
 # Known sentence-starting words that are NOT entities
-_SENTENCE_STARTERS = frozenset({
-    "The", "This", "That", "These", "Those", "What", "Which", "Who",
-    "How", "When", "Where", "Why", "Is", "Are", "Was", "Were", "Can",
-    "Could", "Should", "Would", "Will", "Do", "Does", "Did", "Has",
-    "Have", "Had", "There", "Here", "It", "We", "They", "You", "He",
-    "She", "But", "And", "Or", "If", "So", "Then", "Just", "Also",
-    "Not", "No", "Yes", "Let", "May", "Might", "Must", "Shall",
-})
+_SENTENCE_STARTERS = frozenset(
+    {
+        "The",
+        "This",
+        "That",
+        "These",
+        "Those",
+        "What",
+        "Which",
+        "Who",
+        "How",
+        "When",
+        "Where",
+        "Why",
+        "Is",
+        "Are",
+        "Was",
+        "Were",
+        "Can",
+        "Could",
+        "Should",
+        "Would",
+        "Will",
+        "Do",
+        "Does",
+        "Did",
+        "Has",
+        "Have",
+        "Had",
+        "There",
+        "Here",
+        "It",
+        "We",
+        "They",
+        "You",
+        "He",
+        "She",
+        "But",
+        "And",
+        "Or",
+        "If",
+        "So",
+        "Then",
+        "Just",
+        "Also",
+        "Not",
+        "No",
+        "Yes",
+        "Let",
+        "May",
+        "Might",
+        "Must",
+        "Shall",
+    }
+)
 
 # Stop words for single-word filtering
-_STOP_WORDS = frozenset({
-    "the", "a", "an", "is", "are", "was", "were", "be", "been",
-    "being", "have", "has", "had", "do", "does", "did", "will",
-    "would", "could", "should", "may", "might", "shall", "can",
-    "of", "in", "to", "for", "with", "on", "at", "by", "from",
-    "it", "its", "we", "our", "you", "your", "this", "that",
-})
+_STOP_WORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "shall",
+        "can",
+        "of",
+        "in",
+        "to",
+        "for",
+        "with",
+        "on",
+        "at",
+        "by",
+        "from",
+        "it",
+        "its",
+        "we",
+        "our",
+        "you",
+        "your",
+        "this",
+        "that",
+    }
+)
 
 
 def extract_noun_phrases(query: str, min_length: int = 3) -> list[str]:
@@ -190,6 +272,7 @@ def extract_noun_phrases(query: str, min_length: int = 3) -> list[str]:
 # Graph fuzzy matching
 # ---------------------------------------------------------------------------
 
+
 async def fuzzy_match_graph_entities(
     candidates: list[str],
     graph_store: Any,
@@ -229,7 +312,8 @@ async def fuzzy_match_graph_entities(
         # canonical_name)
         try:
             search_results = await graph_store.search_nodes(
-                query=candidate, limit=5,
+                query=candidate,
+                limit=5,
             )
         except Exception:
             search_results = []
@@ -240,10 +324,7 @@ async def fuzzy_match_graph_entities(
             node_name_lower = node.canonical_name.lower()
 
             # Substring match in either direction
-            if (
-                cand_lower in node_name_lower
-                or node_name_lower in cand_lower
-            ):
+            if cand_lower in node_name_lower or node_name_lower in cand_lower:
                 # Compute overlap ratio for threshold check
                 shorter = min(len(cand_lower), len(node_name_lower))
                 longer = max(len(cand_lower), len(node_name_lower))
@@ -253,7 +334,7 @@ async def fuzzy_match_graph_entities(
                     matched.append(node.canonical_name)
 
             # Also check aliases
-            for alias in (node.aliases or []):
+            for alias in node.aliases or []:
                 alias_lower = alias.lower()
                 if cand_lower in alias_lower or alias_lower in cand_lower:
                     shorter = min(len(cand_lower), len(alias_lower))
@@ -270,6 +351,7 @@ async def fuzzy_match_graph_entities(
 # ---------------------------------------------------------------------------
 # EntityExtractor (main class)
 # ---------------------------------------------------------------------------
+
 
 class EntityExtractor:
     """Configurable entity extractor for the Graph retrieval channel.
@@ -322,7 +404,8 @@ class EntityExtractor:
             # Use noun phrases as candidates, but only return graph matches
             if store is not None:
                 candidates = await fuzzy_match_graph_entities(
-                    noun_phrases, store,
+                    noun_phrases,
+                    store,
                     threshold=cfg.fuzzy_match_threshold,
                     max_matches=cfg.max_candidates,
                 )
@@ -353,7 +436,7 @@ class EntityExtractor:
             candidates = noun_phrases
 
         # Apply max_candidates limit
-        return candidates[:cfg.max_candidates]
+        return candidates[: cfg.max_candidates]
 
     async def extract_async(self, query: str, graph_store: Any | None = None) -> list[str]:
         """Async entity extraction — includes LLM fallback support.
@@ -371,7 +454,7 @@ class EntityExtractor:
             try:
                 llm_entities = await self._llm_fn(query)
                 if llm_entities:
-                    return llm_entities[:cfg.max_candidates]
+                    return llm_entities[: cfg.max_candidates]
             except Exception as exc:
                 logger.debug("LLM primary entity extraction failed, falling back: %s", exc)
             # LLM failed — fall through to local extraction
@@ -404,13 +487,13 @@ class EntityExtractor:
             try:
                 llm_entities = await self._llm_fn(query)
                 if llm_entities:
-                    candidates = llm_entities[:cfg.max_candidates]
+                    candidates = llm_entities[: cfg.max_candidates]
             except Exception as exc:
                 logger.debug("LLM entity extraction failed: %s", exc)
                 # Fall back to noun phrases
                 candidates = extract_noun_phrases(query, min_length=cfg.min_entity_length)
 
-        return candidates[:cfg.max_candidates]
+        return candidates[: cfg.max_candidates]
 
 
 # ---------------------------------------------------------------------------
@@ -422,8 +505,8 @@ _LLM_ENTITY_SYSTEM_PROMPT = (
     "You are an entity extraction assistant.  Given a user query, extract "
     "all named entities, technical terms, and proper nouns that could be "
     "used to seed a knowledge graph search.  Return ONLY a JSON array of "
-    "entity strings, nothing else.  Example: [\"Knowledge Graph\", \"AIP\", "
-    "\"Personalized PageRank\"].  Keep entities concise (1-4 words each).  "
+    'entity strings, nothing else.  Example: ["Knowledge Graph", "AIP", '
+    '"Personalized PageRank"].  Keep entities concise (1-4 words each).  '
     "Do NOT include common words, verbs, or adjectives unless they are part "
     "of a proper noun."
 )
@@ -471,7 +554,10 @@ def create_llm_entity_fn(
         for slot in (slot_name, fallback_slot):
             try:
                 result = await model_provider.call(
-                    slot, messages, temperature=0.1, max_tokens=200,
+                    slot,
+                    messages,
+                    temperature=0.1,
+                    max_tokens=200,
                 )
                 if result.get("error"):
                     continue
@@ -521,7 +607,7 @@ def _parse_llm_entity_response(content: str) -> list[str]:
         pass
 
     # Try extracting JSON from markdown code blocks
-    json_match = re.search(r'```(?:json)?\s*\n?\s*(\[.*?\])\s*\n?\s*```', content, re.DOTALL)
+    json_match = re.search(r"```(?:json)?\s*\n?\s*(\[.*?\])\s*\n?\s*```", content, re.DOTALL)
     if json_match:
         try:
             parsed = _json.loads(json_match.group(1))
@@ -531,7 +617,7 @@ def _parse_llm_entity_response(content: str) -> list[str]:
             pass
 
     # Try finding a JSON array anywhere in the response
-    bracket_match = re.search(r'\[.*?\]', content, re.DOTALL)
+    bracket_match = re.search(r"\[.*?\]", content, re.DOTALL)
     if bracket_match:
         try:
             parsed = _json.loads(bracket_match.group(0))
@@ -541,10 +627,10 @@ def _parse_llm_entity_response(content: str) -> list[str]:
             pass
 
     # Last resort: split by commas or newlines, clean up
-    parts = re.split(r'[,\n]', content)
+    parts = re.split(r"[,\n]", content)
     candidates = []
     for part in parts:
-        cleaned = part.strip().strip('"\'[]').strip()
+        cleaned = part.strip().strip("\"'[]").strip()
         if len(cleaned) >= 2:
             candidates.append(cleaned)
     return candidates[:10]  # cap at 10

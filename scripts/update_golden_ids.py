@@ -52,6 +52,7 @@ FTS_MIN_RANK = -50.0
 # FTS5 search
 # ---------------------------------------------------------------------------
 
+
 def fts5_search(conn: sqlite3.Connection, query: str, top_k: int = FTS_TOP_K) -> list[str]:
     """Run an FTS5 search against corpus_turns_fts and return top-k turn_ids.
 
@@ -69,6 +70,7 @@ def fts5_search(conn: sqlite3.Connection, query: str, top_k: int = FTS_TOP_K) ->
     """
     # Clean query for FTS5: remove special chars, split into words, join with AND
     import re
+
     words = re.findall(r"[a-zA-Z0-9_]+", query)
     if not words:
         return []
@@ -96,6 +98,7 @@ def fts5_search(conn: sqlite3.Connection, query: str, top_k: int = FTS_TOP_K) ->
 # Graph entity lookup
 # ---------------------------------------------------------------------------
 
+
 def lookup_entities(conn: sqlite3.Connection, query: str) -> list[str]:
     """Look up entity names from graph_nodes that match the query.
 
@@ -111,6 +114,7 @@ def lookup_entities(conn: sqlite3.Connection, query: str) -> list[str]:
         List of canonical_name strings from graph_nodes.
     """
     import re
+
     words = re.findall(r"[a-zA-Z0-9_]+", query)
     if not words:
         return []
@@ -146,6 +150,7 @@ def lookup_entities(conn: sqlite3.Connection, query: str) -> list[str]:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def update_golden_queries(
     db_path: str | Path,
@@ -255,7 +260,8 @@ def main() -> None:
         help=f"Path to input golden queries JSON (default: {DEFAULT_GOLDEN_PATH})",
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         default=None,
         help="Output path for updated golden queries (default: overwrite input)",
     )

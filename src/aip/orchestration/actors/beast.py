@@ -674,7 +674,7 @@ class Beast:
                 meta = a.get("metadata", {}) or {}
                 if meta.get("domain") == domain:
                     # id like beast:summary:dom:ts
-                    candidates.append( (a.get("created_at") or meta.get("generated_at") or "", a) )
+                    candidates.append((a.get("created_at") or meta.get("generated_at") or "", a))
             if not candidates:
                 return None
             candidates.sort(reverse=True)
@@ -706,7 +706,7 @@ class Beast:
             if n > 20:
                 first = contents[:7]
                 mid_start = n // 2 - 3
-                mid = contents[mid_start:mid_start+7]
+                mid = contents[mid_start : mid_start + 7]
                 last = contents[-6:]
                 contents = first + mid + last
             return total or n, contents[:max_chunks]
@@ -844,7 +844,11 @@ class Beast:
                 continue
 
             rejection = await self._find_rejection_feedback(dom)
-            rej_text = f"\nPrevious summary was rejected. Feedback: {rejection}. Please address this in your summary.\n" if rejection else ""
+            rej_text = (
+                f"\nPrevious summary was rejected. Feedback: {rejection}. Please address this in your summary.\n"
+                if rejection
+                else ""
+            )
 
             # Build prompt
             chunks_text = "\n---\n".join(samples)
@@ -864,7 +868,8 @@ class Beast:
             )
             system = (
                 "You are AIP Beast, the corpus intelligence actor for a sovereign knowledge engine. "
-                "Your role is to generate accurate, grounded summaries of knowledge domains based only on the content provided. "
+                "Your role is to generate accurate, grounded summaries of knowledge domains "
+                "based only on the content provided. "
                 "Do not infer or hallucinate content not present in the chunks. Be concise and specific."
             )
             messages = [
@@ -930,6 +935,7 @@ class Beast:
         # Registry is authoritative — Beast never invents domains
         try:
             from .domain_registry import load_registry
+
             registry = load_registry("docs/beast_domain_registry_v1.md")
         except FileNotFoundError as exc:
             log.warning("beast_tagging_skipped_no_registry", path="docs/beast_domain_registry_v1.md", error=str(exc))
@@ -945,11 +951,11 @@ class Beast:
         domain_list = "\n".join(f"  - {d}" for d in approved_domains)
         bridge_list = "\n".join(f"  - {b}" for b in approved_bridges)
 
-        system_prompt = f"""You are AIP Beast, corpus intelligence actor for a 
-sovereign knowledge engine. Your job is to classify conversation turns 
+        system_prompt = f"""You are AIP Beast, corpus intelligence actor for a
+sovereign knowledge engine. Your job is to classify conversation turns
 into knowledge domains and score their importance.
 
-You will receive a batch of conversation turns. For each turn, return 
+You will receive a batch of conversation turns. For each turn, return
 a JSON object with exactly these fields:
   turn_id: string (copy exactly from input)
   primary_domain: string (exactly one domain_id from the approved list)
@@ -966,7 +972,7 @@ APPROVED BRIDGE TAGS:
 {bridge_list}
 
 IMPORTANCE SCORING RULES:
-0.9-1.0: Decision recorded, conclusion reached, original framework 
+0.9-1.0: Decision recorded, conclusion reached, original framework
          developed, manuscript section completed
 0.7-0.8: Substantive analysis, design discussion, theological exegesis,
          research finding, problem solved
@@ -981,7 +987,7 @@ considered reasoning worth preserving.
 
 QUARANTINE RULES — assign primary_domain "quarantine" only when ALL:
   1. user_text < 15 words with no substantive content
-  2. assistant_text < 50 words  
+  2. assistant_text < 50 words
   3. No domain keywords match
   4. Total word_count < 30
 NEVER quarantine turns with thinking_text, decisions, frameworks,
@@ -1056,10 +1062,10 @@ Example response structure:
                 u = (getattr(turn, "user_text", "") or "")[:400]
                 a = (getattr(turn, "assistant_text", "") or "")[:600]
                 th_raw = getattr(turn, "thinking_text", "") or ""
-                th = (th_raw[:300] if th_raw else "(none)")
+                th = th_raw[:300] if th_raw else "(none)"
                 wc = getattr(turn, "word_count", 0)
                 blk = (
-                    f"--- TURN {j+1} ---\n"
+                    f"--- TURN {j + 1} ---\n"
                     f"turn_id: {uid}\n"
                     f"conversation: {cname}\n"
                     f"user: {u}\n"
@@ -1078,10 +1084,18 @@ Example response structure:
             ]
 
             if batch_idx % 5 == 1 or batch_idx == (total + BATCH_SIZE - 1) // BATCH_SIZE:
-                log.info("beast_tagging_progress", batch=batch_idx, of=(total + BATCH_SIZE - 1) // BATCH_SIZE, turns=f"{b_start+1}-{min(b_start+BATCH_SIZE, total)}/{total}")
+                log.info(
+                    "beast_tagging_progress",
+                    batch=batch_idx,
+                    of=(total + BATCH_SIZE - 1) // BATCH_SIZE,
+                    turns=f"{b_start + 1}-{min(b_start + BATCH_SIZE, total)}/{total}",
+                )
                 # Plain progress line for CLI `aip corpus tag` visibility (matches mandated verif output)
                 try:
-                    print(f"Tagging batch {batch_idx}/{(total + BATCH_SIZE - 1) // BATCH_SIZE} (turns {b_start+1}-{min(b_start + BATCH_SIZE, total)})...")
+                    print(
+                        f"Tagging batch {batch_idx}/{(total + BATCH_SIZE - 1) // BATCH_SIZE} "
+                        f"(turns {b_start + 1}-{min(b_start + BATCH_SIZE, total)})..."
+                    )
                 except Exception:
                     pass
 
@@ -1092,13 +1106,17 @@ Example response structure:
                 if not isinstance(parsed, list):
                     raise ValueError("response not a JSON array")
             except Exception as exc:
-                log.warning("beast_tagging_batch_parse_failed", batch=batch_idx, turn_ids=[getattr(t, "turn_id", "?") for t in batch], error=str(exc))
+                log.warning(
+                    "beast_tagging_batch_parse_failed",
+                    batch=batch_idx,
+                    turn_ids=[getattr(t, "turn_id", "?") for t in batch],
+                    error=str(exc),
+                )
                 # Mark whole batch as unclassified with 0 conf (tagging_version will ++ via update)
                 for t in batch:
                     try:
                         await self._corpus_turns.update_beast_tags(
-                            getattr(t, "turn_id", ""),
-                            [], "unclassified", [], 0.0, [], 0.0
+                            getattr(t, "turn_id", ""), [], "unclassified", [], 0.0, [], 0.0
                         )
                     except Exception:
                         pass
@@ -1123,11 +1141,19 @@ Example response structure:
                     item_conf = item.get("beast_confidence", 0.0)
 
                 doms = [d for d in (item.get("domains") or []) if isinstance(d, str) and registry.is_approved_domain(d)]
-                if primary not in doms and primary in ("unclassified", "quarantine") or registry.is_approved_domain(primary):
+                if (
+                    primary not in doms
+                    and primary in ("unclassified", "quarantine")
+                    or registry.is_approved_domain(primary)
+                ):
                     if primary not in ("unclassified", "quarantine") and primary not in doms:
                         doms = [primary] + doms
 
-                tgs = [str(t).lower().replace(" ", "_")[:64] for t in (item.get("tags") or []) if isinstance(t, (str, int, float))][:8]
+                tgs = [
+                    str(t).lower().replace(" ", "_")[:64]
+                    for t in (item.get("tags") or [])
+                    if isinstance(t, (str, int, float))
+                ][:8]
                 if not tgs:
                     tgs = ["unclassified"]
 
@@ -1144,7 +1170,7 @@ Example response structure:
                     pass
 
                 brs = []
-                for b in (item.get("bridges") or []):
+                for b in item.get("bridges") or []:
                     bs = str(b)
                     if registry.is_approved_bridge(bs):
                         brs.append(bs)
@@ -1160,19 +1186,19 @@ Example response structure:
                 prop = item.get("proposal")
                 if isinstance(prop, dict) and prop.get("proposed_id"):
                     ptype = prop.get("type", "domain")
-                    proposals.append({
-                        "type": ptype,
-                        "proposed_id": prop.get("proposed_id"),
-                        "description": prop.get("description", ""),
-                        "rationale": prop.get("rationale", ""),
-                        "evidence_turn_ids": [tid],
-                    })
+                    proposals.append(
+                        {
+                            "type": ptype,
+                            "proposed_id": prop.get("proposed_id"),
+                            "description": prop.get("description", ""),
+                            "rationale": prop.get("rationale", ""),
+                            "evidence_turn_ids": [tid],
+                        }
+                    )
 
                 # Persist
                 try:
-                    await self._corpus_turns.update_beast_tags(
-                        tid, doms, primary, tgs, imp, brs, bconf
-                    )
+                    await self._corpus_turns.update_beast_tags(tid, doms, primary, tgs, imp, brs, bconf)
                     tagged += 1
                     domain_counts[primary] = domain_counts.get(primary, 0) + 1
                     importance_sum += imp
@@ -1190,14 +1216,17 @@ Example response structure:
                 pid = p.get("proposed_id", "discovered")
                 ptype = p.get("type", "domain")
                 aid = f"beast:proposal:{ptype}:{pid}:{short_ts}"
-                content = json.dumps({
-                    "proposed_id": pid,
-                    "proposal_type": ptype,
-                    "description": p.get("description", ""),
-                    "rationale": p.get("rationale", ""),
-                    "evidence_turn_ids": p.get("evidence_turn_ids", [])[:5],
-                    "suggested_connectors": p.get("suggested_connectors", []),
-                }, ensure_ascii=False)
+                content = json.dumps(
+                    {
+                        "proposed_id": pid,
+                        "proposal_type": ptype,
+                        "description": p.get("description", ""),
+                        "rationale": p.get("rationale", ""),
+                        "evidence_turn_ids": p.get("evidence_turn_ids", [])[:5],
+                        "suggested_connectors": p.get("suggested_connectors", []),
+                    },
+                    ensure_ascii=False,
+                )
                 meta = {
                     "artifact_type": "beast_domain_proposal",
                     "proposal_type": ptype,
@@ -1295,9 +1324,17 @@ Example response structure:
             batch_idx = (b_start // BATCH_SIZE) + 1
 
             if batch_idx % 5 == 1 or batch_idx == (total + BATCH_SIZE - 1) // BATCH_SIZE:
-                log.info("beast_embedding_progress", batch=batch_idx, of=(total + BATCH_SIZE - 1) // BATCH_SIZE, turns=f"{b_start+1}-{min(b_start+BATCH_SIZE, total)}/{total}")
+                log.info(
+                    "beast_embedding_progress",
+                    batch=batch_idx,
+                    of=(total + BATCH_SIZE - 1) // BATCH_SIZE,
+                    turns=f"{b_start + 1}-{min(b_start + BATCH_SIZE, total)}/{total}",
+                )
                 try:
-                    print(f"Embedding batch {batch_idx}/{(total + BATCH_SIZE - 1) // BATCH_SIZE} (turns {b_start+1}-{min(b_start + BATCH_SIZE, total)})...")
+                    print(
+                        f"Embedding batch {batch_idx}/{(total + BATCH_SIZE - 1) // BATCH_SIZE} "
+                        f"(turns {b_start + 1}-{min(b_start + BATCH_SIZE, total)})..."
+                    )
                 except Exception:
                     pass
 
@@ -1367,15 +1404,13 @@ Example response structure:
 
         try:
             from .domain_registry import load_registry
+
             registry = load_registry("docs/beast_domain_registry_v1.md")
         except Exception as exc:
             log.warning("beast_wiki_skipped_no_registry", error=str(exc))
             return {"skipped": "registry_not_found", "error": str(exc)}
 
-        active_domains = [
-            d for d in registry.get_domain_ids()
-            if d not in self._WIKI_EXCLUDED_DOMAINS
-        ]
+        active_domains = [d for d in registry.get_domain_ids() if d not in self._WIKI_EXCLUDED_DOMAINS]
         if force_domains is not None:
             active_domains = [d for d in active_domains if d in force_domains]
 
@@ -1469,13 +1504,8 @@ Example response structure:
         """
         last_wiki_ts: str | None = None
         try:
-            arts = await self._artifacts.list_artifacts_by_metadata(
-                key="artifact_type", value="beast_wiki", limit=200
-            )
-            domain_arts = [
-                a for a in arts
-                if (a.get("metadata", {}) or {}).get("domain") == domain_id
-            ]
+            arts = await self._artifacts.list_artifacts_by_metadata(key="artifact_type", value="beast_wiki", limit=200)
+            domain_arts = [a for a in arts if (a.get("metadata", {}) or {}).get("domain") == domain_id]
             if domain_arts:
                 domain_arts.sort(key=lambda a: a.get("created_at", ""), reverse=True)
                 last_wiki_ts = domain_arts[0].get("created_at", "")
@@ -1499,9 +1529,7 @@ Example response structure:
             log.warning("beast_wiki_word_count_failed", domain=domain_id, error=str(exc))
             return False, last_wiki_ts
 
-    async def _get_wiki_domain_data(
-        self, domain_id: str, db_path: str | None, last_wiki_ts: str | None
-    ) -> dict:
+    async def _get_wiki_domain_data(self, domain_id: str, db_path: str | None, last_wiki_ts: str | None) -> dict:
         """Gather domain statistics and sample turns for wiki generation.
 
         Chunk 4: Uses async get_domain_stats() from CorpusTurnStore instead
@@ -1717,8 +1745,8 @@ CRITICAL CONSTRAINTS:
             return {"skipped": "no_db_path"}
 
         try:
-            from aip.adapter.graph_store import GraphStore, GraphNode, GraphEdge
             from aip.adapter.entity_alias_loader import EntityAliasRegistry
+            from aip.adapter.graph_store import GraphEdge, GraphNode, GraphStore
         except Exception as exc:
             log.warning("beast_graph_import_failed", error=str(exc))
             return {"skipped": "import_error", "error": str(exc)}
@@ -1738,7 +1766,12 @@ CRITICAL CONSTRAINTS:
         turns = await graph_store.get_unextracted_high_importance_turns(min_importance=0.7, limit=limit)
 
         if not turns:
-            return {"turns_processed": 0, "entities_created": 0, "relationships_created": 0, "note": "nothing_to_extract"}
+            return {
+                "turns_processed": 0,
+                "entities_created": 0,
+                "relationships_created": 0,
+                "note": "nothing_to_extract",
+            }
 
         system_prompt = f"""You are AIP Beast extracting entities and relationships
 from a conversation turn for a personal knowledge graph.
@@ -1877,14 +1910,16 @@ Output format:
                     # Ensure both nodes exist
                     for nid, nname in ((src_id, src_resolved), (tgt_id, tgt_resolved)):
                         if await graph_store.get_node(nid) is None:
-                            await graph_store.upsert_node(GraphNode(
-                                id=nid,
-                                entity_type="CONCEPT",
-                                canonical_name=nname,
-                                domain=primary_domain or None,
-                                confidence=0.6,
-                                source="beast_extraction",
-                            ))
+                            await graph_store.upsert_node(
+                                GraphNode(
+                                    id=nid,
+                                    entity_type="CONCEPT",
+                                    canonical_name=nname,
+                                    domain=primary_domain or None,
+                                    confidence=0.6,
+                                    source="beast_extraction",
+                                )
+                            )
 
                     edge_id = f"{src_id}__{rel_type}__{tgt_id}"
                     edge = GraphEdge(

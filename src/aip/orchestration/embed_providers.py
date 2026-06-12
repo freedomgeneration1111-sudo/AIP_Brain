@@ -55,14 +55,17 @@ def get_embed_fn(config: dict | Any | None = None) -> Callable[[str], list[float
     # Prefer centralized (models.embedding first) for consistency with API/UI selection.
     try:
         from aip.adapter.embedding.factory import create_embedding_provider
+
         prov = create_embedding_provider(cfg)
         if prov is not None and hasattr(prov, "embed"):
             # wrap async embed to sync for callers expecting sync fn
             import asyncio
+
             def _wrapped_embed(text: str) -> list[float]:
                 try:
-                    loop = asyncio.get_running_loop()
+                    asyncio.get_running_loop()
                     import concurrent.futures
+
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                         fut = pool.submit(asyncio.run, prov.embed(text))
                         return fut.result(timeout=60.0)
@@ -71,6 +74,7 @@ def get_embed_fn(config: dict | Any | None = None) -> Callable[[str], list[float
                 except Exception as exc:
                     logger.warning("embed via centralized provider failed, falling to fake: %s", exc)
                     return fake_embed(text)
+
             return _wrapped_embed
     except Exception as exc:
         logger.debug("get_embed_fn: create_embedding_provider failed, falling to legacy: %s", exc)
@@ -117,6 +121,7 @@ def get_embed_fn_async(config: dict | Any | None = None) -> Any:
     # then legacy [embedding]. This makes workflow engine etc. respect the UI-selected model.
     try:
         from aip.adapter.embedding.factory import create_embedding_provider
+
         prov = create_embedding_provider(cfg)
         if prov is not None:
             # prov is already an EmbeddingProvider (real client or mock)
@@ -241,6 +246,7 @@ def _make_mock_client(dimensions: int = 768) -> Any:
 class ConfigurationError(Exception):
     """Raised when required configuration (e.g. base_url) is missing for embedding providers."""
 
+
 def _make_openai_compatible_client_from_config(emb_cfg: dict) -> Any:
     """Create an OpenAICompatibleEmbeddingClient from embedding config.
 
@@ -277,14 +283,18 @@ def _make_openai_compatible_client_from_config(emb_cfg: dict) -> Any:
         )
         logger.info(
             "OpenAI-compatible embedding client created: base_url=%s, model=%s, has_api_key=%s",
-            base_url, model, bool(api_key),
+            base_url,
+            model,
+            bool(api_key),
         )
         return client
     except Exception as exc:
         logger.warning(
             "Failed to create OpenAICompatibleEmbeddingClient (base_url=%s, model=%s): %s. "
             "Falling back to MockOpenAICompatibleEmbeddingClient.",
-            base_url, model, exc,
+            base_url,
+            model,
+            exc,
         )
         return _make_openai_compatible_mock_client(dimensions=dimensions)
 

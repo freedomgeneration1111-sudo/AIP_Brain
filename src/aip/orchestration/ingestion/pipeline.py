@@ -121,10 +121,7 @@ async def ingest_conversation(
         {
             "conversation_id": conversation.conversation_id,
             "title": conversation.title,
-            "turns": [
-                {"role": t.role, "content": t.content, "timestamp": t.timestamp}
-                for t in conversation.turns
-            ],
+            "turns": [{"role": t.role, "content": t.content, "timestamp": t.timestamp} for t in conversation.turns],
             "source_format": conversation.source_format,
             "source_file": conversation.source_file,
             "imported_at": conversation.imported_at,
@@ -173,8 +170,9 @@ async def ingest_conversation(
     # Vector indexing (auto-resolves embedding_provider from config if not provided)
     if embedding_provider is None:
         try:
-            from aip.config.loader import load_toml_config
             from aip.adapter.embedding.factory import create_embedding_provider
+            from aip.config.loader import load_toml_config
+
             cfg = load_toml_config()
             if cfg:
                 embedding_provider = create_embedding_provider(cfg)
@@ -208,7 +206,9 @@ async def ingest_conversation(
         if vector_indexed:
             logger.info(
                 "Indexed %d/%d chunks into vector store for '%s'",
-                indexed_count, len(chunks), conversation.conversation_id,
+                indexed_count,
+                len(chunks),
+                conversation.conversation_id,
             )
         else:
             logger.info(
@@ -313,8 +313,9 @@ async def create_ingestion_stores(db_path: str) -> IngestionStores:
     # Create embedding provider using same logic as API container (models slot + env overrides first)
     embedding_provider = None
     try:
-        from aip.config.loader import load_toml_config
         from aip.adapter.embedding.factory import create_embedding_provider
+        from aip.config.loader import load_toml_config
+
         config = load_toml_config()
         if config:
             embedding_provider = create_embedding_provider(config)

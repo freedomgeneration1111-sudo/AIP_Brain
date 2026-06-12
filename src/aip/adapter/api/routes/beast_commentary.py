@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -30,8 +29,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -45,6 +45,7 @@ VALID_MODES = {"continuity", "critique", "strategy", "librarian", "risk"}
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
+
 
 class BeastCommentaryRequest(BaseModel):
     """Request body for Beast commentary generation."""
@@ -85,6 +86,7 @@ class BeastCommentaryResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _commentary_artifact_id(turn_id: str, mode: str = "") -> str:
     """Deterministic artifact ID for Beast commentary on a given turn + mode.
@@ -143,6 +145,7 @@ def _not_available_response(turn_id: str, **overrides: Any) -> BeastCommentaryRe
 # ---------------------------------------------------------------------------
 # GET endpoint — retrieve existing commentary
 # ---------------------------------------------------------------------------
+
 
 @router.get(
     "/turns/{turn_id}/beast-commentary",
@@ -229,6 +232,7 @@ async def get_beast_commentary(
 # POST endpoint — generate commentary
 # ---------------------------------------------------------------------------
 
+
 @router.post(
     "/turns/{turn_id}/beast-commentary/run",
     response_model=BeastCommentaryResponse,
@@ -281,11 +285,25 @@ async def run_beast_commentary(
     soul_text = _load_soul_text()
 
     mode_descriptions = {
-        "continuity": "Assess how well this answer connects to prior turns and established knowledge. Flag gaps in reasoning or context continuity.",
-        "critique": "Critically evaluate the answer's strengths and weaknesses. Identify unsupported claims, logical fallacies, or missing perspectives.",
-        "strategy": "Suggest strategic next steps for the DEFINER. What should be explored further? What decisions need to be made?",
-        "librarian": "Evaluate source quality and coverage. Suggest additional sources, wiki links, or knowledge gaps that should be addressed.",
-        "risk": "Identify potential risks, failure modes, or unintended consequences. Flag assumptions that could be wrong.",
+        "continuity": (
+            "Assess how well this answer connects to prior turns and established "
+            "knowledge. Flag gaps in reasoning or context continuity."
+        ),
+        "critique": (
+            "Critically evaluate the answer's strengths and weaknesses. "
+            "Identify unsupported claims, logical fallacies, or missing perspectives."
+        ),
+        "strategy": (
+            "Suggest strategic next steps for the DEFINER. "
+            "What should be explored further? What decisions need to be made?"
+        ),
+        "librarian": (
+            "Evaluate source quality and coverage. Suggest additional sources, "
+            "wiki links, or knowledge gaps that should be addressed."
+        ),
+        "risk": (
+            "Identify potential risks, failure modes, or unintended consequences. Flag assumptions that could be wrong."
+        ),
     }
 
     system_prompt = (

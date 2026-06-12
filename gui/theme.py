@@ -77,6 +77,7 @@ _PILL_STYLES = {
 
 # ── BUTTON STYLE HELPERS (aip_design_reference.html SS4.5) ───────────
 
+
 def btn_primary() -> str:
     """Style string for primary (amber) buttons."""
     return (
@@ -102,6 +103,7 @@ def btn_ghost() -> str:
 
 
 # ── STATUS PILL HELPER (aip_design_reference.html SS4.4) ─────────────
+
 
 def status_pill(status: str) -> None:
     """Render an inline status pill with correct semantic colors."""

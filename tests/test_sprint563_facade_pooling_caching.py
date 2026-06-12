@@ -29,25 +29,16 @@ Deliverable 5: StatusAggregator Batching
 from __future__ import annotations
 
 import asyncio
-import queue
-import threading
 import time
-from typing import Any
 from unittest.mock import MagicMock
-
-import pytest
 
 from aip.adapter.alerting import (
     Alert,
     AlertConfig,
     AlertManager,
-    AlertLifecycleManager,
-    PruningManager,
     RealtimeEventBus,
-    StatusAggregator,
     _WSConnectionPool,
 )
-
 
 # ============================================================================
 # Deliverable 1: AB Experiment Facade Methods
@@ -131,10 +122,12 @@ class TestABExperimentFacades:
 
     def test_start_stop_ab_promotion_checker_facade(self):
         """start/stop_ab_promotion_checker are available as facades."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ab_auto_promote_interval_seconds=0,  # disabled
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ab_auto_promote_interval_seconds=0,  # disabled
+            )
+        )
         # Should not raise
         mgr.start_ab_promotion_checker()
         mgr.stop_ab_promotion_checker()
@@ -309,11 +302,13 @@ class TestCircuitBreakerCaching:
 
     def test_cache_returns_same_result_within_ttl(self):
         """Cached result is returned within the TTL window."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            throttle_threshold_per_minute=100,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                throttle_threshold_per_minute=100,
+            )
+        )
         # First call populates cache
         status1 = mgr.throttle_mgr.get_circuit_breaker_status()
         # Second call should return cached result (same core data)
@@ -327,11 +322,13 @@ class TestCircuitBreakerCaching:
 
     def test_cache_expires_after_ttl(self):
         """Cache expires after TTL, producing a fresh result."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            throttle_threshold_per_minute=100,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                throttle_threshold_per_minute=100,
+            )
+        )
         # Set TTL very short for testing
         mgr.throttle_mgr._cb_cache_ttl_seconds = 0.001  # 1ms
 
@@ -342,13 +339,15 @@ class TestCircuitBreakerCaching:
 
     def test_cache_invalidated_on_state_change(self):
         """Cache is invalidated when circuit breaker state changes."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            circuit_breaker_cooldown_seconds=60,
-            throttle_threshold_per_minute=5,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                circuit_breaker_cooldown_seconds=60,
+                throttle_threshold_per_minute=5,
+                min_alert_interval_seconds=0,
+            )
+        )
 
         # Populate cache
         status1 = mgr.throttle_mgr.get_circuit_breaker_status()
@@ -372,10 +371,12 @@ class TestCircuitBreakerCaching:
 
     def test_invalidate_cb_cache_method(self):
         """invalidate_cb_cache clears the cached result."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+            )
+        )
         # Populate cache
         mgr.throttle_mgr.get_circuit_breaker_status()
         assert mgr.throttle_mgr._cb_cache is not None
@@ -386,10 +387,12 @@ class TestCircuitBreakerCaching:
 
     def test_cache_age_ms_in_status(self):
         """Cached result includes cache_age_ms metadata."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+            )
+        )
         # First call populates cache
         status = mgr.throttle_mgr.get_circuit_breaker_status()
         assert "cache_age_ms" in status
@@ -599,9 +602,15 @@ class TestStatusAggregatorBatching:
         aggregator = mgr._status_aggregator
         summaries = aggregator._collect_sub_manager_summaries()
         expected_keys = [
-            "delivery", "realtime", "prediction", "lifecycle",
-            "pruning", "digest", "ab_experiment",
-            "circuit_breaker", "cb_auto_tune",
+            "delivery",
+            "realtime",
+            "prediction",
+            "lifecycle",
+            "pruning",
+            "digest",
+            "ab_experiment",
+            "circuit_breaker",
+            "cb_auto_tune",
         ]
         for key in expected_keys:
             assert key in summaries, f"Missing summary key: {key}"
@@ -627,10 +636,12 @@ class TestSprint563Integration:
 
     def test_full_alert_pipeline_with_bg_tracking(self):
         """Alert pipeline works with background tracking enabled."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=True,
+            )
+        )
         alert = Alert(
             alert_type="pool_adjustment",
             severity="warning",

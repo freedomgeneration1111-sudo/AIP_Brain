@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from aip.adapter.api.performance import router
+from aip.adapter.auth.dependencies import require_definer
 from aip.foundation.schemas import PerformanceConfig
 
 
@@ -69,6 +70,9 @@ def _make_app_with_profiler(profiler=None):
         performance_profiler = profiler
 
     app.state.container = FakeContainer()
+    # Override auth — performance endpoints are read-only; tests verify
+    # contract shape, not auth enforcement.
+    app.dependency_overrides[require_definer] = lambda: {"identity": "test", "role": "definer"}
     return TestClient(app)
 
 
@@ -81,6 +85,7 @@ def _make_app_without_profiler():
         performance_profiler = None
 
     app.state.container = FakeContainer()
+    app.dependency_overrides[require_definer] = lambda: {"identity": "test", "role": "definer"}
     return TestClient(app)
 
 

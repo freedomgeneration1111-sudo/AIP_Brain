@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from typing import Any
 
 import httpx
@@ -23,12 +24,12 @@ import httpx
 log = logging.getLogger("gui.api_client")
 
 # Default backend URL — configurable via environment variable
-import os
 
 # Load .env file on import so AIP_OPENAI_API_KEY is available immediately.
 # This MUST happen before reading any env vars.
 try:
     from dotenv import load_dotenv
+
     _env_loaded = load_dotenv()
 except ImportError:
     _env_loaded = False
@@ -464,7 +465,12 @@ class AipApiClient:
                     except asyncio.TimeoutError:
                         log.error("chat_ws: timed out waiting for response (120s)")
                         if on_error:
-                            on_error({"type": "error", "content": "Model call timed out (120s). The model may be unavailable."})
+                            on_error(
+                                {
+                                    "type": "error",
+                                    "content": "Model call timed out (120s). The model may be unavailable.",
+                                }
+                            )
                         break
                     try:
                         resp = json.loads(raw)
@@ -506,9 +512,7 @@ class AipApiClient:
         except ImportError:
             # websockets not installed — fall back to httpx WebSocket
             log.info("chat_ws: websockets not available, using httpx fallback")
-            await self._chat_via_httpx_ws(
-                ws_url, message, on_response, on_error, on_gate, model_slot
-            )
+            await self._chat_via_httpx_ws(ws_url, message, on_response, on_error, on_gate, model_slot)
         except Exception as exc:
             log.error("chat_ws: connection failed: %s", exc)
             if on_error:
@@ -582,20 +586,28 @@ class AipApiClient:
             import websockets
 
             async with websockets.connect(ws_url) as ws:
-                await ws.send(json.dumps({
-                    "type": "gate_response",
-                    "approved": approved,
-                }))
+                await ws.send(
+                    json.dumps(
+                        {
+                            "type": "gate_response",
+                            "approved": approved,
+                        }
+                    )
+                )
                 # Wait for the resumed response
                 raw = await ws.recv()
                 return json.loads(raw)
         except ImportError:
             async with httpx.AsyncClient() as client:
                 async with client.websocket_connect(ws_url) as ws:
-                    await ws.send(json.dumps({
-                        "type": "gate_response",
-                        "approved": approved,
-                    }))
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "type": "gate_response",
+                                "approved": approved,
+                            }
+                        )
+                    )
                     raw = await ws.receive_text()
                     return json.loads(raw)
         except Exception as exc:
@@ -829,9 +841,7 @@ class AipApiClient:
             payload["tags"] = tags
         if aliases is not None:
             payload["aliases"] = aliases
-        resp = await client.patch(
-            f"{self.base_url}/api/v1/wiki/articles/{article_id}", json=payload
-        )
+        resp = await client.patch(f"{self.base_url}/api/v1/wiki/articles/{article_id}", json=payload)
         resp.raise_for_status()
         return resp.json()
 
@@ -1013,6 +1023,7 @@ class AipApiClient:
         }
 
         import time
+
         start = time.monotonic()
         try:
             resp = await client.post(
@@ -1035,8 +1046,7 @@ class AipApiClient:
             model_used = data.get("model", model)
             tokens_used = usage.get("total_tokens", 0)
 
-            log.info("direct_openrouter: success model=%s tokens=%d latency=%dms",
-                     model_used, tokens_used, latency_ms)
+            log.info("direct_openrouter: success model=%s tokens=%d latency=%dms", model_used, tokens_used, latency_ms)
 
             return {
                 "error": False,
@@ -1077,7 +1087,9 @@ class AipApiClient:
         for m in models:
             mid = m.get("id", "")
             # Skip non-text models (image gen, TTS, etc.)
-            if any(skip in mid.lower() for skip in ["image", "dall", "tts", "whisper", "stable-diffusion", "midjourney"]):
+            if any(
+                skip in mid.lower() for skip in ["image", "dall", "tts", "whisper", "stable-diffusion", "midjourney"]
+            ):
                 continue
             # Only include models with text output modality
             arch = m.get("architecture", {})
@@ -1291,7 +1303,9 @@ class AipApiClient:
         resp.raise_for_status()
         return resp.json()
 
-    async def trigger_backfill(self, domain: str | None = None, limit: int = 500, batch_size: int = 50, dry_run: bool = False) -> dict[str, Any]:
+    async def trigger_backfill(
+        self, domain: str | None = None, limit: int = 500, batch_size: int = 50, dry_run: bool = False
+    ) -> dict[str, Any]:
         """Trigger backfill via POST /api/v1/admin/embeddings/backfill (now non-blocking)."""
         client = self._get_http_client()
         payload: dict[str, Any] = {"limit": limit, "batch_size": batch_size, "dry_run": dry_run}
@@ -1648,9 +1662,7 @@ class AipApiClient:
         resp.raise_for_status()
         return resp.json()
 
-    async def needs_revision_artifact(
-        self, artifact_id: str, instruction: str = ""
-    ) -> dict[str, Any]:
+    async def needs_revision_artifact(self, artifact_id: str, instruction: str = "") -> dict[str, Any]:
         """Mark artifact as needs-revision via POST /api/v1/artifacts/{artifact_id}/needs-revision.
 
         Explicit DEFINER action. No ECS transition — NEEDS_REVISION is a verdict.
@@ -1676,9 +1688,7 @@ class AipApiClient:
         resp.raise_for_status()
         return resp.json()
 
-    async def force_export_artifact(
-        self, artifact_id: str, reason: str = ""
-    ) -> dict[str, Any]:
+    async def force_export_artifact(self, artifact_id: str, reason: str = "") -> dict[str, Any]:
         """Force-export artifact via POST /api/v1/artifacts/{artifact_id}/force-export.
 
         SOVEREIGN OVERRIDE — visibly exceptional and audited.
@@ -2140,7 +2150,9 @@ class AipApiClient:
                 "message": f"Backend unavailable: {exc}",
             }
 
-    async def trigger_maintenance_backfill(self, limit: int = 500, batch_size: int = 20, dry_run: bool = False) -> dict[str, Any]:
+    async def trigger_maintenance_backfill(
+        self, limit: int = 500, batch_size: int = 20, dry_run: bool = False
+    ) -> dict[str, Any]:
         """Trigger embedding backfill via POST /api/v1/maintenance/backfill-embeddings.
 
         Explicit DEFINER action. Uses the same runtime path as

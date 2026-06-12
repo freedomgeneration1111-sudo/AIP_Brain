@@ -40,7 +40,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
 from starlette.responses import Response
 
 from aip.adapter.api import collaborators, performance, plugins
@@ -514,7 +513,9 @@ async def lifespan(app: FastAPI):
                 event_store=container.event_store,  # Sprint 8: for emitting vigil events
                 corpus_turn_store=getattr(container, "corpus_turn_store", None),  # Sprint 8: for augmented chat turns
                 alert_manager=getattr(container, "_alert_manager", None),  # Sprint 8: for quality degradation alerts
-                quality_store=getattr(container, "_vigil_quality_store", None),  # Sprint 8: for persistent quality history
+                quality_store=getattr(
+                    container, "_vigil_quality_store", None
+                ),  # Sprint 8: for persistent quality history
             )
             log.info("component_initialized", component="vigil", required=False)
         except Exception as exc:
@@ -553,7 +554,7 @@ async def lifespan(app: FastAPI):
             # BUG-003 safety net: backfill _ecs if actor was created before
             # ECS store was available (shouldn't happen now, but defensive)
             if container.sexton_actor is not None and container.ecs_store is not None:
-                if getattr(container.sexton_actor, '_ecs', None) is None:
+                if getattr(container.sexton_actor, "_ecs", None) is None:
                     container.sexton_actor._ecs = container.ecs_store
                     log.info("sexton_actor_ecs_backfill", reason="ecs_store_was_none_at_creation")
             log.info("component_initialized", component="sexton_actor", required=False)
@@ -717,7 +718,9 @@ async def lifespan(app: FastAPI):
             # Sprint 5.45: A/B experiment configuration
             ab_experiment_enabled=bool(alert_cfg_dict.get("ab_experiment_enabled", False)),
             ab_auto_promote_interval_seconds=int(alert_cfg_dict.get("ab_auto_promote_interval_seconds", 300)),
-            ab_auto_promote_confidence_threshold=float(alert_cfg_dict.get("ab_auto_promote_confidence_threshold", 0.95)),
+            ab_auto_promote_confidence_threshold=float(
+                alert_cfg_dict.get("ab_auto_promote_confidence_threshold", 0.95)
+            ),
             ab_auto_promote_min_samples=int(alert_cfg_dict.get("ab_auto_promote_min_samples", 50)),
             # Sprint 5.46: Experiment expiry/cleanup
             ab_experiment_ttl_hours=int(alert_cfg_dict.get("ab_experiment_ttl_hours", 168)),
@@ -725,7 +728,9 @@ async def lifespan(app: FastAPI):
             ab_cleanup_interval_seconds=int(alert_cfg_dict.get("ab_cleanup_interval_seconds", 3600)),
             # Sprint 5.46: Promotion rollback
             ab_rollback_enabled=bool(alert_cfg_dict.get("ab_rollback_enabled", False)),
-            ab_rollback_observation_window_seconds=int(alert_cfg_dict.get("ab_rollback_observation_window_seconds", 1800)),
+            ab_rollback_observation_window_seconds=int(
+                alert_cfg_dict.get("ab_rollback_observation_window_seconds", 1800)
+            ),
             ab_rollback_accuracy_drop_threshold=float(alert_cfg_dict.get("ab_rollback_accuracy_drop_threshold", 0.05)),
             # Sprint 5.46: Decay recovery
             decay_recovery_enabled=bool(alert_cfg_dict.get("decay_recovery_enabled", False)),
@@ -736,7 +741,9 @@ async def lifespan(app: FastAPI):
             ab_statistical_significance_enabled=bool(alert_cfg_dict.get("ab_statistical_significance_enabled", False)),
             ab_statistical_significance_p_value=float(alert_cfg_dict.get("ab_statistical_significance_p_value", 0.05)),
             ab_statistical_significance_method=alert_cfg_dict.get("ab_statistical_significance_method", "z_test"),
-            ab_statistical_significance_min_samples=int(alert_cfg_dict.get("ab_statistical_significance_min_samples", 30)),
+            ab_statistical_significance_min_samples=int(
+                alert_cfg_dict.get("ab_statistical_significance_min_samples", 30)
+            ),
             # Sprint 5.47: Cleanup alerting
             ab_cleanup_alert_on_ttl_expiry=bool(alert_cfg_dict.get("ab_cleanup_alert_on_ttl_expiry", True)),
             # Sprint 5.47: Confidence calibration
@@ -776,9 +783,10 @@ async def lifespan(app: FastAPI):
         alert_db_path = os.path.join(os.path.dirname(db_path), "alert_history.db")
         container._alert_history_store = AlertHistoryStore(alert_db_path)
         await container._alert_history_store.initialize()
-        
+
         # Wrap in SyncAlertHistoryBridge for AlertManager compatibility
         from aip.adapter.alert_history_store import SyncAlertHistoryBridge
+
         container._alert_history_bridge = SyncAlertHistoryBridge(container._alert_history_store)
 
         # Attach to AlertManager if initialized
@@ -827,10 +835,9 @@ async def lifespan(app: FastAPI):
     # and Sexton actor at startup.  The policy can be hot-reloaded later.
     try:
         from aip.adapter.auto_tuning_policy import (
-            AutoTuningPolicy,
-            load_policy_from_config,
             apply_policy_to_auto_sizer,
             apply_policy_to_sexton,
+            load_policy_from_config,
         )
 
         policy = load_policy_from_config(config)
@@ -875,8 +882,10 @@ async def lifespan(app: FastAPI):
         # on rollback by restoring the pre-promotion baseline config.
         _model_resolver = getattr(container, "model_provider", None)
         if _model_resolver is not None and hasattr(_model_resolver, "resolve"):
+
             def _make_live_config_reverter(resolver):
                 """Create a closure that reverts model slot config via the resolver."""
+
                 def _revert_model_config(experiment_name: str, baseline_config: dict) -> bool:
                     try:
                         # Apply baseline config to the resolver's slot configuration
@@ -894,6 +903,7 @@ async def lifespan(app: FastAPI):
                     except Exception as exc:
                         log.warning("live_config_revert_failed", experiment=experiment_name, error=str(exc))
                         return False
+
                 return _revert_model_config
 
             container._alert_manager.set_live_config_reverter(_make_live_config_reverter(_model_resolver))
@@ -903,8 +913,10 @@ async def lifespan(app: FastAPI):
         # on rollback from the snapshot captured at promotion time.
         _tuning_policy = getattr(container, "_auto_tuning_policy", None)
         if _tuning_policy is not None and hasattr(_tuning_policy, "to_dict"):
+
             def _make_auto_tuning_reverter(policy):
                 """Create a closure that reverts auto-tuning policy from a snapshot."""
+
                 def _revert_auto_tuning(snapshot_dict: dict) -> bool:
                     try:
                         # Restore policy fields from the snapshot
@@ -921,12 +933,14 @@ async def lifespan(app: FastAPI):
                         if hasattr(container, "_read_pool_auto_sizer") and container._read_pool_auto_sizer is not None:
                             try:
                                 from aip.adapter.auto_tuning_policy import apply_policy_to_auto_sizer
+
                                 apply_policy_to_auto_sizer(policy, container._read_pool_auto_sizer)
                             except Exception:
                                 pass
                         if hasattr(container, "sexton_actor") and container.sexton_actor is not None:
                             try:
                                 from aip.adapter.auto_tuning_policy import apply_policy_to_sexton
+
                                 apply_policy_to_sexton(policy, container.sexton_actor)
                             except Exception:
                                 pass
@@ -935,6 +949,7 @@ async def lifespan(app: FastAPI):
                     except Exception as exc:
                         log.warning("auto_tuning_revert_failed", error=str(exc))
                         return False
+
                 return _revert_auto_tuning
 
             container._alert_manager.set_auto_tuning_reverter(_make_auto_tuning_reverter(_tuning_policy))
@@ -944,7 +959,7 @@ async def lifespan(app: FastAPI):
     # and start the auto-promotion and cleanup checkers if configured.
     if container._alert_manager is not None and container._alert_history_store is not None:
         try:
-            stored_experiments = container._alert_history_store.get_ab_experiments()
+            stored_experiments = await container._alert_history_store.get_ab_experiments()
             if stored_experiments:
                 for exp in stored_experiments:
                     name = exp.get("name", "")
@@ -954,7 +969,7 @@ async def lifespan(app: FastAPI):
 
             # Restore statistical test results
             if hasattr(container._alert_history_store, "get_statistical_test_results"):
-                stored_stats = container._alert_history_store.get_statistical_test_results()
+                stored_stats = await container._alert_history_store.get_statistical_test_results()
                 for result in stored_stats:
                     exp_name = result.get("experiment_name", "")
                     if exp_name:
@@ -963,7 +978,7 @@ async def lifespan(app: FastAPI):
             # Restore accuracy timeseries
             if hasattr(container._alert_history_store, "get_accuracy_timeseries"):
                 for exp in container._alert_manager.ab_experiment_mgr._ab_experiments.values():
-                    ts = container._alert_history_store.get_accuracy_timeseries(exp.get("name", ""))
+                    ts = await container._alert_history_store.get_accuracy_timeseries(exp.get("name", ""))
                     if ts:
                         exp["accuracy_timeseries"] = ts
 
@@ -1403,7 +1418,7 @@ async def lifespan(app: FastAPI):
             log.info("quality_rollup_scheduler_starting", interval_s=rollup_interval)
             while True:
                 try:
-                    result = container._vigil_quality_store.run_rollup()
+                    result = await container._vigil_quality_store.run_rollup()
                     if result.get("rolled_up_days", 0) > 0:
                         log.info(
                             "quality_rollup_completed",
@@ -1438,7 +1453,7 @@ async def lifespan(app: FastAPI):
             log.info("quality_weekly_rollup_scheduler_starting", interval_s=weekly_rollup_interval)
             while True:
                 try:
-                    result = container._vigil_quality_store.run_weekly_rollup()
+                    result = await container._vigil_quality_store.run_weekly_rollup()
                     if result.get("rolled_up_weeks", 0) > 0:
                         log.info(
                             "quality_weekly_rollup_completed",
@@ -1466,7 +1481,12 @@ async def lifespan(app: FastAPI):
         container._ask_fn = _ask_mod.ask
         container._ask_stores_class = _ask_mod.AskStores
         container._search_sources_fn = _ask_mod._search_sources_with_trace
-        container._sanitize_fts_query_fn = _ask_mod._sanitize_fts_query
+        try:
+            from aip.foundation.sanitize_fts import sanitize_fts_query
+
+            container._sanitize_fts_query_fn = sanitize_fts_query
+        except ImportError:
+            container._sanitize_fts_query_fn = None
         log.info("orchestration_functions_wired", module="ask_pipeline")
     except Exception as exc:
         log.warning("orchestration_functions_wiring_failed", module="ask_pipeline", error=str(exc))
@@ -1612,7 +1632,7 @@ async def lifespan(app: FastAPI):
                 pass
 
     # Close SyncAlertHistoryBridge (stops background thread)
-    if getattr(container, '_alert_history_bridge', None) is not None:
+    if getattr(container, "_alert_history_bridge", None) is not None:
         try:
             container._alert_history_bridge.close()
         except Exception:
@@ -1747,15 +1767,11 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(memory.router, prefix="/api/v1", tags=["memory"])
     app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
     app.include_router(models.router, prefix="/api/v1", tags=["models"])
-    app.include_router(
-        models_library.router, prefix="/api/v1", tags=["models_library"]
-    )
+    app.include_router(models_library.router, prefix="/api/v1", tags=["models_library"])
     app.include_router(actors.router, prefix="/api/v1", tags=["actors"])
     app.include_router(ingest.router, prefix="/api/v1", tags=["ingest"])
     app.include_router(ask.router, prefix="/api/v1", tags=["ask"])
-    app.include_router(
-        beast_scan.router, prefix="/api/v1", tags=["beast"]
-    )
+    app.include_router(beast_scan.router, prefix="/api/v1", tags=["beast"])
     app.include_router(knowledge.router, prefix="/api/v1", tags=["knowledge"])
     app.include_router(wiki.router, prefix="/api/v1", tags=["wiki"])
     app.include_router(ecs.router, prefix="/api/v1", tags=["ecs"])
@@ -1778,6 +1794,7 @@ def create_app(config: dict | None = None) -> "FastAPI":
 
     # Sprint 5.25: Vigil quality dashboard
     from aip.adapter.api.routes import vigil_quality
+
     app.include_router(vigil_quality.router, prefix="/api/v1", tags=["vigil"])
 
     # Web UI static (HTMX dashboard)

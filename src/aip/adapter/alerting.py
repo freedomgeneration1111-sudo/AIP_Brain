@@ -92,9 +92,9 @@ import random
 import re
 import threading
 import time
-import uuid
-import urllib.request
 import urllib.error
+import urllib.request
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterator
@@ -313,7 +313,9 @@ class AlertConfig:
     # Sprint 5.46: Decay recovery configuration
     decay_recovery_enabled: bool = False  # Enable automatic decay recovery
     decay_recovery_threshold: float = 0.15  # Confidence decay threshold to trigger recovery
-    decay_recovery_actions: list[str] = field(default_factory=lambda: ["rerun_calibration"])  # Actions: rerun_calibration, restart_experiment
+    decay_recovery_actions: list[str] = field(
+        default_factory=lambda: ["rerun_calibration"]
+    )  # Actions: rerun_calibration, restart_experiment
     # Sprint 5.47: Rollback + live config reversion
     ab_rollback_revert_live_config: bool = True  # Automatically revert live model config on rollback
     # Sprint 5.47: Statistical significance testing for promotions
@@ -333,12 +335,18 @@ class AlertConfig:
     ab_bandit_explore_rate: float = 0.1  # Exploration rate for UCB; epsilon for epsilon-greedy; ignored for Thompson
     # Sprint 5.49: Contextual bandit support
     ab_bandit_contextual_enabled: bool = False  # Enable contextual features in bandit allocation
-    ab_bandit_contextual_features: list[str] = field(default_factory=lambda: ["alert_type", "subject"])  # Context features to consider
-    ab_bandit_accuracy_snapshot_interval_seconds: int = 60  # Interval for recording accuracy snapshots in promotion checker (0=disabled)
+    ab_bandit_contextual_features: list[str] = field(
+        default_factory=lambda: ["alert_type", "subject"]
+    )  # Context features to consider
+    ab_bandit_accuracy_snapshot_interval_seconds: int = (
+        60  # Interval for recording accuracy snapshots in promotion checker (0=disabled)
+    )
     # Sprint 5.50: Bandit decision logging
     ab_bandit_decision_logging_enabled: bool = False  # Log every bandit allocation decision to SQLite
     # Sprint 5.50: Adaptive bandit method selection
-    ab_bandit_adaptive_method_enabled: bool = False  # Allow automatic method selection based on experiment characteristics
+    ab_bandit_adaptive_method_enabled: bool = (
+        False  # Allow automatic method selection based on experiment characteristics
+    )
     # Sprint 5.50: Snapshot garbage collection
     ab_snapshot_gc_enabled: bool = False  # Enable automatic cleanup of stale pre-promotion snapshots
     ab_snapshot_gc_max_age_hours: int = 72  # Maximum age in hours for snapshots (default 72)
@@ -550,7 +558,7 @@ class _WSConnectionPool:
         """Split subscribers into groups of ``_group_size``."""
         groups = []
         for i in range(0, len(subscribers), self._group_size):
-            groups.append(subscribers[i:i + self._group_size])
+            groups.append(subscribers[i : i + self._group_size])
         return groups
 
     def get_status(self) -> dict[str, Any]:
@@ -685,7 +693,8 @@ class RealtimeEventBus:
         # inside a running event loop (typical for FastAPI WebSocket handlers).
         if asyncio is not None:
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
+
                 # Inside a running loop — schedule concurrent fan-out
                 async def _concurrent_fan_out() -> None:
                     if pool_active:
@@ -694,9 +703,7 @@ class RealtimeEventBus:
                         groups = self._ws_pool.group_subscribers(ws_subs)
                         group_tasks = []
                         for group in groups:
-                            group_tasks.append(
-                                self._pooled_group_send(group, event)
-                            )
+                            group_tasks.append(self._pooled_group_send(group, event))
                         await asyncio.gather(*group_tasks, return_exceptions=True)
                         self._ws_pool._total_pool_deliveries += 1
                     else:
@@ -762,7 +769,7 @@ class RealtimeEventBus:
         """Schedule a flush after the batch window (must be called with _lock held)."""
         if asyncio is not None:
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
                 # We are inside a running loop — schedule async flush
                 asyncio.ensure_future(self._flush_ws_batch_later(delay))
             except RuntimeError:
@@ -803,7 +810,7 @@ class RealtimeEventBus:
         # Sprint 5.62: Use concurrent fan-out for batch delivery too
         if asyncio is not None:
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
 
                 async def _concurrent_batch_fan_out() -> None:
                     tasks = []
@@ -894,7 +901,7 @@ class RealtimeEventBus:
         if asyncio is None:
             return
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # Inside a running loop — schedule the send as a task
             asyncio.ensure_future(ws.send_json(data))
         except RuntimeError:
@@ -909,8 +916,8 @@ class RealtimeEventBus:
         if not self._config.ws_compression_enabled:
             return data, False
         try:
-            import zlib
             import base64
+            import zlib
 
             raw_bytes = data.encode("utf-8")
             compressed = zlib.compress(raw_bytes, level=6)
@@ -929,8 +936,8 @@ class RealtimeEventBus:
     def decompress_ws_message(self, compressed_b64: str) -> str:
         """Decompress a base64-encoded zlib-compressed WebSocket message."""
         try:
-            import zlib
             import base64
+            import zlib
 
             compressed = base64.b64decode(compressed_b64)
             decompressed = zlib.decompress(compressed)
@@ -958,15 +965,13 @@ class RealtimeEventBus:
         """Compress with native deflate awareness (no-op if native active)."""
         if not self._config.ws_compression_enabled:
             return data, False
-        if (self._config.ws_native_permessage_deflate_enabled
-                and self._ws_permessage_deflate_negotiated):
+        if self._config.ws_native_permessage_deflate_enabled and self._ws_permessage_deflate_negotiated:
             return data, False
         return self.compress_ws_message(data)
 
     def decompress_ws_message_native_aware(self, data: str) -> str:
         """Decompress with native deflate awareness (no-op if native active)."""
-        if (self._config.ws_native_permessage_deflate_enabled
-                and self._ws_permessage_deflate_negotiated):
+        if self._config.ws_native_permessage_deflate_enabled and self._ws_permessage_deflate_negotiated:
             return data
         return self.decompress_ws_message(data)
 
@@ -1047,15 +1052,11 @@ class DeliveryManager:
 
     def record_delivery_success(self, transport: str) -> None:
         with self._lock:
-            self._delivery_success_by_transport[transport] = (
-                self._delivery_success_by_transport.get(transport, 0) + 1
-            )
+            self._delivery_success_by_transport[transport] = self._delivery_success_by_transport.get(transport, 0) + 1
 
     def record_delivery_failure(self, transport: str) -> None:
         with self._lock:
-            self._delivery_failure_by_transport[transport] = (
-                self._delivery_failure_by_transport.get(transport, 0) + 1
-            )
+            self._delivery_failure_by_transport[transport] = self._delivery_failure_by_transport.get(transport, 0) + 1
 
     def record_transport_result(self, transport_name: str, status: str) -> None:
         """Record a transport result as either success or failure."""
@@ -1118,9 +1119,7 @@ class DeliveryManager:
                     "confirmed_at": now_iso,
                     "delivery_status": result.get("status", "unknown"),
                 }
-            elif (config is not None
-                  and config.delivery_receipt_polling_enabled
-                  and channel == "email"):
+            elif config is not None and config.delivery_receipt_polling_enabled and channel == "email":
                 receipts[channel] = {
                     "delivery_status": "sent",
                     "confirmed_at": now_iso,
@@ -1240,9 +1239,7 @@ class ThrottleManager:
             self._throttle_alert_timestamps.append(now)
             # Prune entries older than 60 seconds
             cutoff = now - 60
-            self._throttle_alert_timestamps = [
-                ts for ts in self._throttle_alert_timestamps if ts > cutoff
-            ]
+            self._throttle_alert_timestamps = [ts for ts in self._throttle_alert_timestamps if ts > cutoff]
 
     def check_circuit_breaker(self, now: float) -> bool:
         """Check if the circuit breaker should be active.
@@ -1354,12 +1351,15 @@ class ThrottleManager:
                 "total_throttled_alerts": self._total_throttled_alerts,
                 "activated_at": self._circuit_breaker_activated_at,
                 "cooldown_remaining": max(
-                    0,
-                    self._config.circuit_breaker_cooldown_seconds - (now - self._circuit_breaker_activated_at)
-                ) if self._circuit_breaker_active else 0,
+                    0, self._config.circuit_breaker_cooldown_seconds - (now - self._circuit_breaker_activated_at)
+                )
+                if self._circuit_breaker_active
+                else 0,
                 "auto_tune": self.get_cb_auto_tune_status(),
                 # Sprint 5.63: Cache metadata for observability
-                "cache_age_ms": round((now - self._cb_cache_timestamp) * 1000, 1) if self._cb_cache is not None else None,
+                "cache_age_ms": round((now - self._cb_cache_timestamp) * 1000, 1)
+                if self._cb_cache is not None
+                else None,
             }
 
         # Sprint 5.63: Update cache
@@ -1416,7 +1416,11 @@ class ThrottleManager:
             else:
                 # Fallback: try the standard get_alerts method
                 since_iso = datetime.fromtimestamp(cutoff, tz=timezone.utc).isoformat()
-                alerts = self._history_store.get_alerts(since=since_iso) if hasattr(self._history_store, "get_alerts") else []
+                alerts = (
+                    self._history_store.get_alerts(since=since_iso)
+                    if hasattr(self._history_store, "get_alerts")
+                    else []
+                )
         except Exception as exc:
             logger.warning(
                 "cb_auto_tune_store_query_failed",
@@ -1628,7 +1632,9 @@ class PredictionManager:
         "batch_reduction": [],
     }
 
-    def __init__(self, config: AlertConfig, history_store: Any = None, realtime_bus: RealtimeEventBus | None = None) -> None:
+    def __init__(
+        self, config: AlertConfig, history_store: Any = None, realtime_bus: RealtimeEventBus | None = None
+    ) -> None:
         self._config = config
         self._history_store = history_store
         self._realtime_bus = realtime_bus
@@ -1900,7 +1906,11 @@ class PredictionManager:
             accuracy_factor = accuracy.get("hit_rate", 0.0)
             # Base confidence decreases with chain depth; adjusted by accuracy
             base_confidence = 1.0 - (i * 0.25)
-            confidence = round(base_confidence * (0.5 + 0.5 * accuracy_factor), 2) if accuracy_factor > 0 else round(base_confidence, 2)
+            confidence = (
+                round(base_confidence * (0.5 + 0.5 * accuracy_factor), 2)
+                if accuracy_factor > 0
+                else round(base_confidence, 2)
+            )
             confidence = max(0.1, min(1.0, confidence))
 
             # Sprint 5.37: Generate prediction_id for accuracy tracking
@@ -1941,12 +1951,14 @@ class PredictionManager:
 
         # Notify dashboard subscribers about predictions
         if self._realtime_bus is not None:
-            self._realtime_bus.notify_realtime_subscribers({
-                "event": "causal_predictions",
-                "subject": alert.subject,
-                "predictions": predictions,
-                "triggered_by": alert.alert_type,
-            })
+            self._realtime_bus.notify_realtime_subscribers(
+                {
+                    "event": "causal_predictions",
+                    "subject": alert.subject,
+                    "predictions": predictions,
+                    "triggered_by": alert.alert_type,
+                }
+            )
 
         logger.info(
             "causal_predictions_generated",
@@ -2003,8 +2015,7 @@ class PredictionManager:
             for pred_id, record in self._prediction_outcomes.items():
                 if record.get("outcome") != "pending":
                     continue
-                if (record.get("predicted_alert_type") == alert.alert_type
-                        and record.get("subject") == alert.subject):
+                if record.get("predicted_alert_type") == alert.alert_type and record.get("subject") == alert.subject:
                     record["outcome"] = "hit"
                     record["resolved_at"] = datetime.now(timezone.utc).isoformat()
                     record["actual_alert_timestamp"] = alert.timestamp
@@ -2025,24 +2036,12 @@ class PredictionManager:
         """
         with self._lock:
             total = self._prediction_accuracy_hits + self._prediction_accuracy_misses
-            pending = sum(
-                1 for r in self._prediction_outcomes.values()
-                if r.get("outcome") == "pending"
-            )
-            hit_rate = (
-                self._prediction_accuracy_hits / total
-                if total > 0 else 0.0
-            )
+            pending = sum(1 for r in self._prediction_outcomes.values() if r.get("outcome") == "pending")
+            hit_rate = self._prediction_accuracy_hits / total if total > 0 else 0.0
             # Precision: of resolved predictions, what fraction were hits
-            precision = (
-                self._prediction_accuracy_hits / total
-                if total > 0 else 0.0
-            )
+            precision = self._prediction_accuracy_hits / total if total > 0 else 0.0
             # Recall approximation: hits / (hits + misses)
-            recall = (
-                self._prediction_accuracy_hits / total
-                if total > 0 else 0.0
-            )
+            recall = self._prediction_accuracy_hits / total if total > 0 else 0.0
 
             return {
                 "total_predictions_tracked": len(self._prediction_outcomes),
@@ -2272,13 +2271,15 @@ class PredictionManager:
 
         # Notify dashboard subscribers
         if self._realtime_bus is not None:
-            self._realtime_bus.notify_realtime_subscribers({
-                "event": "causal_predictions",
-                "subject": alert.subject,
-                "predictions": predictions,
-                "triggered_by": from_type,
-                "model": "learned",
-            })
+            self._realtime_bus.notify_realtime_subscribers(
+                {
+                    "event": "causal_predictions",
+                    "subject": alert.subject,
+                    "predictions": predictions,
+                    "triggered_by": from_type,
+                    "model": "learned",
+                }
+            )
 
         logger.info(
             "learned_predictions_generated",
@@ -2458,13 +2459,15 @@ class PredictionManager:
         # Record retraining event in persistent store
         if self._history_store is not None:
             try:
-                self._history_store.record_retraining_event({
-                    "trigger_reason": trigger_reason,
-                    "alerts_since_last_train": self._alerts_since_last_retrain,
-                    "transition_count": transition_count,
-                    "total_types": total_types,
-                    "trained_at": datetime.now(timezone.utc).isoformat(),
-                })
+                self._history_store.record_retraining_event(
+                    {
+                        "trigger_reason": trigger_reason,
+                        "alerts_since_last_train": self._alerts_since_last_retrain,
+                        "transition_count": transition_count,
+                        "total_types": total_types,
+                        "trained_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
             except Exception as exc:
                 logger.warning(
                     "transition_retrain_event_record_failed",
@@ -2697,11 +2700,10 @@ class DigestManager:
             return self._total_digest_flushes
 
 
-
 class ABExperimentManager:
     """Owns all A/B experiment state, bandit allocation, calibration,
     rollback, cleanup, and statistical testing logic.
-    
+
     Sprint 5.61: Extracted from AlertManager to centralize the ~40+
     A/B experiment-related state variables and 46+ methods.
     """
@@ -2828,7 +2830,7 @@ class ABExperimentManager:
 
         Returns the experiment dict.
         """
-        now = time.time()
+        time.time()
         now_iso = datetime.now(timezone.utc).isoformat()
 
         if name in self._ab_experiments:
@@ -2948,16 +2950,16 @@ class ABExperimentManager:
             new_samples = old_samples + samples
             if new_samples > 0:
                 experiment["control_accuracy"] = (
-                    (experiment["control_accuracy"] * old_samples + accuracy * samples) / new_samples
-                )
+                    experiment["control_accuracy"] * old_samples + accuracy * samples
+                ) / new_samples
             experiment["control_samples"] = new_samples
         elif variant == "variant":
             old_samples = experiment["variant_samples"]
             new_samples = old_samples + samples
             if new_samples > 0:
                 experiment["variant_accuracy"] = (
-                    (experiment["variant_accuracy"] * old_samples + accuracy * samples) / new_samples
-                )
+                    experiment["variant_accuracy"] * old_samples + accuracy * samples
+                ) / new_samples
             experiment["variant_samples"] = new_samples
         else:
             logger.warning("ab_experiment_invalid_variant", name=name, variant=variant)
@@ -3019,7 +3021,9 @@ class ABExperimentManager:
                     return None
 
         # Sprint 5.47: Save pre-promotion config snapshot for rollback reversion
-        baseline_config = experiment.get("control_config", {}) if variant == "variant" else experiment.get("variant_config", {})
+        baseline_config = (
+            experiment.get("control_config", {}) if variant == "variant" else experiment.get("variant_config", {})
+        )
         self._pre_promotion_config_snapshots[name] = {
             "control_config": dict(experiment.get("control_config", {})),
             "variant_config": dict(experiment.get("variant_config", {})),
@@ -3054,13 +3058,15 @@ class ABExperimentManager:
             alert_data["statistical_test_result"] = experiment["statistical_test_result"]
 
         # Send notification alert
-        self._alert_sender(Alert(
-            alert_type="ab_experiment_promotion",
-            severity="info",
-            subject=f"experiment:{name}",
-            message=f"A/B experiment '{name}' promoted variant '{variant}'",
-            data=alert_data,
-        ))
+        self._alert_sender(
+            Alert(
+                alert_type="ab_experiment_promotion",
+                severity="info",
+                subject=f"experiment:{name}",
+                message=f"A/B experiment '{name}' promoted variant '{variant}'",
+                data=alert_data,
+            )
+        )
 
         logger.info(
             "ab_variant_promoted",
@@ -3145,10 +3151,7 @@ class ABExperimentManager:
         # Sprint 5.49: Record accuracy snapshots periodically if configured
         snapshot_interval = self._config.ab_bandit_accuracy_snapshot_interval_seconds
         now = time.time()
-        should_snapshot = (
-            snapshot_interval > 0
-            and (now - self._last_accuracy_snapshot_time) >= snapshot_interval
-        )
+        should_snapshot = snapshot_interval > 0 and (now - self._last_accuracy_snapshot_time) >= snapshot_interval
         if should_snapshot:
             self._last_accuracy_snapshot_time = now
 
@@ -3261,17 +3264,21 @@ class ABExperimentManager:
             self._decay_events = self._decay_events[-100:]
 
         # Send alert
-        return self._alert_sender(Alert(
-            alert_type="confidence_decay",
-            severity="warning" if decay_amount < 0.2 else "critical",
-            subject=subject,
-            message=f"Confidence decay of {decay_amount:.3f} detected for {subject} (current: {current_confidence:.3f})",
-            data={
-                "subject": subject,
-                "decay_amount": decay_amount,
-                "current_confidence": current_confidence,
-            },
-        ))
+        return self._alert_sender(
+            Alert(
+                alert_type="confidence_decay",
+                severity="warning" if decay_amount < 0.2 else "critical",
+                subject=subject,
+                message=(
+                    f"Confidence decay of {decay_amount:.3f} detected for {subject} (current: {current_confidence:.3f})"
+                ),
+                data={
+                    "subject": subject,
+                    "decay_amount": decay_amount,
+                    "current_confidence": current_confidence,
+                },
+            )
+        )
 
     def get_decay_events(self, limit: int = 50) -> list[dict]:
         """Return recent decay events.
@@ -3361,22 +3368,27 @@ class ABExperimentManager:
 
                         # Sprint 5.47: Send alert on TTL expiry
                         if self._config.ab_cleanup_alert_on_ttl_expiry:
-                            self._alert_sender(Alert(
-                                alert_type="ab_experiment_ttl_expired",
-                                severity="warning",
-                                subject=f"experiment:{name}",
-                                message=f"A/B experiment '{name}' expired due to TTL ({self._config.ab_experiment_ttl_hours}h). "
-                                        f"This may indicate a forgotten or misconfigured experiment.",
-                                data={
-                                    "experiment_name": name,
-                                    "ttl_hours": self._config.ab_experiment_ttl_hours,
-                                    "started_at": started_at,
-                                    "control_accuracy": experiment.get("control_accuracy", 0),
-                                    "variant_accuracy": experiment.get("variant_accuracy", 0),
-                                    "control_samples": experiment.get("control_samples", 0),
-                                    "variant_samples": experiment.get("variant_samples", 0),
-                                },
-                            ))
+                            self._alert_sender(
+                                Alert(
+                                    alert_type="ab_experiment_ttl_expired",
+                                    severity="warning",
+                                    subject=f"experiment:{name}",
+                                    message=(
+                                        f"A/B experiment '{name}' expired due to TTL "
+                                        f"({self._config.ab_experiment_ttl_hours}h). "
+                                        f"This may indicate a forgotten or misconfigured experiment."
+                                    ),
+                                    data={
+                                        "experiment_name": name,
+                                        "ttl_hours": self._config.ab_experiment_ttl_hours,
+                                        "started_at": started_at,
+                                        "control_accuracy": experiment.get("control_accuracy", 0),
+                                        "variant_accuracy": experiment.get("variant_accuracy", 0),
+                                        "control_samples": experiment.get("control_samples", 0),
+                                        "variant_samples": experiment.get("variant_samples", 0),
+                                    },
+                                )
+                            )
                 except (ValueError, TypeError):
                     continue
 
@@ -3596,13 +3608,17 @@ class ABExperimentManager:
         if config_reversion_result:
             alert_data["config_reversion"] = config_reversion_result
 
-        self._alert_sender(Alert(
-            alert_type="ab_experiment_rollback",
-            severity="warning",
-            subject=f"experiment:{name}",
-            message=f"Auto-rollback triggered for experiment '{name}': variant '{promoted}' caused accuracy degradation",
-            data=alert_data,
-        ))
+        self._alert_sender(
+            Alert(
+                alert_type="ab_experiment_rollback",
+                severity="warning",
+                subject=f"experiment:{name}",
+                message=(
+                    f"Auto-rollback triggered for experiment '{name}': variant '{promoted}' caused accuracy degradation"
+                ),
+                data=alert_data,
+            )
+        )
 
         logger.info(
             "ab_auto_rollback",
@@ -3624,9 +3640,7 @@ class ABExperimentManager:
             "accuracy_drop_threshold": self._config.ab_rollback_accuracy_drop_threshold,
             "total_rollbacks": self._total_ab_rollbacks,
             "rollback_history": self._ab_rollback_history[-20:],
-            "promoted_experiments": [
-                e for e in self._ab_experiments.values() if e.get("status") == "promoted"
-            ],
+            "promoted_experiments": [e for e in self._ab_experiments.values() if e.get("status") == "promoted"],
         }
 
     # -------------------------------------------------------------------
@@ -3665,10 +3679,12 @@ class ABExperimentManager:
                         if subject in name and experiment.get("status") == "running":
                             experiment["needs_recalibration"] = True
                             self.persist_ab_experiment(experiment)
-                            recovery_actions_taken.append({
-                                "action": "rerun_calibration",
-                                "experiment": name,
-                            })
+                            recovery_actions_taken.append(
+                                {
+                                    "action": "rerun_calibration",
+                                    "experiment": name,
+                                }
+                            )
 
                 elif action == "restart_experiment":
                     # Restart stopped experiments related to the subject
@@ -3680,10 +3696,12 @@ class ABExperimentManager:
                             experiment["result"] = None
                             experiment["started_at"] = datetime.now(timezone.utc).isoformat()
                             self.persist_ab_experiment(experiment)
-                            recovery_actions_taken.append({
-                                "action": "restart_experiment",
-                                "experiment": name,
-                            })
+                            recovery_actions_taken.append(
+                                {
+                                    "action": "restart_experiment",
+                                    "experiment": name,
+                                }
+                            )
 
             if recovery_actions_taken:
                 recovery_record = {
@@ -3698,13 +3716,15 @@ class ABExperimentManager:
                 self._total_decay_recoveries += 1
 
                 # Send notification
-                self._alert_sender(Alert(
-                    alert_type="decay_recovery",
-                    severity="info",
-                    subject=subject,
-                    message=f"Decay recovery triggered for {subject}: {len(recovery_actions_taken)} actions taken",
-                    data=recovery_record,
-                ))
+                self._alert_sender(
+                    Alert(
+                        alert_type="decay_recovery",
+                        severity="info",
+                        subject=subject,
+                        message=f"Decay recovery triggered for {subject}: {len(recovery_actions_taken)} actions taken",
+                        data=recovery_record,
+                    )
+                )
 
         # Keep last 50 recovery records
         if len(self._decay_recovery_history) > 50:
@@ -3786,14 +3806,16 @@ class ABExperimentManager:
         promotions = []
         for name, exp in self._ab_experiments.items():
             if exp.get("promoted_variant"):
-                promotions.append({
-                    "experiment_name": name,
-                    "variant": exp["promoted_variant"],
-                    "timestamp": exp.get("promotion_timestamp", ""),
-                    "auto": exp.get("auto_promoted", False),
-                    "control_accuracy": exp["control_accuracy"],
-                    "variant_accuracy": exp["variant_accuracy"],
-                })
+                promotions.append(
+                    {
+                        "experiment_name": name,
+                        "variant": exp["promoted_variant"],
+                        "timestamp": exp.get("promotion_timestamp", ""),
+                        "auto": exp.get("auto_promoted", False),
+                        "control_accuracy": exp["control_accuracy"],
+                        "variant_accuracy": exp["variant_accuracy"],
+                    }
+                )
 
         return {
             "total_experiments": len(self._ab_experiments),
@@ -4080,9 +4102,7 @@ class ABExperimentManager:
 
         return result
 
-    def z_test_proportions(
-        self, p1: float, p2: float, n1: int, n2: int
-    ) -> dict[str, Any]:
+    def z_test_proportions(self, p1: float, p2: float, n1: int, n2: int) -> dict[str, Any]:
         """Z-test for comparing two proportions.
 
         Tests H0: p1 = p2 vs H1: p1 != p2.
@@ -4118,9 +4138,7 @@ class ABExperimentManager:
             "confidence_interval": [round(ci_lower, 6), round(ci_upper, 6)],
         }
 
-    def welch_t_test(
-        self, mean1: float, mean2: float, n1: int, n2: int
-    ) -> dict[str, Any]:
+    def welch_t_test(self, mean1: float, mean2: float, n1: int, n2: int) -> dict[str, Any]:
         """Welch's t-test for comparing two means with unequal variances.
 
         Assumes variance can be estimated from accuracy proportions:
@@ -4140,7 +4158,7 @@ class ABExperimentManager:
             df = n1 + n2 - 2
         else:
             numerator = (var1 + var2) ** 2
-            denominator = (var1 ** 2 / (n1 - 1)) + (var2 ** 2 / (n2 - 1)) if n1 > 1 and n2 > 1 else 1
+            denominator = (var1**2 / (n1 - 1)) + (var2**2 / (n2 - 1)) if n1 > 1 and n2 > 1 else 1
             df = numerator / denominator if denominator > 0 else (n1 + n2 - 2)
 
         # Approximate p-value from t-distribution using normal approximation for large df
@@ -4166,9 +4184,7 @@ class ABExperimentManager:
             "degrees_of_freedom": round(df, 2),
         }
 
-    def bootstrap_ci(
-        self, p1: float, p2: float, n1: int, n2: int, n_bootstrap: int = 1000
-    ) -> dict[str, Any]:
+    def bootstrap_ci(self, p1: float, p2: float, n1: int, n2: int, n_bootstrap: int = 1000) -> dict[str, Any]:
         """Bootstrap confidence interval for the difference in proportions.
 
         Resamples from binomial distributions and computes the empirical
@@ -4221,7 +4237,7 @@ class ABExperimentManager:
         """
         # Hill's approximation for the t-distribution CDF
         x = df / (df + t * t)
-        z = x * (1 + t * t / df) if df > 0 else 0.5
+        x * (1 + t * t / df) if df > 0 else 0.5
         # Simple approximation: use normal with wider tails
         return 0.5 * (1 + math.erf(t / math.sqrt(2 * df / (df - 2)))) if df > 2 else 0.5 * (1 + math.erf(t / 2))
 
@@ -4238,9 +4254,7 @@ class ABExperimentManager:
             "min_samples": self._config.ab_statistical_significance_min_samples,
             "total_tests_run": self._total_statistical_tests_run,
             "total_promotions_blocked": self._total_promotions_blocked_by_stats,
-            "recent_results": {
-                name: result for name, result in list(self._statistical_test_results.items())[-10:]
-            },
+            "recent_results": {name: result for name, result in list(self._statistical_test_results.items())[-10:]},
         }
 
     # -------------------------------------------------------------------
@@ -4267,7 +4281,9 @@ class ABExperimentManager:
     # Sprint 5.47: Prediction Confidence Calibration from A/B Results
     # -------------------------------------------------------------------
 
-    def update_confidence_calibration(self, subject: str, observed_accuracy: float, predicted_confidence: float) -> float:
+    def update_confidence_calibration(
+        self, subject: str, observed_accuracy: float, predicted_confidence: float
+    ) -> float:
         """Update confidence calibration mapping from A/B experiment results.
 
         Sprint 5.47: Calibrates prediction confidence by comparing
@@ -4596,7 +4612,11 @@ class ABExperimentManager:
         timeseries = experiment.get("accuracy_timeseries", [])
 
         # If in-memory is empty, try loading from store
-        if not timeseries and self._history_store is not None and hasattr(self._history_store, "get_accuracy_timeseries"):
+        if (
+            not timeseries
+            and self._history_store is not None
+            and hasattr(self._history_store, "get_accuracy_timeseries")
+        ):
             try:
                 timeseries = self._history_store.get_accuracy_timeseries(name)
                 if timeseries:
@@ -4761,9 +4781,7 @@ class ABExperimentManager:
 
         return allocation
 
-    def adjust_allocation_for_context(
-        self, name: str, base_allocation: dict[str, float]
-    ) -> dict[str, float]:
+    def adjust_allocation_for_context(self, name: str, base_allocation: dict[str, float]) -> dict[str, float]:
         """Adjust bandit allocation based on contextual features.
 
         Sprint 5.49: Exploratory contextual bandit support. Uses historical
@@ -4893,9 +4911,7 @@ class ABExperimentManager:
         self._bandit_context_rewards[name][context_key].append(reward)
         # Keep last 100 rewards per context
         if len(self._bandit_context_rewards[name][context_key]) > 100:
-            self._bandit_context_rewards[name][context_key] = (
-                self._bandit_context_rewards[name][context_key][-100:]
-            )
+            self._bandit_context_rewards[name][context_key] = self._bandit_context_rewards[name][context_key][-100:]
 
     def get_bandit_status(self) -> dict[str, Any]:
         """Return the status of multi-armed bandit allocation.
@@ -4915,7 +4931,8 @@ class ABExperimentManager:
             "contextual_enabled": self._config.ab_bandit_contextual_enabled,
             "contextual_features": self._config.ab_bandit_contextual_features,
             "contextual_rewards_tracked": sum(
-                len(rewards) for exp_rewards in self._bandit_context_rewards.values()
+                len(rewards)
+                for exp_rewards in self._bandit_context_rewards.values()
                 for rewards in exp_rewards.values()
             ),
             # Sprint 5.50: Decision logging
@@ -5200,7 +5217,8 @@ class ABExperimentManager:
         if self._history_store is not None and hasattr(self._history_store, "get_bandit_decisions"):
             try:
                 recent_decisions = self._history_store.get_bandit_decisions(
-                    experiment_name=name, limit=20,
+                    experiment_name=name,
+                    limit=20,
                 )
                 if len(recent_decisions) >= 10:
                     # Evaluate which method produced the highest average confidence
@@ -5212,10 +5230,7 @@ class ABExperimentManager:
                             method_confidences.setdefault(m, []).append(conf)
 
                     if method_confidences:
-                        avg_conf = {
-                            m: sum(confs) / len(confs)
-                            for m, confs in method_confidences.items()
-                        }
+                        avg_conf = {m: sum(confs) / len(confs) for m, confs in method_confidences.items()}
                         best_method = max(avg_conf, key=avg_conf.get)
                         # Only switch if the best method has significantly higher confidence
                         if avg_conf[best_method] > avg_conf.get(selected, 0.0) + 0.05:
@@ -5304,8 +5319,7 @@ class ABExperimentManager:
         """
         # Determine which experiments are still active
         active_names = {
-            name for name, exp in self._ab_experiments.items()
-            if exp.get("status") in ("running", "promoted")
+            name for name, exp in self._ab_experiments.items() if exp.get("status") in ("running", "promoted")
         }
 
         # Also keep snapshots that exist in memory (they may not be in _ab_experiments yet)
@@ -5399,17 +5413,19 @@ class ABExperimentManager:
                 self._total_calibration_drift_alerts += 1
 
                 # Send alert via the existing notification system
-                self._alert_sender(Alert(
-                    alert_type="calibration_drift",
-                    severity="warning",
-                    subject=f"calibration:{subject}",
-                    message=(
-                        f"Calibration factor for '{subject}' has drifted {deviation:.1%} from 1.0 "
-                        f"(current: {factor:.4f}, threshold: {threshold:.1%}). "
-                        f"Direction: {'over-confident' if factor > 1.0 else 'under-confident'}."
-                    ),
-                    data=drift_info,
-                ))
+                self._alert_sender(
+                    Alert(
+                        alert_type="calibration_drift",
+                        severity="warning",
+                        subject=f"calibration:{subject}",
+                        message=(
+                            f"Calibration factor for '{subject}' has drifted {deviation:.1%} from 1.0 "
+                            f"(current: {factor:.4f}, threshold: {threshold:.1%}). "
+                            f"Direction: {'over-confident' if factor > 1.0 else 'under-confident'}."
+                        ),
+                        data=drift_info,
+                    )
+                )
 
                 logger.warning(
                     "calibration_drift_detected",
@@ -5485,7 +5501,6 @@ class ABExperimentManager:
         except Exception as exc:
             logger.warning("event_timeline_query_failed", error=str(exc))
             return []
-
 
 
 # ---------------------------------------------------------------------------
@@ -5708,7 +5723,7 @@ class AlertLifecycleManager:
         """
         self._alert_history.append(alert_dict)
         if len(self._alert_history) > self._MAX_ALERT_HISTORY:
-            self._alert_history = self._alert_history[-self._MAX_ALERT_HISTORY:]
+            self._alert_history = self._alert_history[-self._MAX_ALERT_HISTORY :]
 
     def get_alert_history(
         self,
@@ -5758,7 +5773,7 @@ class AlertLifecycleManager:
         """
         self._delivery_failures.append(failure)
         if len(self._delivery_failures) > self._MAX_FAILURE_HISTORY:
-            self._delivery_failures = self._delivery_failures[-self._MAX_FAILURE_HISTORY:]
+            self._delivery_failures = self._delivery_failures[-self._MAX_FAILURE_HISTORY :]
 
         # Also persist to the SQLite store if attached
         if self._history_store is not None:
@@ -5980,6 +5995,7 @@ class PruningManager:
 
         self._prune_scheduler_thread: threading.Thread | None = None
         self._prune_scheduler_running: bool = False
+        self._prune_scheduler_stop_event = threading.Event()
         self._last_prune_run: float = 0.0
         self._next_prune_run: float = 0.0
         self._total_scheduled_prunes: int = 0
@@ -6016,7 +6032,13 @@ class PruningManager:
                 interval_secs = mgr._config.delivery_status_prune_interval_seconds
                 if interval_secs <= 0:
                     break
-                time.sleep(interval_secs)
+                # Use Event.wait() instead of time.sleep() so stop() can
+                # interrupt the sleep immediately instead of waiting the full
+                # interval (which can be hours in production and causes 5s
+                # hangs in tests due to join(timeout=5.0)).
+                if mgr._prune_scheduler_stop_event.wait(timeout=interval_secs):
+                    # Event was set — stop requested during sleep
+                    break
                 if not mgr._prune_scheduler_running:
                     break
                 try:
@@ -6046,11 +6068,15 @@ class PruningManager:
         """Stop the delivery status pruning scheduler.
 
         Sprint 5.62: Moved from AlertManager.stop_prune_scheduler().
+        Sprint 13.2: Use Event to interrupt sleep immediately instead of
+        waiting for join(timeout=5.0) which caused 5s test delays.
         """
         self._prune_scheduler_running = False
+        self._prune_scheduler_stop_event.set()
         if self._prune_scheduler_thread is not None:
-            self._prune_scheduler_thread.join(timeout=5.0)
+            self._prune_scheduler_thread.join(timeout=2.0)
             self._prune_scheduler_thread = None
+        self._prune_scheduler_stop_event.clear()
 
         logger.info("prune_scheduler_stopped")
 
@@ -6159,6 +6185,14 @@ class StatusAggregator:
         # Sprint 5.63: Result cache
         self._cached_result: dict | None = None
         self._cache_timestamp: float = 0.0
+
+    def invalidate_cache(self) -> None:
+        """Invalidate the cached status result.
+
+        Called when state changes (e.g. WS session register/unregister)
+        so the next get_status() call reflects the current state.
+        """
+        self._cached_result = None
 
     def _collect_sub_manager_summaries(self) -> dict[str, dict[str, Any]]:
         """Collect all sub-manager status summaries.
@@ -6586,10 +6620,7 @@ class AlertManager:
         # Validate email configuration
         if self._config.email_to:
             if not self._config.smtp_host:
-                warnings.append(
-                    "Email alerts configured (email_to) but smtp_host is empty. "
-                    "Email delivery will fail."
-                )
+                warnings.append("Email alerts configured (email_to) but smtp_host is empty. Email delivery will fail.")
 
         # Check that at least one transport is configured
         if not self._config.webhook_url and not self._config.email_to:
@@ -6685,14 +6716,16 @@ class AlertManager:
                 with self._lock:
                     self._digest_mgr.buffer_alert(alert_dict)
                     # Notify subscribers about throttled alert
-                    self._realtime_bus.notify_realtime_subscribers({
-                        "event": "alert_throttled",
-                        "correlation_id": correlation_id,
-                        "alert_type": alert.alert_type,
-                        "severity": alert.severity,
-                        "subject": alert.subject,
-                        "circuit_breaker_active": True,
-                    })
+                    self._realtime_bus.notify_realtime_subscribers(
+                        {
+                            "event": "alert_throttled",
+                            "correlation_id": correlation_id,
+                            "alert_type": alert.alert_type,
+                            "severity": alert.severity,
+                            "subject": alert.subject,
+                            "circuit_breaker_active": True,
+                        }
+                    )
                 return f"throttled:{correlation_id}"
 
         # Sprint 5.62: Check for severity escalation via AlertLifecycleManager
@@ -6748,8 +6781,7 @@ class AlertManager:
         if escalated and self._config.escalation_additional_transports:
             for t in self._config.escalation_additional_transports:
                 if t not in transports:
-                    if (t == "webhook" and self._config.webhook_url) or \
-                       (t == "email" and self._config.email_to):
+                    if (t == "webhook" and self._config.webhook_url) or (t == "email" and self._config.email_to):
                         transports.append(t)
 
         # Sprint 5.32: Alert correlation grouping
@@ -6781,13 +6813,15 @@ class AlertManager:
                 # Sprint 5.32: Persist delivery status to SQLite
                 self._persist_delivery_status(status_dict)
             # Notify SSE/WebSocket subscribers about the buffered alert
-            self._realtime_bus.notify_realtime_subscribers({
-                "event": "alert_buffered",
-                "correlation_id": correlation_id,
-                "alert_type": alert.alert_type,
-                "severity": alert.severity,
-                "subject": alert.subject,
-            })
+            self._realtime_bus.notify_realtime_subscribers(
+                {
+                    "event": "alert_buffered",
+                    "correlation_id": correlation_id,
+                    "alert_type": alert.alert_type,
+                    "severity": alert.severity,
+                    "subject": alert.subject,
+                }
+            )
             return correlation_id
 
         # Sprint 5.30: Dispatch to transports in a background thread
@@ -6984,23 +7018,23 @@ class AlertManager:
 
         # Sprint 5.32: Track delivery success/failure by transport
         for transport_name, result in transport_results.items():
-            self._delivery_mgr.record_transport_result(
-                transport_name, result.get("status", "unknown")
-            )
+            self._delivery_mgr.record_transport_result(transport_name, result.get("status", "unknown"))
 
         # Sprint 5.38: Track multi-channel delivery receipts
         if self._config.delivery_receipts_enabled:
             self._record_delivery_receipts(correlation_id, transport_results)
 
         # Sprint 5.31 → 5.32: Notify SSE/WebSocket subscribers about the delivery result
-        self._realtime_bus.notify_realtime_subscribers({
-            "event": "alert_delivered" if all_succeeded else "alert_delivery_failed",
-            "correlation_id": correlation_id,
-            "alert_type": alert.alert_type,
-            "severity": alert.severity,
-            "subject": alert.subject,
-            "transport_results": transport_results,
-        })
+        self._realtime_bus.notify_realtime_subscribers(
+            {
+                "event": "alert_delivered" if all_succeeded else "alert_delivery_failed",
+                "correlation_id": correlation_id,
+                "alert_type": alert.alert_type,
+                "severity": alert.severity,
+                "subject": alert.subject,
+                "transport_results": transport_results,
+            }
+        )
 
     # Sprint 5.30: Alert acknowledgment / dismissal
 
@@ -7406,11 +7440,16 @@ class AlertManager:
                 "missed_heartbeats": 0,
             }
 
+        # Invalidate status cache so ws_sessions count is fresh
+        self._status_aggregator.invalidate_cache()
+
         # Notify other subscribers about the new session
-        self._realtime_bus.notify_realtime_subscribers({
-            "event": "ws_session_connected",
-            "session_id": session_id,
-        })
+        self._realtime_bus.notify_realtime_subscribers(
+            {
+                "event": "ws_session_connected",
+                "session_id": session_id,
+            }
+        )
 
         logger.info(
             "ws_session_registered",
@@ -7425,13 +7464,18 @@ class AlertManager:
         other subscribers before removing the session.
         """
         # Notify other subscribers about the disconnect
-        self._realtime_bus.notify_realtime_subscribers({
-            "event": "ws_session_disconnected",
-            "session_id": session_id,
-        })
+        self._realtime_bus.notify_realtime_subscribers(
+            {
+                "event": "ws_session_disconnected",
+                "session_id": session_id,
+            }
+        )
 
         with self._lock:
             self._ws_sessions.pop(session_id, None)
+
+        # Invalidate status cache so ws_sessions count is fresh
+        self._status_aggregator.invalidate_cache()
 
         logger.info(
             "ws_session_unregistered",
@@ -7532,11 +7576,13 @@ class AlertManager:
             )
 
         if dead_session_ids:
-            self._realtime_bus.notify_realtime_subscribers({
-                "event": "ws_dead_sessions_cleaned",
-                "count": len(dead_session_ids),
-                "session_ids": dead_session_ids,
-            })
+            self._realtime_bus.notify_realtime_subscribers(
+                {
+                    "event": "ws_dead_sessions_cleaned",
+                    "count": len(dead_session_ids),
+                    "session_ids": dead_session_ids,
+                }
+            )
 
         return len(dead_session_ids)
 
@@ -7695,12 +7741,14 @@ class AlertManager:
             merged_count=merged,
         )
 
-        self._realtime_bus.notify_realtime_subscribers({
-            "event": "alert_groups_merged",
-            "source_key": source_key,
-            "target_key": target_key,
-            "merged_count": merged,
-        })
+        self._realtime_bus.notify_realtime_subscribers(
+            {
+                "event": "alert_groups_merged",
+                "source_key": source_key,
+                "target_key": target_key,
+                "merged_count": merged,
+            }
+        )
 
         return {
             "status": "ok",
@@ -7710,9 +7758,7 @@ class AlertManager:
             "total_in_target": len(self._alert_groups.get(target_key, [])),
         }
 
-    def split_alert_group(
-        self, group_key: str, correlation_ids: list[str], new_group_key: str | None = None
-    ) -> dict:
+    def split_alert_group(self, group_key: str, correlation_ids: list[str], new_group_key: str | None = None) -> dict:
         """Split a group by moving specified correlation IDs to a new group.
 
         Sprint 5.35: Removes the specified correlation IDs from the
@@ -7782,12 +7828,14 @@ class AlertManager:
             split_count=len(to_move),
         )
 
-        self._realtime_bus.notify_realtime_subscribers({
-            "event": "alert_group_split",
-            "source_key": group_key,
-            "new_group_key": new_group_key,
-            "split_count": len(to_move),
-        })
+        self._realtime_bus.notify_realtime_subscribers(
+            {
+                "event": "alert_group_split",
+                "source_key": group_key,
+                "new_group_key": new_group_key,
+                "split_count": len(to_move),
+            }
+        )
 
         return {
             "status": "ok",
@@ -7830,7 +7878,7 @@ class AlertManager:
         # Compare each pair of non-causal groups
         non_causal_keys = [k for k in group_keys if not k.startswith("causal:")]
         for i, key_a in enumerate(non_causal_keys):
-            for key_b in non_causal_keys[i + 1:]:
+            for key_b in non_causal_keys[i + 1 :]:
                 # Check if both groups have recent activity
                 meta_a = self._alert_groups_metadata.get(key_a, 0)
                 meta_b = self._alert_groups_metadata.get(key_b, 0)
@@ -7843,14 +7891,16 @@ class AlertManager:
                 # Compute subject similarity using token overlap
                 similarity = self._compute_subject_similarity(key_a, key_b)
                 if similarity >= type_threshold:
-                    suggestions.append({
-                        "source_key": key_a,
-                        "target_key": key_b,
-                        "similarity": round(similarity, 3),
-                        "reason": f"Subjects overlap {similarity:.0%} and both active within {window}s",
-                        "source_count": len(self._alert_groups.get(key_a, [])),
-                        "target_count": len(self._alert_groups.get(key_b, [])),
-                    })
+                    suggestions.append(
+                        {
+                            "source_key": key_a,
+                            "target_key": key_b,
+                            "similarity": round(similarity, 3),
+                            "reason": f"Subjects overlap {similarity:.0%} and both active within {window}s",
+                            "source_count": len(self._alert_groups.get(key_a, [])),
+                            "target_count": len(self._alert_groups.get(key_b, [])),
+                        }
+                    )
 
         with self._lock:
             self._auto_merge_suggestions = suggestions
@@ -7895,7 +7945,8 @@ class AlertManager:
                 self._total_auto_merges_applied += 1
                 # Remove from suggestions
                 self._auto_merge_suggestions = [
-                    s for s in self._auto_merge_suggestions
+                    s
+                    for s in self._auto_merge_suggestions
                     if not (s["source_key"] == source_key and s["target_key"] == target_key)
                 ]
         return result
@@ -7914,6 +7965,7 @@ class AlertManager:
         between 0.0 and 1.0.
         """
         import re as _re
+
         tokens_a = set(_re.findall(r"[a-z0-9]+", key_a.lower()))
         tokens_b = set(_re.findall(r"[a-z0-9]+", key_b.lower()))
         if not tokens_a or not tokens_b:
@@ -7946,20 +7998,24 @@ class AlertManager:
         }
         color = severity_colors.get(alert.severity, "#64748b")
 
-        payload = json.dumps({
-            "attachments": [{
-                "color": color,
-                "title": f"[AIP Brain] {alert.severity.upper()}: {alert.subject}",
-                "text": alert.message,
-                "fields": [
-                    {"title": "Type", "value": alert.alert_type, "short": True},
-                    {"title": "Severity", "value": alert.severity, "short": True},
-                    {"title": "Time", "value": alert.timestamp, "short": False},
+        payload = json.dumps(
+            {
+                "attachments": [
+                    {
+                        "color": color,
+                        "title": f"[AIP Brain] {alert.severity.upper()}: {alert.subject}",
+                        "text": alert.message,
+                        "fields": [
+                            {"title": "Type", "value": alert.alert_type, "short": True},
+                            {"title": "Severity", "value": alert.severity, "short": True},
+                            {"title": "Time", "value": alert.timestamp, "short": False},
+                        ],
+                        "footer": "AIP Brain Alerting",
+                        "ts": int(time.time()),
+                    }
                 ],
-                "footer": "AIP Brain Alerting",
-                "ts": int(time.time()),
-            }],
-        }).encode("utf-8")
+            }
+        ).encode("utf-8")
 
         req = urllib.request.Request(
             self._config.slack_webhook_url,
@@ -8009,21 +8065,23 @@ class AlertManager:
         # Sprint 5.38: Generate dedup_key for PagerDuty receipt tracking
         dedup_key = f"aip-brain-{alert.alert_type}-{alert.subject}-{uuid.uuid4().hex[:8]}"
 
-        payload = json.dumps({
-            "routing_key": self._config.pagerduty_integration_key,
-            "event_action": "trigger",
-            "dedup_key": dedup_key,
-            "payload": {
-                "summary": f"[AIP Brain] {alert.alert_type}: {alert.subject} — {alert.message[:200]}",
-                "severity": pd_severity,
-                "source": "aip-brain",
-                "component": alert.alert_type,
-                "group": alert.subject,
-                "class": alert.alert_type,
-                "timestamp": alert.timestamp,
-                "custom_details": alert.data,
-            },
-        }).encode("utf-8")
+        payload = json.dumps(
+            {
+                "routing_key": self._config.pagerduty_integration_key,
+                "event_action": "trigger",
+                "dedup_key": dedup_key,
+                "payload": {
+                    "summary": f"[AIP Brain] {alert.alert_type}: {alert.subject} — {alert.message[:200]}",
+                    "severity": pd_severity,
+                    "source": "aip-brain",
+                    "component": alert.alert_type,
+                    "group": alert.subject,
+                    "class": alert.alert_type,
+                    "timestamp": alert.timestamp,
+                    "custom_details": alert.data,
+                },
+            }
+        ).encode("utf-8")
 
         req = urllib.request.Request(
             "https://events.pagerduty.com/v2/enqueue",
@@ -8149,13 +8207,33 @@ class AlertManager:
         rate-limiting state from the persistent store so that duplicate
         alert storms are prevented immediately after a restart.
 
+        Sprint 13.3: If the store is a raw async AlertHistoryStore
+        (not already a SyncAlertHistoryBridge), it is automatically
+        wrapped in a SyncAlertHistoryBridge so that all synchronous
+        callers in AlertManager can invoke store methods without await.
+
         Parameters
         ----------
         store:
-            An AlertHistoryStore instance with record_alert(),
-            record_delivery_failure(), get_alert_history(), and
-            get_delivery_failures() methods.
+            An AlertHistoryStore instance, a SyncAlertHistoryBridge
+            instance, or any object with the expected store methods.
         """
+        # Auto-wrap raw async AlertHistoryStore in SyncAlertHistoryBridge
+        from aip.adapter.alert_history_store import SyncAlertHistoryBridge as _Bridge
+
+        if isinstance(store, _Bridge):
+            # Already a bridge — use as-is, but ensure initialized
+            store.initialize()
+        else:
+            from aip.adapter.alert_history_store import AlertHistoryStore as _AHS
+
+            if isinstance(store, _AHS):
+                bridge = _Bridge(store)
+                # Ensure DB tables are created (sync bridge awaits the
+                # async initialize() internally)
+                bridge.initialize()
+                store = bridge
+
         self._history_store = store
         # Sprint 5.61: Propagate store reference to ThrottleManager
         self._throttle_mgr._history_store = store
@@ -8427,15 +8505,17 @@ class AlertManager:
                 if attempt < max_retries:
                     # Record intermediate failure
                     self._delivery_mgr.increment_webhook_retry()
-                    delay = base_delay * (2 ** attempt)
-                    self._record_failure(DeliveryFailure(
-                        transport="webhook",
-                        alert_type=alert.alert_type,
-                        subject=alert.subject,
-                        error_message=str(exc),
-                        retry_attempt=attempt,
-                        final=False,
-                    ))
+                    delay = base_delay * (2**attempt)
+                    self._record_failure(
+                        DeliveryFailure(
+                            transport="webhook",
+                            alert_type=alert.alert_type,
+                            subject=alert.subject,
+                            error_message=str(exc),
+                            retry_attempt=attempt,
+                            final=False,
+                        )
+                    )
                     logger.info(
                         "alert_webhook_retry",
                         url=self._config.webhook_url[:50],
@@ -8455,10 +8535,12 @@ class AlertManager:
         Uses stdlib urllib to avoid adding requests/aiohttp dependency.
         Timeout is 10 seconds — alerts must not block the caller.
         """
-        payload = json.dumps({
-            "source": "aip-brain",
-            "alert": alert.to_dict(),
-        }).encode("utf-8")
+        payload = json.dumps(
+            {
+                "source": "aip-brain",
+                "alert": alert.to_dict(),
+            }
+        ).encode("utf-8")
 
         req = urllib.request.Request(
             self._config.webhook_url,
@@ -8519,6 +8601,7 @@ class AlertManager:
                 # This ensures operators can override secrets without editing
                 # the config file (credential sovereignty: no secrets in TOML).
                 import os
+
                 password = os.environ.get("AIP_SMTP_PASSWORD") or self._config.smtp_password
                 if password:
                     smtp.login(self._config.smtp_username, password)
@@ -8531,7 +8614,6 @@ class AlertManager:
         Sprint 5.62: Delegates to AlertLifecycleManager.
         """
         self._lifecycle_mgr.record_failure(failure)
-
 
     # -----------------------------------------------------------------------
     # Sprint 5.62: Public facade methods (backward-compat wrappers removed)
@@ -8658,9 +8740,7 @@ class AlertManager:
 
         Sprint 5.62: Public facade — delegates to DeliveryManager.
         """
-        self._delivery_mgr.record_delivery_receipts(
-            correlation_id, transport_results, config=self._config
-        )
+        self._delivery_mgr.record_delivery_receipts(correlation_id, transport_results, config=self._config)
 
     def get_delivery_receipts(self, correlation_id: str) -> dict[str, Any]:
         """Return delivery receipts for a given correlation ID.
@@ -8794,10 +8874,12 @@ class AlertManager:
         # If webhook URL is configured, poll it for status updates
         if self._config.email_delivery_webhook_url:
             try:
-                payload = json.dumps({
-                    "action": "check_delivery_status",
-                    "correlation_ids": pending_cids,
-                }).encode("utf-8")
+                payload = json.dumps(
+                    {
+                        "action": "check_delivery_status",
+                        "correlation_ids": pending_cids,
+                    }
+                ).encode("utf-8")
 
                 req = urllib.request.Request(
                     self._config.email_delivery_webhook_url,
@@ -8855,9 +8937,7 @@ class AlertManager:
 
         return {"polled": polled, "updated": updated}
 
-    def update_email_delivery_status(
-        self, correlation_id: str, status: str, details: dict[str, Any]
-    ) -> None:
+    def update_email_delivery_status(self, correlation_id: str, status: str, details: dict[str, Any]) -> None:
         """Update the email delivery status for a correlation ID.
 
         Sprint 5.39: Merges new status information with existing
@@ -8878,10 +8958,13 @@ class AlertManager:
             }
 
             # Also merge into delivery receipts if that channel exists
-            self._delivery_mgr.update_email_delivery_status(correlation_id, {
-                "delivery_status": status,
-                "email_poll_updated_at": now_iso,
-            })
+            self._delivery_mgr.update_email_delivery_status(
+                correlation_id,
+                {
+                    "delivery_status": status,
+                    "email_poll_updated_at": now_iso,
+                },
+            )
 
         self._total_email_status_updates += 1
         logger.debug(
@@ -8992,7 +9075,10 @@ class AlertManager:
         Called from API endpoints and integration tests.
         """
         return self._ab_experiment_mgr.start_ab_experiment(
-            name, control_config, variant_config, metadata,
+            name,
+            control_config,
+            variant_config,
+            metadata,
         )
 
     def stop_ab_experiment(self, name: str, result: str | None = None) -> dict[str, Any] | None:
@@ -9119,6 +9205,336 @@ class AlertManager:
         Sprint 5.63: Public facade — delegates to ABExperimentManager.
         """
         return self._ab_experiment_mgr.get_bandit_allocation(name)
+
+    # -------------------------------------------------------------------
+    # Sprint 5.46/5.47: AB Experiment public facade delegates
+    # -------------------------------------------------------------------
+
+    def promote_variant(self, name: str, variant: str = "variant") -> dict[str, Any] | None:
+        """Promote a variant in an A/B experiment.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.promote_variant(name, variant)
+
+    def cleanup_expired_experiments(self) -> dict[str, int]:
+        """Clean up old/stopped A/B experiments.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.cleanup_expired_experiments()
+
+    def get_ab_cleanup_status(self) -> dict[str, Any]:
+        """Return the status of the A/B experiment cleanup checker.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_ab_cleanup_status()
+
+    def notify_decay_event(self, subject: str, decay_amount: float, current_confidence: float) -> str:
+        """Record and notify a significant confidence decay event.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.notify_decay_event(subject, decay_amount, current_confidence)
+
+    def get_decay_events(self, limit: int = 50) -> list[dict]:
+        """Return recent decay events.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_decay_events(limit)
+
+    def get_decay_recovery_status(self) -> dict[str, Any]:
+        """Return the status of decay recovery.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_decay_recovery_status()
+
+    def restore_ab_experiments_from_store(self) -> int:
+        """Restore A/B experiment state from the persistent store.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.restore_ab_experiments_from_store()
+
+    def persist_all_ab_experiments(self) -> int:
+        """Persist all running A/B experiments and stop background checkers.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.persist_all_ab_experiments()
+
+    def get_experiment_monitoring_summary(self) -> dict[str, Any]:
+        """Return a comprehensive experiment monitoring summary.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_experiment_monitoring_summary()
+
+    def get_promotion_rollback_status(self) -> dict[str, Any]:
+        """Return the status of promotion rollback.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_promotion_rollback_status()
+
+    def _check_auto_promotion(self) -> None:
+        """Check all running experiments for auto-promotion eligibility.
+
+        Sprint 5.46: Internal facade — delegates to ABExperimentManager.check_auto_promotion.
+        """
+        self._ab_experiment_mgr.check_auto_promotion()
+
+    def get_ab_promotion_checker_status(self) -> dict[str, Any]:
+        """Return the status of the auto-promotion checker.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_ab_promotion_checker_status()
+
+    def run_decay_recovery_orchestrator(self) -> list[dict[str, Any]]:
+        """Run the decay recovery orchestrator.
+
+        Sprint 5.46: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.run_decay_recovery_orchestrator()
+
+    # -------------------------------------------------------------------
+    # Sprint 5.47: Statistical significance & calibration facade delegates
+    # -------------------------------------------------------------------
+
+    def compute_statistical_significance(self, name: str) -> dict[str, Any] | None:
+        """Compute statistical significance for an A/B experiment.
+
+        Sprint 5.47: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.compute_statistical_significance(name)
+
+    def get_statistical_significance_status(self) -> dict[str, Any]:
+        """Return the status of statistical significance testing.
+
+        Sprint 5.47: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_statistical_significance_status()
+
+    def update_confidence_calibration(
+        self, subject: str, observed_accuracy: float, predicted_confidence: float
+    ) -> float:
+        """Update confidence calibration mapping from A/B experiment results.
+
+        Sprint 5.47: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.update_confidence_calibration(subject, observed_accuracy, predicted_confidence)
+
+    def get_calibrated_confidence(self, subject: str, raw_confidence: float) -> float:
+        """Apply confidence calibration to a raw confidence value.
+
+        Sprint 5.47: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_calibrated_confidence(subject, raw_confidence)
+
+    def get_config_reversion_status(self) -> dict[str, Any]:
+        """Return the status of config reversion for rollback.
+
+        Sprint 5.47: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_config_reversion_status()
+
+    def get_cleanup_metrics(self) -> dict[str, Any]:
+        """Return cumulative cleanup metrics.
+
+        Sprint 5.47: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_cleanup_metrics()
+
+    def get_confidence_calibration_status(self) -> dict[str, Any]:
+        """Return the status of confidence calibration.
+
+        Sprint 5.47: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_confidence_calibration_status()
+
+    @staticmethod
+    def _normal_cdf(x: float) -> float:
+        """Approximate the standard normal CDF.
+
+        Sprint 5.47: Static helper — delegates to ABExperimentManager.normal_cdf.
+        Used by statistical significance tests.
+        """
+        return ABExperimentManager.normal_cdf(x)
+
+    # ------------------------------------------------------------------
+    # Sprint 5.48/5.49: Bandit, persistence, and accuracy facade methods
+    # ------------------------------------------------------------------
+
+    def _get_auto_tuning_snapshot(self) -> dict[str, Any]:
+        """Capture auto-tuning policy snapshot for rollback.
+
+        Sprint 5.48: Internal facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_auto_tuning_snapshot()
+
+    def record_accuracy_snapshot(self, name: str) -> dict[str, Any] | None:
+        """Record an accuracy snapshot for time-series visualization.
+
+        Sprint 5.48: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.record_accuracy_snapshot(name)
+
+    def get_accuracy_timeseries(self, name: str) -> list[dict[str, Any]]:
+        """Return accuracy time-series data for an experiment.
+
+        Sprint 5.48: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_accuracy_timeseries(name)
+
+    def get_bandit_status(self) -> dict[str, Any]:
+        """Return the status of multi-armed bandit allocation.
+
+        Sprint 5.48: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_bandit_status()
+
+    def get_rollback_dry_run_status(self) -> dict[str, Any]:
+        """Return the status of rollback dry-run mode.
+
+        Sprint 5.48: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_rollback_dry_run_status()
+
+    def persist_statistical_test_results(self, store: Any = None) -> int:
+        """Persist in-memory statistical test results to the history store.
+
+        Sprint 5.48: Public facade — delegates to ABExperimentManager.
+        If *store* is omitted, the manager's attached history store is used.
+        """
+        target = store if store is not None else self._ab_experiment_mgr._history_store
+        return self._ab_experiment_mgr.persist_statistical_test_results(target)
+
+    def persist_confidence_calibration(self, store: Any = None) -> int:
+        """Persist confidence calibration data to the history store.
+
+        Sprint 5.49: Public facade — delegates to ABExperimentManager.
+        If *store* is omitted, the manager's attached history store is used.
+        """
+        target = store if store is not None else self._ab_experiment_mgr._history_store
+        return self._ab_experiment_mgr.persist_confidence_calibration(target)
+
+    def persist_pre_promotion_snapshots(self, store: Any = None) -> int:
+        """Persist pre-promotion config snapshots to the history store.
+
+        Sprint 5.49: Public facade — delegates to ABExperimentManager.
+        If *store* is omitted, the manager's attached history store is used.
+        """
+        target = store if store is not None else self._ab_experiment_mgr._history_store
+        return self._ab_experiment_mgr.persist_pre_promotion_snapshots(target)
+
+    def record_bandit_context_reward(
+        self, name: str, variant: str, reward: float, context: dict[str, str] | None = None
+    ) -> None:
+        """Record a reward observation for contextual bandit learning.
+
+        Sprint 5.49: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.record_bandit_context_reward(name, variant, reward, context)
+
+    # ------------------------------------------------------------------
+    # Sprint 5.48/5.49: Property proxies for sub-manager state
+    # ------------------------------------------------------------------
+
+    @property
+    def _confidence_calibration_map(self) -> dict[str, float]:
+        """Proxy to ABExperimentManager's calibration map."""
+        return self._ab_experiment_mgr._confidence_calibration_map
+
+    @_confidence_calibration_map.setter
+    def _confidence_calibration_map(self, value: dict[str, float]) -> None:
+        self._ab_experiment_mgr._confidence_calibration_map = value
+
+    @property
+    def _pre_promotion_config_snapshots(self) -> dict[str, Any]:
+        """Proxy to ABExperimentManager's pre-promotion snapshots."""
+        return self._ab_experiment_mgr._pre_promotion_config_snapshots
+
+    @_pre_promotion_config_snapshots.setter
+    def _pre_promotion_config_snapshots(self, value: dict[str, Any]) -> None:
+        self._ab_experiment_mgr._pre_promotion_config_snapshots = value
+
+    @property
+    def _last_accuracy_snapshot_time(self) -> float:
+        """Proxy to ABExperimentManager's last accuracy snapshot timestamp."""
+        return self._ab_experiment_mgr._last_accuracy_snapshot_time
+
+    @_last_accuracy_snapshot_time.setter
+    def _last_accuracy_snapshot_time(self, value: float) -> None:
+        self._ab_experiment_mgr._last_accuracy_snapshot_time = value
+
+    # ------------------------------------------------------------------
+    # Sprint 5.50: Observability, adaptability, and data hygiene facades
+    # ------------------------------------------------------------------
+
+    def replay_bandit_decisions(self, experiment_name: str, limit: int = 50) -> list[dict]:
+        """Replay bandit decisions for an experiment from the history store.
+
+        Sprint 5.50: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.replay_bandit_decisions(experiment_name, limit)
+
+    def get_experiment_event_timeline(self, **kwargs) -> list[dict]:
+        """Return a unified event timeline from the history store.
+
+        Sprint 5.50: Public facade — delegates to ABExperimentManager
+        which in turn queries the SyncAlertHistoryBridge.
+        """
+        return self._ab_experiment_mgr.get_experiment_event_timeline(**kwargs)
+
+    def _select_adaptive_bandit_method(
+        self, name: str, c_samples: int, v_samples: int, c_acc: float, v_acc: float
+    ) -> str:
+        """Select the best bandit method based on experiment characteristics.
+
+        Sprint 5.50: Internal facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.select_adaptive_bandit_method(name, c_samples, v_samples, c_acc, v_acc)
+
+    def _run_snapshot_gc(self) -> int:
+        """Run snapshot garbage collection to clean up stale data.
+
+        Sprint 5.50: Internal facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.run_snapshot_gc()
+
+    def get_snapshot_gc_status(self) -> dict[str, Any]:
+        """Return the status of snapshot garbage collection.
+
+        Sprint 5.50: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_snapshot_gc_status()
+
+    def get_calibration_drift_status(self) -> dict[str, Any]:
+        """Return the status of calibration drift detection.
+
+        Sprint 5.50: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_calibration_drift_status()
+
+    def get_adaptive_bandit_status(self) -> dict[str, Any]:
+        """Return the status of adaptive bandit method selection.
+
+        Sprint 5.50: Public facade — delegates to ABExperimentManager.
+        """
+        return self._ab_experiment_mgr.get_adaptive_bandit_status()
+
+    @property
+    def _total_adaptive_method_switches(self) -> int:
+        """Proxy to ABExperimentManager's adaptive method switch count."""
+        return self._ab_experiment_mgr._total_adaptive_method_switches
+
+    @_total_adaptive_method_switches.setter
+    def _total_adaptive_method_switches(self, value: int) -> None:
+        self._ab_experiment_mgr._total_adaptive_method_switches = value
 
     @property
     def ab_experiment_mgr(self) -> "ABExperimentManager":

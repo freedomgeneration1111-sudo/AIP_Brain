@@ -14,14 +14,14 @@ utilities are in :mod:`aip.orchestration.channels.retrieval_trace_utils`.
 
 from aip.orchestration.channels.registry import (
     BUILTIN_CHANNELS,
+    clear_custom_channels,
     register_all_channels,
     register_custom_channel,
-    clear_custom_channels,
 )
 from aip.orchestration.channels.retrieval_config import (
-    build_orchestrator_config,
-    apply_channel_weights,
     apply_channel_selector,
+    apply_channel_weights,
+    build_orchestrator_config,
     check_vector_coverage,
 )
 from aip.orchestration.channels.retrieval_trace_utils import (

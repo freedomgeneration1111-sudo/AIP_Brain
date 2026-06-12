@@ -199,10 +199,7 @@ class ModelSlotResolver(ModelProvider):
             self._runtime_overrides.clear()
         else:
             prefix = f"{slot_name}."
-            self._runtime_overrides = {
-                k: v for k, v in self._runtime_overrides.items()
-                if not k.startswith(prefix)
-            }
+            self._runtime_overrides = {k: v for k, v in self._runtime_overrides.items() if not k.startswith(prefix)}
 
     def _resolve_slot_config(self, slot_name: str) -> dict:
         """Resolve slot config with priority: runtime overrides > env vars > TOML config.
@@ -215,7 +212,12 @@ class ModelSlotResolver(ModelProvider):
         if not isinstance(slot_cfg, dict):
             slot_cfg = {}
 
-        log.debug("slot_config_resolved", slot=slot_name, has_cfg=bool(slot_cfg), cfg_keys=list(slot_cfg.keys()) if isinstance(slot_cfg, dict) else [])
+        log.debug(
+            "slot_config_resolved",
+            slot=slot_name,
+            has_cfg=bool(slot_cfg),
+            cfg_keys=list(slot_cfg.keys()) if isinstance(slot_cfg, dict) else [],
+        )
 
         # 1. Runtime overrides (highest priority — in-memory, never in os.environ)
         rt_model = self._runtime_overrides.get(f"{slot_name}.model")
@@ -270,7 +272,10 @@ class ModelSlotResolver(ModelProvider):
         # Merge with env var overrides for the returned config
         resolved = self._resolve_slot_config(slot_name)
 
-        log.info(f"slot {slot_name}: provider={resolved['provider']} model={resolved.get('model')} base_url={resolved.get('base_url')}")
+        log.info(
+            f"slot {slot_name}: provider={resolved['provider']} "
+            f"model={resolved.get('model')} base_url={resolved.get('base_url')}"
+        )
 
         return ModelSlotConfig(
             slot_name=slot_name,

@@ -13,14 +13,10 @@ Deterministic, zero-token, no network, no LLM.
 
 from __future__ import annotations
 
-import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
-import pytest
-
-from aip.adapter.alerting import AlertManager, AlertConfig, Alert
 from aip.adapter.alert_history_store import AlertHistoryStore
-
+from aip.adapter.alerting import Alert, AlertConfig, AlertManager
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -65,11 +61,11 @@ def _make_config(**overrides) -> AlertConfig:
     return AlertConfig(**defaults)
 
 
-def _make_store(tmp_path, db_name: str = "test_history.db") -> AlertHistoryStore:
+async def _make_store(tmp_path, db_name: str = "test_history.db") -> AlertHistoryStore:
     """Create and initialize a fresh AlertHistoryStore."""
     db_path = str(tmp_path / db_name)
     store = AlertHistoryStore(db_path)
-    store.initialize()
+    await store.initialize()
     return store
 
 
@@ -417,10 +413,7 @@ class TestCleanupAlertingAndMetrics:
         assert history_after > history_before
 
         # Find the TTL expiry alert
-        ttl_alerts = [
-            a for a in mgr.lifecycle_mgr._alert_history
-            if a.get("alert_type") == "ab_experiment_ttl_expired"
-        ]
+        ttl_alerts = [a for a in mgr.lifecycle_mgr._alert_history if a.get("alert_type") == "ab_experiment_ttl_expired"]
         assert len(ttl_alerts) >= 1
         assert "ttl_alert" in ttl_alerts[-1]["subject"]
 
@@ -436,11 +429,12 @@ class TestCleanupAlertingAndMetrics:
 
         history_before = len(mgr.lifecycle_mgr._alert_history)
         mgr.cleanup_expired_experiments()
-        history_after = len(mgr.lifecycle_mgr._alert_history)
+        len(mgr.lifecycle_mgr._alert_history)
 
         # Should NOT send a TTL expiry alert (but may send other alerts)
         ttl_alerts = [
-            a for a in mgr.lifecycle_mgr._alert_history[history_before:]
+            a
+            for a in mgr.lifecycle_mgr._alert_history[history_before:]
             if a.get("alert_type") == "ab_experiment_ttl_expired"
         ]
         assert len(ttl_alerts) == 0

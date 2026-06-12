@@ -16,7 +16,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-
 # Standard artifact types
 ArtifactType = Literal[
     "ask_answer",

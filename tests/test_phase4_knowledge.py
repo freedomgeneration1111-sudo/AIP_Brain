@@ -17,7 +17,6 @@ Tests for the new API routes:
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import tempfile
 
@@ -30,6 +29,7 @@ os.environ.setdefault("AIP_TEST_MODE", "1")
 # ---------------------------------------------------------------------------
 # Helper: create a minimal FastAPI test client
 # ---------------------------------------------------------------------------
+
 
 def _create_test_app():
     """Create a FastAPI app with a minimal container for testing."""
@@ -47,15 +47,15 @@ def _create_test_app():
     container = AipContainer(config)
 
     # Wire required stores for testing
-    from aip.adapter.entity.sqlite_entity_store import SqliteEntityStore
+    from aip.adapter.artifact_store_versioned import VersionedArtifactStore
     from aip.adapter.canonical.sqlite_canonical_store import SqliteCanonicalStore
+    from aip.adapter.ecs_store_persistent import PersistentEcsStore
+    from aip.adapter.embedding.ollama_embed import MockOllamaEmbeddingClient
+    from aip.adapter.entity.sqlite_entity_store import SqliteEntityStore
     from aip.adapter.event_store_queryable import QueryableEventStore
     from aip.adapter.lexical.sqlite_fts5_store import SqliteFts5LexicalStore
-    from aip.adapter.vector._in_memory import InMemoryVectorStore
-    from aip.adapter.embedding.ollama_embed import MockOllamaEmbeddingClient
     from aip.adapter.project.sqlite_project_store import SqliteProjectStore
-    from aip.adapter.ecs_store_persistent import PersistentEcsStore
-    from aip.adapter.artifact_store_versioned import VersionedArtifactStore
+    from aip.adapter.vector._in_memory import InMemoryVectorStore
 
     # Use a temporary directory for DB files
     tmpdir = tempfile.mkdtemp()
@@ -74,10 +74,12 @@ def _create_test_app():
 
     # Wire model provider (CI mode)
     from aip.adapter.model_slot_resolver import ModelSlotResolver
+
     container.model_provider = ModelSlotResolver(config)
 
     # Wire knowledge store
     from aip.adapter.knowledge.sqlite_knowledge_store import SqliteKnowledgeStore
+
     container.knowledge_store = SqliteKnowledgeStore(
         db_path=db_path,
         vector_store=container.vector_store,
@@ -106,7 +108,9 @@ def _create_test_app():
     loop.close()
 
     # Wire orchestration function references (container-mediated layer discipline)
-    from aip.orchestration.ask_pipeline import AskStores, ask, _search_sources_with_trace, _sanitize_fts_query
+    from aip.orchestration.ask_pipeline import AskStores, _search_sources_with_trace, ask
+    from aip.orchestration.channels.lexical_channel import _sanitize_fts_query
+
     container._ask_stores_class = AskStores
     container._ask_fn = ask
     container._search_sources_fn = _search_sources_with_trace
@@ -119,12 +123,12 @@ def _create_test_app():
 @pytest.fixture(scope="module")
 def test_client():
     """Create a test client with a fully wired container."""
-    from httpx import AsyncClient, ASGITransport
 
     app = _create_test_app()
 
     # Use sync test client for simplicity
     from starlette.testclient import TestClient
+
     client = TestClient(app)
     yield client
 
@@ -132,6 +136,7 @@ def test_client():
 # ---------------------------------------------------------------------------
 # Ask API Tests
 # ---------------------------------------------------------------------------
+
 
 class TestAskAPI:
     """Tests for the /api/v1/ask endpoint."""
@@ -148,10 +153,13 @@ class TestAskAPI:
 
     def test_ask_no_project_found(self, test_client):
         """POST /ask with nonexistent project should return 200 with NO_PROJECT status."""
-        resp = test_client.post("/api/v1/ask", json={
-            "question": "What is AI?",
-            "project_name": "nonexistent_project",
-        })
+        resp = test_client.post(
+            "/api/v1/ask",
+            json={
+                "question": "What is AI?",
+                "project_name": "nonexistent_project",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "NO_PROJECT"
@@ -159,11 +167,14 @@ class TestAskAPI:
     def test_ask_invalid_source(self, test_client):
         """POST /ask with invalid source should default to 'all'."""
         # This should not error — invalid source defaults to "all"
-        resp = test_client.post("/api/v1/ask", json={
-            "question": "What is AI?",
-            "project_name": "test",
-            "source": "invalid_source",
-        })
+        resp = test_client.post(
+            "/api/v1/ask",
+            json={
+                "question": "What is AI?",
+                "project_name": "test",
+                "source": "invalid_source",
+            },
+        )
         assert resp.status_code == 200
 
 
@@ -177,9 +188,12 @@ class TestAskRetrieveAPI:
 
     def test_retrieve_basic(self, test_client):
         """POST /ask/retrieve should return sources (may be empty)."""
-        resp = test_client.post("/api/v1/ask/retrieve", json={
-            "question": "test query",
-        })
+        resp = test_client.post(
+            "/api/v1/ask/retrieve",
+            json={
+                "question": "test query",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "sources" in data
@@ -190,6 +204,7 @@ class TestAskRetrieveAPI:
 # ---------------------------------------------------------------------------
 # Knowledge API Tests
 # ---------------------------------------------------------------------------
+
 
 class TestKnowledgeAPI:
     """Tests for the /api/v1/knowledge endpoints."""
@@ -229,6 +244,7 @@ class TestKnowledgeAPI:
 # ---------------------------------------------------------------------------
 # ECS API Tests
 # ---------------------------------------------------------------------------
+
 
 class TestEcsAPI:
     """Tests for the /api/v1/ecs endpoints."""
@@ -291,6 +307,7 @@ class TestEcsAPI:
 # Sources API Tests
 # ---------------------------------------------------------------------------
 
+
 class TestSourcesAPI:
     """Tests for the /api/v1/sources endpoints."""
 
@@ -329,21 +346,25 @@ class TestSourcesAPI:
 # Layer Discipline Tests
 # ---------------------------------------------------------------------------
 
+
 class TestLayerDiscipline:
     """Verify that Phase 4 code maintains three-layer architecture."""
 
     def test_ask_route_no_orchestration_import(self):
-        """ask.py should import from orchestration (allowed in adapter for wiring)."""
+        """ask.py should NOT import from orchestration (container-mediated wiring)."""
         import importlib
+
         module = importlib.import_module("aip.adapter.api.routes.ask")
         source = open(module.__file__).read()
-        # It's acceptable for adapter routes to import from orchestration
-        # for wiring purposes — the key constraint is GUI never imports orchestration
-        assert "from aip.orchestration.ask_pipeline import" in source
+        # Routes must access orchestration through the container, not via
+        # direct imports.  This was refactored to container-mediated wiring
+        # so that the adapter layer never statically depends on orchestration.
+        assert "from aip.orchestration" not in source
 
     def test_knowledge_route_no_orchestration_import(self):
         """knowledge.py should NOT import from orchestration."""
         import importlib
+
         module = importlib.import_module("aip.adapter.api.routes.knowledge")
         source = open(module.__file__).read()
         assert "from aip.orchestration" not in source
@@ -351,6 +372,7 @@ class TestLayerDiscipline:
     def test_ecs_route_no_orchestration_import(self):
         """ecs.py should NOT import from orchestration."""
         import importlib
+
         module = importlib.import_module("aip.adapter.api.routes.ecs")
         source = open(module.__file__).read()
         assert "from aip.orchestration" not in source
@@ -358,6 +380,7 @@ class TestLayerDiscipline:
     def test_sources_route_no_orchestration_import(self):
         """sources.py should NOT import from orchestration."""
         import importlib
+
         module = importlib.import_module("aip.adapter.api.routes.sources")
         source = open(module.__file__).read()
         assert "from aip.orchestration" not in source
@@ -365,12 +388,13 @@ class TestLayerDiscipline:
     def test_gui_api_client_no_orchestration_import(self):
         """api_client.py should NOT import from aip.orchestration (only HTTP calls)."""
         import pathlib
+
         gui_file = pathlib.Path(__file__).parent.parent / "gui" / "api_client.py"
         if not gui_file.exists():
             pytest.skip("gui/api_client.py not found")
         source = gui_file.read_text()
         # Check for import statements, not docstring mentions
-        import_lines = [line for line in source.split('\n') if line.strip().startswith(('import ', 'from '))]
+        import_lines = [line for line in source.split("\n") if line.strip().startswith(("import ", "from "))]
         for line in import_lines:
-            assert 'aip.orchestration' not in line, f"GUI should not import from orchestration: {line}"
-            assert 'aip.adapter' not in line, f"GUI should not import from adapter: {line}"
+            assert "aip.orchestration" not in line, f"GUI should not import from orchestration: {line}"
+            assert "aip.adapter" not in line, f"GUI should not import from adapter: {line}"

@@ -9,7 +9,7 @@ Layer: adapter. Imports only stdlib.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -30,7 +30,7 @@ class EntityAliasRegistry:
 
     def __init__(self, alias_path: str) -> None:
         self._entries: dict[str, AliasEntry] = {}  # canonical_name -> entry
-        self._alias_map: dict[str, str] = {}        # lowercased alias -> canonical_name
+        self._alias_map: dict[str, str] = {}  # lowercased alias -> canonical_name
         self._deprecated: set[str] = set()
         if os.path.isfile(alias_path):
             self._load(alias_path)
@@ -58,6 +58,7 @@ class EntityAliasRegistry:
                 # Strip outer brackets and split by commas inside quotes
                 inner = raw.strip("[]")
                 import re
+
                 items = re.findall(r'"([^"]+)"', inner)
                 return [i.strip() for i in items if i.strip()]
 
@@ -104,7 +105,9 @@ class EntityAliasRegistry:
                 line.startswith(k) for k in ("canonical_name:", "entity_type:", "domain:", "deprecated:")
             ):
                 # Multi-line aliases continuation (lines starting with spaces inside aliases list)
-                if current.get("aliases", "").rstrip().endswith(",") or current.get("aliases", "").rstrip().endswith("["):
+                if current.get("aliases", "").rstrip().endswith(",") or current.get("aliases", "").rstrip().endswith(
+                    "["
+                ):
                     current["aliases"] = current["aliases"] + " " + line
 
         if current.get("canonical_name"):

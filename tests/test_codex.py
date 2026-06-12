@@ -13,10 +13,6 @@ Tests cover:
 
 from __future__ import annotations
 
-import asyncio
-import os
-import sqlite3
-import tempfile
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -27,12 +23,8 @@ from aip.foundation.schemas.codex import (
     CodexContradiction,
     CodexDashboard,
     CodexSource,
-    CodexSourceStatus,
     CodexTopic,
-    ContradictionSeverity,
-    ContradictionStatus,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -105,7 +97,7 @@ def sample_contradiction():
         severity="critical",
         status="open",
         context="README says vector search is not built. STATUS says it is working. "
-                "CONFIGURATION says sqlite_vss is active. Resolution required.",
+        "CONFIGURATION says sqlite_vss is active. Resolution required.",
     )
 
 
@@ -544,15 +536,9 @@ class TestCodexStoreContradictionOps:
 
     @pytest.mark.asyncio
     async def test_list_contradictions(self, store):
-        c1 = CodexContradiction(
-            contradiction_id="c1", topic_id="t1", severity="critical", status="open"
-        )
-        c2 = CodexContradiction(
-            contradiction_id="c2", topic_id="t2", severity="minor", status="open"
-        )
-        c3 = CodexContradiction(
-            contradiction_id="c3", topic_id="t1", severity="major", status="resolved_correct"
-        )
+        c1 = CodexContradiction(contradiction_id="c1", topic_id="t1", severity="critical", status="open")
+        c2 = CodexContradiction(contradiction_id="c2", topic_id="t2", severity="minor", status="open")
+        c3 = CodexContradiction(contradiction_id="c3", topic_id="t1", severity="major", status="resolved_correct")
         await store.upsert_contradiction(c1)
         await store.upsert_contradiction(c2)
         await store.upsert_contradiction(c3)
@@ -574,9 +560,7 @@ class TestCodexStoreContradictionOps:
         topic = CodexTopic(topic_id="t1", domain="aip")
         await store.upsert_topic(topic)
 
-        c = CodexContradiction(
-            contradiction_id="c1", topic_id="t1", severity="critical", status="open"
-        )
+        c = CodexContradiction(contradiction_id="c1", topic_id="t1", severity="critical", status="open")
         await store.upsert_contradiction(c)
 
         # Verify topic count
@@ -702,9 +686,7 @@ class TestCodexStoreDashboard:
     async def test_get_stale_sources(self, store):
         # Add a stale source (last_updated 200 days ago)
         old_date = (datetime.now(timezone.utc) - timedelta(days=200)).isoformat()
-        old_source = CodexSource(
-            source_id="s-old", domain="aip", status="active", last_updated_at=old_date
-        )
+        old_source = CodexSource(source_id="s-old", domain="aip", status="active", last_updated_at=old_date)
         recent_source = CodexSource(
             source_id="s-recent",
             domain="aip",
@@ -834,12 +816,8 @@ class TestLibrarian:
         await store.initialize()
 
         # Add two sources with same content hash
-        s1 = CodexSource(
-            source_id="s1", domain="aip", status="active", content_hash="abc123"
-        )
-        s2 = CodexSource(
-            source_id="s2", domain="aip", status="active", content_hash="abc123"
-        )
+        s1 = CodexSource(source_id="s1", domain="aip", status="active", content_hash="abc123")
+        s2 = CodexSource(source_id="s2", domain="aip", status="active", content_hash="abc123")
         await store.upsert_source(s1)
         await store.upsert_source(s2)
 
@@ -964,7 +942,9 @@ class TestContradictionResolution:
             contradiction_id="contra-test",
             status="resolved_outdated",
             resolved_by="definer",
-            resolution_notes="README was outdated; STATUS reflects current state. CONFIGURATION confirms sqlite_vss is active.",
+            resolution_notes=(
+                "README was outdated; STATUS reflects current state. CONFIGURATION confirms sqlite_vss is active."
+            ),
         )
 
         # 5. Verify resolution

@@ -106,9 +106,12 @@ def _normalize_role(role: str) -> str:
         return "user"
     # Common AI assistant aliases (brand names split to avoid hardcoded-model check)
     _assistant_aliases = {
-        "assistant", "ai", "bot", "model",
+        "assistant",
+        "ai",
+        "bot",
+        "model",
         "chat" + "gpt",  # common export format role label
-        "cl" + "aude",   # common export format role label
+        "cl" + "aude",  # common export format role label
     }
     if role_lower in _assistant_aliases:
         return "assistant"

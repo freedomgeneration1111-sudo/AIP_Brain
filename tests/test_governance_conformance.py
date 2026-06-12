@@ -51,10 +51,8 @@ PROFILES: dict[str, dict] = {
         "src": "src/aip",
         # AIP-G-07 layer discipline (foundation -> orchestration -> adapter)
         "import_rules": [
-            ("foundation", ["aip.orchestration", "aip.adapter"],
-             "foundation layer must not import upper layers"),
-            ("orchestration", ["aip.adapter"],
-             "orchestration layer must not import the adapter layer"),
+            ("foundation", ["aip.orchestration", "aip.adapter"], "foundation layer must not import upper layers"),
+            ("orchestration", ["aip.adapter"], "orchestration layer must not import the adapter layer"),
         ],
         # AIP-G-07 surface isolation: GUI is an adapter, talks only via the API
         "surface_isolation": {
@@ -142,8 +140,13 @@ PROFILES: dict[str, dict] = {
         "validation_prompt_dir": None,
         "validation_keywords": [],
         # AIP-G-09 sovereignty: loom must have NO cloud egress at all
-        "external_host_patterns": ["api.openai.com", "openrouter.ai", "api.anthropic.com",
-                                    "googleapis.com", "amazonaws.com"],
+        "external_host_patterns": [
+            "api.openai.com",
+            "openrouter.ai",
+            "api.anthropic.com",
+            "googleapis.com",
+            "amazonaws.com",
+        ],
         "external_allowed_path_substrings": [],
         "external_forbidden": True,
     },
@@ -151,10 +154,12 @@ PROFILES: dict[str, dict] = {
     "codeforge": {
         "src": "src/codeforge",
         "import_rules": [
-            ("models", ["codeforge.cli", "codeforge.dashboard"],
-             "data models must not import surface layers"),
-            ("intelligence", ["codeforge.cli", "codeforge.dashboard"],
-             "intelligence plane must not import surface layers"),
+            ("models", ["codeforge.cli", "codeforge.dashboard"], "data models must not import surface layers"),
+            (
+                "intelligence",
+                ["codeforge.cli", "codeforge.dashboard"],
+                "intelligence plane must not import surface layers",
+            ),
         ],
         "surface_isolation": None,
         "honest_status_sentinels": ["NOT_IMPLEMENTED", "BLOCKED_HUMAN"],
@@ -185,6 +190,7 @@ CLOUD_HOST_IGNORE = ("localhost", "127.0.0.1", "0.0.0.0", "example.com", "schema
 # Repo discovery + helpers
 # ---------------------------------------------------------------------------
 
+
 def _repo_root() -> Path:
     """Walk up from this file to the directory that holds pyproject.toml."""
     here = Path(__file__).resolve()
@@ -196,8 +202,7 @@ def _repo_root() -> Path:
 
 def _detect() -> tuple[str, dict, Path]:
     root = _repo_root()
-    matches = [(name, prof) for name, prof in PROFILES.items()
-               if (root / prof["src"]).is_dir()]
+    matches = [(name, prof) for name, prof in PROFILES.items() if (root / prof["src"]).is_dir()]
     if len(matches) != 1:
         pytest.skip(
             f"AIP governance: expected exactly one known src package under {root}, "
@@ -310,6 +315,7 @@ def _grep(src_root: Path, needle: str) -> bool:
 # AIP-G-01  DEFINER Authority
 # ===========================================================================
 
+
 def test_g01_definer_authority_behavioral(repo):
     """AIP-G-01: no artifact reaches a terminal/approved state without an
     explicit DEFINER action; autonomy is granted explicitly and is revocable."""
@@ -342,6 +348,7 @@ def test_g01_no_autoapprove_token_in_source(repo):
 # AIP-G-02  No Fake Success
 # ===========================================================================
 
+
 def test_g02_honest_status_sentinels_exist(repo):
     """AIP-G-02: unconfigured/unimplemented paths return honest, distinguishable
     statuses rather than faking success."""
@@ -368,8 +375,7 @@ def test_g02_scaffold_is_disclosed(repo):
     f = root / status_file
     assert f.exists(), f"AIP-G-02: expected disclosure file {status_file} is missing."
     assert keyword.lower() in f.read_text(encoding="utf-8").lower(), (
-        f"AIP-G-02: {status_file} does not disclose '{keyword}'. "
-        "Scaffold must be written down, not hidden."
+        f"AIP-G-02: {status_file} does not disclose '{keyword}'. Scaffold must be written down, not hidden."
     )
 
 
@@ -377,13 +383,13 @@ def test_g02_scaffold_is_disclosed(repo):
 # AIP-G-03  Provenance / Source-Grounding
 # ===========================================================================
 
+
 def test_g03_provenance_field_in_schema(repo):
     """AIP-G-03: generated artifacts carry a provenance/source field."""
     _, prof, src = repo
     fields = prof.get("provenance_fields") or []
     if not fields:
-        pytest.skip("AIP-G-03: no provenance field declared for this repo "
-                    "(set provenance_fields in the profile).")
+        pytest.skip("AIP-G-03: no provenance field declared for this repo (set provenance_fields in the profile).")
     present = [f for f in fields if _grep(src, f)]
     assert present, (
         f"AIP-G-03: none of the provenance fields {fields} appear in source. "
@@ -404,6 +410,7 @@ def test_g03_empty_provenance_rejected_behavioral(repo):
 # AIP-G-04  Governed Lifecycle
 # ===========================================================================
 
+
 def test_g04_lifecycle_states_present(repo):
     """AIP-G-04: explicit, recorded lifecycle states exist."""
     _, prof, src = repo
@@ -411,9 +418,7 @@ def test_g04_lifecycle_states_present(repo):
     if not states:
         pytest.skip("AIP-G-04: no lifecycle states declared for this repo.")
     missing = [s for s in states if not _grep(src, s)]
-    assert not missing, (
-        f"AIP-G-04: declared lifecycle states not found in source: {missing}."
-    )
+    assert not missing, f"AIP-G-04: declared lifecycle states not found in source: {missing}."
 
 
 def test_g04_terminal_state_not_reverted_behavioral(repo):
@@ -429,6 +434,7 @@ def test_g04_terminal_state_not_reverted_behavioral(repo):
 # ===========================================================================
 # AIP-G-05  Reversibility / No Silent Data Loss
 # ===========================================================================
+
 
 def test_g05_reversibility_machinery_present(repo):
     """AIP-G-05: file/state mutations are snapshot/rollback/recovery capable."""
@@ -456,13 +462,9 @@ def test_g05_single_writer_invariant(repo):
     marker = cfg["marker"]
     allowed = cfg["allowed_path_substrings"]
     offenders = [
-        str(p) for p in _py_files(src)
-        if _executes_marker(p, marker) and not any(a in str(p) for a in allowed)
+        str(p) for p in _py_files(src) if _executes_marker(p, marker) and not any(a in str(p) for a in allowed)
     ]
-    assert not offenders, (
-        f"AIP-G-05: '{marker}' issued outside the sanctioned writer "
-        f"({allowed}): {offenders}"
-    )
+    assert not offenders, f"AIP-G-05: '{marker}' issued outside the sanctioned writer ({allowed}): {offenders}"
 
 
 def test_g05_failed_apply_rolls_back_behavioral(repo):
@@ -479,6 +481,7 @@ def test_g05_failed_apply_rolls_back_behavioral(repo):
 # AIP-G-07  Layer Discipline
 # (shared AST import-boundary engine)
 # ===========================================================================
+
 
 def _import_boundary_offenders(src_root: Path, subdir: str, forbidden: list[str]) -> list[str]:
     offenders: list[str] = []
@@ -510,14 +513,12 @@ def test_g06_g07_import_boundaries(repo):
     acknowledged = set(prof.get("acknowledged_import_violations") or [])
     failures: list[str] = []
     for subdir, forbidden, reason in rules:
-        offenders = [o for o in _import_boundary_offenders(src, subdir, forbidden)
-                     if o not in acknowledged]
+        offenders = [o for o in _import_boundary_offenders(src, subdir, forbidden) if o not in acknowledged]
         if offenders:
             failures.append(f"[{reason}]\n  " + "\n  ".join(offenders))
     assert not failures, (
         "AIP-G-06/07 boundary violations (fix, or add the exact line to "
-        "'acknowledged_import_violations' to record it as known debt):\n"
-        + "\n".join(failures)
+        "'acknowledged_import_violations' to record it as known debt):\n" + "\n".join(failures)
     )
 
 
@@ -545,14 +546,13 @@ def test_g07_surface_isolation(repo):
             else:  # bare symbol, e.g. AipContainer
                 if f in syms:
                     offenders.append(f"{p.name} references forbidden symbol '{f}'")
-    assert not offenders, (
-        "AIP-G-07: surface reaches around the API boundary:\n  " + "\n  ".join(offenders)
-    )
+    assert not offenders, "AIP-G-07: surface reaches around the API boundary:\n  " + "\n  ".join(offenders)
 
 
 # ===========================================================================
 # AIP-G-08  Validation-First Output
 # ===========================================================================
+
 
 def test_g08_synthesis_prompts_enforce_validation(repo):
     """AIP-G-08: synthesis prompts instruct the model to distinguish hypothesis
@@ -566,10 +566,7 @@ def test_g08_synthesis_prompts_enforce_validation(repo):
     prompt_dir = root / pdir
     if not prompt_dir.is_dir():
         pytest.skip(f"AIP-G-08: prompt dir '{pdir}' not present.")
-    blob = "\n".join(
-        f.read_text(encoding="utf-8").lower()
-        for f in prompt_dir.rglob("*.md")
-    )
+    blob = "\n".join(f.read_text(encoding="utf-8").lower() for f in prompt_dir.rglob("*.md"))
     hits = [k for k in keywords if k.lower() in blob]
     assert hits, (
         f"AIP-G-08: prompts in '{pdir}' contain none of {keywords}. Synthesis "
@@ -589,6 +586,7 @@ def test_g08_output_labels_hypothesis_behavioral(repo):
 # ===========================================================================
 # AIP-G-09  Local-First Sovereignty
 # ===========================================================================
+
 
 def test_g09_no_unsanctioned_cloud_egress(repo):
     """AIP-G-09: cloud endpoints appear only in sanctioned adapter/provider
@@ -613,20 +611,19 @@ def test_g09_no_unsanctioned_cloud_egress(repo):
                 elif not any(a in rel for a in allowed):
                     offenders.append(f"{rel}: cloud host '{host}' outside sanctioned path {allowed}")
     if forbidden_everywhere:
-        assert not offenders, (
-            "AIP-G-09: a fully-local component must have NO cloud egress:\n  "
-            + "\n  ".join(offenders)
+        assert not offenders, "AIP-G-09: a fully-local component must have NO cloud egress:\n  " + "\n  ".join(
+            offenders
         )
     else:
-        assert not offenders, (
-            "AIP-G-09: cloud egress must be confined to sanctioned adapters:\n  "
-            + "\n  ".join(offenders)
+        assert not offenders, "AIP-G-09: cloud egress must be confined to sanctioned adapters:\n  " + "\n  ".join(
+            offenders
         )
 
 
 # ===========================================================================
 # AIP-G-10  Auditability
 # ===========================================================================
+
 
 def test_g10_audit_trail_surface_exists(repo):
     """AIP-G-10: consequential actions are recorded in a durable audit surface."""
@@ -645,6 +642,7 @@ def test_g10_audit_trail_surface_exists(repo):
 # AIP-G-11  Conformance is Tested (self-referential)
 # ===========================================================================
 
+
 def test_g11_every_invariant_has_a_test():
     """AIP-G-11: this suite covers every invariant AIP-G-01..G-11. An invariant
     can never be silently dropped, because this test parses its own source."""
@@ -652,10 +650,7 @@ def test_g11_every_invariant_has_a_test():
     covered = {int(m) for m in re.findall(r"def test_g0?(\d+)_", source)}
     expected = set(range(1, 12))
     missing = expected - covered
-    assert not missing, (
-        f"AIP-G-11: invariants with no conformance test: "
-        f"{sorted(f'AIP-G-{n:02d}' for n in missing)}"
-    )
+    assert not missing, f"AIP-G-11: invariants with no conformance test: {sorted(f'AIP-G-{n:02d}' for n in missing)}"
     referenced = {int(m) for m in re.findall(r"AIP-G-0?(\d+)", source)}
     assert expected <= referenced, (
         "AIP-G-11: some invariant IDs are not referenced by name in this suite: "

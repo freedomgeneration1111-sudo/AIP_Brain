@@ -19,14 +19,7 @@ from __future__ import annotations
 import os
 import tempfile
 
-import pytest
-
-from aip.adapter.artifact_store_versioned import VersionedArtifactStore
-from aip.adapter.ecs_store_persistent import PersistentEcsStore
-from aip.adapter.event_store_queryable import QueryableEventStore
-from aip.adapter.project.sqlite_project_store import SqliteProjectStore
 from aip.foundation.schemas.artifact import (
-    ArtifactLedgerEntry,
     ArtifactMetadata,
     ReviewQueueSummary,
 )
@@ -44,10 +37,8 @@ from aip.orchestration.review_export_pipeline import (
     export_artifact,
     export_project,
     review_approve,
-    review_list,
     review_reject,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -377,13 +368,10 @@ class TestExportAuditTrail:
             await review_approve(aid_normal, stores)
 
             # Normal export
-            normal_result = await export_artifact(
-                aid_normal, os.path.join(tmp, "normal.md"), stores
-            )
+            normal_result = await export_artifact(aid_normal, os.path.join(tmp, "normal.md"), stores)
             # Force export
             force_result = await export_artifact(
-                aid_force, os.path.join(tmp, "force.md"), stores,
-                force=True, force_reason="Emergency"
+                aid_force, os.path.join(tmp, "force.md"), stores, force=True, force_reason="Emergency"
             )
 
             # Normal export should NOT have force markers
@@ -448,7 +436,7 @@ class TestPlainTextExport:
             # Plain text format: no YAML frontmatter delimiters (--- on own line)
             # The separator uses 60 dashes on its own line, but no YAML --- blocks
             lines = content.split("\n")
-            yaml_frontmatter_lines = [l.strip() for l in lines if l.strip() == "---"]
+            yaml_frontmatter_lines = [line.strip() for line in lines if line.strip() == "---"]
             assert len(yaml_frontmatter_lines) == 0, "Plain text should not have YAML frontmatter"
             assert "**Provenance**" not in content  # No bold markdown
             assert "Plain text content" in content
@@ -533,7 +521,7 @@ class TestArtifactLedger:
             await review_reject(aid, stores, note="Not good enough")
 
             # Need export stores for reject
-            export_stores = await _create_export_stores(tmp)
+            await _create_export_stores(tmp)
 
             result = await artifact_ledger(aid, stores)
 
@@ -649,8 +637,7 @@ class TestReviewDashboard:
             export_stores = await _create_export_stores(tmp)
             out_path = os.path.join(tmp, "force.md")
             await export_artifact(
-                create_result["artifact_id"], out_path, export_stores,
-                force=True, force_reason="Dashboard test"
+                create_result["artifact_id"], out_path, export_stores, force=True, force_reason="Dashboard test"
             )
             await export_stores.close()
 
@@ -694,9 +681,9 @@ class TestReviewDashboard:
 
             export_stores = await _create_export_stores(tmp)
             from aip.orchestration.review_export_pipeline import review_needs_revision
+
             await review_needs_revision(
-                create_result["artifact_id"], export_stores,
-                instruction="Please expand section 2"
+                create_result["artifact_id"], export_stores, instruction="Please expand section 2"
             )
 
             result = await review_dashboard(stores)
@@ -790,6 +777,7 @@ class TestCLIRegistration:
 
     def test_artifact_command_registered(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -799,6 +787,7 @@ class TestCLIRegistration:
 
     def test_artifact_create_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -809,6 +798,7 @@ class TestCLIRegistration:
 
     def test_artifact_ledger_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -818,6 +808,7 @@ class TestCLIRegistration:
 
     def test_review_note_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -827,6 +818,7 @@ class TestCLIRegistration:
 
     def test_review_dashboard_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -835,6 +827,7 @@ class TestCLIRegistration:
 
     def test_export_text_format_option(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -844,6 +837,7 @@ class TestCLIRegistration:
 
     def test_export_project_text_format_option(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -869,7 +863,10 @@ class TestFullLifecycle:
 
             # 1. Create artifact
             create_result = await artifact_create(
-                content="This is a complete lifecycle test document. It demonstrates the full GENERATED → REVIEWED → APPROVED → EXPORTED path.",
+                content=(
+                    "This is a complete lifecycle test document. It demonstrates "
+                    "the full GENERATED → REVIEWED → APPROVED → EXPORTED path."
+                ),
                 stores=lifecycle_stores,
                 title="Lifecycle Test Document",
                 description="Testing the full artifact lifecycle",
@@ -883,9 +880,7 @@ class TestFullLifecycle:
             assert create_result["lifecycle_state"] == "GENERATED"
 
             # 2. Add reviewer notes
-            note_result = await review_add_note(
-                aid, lifecycle_stores, note="Sources look solid. Minor style issues."
-            )
+            note_result = await review_add_note(aid, lifecycle_stores, note="Sources look solid. Minor style issues.")
             assert "error" not in note_result
             assert note_result["lifecycle_state"] == "GENERATED"  # Unchanged
 

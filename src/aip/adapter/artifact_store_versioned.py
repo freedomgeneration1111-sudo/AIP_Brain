@@ -257,10 +257,7 @@ class VersionedArtifactStore(StoreHealthMixin):
             )
             cursor = await conn.execute(sql, ids)
             rows = await cursor.fetchall()
-            return {
-                row[0]: json.loads(row[1]) if row[1] else {}
-                for row in rows
-            }
+            return {row[0]: json.loads(row[1]) if row[1] else {} for row in rows}
         except Exception:
             await self._reset_conn()
             raise
@@ -286,10 +283,7 @@ class VersionedArtifactStore(StoreHealthMixin):
             )
             cursor = await conn.execute(sql, ids)
             rows = await cursor.fetchall()
-            return {
-                row[0]: (row[1], json.loads(row[2]) if row[2] else {})
-                for row in rows
-            }
+            return {row[0]: (row[1], json.loads(row[2]) if row[2] else {}) for row in rows}
         except Exception:
             await self._reset_conn()
             raise
@@ -341,12 +335,14 @@ class VersionedArtifactStore(StoreHealthMixin):
             results = []
             for row in rows:
                 metadata = json.loads(row[2]) if row[2] else {}
-                results.append({
-                    "id": row[0],
-                    "content": row[1],
-                    "metadata": metadata,
-                    "created_at": row[3],
-                })
+                results.append(
+                    {
+                        "id": row[0],
+                        "content": row[1],
+                        "metadata": metadata,
+                        "created_at": row[3],
+                    }
+                )
             return results
         except Exception:
             await self._reset_conn()

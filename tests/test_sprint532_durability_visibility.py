@@ -16,19 +16,16 @@ import sqlite3
 import tempfile
 import time
 from datetime import datetime, timezone
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
+from aip.adapter.alert_history_store import AlertHistoryStore
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
 )
-from aip.adapter.alert_history_store import AlertHistoryStore
-from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
-
 
 # ============================================================================
 # Deliverable 1: Alert Delivery Status Persistence
@@ -38,68 +35,80 @@ from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
 class TestDeliveryStatusPersistence:
     """Tests for delivery status persistence across restarts."""
 
-    def test_delivery_status_persisted_to_store(self):
+    @pytest.mark.asyncio
+    async def test_delivery_status_persisted_to_store(self):
         """Delivery status is persisted to AlertHistoryStore on creation."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                digest_enabled=True,
-                digest_min_alerts=100,
-                digest_interval_minutes=60,
-            ))
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    digest_enabled=True,
+                    digest_min_alerts=100,
+                    digest_interval_minutes=60,
+                )
+            )
             mgr.attach_history_store(store)
 
             # Send a buffered alert (info severity + digest enabled)
-            correlation_id = mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="info",
-                subject="test_persist",
-                message="Test persistence",
-            ))
+            correlation_id = mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="info",
+                    subject="test_persist",
+                    message="Test persistence",
+                )
+            )
 
             # The status should be persisted in the store
-            persisted = store.get_delivery_status_by_correlation_id(correlation_id)
+            persisted = await store.get_delivery_status_by_correlation_id(correlation_id)
             assert persisted is not None
             assert persisted["status"] == "buffered_for_digest"
             assert persisted["alert_type"] == "batch_reduction"
 
-    def test_delivery_status_survives_restart(self):
+    @pytest.mark.asyncio
+    async def test_delivery_status_survives_restart(self):
         """Delivery status is queryable after a process restart via the store."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = os.path.join(tmp_dir, "alerts.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            await store.initialize()
 
             # First instance: send alert and persist status
-            mgr1 = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                digest_enabled=True,
-                digest_min_alerts=100,
-                digest_interval_minutes=60,
-            ))
+            mgr1 = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    digest_enabled=True,
+                    digest_min_alerts=100,
+                    digest_interval_minutes=60,
+                )
+            )
             mgr1.attach_history_store(store)
 
-            correlation_id = mgr1.send_alert(Alert(
-                alert_type="quality_degradation",
-                severity="info",
-                subject="test_restart",
-                message="Test restart persistence",
-            ))
+            correlation_id = mgr1.send_alert(
+                Alert(
+                    alert_type="quality_degradation",
+                    severity="info",
+                    subject="test_restart",
+                    message="Test restart persistence",
+                )
+            )
 
             # Verify it was persisted
-            persisted = store.get_delivery_status_by_correlation_id(correlation_id)
+            persisted = await store.get_delivery_status_by_correlation_id(correlation_id)
             assert persisted is not None
 
             # Second instance: new AlertManager with same store
-            mgr2 = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-            ))
+            mgr2 = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                )
+            )
             mgr2.attach_history_store(store)
 
             # Delivery status should be rebuilt from store
@@ -108,55 +117,63 @@ class TestDeliveryStatusPersistence:
             assert status["correlation_id"] == correlation_id
             assert status["status"] == "buffered_for_digest"
 
-    def test_delivery_status_updated_on_completion(self):
+    @pytest.mark.asyncio
+    async def test_delivery_status_updated_on_completion(self):
         """Delivery status is updated in the store when delivery completes."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                webhook_url="https://invalid-host.local/hook",
-                webhook_max_retries=0,
-            ))
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    webhook_url="https://invalid-host.local/hook",
+                    webhook_max_retries=0,
+                )
+            )
             mgr.attach_history_store(store)
 
-            correlation_id = mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="warning",
-                subject="test_update",
-                message="Test status update",
-            ))
+            correlation_id = mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="test_update",
+                    message="Test status update",
+                )
+            )
 
             # Wait for background dispatch
             time.sleep(0.5)
 
             # The store should have an updated status (not "dispatching")
-            persisted = store.get_delivery_status_by_correlation_id(correlation_id)
+            persisted = await store.get_delivery_status_by_correlation_id(correlation_id)
             if persisted is not None:
                 assert persisted["status"] in ("delivered", "partial", "failed")
 
-    def test_update_delivery_status_in_store(self):
+    @pytest.mark.asyncio
+    async def test_update_delivery_status_in_store(self):
         """AlertHistoryStore.update_delivery_status() updates the record."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             # Record initial status
-            store.record_delivery_status({
-                "correlation_id": "test-corr-123",
-                "status": "dispatching",
-                "alert_type": "test",
-                "severity": "info",
-                "subject": "test",
-                "transports": ["webhook"],
-                "transport_results": {},
-                "dispatched_at": datetime.now(timezone.utc).isoformat(),
-            })
+            await store.record_delivery_status(
+                {
+                    "correlation_id": "test-corr-123",
+                    "status": "dispatching",
+                    "alert_type": "test",
+                    "severity": "info",
+                    "subject": "test",
+                    "transports": ["webhook"],
+                    "transport_results": {},
+                    "dispatched_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
 
             # Update to delivered
-            updated = store.update_delivery_status(
+            updated = await store.update_delivery_status(
                 correlation_id="test-corr-123",
                 status="delivered",
                 completed_at=datetime.now(timezone.utc).isoformat(),
@@ -164,63 +181,70 @@ class TestDeliveryStatusPersistence:
             assert updated is True
 
             # Verify the update
-            result = store.get_delivery_status_by_correlation_id("test-corr-123")
+            result = await store.get_delivery_status_by_correlation_id("test-corr-123")
             assert result is not None
             assert result["status"] == "delivered"
             assert result["completed_at"] != ""
 
-    def test_get_recent_delivery_statuses(self):
+    @pytest.mark.asyncio
+    async def test_get_recent_delivery_statuses(self):
         """AlertHistoryStore.get_recent_delivery_statuses() returns recent records."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             # Record several statuses
             for i in range(5):
-                store.record_delivery_status({
-                    "correlation_id": f"test-corr-{i}",
-                    "status": "delivered",
-                    "alert_type": "test",
-                    "severity": "info",
-                    "subject": f"test_{i}",
-                    "transports": ["webhook"],
-                    "transport_results": {"webhook": {"status": "delivered"}},
-                    "dispatched_at": datetime.now(timezone.utc).isoformat(),
-                })
+                await store.record_delivery_status(
+                    {
+                        "correlation_id": f"test-corr-{i}",
+                        "status": "delivered",
+                        "alert_type": "test",
+                        "severity": "info",
+                        "subject": f"test_{i}",
+                        "transports": ["webhook"],
+                        "transport_results": {"webhook": {"status": "delivered"}},
+                        "dispatched_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
 
             # Get recent statuses
-            recent = store.get_recent_delivery_statuses(limit=3)
+            recent = await store.get_recent_delivery_statuses(limit=3)
             assert len(recent) == 3
 
-    def test_get_alert_by_correlation_id(self):
+    @pytest.mark.asyncio
+    async def test_get_alert_by_correlation_id(self):
         """AlertHistoryStore.get_alert_by_correlation_id() looks up alerts."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             # Record an alert with a correlation ID
-            store.record_alert({
-                "alert_type": "batch_reduction",
-                "severity": "warning",
-                "subject": "test_lookup",
-                "message": "Test correlation lookup",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "correlation_id": "test-corr-lookup",
-            })
+            await store.record_alert(
+                {
+                    "alert_type": "batch_reduction",
+                    "severity": "warning",
+                    "subject": "test_lookup",
+                    "message": "Test correlation lookup",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "correlation_id": "test-corr-lookup",
+                }
+            )
 
             # Look up by correlation ID
-            alert = store.get_alert_by_correlation_id("test-corr-lookup")
+            alert = await store.get_alert_by_correlation_id("test-corr-lookup")
             assert alert is not None
             assert alert["alert_type"] == "batch_reduction"
             assert alert["correlation_id"] == "test-corr-lookup"
 
-    def test_get_alert_by_correlation_id_not_found(self):
+    @pytest.mark.asyncio
+    async def test_get_alert_by_correlation_id_not_found(self):
         """get_alert_by_correlation_id() returns None for unknown IDs."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
-            result = store.get_alert_by_correlation_id("nonexistent-corr-id")
+            result = await store.get_alert_by_correlation_id("nonexistent-corr-id")
             assert result is None
 
 
@@ -280,18 +304,22 @@ class TestWebSocketDashboard:
         mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
 
         # Send some alerts to create groups
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="shared_subject",
-            message="Alert 1",
-        ))
-        mgr.send_alert(Alert(
-            alert_type="quality_degradation",
-            severity="critical",
-            subject="shared_subject",
-            message="Alert 2 (same subject)",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="shared_subject",
+                message="Alert 1",
+            )
+        )
+        mgr.send_alert(
+            Alert(
+                alert_type="quality_degradation",
+                severity="critical",
+                subject="shared_subject",
+                message="Alert 2 (same subject)",
+            )
+        )
 
         container = MagicMock()
         container._alert_manager = mgr
@@ -323,25 +351,31 @@ class TestAlertCorrelationGrouping:
 
     def test_alerts_with_same_subject_grouped(self):
         """Alerts with the same subject are grouped together."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+            )
+        )
 
-        mgr.send_alert(Alert(
-            alert_type="pool_adjustment",
-            severity="warning",
-            subject="vigil_store",
-            message="Pool exhaustion",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="pool_adjustment",
+                severity="warning",
+                subject="vigil_store",
+                message="Pool exhaustion",
+            )
+        )
         # Reset rate limit
         mgr.lifecycle_mgr._last_alert_time.clear()
-        mgr.send_alert(Alert(
-            alert_type="quality_degradation",
-            severity="critical",
-            subject="vigil_store",
-            message="Quality degradation on same store",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="quality_degradation",
+                severity="critical",
+                subject="vigil_store",
+                message="Quality degradation on same store",
+            )
+        )
 
         groups = mgr.get_alert_groups()
         assert "vigil_store" in groups
@@ -349,23 +383,29 @@ class TestAlertCorrelationGrouping:
 
     def test_alerts_with_different_subjects_not_grouped(self):
         """Alerts with different subjects are in different groups."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+            )
+        )
 
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="subject_a",
-            message="Alert A",
-        ))
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="subject_b",
-            message="Alert B",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="subject_a",
+                message="Alert A",
+            )
+        )
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="subject_b",
+                message="Alert B",
+            )
+        )
 
         groups = mgr.get_alert_groups()
         assert "subject_a" in groups
@@ -373,63 +413,77 @@ class TestAlertCorrelationGrouping:
         assert len(groups["subject_a"]) == 1
         assert len(groups["subject_b"]) == 1
 
-    def test_bulk_acknowledge_group(self):
+    @pytest.mark.asyncio
+    async def test_bulk_acknowledge_group(self):
         """bulk_acknowledge_group() acknowledges all alerts in a group."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-            ))
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                )
+            )
             mgr.attach_history_store(store)
 
             # Send two alerts with the same subject
-            mgr.send_alert(Alert(
-                alert_type="pool_adjustment",
-                severity="warning",
-                subject="shared_store",
-                message="Pool alert",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="pool_adjustment",
+                    severity="warning",
+                    subject="shared_store",
+                    message="Pool alert",
+                )
+            )
             mgr.lifecycle_mgr._last_alert_time.clear()
-            mgr.send_alert(Alert(
-                alert_type="quality_degradation",
-                severity="critical",
-                subject="shared_store",
-                message="Quality alert",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="quality_degradation",
+                    severity="critical",
+                    subject="shared_store",
+                    message="Quality alert",
+                )
+            )
 
             # Bulk acknowledge the group
             result = mgr.bulk_acknowledge_group("shared_store", acknowledged_by="test_op")
             assert result["group_key"] == "shared_store"
             assert result["acknowledged"] == 2
 
-    def test_bulk_dismiss_group(self):
+    @pytest.mark.asyncio
+    async def test_bulk_dismiss_group(self):
         """bulk_dismiss_group() dismisses all alerts in a group."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-            ))
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                )
+            )
             mgr.attach_history_store(store)
 
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="warning",
-                subject="dismiss_group",
-                message="To be dismissed",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="warning",
+                    subject="dismiss_group",
+                    message="To be dismissed",
+                )
+            )
             mgr.lifecycle_mgr._last_alert_time.clear()
-            mgr.send_alert(Alert(
-                alert_type="quality_degradation",
-                severity="info",
-                subject="dismiss_group",
-                message="Also dismissed",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="quality_degradation",
+                    severity="info",
+                    subject="dismiss_group",
+                    message="Also dismissed",
+                )
+            )
 
             result = mgr.bulk_dismiss_group("dismiss_group", dismissed_by="test_op")
             assert result["group_key"] == "dismiss_group"
@@ -446,23 +500,25 @@ class TestAlertCorrelationGrouping:
     async def test_bulk_acknowledge_endpoint(self):
         """POST /vigil/quality/alerts/groups/bulk-acknowledge endpoint works."""
         from aip.adapter.api.routes.vigil_quality import (
-            vigil_bulk_acknowledge,
             BulkActionRequest,
+            vigil_bulk_acknowledge,
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
             mgr.attach_history_store(store)
 
-            mgr.send_alert(Alert(
-                alert_type="pool_adjustment",
-                severity="warning",
-                subject="endpoint_group",
-                message="Test bulk ack endpoint",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="pool_adjustment",
+                    severity="warning",
+                    subject="endpoint_group",
+                    message="Test bulk ack endpoint",
+                )
+            )
 
             container = MagicMock()
             container._alert_manager = mgr
@@ -476,23 +532,25 @@ class TestAlertCorrelationGrouping:
     async def test_bulk_dismiss_endpoint(self):
         """POST /vigil/quality/alerts/groups/bulk-dismiss endpoint works."""
         from aip.adapter.api.routes.vigil_quality import (
-            vigil_bulk_dismiss,
             BulkActionRequest,
+            vigil_bulk_dismiss,
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            await store.initialize()
 
             mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
             mgr.attach_history_store(store)
 
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="info",
-                subject="dismiss_endpoint_group",
-                message="Test bulk dismiss endpoint",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="info",
+                    subject="dismiss_endpoint_group",
+                    message="Test bulk dismiss endpoint",
+                )
+            )
 
             container = MagicMock()
             container._alert_manager = mgr
@@ -504,17 +562,21 @@ class TestAlertCorrelationGrouping:
 
     def test_alert_groups_count_in_status(self):
         """AlertManager.get_status() includes alert_groups count."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+            )
+        )
 
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="status_test",
-            message="Group count test",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="status_test",
+                message="Group count test",
+            )
+        )
 
         status = mgr.get_status()
         assert "alert_groups" in status
@@ -547,15 +609,17 @@ class TestDigestCustomization:
 
     def test_get_digest_settings_with_override(self):
         """_get_digest_settings() returns per-type overrides when set."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            digest_enabled=True,
-            digest_interval_minutes=15,
-            digest_min_alerts=3,
-            digest_overrides={
-                "batch_reduction": {"interval_minutes": 5, "min_alerts": 2},
-            },
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                digest_enabled=True,
+                digest_interval_minutes=15,
+                digest_min_alerts=3,
+                digest_overrides={
+                    "batch_reduction": {"interval_minutes": 5, "min_alerts": 2},
+                },
+            )
+        )
 
         # Overridden type
         interval, min_alerts = mgr._get_digest_settings("batch_reduction")
@@ -569,12 +633,14 @@ class TestDigestCustomization:
 
     def test_get_digest_settings_no_overrides(self):
         """_get_digest_settings() returns global defaults when no overrides."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            digest_enabled=True,
-            digest_interval_minutes=20,
-            digest_min_alerts=5,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                digest_enabled=True,
+                digest_interval_minutes=20,
+                digest_min_alerts=5,
+            )
+        )
 
         interval, min_alerts = mgr._get_digest_settings("batch_reduction")
         assert interval == 20
@@ -582,25 +648,29 @@ class TestDigestCustomization:
 
     def test_digest_uses_per_type_threshold(self):
         """Digest buffer flushes based on per-type min_alerts override."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            digest_enabled=True,
-            digest_interval_minutes=60,  # Long interval so count triggers first
-            digest_min_alerts=100,  # High global threshold
-            digest_overrides={
-                "batch_reduction": {"interval_minutes": 60, "min_alerts": 2},
-            },
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                digest_enabled=True,
+                digest_interval_minutes=60,  # Long interval so count triggers first
+                digest_min_alerts=100,  # High global threshold
+                digest_overrides={
+                    "batch_reduction": {"interval_minutes": 60, "min_alerts": 2},
+                },
+            )
+        )
 
         # Send 2 batch_reduction alerts — should flush because per-type override is min_alerts=2
         for i in range(2):
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="info",
-                subject=f"digest_test_{i}",
-                message=f"Info alert {i}",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="info",
+                    subject=f"digest_test_{i}",
+                    message=f"Info alert {i}",
+                )
+            )
 
         # Buffer should be empty after flush (triggered by per-type override)
         assert len(mgr.digest_mgr._digest_buffer) == 0
@@ -612,13 +682,15 @@ class TestDigestCustomization:
 
     def test_digest_overrides_in_status(self):
         """AlertManager.get_status() includes digest overrides."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            digest_enabled=True,
-            digest_overrides={
-                "batch_reduction": {"interval_minutes": 5, "min_alerts": 2},
-            },
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                digest_enabled=True,
+                digest_overrides={
+                    "batch_reduction": {"interval_minutes": 5, "min_alerts": 2},
+                },
+            )
+        )
 
         status = mgr.get_status()
         assert "overrides" in status["digest"]
@@ -626,22 +698,26 @@ class TestDigestCustomization:
 
     def test_digest_flush_counter_in_status(self):
         """AlertManager.get_status() includes digest flush count."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            digest_enabled=True,
-            digest_min_alerts=2,
-            digest_interval_minutes=60,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                digest_enabled=True,
+                digest_min_alerts=2,
+                digest_interval_minutes=60,
+            )
+        )
 
         # Trigger a digest flush
         for i in range(2):
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="info",
-                subject=f"flush_count_{i}",
-                message=f"Flush count test {i}",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="info",
+                    subject=f"flush_count_{i}",
+                    message=f"Flush count test {i}",
+                )
+            )
 
         status = mgr.get_status()
         assert status["digest"]["total_flushes"] >= 1
@@ -681,18 +757,22 @@ class TestHealthEndpointMetrics:
         mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=300))
 
         # Send one alert, then try another immediately (rate-limited)
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="rate_limit_test",
-            message="First alert",
-        ))
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="rate_limit_test",
-            message="Rate-limited alert",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="rate_limit_test",
+                message="First alert",
+            )
+        )
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="rate_limit_test",
+                message="Rate-limited alert",
+            )
+        )
 
         container = MagicMock()
         container._alert_manager = mgr
@@ -709,22 +789,26 @@ class TestHealthEndpointMetrics:
         """Health endpoint includes digest flush count."""
         from aip.adapter.api.routes.vigil_quality import vigil_quality_health
 
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            digest_enabled=True,
-            digest_min_alerts=2,
-            digest_interval_minutes=60,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                digest_enabled=True,
+                digest_min_alerts=2,
+                digest_interval_minutes=60,
+            )
+        )
 
         # Trigger a digest flush
         for i in range(2):
-            mgr.send_alert(Alert(
-                alert_type="batch_reduction",
-                severity="info",
-                subject=f"health_digest_{i}",
-                message=f"Digest test {i}",
-            ))
+            mgr.send_alert(
+                Alert(
+                    alert_type="batch_reduction",
+                    severity="info",
+                    subject=f"health_digest_{i}",
+                    message=f"Digest test {i}",
+                )
+            )
 
         container = MagicMock()
         container._alert_manager = mgr
@@ -741,20 +825,24 @@ class TestHealthEndpointMetrics:
         """Health endpoint includes delivery success/failure by transport."""
         from aip.adapter.api.routes.vigil_quality import vigil_quality_health
 
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            webhook_url="https://invalid-host.local/hook",
-            webhook_max_retries=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                webhook_url="https://invalid-host.local/hook",
+                webhook_max_retries=0,
+            )
+        )
 
         # Send an alert that will fail on webhook
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="transport_metrics_test",
-            message="Transport metrics test",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="transport_metrics_test",
+                message="Transport metrics test",
+            )
+        )
 
         # Wait for delivery
         time.sleep(0.5)
@@ -797,12 +885,14 @@ class TestHealthEndpointMetrics:
         mgr = AlertManager(AlertConfig(enabled=True, min_alert_interval_seconds=0))
 
         # Create an alert group
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="health_group_test",
-            message="Health group test",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="health_group_test",
+                message="Health group test",
+            )
+        )
 
         container = MagicMock()
         container._alert_manager = mgr
@@ -817,19 +907,23 @@ class TestHealthEndpointMetrics:
 
     def test_delivery_success_failure_tracking(self):
         """AlertManager tracks delivery success/failure counts by transport."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            min_alert_interval_seconds=0,
-            webhook_url="https://invalid-host.local/hook",
-            webhook_max_retries=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                min_alert_interval_seconds=0,
+                webhook_url="https://invalid-host.local/hook",
+                webhook_max_retries=0,
+            )
+        )
 
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction",
-            severity="warning",
-            subject="tracking_test",
-            message="Delivery tracking test",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="tracking_test",
+                message="Delivery tracking test",
+            )
+        )
 
         # Wait for dispatch
         time.sleep(0.5)
@@ -849,7 +943,8 @@ class TestHealthEndpointMetrics:
 class TestSchemaMigrationV4:
     """Tests for AlertHistoryStore schema migration from v3 to v4."""
 
-    def test_migration_v3_to_v4_adds_methods(self):
+    @pytest.mark.asyncio
+    async def test_migration_v3_to_v4_adds_methods(self):
         """Schema v3→v4 migration adds new method capabilities."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = os.path.join(tmp_dir, "alerts.db")
@@ -926,22 +1021,24 @@ class TestSchemaMigrationV4:
 
             # Migrate to v4
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            await store.initialize()
 
             # Verify the new methods work
-            store.record_delivery_status({
-                "correlation_id": "migration-test",
-                "status": "dispatching",
-                "alert_type": "test",
-                "severity": "info",
-                "subject": "test",
-                "transports": ["webhook"],
-                "transport_results": {},
-                "dispatched_at": datetime.now(timezone.utc).isoformat(),
-            })
+            await store.record_delivery_status(
+                {
+                    "correlation_id": "migration-test",
+                    "status": "dispatching",
+                    "alert_type": "test",
+                    "severity": "info",
+                    "subject": "test",
+                    "transports": ["webhook"],
+                    "transport_results": {},
+                    "dispatched_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
 
             # Update the status
-            updated = store.update_delivery_status(
+            updated = await store.update_delivery_status(
                 correlation_id="migration-test",
                 status="delivered",
                 completed_at=datetime.now(timezone.utc).isoformat(),
@@ -949,10 +1046,10 @@ class TestSchemaMigrationV4:
             assert updated is True
 
             # Get recent statuses
-            recent = store.get_recent_delivery_statuses(limit=10)
+            recent = await store.get_recent_delivery_statuses(limit=10)
             assert len(recent) >= 1
 
             # Get by correlation ID
-            result = store.get_delivery_status_by_correlation_id("migration-test")
+            result = await store.get_delivery_status_by_correlation_id("migration-test")
             assert result is not None
             assert result["status"] == "delivered"

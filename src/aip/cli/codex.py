@@ -184,15 +184,14 @@ def codex_stale_cmd(threshold: int, limit: int, db_path: str | None) -> None:
 
     async def _run():
         from aip.foundation.schemas.codex import CodexConfig
-        config = CodexConfig(stale_threshold_days=threshold)
+
+        CodexConfig(stale_threshold_days=threshold)
 
         store = CodexStore(db_path=resolved_db_path)
         await store.initialize()
         try:
             # Stale sources
-            stale_sources = await store.get_stale_sources(
-                threshold_days=threshold, limit=limit
-            )
+            stale_sources = await store.get_stale_sources(threshold_days=threshold, limit=limit)
 
             # Stale topics
             stale_topics = await store.get_stale_topics(staleness_threshold=0.3, limit=limit)
@@ -214,8 +213,7 @@ def codex_stale_cmd(threshold: int, limit: int, db_path: str | None) -> None:
                 for t in stale_topics:
                     title = t.title or t.topic_id
                     click.echo(
-                        f"    ● {t.topic_id:<40s}  staleness: {t.staleness_score:.2f}  "
-                        f"sources: {len(t.source_ids)}"
+                        f"    ● {t.topic_id:<40s}  staleness: {t.staleness_score:.2f}  sources: {len(t.source_ids)}"
                     )
             else:
                 click.echo("\n  No stale topics found.")
@@ -287,9 +285,7 @@ def codex_contradictions_cmd(
                 return
 
             # List contradictions
-            contradictions = await store.list_contradictions(
-                status=status, severity=severity, limit=limit
-            )
+            contradictions = await store.list_contradictions(status=status, severity=severity, limit=limit)
 
             if not contradictions:
                 click.echo(f"No {status} contradictions found.")
@@ -367,18 +363,22 @@ def codex_dashboard_cmd(db_path: str | None) -> None:
 
             # Sources
             click.echo("  Sources:")
-            click.echo(f"    Total: {dash.total_sources}  "
-                       f"Active: {dash.active_sources}  "
-                       f"Stale: {dash.stale_sources}  "
-                       f"Superseded: {dash.superseded_sources}  "
-                       f"Quarantined: {dash.quarantined_sources}")
+            click.echo(
+                f"    Total: {dash.total_sources}  "
+                f"Active: {dash.active_sources}  "
+                f"Stale: {dash.stale_sources}  "
+                f"Superseded: {dash.superseded_sources}  "
+                f"Quarantined: {dash.quarantined_sources}"
+            )
             click.echo()
 
             # Topics
             click.echo("  Topics:")
-            click.echo(f"    Total: {dash.total_topics}  "
-                       f"With contradictions: {dash.topics_with_contradictions}  "
-                       f"With wiki pages: {dash.topics_with_wiki}")
+            click.echo(
+                f"    Total: {dash.total_topics}  "
+                f"With contradictions: {dash.topics_with_contradictions}  "
+                f"With wiki pages: {dash.topics_with_wiki}"
+            )
             click.echo()
 
             # Topic graph
@@ -391,10 +391,12 @@ def codex_dashboard_cmd(db_path: str | None) -> None:
 
             # Contradictions
             click.echo("  Contradictions:")
-            click.echo(f"    Open: {dash.open_contradictions}  "
-                       f"Critical: {dash.critical_contradictions}  "
-                       f"Major: {dash.major_contradictions}  "
-                       f"Minor: {dash.minor_contradictions}")
+            click.echo(
+                f"    Open: {dash.open_contradictions}  "
+                f"Critical: {dash.critical_contradictions}  "
+                f"Major: {dash.major_contradictions}  "
+                f"Minor: {dash.minor_contradictions}"
+            )
             click.echo()
 
             # Unclassified
@@ -421,8 +423,10 @@ def codex_dashboard_cmd(db_path: str | None) -> None:
             if dash.open_contradiction_list:
                 click.echo("  Open Contradictions:")
                 for item in dash.open_contradiction_list[:5]:
-                    click.echo(f"    🔴 [{item['severity']}] {item.get('topic_id', '')}: "
-                               f"{item['source_a_title']} vs {item['source_b_title']}")
+                    click.echo(
+                        f"    🔴 [{item['severity']}] {item.get('topic_id', '')}: "
+                        f"{item['source_a_title']} vs {item['source_b_title']}"
+                    )
                 click.echo()
 
         finally:
@@ -486,11 +490,7 @@ def codex_summary_cmd(topic: str, db_path: str | None) -> None:
                 for s in summary["sources"]:
                     status = s["status"]
                     marker = "●" if status == "active" else "◯"
-                    click.echo(
-                        f"    {marker} {s['title']:<40s}  "
-                        f"type: {s['source_type']:<12s}  "
-                        f"status: {status}"
-                    )
+                    click.echo(f"    {marker} {s['title']:<40s}  type: {s['source_type']:<12s}  status: {status}")
                 click.echo()
 
             if summary["contradictions"]:
@@ -569,8 +569,10 @@ def codex_run_cmd(db_path: str | None) -> None:
             click.echo(f"  Classify:   {classify.get('classified', 0)} classified")
             click.echo(f"  Topics:     {topics.get('new_topics', 0)} new, {topics.get('topics_updated', 0)} updated")
             click.echo(f"  Contradict: {contradictions.get('new_contradictions', 0)} new")
-            click.echo(f"  Staleness:  {staleness.get('topics_updated', 0)} topics scored, "
-                       f"{staleness.get('sources_marked_stale', 0)} sources marked stale")
+            click.echo(
+                f"  Staleness:  {staleness.get('topics_updated', 0)} topics scored, "
+                f"{staleness.get('sources_marked_stale', 0)} sources marked stale"
+            )
             click.echo(f"  Duplicates: {duplicates.get('new_candidates', 0)} new candidates")
             click.echo()
             click.echo(f"  Elapsed: {result.get('cycle_elapsed_seconds', 0):.2f}s")

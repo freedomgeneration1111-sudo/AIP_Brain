@@ -6,11 +6,11 @@ All styling uses tokens from gui.theme.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from nicegui import ui
 
+from gui.state import GuiState
 from gui.theme import (
     _AIP_MARK,
     C_AMBER,
@@ -19,9 +19,7 @@ from gui.theme import (
     C_DOGFOOD_DEGRADED,
     C_DOGFOOD_FULL,
     C_ERR_FG,
-    C_GROUND,
     C_INK40,
-    C_INK60,
     C_MUTED,
     C_OK_FG,
     C_RAISED,
@@ -32,7 +30,6 @@ from gui.theme import (
     SP_MD,
     SP_SM,
 )
-from gui.state import GuiState
 
 log = logging.getLogger("gui.components.layout")
 
@@ -51,9 +48,13 @@ _NAV_ITEMS = [
 
 def build_top_bar(state: GuiState) -> None:
     """Build the top bar: AIP_Brain title, dogfood badge, backend status, DEFINER label."""
-    with ui.header().classes("w-full items-center").style(
-        f"background:{C_SURFACE}; border-bottom:0.5px solid {C_INK40}; "
-        f"padding:{SP_SM} {SP_MD}; min-height:44px; z-index:100;"
+    with (
+        ui.header()
+        .classes("w-full items-center")
+        .style(
+            f"background:{C_SURFACE}; border-bottom:0.5px solid {C_INK40}; "
+            f"padding:{SP_SM} {SP_MD}; min-height:44px; z-index:100;"
+        )
     ):
         # AIP Mark + title
         ui.html(_AIP_MARK).style("margin-right:8px;")
@@ -103,8 +104,7 @@ def _dogfood_badge(mode: str) -> None:
 def build_left_nav(state: GuiState, active_page: str = "") -> None:
     """Build the left navigation drawer."""
     with ui.left_drawer().style(
-        f"background:{C_SURFACE}; border-right:0.5px solid {C_INK40}; "
-        f"width:200px; min-width:200px; padding:0;"
+        f"background:{C_SURFACE}; border-right:0.5px solid {C_INK40}; width:200px; min-width:200px; padding:0;"
     ):
         for label, route, icon in _NAV_ITEMS:
             is_active = active_page == route or (active_page == "" and route == "/")
@@ -112,10 +112,12 @@ def build_left_nav(state: GuiState, active_page: str = "") -> None:
             border_left = f"2px solid {C_AMBER}" if is_active else "2px solid transparent"
             fg = C_AMBER if is_active else C_CREAM
 
-            with ui.row().classes("w-full items-center cursor-pointer").style(
-                f"padding:10px 16px; background:{bg}; border-left:{border_left}; "
-                f"transition:background 0.15s;"
-            ).on("click", lambda r=route: ui.navigate.to(r)):
+            with (
+                ui.row()
+                .classes("w-full items-center cursor-pointer")
+                .style(f"padding:10px 16px; background:{bg}; border-left:{border_left}; transition:background 0.15s;")
+                .on("click", lambda r=route: ui.navigate.to(r))
+            ):
                 ui.icon(icon, size="18px").style(f"color:{fg}; margin-right:10px;")
                 ui.label(label).style(
                     f"font-size:12px; font-family:{F_SANS}; color:{fg}; font-weight:{'600' if is_active else '400'};"
@@ -129,6 +131,7 @@ def build_right_rail(state: GuiState) -> None:
     which consumes the consolidated /status/summary data.
     """
     from gui.panels.right_rail import build_right_rail as _build_full_rail
+
     _build_full_rail(state)
 
 

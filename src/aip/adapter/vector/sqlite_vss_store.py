@@ -74,6 +74,7 @@ _BRUTE_FORCE_MAX_ROWS = 50_000  # Hard cap: never scan more than this
 # Runtime mode for brute-force fallback policy
 # ---------------------------------------------------------------------------
 
+
 class RuntimeMode(enum.Enum):
     """Controls behavior when VSS is unavailable.
 
@@ -123,6 +124,7 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
         self._last_brute_force_scan_truncated: bool = False
         self._init_error: str = ""
         from aip.adapter.read_pool import resolve_pool_size
+
         self._init_read_pool(pool_size=resolve_pool_size("vector_store", config))
 
     # ------------------------------------------------------------------
@@ -187,6 +189,7 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
         try:
             # Detect VSS via thread executor to avoid blocking the event loop.
             import asyncio
+
             loop = asyncio.get_running_loop()
             self._vss_available = await loop.run_in_executor(None, self._probe_vss_availability)
 
@@ -200,7 +203,9 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
             backend = "sqlite_vss" if self._vss_available else "brute_force"
             logger.info(
                 "SqliteVssVectorStore initialized (backend=%s, db=%s, mode=%s, status=%s)",
-                backend, self._db_path, self._runtime_mode.value,
+                backend,
+                self._db_path,
+                self._runtime_mode.value,
                 self.get_backend_status().value,
             )
 
@@ -213,7 +218,8 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
             self._init_error = str(e)
             logger.error(
                 "SqliteVssVectorStore initialization failed: %s (status=%s)",
-                e, self.get_backend_status().value,
+                e,
+                self.get_backend_status().value,
             )
             raise
 
@@ -229,6 +235,7 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
                 loaded = False
                 try:
                     import sqlite_vss
+
                     sqlite_vss.load_vss(conn)
                     loaded = True
                 except ImportError:
@@ -312,7 +319,10 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
             meta_json = json.dumps(metadata or {})
             emb_json = json.dumps(embedding) if embedding else None
             await conn.execute(
-                "INSERT INTO vector_metadata (id, content, domain, metadata_json, embedding_json) VALUES (?, ?, ?, ?, ?)",
+                (
+                    "INSERT INTO vector_metadata "
+                    "(id, content, domain, metadata_json, embedding_json) VALUES (?, ?, ?, ?, ?)"
+                ),
                 (id, content, domain, meta_json, emb_json),
             )
             cursor = await conn.execute("SELECT rowid FROM vector_metadata WHERE id = ?", (id,))
@@ -403,13 +413,16 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
             logger.warning(
                 "PRODUCTION: Brute-force vector retrieval active (VSS unavailable). "
                 "db=%s, domain=%s, top_k=%d — results are degraded.",
-                self._db_path, domain, top_k,
+                self._db_path,
+                domain,
+                top_k,
             )
         else:
             logger.warning(
-                "Brute-force vector retrieval active (VSS unavailable). "
-                "db=%s, domain=%s, top_k=%d",
-                self._db_path, domain, top_k,
+                "Brute-force vector retrieval active (VSS unavailable). db=%s, domain=%s, top_k=%d",
+                self._db_path,
+                domain,
+                top_k,
             )
 
         conn = await self._get_conn()
@@ -423,7 +436,8 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
                 logger.warning(
                     "Brute-force scan limit capped at %d (requested %d). "
                     "Results may be incomplete. Install sqlite-vss for indexed retrieval.",
-                    _BRUTE_FORCE_MAX_ROWS, raw_scan_limit,
+                    _BRUTE_FORCE_MAX_ROWS,
+                    raw_scan_limit,
                 )
 
             if domain:
@@ -550,13 +564,16 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
                     )
                     logger.info(
                         "store() generated real embedding for chunk '%s' (dim=%d, domain='%s').",
-                        chunk.id, len(embedding), chunk.domain,
+                        chunk.id,
+                        len(embedding),
+                        chunk.domain,
                     )
                     return chunk.id
                 else:
                     logger.warning(
                         "EmbeddingProvider returned empty vector for chunk '%s'. "
-                        "Falling back to metadata-only storage.", chunk.id,
+                        "Falling back to metadata-only storage.",
+                        chunk.id,
                     )
                     self._embed_failure_count += 1
                     self._metadata_only_count += 1
@@ -565,8 +582,9 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
                     chunk.metadata["_embed_failure_reason"] = "empty_vector"
             except Exception as exc:
                 logger.warning(
-                    "Embedding generation failed for chunk '%s': %s. "
-                    "Storing metadata-only with failure trace.", chunk.id, exc,
+                    "Embedding generation failed for chunk '%s': %s. Storing metadata-only with failure trace.",
+                    chunk.id,
+                    exc,
                 )
                 self._embed_failure_count += 1
                 self._metadata_only_count += 1
@@ -575,8 +593,8 @@ class SqliteVssVectorStore(VectorStore, StoreHealthMixin, ReadPoolMixin):
                 chunk.metadata["_embed_failure_reason"] = str(exc)[:200]
         else:
             logger.warning(
-                "store() called without EmbeddingProvider for chunk '%s'. "
-                "Storing metadata-only.", chunk.id,
+                "store() called without EmbeddingProvider for chunk '%s'. Storing metadata-only.",
+                chunk.id,
             )
             self._metadata_only_count += 1
             chunk.metadata["_embed_failure"] = True

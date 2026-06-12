@@ -574,10 +574,7 @@ class TestRunCycle:
         await b.run_cycle()
 
         # ADR-011: heartbeat event, not the old cycle_complete
-        heartbeat_events = [
-            c for c in ev.write_event.call_args_list
-            if c.kwargs.get("event_type") == "beast_heartbeat"
-        ]
+        heartbeat_events = [c for c in ev.write_event.call_args_list if c.kwargs.get("event_type") == "beast_heartbeat"]
         assert len(heartbeat_events) >= 1
 
     @pytest.mark.asyncio
@@ -587,10 +584,7 @@ class TestRunCycle:
         b = _make_beast(event_store=ev, projects=[])
         await b.run_cycle()
 
-        health_events = [
-            c for c in ev.write_event.call_args_list
-            if c.kwargs.get("event_type") == "beast_health_check"
-        ]
+        health_events = [c for c in ev.write_event.call_args_list if c.kwargs.get("event_type") == "beast_health_check"]
         assert len(health_events) == 1
         assert health_events[0].kwargs["actor"] == "beast"
 

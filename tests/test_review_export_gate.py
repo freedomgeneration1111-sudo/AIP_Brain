@@ -18,8 +18,6 @@ from __future__ import annotations
 import os
 import tempfile
 
-import pytest
-
 from aip.adapter.artifact_store_versioned import VersionedArtifactStore
 from aip.adapter.ecs_store_persistent import PersistentEcsStore
 from aip.adapter.event_store_queryable import QueryableEventStore
@@ -35,7 +33,6 @@ from aip.orchestration.review_export_pipeline import (
     review_show,
     review_sources,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -125,9 +122,7 @@ class TestForceExportAuditTrail:
             aid = await _create_project_and_artifact(stores)
 
             out_path = os.path.join(tmp, "artifact.md")
-            result = await export_artifact(
-                aid, out_path, stores, force=True, force_reason="Emergency debug export"
-            )
+            result = await export_artifact(aid, out_path, stores, force=True, force_reason="Emergency debug export")
 
             assert "error" not in result
             assert result.get("force_bypass") is True
@@ -217,9 +212,7 @@ class TestForceExportResultMetadata:
             aid = await _create_project_and_artifact(stores)
 
             out_path = os.path.join(tmp, "artifact.md")
-            result = await export_artifact(
-                aid, out_path, stores, force=True, force_reason="Testing"
-            )
+            result = await export_artifact(aid, out_path, stores, force=True, force_reason="Testing")
 
             assert result.get("force_bypass") is True
             assert result.get("force_bypass_state") == "GENERATED"
@@ -318,9 +311,7 @@ class TestProjectExportSovereignOverride:
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
             # Create two artifacts: one approved, one unreviewed
-            aid1 = await _create_project_and_artifact(
-                stores, artifact_id="ask:approved1", content="Approved answer 1"
-            )
+            aid1 = await _create_project_and_artifact(stores, artifact_id="ask:approved1", content="Approved answer 1")
             aid2 = await _create_project_and_artifact(
                 stores, artifact_id="ask:unreviewed1", content="Unreviewed answer 1"
             )
@@ -329,7 +320,9 @@ class TestProjectExportSovereignOverride:
 
             out_path = os.path.join(tmp, "project_export.md")
             result = await export_project(
-                "test_project", out_path, stores,
+                "test_project",
+                out_path,
+                stores,
                 include_unreviewed=True,
                 force_reason="Debug review before formal approval",
             )
@@ -350,9 +343,7 @@ class TestProjectExportSovereignOverride:
     async def test_project_export_approved_only_no_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
-            aid1 = await _create_project_and_artifact(
-                stores, artifact_id="ask:approved1", content="Approved answer 1"
-            )
+            aid1 = await _create_project_and_artifact(stores, artifact_id="ask:approved1", content="Approved answer 1")
             await review_approve(aid1, stores)
 
             out_path = os.path.join(tmp, "project_export.md")
@@ -368,17 +359,15 @@ class TestProjectExportSovereignOverride:
     async def test_project_export_markdown_includes_override_marker(self):
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
-            aid1 = await _create_project_and_artifact(
-                stores, artifact_id="ask:approved1", content="Approved answer 1"
-            )
-            aid2 = await _create_project_and_artifact(
-                stores, artifact_id="ask:unreviewed1", content="Unreviewed answer 1"
-            )
+            aid1 = await _create_project_and_artifact(stores, artifact_id="ask:approved1", content="Approved answer 1")
+            await _create_project_and_artifact(stores, artifact_id="ask:unreviewed1", content="Unreviewed answer 1")
             await review_approve(aid1, stores)
 
             out_path = os.path.join(tmp, "project_export.md")
             await export_project(
-                "test_project", out_path, stores,
+                "test_project",
+                out_path,
+                stores,
                 include_unreviewed=True,
                 force_reason="Debug",
             )
@@ -499,9 +488,7 @@ class TestBatchQueryPerformance:
                 )
 
             # Batch read
-            result = await store.read_metadata_batch(
-                ["ask:test_0", "ask:test_2", "ask:test_4", "ask:nonexistent"]
-            )
+            result = await store.read_metadata_batch(["ask:test_0", "ask:test_2", "ask:test_4", "ask:nonexistent"])
 
             assert len(result) == 3  # nonexistent omitted
             assert "ask:test_0" in result
@@ -523,9 +510,7 @@ class TestBatchQueryPerformance:
                     {"index": i},
                 )
 
-            result = await store.read_with_metadata_batch(
-                ["ask:test_0", "ask:test_1", "ask:nonexistent"]
-            )
+            result = await store.read_with_metadata_batch(["ask:test_0", "ask:test_1", "ask:nonexistent"])
 
             assert len(result) == 2
             content, metadata = result["ask:test_0"]
@@ -647,19 +632,13 @@ class TestDogfoodGate:
         """REJECTED artifacts must NEVER appear in project exports, even with --include-unreviewed."""
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
-            aid1 = await _create_project_and_artifact(
-                stores, artifact_id="ask:approved1", content="Good answer"
-            )
-            aid2 = await _create_project_and_artifact(
-                stores, artifact_id="ask:rejected1", content="Bad answer"
-            )
+            aid1 = await _create_project_and_artifact(stores, artifact_id="ask:approved1", content="Good answer")
+            aid2 = await _create_project_and_artifact(stores, artifact_id="ask:rejected1", content="Bad answer")
             await review_approve(aid1, stores)
             await review_reject(aid2, stores, note="Rejected")
 
             out_path = os.path.join(tmp, "project_export.md")
-            result = await export_project(
-                "test_project", out_path, stores, include_unreviewed=True
-            )
+            result = await export_project("test_project", out_path, stores, include_unreviewed=True)
 
             assert "error" not in result
 
@@ -682,6 +661,7 @@ class TestCLIExportGateOptions:
 
     def test_export_artifact_has_reason_option(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -691,6 +671,7 @@ class TestCLIExportGateOptions:
 
     def test_export_artifact_has_yes_option(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -700,6 +681,7 @@ class TestCLIExportGateOptions:
 
     def test_export_project_has_reason_option(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -709,6 +691,7 @@ class TestCLIExportGateOptions:
 
     def test_export_project_has_yes_option(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -718,6 +701,7 @@ class TestCLIExportGateOptions:
 
     def test_force_help_mentions_emergency_debug(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -728,6 +712,7 @@ class TestCLIExportGateOptions:
 
     def test_include_unreviewed_help_mentions_sovereign_override(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()

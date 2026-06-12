@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import threading
 import time
-import uuid
 
 import pytest
 
@@ -22,13 +21,10 @@ from aip.adapter.alerting import (
     Alert,
     AlertConfig,
     AlertManager,
-    DeliveryManager,
     DigestManager,
     PredictionManager,
-    RealtimeEventBus,
     ThrottleManager,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -357,6 +353,7 @@ class TestDigestManagerExtraction:
         dm = DigestManager(config)
 
         callback_called = []
+
         def on_flush(buffered):
             callback_called.extend(buffered)
 
@@ -373,9 +370,7 @@ class TestDigestManagerExtraction:
         """DigestManager.get_digest_settings() returns correct overrides."""
         config.digest_interval_minutes = 15
         config.digest_min_alerts = 3
-        config.digest_overrides = {
-            "quality_degradation": {"interval_minutes": 5, "min_alerts": 2}
-        }
+        config.digest_overrides = {"quality_degradation": {"interval_minutes": 5, "min_alerts": 2}}
         dm = DigestManager(config)
 
         # Override for quality_degradation

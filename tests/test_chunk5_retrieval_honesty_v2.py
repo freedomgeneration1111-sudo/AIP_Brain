@@ -18,10 +18,9 @@ Required test scenarios:
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
+from aip.foundation.schemas.ask import AskResult
 from aip.foundation.schemas.retrieval import (
     ChannelHealthDetail,
     ChannelHealthReport,
@@ -29,18 +28,17 @@ from aip.foundation.schemas.retrieval import (
     RetrievalHit,
     RetrievalTrace,
 )
-from aip.foundation.schemas.ask import AskResult
 from aip.foundation.schemas.vector import VectorBackendStatus, VectorDegradationInfo
+from aip.orchestration.ask_pipeline import _build_degradation_dict, _build_retrieval_warnings
 from aip.orchestration.retrieval_orchestrator import (
     OrchestratorConfig,
     RetrievalOrchestrator,
 )
-from aip.orchestration.ask_pipeline import _build_degradation_dict, _build_retrieval_warnings
-
 
 # ======================================================================
 # 0. ChannelHealthState new values
 # ======================================================================
+
 
 class TestChannelHealthStateExtended:
     """Test new ChannelHealthState values added in Chunk 5."""
@@ -86,6 +84,7 @@ class TestChannelHealthStateExtended:
 # ======================================================================
 # 1. ChannelHealthDetail
 # ======================================================================
+
 
 class TestChannelHealthDetail:
     """Test ChannelHealthDetail dataclass and serialization."""
@@ -200,6 +199,7 @@ class TestChannelHealthDetail:
 # 2. Test 1: lexical active, vector active → full healthy retrieval
 # ======================================================================
 
+
 class TestFullHealthyRetrieval:
     """When both lexical and vector are active, retrieval should be fully healthy."""
 
@@ -217,9 +217,12 @@ class TestFullHealthyRetrieval:
         orch.register_channel("vector", vector_retriever)
 
         config = OrchestratorConfig(
-            enable_fts=True, enable_vector=True,
-            enable_graph=False, enable_wiki=False,
-            enable_procedural=False, enable_corpus=False,
+            enable_fts=True,
+            enable_vector=True,
+            enable_graph=False,
+            enable_wiki=False,
+            enable_procedural=False,
+            enable_corpus=False,
         )
 
         hits, trace = await orch.retrieve("test query", config=config)
@@ -250,6 +253,7 @@ class TestFullHealthyRetrieval:
 # 3. Test 2: vector unavailable → degraded retrieval, not silent success
 # ======================================================================
 
+
 class TestVectorUnavailable:
     """When vector channel is not registered, it should report not_configured, not silent success."""
 
@@ -264,9 +268,12 @@ class TestVectorUnavailable:
         # vector is NOT registered
 
         config = OrchestratorConfig(
-            enable_fts=True, enable_vector=True,
-            enable_graph=False, enable_wiki=False,
-            enable_procedural=False, enable_corpus=False,
+            enable_fts=True,
+            enable_vector=True,
+            enable_graph=False,
+            enable_wiki=False,
+            enable_procedural=False,
+            enable_corpus=False,
         )
 
         hits, trace = await orch.retrieve("test query", config=config)
@@ -289,6 +296,7 @@ class TestVectorUnavailable:
 # 4. Test 3: vector fallback/brute-force → degraded with reason
 # ======================================================================
 
+
 class TestVectorFallbackDegraded:
     """When vector store uses brute-force fallback, it should report degraded."""
 
@@ -307,9 +315,12 @@ class TestVectorFallbackDegraded:
         orch.register_channel("vector", vector_retriever)
 
         config = OrchestratorConfig(
-            enable_fts=True, enable_vector=True,
-            enable_graph=False, enable_wiki=False,
-            enable_procedural=False, enable_corpus=False,
+            enable_fts=True,
+            enable_vector=True,
+            enable_graph=False,
+            enable_wiki=False,
+            enable_procedural=False,
+            enable_corpus=False,
         )
 
         hits, trace = await orch.retrieve("test query", config=config)
@@ -330,6 +341,7 @@ class TestVectorFallbackDegraded:
 # 5. Test 4: graph store missing → graph not_configured
 # ======================================================================
 
+
 class TestGraphStoreMissing:
     """When graph store is missing, the channel should report not_configured."""
 
@@ -344,9 +356,12 @@ class TestGraphStoreMissing:
         # graph is NOT registered
 
         config = OrchestratorConfig(
-            enable_fts=True, enable_vector=False,
+            enable_fts=True,
+            enable_vector=False,
             enable_graph=True,  # enabled but not registered
-            enable_wiki=False, enable_procedural=False, enable_corpus=False,
+            enable_wiki=False,
+            enable_procedural=False,
+            enable_corpus=False,
         )
 
         hits, trace = await orch.retrieve("test query", config=config)
@@ -360,6 +375,7 @@ class TestGraphStoreMissing:
 # ======================================================================
 # 6. Test 5: wiki/CODEX missing → wiki not_configured
 # ======================================================================
+
 
 class TestWikiMissing:
     """When wiki store is missing, the channel should report not_configured."""
@@ -375,10 +391,12 @@ class TestWikiMissing:
         # wiki is NOT registered
 
         config = OrchestratorConfig(
-            enable_fts=True, enable_vector=False,
+            enable_fts=True,
+            enable_vector=False,
             enable_graph=False,
             enable_wiki=True,  # enabled but not registered
-            enable_procedural=False, enable_corpus=False,
+            enable_procedural=False,
+            enable_corpus=False,
         )
 
         hits, trace = await orch.retrieve("test query", config=config)
@@ -391,6 +409,7 @@ class TestWikiMissing:
 # ======================================================================
 # 7. Test 6: retriever raises exception → channel failed but trace has detail
 # ======================================================================
+
 
 class TestRetrieverException:
     """When a retriever raises an exception, the channel should be failed with structured detail."""
@@ -409,9 +428,12 @@ class TestRetrieverException:
         orch.register_channel("vector", failing_retriever)
 
         config = OrchestratorConfig(
-            enable_fts=True, enable_vector=True,
-            enable_graph=False, enable_wiki=False,
-            enable_procedural=False, enable_corpus=False,
+            enable_fts=True,
+            enable_vector=True,
+            enable_graph=False,
+            enable_wiki=False,
+            enable_procedural=False,
+            enable_corpus=False,
         )
 
         hits, trace = await orch.retrieve("test query", config=config)
@@ -436,6 +458,7 @@ class TestRetrieverException:
 # 8. Test 7: all channels empty → result says empty, not healthy
 # ======================================================================
 
+
 class TestAllChannelsEmpty:
     """When all channels return 0 results, the trace should report empty state."""
 
@@ -453,9 +476,12 @@ class TestAllChannelsEmpty:
         orch.register_channel("vector", empty_vector_retriever)
 
         config = OrchestratorConfig(
-            enable_fts=True, enable_vector=True,
-            enable_graph=False, enable_wiki=False,
-            enable_procedural=False, enable_corpus=False,
+            enable_fts=True,
+            enable_vector=True,
+            enable_graph=False,
+            enable_wiki=False,
+            enable_procedural=False,
+            enable_corpus=False,
         )
 
         hits, trace = await orch.retrieve("test query", config=config)
@@ -482,6 +508,7 @@ class TestAllChannelsEmpty:
 # ======================================================================
 # 9. Test 8: RetrievalTrace new fields and methods
 # ======================================================================
+
 
 class TestRetrievalTraceChunk5:
     """Test Chunk 5 additions to RetrievalTrace."""
@@ -590,6 +617,7 @@ class TestRetrievalTraceChunk5:
 # 10. Test 9: AskResult/retrieval trace contains channel state metadata
 # ======================================================================
 
+
 class TestAskResultChannelStateMetadata:
     """Test that AskResult and _build_degradation_dict contain Chunk 5 fields."""
 
@@ -693,7 +721,7 @@ class TestAskResultChannelStateMetadata:
                 backend_status=VectorBackendStatus.AVAILABLE,
             ),
         )
-        warnings = _build_retrieval_warnings(trace)
+        _build_retrieval_warnings(trace)
         # Empty channels should not produce "unavailable" warnings by default
         # (they were attempted and succeeded — they just returned nothing)
 
@@ -701,6 +729,7 @@ class TestAskResultChannelStateMetadata:
 # ======================================================================
 # 11. ChannelHealthReport with new states
 # ======================================================================
+
 
 class TestChannelHealthReportExtended:
     """Test ChannelHealthReport with new states."""
@@ -713,7 +742,7 @@ class TestChannelHealthReportExtended:
             },
             reasons={"graph": "GraphStore not configured"},
         )
-        warnings = report.format_warnings()
+        report.format_warnings()
         # UNAVAILABLE is not FAILED or DEGRADED, so format_warnings won't show it
         # This is a design choice: the ChannelHealthReport.format_warnings() only
         # surfaces FAILED and DEGRADED states. UNAVAILABLE is informational.
@@ -727,7 +756,7 @@ class TestChannelHealthReportExtended:
             },
             reasons={"vector": "No embedding provider"},
         )
-        warnings = report.format_warnings()
+        report.format_warnings()
         # NOT_CONFIGURED is not FAILED, so format_warnings won't show it
         # (it's a different category — informational rather than error)
         # This is by design: not_configured is a configuration issue, not a failure
@@ -736,6 +765,7 @@ class TestChannelHealthReportExtended:
 # ======================================================================
 # 12. Integration: orchestrator with ChannelHealthDetail
 # ======================================================================
+
 
 class TestOrchestratorWithHealthDetail:
     """Integration test: full retrieval round with ChannelHealthDetail."""
@@ -754,10 +784,12 @@ class TestOrchestratorWithHealthDetail:
         orch.register_channel("vector", empty_vector_retriever)
 
         config = OrchestratorConfig(
-            enable_fts=True, enable_vector=True,
+            enable_fts=True,
+            enable_vector=True,
             enable_graph=True,  # enabled but not registered
-            enable_wiki=True,   # enabled but not registered
-            enable_procedural=False, enable_corpus=False,
+            enable_wiki=True,  # enabled but not registered
+            enable_procedural=False,
+            enable_corpus=False,
         )
 
         hits, trace = await orch.retrieve("test query", config=config)

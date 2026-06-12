@@ -9,15 +9,15 @@
 
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -130,9 +130,9 @@ async def get_session(session_id: str, container: AipContainer = Depends(get_con
                 return session
         except Exception:
             logger.warning(
-                "SessionStore.get_session failed for %s, "
-                "falling back to in-memory",
-                session_id, exc_info=True,
+                "SessionStore.get_session failed for %s, falling back to in-memory",
+                session_id,
+                exc_info=True,
             )
             pass  # Fall back to in-memory
 
@@ -161,9 +161,9 @@ async def get_context(session_id: str, container: AipContainer = Depends(get_con
                 }
         except Exception:
             logger.warning(
-                "SessionStore.get_session failed for %s context, "
-                "falling back to in-memory",
-                session_id, exc_info=True,
+                "SessionStore.get_session failed for %s context, falling back to in-memory",
+                session_id,
+                exc_info=True,
             )
             pass  # Fall back to in-memory
 
@@ -218,9 +218,9 @@ async def update_session(session_id: str, payload: dict, container: AipContainer
             await container.session_store.update_session(session_id, payload)
         except Exception:
             logger.warning(
-                "SessionStore.update_session failed for %s; "
-                "in-memory is still updated",
-                session_id, exc_info=True,
+                "SessionStore.update_session failed for %s; in-memory is still updated",
+                session_id,
+                exc_info=True,
             )
             pass  # In-memory is still updated; non-critical persistence failure
 
@@ -240,9 +240,9 @@ async def delete_session(session_id: str, container: AipContainer = Depends(get_
             await container.session_store.delete_session(session_id)
         except Exception:
             logger.warning(
-                "SessionStore.delete_session failed for %s; "
-                "already removed from in-memory",
-                session_id, exc_info=True,
+                "SessionStore.delete_session failed for %s; already removed from in-memory",
+                session_id,
+                exc_info=True,
             )
             pass  # Already removed from in-memory
 
@@ -269,9 +269,9 @@ async def get_session_meta_async(session_id: str, container: AipContainer) -> di
                 return session
         except Exception:
             logger.warning(
-                "SessionStore.get_session failed in "
-                "get_session_meta_async for %s",
-                session_id, exc_info=True,
+                "SessionStore.get_session failed in get_session_meta_async for %s",
+                session_id,
+                exc_info=True,
             )
             pass
 
@@ -290,6 +290,7 @@ def increment_turn_count(session_id: str, container: AipContainer | None = None)
         if container is not None and container.session_store is not None:
             try:
                 import asyncio
+
                 try:
                     loop = asyncio.get_running_loop()
                     loop.create_task(
@@ -328,14 +329,13 @@ def update_ingestion_status(
     if container is not None and container.session_store is not None:
         try:
             import asyncio
+
             updates: dict[str, Any] = {"ingestion_status": status}
             if chunks_indexed is not None:
                 updates["chunks_indexed"] = chunks_indexed
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(
-                    container.session_store.update_session(session_id, updates)
-                )
+                loop.create_task(container.session_store.update_session(session_id, updates))
             except RuntimeError:
                 # No running loop — can't persist asynchronously; that's OK
                 pass

@@ -13,17 +13,15 @@ import tempfile
 import pytest
 
 from aip.foundation.schemas.ingestion import (
+    ConversationTurn,
     ImportedConversation,
     IngestionResult,
-    ConversationTurn,
-    SourceFormat,
 )
 from aip.orchestration.ingestion.chunker import chunk_conversation, chunk_text
+from aip.orchestration.ingestion.parsers import detect_format
 from aip.orchestration.ingestion.parsers.chatgpt import parse_chatgpt_export
 from aip.orchestration.ingestion.parsers.markdown import parse_markdown_transcript
 from aip.orchestration.ingestion.parsers.plaintext import parse_plaintext_transcript
-from aip.orchestration.ingestion.parsers import detect_format
-
 
 # ---------------------------------------------------------------------------
 # ChatGPT Parser Tests
@@ -308,9 +306,9 @@ class TestChunker:
         chunks = chunk_conversation(conv)
         assert len(chunks) >= 1
         # Each chunk is (chunk_id, chunk_text)
-        for chunk_id, chunk_text in chunks:
+        for chunk_id, chunk_content in chunks:
             assert chunk_id.startswith("chunk:test:123:")
-            assert len(chunk_text) > 0
+            assert len(chunk_content) > 0
 
     def test_chunk_conversation_empty(self):
         conv = ImportedConversation(
@@ -387,7 +385,9 @@ class FakeVectorStore:
         self.upserted: list[dict] = []
 
     async def upsert(self, id, embedding, content, metadata, domain=None):
-        self.upserted.append({"id": id, "embedding": embedding, "content": content, "metadata": metadata, "domain": domain})
+        self.upserted.append(
+            {"id": id, "embedding": embedding, "content": content, "metadata": metadata, "domain": domain}
+        )
 
     async def retrieve(self, query_vector, domain=None, top_k=10):
         return []
@@ -422,6 +422,7 @@ class FakeEmbeddingProvider:
         self.embed_calls.append(text)
         # Simple deterministic vector
         import hashlib
+
         h = hashlib.sha256(text.encode()).digest()
         vec = [(h[i % len(h)] / 255.0) - 0.5 for i in range(self.dimensions)]
         return vec
@@ -434,14 +435,16 @@ class FakeEventStore:
         self.events: list[dict] = []
 
     async def write_event(self, event_type, actor, artifact_id, from_state=None, to_state=None, **kwargs):
-        self.events.append({
-            "event_type": event_type,
-            "actor": actor,
-            "artifact_id": artifact_id,
-            "from_state": from_state,
-            "to_state": to_state,
-            **kwargs,
-        })
+        self.events.append(
+            {
+                "event_type": event_type,
+                "actor": actor,
+                "artifact_id": artifact_id,
+                "from_state": from_state,
+                "to_state": to_state,
+                **kwargs,
+            }
+        )
 
     async def query(self, artifact_id=None, event_type=None, limit=100):
         return []
@@ -496,7 +499,9 @@ class TestIngestionPipeline:
         embed_provider = FakeEmbeddingProvider()
 
         result = await ingest_conversation(
-            conv, artifact_store, lexical_store,
+            conv,
+            artifact_store,
+            lexical_store,
             vector_store=vector_store,
             embedding_provider=embed_provider,
         )
@@ -521,8 +526,10 @@ class TestIngestionPipeline:
         lexical_store = FakeLexicalStore()
         event_store = FakeEventStore()
 
-        result = await ingest_conversation(
-            conv, artifact_store, lexical_store,
+        await ingest_conversation(
+            conv,
+            artifact_store,
+            lexical_store,
             event_store=event_store,
         )
 
@@ -543,7 +550,9 @@ class TestIngestionPipeline:
             lexical_store = FakeLexicalStore()
 
             results = await ingest_file(
-                filepath, artifact_store, lexical_store,
+                filepath,
+                artifact_store,
+                lexical_store,
                 source_format="plaintext",
                 domain="test",
             )
@@ -724,6 +733,7 @@ class TestCLIIngest:
 
     def test_ingest_command_registered(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -733,6 +743,7 @@ class TestCLIIngest:
 
     def test_ingest_file_subcommand_help(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -742,6 +753,7 @@ class TestCLIIngest:
 
     def test_ingest_directory_subcommand_help(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -751,6 +763,7 @@ class TestCLIIngest:
 
     def test_ingest_file_with_sample(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         with tempfile.TemporaryDirectory() as tmp:

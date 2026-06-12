@@ -18,19 +18,15 @@ from __future__ import annotations
 
 import asyncio
 
-from aip.foundation.schemas.retrieval import Chunk, RetrievalHit, RetrievalTrace
+from aip.foundation.schemas.retrieval import RetrievalHit
 from aip.orchestration.retrieval_orchestrator import (
-    OrchestratorCache,
     OrchestratorConfig,
     RetrievalOrchestrator,
-    apply_quality_gate,
-    rrf_fuse,
 )
 from aip.orchestration.smart_context_packer import (
     PackerConfig,
     SmartContextPacker,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers: fake retriever channels for all six channels
@@ -122,30 +118,31 @@ class TestDeprecatedCodeRemoved:
     def test_search_sources_removed(self):
         """_search_sources should no longer exist in ask_pipeline."""
         import aip.orchestration.ask_pipeline as mod
-        assert not hasattr(mod, "_search_sources"), \
-            "_search_sources should be removed in Sprint 5.8"
+
+        assert not hasattr(mod, "_search_sources"), "_search_sources should be removed in Sprint 5.8"
 
     def test_assemble_context_removed(self):
         """_assemble_context should no longer exist in ask_pipeline."""
         import aip.orchestration.ask_pipeline as mod
-        assert not hasattr(mod, "_assemble_context"), \
-            "_assemble_context should be removed in Sprint 5.8"
+
+        assert not hasattr(mod, "_assemble_context"), "_assemble_context should be removed in Sprint 5.8"
 
     def test_source_type_matches_removed(self):
         """_source_type_matches (Chunk-based) should be removed."""
         import aip.orchestration.ask_pipeline as mod
-        assert not hasattr(mod, "_source_type_matches"), \
-            "_source_type_matches should be removed in Sprint 5.8"
+
+        assert not hasattr(mod, "_source_type_matches"), "_source_type_matches should be removed in Sprint 5.8"
 
     def test_chunk_to_source_ref_removed(self):
         """_chunk_to_source_ref should be removed."""
         import aip.orchestration.ask_pipeline as mod
-        assert not hasattr(mod, "_chunk_to_source_ref"), \
-            "_chunk_to_source_ref should be removed in Sprint 5.8"
+
+        assert not hasattr(mod, "_chunk_to_source_ref"), "_chunk_to_source_ref should be removed in Sprint 5.8"
 
     def test_hit_type_matches_exists(self):
         """_hit_type_matches (RetrievalHit-based) should exist as replacement."""
         from aip.orchestration.ask_pipeline import _hit_type_matches
+
         assert callable(_hit_type_matches)
 
 
@@ -159,11 +156,13 @@ class TestHitTypeMatches:
 
     def test_all_passes_everything(self):
         from aip.orchestration.ask_pipeline import _hit_type_matches
+
         hit = RetrievalHit(id="1", metadata={"type": "conversation_chunk"})
         assert _hit_type_matches(hit, "all") is True
 
     def test_ingested_filters_conversation_chunks(self):
         from aip.orchestration.ask_pipeline import _hit_type_matches
+
         hit_conv = RetrievalHit(id="1", metadata={"type": "conversation_chunk"})
         hit_art = RetrievalHit(id="2", metadata={"type": "wiki_article"})
         assert _hit_type_matches(hit_conv, "ingested") is True
@@ -171,6 +170,7 @@ class TestHitTypeMatches:
 
     def test_artifacts_excludes_conversation_chunks(self):
         from aip.orchestration.ask_pipeline import _hit_type_matches
+
         hit_conv = RetrievalHit(id="1", metadata={"type": "conversation_chunk"})
         hit_art = RetrievalHit(id="2", metadata={"type": "graph_entity"})
         assert _hit_type_matches(hit_conv, "artifacts") is False
@@ -195,7 +195,9 @@ class TestGraphChannel:
         hits, trace = await orch.retrieve("EntityA test", config=config)
 
         assert "graph" in trace.channels_queried
-        graph_hits = [h for h in hits if h.source_channel == "graph" or "graph" in h.metadata.get("source_channels", [])]
+        graph_hits = [
+            h for h in hits if h.source_channel == "graph" or "graph" in h.metadata.get("source_channels", [])
+        ]
         assert len(graph_hits) > 0, "Graph channel should contribute hits"
 
     async def test_graph_channel_disabled_by_default(self):
@@ -272,7 +274,9 @@ class TestProceduralChannel:
         hits, trace = await orch.retrieve("how to configure", config=config)
 
         assert "procedural" in trace.channels_queried
-        proc_hits = [h for h in hits if h.source_channel == "procedural" or "procedural" in h.metadata.get("source_channels", [])]
+        proc_hits = [
+            h for h in hits if h.source_channel == "procedural" or "procedural" in h.metadata.get("source_channels", [])
+        ]
         assert len(proc_hits) > 0
 
     async def test_procedural_channel_disabled_by_default(self):
@@ -415,16 +419,25 @@ class TestNoLegacyFallback:
                 raise RuntimeError("Intentional failure")
 
         class FakeEvent:
-            async def write_event(self, **kwargs): pass
-            async def query(self, **kwargs): return []
+            async def write_event(self, **kwargs):
+                pass
+
+            async def query(self, **kwargs):
+                return []
 
         class FakeProject:
-            async def list_projects(self, **kwargs): return []
+            async def list_projects(self, **kwargs):
+                return []
 
         class FakeArtifact:
-            async def write(self, *a): pass
-            async def read(self, *a): return ""
-            async def list_versions(self, *a): return [1]
+            async def write(self, *a):
+                pass
+
+            async def read(self, *a):
+                return ""
+
+            async def list_versions(self, *a):
+                return [1]
 
         stores = AskStores(
             artifact_store=FakeArtifact(),
@@ -461,7 +474,9 @@ class TestSmartContextPackerOnlyPath:
             RetrievalHit(id="fts:1", content="FTS content about AIP", rrf_score=0.05, source_channel="fts"),
             RetrievalHit(id="graph:EntityA", content="Graph entity: EntityA", rrf_score=0.03, source_channel="graph"),
             RetrievalHit(id="wiki:art1", content="Wiki article content", rrf_score=0.02, source_channel="wiki"),
-            RetrievalHit(id="proc:guide1", content="Step-by-step procedure", rrf_score=0.015, source_channel="procedural"),
+            RetrievalHit(
+                id="proc:guide1", content="Step-by-step procedure", rrf_score=0.015, source_channel="procedural"
+            ),
         ]
         packer = SmartContextPacker(config=PackerConfig(max_context_tokens=2000))
         packed = packer.pack(hits, query="AIP EntityA")

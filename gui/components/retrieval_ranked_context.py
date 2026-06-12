@@ -12,18 +12,15 @@ from typing import Any
 from nicegui import ui
 
 from gui.theme import (
-    C_CREAM,
-    C_GROUND,
-    C_SURFACE,
-    C_RAISED,
-    C_INK40,
-    C_OK_FG,
     C_AMBER,
+    C_CREAM,
     C_ERR_FG,
+    C_GROUND,
+    C_INK40,
     C_MUTED,
-    F_SANS,
+    C_OK_FG,
     F_MONO,
-    R_MD,
+    F_SANS,
     R_SM,
 )
 
@@ -45,7 +42,7 @@ class RetrievalRankedContext:
         self._container.clear()
 
         fusion_results = test_result.get("fusion_results", [])
-        selected_context = test_result.get("selected_context", [])
+        test_result.get("selected_context", [])
         scores = test_result.get("scores", {})
         warnings = test_result.get("warnings", [])
         lexical_only = test_result.get("lexical_only", False)
@@ -99,8 +96,7 @@ class RetrievalRankedContext:
                 verdict_color = C_OK_FG if verdict == "OK" else C_AMBER if verdict == "NEEDS_MORE_CONTEXT" else C_ERR_FG
                 with ui.row().classes("gap-3 items-center mb-1"):
                     ui.label(f"Verdict: {verdict}").style(
-                        f"font-size:10px; font-weight:600; color:{verdict_color}; "
-                        f"font-family:{F_MONO};"
+                        f"font-size:10px; font-weight:600; color:{verdict_color}; font-family:{F_MONO};"
                     )
                     ui.label(f"Before fusion: {hits_before}").style(
                         f"font-size:9px; color:{C_MUTED}; font-family:{F_MONO};"
@@ -108,23 +104,20 @@ class RetrievalRankedContext:
                     ui.label(f"After fusion: {hits_after}").style(
                         f"font-size:9px; color:{C_MUTED}; font-family:{F_MONO};"
                     )
-                    ui.label(f"After gate: {hits_gate}").style(
-                        f"font-size:9px; color:{C_MUTED}; font-family:{F_MONO};"
-                    )
+                    ui.label(f"After gate: {hits_gate}").style(f"font-size:9px; color:{C_MUTED}; font-family:{F_MONO};")
 
             # Warnings
             if warnings:
                 with ui.column().classes("w-full gap-1 mb-2"):
                     for w in warnings:
-                        ui.label(f"Warning: {w[:150]}").style(
-                            f"font-size:9px; color:{C_AMBER}; font-family:{F_MONO};"
-                        )
+                        ui.label(f"Warning: {w[:150]}").style(f"font-size:9px; color:{C_AMBER}; font-family:{F_MONO};")
 
             # Result list
             if not fusion_results:
-                with ui.card().classes("w-full p-4").style(
-                    f"background:{C_GROUND}; border:0.5px solid {C_INK40}; "
-                    f"border-radius:{R_SM};"
+                with (
+                    ui.card()
+                    .classes("w-full p-4")
+                    .style(f"background:{C_GROUND}; border:0.5px solid {C_INK40}; border-radius:{R_SM};")
                 ):
                     ui.label("No context selected — retrieval returned no results").style(
                         f"font-size:12px; color:{C_MUTED}; font-family:{F_MONO};"
@@ -136,29 +129,23 @@ class RetrievalRankedContext:
 
     def _render_result_item(self, index: int, result: dict[str, Any]) -> None:
         """Render a single ranked result item."""
-        result_id = result.get("id", "")
+        result.get("id", "")
         title = result.get("title", "")[:100]
         snippet = result.get("snippet", "")[:300]
         score = result.get("score", 0)
         source_type = result.get("source_type", "")
         domain = result.get("domain", "")
 
-        with ui.row().classes("w-full items-start gap-2 py-2").style(
-            f"border-bottom:0.5px solid {C_INK40};"
-        ):
+        with ui.row().classes("w-full items-start gap-2 py-2").style(f"border-bottom:0.5px solid {C_INK40};"):
             # Rank number
             ui.label(f"#{index + 1}").style(
-                f"font-size:11px; font-weight:700; color:{C_CREAM}; "
-                f"font-family:{F_MONO}; min-width:28px;"
+                f"font-size:11px; font-weight:700; color:{C_CREAM}; font-family:{F_MONO}; min-width:28px;"
             )
 
             # Content
             with ui.column().classes("flex-1").style("gap:1px;"):
                 if title:
-                    ui.label(title).style(
-                        f"font-size:12px; font-weight:600; color:{C_CREAM}; "
-                        f"font-family:{F_SANS};"
-                    )
+                    ui.label(title).style(f"font-size:12px; font-weight:600; color:{C_CREAM}; font-family:{F_SANS};")
                 if snippet:
                     ui.label(snippet[:200]).style(
                         f"font-size:10px; color:{C_MUTED}; font-family:{F_MONO}; "
@@ -172,9 +159,7 @@ class RetrievalRankedContext:
                             f"border:0.5px solid {C_INK40}; border-radius:2px; padding:0 3px;"
                         )
                     if domain:
-                        ui.label(domain).style(
-                            f"font-size:8px; color:{C_AMBER}; font-family:{F_MONO};"
-                        )
+                        ui.label(domain).style(f"font-size:8px; color:{C_AMBER}; font-family:{F_MONO};")
 
             # Score
             score_color = C_OK_FG if score >= 0.8 else C_AMBER if score >= 0.5 else C_MUTED

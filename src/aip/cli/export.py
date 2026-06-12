@@ -36,13 +36,33 @@ def export() -> None:
 
 @export.command("artifact")
 @click.argument("artifact_id")
-@click.option("--format", "fmt", type=click.Choice(["markdown", "text"]), default="markdown", help="Export format (default: markdown).")
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["markdown", "text"]),
+    default="markdown",
+    help="Export format (default: markdown).",
+)
 @click.option("--out", required=True, help="Output file path.")
-@click.option("--force", is_flag=True, default=False, help="EMERGENCY/DEBUG: Force export of non-APPROVED artifacts. Audit event will be recorded.")
-@click.option("--reason", default="", help="Reason for force-export (recorded in audit trail). Strongly recommended with --force.")
-@click.option("--yes", is_flag=True, default=False, help="Skip confirmation prompt (for CI/scripts). Only meaningful with --force.")
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="EMERGENCY/DEBUG: Force export of non-APPROVED artifacts. Audit event will be recorded.",
+)
+@click.option(
+    "--reason", default="", help="Reason for force-export (recorded in audit trail). Strongly recommended with --force."
+)
+@click.option(
+    "--yes",
+    is_flag=True,
+    default=False,
+    help="Skip confirmation prompt (for CI/scripts). Only meaningful with --force.",
+)
 @click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
-def export_artifact(artifact_id: str, fmt: str, out: str, force: bool, reason: str, yes: bool, db_path: str | None) -> None:
+def export_artifact(
+    artifact_id: str, fmt: str, out: str, force: bool, reason: str, yes: bool, db_path: str | None
+) -> None:
     """Export an artifact to a markdown file.
 
     Includes metadata frontmatter and source/provenance footer.
@@ -73,13 +93,35 @@ def export_artifact(artifact_id: str, fmt: str, out: str, force: bool, reason: s
 
 @export.command("project")
 @click.argument("project_name")
-@click.option("--format", "fmt", type=click.Choice(["markdown", "text"]), default="markdown", help="Export format (default: markdown).")
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["markdown", "text"]),
+    default="markdown",
+    help="Export format (default: markdown).",
+)
 @click.option("--out", required=True, help="Output file path.")
-@click.option("--include-unreviewed", is_flag=True, default=False, help="Include GENERATED/REVIEWED artifacts (sovereign override with audit trail). Default: APPROVED only.")
-@click.option("--reason", default="", help="Reason for including unreviewed artifacts (recorded in audit trail). Recommended with --include-unreviewed.")
-@click.option("--yes", is_flag=True, default=False, help="Skip confirmation prompt (for CI/scripts). Only meaningful with --include-unreviewed.")
+@click.option(
+    "--include-unreviewed",
+    is_flag=True,
+    default=False,
+    help="Include GENERATED/REVIEWED artifacts (sovereign override with audit trail). Default: APPROVED only.",
+)
+@click.option(
+    "--reason",
+    default="",
+    help="Reason for including unreviewed artifacts (recorded in audit trail). Recommended with --include-unreviewed.",
+)
+@click.option(
+    "--yes",
+    is_flag=True,
+    default=False,
+    help="Skip confirmation prompt (for CI/scripts). Only meaningful with --include-unreviewed.",
+)
 @click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
-def export_project(project_name: str, fmt: str, out: str, include_unreviewed: bool, reason: str, yes: bool, db_path: str | None) -> None:
+def export_project(
+    project_name: str, fmt: str, out: str, include_unreviewed: bool, reason: str, yes: bool, db_path: str | None
+) -> None:
     """Export approved artifacts for a project to a markdown bundle.
 
     Includes an artifact index and provenance metadata.
@@ -124,7 +166,9 @@ def _get_db_path(db_path: str | None) -> str:
     return db_path
 
 
-async def _export_artifact_async(artifact_id: str, out: str, fmt: str, force: bool, force_reason: str, db_path: str | None):
+async def _export_artifact_async(
+    artifact_id: str, out: str, fmt: str, force: bool, force_reason: str, db_path: str | None
+):
     from aip.orchestration.review_export_pipeline import create_review_export_stores, export_artifact
 
     stores = await create_review_export_stores(_get_db_path(db_path))
@@ -134,12 +178,16 @@ async def _export_artifact_async(artifact_id: str, out: str, fmt: str, force: bo
         await stores.close()
 
 
-async def _export_project_async(project_name: str, out: str, fmt: str, include_unreviewed: bool, force_reason: str, db_path: str | None):
+async def _export_project_async(
+    project_name: str, out: str, fmt: str, include_unreviewed: bool, force_reason: str, db_path: str | None
+):
     from aip.orchestration.review_export_pipeline import create_review_export_stores, export_project
 
     stores = await create_review_export_stores(_get_db_path(db_path))
     try:
-        return await export_project(project_name, out, stores, format=fmt, include_unreviewed=include_unreviewed, force_reason=force_reason)
+        return await export_project(
+            project_name, out, stores, format=fmt, include_unreviewed=include_unreviewed, force_reason=force_reason
+        )
     finally:
         await stores.close()
 
@@ -196,7 +244,7 @@ def _print_export_result(result: dict) -> None:
 
     if result.get("artifacts_exported") is not None:
         # Project export
-        click.echo(f"Project export complete.")
+        click.echo("Project export complete.")
         click.echo(f"  Project:  {result['project']}")
         click.echo(f"  Exported: {result['artifacts_exported']} artifacts")
         if result.get("sovereign_override_count"):
@@ -208,12 +256,12 @@ def _print_export_result(result: dict) -> None:
         click.echo(f"  Size:     {result.get('bytes_written', 0)} bytes")
     else:
         # Artifact export
-        click.echo(f"Artifact exported.")
+        click.echo("Artifact exported.")
         click.echo(f"  ID:       {result['artifact_id']}")
         click.echo(f"  State:    {result.get('lifecycle_state', '')}")
         if result.get("force_bypass"):
             click.echo(f"  ** SOVEREIGN OVERRIDE: exported from {result.get('force_bypass_state', '')} state **")
-            click.echo(f"  Audit:    Recorded (force_export event)")
+            click.echo("  Audit:    Recorded (force_export event)")
             click.echo(f"  Reason:   {result.get('force_reason', '')}")
         click.echo(f"  Output:   {result['out_path']}")
         click.echo(f"  Size:     {result.get('bytes_written', 0)} bytes")

@@ -25,7 +25,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import shutil
 import sqlite3
 import sys
@@ -73,24 +72,24 @@ def main() -> None:
 
     # state.db — all core tables
     _init_state_db(state_db_path)
-    print(f"  state.db: schema initialized")
+    print("  state.db: schema initialized")
 
     # lexical.db — FTS5 index
     _init_lexical_db(lexical_db_path)
-    print(f"  lexical.db: schema initialized")
+    print("  lexical.db: schema initialized")
 
     # vectors.db — vector metadata + VSS
     _init_vectors_db(vectors_db_path)
-    print(f"  vectors.db: schema initialized")
+    print("  vectors.db: schema initialized")
 
     # trace.db — trace events
     _init_trace_db(trace_db_path)
-    print(f"  trace.db: schema initialized")
+    print("  trace.db: schema initialized")
 
     # Other DBs — touch them
     for name in ["vigil_quality.db", "alert_history.db", "ace_playbook.db"]:
         (db_dir / name).touch(exist_ok=True)
-    print(f"  Other DBs: touched (vigil_quality, alert_history, ace_playbook)")
+    print("  Other DBs: touched (vigil_quality, alert_history, ace_playbook)")
 
     # 3. Create default project
     _create_default_project(state_db_path)
@@ -137,13 +136,14 @@ def main() -> None:
     _print_summary(state_db_path, vectors_db_path)
 
     print(f"\nDatabase location: {db_dir}/")
-    print(f"To verify: python scripts/demo/verify_aip_demo_db.py")
+    print("To verify: python scripts/demo/verify_aip_demo_db.py")
     print(f"To use:    export AIP_DB_PATH={state_db_path}")
 
 
 # ---------------------------------------------------------------------------
 # Schema initialization (matches aip/cli/init.py exactly)
 # ---------------------------------------------------------------------------
+
 
 def _init_state_db(db_path: Path) -> None:
     """Initialize state.db with all required tables."""
@@ -491,6 +491,7 @@ def _create_default_project(db_path: Path) -> None:
 # Data ingestion
 # ---------------------------------------------------------------------------
 
+
 def _ingest_qa_turns(db_path: Path, qa_path: Path) -> int:
     """Ingest Q&A turns from JSONL into corpus_turns table."""
     conn = sqlite3.connect(str(db_path))
@@ -528,7 +529,9 @@ def _ingest_qa_turns(db_path: Path, qa_path: Path) -> int:
                     embedded, metadata_json, embedding_model, needs_reembed, last_embed_at,
                     embed_fail_count, last_embed_error,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
                 """,
                 (
                     turn_id,
@@ -557,9 +560,9 @@ def _ingest_qa_turns(db_path: Path, qa_path: Path) -> int:
                     0,  # embedded=0 (pending)
                     json.dumps({"demo": True, "wiki_topic": turn.get("wiki_topic", "")}),
                     "",  # embedding_model
-                    0,   # needs_reembed
+                    0,  # needs_reembed
                     None,  # last_embed_at
-                    0,   # embed_fail_count
+                    0,  # embed_fail_count
                     "",  # last_embed_error
                     now,
                     now,
@@ -620,13 +623,15 @@ def _ingest_wiki_articles(db_path: Path, wiki_path: Path) -> int:
                 0.0,  # Fresh
                 now,
                 1,  # is_wiki_page
-                json.dumps({
-                    "tags": tags,
-                    "entities": entities,
-                    "importance": importance,
-                    "source_type": "curated",
-                    "demo": True,
-                }),
+                json.dumps(
+                    {
+                        "tags": tags,
+                        "entities": entities,
+                        "importance": importance,
+                        "source_type": "curated",
+                        "demo": True,
+                    }
+                ),
                 now,
             ),
         )
@@ -644,15 +649,17 @@ def _ingest_wiki_articles(db_path: Path, wiki_path: Path) -> int:
                 json.dumps([f"demo-qa-{i:03d}" for i in range(1, 61)]),
                 domain,
                 "APPROVED",
-                json.dumps({
-                    "title": title,
-                    "description": description,
-                    "tags": tags,
-                    "entities": entities,
-                    "importance": importance,
-                    "source_type": "curated",
-                    "demo": True,
-                }),
+                json.dumps(
+                    {
+                        "title": title,
+                        "description": description,
+                        "tags": tags,
+                        "entities": entities,
+                        "importance": importance,
+                        "source_type": "curated",
+                        "demo": True,
+                    }
+                ),
                 now,
                 now,
             ),
@@ -674,11 +681,11 @@ def _ingest_wiki_articles_manual(db_path: Path, wiki_path: Path) -> int:
     content = wiki_path.read_text(encoding="utf-8")
 
     # Split on article_id pattern
-    article_blocks = re.split(r'\n\s*-\s+article_id:', content)
+    article_blocks = re.split(r"\n\s*-\s+article_id:", content)
     count = 0
 
     for block in article_blocks[1:]:  # Skip the header before first article
-        lines = block.strip().split('\n')
+        lines = block.strip().split("\n")
         article_id = lines[0].strip().strip('"').strip("'")
 
         # Extract simple key: value pairs
@@ -808,8 +815,20 @@ def _create_graph_seed(db_path: Path) -> int:
     now = datetime.now(timezone.utc).isoformat()
 
     nodes = [
-        ("aip", "PROJECT", "AIP", "aip", ["AI Poiesis", "AIP_Brain", "AIP Brain", "the system", "the knowledge engine"]),
-        ("definer", "CONCEPT", "DEFINER", "aip", ["the DEFINER", "definer gate", "human-in-the-loop authority", "the sovereign"]),
+        (
+            "aip",
+            "PROJECT",
+            "AIP",
+            "aip",
+            ["AI Poiesis", "AIP_Brain", "AIP Brain", "the system", "the knowledge engine"],
+        ),
+        (
+            "definer",
+            "CONCEPT",
+            "DEFINER",
+            "aip",
+            ["the DEFINER", "definer gate", "human-in-the-loop authority", "the sovereign"],
+        ),
         ("beast", "PROJECT", "Beast", "aip", ["Beast actor", "the Beast", "beast agent", "the maintenance actor"]),
         ("vigil", "PROJECT", "Vigil", "aip", ["Vigil actor", "the Vigil", "vigil agent", "the quality monitor"]),
         ("sexton", "PROJECT", "Sexton", "aip", ["Sexton orchestrator", "sexton agent", "the orchestrator"]),
@@ -819,7 +838,13 @@ def _create_graph_seed(db_path: Path) -> int:
         ("model_slots", "CONCEPT", "Model slots", "aip", ["ModelSlotResolver", "slot resolution", "model dispatch"]),
         ("storage_model", "CONCEPT", "Storage model", "aip", ["SQLite", "multi-store", "local-first"]),
         ("dogfood_mode", "CONCEPT", "Dogfood mode", "aip", ["full dogfood", "diagnostic mode", "minimal mode"]),
-        ("no_silent_degradation", "CONCEPT", "No silent degradation", "aip", ["honest evaluation", "fail loudly", "no silent pass"]),
+        (
+            "no_silent_degradation",
+            "CONCEPT",
+            "No silent degradation",
+            "aip",
+            ["honest evaluation", "fail loudly", "no silent pass"],
+        ),
     ]
 
     edges = [
@@ -838,22 +863,33 @@ def _create_graph_seed(db_path: Path) -> int:
         conn.execute(
             """
             INSERT OR IGNORE INTO graph_nodes
-            (id, entity_type, canonical_name, domain, confidence, source, aliases_json, metadata_json, created_at, updated_at)
+            (id, entity_type, canonical_name, domain, confidence, source,
+             aliases_json, metadata_json, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (node_id, entity_type, canonical_name, domain, 1.0, "demo_seed",
-             json.dumps(aliases), json.dumps({"demo": True}), now, now),
+            (
+                node_id,
+                entity_type,
+                canonical_name,
+                domain,
+                1.0,
+                "demo_seed",
+                json.dumps(aliases),
+                json.dumps({"demo": True}),
+                now,
+                now,
+            ),
         )
 
     for edge_id, source_id, target_id, rel_type in edges:
         conn.execute(
             """
             INSERT OR IGNORE INTO graph_edges
-            (id, source_id, target_id, relationship_type, bridge_tag, confidence, evidence_turn_ids_json, weight, created_at)
+            (id, source_id, target_id, relationship_type, bridge_tag,
+             confidence, evidence_turn_ids_json, weight, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (edge_id, source_id, target_id, rel_type, f"{source_id}->{target_id}",
-             1.0, json.dumps([]), 1.0, now),
+            (edge_id, source_id, target_id, rel_type, f"{source_id}->{target_id}", 1.0, json.dumps([]), 1.0, now),
         )
 
     conn.commit()
@@ -866,9 +902,7 @@ def _index_lexical(lexical_db_path: Path, state_db_path: Path) -> int:
     """Index corpus turns and wiki articles into the lexical FTS5 store."""
     # Read turns from state.db
     state_conn = sqlite3.connect(str(state_db_path))
-    turns = state_conn.execute(
-        "SELECT turn_id, searchable_text, primary_domain FROM corpus_turns"
-    ).fetchall()
+    turns = state_conn.execute("SELECT turn_id, searchable_text, primary_domain FROM corpus_turns").fetchall()
     wiki = state_conn.execute(
         "SELECT topic_id, description, domain FROM codex_topics WHERE is_wiki_page = 1"
     ).fetchall()
@@ -881,14 +915,20 @@ def _index_lexical(lexical_db_path: Path, state_db_path: Path) -> int:
 
     for turn_id, text, domain in turns:
         lex_conn.execute(
-            "INSERT OR REPLACE INTO fts_documents (doc_id, content, domain, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
+            (
+                "INSERT OR REPLACE INTO fts_documents "
+                "(doc_id, content, domain, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
+            ),
             (f"turn:{turn_id}", text, domain, json.dumps({"type": "corpus_turn", "turn_id": turn_id}), now),
         )
         count += 1
 
     for topic_id, description, domain in wiki:
         lex_conn.execute(
-            "INSERT OR REPLACE INTO fts_documents (doc_id, content, domain, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
+            (
+                "INSERT OR REPLACE INTO fts_documents "
+                "(doc_id, content, domain, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
+            ),
             (f"wiki:{topic_id}", description, domain, json.dumps({"type": "wiki", "topic_id": topic_id}), now),
         )
         count += 1
@@ -902,6 +942,7 @@ def _try_embeddings(state_db_path: Path, vectors_db_path: Path) -> str:
     """Attempt to generate embeddings. Returns status string."""
     try:
         import tomllib
+
         config_path = PROJECT_ROOT / "config" / "aip.config.toml"
         cfg: dict = {}
         if config_path.exists():
@@ -910,10 +951,14 @@ def _try_embeddings(state_db_path: Path, vectors_db_path: Path) -> str:
 
         eslot = cfg.get("models", {}).get("embedding", {}) if isinstance(cfg.get("models"), dict) else {}
         if not (isinstance(eslot, dict) and eslot.get("provider") and eslot.get("model")):
-            return "PENDING — no [models.embedding] configured. Run 'aip corpus embed' locally after configuring an embedding provider."
+            return (
+                "PENDING — no [models.embedding] configured. "
+                "Run 'aip corpus embed' locally after configuring an embedding provider."
+            )
 
         # Try to create and use the embedding provider
         from aip.adapter.api.app import _create_embedding_provider
+
         provider = _create_embedding_provider(cfg)
         if provider is None:
             return "PENDING — embedding provider creation failed. Check configuration."
@@ -942,9 +987,17 @@ def _try_embeddings(state_db_path: Path, vectors_db_path: Path) -> str:
                     if embedding and len(embedding) > 0:
                         # Store in vector_metadata (without actual VSS index, just metadata)
                         vec_conn.execute(
-                            "INSERT OR REPLACE INTO vector_metadata (id, content, domain, metadata_json, created_at) VALUES (?, ?, ?, ?, ?)",
-                            (turn["turn_id"], turn["searchable_text"][:500], "aip",
-                             json.dumps({"dim": len(embedding), "demo": True}), now),
+                            (
+                                "INSERT OR REPLACE INTO vector_metadata "
+                                "(id, content, domain, metadata_json, created_at) VALUES (?, ?, ?, ?, ?)"
+                            ),
+                            (
+                                turn["turn_id"],
+                                turn["searchable_text"][:500],
+                                "aip",
+                                json.dumps({"dim": len(embedding), "demo": True}),
+                                now,
+                            ),
                         )
                         embedded_count += 1
                 except Exception:
@@ -958,7 +1011,10 @@ def _try_embeddings(state_db_path: Path, vectors_db_path: Path) -> str:
             turn_ids = [t["turn_id"] for t in turns[:embedded_count]]
             for tid in turn_ids:
                 state_conn2.execute(
-                    "UPDATE corpus_turns SET embedded = 1, embedding_model = ?, last_embed_at = ?, updated_at = ? WHERE turn_id = ?",
+                    (
+                        "UPDATE corpus_turns SET embedded = 1, "
+                        "embedding_model = ?, last_embed_at = ?, updated_at = ? WHERE turn_id = ?"
+                    ),
                     (eslot.get("model", "unknown"), now, now, tid),
                 )
             state_conn2.commit()

@@ -74,7 +74,7 @@ class TestPatchSession:
         resp = client.post("/api/v1/sessions", json={"role": "beast"})
         assert resp.status_code == 200
         session_id = resp.json()["id"]
-        original_created_at = resp.json().get("created_at")
+        resp.json().get("created_at")
 
         # Try to change id and created_at — they should be ignored
         resp = client.patch(f"/api/v1/sessions/{session_id}", json={"id": "hacked", "created_at": "1999-01-01"})
@@ -117,13 +117,16 @@ class TestIngestConversationEndpoint:
         app = create_app()
         client = TestClient(app)
 
-        resp = client.post("/api/v1/ingest/conversation", json={
-            "conversation_id": "test-conv-1",
-            "turns": [
-                {"role": "user", "content": "Hello"},
-                {"role": "assistant", "content": "Hi there!"},
-            ],
-        })
+        resp = client.post(
+            "/api/v1/ingest/conversation",
+            json={
+                "conversation_id": "test-conv-1",
+                "turns": [
+                    {"role": "user", "content": "Hello"},
+                    {"role": "assistant", "content": "Hi there!"},
+                ],
+            },
+        )
         # In the test environment without lifespan, stores are None → 503
         # OR if the app does have stores wired via lifespan, it could be 200
         assert resp.status_code in (200, 503)
@@ -133,10 +136,13 @@ class TestIngestConversationEndpoint:
         app = create_app()
         client = TestClient(app)
 
-        resp = client.post("/api/v1/ingest/conversation", json={
-            "conversation_id": "test-conv-2",
-            "turns": [],
-        })
+        resp = client.post(
+            "/api/v1/ingest/conversation",
+            json={
+                "conversation_id": "test-conv-2",
+                "turns": [],
+            },
+        )
         assert resp.status_code == 400
 
 

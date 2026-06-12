@@ -97,16 +97,17 @@ def _is_busy_error(exc: Exception) -> bool:
 # Data models
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class GraphNode:
     """A node in the knowledge graph."""
 
-    id: str                          # snake_case canonical identifier
-    entity_type: str                 # PERSON | PROJECT | CONCEPT | PLACE | ORGANIZATION | MANUSCRIPT | DOMAIN
-    canonical_name: str              # human-readable display name
+    id: str  # snake_case canonical identifier
+    entity_type: str  # PERSON | PROJECT | CONCEPT | PLACE | ORGANIZATION | MANUSCRIPT | DOMAIN
+    canonical_name: str  # human-readable display name
     domain: str | None = None
     confidence: float = 1.0
-    source: str = "manual"           # manual | bridge | beast_extraction | sexton_extraction
+    source: str = "manual"  # manual | bridge | beast_extraction | sexton_extraction
     aliases: list[str] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
     created_at: str | None = None
@@ -117,11 +118,11 @@ class GraphNode:
 class GraphEdge:
     """A directed edge in the knowledge graph."""
 
-    id: str                          # f"{source_id}__{relationship_type}__{target_id}"
+    id: str  # f"{source_id}__{relationship_type}__{target_id}"
     source_id: str
     target_id: str
-    relationship_type: str           # CONNECTS | WORKS_ON | FUNDED_BY | AUTHORED | LOCATED_IN | RELATES_TO
-    bridge_tag: str | None = None    # original bridge tag string if from corpus
+    relationship_type: str  # CONNECTS | WORKS_ON | FUNDED_BY | AUTHORED | LOCATED_IN | RELATES_TO
+    bridge_tag: str | None = None  # original bridge tag string if from corpus
     confidence: float = 1.0
     evidence_turn_ids: list[str] = field(default_factory=list)
     weight: float = 1.0
@@ -145,6 +146,7 @@ class GraphStore(GraphStoreProtocol, StoreHealthMixin, ReadPoolMixin):
         self._tables_ready = False
         self._read_pool_config = config
         from aip.adapter.read_pool import resolve_pool_size
+
         self._init_read_pool(pool_size=resolve_pool_size("graph_store", config))
 
     async def _get_conn(self) -> aiosqlite.Connection:
@@ -225,7 +227,7 @@ class GraphStore(GraphStoreProtocol, StoreHealthMixin, ReadPoolMixin):
                 return await coro_fn()
             except Exception as exc:
                 if _is_busy_error(exc) and attempt < _BUSY_RETRY_MAX:
-                    delay = _BUSY_RETRY_BASE_DELAY * (2 ** attempt)
+                    delay = _BUSY_RETRY_BASE_DELAY * (2**attempt)
                     log.warning("sqlite_busy_retry attempt=%d delay_ms=%d", attempt + 1, int(delay * 1000))
                     await asyncio.sleep(delay)
                     last_exc = exc
@@ -241,9 +243,7 @@ class GraphStore(GraphStoreProtocol, StoreHealthMixin, ReadPoolMixin):
         t0 = time.monotonic()
         try:
             now = datetime.now(timezone.utc).isoformat()
-            cursor = await conn.execute(
-                "SELECT created_at FROM graph_nodes WHERE id = ?", (node.id,)
-            )
+            cursor = await conn.execute("SELECT created_at FROM graph_nodes WHERE id = ?", (node.id,))
             existing = await cursor.fetchone()
             created_at = existing["created_at"] if existing else (node.created_at or now)
 
@@ -333,9 +333,7 @@ class GraphStore(GraphStoreProtocol, StoreHealthMixin, ReadPoolMixin):
         try:
             now = datetime.now(timezone.utc).isoformat()
             for node in nodes:
-                cursor = await conn.execute(
-                    "SELECT created_at FROM graph_nodes WHERE id = ?", (node.id,)
-                )
+                cursor = await conn.execute("SELECT created_at FROM graph_nodes WHERE id = ?", (node.id,))
                 existing = await cursor.fetchone()
                 created_at = existing["created_at"] if existing else (node.created_at or now)
 
@@ -432,9 +430,7 @@ class GraphStore(GraphStoreProtocol, StoreHealthMixin, ReadPoolMixin):
         """Return a single node by ID, or None."""
         conn = await self._checkout_read_conn()
         try:
-            cursor = await conn.execute(
-                "SELECT * FROM graph_nodes WHERE id = ?", (node_id,)
-            )
+            cursor = await conn.execute("SELECT * FROM graph_nodes WHERE id = ?", (node_id,))
             row = await cursor.fetchone()
             return self._row_to_node(row) if row else None
         except Exception:
@@ -573,9 +569,7 @@ class GraphStore(GraphStoreProtocol, StoreHealthMixin, ReadPoolMixin):
         """Check whether a turn has already been graph-extracted."""
         conn = await self._checkout_read_conn()
         try:
-            cursor = await conn.execute(
-                "SELECT 1 FROM graph_extraction_log WHERE turn_id = ?", (turn_id,)
-            )
+            cursor = await conn.execute("SELECT 1 FROM graph_extraction_log WHERE turn_id = ?", (turn_id,))
             row = await cursor.fetchone()
             return row is not None
         except Exception:
@@ -584,9 +578,7 @@ class GraphStore(GraphStoreProtocol, StoreHealthMixin, ReadPoolMixin):
         finally:
             self._return_read_conn(conn)
 
-    async def get_unextracted_high_importance_turns(
-        self, min_importance: float = 0.7, limit: int = 50
-    ) -> list[dict]:
+    async def get_unextracted_high_importance_turns(self, min_importance: float = 0.7, limit: int = 50) -> list[dict]:
         """Return high-importance corpus turns not yet graph-extracted.
 
         Queries the corpus_turns table in the same state.db, so no

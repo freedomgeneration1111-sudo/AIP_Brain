@@ -18,7 +18,6 @@ from aip.orchestration.channels.retrieval_config import (
 )
 from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
 
-
 # ---------------------------------------------------------------------------
 # build_orchestrator_config
 # ---------------------------------------------------------------------------
@@ -38,7 +37,8 @@ class TestBuildOrchestratorConfig:
     def test_vector_enabled_overrides_enable_vector(self):
         """vector_enabled (after coverage gating) takes precedence for the config."""
         config = build_orchestrator_config(
-            enable_vector=True, vector_enabled=False,
+            enable_vector=True,
+            vector_enabled=False,
         )
         assert config.enable_vector is False
 
@@ -172,6 +172,7 @@ class TestCheckVectorCoverage:
     @pytest.mark.asyncio
     async def test_sufficient_coverage_returns_true(self):
         """When embedding coverage is above 10%, vector stays enabled."""
+
         class MockCorpusTurnStore:
             async def get_embedding_progress(self):
                 return {"percentage": 50.0}
@@ -185,6 +186,7 @@ class TestCheckVectorCoverage:
     @pytest.mark.asyncio
     async def test_low_coverage_returns_false(self):
         """When embedding coverage is below 10%, vector is disabled."""
+
         class MockCorpusTurnStore:
             async def get_embedding_progress(self):
                 return {"percentage": 5.0}
@@ -198,6 +200,7 @@ class TestCheckVectorCoverage:
     @pytest.mark.asyncio
     async def test_coverage_check_failure_returns_true(self):
         """If coverage check fails, vector stays enabled (fail-open for availability)."""
+
         class MockCorpusTurnStore:
             async def get_embedding_progress(self):
                 raise RuntimeError("DB error")
@@ -211,6 +214,7 @@ class TestCheckVectorCoverage:
     @pytest.mark.asyncio
     async def test_exact_10_percent_returns_false(self):
         """10% is the minimum; exactly 10% should still be enabled."""
+
         class MockCorpusTurnStore:
             async def get_embedding_progress(self):
                 return {"percentage": 10.0}
@@ -224,6 +228,7 @@ class TestCheckVectorCoverage:
     @pytest.mark.asyncio
     async def test_just_below_10_percent_returns_false(self):
         """9.99% coverage should disable vector."""
+
         class MockCorpusTurnStore:
             async def get_embedding_progress(self):
                 return {"percentage": 9.99}
@@ -276,6 +281,7 @@ class TestRetrievalTraceUtilsClean:
     def test_no_except_pass_in_trace_utils(self):
         """retrieval_trace_utils must not contain 'except Exception: pass'."""
         import inspect
+
         from aip.orchestration.channels import retrieval_trace_utils
 
         source = inspect.getsource(retrieval_trace_utils)
@@ -288,6 +294,7 @@ class TestRetrievalTraceUtilsClean:
     def test_no_dead_code_in_build_warnings(self):
         """build_retrieval_warnings must not contain dead code (unused dict lookups)."""
         import inspect
+
         from aip.orchestration.channels.retrieval_trace_utils import build_retrieval_warnings
 
         source = inspect.getsource(build_retrieval_warnings)
@@ -299,6 +306,6 @@ class TestRetrievalTraceUtilsClean:
             if stripped.startswith("retrieval_trace.channel_health_reasons.get("):
                 # This should not appear as a standalone statement
                 assert False, (
-                    f"Dead code at line {i+1}: '{stripped}' — "
+                    f"Dead code at line {i + 1}: '{stripped}' — "
                     "result of .get() is discarded. Either use it or remove it."
                 )

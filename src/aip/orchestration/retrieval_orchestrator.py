@@ -34,6 +34,7 @@ RetrieverChannel = Callable[[str], Awaitable[list[RetrievalHit]]]
 # RRF (Reciprocal Rank Fusion)
 # ---------------------------------------------------------------------------
 
+
 def rrf_fuse(
     channel_results: dict[str, list[RetrievalHit]],
     k: int = 60,
@@ -97,6 +98,7 @@ def rrf_fuse(
 # Quality gate
 # ---------------------------------------------------------------------------
 
+
 def apply_quality_gate(
     hits: list[RetrievalHit],
     min_rrf_score: float = 0.01,
@@ -128,6 +130,7 @@ def apply_quality_gate(
 # Query expansion
 # ---------------------------------------------------------------------------
 
+
 def expand_query(query: str, extra_terms: list[str] | None = None) -> str:
     """Simple query expansion: append synonyms / entity terms.
 
@@ -143,6 +146,7 @@ def expand_query(query: str, extra_terms: list[str] | None = None) -> str:
 # ---------------------------------------------------------------------------
 # RetrievalOrchestrator
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class OrchestratorConfig:
@@ -180,23 +184,25 @@ class OrchestratorConfig:
     # they tend to dominate RRF scores; Graph/Wiki have high precision
     # but low recall and need generous limits.
     max_hits_per_channel: int = 0
-    fts_max_hits: int = 15
-    vector_max_hits: int = 0
-    graph_max_hits: int = 10
-    wiki_max_hits: int = 8
-    procedural_max_hits: int = 5
-    corpus_max_hits: int = 15
+    fts_max_hits: int = 15  # FTS is high-volume; cap to prevent dominance
+    vector_max_hits: int = 0  # Vector is moderate; no cap needed
+    graph_max_hits: int = 10  # Graph returns few but precise hits; allow up to 10
+    wiki_max_hits: int = 8  # Wiki articles are fewer but high quality
+    procedural_max_hits: int = 5  # Procedural guides are typically few
+    corpus_max_hits: int = 15  # Corpus can be high-volume like FTS; cap similarly
 
     # Per-channel RRF weights for hybrid retrieval tuning.
     # Higher weight = channel contributes more to the final RRF score.
     # Channels not listed default to 1.0.
     # When vector coverage is insufficient, these weights are ignored
     # and FTS5-only mode is used (see min_vector_coverage).
-    channel_weights: dict[str, float] = field(default_factory=lambda: {
-        "vector": 0.6,
-        "fts": 0.4,
-        "corpus": 0.4,
-    })
+    channel_weights: dict[str, float] = field(
+        default_factory=lambda: {
+            "vector": 0.6,
+            "fts": 0.4,
+            "corpus": 0.4,
+        }
+    )
 
     # Minimum embedding coverage to enable hybrid retrieval.
     # If the percentage of embedded corpus turns is below this threshold,
@@ -322,6 +328,7 @@ class RetrievalOrchestrator:
         if config.enable_llm_query_expansion and model_provider is not None:
             try:
                 from aip.orchestration.llm_query_expansion import expand_query_with_llm
+
                 expansion_result = await expand_query_with_llm(
                     query=query,
                     model_provider=model_provider,
@@ -356,10 +363,7 @@ class RetrievalOrchestrator:
 
         for round_num in range(config.max_retrieval_rounds):
             # Expand query for retry rounds
-            current_query = (
-                expand_query(query, all_expanded) if round_num == 0
-                else expand_query(query, all_expanded)
-            )
+            current_query = expand_query(query, all_expanded) if round_num == 0 else expand_query(query, all_expanded)
             if round_num > 0:
                 # On retry, broaden: use the original query without FTS AND
                 current_query = query  # retry with original (different channel mix)
@@ -500,10 +504,7 @@ class RetrievalOrchestrator:
             return name, hits, ch_elapsed
 
         # Launch all channels concurrently
-        tasks = [
-            _dispatch_one(name, retriever, query)
-            for name, retriever in active_channels.items()
-        ]
+        tasks = [_dispatch_one(name, retriever, query) for name, retriever in active_channels.items()]
         results = await asyncio.gather(*tasks)
 
         # Collect results and determine channel health
@@ -530,7 +531,7 @@ class RetrievalOrchestrator:
             elif not hits:
                 # Check if the safe_retriever recorded a failure
                 retriever_fn = active_channels.get(name)
-                last_failure = getattr(retriever_fn, 'get_last_failure', lambda: None)()
+                last_failure = getattr(retriever_fn, "get_last_failure", lambda: None)()
                 if last_failure is not None:
                     reason = last_failure.message[:200]
                     channel_health[name] = ChannelHealthState.FAILED.value
@@ -561,7 +562,7 @@ class RetrievalOrchestrator:
             else:
                 # Channel returned results — check if it's degraded
                 # Vector channel can be degraded (brute-force fallback)
-                if name == "vector" and hasattr(self, '_vector_degraded') and self._vector_degraded:
+                if name == "vector" and hasattr(self, "_vector_degraded") and self._vector_degraded:
                     reason = "Vector search using brute-force fallback (no VSS index)"
                     channel_health[name] = ChannelHealthState.DEGRADED.value
                     channel_health_reasons[name] = reason
@@ -576,17 +577,22 @@ class RetrievalOrchestrator:
                         degradation_reason=reason,
                     )
                     # Populate vector-specific fields from the store if available
-                    if hasattr(self, '_vector_store') and self._vector_store is not None:
+                    if hasattr(self, "_vector_store") and self._vector_store is not None:
                         store = self._vector_store
-                        if hasattr(store, 'get_backend_status'):
+                        if hasattr(store, "get_backend_status"):
                             from aip.foundation.schemas.vector import VectorBackendStatus as _VecStatus
+
                             _vstatus = store.get_backend_status()
-                            detail.backend_type = "brute_force" if _vstatus == _VecStatus.DEGRADED_BRUTEFORCE else (store._backend_name if hasattr(store, '_backend_name') else "unknown")
-                        if hasattr(store, '_vss_available'):
+                            detail.backend_type = (
+                                "brute_force"
+                                if _vstatus == _VecStatus.DEGRADED_BRUTEFORCE
+                                else (store._backend_name if hasattr(store, "_backend_name") else "unknown")
+                            )
+                        if hasattr(store, "_vss_available"):
                             detail.vss_available = store._vss_available
-                        if hasattr(store, 'count'):
+                        if hasattr(store, "count"):
                             detail.vector_count = 0  # sync fallback; async count populated by ask_pipeline
-                    if hasattr(self, '_embedding_provider_configured'):
+                    if hasattr(self, "_embedding_provider_configured"):
                         detail.embedding_provider_configured = self._embedding_provider_configured
                     channel_details[name] = detail
                 else:
@@ -602,15 +608,18 @@ class RetrievalOrchestrator:
                     )
                     # For vector channel with results and NOT degraded, still populate vector-specific fields
                     if name == "vector":
-                        if hasattr(self, '_vector_store') and self._vector_store is not None:
+                        if hasattr(self, "_vector_store") and self._vector_store is not None:
                             store = self._vector_store
-                            if hasattr(store, 'get_backend_status'):
+                            if hasattr(store, "get_backend_status"):
                                 from aip.foundation.schemas.vector import VectorBackendStatus as _VecStatus2
+
                                 _vstatus2 = store.get_backend_status()
-                                channel_details[name].backend_type = "sqlite_vss" if _vstatus2 == _VecStatus2.AVAILABLE else "unknown"
-                            if hasattr(store, '_vss_available'):
+                                channel_details[name].backend_type = (
+                                    "sqlite_vss" if _vstatus2 == _VecStatus2.AVAILABLE else "unknown"
+                                )
+                            if hasattr(store, "_vss_available"):
                                 channel_details[name].vss_available = store._vss_available
-                        if hasattr(self, '_embedding_provider_configured'):
+                        if hasattr(self, "_embedding_provider_configured"):
                             channel_details[name].embedding_provider_configured = self._embedding_provider_configured
 
         # Build degradation warnings from channel health
@@ -618,7 +627,9 @@ class RetrievalOrchestrator:
         failed_channels = [ch for ch, h in channel_health.items() if h == ChannelHealthState.FAILED.value]
         degraded_channels = [ch for ch, h in channel_health.items() if h == ChannelHealthState.DEGRADED.value]
         unavailable_channels = [ch for ch, h in channel_health.items() if h == ChannelHealthState.UNAVAILABLE.value]
-        not_configured_channels = [ch for ch, h in channel_health.items() if h == ChannelHealthState.NOT_CONFIGURED.value]
+        not_configured_channels = [
+            ch for ch, h in channel_health.items() if h == ChannelHealthState.NOT_CONFIGURED.value
+        ]
 
         if failed_channels:
             for ch in failed_channels:
@@ -640,9 +651,7 @@ class RetrievalOrchestrator:
             best_channel = max(channel_results.keys(), key=lambda ch: len(channel_results[ch]))
             if channel_health.get(best_channel) == ChannelHealthState.ACTIVE.value:
                 if degraded_channels or failed_channels:
-                    degradation_warnings.append(
-                        f"{best_channel.capitalize()} channel supplied primary evidence"
-                    )
+                    degradation_warnings.append(f"{best_channel.capitalize()} channel supplied primary evidence")
 
         # Per-channel budget enforcement before fusion
         for ch_name in list(channel_results.keys()):
@@ -650,9 +659,7 @@ class RetrievalOrchestrator:
             if ch_limit > 0 and len(channel_results[ch_name]) > ch_limit:
                 channel_results[ch_name] = channel_results[ch_name][:ch_limit]
 
-        trace.per_channel_hit_counts = {
-            ch_name: len(hits) for ch_name, hits in channel_results.items()
-        }
+        trace.per_channel_hit_counts = {ch_name: len(hits) for ch_name, hits in channel_results.items()}
 
         trace.total_elapsed_ms = (time.monotonic() - round_start) * 1000.0
         trace.hits_before_fusion = sum(len(h) for h in channel_results.values())
@@ -731,15 +738,12 @@ class RetrievalOrchestrator:
         trace.degradation_warnings = degradation_warnings
         trace.documents_retrieved_ids = [h.id for h in filtered]
         trace.top_scores = [
-            {"id": h.id, "rrf_score": round(h.rrf_score, 6), "raw_score": round(h.score, 6)}
-            for h in filtered[:10]
+            {"id": h.id, "rrf_score": round(h.rrf_score, 6), "raw_score": round(h.score, 6)} for h in filtered[:10]
         ]
         # Set retrieval honesty flags
         trace.channels_attempted = list(active_channels.keys())
         trace.channels_used = [ch for ch, h in channel_health.items() if h in ("active", "degraded")]
-        trace.lexical_only = (
-            not any(ch in ("vector", "graph", "wiki", "procedural") for ch in trace.channels_used)
-        )
+        trace.lexical_only = not any(ch in ("vector", "graph", "wiki", "procedural") for ch in trace.channels_used)
         trace.vector_contributed = "vector" in trace.channels_used
 
         return filtered, trace
@@ -748,6 +752,7 @@ class RetrievalOrchestrator:
 # ---------------------------------------------------------------------------
 # Orchestrator cache
 # ---------------------------------------------------------------------------
+
 
 class OrchestratorCache:
     """Singleton-ish cache for RetrievalOrchestrator instances.

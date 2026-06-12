@@ -20,7 +20,6 @@ import logging
 from typing import TYPE_CHECKING
 
 from aip.foundation.schemas.retrieval import (
-    ChannelHealthDetail,
     ChannelHealthState,
     RetrievalTrace,
 )
@@ -69,9 +68,7 @@ def build_degradation_dict(
         # Include unified trace diagnostic info
         result["channel_health"] = retrieval_trace.channel_health
         result["channel_health_reasons"] = retrieval_trace.channel_health_reasons
-        result["channel_details"] = {
-            ch: d.to_dict() for ch, d in retrieval_trace.channel_details.items()
-        }
+        result["channel_details"] = {ch: d.to_dict() for ch, d in retrieval_trace.channel_details.items()}
         result["active_channels"] = retrieval_trace.get_active_channels()
         result["failed_channels"] = retrieval_trace.get_failed_channels()
         result["degraded_channels"] = retrieval_trace.get_degraded_channels()
@@ -92,9 +89,7 @@ def build_degradation_dict(
 
     # Include channel registration failures for visibility
     if registration_failures:
-        result["channel_registration_failures"] = [
-            f.to_dict() for f in registration_failures
-        ]
+        result["channel_registration_failures"] = [f.to_dict() for f in registration_failures]
 
     return result
 
@@ -141,17 +136,13 @@ def build_retrieval_warnings(retrieval_trace: RetrievalTrace | None) -> list[str
         warnings.append("Retrieval quality gate returned insufficient context")
 
     # 3. Primary evidence identification
-    if retrieval_trace.channel_contributions and (
-        warnings or retrieval_trace.get_degraded_channels()
-    ):
+    if retrieval_trace.channel_contributions and (warnings or retrieval_trace.get_degraded_channels()):
         best_channel = max(
             retrieval_trace.channel_contributions.keys(),
             key=lambda ch: retrieval_trace.channel_contributions[ch],
         )
         if best_channel:
-            warnings.append(
-                f"{best_channel.capitalize()} channel supplied primary evidence"
-            )
+            warnings.append(f"{best_channel.capitalize()} channel supplied primary evidence")
 
     # 4. Vector-specific warnings
     vdi = retrieval_trace.vector_degradation
@@ -207,8 +198,8 @@ async def enrich_vector_trace_detail(
     if vector_store is not None and "vector" in trace.channel_details:
         vec_detail = trace.channel_details["vector"]
         vec_detail.embedding_provider_configured = embedding_provider is not None
-        vec_detail.vss_available = getattr(vector_store, '_vss_available', None)
-        if hasattr(vector_store, 'get_backend_status'):
+        vec_detail.vss_available = getattr(vector_store, "_vss_available", None)
+        if hasattr(vector_store, "get_backend_status"):
             _vbs = vector_store.get_backend_status()
             if _vbs == VectorBackendStatus.AVAILABLE:
                 vec_detail.backend_type = "sqlite_vss"
@@ -219,10 +210,7 @@ async def enrich_vector_trace_detail(
         # vector_count is populated asynchronously below
         vec_detail.vector_count = None
         # Update the channel_health to reflect not_configured if needed
-        if (
-            vec_detail.state == ChannelHealthState.DISABLED
-            and embedding_provider is None
-        ):
+        if vec_detail.state == ChannelHealthState.DISABLED and embedding_provider is None:
             vec_detail.state = ChannelHealthState.NOT_CONFIGURED
             vec_detail.degradation_reason = "No embedding provider configured"
             trace.channel_health["vector"] = ChannelHealthState.NOT_CONFIGURED.value

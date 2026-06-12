@@ -18,15 +18,11 @@ Covers:
 from __future__ import annotations
 
 import ast
-import hashlib
-import importlib
 import json
-import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -64,11 +60,24 @@ class TestBeastCommentarySchema:
 
         resp = BeastCommentaryResponse()
         fields = [
-            "id", "turn_id", "session_id", "mode", "summary", "critique",
-            "continuity_notes", "risk_notes", "suggested_actions",
-            "suggested_wiki_links", "suggested_artifacts", "model_comparison",
-            "retrieval_notes", "source_notes", "created_at", "status",
-            "persistence", "error",
+            "id",
+            "turn_id",
+            "session_id",
+            "mode",
+            "summary",
+            "critique",
+            "continuity_notes",
+            "risk_notes",
+            "suggested_actions",
+            "suggested_wiki_links",
+            "suggested_artifacts",
+            "model_comparison",
+            "retrieval_notes",
+            "source_notes",
+            "created_at",
+            "status",
+            "persistence",
+            "error",
         ]
         for field in fields:
             assert hasattr(resp, field), f"Missing field: {field}"
@@ -152,18 +161,18 @@ class TestGetBeastCommentary:
 
         turn_id = "turn-test-001"
         mode = "continuity"
-        artifact_id = _commentary_artifact_id(turn_id, mode)
-        commentary_data = json.dumps({
-            "summary": "Test summary",
-            "mode": "continuity",
-            "critique": "Test critique",
-            "suggested_actions": [{"action": "review", "target": "art-1"}],
-        })
+        _commentary_artifact_id(turn_id, mode)
+        commentary_data = json.dumps(
+            {
+                "summary": "Test summary",
+                "mode": "continuity",
+                "critique": "Test critique",
+                "suggested_actions": [{"action": "review", "target": "art-1"}],
+            }
+        )
         metadata = {"created_at": "2026-06-11T10:00:00Z", "mode": "continuity"}
 
-        mock_container.artifact_store.read_with_metadata = AsyncMock(
-            return_value=(commentary_data, metadata)
-        )
+        mock_container.artifact_store.read_with_metadata = AsyncMock(return_value=(commentary_data, metadata))
 
         result = await get_beast_commentary(turn_id, mode=mode, container=mock_container)
 
@@ -178,9 +187,7 @@ class TestGetBeastCommentary:
         """GET returns status='not_available' when no commentary exists for the mode."""
         from aip.adapter.api.routes.beast_commentary import get_beast_commentary
 
-        mock_container.artifact_store.read_with_metadata = AsyncMock(
-            side_effect=KeyError("not found")
-        )
+        mock_container.artifact_store.read_with_metadata = AsyncMock(side_effect=KeyError("not found"))
 
         result = await get_beast_commentary("turn-nonexistent", mode="continuity", container=mock_container)
 
@@ -266,20 +273,20 @@ class TestRunBeastCommentary:
         )
 
         # Mock model provider response
-        llm_response = json.dumps({
-            "summary": "This answer is well-grounded.",
-            "critique": "Strong on evidence.",
-            "continuity_notes": "Follows prior discussion.",
-            "risk_notes": "Minimal risk.",
-            "suggested_actions": [{"action": "Create wiki article", "target": "topic-X"}],
-            "suggested_wiki_links": ["Topic X"],
-            "suggested_artifacts": [],
-            "retrieval_notes": "Retrieval was adequate.",
-            "source_notes": "Sources are relevant.",
-        })
-        mock_container_with_provider.model_provider.call = AsyncMock(
-            return_value={"content": llm_response}
+        llm_response = json.dumps(
+            {
+                "summary": "This answer is well-grounded.",
+                "critique": "Strong on evidence.",
+                "continuity_notes": "Follows prior discussion.",
+                "risk_notes": "Minimal risk.",
+                "suggested_actions": [{"action": "Create wiki article", "target": "topic-X"}],
+                "suggested_wiki_links": ["Topic X"],
+                "suggested_artifacts": [],
+                "retrieval_notes": "Retrieval was adequate.",
+                "source_notes": "Sources are relevant.",
+            }
         )
+        mock_container_with_provider.model_provider.call = AsyncMock(return_value={"content": llm_response})
         mock_container_with_provider.artifact_store.write = AsyncMock()
         mock_container_with_provider.ecs_store.transition = AsyncMock()
 
@@ -289,9 +296,7 @@ class TestRunBeastCommentary:
             question_text="What is full dogfood mode?",
             answer_text="Full dogfood mode means...",
         )
-        result = await run_beast_commentary(
-            "turn-123", request, container=mock_container_with_provider
-        )
+        result = await run_beast_commentary("turn-123", request, container=mock_container_with_provider)
 
         assert result.status == "available"
         assert result.summary == "This answer is well-grounded."
@@ -310,9 +315,7 @@ class TestRunBeastCommentary:
             run_beast_commentary,
         )
 
-        mock_container_with_provider.model_provider.call = AsyncMock(
-            return_value={"content": '{"summary": "OK"}'}
-        )
+        mock_container_with_provider.model_provider.call = AsyncMock(return_value={"content": '{"summary": "OK"}'})
         mock_container_with_provider.artifact_store.write = AsyncMock()
         mock_container_with_provider.ecs_store.transition = AsyncMock()
 
@@ -334,16 +337,16 @@ class TestRunBeastCommentary:
             run_beast_commentary,
         )
 
-        llm_response = json.dumps({
-            "summary": "Test",
-            "suggested_actions": [
-                {"action": "Create wiki article", "target": "topic-X"},
-                {"action": "Approve artifact", "target": "art-001"},
-            ],
-        })
-        mock_container_with_provider.model_provider.call = AsyncMock(
-            return_value={"content": llm_response}
+        llm_response = json.dumps(
+            {
+                "summary": "Test",
+                "suggested_actions": [
+                    {"action": "Create wiki article", "target": "topic-X"},
+                    {"action": "Approve artifact", "target": "art-001"},
+                ],
+            }
         )
+        mock_container_with_provider.model_provider.call = AsyncMock(return_value={"content": llm_response})
         mock_container_with_provider.artifact_store.write = AsyncMock()
         mock_container_with_provider.ecs_store.transition = AsyncMock()
 
@@ -357,11 +360,12 @@ class TestRunBeastCommentary:
     @pytest.mark.asyncio
     async def test_run_invalid_mode_returns_400(self, mock_container_with_provider):
         """POST with invalid mode returns 400 error."""
+        from fastapi import HTTPException
+
         from aip.adapter.api.routes.beast_commentary import (
             BeastCommentaryRequest,
             run_beast_commentary,
         )
-        from fastapi import HTTPException
 
         request = BeastCommentaryRequest(mode="invalid_mode")
         with pytest.raises(HTTPException) as exc_info:
@@ -376,9 +380,7 @@ class TestRunBeastCommentary:
             run_beast_commentary,
         )
 
-        mock_container_with_provider.model_provider.call = AsyncMock(
-            side_effect=RuntimeError("Provider unavailable")
-        )
+        mock_container_with_provider.model_provider.call = AsyncMock(side_effect=RuntimeError("Provider unavailable"))
 
         request = BeastCommentaryRequest(mode="continuity")
         # Patch logger to avoid structlog-style kwargs incompatibility with stdlib logging
@@ -483,9 +485,10 @@ class TestAnswerCardBeastCounsel:
 
     def test_add_answer_card_accepts_beast_counsel_callback(self):
         """add_answer_card function accepts on_beast_counsel parameter."""
+        import inspect
+
         from gui.components.answer_card import add_answer_card
 
-        import inspect
         sig = inspect.signature(add_answer_card)
         assert "on_beast_counsel" in sig.parameters
 
@@ -558,8 +561,9 @@ class TestGUIImportBoundary:
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
-                        assert not alias.name.startswith("aip.orchestration"), \
+                        assert not alias.name.startswith("aip.orchestration"), (
                             f"{module_name} imports from aip.orchestration: {alias.name}"
+                        )
                 elif isinstance(node, ast.ImportFrom):
                     if node.module and node.module.startswith("aip.orchestration"):
                         pytest.fail(f"{module_name} imports from aip.orchestration: {node.module}")
@@ -578,8 +582,7 @@ class TestBackendImportBoundary:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    assert not alias.name.startswith("aip.orchestration"), \
-                        f"Found orchestration import: {alias.name}"
+                    assert not alias.name.startswith("aip.orchestration"), f"Found orchestration import: {alias.name}"
             elif isinstance(node, ast.ImportFrom):
                 if node.module and node.module.startswith("aip.orchestration"):
                     pytest.fail(f"Found orchestration import from: {node.module}")
@@ -685,9 +688,7 @@ class TestModePersistence:
         async def capture_write(**kwargs):
             write_calls.append(kwargs)
 
-        mock_container_full.model_provider.call = AsyncMock(
-            return_value={"content": json.dumps({"summary": "Test"})}
-        )
+        mock_container_full.model_provider.call = AsyncMock(return_value={"content": json.dumps({"summary": "Test"})})
         mock_container_full.artifact_store.write = AsyncMock(side_effect=capture_write)
         mock_container_full.ecs_store.transition = AsyncMock()
 
@@ -718,10 +719,8 @@ class TestModePersistence:
     async def test_get_mode_a_does_not_return_mode_b(self, mock_container_full):
         """GET with mode=continuity does not return critique commentary."""
         from aip.adapter.api.routes.beast_commentary import (
-            BeastCommentaryRequest,
             _commentary_artifact_id,
             get_beast_commentary,
-            run_beast_commentary,
         )
 
         turn_id = "turn-isolation-test"
@@ -732,7 +731,7 @@ class TestModePersistence:
 
         # The artifact store should raise KeyError for continuity (not found)
         # but return data for critique
-        continuity_artifact_id = _commentary_artifact_id(turn_id, "continuity")
+        _commentary_artifact_id(turn_id, "continuity")
         critique_artifact_id = _commentary_artifact_id(turn_id, "critique")
 
         async def mock_read(artifact_id, version=None):
@@ -817,7 +816,7 @@ class TestModePersistence:
         critique_data = json.dumps({"summary": "Original critique", "mode": "critique"})
         critique_metadata = {"created_at": "2026-06-11T10:00:00Z", "mode": "critique"}
         critique_artifact_id = _commentary_artifact_id(turn_id, "critique")
-        continuity_artifact_id = _commentary_artifact_id(turn_id, "continuity")
+        _commentary_artifact_id(turn_id, "continuity")
 
         async def mock_read(artifact_id, version=None):
             if artifact_id == critique_artifact_id:
@@ -852,9 +851,7 @@ class TestModePersistence:
             run_beast_commentary,
         )
 
-        mock_container_full.model_provider.call = AsyncMock(
-            return_value={"content": json.dumps({"summary": "Test"})}
-        )
+        mock_container_full.model_provider.call = AsyncMock(return_value={"content": json.dumps({"summary": "Test"})})
         mock_container_full.artifact_store.write = AsyncMock()
         mock_container_full.ecs_store.transition = AsyncMock()
 
@@ -864,7 +861,7 @@ class TestModePersistence:
 
             req = BeastCommentaryRequest(mode=mode)
             with patch("aip.adapter.api.routes.beast_commentary.logger"):
-                result = await run_beast_commentary("turn-sov", req, container=mock_container_full)
+                await run_beast_commentary("turn-sov", req, container=mock_container_full)
 
             # ECS transition must be GENERATED, never APPROVED
             ecs_call = mock_container_full.ecs_store.transition.call_args
@@ -895,6 +892,7 @@ class TestModePersistence:
     def test_gui_api_client_get_accepts_mode(self):
         """API client get_beast_commentary accepts mode parameter."""
         import inspect
+
         from gui.api_client import AipApiClient
 
         sig = inspect.signature(AipApiClient.get_beast_commentary)

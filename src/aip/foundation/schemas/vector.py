@@ -55,18 +55,14 @@ class VectorBackendStatus(enum.Enum):
     def human_message(self) -> str:
         """Return a human-readable explanation of this status."""
         messages = {
-            VectorBackendStatus.AVAILABLE:
-                "Vector search is fully operational (indexed backend active).",
-            VectorBackendStatus.DEGRADED_BRUTEFORCE:
-                "Vector search is degraded: using brute-force cosine scan "
-                "(sqlite-vss extension not available). Results may be slower "
-                "and less accurate. Install sqlite-vss for production quality.",
-            VectorBackendStatus.DISABLED:
-                "Vector search is disabled: no vector store or embedding "
-                "provider configured. Only lexical/corpus retrieval is available.",
-            VectorBackendStatus.FAILED:
-                "Vector search has failed: the backend is in an error state. "
-                "Only lexical/corpus retrieval is available.",
+            VectorBackendStatus.AVAILABLE: "Vector search is fully operational (indexed backend active).",
+            VectorBackendStatus.DEGRADED_BRUTEFORCE: "Vector search is degraded: using brute-force cosine scan "
+            "(sqlite-vss extension not available). Results may be slower "
+            "and less accurate. Install sqlite-vss for production quality.",
+            VectorBackendStatus.DISABLED: "Vector search is disabled: no vector store or embedding "
+            "provider configured. Only lexical/corpus retrieval is available.",
+            VectorBackendStatus.FAILED: "Vector search has failed: the backend is in an error state. "
+            "Only lexical/corpus retrieval is available.",
         }
         return messages.get(self, "Unknown vector backend status.")
 

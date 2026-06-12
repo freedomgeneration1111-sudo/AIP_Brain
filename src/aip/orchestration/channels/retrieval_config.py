@@ -99,9 +99,7 @@ def apply_channel_weights(
     has_lexical = config.enable_fts or config.enable_corpus
 
     if has_semantic and has_lexical:
-        config.channel_weights = {
-            k: float(v) for k, v in _cw.items() if isinstance(v, (int, float))
-        }
+        config.channel_weights = {k: float(v) for k, v in _cw.items() if isinstance(v, (int, float))}
     else:
         config.channel_weights = {}
 
@@ -133,6 +131,7 @@ def apply_channel_selector(
 
     try:
         from aip.orchestration.channel_selector import ChannelSelector
+
         _channel_selector = ChannelSelector()
         config = _channel_selector.apply_to_config(query, config)
     except Exception as exc:

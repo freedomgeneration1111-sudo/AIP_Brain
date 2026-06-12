@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PackerConfig:
     """Configuration for SmartContextPacker.
@@ -67,6 +68,7 @@ class PackerConfig:
 # Sentence extraction
 # ---------------------------------------------------------------------------
 
+
 def _split_sentences(text: str) -> list[str]:
     """Split text into sentences using a simple regex.
 
@@ -77,11 +79,11 @@ def _split_sentences(text: str) -> list[str]:
         return []
     # Split on sentence-ending punctuation followed by whitespace+uppercase
     # or newlines.  Keep the delimiter attached.
-    parts = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
+    parts = re.split(r"(?<=[.!?])\s+(?=[A-Z])", text)
     # Also split on double newlines (paragraph breaks)
     result: list[str] = []
     for part in parts:
-        sub_parts = re.split(r'\n\n+', part)
+        sub_parts = re.split(r"\n\n+", part)
         result.extend(sp.strip() for sp in sub_parts if sp.strip())
     return result
 
@@ -153,6 +155,7 @@ def extractive_summarize(
 # ---------------------------------------------------------------------------
 # SmartContextPacker
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class PackedContext:
@@ -250,10 +253,7 @@ class SmartContextPacker:
             content = hit.content or ""
             header = ""
             if self._config.include_metadata:
-                header = (
-                    f"[Source {idx + 1}: {hit.id} "
-                    f"(score={hit.rrf_score:.4f}, channel={hit.source_channel})]\n"
-                )
+                header = f"[Source {idx + 1}: {hit.id} (score={hit.rrf_score:.4f}, channel={hit.source_channel})]\n"
 
             full_len = len(header) + len(content) + 2  # +2 for paragraph break
 

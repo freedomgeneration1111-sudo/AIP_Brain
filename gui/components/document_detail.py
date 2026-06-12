@@ -18,14 +18,12 @@ from gui.theme import (
     C_AMBER,
     C_CREAM,
     C_ERR_FG,
-    C_GROUND,
     C_INK40,
     C_INK60,
     C_MUTED,
     C_OK_FG,
     C_RAISED,
     C_SURFACE,
-    C_WARN_FG,
     F_MONO,
     F_SANS,
     R_MD,
@@ -59,22 +57,22 @@ class DocumentDetail:
         if self._container is not None:
             self._container.clear()
 
-        with ui.column().classes("w-full").style(
-            f"background:{C_RAISED}; border:0.5px solid {C_INK40}; "
-            f"border-radius:{R_MD}; padding:16px; gap:12px;"
-        ) as col:
+        with (
+            ui.column()
+            .classes("w-full")
+            .style(
+                f"background:{C_RAISED}; border:0.5px solid {C_INK40}; border-radius:{R_MD}; padding:16px; gap:12px;"
+            ) as col
+        ):
             self._container = col
 
             # Header with close button
             with ui.row().classes("w-full").style("align-items:center;"):
                 ui.label("Document Detail").style(
-                    f"font-size:16px; font-weight:700; color:{C_CREAM}; "
-                    f"font-family:{F_SANS}; flex:1;"
+                    f"font-size:16px; font-weight:700; color:{C_CREAM}; font-family:{F_SANS}; flex:1;"
                 )
                 if self._on_close:
-                    ui.button("Close", on_click=self._on_close).props(
-                        "flat dense size=sm"
-                    ).style(f"color:{C_MUTED};")
+                    ui.button("Close", on_click=self._on_close).props("flat dense size=sm").style(f"color:{C_MUTED};")
 
             # Not found state
             if detail.get("not_found"):
@@ -84,16 +82,13 @@ class DocumentDetail:
                     f"color:{C_ERR_FG}; font-size:13px; font-family:{F_SANS};"
                 )
                 if error:
-                    ui.label(f"Error: {error}").style(
-                        f"color:{C_MUTED}; font-size:11px; font-family:{F_MONO};"
-                    )
+                    ui.label(f"Error: {error}").style(f"color:{C_MUTED}; font-size:11px; font-family:{F_MONO};")
                 return
 
             # Source info
             source_path = detail.get("source_path", "unknown")
             ui.label(source_path).style(
-                f"font-size:13px; color:{C_CREAM}; font-family:{F_MONO}; "
-                f"word-break:break-all; font-weight:600;"
+                f"font-size:13px; color:{C_CREAM}; font-family:{F_MONO}; word-break:break-all; font-weight:600;"
             )
 
             with ui.row().style("gap:12px; flex-wrap:wrap;"):
@@ -132,8 +127,7 @@ class DocumentDetail:
             with ui.row().style("gap:16px; flex-wrap:wrap;"):
                 coverage_color = C_OK_FG if embed_coverage > 80 else (C_AMBER if embed_coverage > 20 else C_ERR_FG)
                 ui.label(f"Coverage: {embed_coverage:.1f}%").style(
-                    f"font-size:14px; font-weight:700; color:{coverage_color}; "
-                    f"font-family:{F_MONO};"
+                    f"font-size:14px; font-weight:700; color:{coverage_color}; font-family:{F_MONO};"
                 )
                 _meta_item("Total", str(turn_count))
                 _meta_item("Embedded", str(embedded_count))
@@ -171,9 +165,7 @@ class DocumentDetail:
                     fail_count = err.get("fail_count", 0)
                     last_error = err.get("last_error", "")
                     with ui.row().style("gap:8px;"):
-                        ui.label(f"{turn_id[:16]}").style(
-                            f"font-size:10px; color:{C_CREAM}; font-family:{F_MONO};"
-                        )
+                        ui.label(f"{turn_id[:16]}").style(f"font-size:10px; color:{C_CREAM}; font-family:{F_MONO};")
                         ui.label(f"x{fail_count}: {last_error[:80]}").style(
                             f"font-size:10px; color:{C_ERR_FG}; font-family:{F_MONO};"
                         )
@@ -191,17 +183,11 @@ class DocumentDetail:
                     ui.label(
                         f"#{t.get('turn_index', '?')} — {domain or 'no domain'} — "
                         f"{embedded} — {t.get('word_count', 0)} words"
-                    ).style(
-                        f"font-size:10px; color:{C_INK60}; font-family:{F_MONO};"
-                    )
+                    ).style(f"font-size:10px; color:{C_INK60}; font-family:{F_MONO};")
 
 
 def _meta_item(label: str, value: str) -> None:
     """Render a small metadata label/value pair."""
     with ui.row().style("gap:4px; align-items:baseline;"):
-        ui.label(f"{label}:").style(
-            f"font-size:10px; color:{C_MUTED}; font-family:{F_SANS};"
-        )
-        ui.label(value).style(
-            f"font-size:11px; color:{C_CREAM}; font-family:{F_MONO};"
-        )
+        ui.label(f"{label}:").style(f"font-size:10px; color:{C_MUTED}; font-family:{F_SANS};")
+        ui.label(value).style(f"font-size:11px; color:{C_CREAM}; font-family:{F_MONO};")

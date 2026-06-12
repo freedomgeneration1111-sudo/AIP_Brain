@@ -14,32 +14,33 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from aip.adapter.api.app import create_app
 from aip.adapter.api.dependencies import AipContainer
-from aip.adapter.trace_store_adapter import TraceStoreAdapter
 from aip.adapter.event_store_queryable import QueryableEventStore
-
+from aip.adapter.trace_store_adapter import TraceStoreAdapter
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def app():
     """Create a test app with minimal config."""
-    return create_app(config={
-        "db_path": ":memory:",
-        "auth": {"enabled": False},
-        "rate_limit": {"enabled": False},
-        "embedding": {"provider": "mock"},
-    })
+    return create_app(
+        config={
+            "db_path": ":memory:",
+            "auth": {"enabled": False},
+            "rate_limit": {"enabled": False},
+            "embedding": {"provider": "mock"},
+        }
+    )
 
 
 @pytest.fixture
@@ -55,6 +56,7 @@ def container(app):
 # ---------------------------------------------------------------------------
 # A1: TraceStoreAdapter Tests
 # ---------------------------------------------------------------------------
+
 
 class TestTraceStoreAdapter:
     """Verify that TraceStoreAdapter correctly translates between protocols."""
@@ -190,6 +192,7 @@ class TestTraceStoreAdapter:
 # A2: BudgetManager Wiring Tests
 # ---------------------------------------------------------------------------
 
+
 class TestBudgetManagerWiring:
     """Verify BudgetManager is wired and functional."""
 
@@ -222,6 +225,7 @@ class TestBudgetManagerWiring:
 # ---------------------------------------------------------------------------
 # A3: Health Endpoint Tests
 # ---------------------------------------------------------------------------
+
 
 class TestHealthEndpoint:
     """Verify health endpoint returns accurate status."""
@@ -272,6 +276,7 @@ class TestHealthEndpoint:
 # B1: Global Exception Handler Tests
 # ---------------------------------------------------------------------------
 
+
 class TestGlobalExceptionHandler:
     """Verify global exception handler returns structured JSON."""
 
@@ -293,6 +298,7 @@ class TestGlobalExceptionHandler:
 # ---------------------------------------------------------------------------
 # B2: Auth Dependencies Tests
 # ---------------------------------------------------------------------------
+
 
 class TestAuthDependencies:
     """Verify auth dependencies are on sensitive routes."""
@@ -328,6 +334,7 @@ class TestAuthDependencies:
 # B3: Review Approve/Reject Real Flow Tests
 # ---------------------------------------------------------------------------
 
+
 class TestReviewFlow:
     """Verify review approve/reject execute real operations."""
 
@@ -346,6 +353,7 @@ class TestReviewFlow:
 # D2: Config Hot-Reload Tests
 # ---------------------------------------------------------------------------
 
+
 class TestConfigHotReload:
     """Verify config hot-reload endpoint applies safe keys."""
 
@@ -354,10 +362,13 @@ class TestConfigHotReload:
         """PATCH /admin/config applies safe keys and rejects unsafe ones."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.patch("/api/v1/admin/config", json={
-                "budget": {"session_token_limit": 1000000},
-                "db_path": "/unsafe/path",  # unsafe key
-            })
+            resp = await client.patch(
+                "/api/v1/admin/config",
+                json={
+                    "budget": {"session_token_limit": 1000000},
+                    "db_path": "/unsafe/path",  # unsafe key
+                },
+            )
             # May get 403/503 if auth/gate not wired in test mode
             if resp.status_code == 200:
                 data = resp.json()
@@ -368,6 +379,7 @@ class TestConfigHotReload:
 # D1: Session Persistence Fix Tests
 # ---------------------------------------------------------------------------
 
+
 class TestSessionPersistence:
     """Verify session operations use get_running_loop correctly."""
 
@@ -377,10 +389,13 @@ class TestSessionPersistence:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             # Create a session
-            resp = await client.post("/api/v1/sessions", json={
-                "model_slot": "synthesis",
-                "mode": "normal",
-            })
+            resp = await client.post(
+                "/api/v1/sessions",
+                json={
+                    "model_slot": "synthesis",
+                    "mode": "normal",
+                },
+            )
             assert resp.status_code == 200
             data = resp.json()
             assert "id" in data
@@ -412,6 +427,7 @@ class TestSessionPersistence:
 # Layer Discipline Tests
 # ---------------------------------------------------------------------------
 
+
 class TestLayerDiscipline:
     """Verify GUI layer does not import from orchestration or adapter internals."""
 
@@ -420,7 +436,9 @@ class TestLayerDiscipline:
         with open("gui/api_client.py") as f:
             lines = f.readlines()
         # Check for actual import lines, not docstring mentions
-        import_lines = [l for l in lines if l.strip().startswith(("import ", "from ")) and not l.strip().startswith("#")]
+        import_lines = [
+            line for line in lines if line.strip().startswith(("import ", "from ")) and not line.strip().startswith("#")
+        ]
         for line in import_lines:
             assert "aip.orchestration" not in line, f"Found orchestration import: {line.strip()}"
             assert "AipContainer" not in line, f"Found AipContainer import: {line.strip()}"
@@ -429,7 +447,9 @@ class TestLayerDiscipline:
         """gui/main.py must not have import statements from aip.orchestration or AipContainer."""
         with open("gui/main.py") as f:
             lines = f.readlines()
-        import_lines = [l for l in lines if l.strip().startswith(("import ", "from ")) and not l.strip().startswith("#")]
+        import_lines = [
+            line for line in lines if line.strip().startswith(("import ", "from ")) and not line.strip().startswith("#")
+        ]
         for line in import_lines:
             assert "aip.orchestration" not in line, f"Found orchestration import: {line.strip()}"
             assert "AipContainer" not in line, f"Found AipContainer import: {line.strip()}"
@@ -437,4 +457,5 @@ class TestLayerDiscipline:
     def test_trace_store_adapter_in_adapter_layer(self):
         """TraceStoreAdapter lives in adapter layer, not orchestration."""
         import aip.adapter.trace_store_adapter
+
         assert hasattr(aip.adapter.trace_store_adapter, "TraceStoreAdapter")

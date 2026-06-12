@@ -13,8 +13,6 @@ import sys
 
 import click
 
-from aip.foundation.schemas.ask import AskSource
-
 _VALID_SOURCES = ("ingested", "artifacts", "all")
 
 
@@ -77,7 +75,9 @@ def _run_ask(
     """Synchronous entry point that runs the async ask pipeline."""
     try:
         result = asyncio.run(
-            _ask_async(question, project, source, max_sources, save_artifact, model_slot, show_context, session, db_path)
+            _ask_async(
+                question, project, source, max_sources, save_artifact, model_slot, show_context, session, db_path
+            )
         )
         _print_result(result, show_context, project)
     except Exception as exc:
@@ -98,7 +98,7 @@ async def _ask_async(
 ):
     """Async ask pipeline implementation."""
     from aip.cli._db_path import ensure_db_dir, get_default_db_path
-    from aip.orchestration.ask_pipeline import ask, create_ask_stores, format_context_display
+    from aip.orchestration.ask_pipeline import ask, create_ask_stores
 
     if db_path is None:
         db_path = get_default_db_path()
@@ -153,7 +153,7 @@ def _print_result(result, show_context: bool, project_name: str = "") -> None:
             click.echo(f"Create it with: aip project create --name {project_name} --domain {project_name}")
             click.echo(f"Then ingest: aip ingest directory <path> --project {project_name}")
         elif result.status == "NO_PROJECT_MEMORY":
-            domain = getattr(result, 'project_id', project_name)
+            domain = getattr(result, "project_id", project_name)
             click.echo()
             click.echo(f"Ingest conversations with: aip ingest directory <path> --project {project_name}")
             click.echo(f"  (or: aip ingest directory <path> --domain {domain})")

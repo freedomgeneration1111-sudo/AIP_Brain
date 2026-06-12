@@ -134,7 +134,11 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
         who bypass ``initialize()`` still get a working schema.
         """
         if self._conn is None:
-            self._conn = await aiosqlite.connect(self._db_path)
+            try:
+                self._conn = await aiosqlite.connect(self._db_path)
+            except Exception as exc:
+                logger.warning("vigil_quality_store_connect_failed", db_path=self._db_path, error=str(exc))
+                raise
             self._conn.row_factory = sqlite3.Row
             await self._conn.execute("PRAGMA journal_mode=WAL")
             await self._conn.execute("PRAGMA busy_timeout=5000")
@@ -163,9 +167,7 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
         # Sprint 5.27: Check current schema version BEFORE creating/modifying table
         current_version = 0
         try:
-            cursor = await conn.execute(
-                "SELECT value FROM vigil_quality_meta WHERE key = 'schema_version'"
-            )
+            cursor = await conn.execute("SELECT value FROM vigil_quality_meta WHERE key = 'schema_version'")
             row = await cursor.fetchone()
             if row:
                 current_version = int(row[0])
@@ -217,10 +219,13 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
         """)
 
         # Record schema version
-        await conn.execute("""
+        await conn.execute(
+            """
             INSERT OR REPLACE INTO vigil_quality_meta (key, value)
             VALUES ('schema_version', ?)
-        """, (str(_SCHEMA_VERSION),))
+        """,
+            (str(_SCHEMA_VERSION),),
+        )
 
         await conn.commit()
 
@@ -232,7 +237,15 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
         """
         if self._tables_ready:
             return
-        conn = await aiosqlite.connect(self._db_path)
+        try:
+            conn = await aiosqlite.connect(self._db_path)
+        except Exception as exc:
+            logger.warning(
+                "vigil_quality_store_init_failed",
+                db_path=self._db_path,
+                error=str(exc),
+            )
+            return
         try:
             await self._create_tables(conn)
             self._tables_ready = True
@@ -295,27 +308,30 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
             # Store the full report as JSON for flexibility
             full_report_json = json.dumps(cycle_report, default=str)
 
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT INTO vigil_quality_history (
                     cycle_timestamp, avg_citation_rate, avg_grounding_rate,
                     avg_llm_faithfulness, evaluated_count, flagged_count,
                     hedging_detected_count, llm_eval_count, llm_hallucinations,
                     cycle_elapsed_seconds, trend_indicators, cycle_report
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                ts,
-                cycle_report.get("avg_citation_rate", 0.0),
-                cycle_report.get("avg_grounding_rate", 0.0),
-                cycle_report.get("avg_llm_faithfulness", 0.0),
-                cycle_report.get("evaluated_count", 0),
-                cycle_report.get("flagged_count", 0),
-                cycle_report.get("hedging_detected_count", 0),
-                cycle_report.get("llm_eval_count", 0),
-                cycle_report.get("llm_hallucinations", 0),
-                cycle_report.get("cycle_elapsed_seconds", 0.0),
-                trend_json,
-                full_report_json,
-            ))
+            """,
+                (
+                    ts,
+                    cycle_report.get("avg_citation_rate", 0.0),
+                    cycle_report.get("avg_grounding_rate", 0.0),
+                    cycle_report.get("avg_llm_faithfulness", 0.0),
+                    cycle_report.get("evaluated_count", 0),
+                    cycle_report.get("flagged_count", 0),
+                    cycle_report.get("hedging_detected_count", 0),
+                    cycle_report.get("llm_eval_count", 0),
+                    cycle_report.get("llm_hallucinations", 0),
+                    cycle_report.get("cycle_elapsed_seconds", 0.0),
+                    trend_json,
+                    full_report_json,
+                ),
+            )
             await conn.commit()
 
             # Auto-prune old records (Sprint 5.27: uses configurable max)
@@ -450,7 +466,7 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
             row = await cursor.fetchone()
             self._health_track_operation(time.monotonic() - t0)
             return int(row[0]) if row else 0
-        except Exception as exc:
+        except Exception:
             await self._reset_conn()
             return 0
         finally:
@@ -461,13 +477,11 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
         conn = await self._checkout_read_conn()
         t0 = time.monotonic()
         try:
-            cursor = await conn.execute(
-                "SELECT value FROM vigil_quality_meta WHERE key = 'schema_version'"
-            )
+            cursor = await conn.execute("SELECT value FROM vigil_quality_meta WHERE key = 'schema_version'")
             row = await cursor.fetchone()
             self._health_track_operation(time.monotonic() - t0)
             return int(row[0]) if row else 0
-        except Exception as exc:
+        except Exception:
             await self._reset_conn()
             return 0
         finally:
@@ -485,20 +499,14 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
             total_cursor = await conn.execute("SELECT COUNT(*) FROM vigil_quality_history")
             total = (await total_cursor.fetchone())[0]
 
-            rollups_cursor = await conn.execute(
-                "SELECT COUNT(*) FROM vigil_quality_history WHERE is_rollup = 1"
-            )
+            rollups_cursor = await conn.execute("SELECT COUNT(*) FROM vigil_quality_history WHERE is_rollup = 1")
             rollups = (await rollups_cursor.fetchone())[0]
             originals = total - rollups
 
-            oldest_cursor = await conn.execute(
-                "SELECT MIN(cycle_timestamp) FROM vigil_quality_history"
-            )
+            oldest_cursor = await conn.execute("SELECT MIN(cycle_timestamp) FROM vigil_quality_history")
             oldest_row = (await oldest_cursor.fetchone())[0]
 
-            newest_cursor = await conn.execute(
-                "SELECT MAX(cycle_timestamp) FROM vigil_quality_history"
-            )
+            newest_cursor = await conn.execute("SELECT MAX(cycle_timestamp) FROM vigil_quality_history")
             newest_row = (await newest_cursor.fetchone())[0]
 
             self._health_track_operation(time.monotonic() - t0)
@@ -624,7 +632,8 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
 
         try:
             # Find eligible non-rollup rows grouped by day
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 SELECT
                     DATE(cycle_timestamp) as day,
                     COUNT(*) as cnt,
@@ -643,7 +652,9 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
                 GROUP BY DATE(cycle_timestamp)
                 HAVING cnt > 1
                 ORDER BY day ASC
-            """, (cutoff,))
+            """,
+                (cutoff,),
+            )
 
             rows = await cursor.fetchall()
 
@@ -655,24 +666,9 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
             days_rolled = 0
 
             for row in rows:
-                day, cnt, avg_citation, avg_grounding, avg_faithfulness, \
-                    sum_evaluated, sum_flagged, sum_hedging, sum_llm_eval, \
-                    sum_hallucinations, sum_elapsed = row
-
-                # Use noon UTC on that day as the rollup timestamp
-                rollup_ts = f"{day}T12:00:00Z"
-
-                # Insert rollup row
-                await conn.execute("""
-                    INSERT INTO vigil_quality_history (
-                        cycle_timestamp, avg_citation_rate, avg_grounding_rate,
-                        avg_llm_faithfulness, evaluated_count, flagged_count,
-                        hedging_detected_count, llm_eval_count, llm_hallucinations,
-                        cycle_elapsed_seconds, trend_indicators, cycle_report,
-                        is_rollup, rollup_period, rollup_count
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    rollup_ts,
+                (
+                    day,
+                    cnt,
                     avg_citation,
                     avg_grounding,
                     avg_faithfulness,
@@ -682,19 +678,50 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
                     sum_llm_eval,
                     sum_hallucinations,
                     sum_elapsed,
-                    json.dumps({"rollup_source": "daily", "original_day": day}),
-                    json.dumps({"rollup": True, "period": "daily", "aggregated_count": cnt}),
-                    1,  # is_rollup
-                    "daily",
-                    cnt,
-                ))
+                ) = row
+
+                # Use noon UTC on that day as the rollup timestamp
+                rollup_ts = f"{day}T12:00:00Z"
+
+                # Insert rollup row
+                await conn.execute(
+                    """
+                    INSERT INTO vigil_quality_history (
+                        cycle_timestamp, avg_citation_rate, avg_grounding_rate,
+                        avg_llm_faithfulness, evaluated_count, flagged_count,
+                        hedging_detected_count, llm_eval_count, llm_hallucinations,
+                        cycle_elapsed_seconds, trend_indicators, cycle_report,
+                        is_rollup, rollup_period, rollup_count
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        rollup_ts,
+                        avg_citation,
+                        avg_grounding,
+                        avg_faithfulness,
+                        sum_evaluated,
+                        sum_flagged,
+                        sum_hedging,
+                        sum_llm_eval,
+                        sum_hallucinations,
+                        sum_elapsed,
+                        json.dumps({"rollup_source": "daily", "original_day": day}),
+                        json.dumps({"rollup": True, "period": "daily", "aggregated_count": cnt}),
+                        1,  # is_rollup
+                        "daily",
+                        cnt,
+                    ),
+                )
 
                 # Delete original rows for this day
-                delete_cursor = await conn.execute("""
+                delete_cursor = await conn.execute(
+                    """
                     DELETE FROM vigil_quality_history
                     WHERE is_rollup = 0
                       AND DATE(cycle_timestamp) = ?
-                """, (day,))
+                """,
+                    (day,),
+                )
                 total_deleted += delete_cursor.rowcount
                 total_aggregated += cnt
                 days_rolled += 1
@@ -744,13 +771,12 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
         conn = await self._get_conn()
         t0 = time.monotonic()
 
-        cutoff = (
-            datetime.now(timezone.utc) - timedelta(weeks=self._weekly_rollup_age_weeks)
-        ).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(weeks=self._weekly_rollup_age_weeks)).isoformat()
 
         try:
             # Find eligible daily rollup rows grouped by ISO week
-            cursor = await conn.execute("""
+            cursor = await conn.execute(
+                """
                 SELECT
                     STRFTIME('%Y-W%W', cycle_timestamp) as iso_week,
                     COUNT(*) as cnt,
@@ -771,7 +797,9 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
                 GROUP BY STRFTIME('%Y-W%W', cycle_timestamp)
                 HAVING cnt > 1
                 ORDER BY iso_week ASC
-            """, (cutoff,))
+            """,
+                (cutoff,),
+            )
 
             rows = await cursor.fetchall()
 
@@ -783,25 +811,9 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
             weeks_rolled = 0
 
             for row in rows:
-                iso_week, cnt, avg_citation, avg_grounding, avg_faithfulness, \
-                    sum_evaluated, sum_flagged, sum_hedging, sum_llm_eval, \
-                    sum_hallucinations, sum_elapsed, sum_rollup_count = row
-
-                # Use Monday noon UTC of that week as the rollup timestamp
-                # Parse the ISO week to get a representative date
-                rollup_ts = f"{iso_week}-T12:00:00Z"
-
-                # Insert weekly rollup row
-                await conn.execute("""
-                    INSERT INTO vigil_quality_history (
-                        cycle_timestamp, avg_citation_rate, avg_grounding_rate,
-                        avg_llm_faithfulness, evaluated_count, flagged_count,
-                        hedging_detected_count, llm_eval_count, llm_hallucinations,
-                        cycle_elapsed_seconds, trend_indicators, cycle_report,
-                        is_rollup, rollup_period, rollup_count
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    rollup_ts,
+                (
+                    iso_week,
+                    cnt,
                     avg_citation,
                     avg_grounding,
                     avg_faithfulness,
@@ -811,17 +823,49 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
                     sum_llm_eval,
                     sum_hallucinations,
                     sum_elapsed,
-                    json.dumps({"rollup_source": "weekly", "original_week": iso_week}),
-                    json.dumps({
-                        "rollup": True,
-                        "period": "weekly",
-                        "aggregated_daily_rollups": cnt,
-                        "original_data_points": sum_rollup_count or cnt,
-                    }),
-                    1,  # is_rollup
-                    "weekly",
-                    sum_rollup_count or cnt,
-                ))
+                    sum_rollup_count,
+                ) = row
+
+                # Use Monday noon UTC of that week as the rollup timestamp
+                # Parse the ISO week to get a representative date
+                rollup_ts = f"{iso_week}-T12:00:00Z"
+
+                # Insert weekly rollup row
+                await conn.execute(
+                    """
+                    INSERT INTO vigil_quality_history (
+                        cycle_timestamp, avg_citation_rate, avg_grounding_rate,
+                        avg_llm_faithfulness, evaluated_count, flagged_count,
+                        hedging_detected_count, llm_eval_count, llm_hallucinations,
+                        cycle_elapsed_seconds, trend_indicators, cycle_report,
+                        is_rollup, rollup_period, rollup_count
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        rollup_ts,
+                        avg_citation,
+                        avg_grounding,
+                        avg_faithfulness,
+                        sum_evaluated,
+                        sum_flagged,
+                        sum_hedging,
+                        sum_llm_eval,
+                        sum_hallucinations,
+                        sum_elapsed,
+                        json.dumps({"rollup_source": "weekly", "original_week": iso_week}),
+                        json.dumps(
+                            {
+                                "rollup": True,
+                                "period": "weekly",
+                                "aggregated_daily_rollups": cnt,
+                                "original_data_points": sum_rollup_count or cnt,
+                            }
+                        ),
+                        1,  # is_rollup
+                        "weekly",
+                        sum_rollup_count or cnt,
+                    ),
+                )
 
                 # Delete daily rollup rows for this week
                 # We need to match the same rows: daily rollups in this ISO week
@@ -838,13 +882,16 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
                     # Fallback: skip this week if we can't parse the date
                     continue
 
-                delete_cursor = await conn.execute("""
+                delete_cursor = await conn.execute(
+                    """
                     DELETE FROM vigil_quality_history
                     WHERE is_rollup = 1
                       AND rollup_period = 'daily'
                       AND DATE(cycle_timestamp) >= ?
                       AND DATE(cycle_timestamp) <= ?
-                """, (week_start_str, week_end_str))
+                """,
+                    (week_start_str, week_end_str),
+                )
                 total_deleted += delete_cursor.rowcount
                 total_aggregated += cnt
                 weeks_rolled += 1
@@ -892,9 +939,13 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
             daily_oldest = None
             daily_newest = None
             if daily_count > 0:
-                row = await conn.execute(
-                    "SELECT MIN(cycle_timestamp) as oldest, MAX(cycle_timestamp) as newest FROM vigil_quality_history WHERE is_rollup = 1 AND rollup_period = 'daily'"
-                ).fetchone()
+                daily_range_cursor = await conn.execute(
+                    (
+                        "SELECT MIN(cycle_timestamp) as oldest, MAX(cycle_timestamp) as newest "
+                        "FROM vigil_quality_history WHERE is_rollup = 1 AND rollup_period = 'daily'"
+                    )
+                )
+                row = await daily_range_cursor.fetchone()
                 daily_oldest = row[0] if row else None
                 daily_newest = row[1] if row else None
 
@@ -907,21 +958,27 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
             weekly_oldest = None
             weekly_newest = None
             if weekly_count > 0:
-                row = await conn.execute(
-                    "SELECT MIN(cycle_timestamp) as oldest, MAX(cycle_timestamp) as newest FROM vigil_quality_history WHERE is_rollup = 1 AND rollup_period = 'weekly'"
-                ).fetchone()
+                weekly_range_cursor = await conn.execute(
+                    (
+                        "SELECT MIN(cycle_timestamp) as oldest, MAX(cycle_timestamp) as newest "
+                        "FROM vigil_quality_history WHERE is_rollup = 1 AND rollup_period = 'weekly'"
+                    )
+                )
+                row = await weekly_range_cursor.fetchone()
                 weekly_oldest = row[0] if row else None
                 weekly_newest = row[1] if row else None
 
             # Original row count
-            original_count_cursor = await conn.execute(
-                "SELECT COUNT(*) FROM vigil_quality_history WHERE is_rollup = 0"
-            )
+            original_count_cursor = await conn.execute("SELECT COUNT(*) FROM vigil_quality_history WHERE is_rollup = 0")
             original_count = (await original_count_cursor.fetchone())[0]
 
             # Total data points represented (including rollup counts)
             total_represented_cursor = await conn.execute(
-                "SELECT COALESCE(SUM(rollup_count), 0) + COUNT(*) - COALESCE(SUM(CASE WHEN is_rollup = 1 THEN 1 ELSE 0 END), 0) FROM vigil_quality_history"
+                (
+                    "SELECT COALESCE(SUM(rollup_count), 0) + COUNT(*) "
+                    "- COALESCE(SUM(CASE WHEN is_rollup = 1 THEN 1 ELSE 0 END), 0) "
+                    "FROM vigil_quality_history"
+                )
             )
             total_represented = (await total_represented_cursor.fetchone())[0]
 
@@ -960,13 +1017,14 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
         try:
             # Strategy 1: Time-based retention
             if self._retention_days > 0:
-                cutoff = (
-                    datetime.now(timezone.utc) - timedelta(days=self._retention_days)
-                ).isoformat()
-                cursor = await conn.execute("""
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=self._retention_days)).isoformat()
+                cursor = await conn.execute(
+                    """
                     DELETE FROM vigil_quality_history
                     WHERE cycle_timestamp < ?
-                """, (cutoff,))
+                """,
+                    (cutoff,),
+                )
                 if cursor.rowcount > 0:
                     logger.info(
                         "vigil_quality_store_retention_prune",
@@ -980,14 +1038,17 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
 
             if count > self._max_history_rows:
                 # Delete oldest rows, keeping the newest max_history_rows
-                await conn.execute("""
+                await conn.execute(
+                    """
                     DELETE FROM vigil_quality_history
                     WHERE id NOT IN (
                         SELECT id FROM vigil_quality_history
                         ORDER BY cycle_timestamp DESC
                         LIMIT ?
                     )
-                """, (self._max_history_rows,))
+                """,
+                    (self._max_history_rows,),
+                )
                 pruned = count - self._max_history_rows
                 logger.info(
                     "vigil_quality_store_pruned",
@@ -1050,38 +1111,42 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
 
                 # Check if any original rows still exist for this day
                 # (they should have been deleted during rollup)
-                remaining_cursor = await conn.execute("""
+                remaining_cursor = await conn.execute(
+                    """
                     SELECT COUNT(*) as cnt
                     FROM vigil_quality_history
                     WHERE is_rollup = 0 AND DATE(cycle_timestamp) = ?
-                """, (rollup_day,))
+                """,
+                    (rollup_day,),
+                )
                 remaining = await remaining_cursor.fetchone()
 
                 if remaining and remaining["cnt"] > 0:
-                    issues.append({
-                        "type": "daily_rollup_has_remaining_originals",
-                        "rollup_id": rollup_id,
-                        "day": rollup_day,
-                        "remaining_original_rows": remaining["cnt"],
-                        "expected_remaining": 0,
-                        "description": (
-                            f"Daily rollup for {rollup_day} has {remaining['cnt']} "
-                            f"original rows still present (should have been deleted)"
-                        ),
-                    })
+                    issues.append(
+                        {
+                            "type": "daily_rollup_has_remaining_originals",
+                            "rollup_id": rollup_id,
+                            "day": rollup_day,
+                            "remaining_original_rows": remaining["cnt"],
+                            "expected_remaining": 0,
+                            "description": (
+                                f"Daily rollup for {rollup_day} has {remaining['cnt']} "
+                                f"original rows still present (should have been deleted)"
+                            ),
+                        }
+                    )
 
                 # Check rollup_count is positive
                 if rollup_count <= 0:
-                    issues.append({
-                        "type": "daily_rollup_invalid_count",
-                        "rollup_id": rollup_id,
-                        "day": rollup_day,
-                        "rollup_count": rollup_count,
-                        "description": (
-                            f"Daily rollup for {rollup_day} has invalid "
-                            f"rollup_count={rollup_count}"
-                        ),
-                    })
+                    issues.append(
+                        {
+                            "type": "daily_rollup_invalid_count",
+                            "rollup_id": rollup_id,
+                            "day": rollup_day,
+                            "rollup_count": rollup_count,
+                            "description": (f"Daily rollup for {rollup_day} has invalid rollup_count={rollup_count}"),
+                        }
+                    )
 
                 daily_verified += 1
 
@@ -1099,15 +1164,14 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
 
                 # Check rollup_count is positive
                 if rollup_count <= 0:
-                    issues.append({
-                        "type": "weekly_rollup_invalid_count",
-                        "rollup_id": rollup_id,
-                        "rollup_count": rollup_count,
-                        "description": (
-                            f"Weekly rollup id={rollup_id} has invalid "
-                            f"rollup_count={rollup_count}"
-                        ),
-                    })
+                    issues.append(
+                        {
+                            "type": "weekly_rollup_invalid_count",
+                            "rollup_id": rollup_id,
+                            "rollup_count": rollup_count,
+                            "description": (f"Weekly rollup id={rollup_id} has invalid rollup_count={rollup_count}"),
+                        }
+                    )
 
                 weekly_verified += 1
 
@@ -1124,25 +1188,23 @@ class VigilQualityStore(StoreHealthMixin, ReadPoolMixin):
             mixed_rows = await mixed_days.fetchall()
 
             for row in mixed_rows:
-                issues.append({
-                    "type": "mixed_day_originals_and_rollups",
-                    "day": row["day"],
-                    "original_rows": row["originals"],
-                    "rollup_rows": row["rollups"],
-                    "description": (
-                        f"Day {row['day']} has both {row['originals']} original rows "
-                        f"and {row['rollups']} daily rollup rows — possible partial rollup"
-                    ),
-                })
+                issues.append(
+                    {
+                        "type": "mixed_day_originals_and_rollups",
+                        "day": row["day"],
+                        "original_rows": row["originals"],
+                        "rollup_rows": row["rollups"],
+                        "description": (
+                            f"Day {row['day']} has both {row['originals']} original rows "
+                            f"and {row['rollups']} daily rollup rows — possible partial rollup"
+                        ),
+                    }
+                )
 
             # Overall stats
-            total_rows_cursor = await conn.execute(
-                "SELECT COUNT(*) FROM vigil_quality_history"
-            )
+            total_rows_cursor = await conn.execute("SELECT COUNT(*) FROM vigil_quality_history")
             total_rows = (await total_rows_cursor.fetchone())[0]
-            original_rows_cursor = await conn.execute(
-                "SELECT COUNT(*) FROM vigil_quality_history WHERE is_rollup = 0"
-            )
+            original_rows_cursor = await conn.execute("SELECT COUNT(*) FROM vigil_quality_history WHERE is_rollup = 0")
             original_rows = (await original_rows_cursor.fetchone())[0]
             rollup_rows = total_rows - original_rows
 

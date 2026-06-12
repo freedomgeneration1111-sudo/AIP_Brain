@@ -34,11 +34,9 @@ import pytest
 
 from aip.config import (
     DogfoodMode,
-    DogfoodReadinessCheck,
     get_dogfood_mode,
     validate_dogfood_readiness,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -271,9 +269,7 @@ class TestDogfoodReadinessGate:
         container = _make_full_container()
         config = {"alpha": {"dogfood_mode": "full"}}
         check = validate_dogfood_readiness(config, container)
-        assert check.is_ready is True, (
-            f"Expected ready, but degraded: {check.degraded_components}"
-        )
+        assert check.is_ready is True, f"Expected ready, but degraded: {check.degraded_components}"
 
     def test_minimal_mode_not_blocked(self):
         """MINIMAL mode is_ready is always False (only FULL can be ready)."""
@@ -365,10 +361,16 @@ class TestDogfoodHealthEndpoint:
 
         # Verify all required fields
         required_fields = [
-            "dogfood_mode", "is_ready", "required_components",
-            "required_actors", "embedding_provider_active",
-            "embedding_provider_type", "retrieval_channels",
-            "degraded_components", "db_paths_valid", "db_path_details",
+            "dogfood_mode",
+            "is_ready",
+            "required_components",
+            "required_actors",
+            "embedding_provider_active",
+            "embedding_provider_type",
+            "retrieval_channels",
+            "degraded_components",
+            "db_paths_valid",
+            "db_path_details",
             "summary",
         ]
         for field in required_fields:
@@ -422,7 +424,15 @@ class TestDogfoodHealthEndpoint:
         container.auth_session_store = None
         # Mock async methods
         container.vector_store.count = MagicMock(return_value=0)
-        container.vector_store.health_check = MagicMock(return_value={"backend_status": "available", "backend_name": "test", "degraded": False, "vss_available": True, "degradation": {}})
+        container.vector_store.health_check = MagicMock(
+            return_value={
+                "backend_status": "available",
+                "backend_name": "test",
+                "degraded": False,
+                "vss_available": True,
+                "degradation": {},
+            }
+        )
         container.budget_manager.get_status = MagicMock(return_value={})
         container.event_store.write_event = MagicMock(return_value=None)
         container.corpus_turn_store.total_turns = MagicMock(return_value=0)
@@ -430,13 +440,37 @@ class TestDogfoodHealthEndpoint:
         container.model_provider.list_slots = MagicMock(return_value=[])
         container.model_provider._ci_mode = True
         # Mock connection_health on all stores
-        for store_name in ["entity_store", "event_store", "artifact_store", "ecs_store",
-                           "canonical_store", "budget_store", "project_store", "session_store",
-                           "review_queue_store", "vigil_store", "corpus_turn_store", "lexical_store",
-                           "graph_store", "vector_store", "knowledge_store", "autonomy_gate"]:
+        for store_name in [
+            "entity_store",
+            "event_store",
+            "artifact_store",
+            "ecs_store",
+            "canonical_store",
+            "budget_store",
+            "project_store",
+            "session_store",
+            "review_queue_store",
+            "vigil_store",
+            "corpus_turn_store",
+            "lexical_store",
+            "graph_store",
+            "vector_store",
+            "knowledge_store",
+            "autonomy_gate",
+        ]:
             store = getattr(container, store_name, None)
             if store is not None:
-                store.connection_health = MagicMock(return_value={"read_pool": {"checkout_count": 0, "fallback_count": 0, "exhaustion_count": 0, "exhaustion_rate": 0.0, "pool_size": 3}})
+                store.connection_health = MagicMock(
+                    return_value={
+                        "read_pool": {
+                            "checkout_count": 0,
+                            "fallback_count": 0,
+                            "exhaustion_count": 0,
+                            "exhaustion_rate": 0.0,
+                            "pool_size": 3,
+                        }
+                    }
+                )
 
         response = await health(container=container)
         assert "dogfood_mode" in response
@@ -453,45 +487,63 @@ class TestActorWiring:
 
     def test_beast_receives_all_stores(self):
         """Beast actor constructor accepts all stores wired in lifespan."""
-        from aip.orchestration.actors.beast import Beast
-        from aip.foundation.schemas import BeastCadenceConfig
-
         # Verify the constructor accepts all the parameters we pass
         import inspect
+
+        from aip.orchestration.actors.beast import Beast
+
         sig = inspect.signature(Beast.__init__)
         params = list(sig.parameters.keys())
 
         required_params = [
-            "config", "vector_store", "embedding_provider",
-            "project_store", "event_store", "entity_store",
-            "canonical_store", "beast_provider", "artifact_store",
-            "ecs_store", "lexical_store", "corpus_turn_store",
+            "config",
+            "vector_store",
+            "embedding_provider",
+            "project_store",
+            "event_store",
+            "entity_store",
+            "canonical_store",
+            "beast_provider",
+            "artifact_store",
+            "ecs_store",
+            "lexical_store",
+            "corpus_turn_store",
         ]
         for param in required_params:
             assert param in params, f"Beast missing parameter: {param}"
 
     def test_vigil_receives_all_stores(self):
         """Vigil actor constructor accepts all stores wired in lifespan."""
+        import inspect
+
         from aip.orchestration.actors.vigil import Vigil
 
-        import inspect
         sig = inspect.signature(Vigil.__init__)
         params = list(sig.parameters.keys())
 
         required_params = [
-            "config", "vigil_store", "canonical_store",
-            "entity_store", "model_provider", "trace_store",
-            "artifact_store", "ecs_store", "event_store",
-            "corpus_turn_store", "alert_manager", "quality_store",
+            "config",
+            "vigil_store",
+            "canonical_store",
+            "entity_store",
+            "model_provider",
+            "trace_store",
+            "artifact_store",
+            "ecs_store",
+            "event_store",
+            "corpus_turn_store",
+            "alert_manager",
+            "quality_store",
         ]
         for param in required_params:
             assert param in params, f"Vigil missing parameter: {param}"
 
     def test_sexton_receives_alert_manager(self):
         """Sexton actor constructor accepts alert_manager parameter."""
+        import inspect
+
         from aip.orchestration.actors.sexton import Sexton
 
-        import inspect
         sig = inspect.signature(Sexton.__init__)
         params = list(sig.parameters.keys())
 

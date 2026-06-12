@@ -43,10 +43,10 @@ from typing import Any
 from nicegui import context, ui
 
 from gui.components.answer_card import add_answer_card
+from gui.components.beast_panel import BeastPanel
 from gui.components.chat import add_message, add_system_message, build_chat_input
 from gui.components.layout import build_left_nav, build_right_rail, build_top_bar
 from gui.components.modals import show_api_key_prompt
-from gui.components.beast_panel import BeastPanel
 from gui.components.model_council_panel import ModelCouncilPanel
 from gui.components.source_panel import SourcePanel
 from gui.components.trace_panel import TracePanel
@@ -69,15 +69,11 @@ from gui.theme import (
     C_INK40,
     C_INK60,
     C_MUTED,
-    C_OK_BG,
     C_OK_FG,
-    C_RAISED,
     C_SURFACE,
     C_WARN_BG,
     C_WARN_FG,
     F_MONO,
-    F_SANS,
-    R_MD,
     R_SM,
     btn_primary,
     btn_secondary,
@@ -141,24 +137,33 @@ async def ask_page():
     build_left_nav(state, active_page="/ask")
 
     # Main content
-    with ui.column().classes("flex-1").style(
-        f"background:{C_GROUND}; overflow-y:auto; min-height:calc(100vh - 44px); "
-        f"display:flex; flex-direction:column;"
+    with (
+        ui.column()
+        .classes("flex-1")
+        .style(
+            f"background:{C_GROUND}; overflow-y:auto; min-height:calc(100vh - 44px); "
+            f"display:flex; flex-direction:column;"
+        )
     ):
         # ── Chat header bar ───────────────────────────────────────
-        with ui.row().classes("w-full items-center").style(
-            f"padding:8px 16px; background:{C_SURFACE}; border-bottom:0.5px solid {C_INK40};"
+        with (
+            ui.row()
+            .classes("w-full items-center")
+            .style(f"padding:8px 16px; background:{C_SURFACE}; border-bottom:0.5px solid {C_INK40};")
         ):
             # Model slot selector
             ui.label("Chat Model").style(
                 f"font-size:10px; font-weight:600; color:{C_AMBER}; letter-spacing:0.5px; margin-right:8px;"
             )
-            chat_model_select = ui.select(
-                all_model_options,
-                value=current_chat_model,
-                on_change=lambda e: _on_chat_model_changed(e.value, state),
-            ).props("dense dark").classes("min-w-[180px]").style(
-                f"font-size:11px;"
+            (
+                ui.select(
+                    all_model_options,
+                    value=current_chat_model,
+                    on_change=lambda e: _on_chat_model_changed(e.value, state),
+                )
+                .props("dense dark")
+                .classes("min-w-[180px]")
+                .style("font-size:11px;")
             )
 
             ui.separator().props("vertical").style(f"margin:0 12px; color:{C_INK40};")
@@ -170,9 +175,9 @@ async def ask_page():
             ui.button("Normal", on_click=lambda: _set_mode("normal", state, mode_label)).props("dense flat").style(
                 f"color:{C_MUTED if state.current_mode == 'normal' else C_INK60}; font-size:10px;"
             )
-            ui.button("Augmented", on_click=lambda: _set_mode("augmented", state, mode_label)).props("dense flat").style(
-                f"color:{C_AMBER if state.current_mode == 'augmented' else C_INK60}; font-size:10px;"
-            )
+            ui.button("Augmented", on_click=lambda: _set_mode("augmented", state, mode_label)).props(
+                "dense flat"
+            ).style(f"color:{C_AMBER if state.current_mode == 'augmented' else C_INK60}; font-size:10px;")
 
             ui.space()
 
@@ -185,8 +190,10 @@ async def ask_page():
 
         # ── Direct model fallback banner ──────────────────────────
         if not state.backend_reachable:
-            with ui.row().classes("w-full items-center justify-center").style(
-                f"padding:8px 16px; background:{C_ERR_BG}; border-bottom:1px solid {C_ERR_FG};"
+            with (
+                ui.row()
+                .classes("w-full items-center justify-center")
+                .style(f"padding:8px 16px; background:{C_ERR_BG}; border-bottom:1px solid {C_ERR_FG};")
             ):
                 ui.label(
                     "DIRECT MODEL ONLY — NOT DOGFOOD — No retrieval. No corpus. No actors. No artifact lifecycle."
@@ -196,8 +203,8 @@ async def ask_page():
                 )
 
         # ── Chat container ────────────────────────────────────────
-        chat_container = ui.column().classes("w-full flex-1").style(
-            f"padding:16px; overflow-y:auto; flex:1; min-height:300px;"
+        chat_container = (
+            ui.column().classes("w-full flex-1").style("padding:16px; overflow-y:auto; flex:1; min-height:300px;")
         )
 
         # ── Connection status ─────────────────────────────────────
@@ -207,27 +214,32 @@ async def ask_page():
                     "AIP Backend not reachable — chat will use direct OpenRouter API "
                     "(no auto-save, no actors, no augmented mode)."
                 ).style(
-                    f"color:{C_WARN_FG}; font-size:12px; padding:12px; "
-                    f"background:{C_WARN_BG}; border-radius:{R_SM};"
+                    f"color:{C_WARN_FG}; font-size:12px; padding:12px; background:{C_WARN_BG}; border-radius:{R_SM};"
                 )
                 ui.label(
-                    "For full features, start the backend: "
-                    "uvicorn aip.adapter.api.app:create_app --factory --port 8000"
+                    "For full features, start the backend: uvicorn aip.adapter.api.app:create_app --factory --port 8000"
                 ).style(f"color:{C_MUTED}; font-size:10px; padding:4px 12px;")
         else:
             with chat_container:
                 key_status = "API key: Set" if state.api_client.has_openrouter_api_key() else "API key: MISSING"
-                ui.label(
-                    f"Connected to AIP Backend. {len(slots)} slot(s). {key_status}."
-                ).style(
+                ui.label(f"Connected to AIP Backend. {len(slots)} slot(s). {key_status}.").style(
                     f"color:{C_OK_FG if state.api_client.has_openrouter_api_key() else C_WARN_FG}; "
                     f"font-size:11px; padding:8px 12px;"
                 )
 
         # ── Chat input ────────────────────────────────────────────
         input_field = build_chat_input(
-            state, chat_container,
-            send_fn=lambda: _send_prompt(state, chat_container, input_field, source_panel, trace_panel),
+            state,
+            chat_container,
+            send_fn=lambda: _send_prompt(
+                state,
+                chat_container,
+                input_field,
+                source_panel,
+                trace_panel,
+                beast_panel,
+                model_council_panel,
+            ),
         )
 
     build_right_rail(state)
@@ -374,6 +386,8 @@ async def _send_prompt(
     input_field: ui.input,
     source_panel: SourcePanel,
     trace_panel: TracePanel,
+    beast_panel: BeastPanel,
+    model_council_panel: ModelCouncilPanel,
 ) -> None:
     """Handle the send button click — sends message via WebSocket or direct OpenRouter.
 
@@ -384,11 +398,28 @@ async def _send_prompt(
     try:
         if state.client is not None:
             with state.client:
-                await _send_prompt_inner(state, chat_container, input_field, source_panel, trace_panel)
+                await _send_prompt_inner(
+                    state,
+                    chat_container,
+                    input_field,
+                    source_panel,
+                    trace_panel,
+                    beast_panel,
+                    model_council_panel,
+                )
         else:
-            await _send_prompt_inner(state, chat_container, input_field, source_panel, trace_panel)
+            await _send_prompt_inner(
+                state,
+                chat_container,
+                input_field,
+                source_panel,
+                trace_panel,
+                beast_panel,
+                model_council_panel,
+            )
     except Exception as exc:
         import traceback
+
         traceback.print_exc()
         try:
             ui.notify(f"Send failed: {exc}", color="negative", timeout=8000)
@@ -402,6 +433,8 @@ async def _send_prompt_inner(
     input_field: ui.input,
     source_panel: SourcePanel,
     trace_panel: TracePanel,
+    beast_panel: BeastPanel,
+    model_council_panel: ModelCouncilPanel,
 ) -> None:
     """Inner implementation of send_prompt."""
     prompt = input_field.value.strip()
@@ -426,8 +459,9 @@ async def _send_prompt_inner(
         ui.notify("No model selected. Go to Settings to configure one.", color="warning")
         return
 
-    log.info("send_prompt: model=%s backend_reachable=%s prompt_len=%d",
-             chat_model, state.backend_reachable, len(prompt))
+    log.info(
+        "send_prompt: model=%s backend_reachable=%s prompt_len=%d", chat_model, state.backend_reachable, len(prompt)
+    )
 
     add_message(chat_container, "user", prompt)
     input_field.value = ""
@@ -455,9 +489,9 @@ async def _send_prompt_inner(
             state.backend_reachable = False
 
     if state.backend_reachable:
+
         def on_response(resp: dict[str, Any]) -> None:
-            log.info("on_response: model=%s content_len=%d",
-                     resp.get("model", "?"), len(resp.get("content", "")))
+            log.info("on_response: model=%s content_len=%d", resp.get("model", "?"), len(resp.get("content", "")))
             thinking_label.delete()
             content = resp.get("content", "")
             model = resp.get("model", resp.get("model_slot", ""))
@@ -528,16 +562,17 @@ async def _send_prompt_inner(
             add_system_message(chat_container, f"DEFINER Gate ({gate_type}): {preview}")
             with chat_container:
                 with ui.row().classes("w-full justify-center gap-2").style("margin:8px 0;"):
-                    ui.button("Approve", on_click=lambda: asyncio.create_task(
-                        _handle_gate_response(True, state, chat_container)
-                    )).style(btn_primary()).props("dense")
-                    ui.button("Reject", on_click=lambda: asyncio.create_task(
-                        _handle_gate_response(False, state, chat_container)
-                    )).style(btn_secondary()).props("dense")
+                    ui.button(
+                        "Approve",
+                        on_click=lambda: asyncio.create_task(_handle_gate_response(True, state, chat_container)),
+                    ).style(btn_primary()).props("dense")
+                    ui.button(
+                        "Reject",
+                        on_click=lambda: asyncio.create_task(_handle_gate_response(False, state, chat_container)),
+                    ).style(btn_secondary()).props("dense")
 
         try:
-            log.info("send_prompt: calling chat_via_websocket session=%s slot=%s",
-                     session_id, state.current_model_slot)
+            log.info("send_prompt: calling chat_via_websocket session=%s slot=%s", session_id, state.current_model_slot)
             await state.api_client.chat_via_websocket(
                 session_id=session_id,
                 message=prompt,

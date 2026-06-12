@@ -25,6 +25,7 @@ _SELECTED_MODELS_FILE = _PROJECT_ROOT / "config" / "selected_models.json"
 
 # ── PERSISTENCE HELPERS (log errors instead of `except: pass`) ────────
 
+
 def _load_slot_models() -> dict[str, str]:
     """Load persisted slot->model mapping from config/slot_models.json."""
     try:
@@ -191,10 +192,7 @@ class GuiState:
             self.dogfood_mode = "DIRECT MODEL ONLY"
             return
 
-        actors_ok = all(
-            self.actor_status.get(a, {}).get("initialized", False)
-            for a in ("beast", "vigil", "sexton")
-        )
+        actors_ok = all(self.actor_status.get(a, {}).get("initialized", False) for a in ("beast", "vigil", "sexton"))
         retrieval_ok = bool(self.retrieval_health)
 
         if actors_ok and retrieval_ok:
@@ -261,7 +259,7 @@ def get_session_state() -> GuiState:
     Falls back to a simple ID-based map when storage is not yet initialized.
     """
     try:
-        from nicegui import app, context
+        from nicegui import context
 
         # Try to use NiceGUI's per-user storage
         client_id = getattr(context.client, "id", None)

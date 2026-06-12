@@ -55,6 +55,7 @@ def _format_time(value: Any) -> str:
     if isinstance(value, (int, float)):
         if value > 1e15:  # epoch ms
             from datetime import datetime, timezone
+
             try:
                 dt = datetime.fromtimestamp(value / 1000, tz=timezone.utc)
                 return dt.strftime("%H:%M:%S")
@@ -98,19 +99,21 @@ class ActorStatusTable:
         if not actors:
             with ui.column().classes("w-full") as col:
                 self._container = col
-                ui.label("No actor data available").style(
-                    f"font-size:12px; color:{C_MUTED}; font-family:{F_SANS};"
-                )
+                ui.label("No actor data available").style(f"font-size:12px; color:{C_MUTED}; font-family:{F_SANS};")
             return
 
         with ui.column().classes("w-full").style("gap:0") as col:
             self._container = col
 
             # Table header
-            with ui.row().classes("w-full").style(
-                f"background:{C_SURFACE}; border-bottom:1px solid {C_INK40}; "
-                f"border-radius:{R_MD} {R_MD} 0 0; padding:8px 12px; "
-                f"font-family:{F_SANS};"
+            with (
+                ui.row()
+                .classes("w-full")
+                .style(
+                    f"background:{C_SURFACE}; border-bottom:1px solid {C_INK40}; "
+                    f"border-radius:{R_MD} {R_MD} 0 0; padding:8px 12px; "
+                    f"font-family:{F_SANS};"
+                )
             ):
                 for header, width in [
                     ("ACTOR", "80px"),
@@ -132,14 +135,17 @@ class ActorStatusTable:
             actor_order = ["beast", "vigil", "sexton"]
             for actor_name in actor_order:
                 entry = actors.get(actor_name, {})
-                with ui.row().classes("w-full items-center").style(
-                    f"background:{C_RAISED}; border-bottom:0.5px solid {C_INK40}; "
-                    f"padding:6px 12px; font-family:{F_SANS}; min-height:36px;"
+                with (
+                    ui.row()
+                    .classes("w-full items-center")
+                    .style(
+                        f"background:{C_RAISED}; border-bottom:0.5px solid {C_INK40}; "
+                        f"padding:6px 12px; font-family:{F_SANS}; min-height:36px;"
+                    )
                 ):
                     # Actor name
                     ui.label(actor_name.upper()).style(
-                        f"font-size:11px; font-weight:700; color:{C_CREAM}; "
-                        f"font-family:{F_MONO}; min-width:80px;"
+                        f"font-size:11px; font-weight:700; color:{C_CREAM}; font-family:{F_MONO}; min-width:80px;"
                     )
 
                     # State pill
@@ -157,47 +163,42 @@ class ActorStatusTable:
                     # Last run
                     last_run = entry.get("last_run_at")
                     ui.label(_format_time(last_run)).style(
-                        f"font-size:10px; color:{C_INK60}; font-family:{F_MONO}; "
-                        f"min-width:80px;"
+                        f"font-size:10px; color:{C_INK60}; font-family:{F_MONO}; min-width:80px;"
                     )
 
                     # Last result
                     last_result = entry.get("last_result")
                     result_text = str(last_result)[:24] if last_result else "—"
                     ui.label(result_text).style(
-                        f"font-size:10px; color:{C_INK60}; font-family:{F_MONO}; "
-                        f"min-width:120px;"
+                        f"font-size:10px; color:{C_INK60}; font-family:{F_MONO}; min-width:120px;"
                     )
 
                     # Last error
                     last_error = entry.get("last_error")
                     if last_error:
                         ui.label(str(last_error)[:30]).style(
-                            f"font-size:10px; color:{C_ERR_FG}; font-family:{F_MONO}; "
-                            f"min-width:140px;"
+                            f"font-size:10px; color:{C_ERR_FG}; font-family:{F_MONO}; min-width:140px;"
                         )
                     else:
-                        ui.label("—").style(
-                            f"font-size:10px; color:{C_INK60}; font-family:{F_MONO}; "
-                            f"min-width:140px;"
-                        )
+                        ui.label("—").style(f"font-size:10px; color:{C_INK60}; font-family:{F_MONO}; min-width:140px;")
 
                     # Cycles
                     cycle_count = entry.get("cycle_count", 0)
                     ui.label(str(cycle_count)).style(
-                        f"font-size:10px; color:{C_INK60}; font-family:{F_MONO}; "
-                        f"min-width:60px;"
+                        f"font-size:10px; color:{C_INK60}; font-family:{F_MONO}; min-width:60px;"
                     )
 
                     # Actions
                     with ui.row().style("min-width:130px; gap:4px;"):
                         run_supported = entry.get("run_now_supported", True) and init
                         btn_label = "Run" if run_supported else "N/A"
-                        btn = ui.button(btn_label, on_click=lambda n=actor_name: self._handle_run(n)).props(
-                            "outline dense size=sm"
-                        ).style(
-                            f"color:{C_CREAM if run_supported else C_MUTED}; "
-                            f"border-color:{C_INK40}; font-family:{F_SANS}; font-size:10px;"
+                        btn = (
+                            ui.button(btn_label, on_click=lambda n=actor_name: self._handle_run(n))
+                            .props("outline dense size=sm")
+                            .style(
+                                f"color:{C_CREAM if run_supported else C_MUTED}; "
+                                f"border-color:{C_INK40}; font-family:{F_SANS}; font-size:10px;"
+                            )
                         )
                         if not run_supported:
                             btn.props("disabled")
@@ -205,10 +206,7 @@ class ActorStatusTable:
 
                         ui.button("Logs", on_click=lambda n=actor_name: self._handle_view_logs(n)).props(
                             "outline dense size=sm"
-                        ).style(
-                            f"color:{C_CREAM}; border-color:{C_INK40}; "
-                            f"font-family:{F_SANS}; font-size:10px;"
-                        )
+                        ).style(f"color:{C_CREAM}; border-color:{C_INK40}; font-family:{F_SANS}; font-size:10px;")
 
     def _handle_run(self, actor_name: str) -> None:
         if self._on_run_actor:

@@ -11,7 +11,6 @@ Never imports from aip.orchestration.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -20,14 +19,12 @@ from nicegui import ui
 from gui.theme import (
     C_AMBER,
     C_CREAM,
-    C_ERR_FG,
     C_GROUND,
     C_INK40,
     C_INK60,
     C_MUTED,
     C_OK_FG,
     C_RAISED,
-    C_SURFACE,
     C_WARN_FG,
     F_MONO,
     R_MD,
@@ -69,12 +66,13 @@ class TracePanel:
             self._drawer = drawer
 
             # Header
-            with ui.row().classes("w-full items-center").style(
-                f"border-bottom:0.5px solid {C_INK40}; padding-bottom:8px; margin-bottom:12px;"
+            with (
+                ui.row()
+                .classes("w-full items-center")
+                .style(f"border-bottom:0.5px solid {C_INK40}; padding-bottom:8px; margin-bottom:12px;")
             ):
                 ui.label("Retrieval Trace").style(
-                    f"font-size:13px; font-weight:700; color:{C_AMBER}; "
-                    f"font-family:{F_MONO}; letter-spacing:0.5px;"
+                    f"font-size:13px; font-weight:700; color:{C_AMBER}; font-family:{F_MONO}; letter-spacing:0.5px;"
                 )
                 ui.space()
                 ui.button("Close", on_click=self.close).props("dense flat size=sm").style(
@@ -90,17 +88,13 @@ class TracePanel:
 
             if not trace_data or trace_data.get("status") == "not_found" or not trace_data.get("trace"):
                 ui.label("Retrieval trace unavailable for this answer.").style(
-                    f"font-size:11px; color:{C_WARN_FG}; font-family:{F_MONO}; "
-                    f"padding:16px; text-align:center;"
+                    f"font-size:11px; color:{C_WARN_FG}; font-family:{F_MONO}; padding:16px; text-align:center;"
                 )
                 ui.label(
                     "The backend did not record a retrieval trace for this session. "
                     "This may occur in normal mode (no retrieval) or when the trace "
                     "store is not configured."
-                ).style(
-                    f"font-size:10px; color:{C_MUTED}; font-family:{F_MONO}; "
-                    f"padding:8px 16px; line-height:1.4;"
-                )
+                ).style(f"font-size:10px; color:{C_MUTED}; font-family:{F_MONO}; padding:8px 16px; line-height:1.4;")
                 return
 
             trace = trace_data.get("trace", {})
@@ -115,9 +109,13 @@ class TracePanel:
             hits_after = trace.get("hits_after_fusion", 0)
             hits_gate = trace.get("hits_after_gate", 0)
 
-            with ui.card().classes("w-full").style(
-                f"background:{C_RAISED}; border:0.5px solid {C_INK40}; "
-                f"border-radius:{R_MD}; padding:8px 12px; margin-bottom:8px;"
+            with (
+                ui.card()
+                .classes("w-full")
+                .style(
+                    f"background:{C_RAISED}; border:0.5px solid {C_INK40}; "
+                    f"border-radius:{R_MD}; padding:8px 12px; margin-bottom:8px;"
+                )
             ):
                 ui.label(f"Query: {query[:100]}").style(
                     f"font-size:10px; color:{C_CREAM}; font-family:{F_MONO}; margin-bottom:4px;"
@@ -127,9 +125,7 @@ class TracePanel:
                 )
                 ui.label(
                     f"Hits: before_fusion={hits_before} → after_fusion={hits_after} → after_gate={hits_gate}"
-                ).style(
-                    f"font-size:10px; color:{C_INK60}; font-family:{F_MONO};"
-                )
+                ).style(f"font-size:10px; color:{C_INK60}; font-family:{F_MONO};")
 
             # ── Channel Flags ──────────────────────────────────
             lexical_only = trace.get("lexical_only", False)
@@ -191,9 +187,7 @@ class TracePanel:
             if warnings:
                 self._render_section_label("WARNINGS")
                 for w in warnings[:10]:
-                    ui.label(f"! {w}").style(
-                        f"font-size:10px; font-family:{F_MONO}; color:{C_WARN_FG};"
-                    )
+                    ui.label(f"! {w}").style(f"font-size:10px; font-family:{F_MONO}; color:{C_WARN_FG};")
 
     def _render_section_label(self, text: str) -> None:
         """Render a section label."""

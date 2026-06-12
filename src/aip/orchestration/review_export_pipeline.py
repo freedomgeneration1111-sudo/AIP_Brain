@@ -26,10 +26,9 @@ Chunk 7 — Review/export gate integrity:
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -170,18 +169,20 @@ async def review_list(
         ecs_state = await stores.ecs_store.current_state(aid) or "UNKNOWN"
 
         source_ids = metadata.get("source_ids", [])
-        results.append({
-            "artifact_id": aid,
-            "title": metadata.get("prompt", aid)[:80],
-            "project": meta_project_name or meta_project_id,
-            "lifecycle_state": ecs_state,
-            "created_at": metadata.get("created_at", metadata.get("generated_at", "")),
-            "source_count": len(source_ids),
-            "session_id": metadata.get("session_id", ""),
-            "model_slot": metadata.get("model_slot", ""),
-            "model_name": metadata.get("model_name", ""),
-            "artifact_type": metadata.get("artifact_type", ""),
-        })
+        results.append(
+            {
+                "artifact_id": aid,
+                "title": metadata.get("prompt", aid)[:80],
+                "project": meta_project_name or meta_project_id,
+                "lifecycle_state": ecs_state,
+                "created_at": metadata.get("created_at", metadata.get("generated_at", "")),
+                "source_count": len(source_ids),
+                "session_id": metadata.get("session_id", ""),
+                "model_slot": metadata.get("model_slot", ""),
+                "model_name": metadata.get("model_name", ""),
+                "artifact_type": metadata.get("artifact_type", ""),
+            }
+        )
 
     return {"artifacts": results, "project": project_name}
 
@@ -221,17 +222,19 @@ async def review_list_by_type(
 
         ecs_state = await stores.ecs_store.current_state(aid) or "UNKNOWN"
         source_ids = metadata.get("source_ids", [])
-        results.append({
-            "artifact_id": aid,
-            "title": metadata.get("domain", aid)[:80],
-            "project": metadata.get("domain", ""),
-            "lifecycle_state": ecs_state,
-            "created_at": metadata.get("created_at", metadata.get("generated_at", "")),
-            "source_count": len(source_ids),
-            "artifact_type": artifact_type,
-            "domain": metadata.get("domain", ""),
-            "word_count": metadata.get("word_count", 0),
-        })
+        results.append(
+            {
+                "artifact_id": aid,
+                "title": metadata.get("domain", aid)[:80],
+                "project": metadata.get("domain", ""),
+                "lifecycle_state": ecs_state,
+                "created_at": metadata.get("created_at", metadata.get("generated_at", "")),
+                "source_count": len(source_ids),
+                "artifact_type": artifact_type,
+                "domain": metadata.get("domain", ""),
+                "word_count": metadata.get("word_count", 0),
+            }
+        )
 
     return {"artifacts": results, "type": artifact_type}
 
@@ -281,12 +284,14 @@ async def review_show(
             note = meta.get("detail", "")
             verdict = meta.get("verdict", "")
             if note:
-                review_notes.append({
-                    "verdict": verdict,
-                    "detail": note,
-                    "actor": ev.actor,
-                    "timestamp": ev.timestamp,
-                })
+                review_notes.append(
+                    {
+                        "verdict": verdict,
+                        "detail": note,
+                        "actor": ev.actor,
+                        "timestamp": ev.timestamp,
+                    }
+                )
 
     # Source count
     source_ids = metadata.get("source_ids", [])
@@ -406,14 +411,16 @@ async def review_sources(
             snippet = f"(source chunk: {sid})" if ":" in sid else ""
             source_title = sid
 
-        sources.append({
-            "source_id": sid,
-            "source_type": src_type,
-            "title": source_title,
-            "snippet": snippet[:200],
-            "score": source_score,
-            "metadata": source_meta,
-        })
+        sources.append(
+            {
+                "source_id": sid,
+                "source_type": src_type,
+                "title": source_title,
+                "snippet": snippet[:200],
+                "score": source_score,
+                "metadata": source_meta,
+            }
+        )
 
     return {
         "artifact_id": artifact_id,
@@ -455,7 +462,12 @@ async def review_approve(
 
     # 2. Validate non-empty content
     if not content or not content.strip():
-        return {"error": {"code": "EMPTY_CONTENT", "message": f"Artifact '{artifact_id}' has empty content — cannot approve"}}
+        return {
+            "error": {
+                "code": "EMPTY_CONTENT",
+                "message": f"Artifact '{artifact_id}' has empty content — cannot approve",
+            }
+        }
 
     # 3. Check source links
     source_ids = metadata.get("source_ids", [])
@@ -513,15 +525,26 @@ async def review_approve(
         elif current_state == "APPROVED":
             return {"error": {"code": "ALREADY_APPROVED", "message": f"Artifact '{artifact_id}' is already APPROVED"}}
         elif current_state == "REJECTED":
-            return {"error": {"code": "INVALID_TRANSITION", "message": f"Artifact '{artifact_id}' is REJECTED — re-generate before approving"}}
+            return {
+                "error": {
+                    "code": "INVALID_TRANSITION",
+                    "message": f"Artifact '{artifact_id}' is REJECTED — re-generate before approving",
+                }
+            }
         else:
-            return {"error": {"code": "INVALID_STATE", "message": f"Artifact '{artifact_id}' is in {current_state} state — cannot approve from this state"}}
+            return {
+                "error": {
+                    "code": "INVALID_STATE",
+                    "message": f"Artifact '{artifact_id}' is in {current_state} state — cannot approve from this state",
+                }
+            }
 
     except InvalidTransitionError as exc:
         return {"error": {"code": "INVALID_TRANSITION", "message": str(exc)}}
 
     # 5. Write to CanonicalStore (DEFINER sovereignty)
     from aip.adapter.canonical.sqlite_canonical_store import SqliteCanonicalStore
+
     canonical_store = SqliteCanonicalStore(stores.artifact_store._db_path)
     await canonical_store.initialize()
     try:
@@ -541,7 +564,7 @@ async def review_approve(
         from_state=current_state,
         to_state="APPROVED",
         verdict="APPROVED",
-        detail=f"DEFINER approved via CLI review — promoted to canonical",
+        detail="DEFINER approved via CLI review — promoted to canonical",
         source_count=len(source_ids),
     )
 
@@ -705,8 +728,7 @@ async def _record_force_export_audit(
         ),
     )
     logger.warning(
-        "Force-export audit: artifact %s exported from %s state (not APPROVED). "
-        "Reason: %s",
+        "Force-export audit: artifact %s exported from %s state (not APPROVED). Reason: %s",
         artifact_id,
         ecs_state,
         reason or "(no explicit reason provided)",
@@ -751,7 +773,12 @@ async def export_artifact(
 
     # Validate non-empty content
     if not content or not content.strip():
-        return {"error": {"code": "EMPTY_CONTENT", "message": f"Artifact '{artifact_id}' has empty content — refusing to export empty file"}}
+        return {
+            "error": {
+                "code": "EMPTY_CONTENT",
+                "message": f"Artifact '{artifact_id}' has empty content — refusing to export empty file",
+            }
+        }
 
     # Check lifecycle state
     ecs_state = await stores.ecs_store.current_state(artifact_id) or "UNKNOWN"
@@ -1042,12 +1069,14 @@ async def export_project(
         if not content or not content.strip():
             continue
 
-        artifacts.append({
-            "artifact_id": aid,
-            "content": content,
-            "metadata": metadata,
-            "ecs_state": ecs_state,
-        })
+        artifacts.append(
+            {
+                "artifact_id": aid,
+                "content": content,
+                "metadata": metadata,
+                "ecs_state": ecs_state,
+            }
+        )
 
     # Record audit events for non-APPROVED artifacts (sovereign override)
     if include_unreviewed:
@@ -1156,13 +1185,15 @@ def _build_project_markdown(
         lines.append("")
         lines.append(f"## Artifact: {art['artifact_id']}")
         lines.append("")
-        lines.append(_build_artifact_markdown(
-            art["artifact_id"],
-            art["content"],
-            art["metadata"],
-            art["ecs_state"],
-            force_bypass=force_bypass,
-        ))
+        lines.append(
+            _build_artifact_markdown(
+                art["artifact_id"],
+                art["content"],
+                art["metadata"],
+                art["ecs_state"],
+                force_bypass=force_bypass,
+            )
+        )
         lines.append("")
 
     return "\n".join(lines)
@@ -1198,13 +1229,15 @@ def _build_project_plain_text(
         force_bypass = art["ecs_state"] != "APPROVED"
         lines.append("-" * 60)
         lines.append("")
-        lines.append(_build_artifact_plain_text(
-            art["artifact_id"],
-            art["content"],
-            art["metadata"],
-            art["ecs_state"],
-            force_bypass=force_bypass,
-        ))
+        lines.append(
+            _build_artifact_plain_text(
+                art["artifact_id"],
+                art["content"],
+                art["metadata"],
+                art["ecs_state"],
+                force_bypass=force_bypass,
+            )
+        )
         lines.append("")
 
     return "\n".join(lines)

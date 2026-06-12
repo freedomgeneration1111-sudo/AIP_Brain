@@ -46,8 +46,15 @@ def ingest() -> None:
 @click.option("--domain", default="imported", help="Domain tag for indexed content (default: imported).")
 @click.option("--project", default=None, help="Project name — resolves domain automatically from project.")
 @click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
-@click.option("--embed/--no-embed", default=None, help="Enable real embedding using [models.embedding] config during ingest (default: auto from config; --no-embed forces metadata-only vectors)")
-def ingest_file_cmd(path: str, source_format: str, domain: str, project: str | None, db_path: str | None, embed: bool | None) -> None:
+@click.option(
+    "--embed/--no-embed",
+    default=None,
+    help="Enable real embedding using [models.embedding] config during ingest "
+    "(default: auto from config; --no-embed forces metadata-only vectors)",
+)
+def ingest_file_cmd(
+    path: str, source_format: str, domain: str, project: str | None, db_path: str | None, embed: bool | None
+) -> None:
     """Import a conversation file into AIP.
 
     PATH is the file to import (ChatGPT JSON, markdown, or plain text).
@@ -68,7 +75,12 @@ def ingest_file_cmd(path: str, source_format: str, domain: str, project: str | N
 @click.option("--project", default=None, help="Project name — resolves domain automatically from project.")
 @click.option("--db-path", default=None, help="SQLite database path (default: from config or db/state.db).")
 @click.option("--recursive/--no-recursive", default=False, help="Recurse into subdirectories.")
-@click.option("--embed/--no-embed", default=None, help="Enable real embedding using [models.embedding] config during ingest (default: auto from config; --no-embed forces metadata-only vectors)")
+@click.option(
+    "--embed/--no-embed",
+    default=None,
+    help="Enable real embedding using [models.embedding] config during ingest "
+    "(default: auto from config; --no-embed forces metadata-only vectors)",
+)
 def ingest_directory_cmd(
     directory: str,
     source_format: str,
@@ -98,6 +110,7 @@ def _resolve_domain(domain: str, project: str | None, db_path: str) -> str:
     # Try to resolve project domain from the store
     try:
         import sqlite3
+
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         cursor = conn.execute("SELECT domain FROM projects WHERE name = ? OR project_id = ?", (project, project))
@@ -106,7 +119,9 @@ def _resolve_domain(domain: str, project: str | None, db_path: str) -> str:
         if row and row["domain"]:
             resolved = row["domain"]
             if domain != "imported" and domain != resolved:
-                click.echo(f"Warning: --domain '{domain}' differs from project domain '{resolved}'. Using project domain.")
+                click.echo(
+                    f"Warning: --domain '{domain}' differs from project domain '{resolved}'. Using project domain."
+                )
             return resolved
     except Exception:
         pass
@@ -117,7 +132,9 @@ def _resolve_domain(domain: str, project: str | None, db_path: str) -> str:
     return domain
 
 
-def _run_ingest_file(path: str, source_format: str, domain: str, project: str | None, db_path: str | None, embed: bool | None = None) -> None:
+def _run_ingest_file(
+    path: str, source_format: str, domain: str, project: str | None, db_path: str | None, embed: bool | None = None
+) -> None:
     """Synchronous entry point that runs async ingestion."""
     try:
         results = asyncio.run(_ingest_file_async(path, source_format, domain, project, db_path, embed=embed))
@@ -139,11 +156,13 @@ def _run_ingest_file(path: str, source_format: str, domain: str, project: str | 
 def _resolve_domain_sync(domain: str, project: str | None, db_path: str | None) -> str:
     """Synchronous domain resolution for output messages."""
     from aip.cli._db_path import get_default_db_path
+
     resolved_db = db_path or get_default_db_path()
     if project is None:
         return domain
     try:
         import sqlite3
+
         conn = sqlite3.connect(f"file:{resolved_db}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         cursor = conn.execute("SELECT domain FROM projects WHERE name = ? OR project_id = ?", (project, project))
@@ -222,9 +241,11 @@ def _print_result(result) -> None:
             click.echo(f"    Warning: {err}")
 
 
-async def _ingest_file_async(path: str, source_format: str, domain: str, project: str | None, db_path: str | None, embed: bool | None = None):
+async def _ingest_file_async(
+    path: str, source_format: str, domain: str, project: str | None, db_path: str | None, embed: bool | None = None
+):
     """Async ingestion implementation."""
-    from aip.cli._db_path import ensure_db_dir, get_default_db_path, get_default_lexical_db_path
+    from aip.cli._db_path import ensure_db_dir, get_default_db_path
     from aip.orchestration.ingestion import pipeline as _pipeline
 
     if db_path is None:

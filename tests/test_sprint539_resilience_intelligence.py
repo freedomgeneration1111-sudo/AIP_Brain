@@ -28,19 +28,14 @@ from __future__ import annotations
 import os
 import tempfile
 import time
-from datetime import datetime, timezone
-from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
-
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
 )
-from aip.adapter.alert_history_store import AlertHistoryStore
-
 
 # ============================================================================
 # Deliverable 1: Service Worker Offline Cache
@@ -70,33 +65,39 @@ class TestServiceWorkerOfflineCache:
     def test_dashboard_html_contains_offline_banner(self):
         """Dashboard HTML includes offline banner element."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "offlineBanner" in _DASHBOARD_HTML
         assert "offline-banner" in _DASHBOARD_HTML
 
     def test_dashboard_html_contains_offline_action_queueing(self):
         """Dashboard HTML includes offline action queueing JS."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "queueOfflineAction" in _DASHBOARD_HTML
         assert "replayOfflineActionQueue" in _DASHBOARD_HTML
 
     def test_dashboard_html_contains_cache_api_in_sw(self):
         """Service Worker code includes Cache API usage."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "caches.open" in _DASHBOARD_HTML or "CACHE_NAME" in _DASHBOARD_HTML
 
     def test_dashboard_html_contains_indexeddb_in_sw(self):
         """Service Worker code includes IndexedDB for offline queue."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "indexedDB" in _DASHBOARD_HTML or "openOfflineDB" in _DASHBOARD_HTML
 
     def test_dashboard_html_contains_sync_handler(self):
         """Service Worker code includes sync event for replay."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "sync" in _DASHBOARD_HTML
 
     def test_dashboard_html_contains_fetch_handler(self):
         """Service Worker code includes fetch event handler for caching."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "fetch" in _DASHBOARD_HTML
 
 
@@ -128,10 +129,12 @@ class TestTransitionProbabilityPersistence:
 
     def test_persistence_in_status(self):
         """get_status() includes transition persistence info."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            transition_persistence_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                transition_persistence_enabled=True,
+            )
+        )
         status = mgr.get_status()
         assert "transition_persistence" in status
         assert status["transition_persistence"]["persistence_enabled"] is True
@@ -141,12 +144,13 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             transition_counts = {("pool_adjustment", "quality_degradation"): 15}
             transition_totals = {"pool_adjustment": 20}
 
-            result = store.save_transition_probabilities(transition_counts, transition_totals)
+            result = bridge.save_transition_probabilities(transition_counts, transition_totals)
             assert result is True
 
     def test_load_transition_probabilities(self):
@@ -154,13 +158,17 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            transition_counts = {("pool_adjustment", "quality_degradation"): 15, ("quality_degradation", "batch_reduction"): 8}
+            transition_counts = {
+                ("pool_adjustment", "quality_degradation"): 15,
+                ("quality_degradation", "batch_reduction"): 8,
+            }
             transition_totals = {"pool_adjustment": 20, "quality_degradation": 8}
 
-            store.save_transition_probabilities(transition_counts, transition_totals)
-            loaded_counts, loaded_totals = store.load_transition_probabilities()
+            bridge.save_transition_probabilities(transition_counts, transition_totals)
+            loaded_counts, loaded_totals = bridge.load_transition_probabilities()
 
             assert loaded_counts == transition_counts
             assert loaded_totals == transition_totals
@@ -170,9 +178,10 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            loaded_counts, loaded_totals = store.load_transition_probabilities()
+            loaded_counts, loaded_totals = bridge.load_transition_probabilities()
             assert loaded_counts == {}
             assert loaded_totals == {}
 
@@ -181,13 +190,16 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                transition_persistence_enabled=True,
-            ))
-            mgr.attach_history_store(store)
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    transition_persistence_enabled=True,
+                )
+            )
+            mgr.attach_history_store(bridge)
             mgr.prediction_mgr._transition_counts = {("a", "b"): 10}
             mgr.prediction_mgr._transition_totals = {"a": 10}
 
@@ -195,7 +207,7 @@ class TestTransitionProbabilityPersistence:
             assert result is True
 
             # Verify it was persisted
-            counts, totals = store.load_transition_probabilities()
+            counts, totals = bridge.load_transition_probabilities()
             assert counts == {("a", "b"): 10}
             assert totals == {"a": 10}
 
@@ -210,19 +222,22 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # First, save some data
-            store.save_transition_probabilities(
+            bridge.save_transition_probabilities(
                 {("x", "y"): 7},
                 {"x": 7},
             )
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                transition_persistence_enabled=True,
-            ))
-            mgr.attach_history_store(store)
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    transition_persistence_enabled=True,
+                )
+            )
+            mgr.attach_history_store(bridge)
 
             result = mgr.load_transition_model()
             assert result is True
@@ -240,14 +255,17 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            result = store.record_retraining_event({
-                "trigger_reason": "new_alerts_threshold",
-                "alerts_since_last_train": 150,
-                "transition_count": 5,
-                "total_types": 3,
-            })
+            result = bridge.record_retraining_event(
+                {
+                    "trigger_reason": "new_alerts_threshold",
+                    "alerts_since_last_train": 150,
+                    "transition_count": 5,
+                    "total_types": 3,
+                }
+            )
             assert result is True
 
     def test_get_retraining_events(self):
@@ -255,16 +273,19 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            store.record_retraining_event({
-                "trigger_reason": "scheduled",
-                "alerts_since_last_train": 200,
-                "transition_count": 8,
-                "total_types": 4,
-            })
+            bridge.record_retraining_event(
+                {
+                    "trigger_reason": "scheduled",
+                    "alerts_since_last_train": 200,
+                    "transition_count": 8,
+                    "total_types": 4,
+                }
+            )
 
-            events = store.get_retraining_events()
+            events = bridge.get_retraining_events()
             assert len(events) == 1
             assert events[0]["trigger_reason"] == "scheduled"
             assert events[0]["alerts_since_last_train"] == 200
@@ -277,32 +298,38 @@ class TestTransitionProbabilityPersistence:
 
     def test_check_retrain_needed_by_alert_count(self):
         """check_retrain_needed returns True when alert count exceeded."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            transition_persistence_enabled=True,
-            retrain_after_n_alerts=50,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                transition_persistence_enabled=True,
+                retrain_after_n_alerts=50,
+            )
+        )
         mgr.prediction_mgr._alerts_since_last_retrain = 60
         assert mgr.check_retrain_needed() is True
 
     def test_check_retrain_needed_by_interval(self):
         """check_retrain_needed returns True when interval elapsed."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            transition_persistence_enabled=True,
-            retrain_interval_seconds=60,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                transition_persistence_enabled=True,
+                retrain_interval_seconds=60,
+            )
+        )
         mgr.prediction_mgr._last_retrain_time = time.time() - 120  # 2 minutes ago
         assert mgr.check_retrain_needed() is True
 
     def test_check_retrain_needed_not_yet(self):
         """check_retrain_needed returns False when conditions unmet."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            transition_persistence_enabled=True,
-            retrain_interval_seconds=3600,
-            retrain_after_n_alerts=100,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                transition_persistence_enabled=True,
+                retrain_interval_seconds=3600,
+                retrain_after_n_alerts=100,
+            )
+        )
         mgr.prediction_mgr._alerts_since_last_retrain = 10
         mgr.prediction_mgr._last_retrain_time = time.time() - 60
         assert mgr.check_retrain_needed() is False
@@ -312,9 +339,11 @@ class TestTransitionProbabilityPersistence:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             import sqlite3
+
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='model_retraining_events'"
@@ -352,50 +381,60 @@ class TestCircuitBreakerAutoTuning:
 
     def test_auto_tune_disabled_returns_config_threshold(self):
         """compute_cb_auto_tune_threshold returns config threshold when disabled."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            throttle_threshold_per_minute=50,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                throttle_threshold_per_minute=50,
+            )
+        )
         threshold = mgr.compute_cb_auto_tune_threshold()
         assert threshold == 50
 
     def test_auto_tune_no_store_returns_config_threshold(self):
         """Auto-tune returns config threshold when no history store."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            circuit_breaker_auto_tune_enabled=True,
-            throttle_threshold_per_minute=80,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                circuit_breaker_auto_tune_enabled=True,
+                throttle_threshold_per_minute=80,
+            )
+        )
         # No store attached
         threshold = mgr.compute_cb_auto_tune_threshold()
         assert threshold == 80
 
     def test_get_cb_effective_threshold_default(self):
         """get_cb_effective_threshold returns config threshold by default."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            throttle_threshold_per_minute=75,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                throttle_threshold_per_minute=75,
+            )
+        )
         assert mgr.get_cb_effective_threshold() == 75
 
     def test_get_cb_effective_threshold_auto_tuned(self):
         """get_cb_effective_threshold returns auto-tuned threshold when set."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            throttle_threshold_per_minute=100,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                throttle_threshold_per_minute=100,
+            )
+        )
         mgr.throttle_mgr._cb_effective_threshold = 150
         assert mgr.get_cb_effective_threshold() == 150
 
     def test_auto_tune_status(self):
         """get_cb_auto_tune_status returns complete status."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_auto_tune_enabled=True,
-            circuit_breaker_auto_tune_sensitivity=2.0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_auto_tune_enabled=True,
+                circuit_breaker_auto_tune_sensitivity=2.0,
+            )
+        )
         status = mgr.get_cb_auto_tune_status()
         assert status["enabled"] is True
         assert "effective_threshold" in status
@@ -405,21 +444,25 @@ class TestCircuitBreakerAutoTuning:
 
     def test_auto_tune_in_overall_status(self):
         """get_status() includes circuit_breaker_auto_tune info."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_auto_tune_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_auto_tune_enabled=True,
+            )
+        )
         status = mgr.get_status()
         assert "circuit_breaker_auto_tune" in status
 
     def test_auto_tune_threshold_clamped_min(self):
         """Auto-tuned threshold is clamped to min_threshold."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_auto_tune_enabled=True,
-            circuit_breaker_auto_tune_min_threshold=50,
-            throttle_threshold_per_minute=100,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_auto_tune_enabled=True,
+                circuit_breaker_auto_tune_min_threshold=50,
+                throttle_threshold_per_minute=100,
+            )
+        )
         # Set baseline rate so low that computed threshold would be below min
         mgr.throttle_mgr._cb_baseline_rates = {"test_slot": 1.0}
         mgr.throttle_mgr._cb_auto_tune_last_computed = time.time()
@@ -430,12 +473,14 @@ class TestCircuitBreakerAutoTuning:
 
     def test_auto_tune_threshold_clamped_max(self):
         """Auto-tuned threshold is clamped to max_threshold."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_auto_tune_enabled=True,
-            circuit_breaker_auto_tune_max_threshold=200,
-            throttle_threshold_per_minute=100,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_auto_tune_enabled=True,
+                circuit_breaker_auto_tune_max_threshold=200,
+                throttle_threshold_per_minute=100,
+            )
+        )
         threshold = mgr.compute_cb_auto_tune_threshold()
         assert threshold <= mgr._config.circuit_breaker_auto_tune_max_threshold
 
@@ -444,14 +489,17 @@ class TestCircuitBreakerAutoTuning:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                circuit_breaker_auto_tune_enabled=True,
-                throttle_threshold_per_minute=100,
-            ))
-            mgr.attach_history_store(store)
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    circuit_breaker_auto_tune_enabled=True,
+                    throttle_threshold_per_minute=100,
+                )
+            )
+            mgr.attach_history_store(bridge)
             mgr.throttle_mgr._cb_auto_tune_last_computed = 0  # Force recomputation
 
             result = mgr.update_cb_auto_tune()
@@ -460,11 +508,13 @@ class TestCircuitBreakerAutoTuning:
 
     def test_circuit_breaker_status_includes_auto_tune(self):
         """get_circuit_breaker_status includes auto_tune and effective_threshold."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            circuit_breaker_enabled=True,
-            circuit_breaker_auto_tune_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                circuit_breaker_enabled=True,
+                circuit_breaker_auto_tune_enabled=True,
+            )
+        )
         status = mgr.get_circuit_breaker_status()
         assert "auto_tune" in status
         assert "effective_threshold" in status
@@ -509,24 +559,32 @@ class TestDeliveryReceiptPolling:
 
     def test_polling_status_in_overall_status(self):
         """get_status() includes delivery_receipt_polling info."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            delivery_receipt_polling_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                delivery_receipt_polling_enabled=True,
+            )
+        )
         status = mgr.get_status()
         assert "delivery_receipt_polling" in status
         assert status["delivery_receipt_polling"]["enabled"] is True
 
     def test_update_email_delivery_status(self):
         """update_email_delivery_status stores status for a correlation ID."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            delivery_receipt_polling_enabled=True,
-        ))
-        mgr.update_email_delivery_status("cid-1", "delivered", {
-            "smtp_response": "250 OK",
-            "recipient": "ops@example.com",
-        })
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                delivery_receipt_polling_enabled=True,
+            )
+        )
+        mgr.update_email_delivery_status(
+            "cid-1",
+            "delivered",
+            {
+                "smtp_response": "250 OK",
+                "recipient": "ops@example.com",
+            },
+        )
 
         statuses = mgr._email_delivery_statuses
         assert "cid-1" in statuses
@@ -534,29 +592,37 @@ class TestDeliveryReceiptPolling:
 
     def test_update_email_delivery_status_merges_into_receipts(self):
         """update_email_delivery_status merges into existing delivery receipts."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            delivery_receipts_enabled=True,
-            delivery_receipt_polling_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                delivery_receipts_enabled=True,
+                delivery_receipt_polling_enabled=True,
+            )
+        )
         # Pre-populate a delivery receipt with email
         mgr.delivery_mgr._delivery_receipts["cid-2"] = {
             "email": {"delivery_status": "sent", "confirmed_at": "2026-01-01T00:00:00Z"},
         }
 
-        mgr.update_email_delivery_status("cid-2", "read", {
-            "read_at": "2026-01-01T00:05:00Z",
-        })
+        mgr.update_email_delivery_status(
+            "cid-2",
+            "read",
+            {
+                "read_at": "2026-01-01T00:05:00Z",
+            },
+        )
 
         assert mgr.delivery_mgr._delivery_receipts["cid-2"]["email"]["delivery_status"] == "read"
 
     def test_get_enhanced_delivery_receipts(self):
         """get_enhanced_delivery_receipts merges email polling status."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            delivery_receipts_enabled=True,
-            delivery_receipt_polling_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                delivery_receipts_enabled=True,
+                delivery_receipt_polling_enabled=True,
+            )
+        )
         mgr.delivery_mgr._delivery_receipts["cid-3"] = {
             "slack": {"message_ts": "1234.5678", "delivery_status": "delivered"},
         }
@@ -582,20 +648,24 @@ class TestDeliveryReceiptPolling:
 
     def test_poll_email_delivery_status_no_pending(self):
         """poll_email_delivery_status returns empty when no pending emails."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            delivery_receipt_polling_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                delivery_receipt_polling_enabled=True,
+            )
+        )
         result = mgr.poll_email_delivery_status()
         assert result == {"polled": 0, "updated": 0}
 
     def test_poll_email_delivery_status_tracks_sent(self):
         """poll_email_delivery_status marks email as sent when no webhook."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            delivery_receipts_enabled=True,
-            delivery_receipt_polling_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                delivery_receipts_enabled=True,
+                delivery_receipt_polling_enabled=True,
+            )
+        )
         # Simulate email receipt with "sent" status
         mgr.delivery_mgr._delivery_receipts["cid-4"] = {
             "email": {"delivery_status": "sent"},
@@ -607,11 +677,13 @@ class TestDeliveryReceiptPolling:
 
     def test_record_delivery_receipts_tracks_email_sent(self):
         """_record_delivery_receipts tracks email sent when polling enabled."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            delivery_receipts_enabled=True,
-            delivery_receipt_polling_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                delivery_receipts_enabled=True,
+                delivery_receipt_polling_enabled=True,
+            )
+        )
         transport_results = {
             "email": {"status": "delivered", "retries": 0},
         }
@@ -624,11 +696,13 @@ class TestDeliveryReceiptPolling:
 
     def test_start_stop_receipt_polling(self):
         """start_receipt_polling and stop_receipt_polling work correctly."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            delivery_receipt_polling_enabled=True,
-            delivery_receipt_poll_interval_seconds=600,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                delivery_receipt_polling_enabled=True,
+                delivery_receipt_poll_interval_seconds=600,
+            )
+        )
         mgr.start_receipt_polling()
         assert mgr._receipt_polling_running is True
 
@@ -643,20 +717,24 @@ class TestDeliveryReceiptPolling:
 
     def test_polling_with_webhook_url(self):
         """poll_email_delivery_status uses webhook URL when configured."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            delivery_receipts_enabled=True,
-            delivery_receipt_polling_enabled=True,
-            email_delivery_webhook_url="https://webhook.example.com/delivery",
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                delivery_receipts_enabled=True,
+                delivery_receipt_polling_enabled=True,
+                email_delivery_webhook_url="https://webhook.example.com/delivery",
+            )
+        )
         mgr.delivery_mgr._delivery_receipts["cid-6"] = {
             "email": {"delivery_status": "sent"},
         }
 
-        with patch('aip.adapter.alerting.urllib.request.urlopen') as mock_urlopen:
+        with patch("aip.adapter.alerting.urllib.request.urlopen") as mock_urlopen:
             mock_resp = MagicMock()
             mock_resp.status = 200
-            mock_resp.read.return_value = b'{"statuses": {"cid-6": {"status": "delivered", "delivered_at": "2026-01-01T00:01:00Z"}}}'
+            mock_resp.read.return_value = (
+                b'{"statuses": {"cid-6": {"status": "delivered", "delivered_at": "2026-01-01T00:01:00Z"}}}'
+            )
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
             mock_resp.__exit__ = MagicMock(return_value=False)
             mock_urlopen.return_value = mock_resp
@@ -697,10 +775,12 @@ class TestNativeWebSocketPerMessageDeflate:
 
     def test_compress_native_aware_no_compression(self):
         """compress_ws_message_native_aware returns original when compression disabled."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ws_compression_enabled=False,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ws_compression_enabled=False,
+            )
+        )
         data = '{"event":"test"}'
         result, compressed = mgr.compress_ws_message_native_aware(data)
         assert compressed is False
@@ -708,29 +788,33 @@ class TestNativeWebSocketPerMessageDeflate:
 
     def test_compress_native_aware_native_active(self):
         """compress_ws_message_native_aware is no-op when native deflate active."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ws_compression_enabled=True,
-            ws_native_permessage_deflate_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ws_compression_enabled=True,
+                ws_native_permessage_deflate_enabled=True,
+            )
+        )
         mgr.realtime_bus._ws_permessage_deflate_negotiated = True
 
-        data = '{"event":"test","alerts":' + str(["a"] * 100) + '}'
+        data = '{"event":"test","alerts":' + str(["a"] * 100) + "}"
         result, compressed = mgr.compress_ws_message_native_aware(data)
         assert compressed is False
         assert result == data  # No compression — protocol handles it
 
     def test_compress_native_aware_fallback_to_app_level(self):
         """compress_ws_message_native_aware falls back when native not negotiated."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ws_compression_enabled=True,
-            ws_native_permessage_deflate_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ws_compression_enabled=True,
+                ws_native_permessage_deflate_enabled=True,
+            )
+        )
         # Native enabled but NOT negotiated — should fall back to app-level
         mgr.realtime_bus._ws_permessage_deflate_negotiated = False
 
-        data = '{"event":"batch_events","alerts":' + str(["type_x"] * 100) + '}'
+        data = '{"event":"batch_events","alerts":' + str(["type_x"] * 100) + "}"
         result, compressed = mgr.compress_ws_message_native_aware(data)
         # Should use app-level compression since native not negotiated
         assert compressed is True
@@ -738,23 +822,27 @@ class TestNativeWebSocketPerMessageDeflate:
 
     def test_compress_native_aware_app_level_only(self):
         """compress_ws_message_native_aware uses app-level when native disabled."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ws_compression_enabled=True,
-            ws_native_permessage_deflate_enabled=False,
-        ))
-        data = '{"event":"batch_events","alerts":' + str(["type_x"] * 100) + '}'
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ws_compression_enabled=True,
+                ws_native_permessage_deflate_enabled=False,
+            )
+        )
+        data = '{"event":"batch_events","alerts":' + str(["type_x"] * 100) + "}"
         result, compressed = mgr.compress_ws_message_native_aware(data)
         assert compressed is True
         assert len(result) < len(data)
 
     def test_decompress_native_aware_native_active(self):
         """decompress_ws_message_native_aware is no-op when native deflate active."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ws_compression_enabled=True,
-            ws_native_permessage_deflate_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ws_compression_enabled=True,
+                ws_native_permessage_deflate_enabled=True,
+            )
+        )
         mgr.realtime_bus._ws_permessage_deflate_negotiated = True
 
         data = '{"event":"test"}'
@@ -763,11 +851,13 @@ class TestNativeWebSocketPerMessageDeflate:
 
     def test_decompress_native_aware_fallback(self):
         """decompress_ws_message_native_aware falls back to app-level."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ws_compression_enabled=True,
-            ws_native_permessage_deflate_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ws_compression_enabled=True,
+                ws_native_permessage_deflate_enabled=True,
+            )
+        )
         mgr.realtime_bus._ws_permessage_deflate_negotiated = False
 
         # Compress then decompress using app-level
@@ -787,11 +877,13 @@ class TestNativeWebSocketPerMessageDeflate:
 
     def test_get_native_deflate_status_native_mode(self):
         """get_native_deflate_status returns native when negotiated."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ws_compression_enabled=True,
-            ws_native_permessage_deflate_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ws_compression_enabled=True,
+                ws_native_permessage_deflate_enabled=True,
+            )
+        )
         mgr.realtime_bus._ws_permessage_deflate_negotiated = True
 
         status = mgr.get_native_deflate_status()
@@ -801,31 +893,37 @@ class TestNativeWebSocketPerMessageDeflate:
 
     def test_get_native_deflate_status_fallback(self):
         """get_native_deflate_status returns fallback when not negotiated."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ws_compression_enabled=True,
-            ws_native_permessage_deflate_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ws_compression_enabled=True,
+                ws_native_permessage_deflate_enabled=True,
+            )
+        )
         # Native enabled but not negotiated
         status = mgr.get_native_deflate_status()
         assert status["mode"] == "fallback_application_level"
 
     def test_get_native_deflate_status_app_level_only(self):
         """get_native_deflate_status returns application_level when only app-level enabled."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ws_compression_enabled=True,
-            ws_native_permessage_deflate_enabled=False,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ws_compression_enabled=True,
+                ws_native_permessage_deflate_enabled=False,
+            )
+        )
         status = mgr.get_native_deflate_status()
         assert status["mode"] == "application_level"
 
     def test_native_deflate_in_overall_status(self):
         """get_status() includes ws_native_deflate info."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ws_native_permessage_deflate_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ws_native_permessage_deflate_enabled=True,
+            )
+        )
         status = mgr.get_status()
         assert "ws_native_deflate" in status
         assert status["ws_native_deflate"]["enabled"] is True
@@ -833,6 +931,7 @@ class TestNativeWebSocketPerMessageDeflate:
     def test_dashboard_ws_url_includes_compression_param(self):
         """Dashboard WS URLs include ?compression=deflate parameter."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         # Check that the WS URLs include the compression parameter
         assert "compression=deflate" in _DASHBOARD_HTML
 
@@ -850,18 +949,21 @@ class TestSprint539Integration:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
             store = AlertHistoryStore(db_path)
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
             # Phase 1: Learn transitions
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                learned_prediction_enabled=True,
-                learned_prediction_min_samples=5,
-                transition_persistence_enabled=True,
-                delivery_receipts_enabled=True,
-                min_alert_interval_seconds=0,
-            ))
-            mgr.attach_history_store(store)
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    learned_prediction_enabled=True,
+                    learned_prediction_min_samples=5,
+                    transition_persistence_enabled=True,
+                    delivery_receipts_enabled=True,
+                    min_alert_interval_seconds=0,
+                )
+            )
+            mgr.attach_history_store(bridge)
 
             now = time.time()
             for i in range(20):
@@ -878,13 +980,15 @@ class TestSprint539Integration:
             assert mgr.persist_transition_model() is True
 
             # Phase 2: Simulate restart — new manager loads from store
-            mgr2 = AlertManager(AlertConfig(
-                enabled=True,
-                learned_prediction_enabled=True,
-                learned_prediction_min_samples=5,
-                transition_persistence_enabled=True,
-            ))
-            mgr2.attach_history_store(store)
+            mgr2 = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    learned_prediction_enabled=True,
+                    learned_prediction_min_samples=5,
+                    transition_persistence_enabled=True,
+                )
+            )
+            mgr2.attach_history_store(bridge)
 
             # Load persisted model
             assert mgr2.load_transition_model() is True
@@ -899,11 +1003,13 @@ class TestSprint539Integration:
 
     def test_full_delivery_receipt_polling_flow(self):
         """Full flow: send alert → poll → update → query enhanced receipts."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            delivery_receipts_enabled=True,
-            delivery_receipt_polling_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                delivery_receipts_enabled=True,
+                delivery_receipt_polling_enabled=True,
+            )
+        )
 
         # Record initial delivery receipt with email
         mgr.delivery_mgr._delivery_receipts["cid-int"] = {
@@ -912,9 +1018,13 @@ class TestSprint539Integration:
         }
 
         # Simulate email delivery confirmation
-        mgr.update_email_delivery_status("cid-int", "delivered", {
-            "smtp_response": "250 OK",
-        })
+        mgr.update_email_delivery_status(
+            "cid-int",
+            "delivered",
+            {
+                "smtp_response": "250 OK",
+            },
+        )
 
         # Query enhanced receipts
         receipts = mgr.get_enhanced_delivery_receipts("cid-int")
@@ -922,23 +1032,29 @@ class TestSprint539Integration:
         assert "email" in receipts
 
         # Simulate email read
-        mgr.update_email_delivery_status("cid-int", "read", {
-            "read_at": "2026-01-01T00:05:00Z",
-        })
+        mgr.update_email_delivery_status(
+            "cid-int",
+            "read",
+            {
+                "read_at": "2026-01-01T00:05:00Z",
+            },
+        )
 
         receipts = mgr.get_enhanced_delivery_receipts("cid-int")
         assert receipts["email"]["status"] == "read"
 
     def test_full_native_deflate_flow(self):
         """Full flow: native deflate → negotiate → compress → decompress."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ws_compression_enabled=True,
-            ws_native_permessage_deflate_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ws_compression_enabled=True,
+                ws_native_permessage_deflate_enabled=True,
+            )
+        )
 
         # Before negotiation — should fall back to app-level
-        data = '{"event":"batch","alerts":' + str(["a"] * 100) + '}'
+        data = '{"event":"batch","alerts":' + str(["a"] * 100) + "}"
         result, compressed = mgr.compress_ws_message_native_aware(data)
         assert compressed is True  # App-level compression used
 
@@ -958,14 +1074,16 @@ class TestSprint539Integration:
 
     def test_status_includes_all_sprint539_metrics(self):
         """get_status() includes all Sprint 5.39 metrics."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            offline_cache_enabled=True,
-            transition_persistence_enabled=True,
-            circuit_breaker_auto_tune_enabled=True,
-            delivery_receipt_polling_enabled=True,
-            ws_native_permessage_deflate_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                offline_cache_enabled=True,
+                transition_persistence_enabled=True,
+                circuit_breaker_auto_tune_enabled=True,
+                delivery_receipt_polling_enabled=True,
+                ws_native_permessage_deflate_enabled=True,
+            )
+        )
         status = mgr.get_status()
 
         # Offline cache

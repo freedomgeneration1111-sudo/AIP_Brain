@@ -2,17 +2,18 @@
 """
 Claude Export Ingestion Script for AIP_Brain
 """
-import sys
+
 import json
-import zipfile
-import tempfile
-import shutil
 import subprocess
+import sys
+import tempfile
+import zipfile
 from pathlib import Path
+
 
 def main(zip_path: str, project_name: str):
     zip_path = Path(zip_path).resolve()
-    
+
     if not zip_path.exists():
         print(f"Error: File not found: {zip_path}")
         sys.exit(1)
@@ -21,17 +22,17 @@ def main(zip_path: str, project_name: str):
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Extract ZIP
-        with zipfile.ZipFile(zip_path, 'r') as z:
+        with zipfile.ZipFile(zip_path, "r") as z:
             z.extractall(tmpdir)
-        
+
         # Find conversations.json
         conv_file = None
         for f in tmpdir.rglob("conversations.json"):
             conv_file = f
             break
-        
+
         if not conv_file:
             print("Error: conversations.json not found in the export.")
             sys.exit(1)
@@ -46,11 +47,11 @@ def main(zip_path: str, project_name: str):
         output_dir.mkdir()
 
         for i, convo in enumerate(conversations):
-            title = convo.get("name", f"Conversation {i+1}")
+            title = convo.get("name", f"Conversation {i + 1}")
             messages = convo.get("chat_messages", [])
-            
+
             md_lines = [f"# {title}\n"]
-            
+
             for msg in messages:
                 role = msg.get("sender", "unknown")
                 text = msg.get("text", "").strip()
@@ -65,15 +66,11 @@ def main(zip_path: str, project_name: str):
         print(f"Converted {len(conversations)} conversations to markdown.")
 
         # Ingest using existing aip ingest command
-        cmd = [
-            "uv", "run", "aip", "ingest", "directory",
-            str(output_dir),
-            "--project", project_name
-        ]
-        
+        cmd = ["uv", "run", "aip", "ingest", "directory", str(output_dir), "--project", project_name]
+
         print(f"Running: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True)
-        
+
         print(result.stdout)
         if result.returncode != 0:
             print("STDERR:", result.stderr)
@@ -82,9 +79,10 @@ def main(zip_path: str, project_name: str):
         else:
             print("Ingestion completed successfully.")
 
+
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Usage: python ingest_claude.py <zip_file> <project_name>")
         sys.exit(1)
-    
+
     main(sys.argv[1], sys.argv[2])

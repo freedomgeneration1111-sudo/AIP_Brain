@@ -17,7 +17,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ----------------------------------------------------------------
 # 1. Admin route require_definer enforcement
 # ----------------------------------------------------------------
@@ -25,8 +24,9 @@ import pytest
 
 def test_admin_get_config_requires_definer():
     """GET /admin/config has require_definer dependency."""
-    from aip.adapter.api.routes.admin import get_admin_config
     import inspect
+
+    from aip.adapter.api.routes.admin import get_admin_config
 
     sig = inspect.signature(get_admin_config)
     params = sig.parameters
@@ -36,8 +36,9 @@ def test_admin_get_config_requires_definer():
 
 def test_admin_get_sexton_classifications_requires_definer():
     """GET /admin/sexton/classifications has require_definer dependency."""
-    from aip.adapter.api.routes.admin import get_sexton_classifications
     import inspect
+
+    from aip.adapter.api.routes.admin import get_sexton_classifications
 
     sig = inspect.signature(get_sexton_classifications)
     assert "_auth" in sig.parameters
@@ -45,8 +46,9 @@ def test_admin_get_sexton_classifications_requires_definer():
 
 def test_admin_get_sexton_audit_requires_definer():
     """GET /admin/sexton/audit has require_definer dependency."""
-    from aip.adapter.api.routes.admin import get_sexton_audit
     import inspect
+
+    from aip.adapter.api.routes.admin import get_sexton_audit
 
     sig = inspect.signature(get_sexton_audit)
     assert "_auth" in sig.parameters
@@ -54,8 +56,9 @@ def test_admin_get_sexton_audit_requires_definer():
 
 def test_admin_get_sexton_playbook_requires_definer():
     """GET /admin/sexton/playbook has require_definer dependency."""
-    from aip.adapter.api.routes.admin import get_sexton_playbook
     import inspect
+
+    from aip.adapter.api.routes.admin import get_sexton_playbook
 
     sig = inspect.signature(get_sexton_playbook)
     assert "_auth" in sig.parameters
@@ -63,8 +66,9 @@ def test_admin_get_sexton_playbook_requires_definer():
 
 def test_admin_get_beast_status_requires_definer():
     """GET /admin/beast/status has require_definer dependency."""
-    from aip.adapter.api.routes.admin import get_beast_status
     import inspect
+
+    from aip.adapter.api.routes.admin import get_beast_status
 
     sig = inspect.signature(get_beast_status)
     assert "_auth" in sig.parameters
@@ -72,8 +76,9 @@ def test_admin_get_beast_status_requires_definer():
 
 def test_admin_get_router_weights_requires_definer():
     """GET /admin/router/weights has require_definer dependency."""
-    from aip.adapter.api.routes.admin import get_router_weights
     import inspect
+
+    from aip.adapter.api.routes.admin import get_router_weights
 
     sig = inspect.signature(get_router_weights)
     assert "_auth" in sig.parameters
@@ -81,8 +86,9 @@ def test_admin_get_router_weights_requires_definer():
 
 def test_admin_get_budget_requires_definer():
     """GET /admin/budget has require_definer dependency."""
-    from aip.adapter.api.routes.admin import get_budget_status
     import inspect
+
+    from aip.adapter.api.routes.admin import get_budget_status
 
     sig = inspect.signature(get_budget_status)
     assert "_auth" in sig.parameters
@@ -90,8 +96,9 @@ def test_admin_get_budget_requires_definer():
 
 def test_admin_get_autonomy_log_requires_definer():
     """GET /admin/autonomy/log has require_definer dependency."""
-    from aip.adapter.api.routes.admin import get_autonomy_log
     import inspect
+
+    from aip.adapter.api.routes.admin import get_autonomy_log
 
     sig = inspect.signature(get_autonomy_log)
     assert "_auth" in sig.parameters
@@ -99,8 +106,9 @@ def test_admin_get_autonomy_log_requires_definer():
 
 def test_admin_get_backfill_status_requires_definer():
     """GET /admin/embeddings/backfill/status has require_definer dependency."""
-    from aip.adapter.api.routes.admin import get_backfill_status
     import inspect
+
+    from aip.adapter.api.routes.admin import get_backfill_status
 
     sig = inspect.signature(get_backfill_status)
     assert "_auth" in sig.parameters
@@ -108,8 +116,9 @@ def test_admin_get_backfill_status_requires_definer():
 
 def test_admin_get_hot_reload_status_requires_definer():
     """GET /admin/hot-reload/status has require_definer dependency."""
-    from aip.adapter.api.routes.admin import get_hot_reload_status
     import inspect
+
+    from aip.adapter.api.routes.admin import get_hot_reload_status
 
     sig = inspect.signature(get_hot_reload_status)
     assert "_auth" in sig.parameters
@@ -117,8 +126,9 @@ def test_admin_get_hot_reload_status_requires_definer():
 
 def test_admin_post_backfill_requires_definer():
     """POST /admin/embeddings/backfill has require_definer dependency."""
-    from aip.adapter.api.routes.admin import backfill_embeddings
     import inspect
+
+    from aip.adapter.api.routes.admin import backfill_embeddings
 
     sig = inspect.signature(backfill_embeddings)
     assert "_auth" in sig.parameters
@@ -126,8 +136,9 @@ def test_admin_post_backfill_requires_definer():
 
 def test_admin_patch_config_requires_definer():
     """PATCH /admin/config has require_definer dependency."""
-    from aip.adapter.api.routes.admin import patch_admin_config
     import inspect
+
+    from aip.adapter.api.routes.admin import patch_admin_config
 
     sig = inspect.signature(patch_admin_config)
     assert "_auth" in sig.parameters
@@ -140,8 +151,9 @@ def test_admin_patch_config_requires_definer():
 
 def test_api_key_status_requires_definer():
     """GET /models/api_key_status has require_definer dependency."""
-    from aip.adapter.api.routes.models import api_key_status
     import inspect
+
+    from aip.adapter.api.routes.models import api_key_status
 
     sig = inspect.signature(api_key_status)
     assert "_auth" in sig.parameters
@@ -149,8 +161,9 @@ def test_api_key_status_requires_definer():
 
 def test_update_slot_model_requires_definer():
     """PATCH /models/slots/{slot_name}/model has require_definer dependency."""
-    from aip.adapter.api.routes.models import update_slot_model
     import inspect
+
+    from aip.adapter.api.routes.models import update_slot_model
 
     sig = inspect.signature(update_slot_model)
     assert "_auth" in sig.parameters
@@ -158,8 +171,9 @@ def test_update_slot_model_requires_definer():
 
 def test_fetch_model_library_requires_definer():
     """POST /models/library/fetch has require_definer dependency."""
-    from aip.adapter.api.routes.models_library import fetch_model_library
     import inspect
+
+    from aip.adapter.api.routes.models_library import fetch_model_library
 
     sig = inspect.signature(fetch_model_library)
     assert "_auth" in sig.parameters
@@ -167,8 +181,9 @@ def test_fetch_model_library_requires_definer():
 
 def test_toggle_model_enabled_requires_definer():
     """PATCH /models/library/{model_id} has require_definer dependency."""
-    from aip.adapter.api.routes.models_library import toggle_model_enabled
     import inspect
+
+    from aip.adapter.api.routes.models_library import toggle_model_enabled
 
     sig = inspect.signature(toggle_model_enabled)
     assert "_auth" in sig.parameters
@@ -181,14 +196,14 @@ def test_toggle_model_enabled_requires_definer():
 
 def test_models_route_no_os_environ_write():
     """The models route module does not import os for environ writes."""
-    import aip.adapter.api.routes.models as models_mod
     import inspect
+
+    import aip.adapter.api.routes.models as models_mod
 
     source = inspect.getsource(models_mod)
     # The module should NOT contain os.environ assignment
     assert "os.environ[" not in source, (
-        "models.py must not write to os.environ. "
-        "Use ModelSlotResolver.set_runtime_override() instead."
+        "models.py must not write to os.environ. Use ModelSlotResolver.set_runtime_override() instead."
     )
 
 
@@ -333,8 +348,9 @@ def test_smtp_env_var_precedence_in_alerting():
     """The alerting module's send path prefers AIP_SMTP_PASSWORD over TOML."""
     # Verify the alerting.py code: os.environ.get("AIP_SMTP_PASSWORD") or self._config.smtp_password
     # This means env var takes precedence.
-    import aip.adapter.alerting as alerting_mod
     import inspect
+
+    import aip.adapter.alerting as alerting_mod
 
     source = inspect.getsource(alerting_mod)
     # Look for the pattern that checks env var first
@@ -444,25 +460,24 @@ def test_validation_warnings_do_not_block_startup():
 
 def test_no_os_environ_api_key_writes_in_models_route():
     """The models route module must not contain os.environ writes for API keys."""
-    import aip.adapter.api.routes.models as models_mod
     import inspect
+
+    import aip.adapter.api.routes.models as models_mod
 
     source = inspect.getsource(models_mod)
     assert "os.environ[" not in source, (
-        "models route must not write to os.environ. "
-        "Use ModelSlotResolver.set_runtime_override() for runtime overrides."
+        "models route must not write to os.environ. Use ModelSlotResolver.set_runtime_override() for runtime overrides."
     )
 
 
 def test_no_os_import_in_models_route():
     """The models route module does not import os (no longer needed)."""
-    import aip.adapter.api.routes.models as models_mod
     import inspect
 
+    import aip.adapter.api.routes.models as models_mod
+
     source = inspect.getsource(models_mod)
-    assert "import os" not in source, (
-        "models route should not import os since it no longer writes to os.environ"
-    )
+    assert "import os" not in source, "models route should not import os since it no longer writes to os.environ"
 
 
 # ----------------------------------------------------------------
@@ -476,8 +491,9 @@ def test_all_admin_routes_have_require_definer():
     This is a static check that inspects the route function signatures
     to ensure no admin route is missing auth.
     """
-    from aip.adapter.api.routes import admin
     import inspect
+
+    from aip.adapter.api.routes import admin
 
     # Get all route functions from the admin router
     admin_routes = []
@@ -521,9 +537,7 @@ async def test_require_definer_rejects_unauthenticated_when_auth_enabled():
     mock_request.state.auth_role = None
 
     identity = await get_current_identity(mock_request)
-    assert identity["role"] is None, (
-        "Unauthenticated request must NOT get definer role when auth is enabled"
-    )
+    assert identity["role"] is None, "Unauthenticated request must NOT get definer role when auth is enabled"
 
     # require_definer should reject
     with pytest.raises(Exception) as exc_info:

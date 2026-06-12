@@ -98,9 +98,9 @@ class SextonConfig:
     # decreases (more conservative).  If consistently successful,
     # batch_size can increase within safe bounds.
     graph_extraction_batch_auto_tune_enabled: bool = True  # Default-on since Sprint 5.24
-    graph_extraction_batch_size_min: int = 1    # Never go below 1
-    graph_extraction_batch_size_max: int = 8    # Conservative upper bound (validated Sprint 5.23)
-    graph_extraction_auto_tune_window: int = 5   # Number of batches to consider
+    graph_extraction_batch_size_min: int = 1  # Never go below 1
+    graph_extraction_batch_size_max: int = 8  # Conservative upper bound (validated Sprint 5.23)
+    graph_extraction_auto_tune_window: int = 5  # Number of batches to consider
     graph_extraction_auto_tune_decrease_threshold: float = 0.3  # Failure rate above this → decrease
     graph_extraction_auto_tune_increase_threshold: float = 0.1  # Failure rate below this → increase
 

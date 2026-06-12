@@ -6,7 +6,6 @@ session expiration, definer sovereignty, and connection health.
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -442,9 +441,16 @@ class TestConnectionHealth:
         await auth_store.list_users()
         health = auth_store.connection_health()
         required_fields = [
-            "store_type", "connected", "tables_ready",
-            "connection_age_seconds", "resets", "seconds_since_last_reset",
-            "seconds_since_last_op", "total_ops", "avg_op_latency_ms", "db_path",
+            "store_type",
+            "connected",
+            "tables_ready",
+            "connection_age_seconds",
+            "resets",
+            "seconds_since_last_reset",
+            "seconds_since_last_op",
+            "total_ops",
+            "avg_op_latency_ms",
+            "db_path",
         ]
         for field in required_fields:
             assert field in health, f"Missing field: {field}"

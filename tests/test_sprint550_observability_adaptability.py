@@ -8,20 +8,15 @@ Covers all 5 deliverables:
 5. Calibration Drift Detection
 """
 
-import json
-import math
 import os
 import sqlite3
 import tempfile
-import time
-from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import AlertConfig, AlertManager
-from aip.adapter.alert_history_store import AlertHistoryStore
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -61,12 +56,16 @@ def _make_config(**overrides) -> AlertConfig:
     return AlertConfig(**defaults)
 
 
-def _make_store() -> AlertHistoryStore:
-    """Create an in-memory AlertHistoryStore for testing."""
-    db_path = os.path.join(tempfile.mkdtemp(), "test_alert_history.db")
+def _make_store(tmp_path=None, db_name: str = "test_alert_history.db") -> SyncAlertHistoryBridge:
+    """Create and initialize a fresh AlertHistoryStore via SyncAlertHistoryBridge."""
+    if tmp_path is not None:
+        db_path = str(tmp_path / db_name)
+    else:
+        db_path = os.path.join(tempfile.mkdtemp(), db_name)
     store = AlertHistoryStore(db_path)
-    store.initialize()
-    return store
+    bridge = SyncAlertHistoryBridge(store)
+    bridge.initialize()
+    return bridge
 
 
 def _start_experiment(mgr: AlertManager, name: str = "test-exp", **meta) -> dict:
@@ -98,9 +97,7 @@ class TestBanditDecisionLogging:
         """Schema v12 migration creates the bandit_decision_log table."""
         store = _make_store()
         with sqlite3.connect(store._db_path) as conn:
-            cursor = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='bandit_decision_log'"
-            )
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bandit_decision_log'")
             assert cursor.fetchone() is not None
 
     def test_record_bandit_decision(self):
@@ -133,12 +130,14 @@ class TestBanditDecisionLogging:
         now_iso = datetime.now(timezone.utc).isoformat()
 
         for method in ["thompson", "ucb", "epsilon_greedy"]:
-            store.record_bandit_decision({
-                "experiment_name": f"filter-{method}",
-                "method": method,
-                "allocation": {"control": 0.5, "variant": 0.5},
-                "timestamp": now_iso,
-            })
+            store.record_bandit_decision(
+                {
+                    "experiment_name": f"filter-{method}",
+                    "method": method,
+                    "allocation": {"control": 0.5, "variant": 0.5},
+                    "timestamp": now_iso,
+                }
+            )
 
         # Filter by method
         ucb_results = store.get_bandit_decisions(method="ucb")
@@ -147,11 +146,13 @@ class TestBanditDecisionLogging:
 
     def test_bandit_decision_logging_in_get_bandit_allocation(self):
         """When decision logging is enabled, get_bandit_allocation logs decisions."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_method="thompson",
-            ab_bandit_decision_logging_enabled=True,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_method="thompson",
+                ab_bandit_decision_logging_enabled=True,
+            )
+        )
         store = _make_store()
         mgr.attach_history_store(store)
 
@@ -168,11 +169,13 @@ class TestBanditDecisionLogging:
 
     def test_replay_bandit_decisions(self):
         """Replay returns decisions in chronological order."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_method="thompson",
-            ab_bandit_decision_logging_enabled=True,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_method="thompson",
+                ab_bandit_decision_logging_enabled=True,
+            )
+        )
         store = _make_store()
         mgr.attach_history_store(store)
 
@@ -192,10 +195,12 @@ class TestBanditDecisionLogging:
 
     def test_decision_logging_disabled_by_default(self):
         """When decision logging is disabled, decisions are not logged."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_decision_logging_enabled=False,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_decision_logging_enabled=False,
+            )
+        )
         store = _make_store()
         mgr.attach_history_store(store)
 
@@ -208,10 +213,12 @@ class TestBanditDecisionLogging:
 
     def test_decision_log_counter_incremented(self):
         """The total_bandit_decisions_logged counter is incremented on each log."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_decision_logging_enabled=True,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_decision_logging_enabled=True,
+            )
+        )
         store = _make_store()
         mgr.attach_history_store(store)
 
@@ -238,12 +245,15 @@ class TestHistoricalPromotionTimeline:
 
         # Create a promoted experiment in the store
         with sqlite3.connect(store._db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO ab_experiments (name, control_config, variant_config, status, started_at,
                     control_samples, variant_samples, control_accuracy, variant_accuracy,
                     promoted_variant, promotion_timestamp, auto_promoted, created_at)
                 VALUES (?, '{}', '{}', 'promoted', ?, 50, 50, 0.85, 0.92, 'variant', ?, 1, ?)
-            """, ("timeline-promo-exp", now_iso, now_iso, now_iso))
+            """,
+                ("timeline-promo-exp", now_iso, now_iso, now_iso),
+            )
 
         events = store.get_experiment_event_timeline(event_type="promotion")
         assert len(events) >= 1
@@ -257,11 +267,14 @@ class TestHistoricalPromotionTimeline:
         now_iso = datetime.now(timezone.utc).isoformat()
 
         with sqlite3.connect(store._db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO ab_rollback_history (experiment_name, rolled_back_variant, rolled_back_at,
                     control_accuracy, variant_accuracy, auto, created_at)
                 VALUES (?, 'variant', ?, 0.85, 0.70, 1, ?)
-            """, ("timeline-rollback-exp", now_iso, now_iso))
+            """,
+                ("timeline-rollback-exp", now_iso, now_iso),
+            )
 
         events = store.get_experiment_event_timeline(event_type="rollback")
         assert len(events) >= 1
@@ -274,13 +287,15 @@ class TestHistoricalPromotionTimeline:
         store = _make_store()
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        store.record_bandit_decision({
-            "experiment_name": "timeline-bandit-exp",
-            "method": "thompson",
-            "allocation": {"control": 0.35, "variant": 0.65},
-            "confidence": 0.30,
-            "timestamp": now_iso,
-        })
+        store.record_bandit_decision(
+            {
+                "experiment_name": "timeline-bandit-exp",
+                "method": "thompson",
+                "allocation": {"control": 0.35, "variant": 0.65},
+                "confidence": 0.30,
+                "timestamp": now_iso,
+            }
+        )
 
         events = store.get_experiment_event_timeline(event_type="bandit_decision")
         assert len(events) >= 1
@@ -294,18 +309,22 @@ class TestHistoricalPromotionTimeline:
         store = _make_store()
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        store.record_bandit_decision({
-            "experiment_name": "filter-exp-a",
-            "method": "thompson",
-            "allocation": {"control": 0.5, "variant": 0.5},
-            "timestamp": now_iso,
-        })
-        store.record_bandit_decision({
-            "experiment_name": "filter-exp-b",
-            "method": "ucb",
-            "allocation": {"control": 0.5, "variant": 0.5},
-            "timestamp": now_iso,
-        })
+        store.record_bandit_decision(
+            {
+                "experiment_name": "filter-exp-a",
+                "method": "thompson",
+                "allocation": {"control": 0.5, "variant": 0.5},
+                "timestamp": now_iso,
+            }
+        )
+        store.record_bandit_decision(
+            {
+                "experiment_name": "filter-exp-b",
+                "method": "ucb",
+                "allocation": {"control": 0.5, "variant": 0.5},
+                "timestamp": now_iso,
+            }
+        )
 
         events = store.get_experiment_event_timeline(experiment_name="filter-exp-a")
         assert all(e["experiment_name"] == "filter-exp-a" for e in events)
@@ -316,20 +335,25 @@ class TestHistoricalPromotionTimeline:
         now_iso = datetime.now(timezone.utc).isoformat()
 
         # Add a bandit decision
-        store.record_bandit_decision({
-            "experiment_name": "combined-exp",
-            "method": "thompson",
-            "allocation": {"control": 0.5, "variant": 0.5},
-            "timestamp": now_iso,
-        })
+        store.record_bandit_decision(
+            {
+                "experiment_name": "combined-exp",
+                "method": "thompson",
+                "allocation": {"control": 0.5, "variant": 0.5},
+                "timestamp": now_iso,
+            }
+        )
 
         # Add a decay recovery
         with sqlite3.connect(store._db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO decay_recovery_history (subject, decay_amount, current_confidence,
                     actions_taken, created_at)
                 VALUES (?, 0.15, 0.80, '[]', ?)
-            """, ("combined-exp", now_iso))
+            """,
+                ("combined-exp", now_iso),
+            )
 
         events = store.get_experiment_event_timeline()
         types = {e["event_type"] for e in events}
@@ -356,11 +380,13 @@ class TestAdaptiveBanditMethodSelection:
 
     def test_adaptive_method_selects_ucb_for_small_samples(self):
         """Adaptive selection chooses UCB for experiments with <100 samples."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_adaptive_method_enabled=True,
-            ab_bandit_method="thompson",
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_adaptive_method_enabled=True,
+                ab_bandit_method="thompson",
+            )
+        )
         _start_experiment(mgr, "small-sample-exp")
         _add_results(mgr, "small-sample-exp", n=30)
 
@@ -369,10 +395,12 @@ class TestAdaptiveBanditMethodSelection:
 
     def test_adaptive_method_selects_epsilon_greedy_for_low_variance(self):
         """Adaptive selection chooses epsilon-greedy when accuracy gap is small."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_adaptive_method_enabled=True,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_adaptive_method_enabled=True,
+            )
+        )
         _start_experiment(mgr, "low-var-exp")
         _add_results(mgr, "low-var-exp", n=200, c_acc=0.85, v_acc=0.86)
 
@@ -381,10 +409,12 @@ class TestAdaptiveBanditMethodSelection:
 
     def test_adaptive_method_selects_thompson_for_high_variance(self):
         """Adaptive selection chooses Thompson Sampling for large samples with variance."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_adaptive_method_enabled=True,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_adaptive_method_enabled=True,
+            )
+        )
         _start_experiment(mgr, "high-var-exp")
 
         method = mgr._select_adaptive_bandit_method("high-var-exp", 100, 100, 0.70, 0.90)
@@ -392,11 +422,13 @@ class TestAdaptiveBanditMethodSelection:
 
     def test_adaptive_method_prefers_thompson_with_context(self):
         """When contextual bandits have data, adaptive selection prefers Thompson."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_adaptive_method_enabled=True,
-            ab_bandit_contextual_enabled=True,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_adaptive_method_enabled=True,
+                ab_bandit_contextual_enabled=True,
+            )
+        )
         _start_experiment(mgr, "ctx-adapt-exp", alert_type="quality")
         _add_results(mgr, "ctx-adapt-exp", n=100)
 
@@ -410,10 +442,12 @@ class TestAdaptiveBanditMethodSelection:
 
     def test_adaptive_method_tracks_switches(self):
         """Adaptive method selection tracks when methods are switched."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_adaptive_method_enabled=True,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_adaptive_method_enabled=True,
+            )
+        )
         _start_experiment(mgr, "switch-exp")
 
         # First call with small samples -> UCB
@@ -425,9 +459,11 @@ class TestAdaptiveBanditMethodSelection:
 
     def test_get_adaptive_bandit_status(self):
         """Adaptive bandit status endpoint returns correct structure."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_adaptive_method_enabled=True,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_adaptive_method_enabled=True,
+            )
+        )
         _start_experiment(mgr, "status-exp")
         mgr._select_adaptive_bandit_method("status-exp", 50, 50, 0.80, 0.90)
 
@@ -439,11 +475,13 @@ class TestAdaptiveBanditMethodSelection:
 
     def test_adaptive_disabled_uses_configured_method(self):
         """When adaptive method is disabled, configured method is always used."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_adaptive_method_enabled=False,
-            ab_bandit_method="ucb",
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_adaptive_method_enabled=False,
+                ab_bandit_method="ucb",
+            )
+        )
         _start_experiment(mgr, "disabled-adapt-exp")
         _add_results(mgr, "disabled-adapt-exp", n=30)
 
@@ -469,10 +507,13 @@ class TestSnapshotGarbageCollection:
         # Create an old snapshot
         old_time = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat()
         with sqlite3.connect(store._db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO pre_promotion_snapshots (experiment_name, snapshot_data, created_at, updated_at)
                 VALUES (?, '{}', ?, ?)
-            """, ("old-exp", old_time, old_time))
+            """,
+                ("old-exp", old_time, old_time),
+            )
 
         removed = store.cleanup_stale_pre_promotion_snapshots(
             active_experiment_names=set(),
@@ -488,7 +529,7 @@ class TestSnapshotGarbageCollection:
     def test_gc_keeps_active_experiment_snapshots(self):
         """Snapshot GC keeps snapshots for active experiments."""
         store = _make_store()
-        now_iso = datetime.now(timezone.utc).isoformat()
+        datetime.now(timezone.utc).isoformat()
 
         store.record_pre_promotion_snapshot("active-exp", {"test": True})
 
@@ -506,7 +547,7 @@ class TestSnapshotGarbageCollection:
     def test_gc_removes_inactive_experiment_snapshots(self):
         """Snapshot GC removes snapshots for experiments not in the active set."""
         store = _make_store()
-        now_iso = datetime.now(timezone.utc).isoformat()
+        datetime.now(timezone.utc).isoformat()
 
         store.record_pre_promotion_snapshot("inactive-exp", {"test": True})
 
@@ -518,10 +559,12 @@ class TestSnapshotGarbageCollection:
 
     def test_manager_snapshot_gc_run(self):
         """AlertManager._run_snapshot_gc cleans in-memory stale snapshots."""
-        mgr = AlertManager(_make_config(
-            ab_snapshot_gc_enabled=True,
-            ab_snapshot_gc_max_age_hours=72,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_snapshot_gc_enabled=True,
+                ab_snapshot_gc_max_age_hours=72,
+            )
+        )
         store = _make_store()
         mgr.attach_history_store(store)
 
@@ -543,10 +586,12 @@ class TestSnapshotGarbageCollection:
 
     def test_snapshot_gc_status(self):
         """Snapshot GC status endpoint returns correct structure."""
-        mgr = AlertManager(_make_config(
-            ab_snapshot_gc_enabled=True,
-            ab_snapshot_gc_max_age_hours=48,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_snapshot_gc_enabled=True,
+                ab_snapshot_gc_max_age_hours=48,
+            )
+        )
 
         status = mgr.get_snapshot_gc_status()
         assert status["enabled"] is True
@@ -570,10 +615,12 @@ class TestCalibrationDriftDetection:
 
     def test_detect_drift_when_factor_exceeds_threshold(self):
         """Drift is detected when calibration factor deviates >20% from 1.0."""
-        mgr = AlertManager(_make_config(
-            ab_calibration_drift_check_enabled=True,
-            ab_calibration_drift_threshold=0.20,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_calibration_drift_check_enabled=True,
+                ab_calibration_drift_threshold=0.20,
+            )
+        )
 
         # Create a calibration factor with >20% deviation
         mgr.ab_experiment_mgr._confidence_calibration_map["drifted_subject"] = 1.30  # 30% deviation
@@ -586,10 +633,12 @@ class TestCalibrationDriftDetection:
 
     def test_no_drift_when_factor_within_threshold(self):
         """No drift alert when calibration factor is within threshold."""
-        mgr = AlertManager(_make_config(
-            ab_calibration_drift_check_enabled=True,
-            ab_calibration_drift_threshold=0.20,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_calibration_drift_check_enabled=True,
+                ab_calibration_drift_threshold=0.20,
+            )
+        )
 
         # Calibration factor within 20% of 1.0
         mgr.ab_experiment_mgr._confidence_calibration_map["ok_subject"] = 1.10  # 10% deviation
@@ -599,10 +648,12 @@ class TestCalibrationDriftDetection:
 
     def test_drift_detection_under_confident_direction(self):
         """Drift detection identifies under-confident direction correctly."""
-        mgr = AlertManager(_make_config(
-            ab_calibration_drift_check_enabled=True,
-            ab_calibration_drift_threshold=0.20,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_calibration_drift_check_enabled=True,
+                ab_calibration_drift_threshold=0.20,
+            )
+        )
 
         mgr.ab_experiment_mgr._confidence_calibration_map["under_subject"] = 0.70  # 30% deviation
 
@@ -612,9 +663,11 @@ class TestCalibrationDriftDetection:
 
     def test_drift_detection_disabled(self):
         """Drift detection returns empty when disabled."""
-        mgr = AlertManager(_make_config(
-            ab_calibration_drift_check_enabled=False,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_calibration_drift_check_enabled=False,
+            )
+        )
 
         mgr.ab_experiment_mgr._confidence_calibration_map["any_subject"] = 2.0  # 100% deviation
 
@@ -623,22 +676,27 @@ class TestCalibrationDriftDetection:
 
     def test_drift_alert_sends_notification(self):
         """Drift detection sends an alert via the notification system."""
-        mgr = AlertManager(_make_config(
-            enabled=True,
-            ab_calibration_drift_check_enabled=True,
-            ab_calibration_drift_threshold=0.20,
-            alert_on_quality_degradation=True,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                enabled=True,
+                ab_calibration_drift_check_enabled=True,
+                ab_calibration_drift_threshold=0.20,
+                alert_on_quality_degradation=True,
+            )
+        )
 
         mgr.ab_experiment_mgr._confidence_calibration_map["alert_subject"] = 1.50
 
-        # Mock send_alert to track calls
-        original_send = mgr.send_alert
+        # Mock send_alert to track calls — must also update the
+        # ABExperimentManager's alert_sender which was wired during init.
         sent_alerts = []
+
         def mock_send(alert):
             sent_alerts.append(alert)
             return "test-correlation-id"
+
         mgr.send_alert = mock_send
+        mgr.ab_experiment_mgr.set_alert_sender(mock_send)
 
         mgr.check_calibration_drift()
         assert len(sent_alerts) >= 1
@@ -647,10 +705,12 @@ class TestCalibrationDriftDetection:
 
     def test_drift_status_includes_recent_alerts(self):
         """Calibration drift status includes recent alerts and current drifted factors."""
-        mgr = AlertManager(_make_config(
-            ab_calibration_drift_check_enabled=True,
-            ab_calibration_drift_threshold=0.20,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_calibration_drift_check_enabled=True,
+                ab_calibration_drift_threshold=0.20,
+            )
+        )
 
         mgr.ab_experiment_mgr._confidence_calibration_map["status_subject"] = 1.40
         mgr.check_calibration_drift()
@@ -663,10 +723,12 @@ class TestCalibrationDriftDetection:
 
     def test_drift_alerts_capped_at_50(self):
         """Calibration drift alerts are capped at 50 in memory."""
-        mgr = AlertManager(_make_config(
-            ab_calibration_drift_check_enabled=True,
-            ab_calibration_drift_threshold=0.20,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_calibration_drift_check_enabled=True,
+                ab_calibration_drift_threshold=0.20,
+            )
+        )
 
         for i in range(60):
             mgr.ab_experiment_mgr._confidence_calibration_map[f"subject_{i}"] = 1.50
@@ -681,10 +743,12 @@ class TestCalibrationDriftDetection:
 
     def test_drift_metrics_in_health_endpoint(self):
         """Calibration drift metrics are visible in the health endpoint data."""
-        mgr = AlertManager(_make_config(
-            ab_calibration_drift_check_enabled=True,
-            ab_calibration_drift_threshold=0.20,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_calibration_drift_check_enabled=True,
+                ab_calibration_drift_threshold=0.20,
+            )
+        )
         mgr.ab_experiment_mgr._confidence_calibration_map["health_subject"] = 1.30
         mgr.check_calibration_drift()
 
@@ -705,10 +769,12 @@ class TestBanditStatusSprint550:
 
     def test_bandit_status_includes_decision_logging(self):
         """Bandit status includes decision logging information."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_decision_logging_enabled=True,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_decision_logging_enabled=True,
+            )
+        )
 
         status = mgr.get_bandit_status()
         assert status["decision_logging_enabled"] is True
@@ -716,10 +782,12 @@ class TestBanditStatusSprint550:
 
     def test_bandit_status_includes_adaptive_method(self):
         """Bandit status includes adaptive method selection information."""
-        mgr = AlertManager(_make_config(
-            ab_bandit_enabled=True,
-            ab_bandit_adaptive_method_enabled=True,
-        ))
+        mgr = AlertManager(
+            _make_config(
+                ab_bandit_enabled=True,
+                ab_bandit_adaptive_method_enabled=True,
+            )
+        )
 
         status = mgr.get_bandit_status()
         assert "adaptive_method" in status
@@ -775,12 +843,14 @@ class TestStoreSprint550Integration:
         # Add events at different times
         for i in range(5):
             ts = (datetime.now(timezone.utc) - timedelta(hours=5 - i)).isoformat()
-            store.record_bandit_decision({
-                "experiment_name": f"sort-exp-{i}",
-                "method": "thompson",
-                "allocation": {"control": 0.5, "variant": 0.5},
-                "timestamp": ts,
-            })
+            store.record_bandit_decision(
+                {
+                    "experiment_name": f"sort-exp-{i}",
+                    "method": "thompson",
+                    "allocation": {"control": 0.5, "variant": 0.5},
+                    "timestamp": ts,
+                }
+            )
 
         events = store.get_experiment_event_timeline(limit=10)
         # Most recent should be first
@@ -790,17 +860,20 @@ class TestStoreSprint550Integration:
     def test_snapshot_gc_with_multiple_experiments(self):
         """Snapshot GC correctly handles multiple experiments with mixed status."""
         store = _make_store()
-        now_iso = datetime.now(timezone.utc).isoformat()
+        datetime.now(timezone.utc).isoformat()
         old_iso = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat()
 
         # Active experiment (recent)
         store.record_pre_promotion_snapshot("active-recent", {"test": "recent"})
         # Inactive experiment (old)
         with sqlite3.connect(store._db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO pre_promotion_snapshots (experiment_name, snapshot_data, created_at, updated_at)
                 VALUES (?, '{}', ?, ?)
-            """, ("inactive-old", old_iso, old_iso))
+            """,
+                ("inactive-old", old_iso, old_iso),
+            )
 
         removed = store.cleanup_stale_pre_promotion_snapshots(
             active_experiment_names={"active-recent"},

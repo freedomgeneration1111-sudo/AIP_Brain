@@ -7,33 +7,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
 
 from nicegui import ui
 
+from gui.state import GuiState
 from gui.theme import (
     C_AMBER,
     C_CREAM,
-    C_ERR_BG,
-    C_ERR_FG,
-    C_GROUND,
     C_INK40,
-    C_INK60,
     C_MUTED,
-    C_OK_BG,
-    C_OK_FG,
     C_RAISED,
     C_SURFACE,
-    C_WARN_BG,
-    C_WARN_FG,
     F_MONO,
-    F_SANS,
     R_MD,
     R_SM,
     btn_primary,
-    btn_secondary,
 )
-from gui.state import GuiState
 
 log = logging.getLogger("gui.components.chat")
 
@@ -58,9 +47,7 @@ def add_message(container, role: str, text: str, model: str | None = None, laten
             label_text = f"**{display}**"
             if latency_ms is not None:
                 label_text += f"  ({latency_ms}ms)"
-            ui.markdown(label_text).style(
-                f"font-size:11px; color:{role_color}; font-family:{F_MONO};"
-            )
+            ui.markdown(label_text).style(f"font-size:11px; color:{role_color}; font-family:{F_MONO};")
 
         with ui.row().classes("w-full"):
             ui.markdown(text).style(
@@ -74,10 +61,7 @@ def add_system_message(container, text: str) -> None:
     """Add a system/info message to the chat container."""
     with container:
         with ui.row().classes("w-full justify-center"):
-            ui.label(text).style(
-                f"font-size:10px; font-family:{F_MONO}; color:{C_MUTED}; "
-                f"padding:2px 8px;"
-            )
+            ui.label(text).style(f"font-size:10px; font-family:{F_MONO}; color:{C_MUTED}; padding:2px 8px;")
 
 
 def build_chat_input(state: GuiState, chat_container, send_fn) -> ui.input:
@@ -91,13 +75,22 @@ def build_chat_input(state: GuiState, chat_container, send_fn) -> ui.input:
     Returns:
         The ui.input element (for focus control etc.)
     """
-    with ui.row().classes("w-full items-center").style(
-        f"padding:{R_SM}; background:{C_SURFACE}; border-top:0.5px solid {C_INK40}; "
-        f"position:sticky; bottom:0; z-index:10;"
+    with (
+        ui.row()
+        .classes("w-full items-center")
+        .style(
+            f"padding:{R_SM}; background:{C_SURFACE}; border-top:0.5px solid {C_INK40}; "
+            f"position:sticky; bottom:0; z-index:10;"
+        )
     ):
-        input_field = ui.input(placeholder="Ask anything...").props("outlined dense dark").classes("flex-grow").style(
-            f"font-size:13px; color:{C_CREAM}; background:{C_RAISED}; "
-            f"border:0.5px solid {C_INK40}; border-radius:{R_SM};"
+        input_field = (
+            ui.input(placeholder="Ask anything...")
+            .props("outlined dense dark")
+            .classes("flex-grow")
+            .style(
+                f"font-size:13px; color:{C_CREAM}; background:{C_RAISED}; "
+                f"border:0.5px solid {C_INK40}; border-radius:{R_SM};"
+            )
         )
         input_field.on("keydown.enter", lambda: asyncio.create_task(send_fn()))
         ui.button("Send", on_click=lambda: asyncio.create_task(send_fn())).style(btn_primary()).props("dense")

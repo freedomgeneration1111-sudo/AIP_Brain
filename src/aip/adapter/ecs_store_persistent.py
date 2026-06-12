@@ -16,7 +16,6 @@ Architecture:
 from __future__ import annotations
 
 import logging
-import sqlite3
 from datetime import datetime, timezone
 
 import aiosqlite
@@ -278,8 +277,4 @@ class PersistentEcsStore(EcsStore, StoreHealthMixin):
         state matches the given state.
         """
         await self._load_state_from_db()
-        return [
-            artifact_id
-            for artifact_id, current in self._state_cache.items()
-            if current == state
-        ][:limit]
+        return [artifact_id for artifact_id, current in self._state_cache.items() if current == state][:limit]

@@ -13,7 +13,6 @@ Never imports from aip.orchestration.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -22,7 +21,6 @@ from nicegui import ui
 from gui.theme import (
     C_AMBER,
     C_CREAM,
-    C_DOGFOOD_BARE,
     C_ERR_FG,
     C_GROUND,
     C_INK40,
@@ -34,10 +32,7 @@ from gui.theme import (
     C_WARN_FG,
     F_MONO,
     F_SANS,
-    R_MD,
     R_SM,
-    btn_primary,
-    btn_secondary,
 )
 
 log = logging.getLogger("gui.components.model_council_panel")
@@ -89,11 +84,11 @@ class ModelCouncilPanel:
 
         self.close()
 
-        with ui.right_drawer(bordered=True).classes(
-            f"bg-{C_GROUND}"
-        ).style(
-            f"width: 480px; background: {C_GROUND}; border-left: 1px solid {C_INK40};"
-        ) as drawer:
+        with (
+            ui.right_drawer(bordered=True)
+            .classes(f"bg-{C_GROUND}")
+            .style(f"width: 480px; background: {C_GROUND}; border-left: 1px solid {C_INK40};") as drawer
+        ):
             self._drawer = drawer
 
             # Header
@@ -133,9 +128,7 @@ class ModelCouncilPanel:
         # If no slots were pre-selected, use defaults that are actually available
         if not self._selected_slots and self._available_slots:
             available_names = [s.get("slot_name", "") for s in self._available_slots]
-            self._selected_slots = [
-                s for s in _DEFAULT_SELECTED_SLOTS if s in available_names
-            ]
+            self._selected_slots = [s for s in _DEFAULT_SELECTED_SLOTS if s in available_names]
             # If still empty, select all available
             if not self._selected_slots:
                 self._selected_slots = available_names
@@ -152,25 +145,17 @@ class ModelCouncilPanel:
 
     def _render_header(self) -> None:
         """Render the panel header."""
-        with ui.row().classes("w-full items-center").style(
-            f"padding: 12px 16px; border-bottom: 1px solid {C_INK40};"
-        ):
+        with ui.row().classes("w-full items-center").style(f"padding: 12px 16px; border-bottom: 1px solid {C_INK40};"):
             ui.label("MODEL COUNCIL").style(
-                f"font-size: 13px; font-weight: 700; font-family: {F_MONO}; "
-                f"color: {C_AMBER}; letter-spacing: 1px;"
+                f"font-size: 13px; font-weight: 700; font-family: {F_MONO}; color: {C_AMBER}; letter-spacing: 1px;"
             )
             ui.space()
-            ui.button(icon="close", on_click=self.close).props(
-                "dense flat size=xs"
-            ).style(f"color: {C_INK60};")
+            ui.button(icon="close", on_click=self.close).props("dense flat size=xs").style(f"color: {C_INK60};")
 
         # Advisory label
-        with ui.row().classes("w-full items-center").style(
-            f"padding: 4px 16px; border-bottom: 1px solid {C_INK40};"
-        ):
+        with ui.row().classes("w-full items-center").style(f"padding: 4px 16px; border-bottom: 1px solid {C_INK40};"):
             ui.label("ADVISORY ONLY — requires DEFINER review before canonical use").style(
-                f"font-size: 9px; font-weight: 600; font-family: {F_MONO}; "
-                f"color: {C_WARN_FG}; letter-spacing: 0.3px;"
+                f"font-size: 9px; font-weight: 600; font-family: {F_MONO}; color: {C_WARN_FG}; letter-spacing: 0.3px;"
             )
 
     def _render_initial_state(
@@ -183,7 +168,7 @@ class ModelCouncilPanel:
         sources: list[dict],
     ) -> None:
         """Render initial state with slot selector and run button."""
-        with ui.column().classes("w-full").style(f"padding: 16px;"):
+        with ui.column().classes("w-full").style("padding: 16px;"):
             if not prompt and not existing_answer:
                 ui.label("No prompt or answer available for Model Council.").style(
                     f"font-size: 12px; color: {C_INK60}; font-family: {F_SANS};"
@@ -196,9 +181,7 @@ class ModelCouncilPanel:
             ui.label(
                 "The Model Council runs the same prompt through multiple configured "
                 "model slots and synthesizes the results into a structured advisory report."
-            ).style(
-                f"font-size: 11px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;"
-            )
+            ).style(f"font-size: 11px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;")
 
             # Slot selector section
             self._render_slot_selector()
@@ -208,6 +191,7 @@ class ModelCouncilPanel:
                 ui.label("Could not load model slots — will use backend defaults.").style(
                     f"font-size: 10px; color: {C_WARN_FG}; font-family: {F_MONO}; margin-top: 8px;"
                 )
+
                 # Still allow running with defaults
                 async def _run_council_default() -> None:
                     await self._run_comparison(
@@ -219,6 +203,7 @@ class ModelCouncilPanel:
                         sources=sources,
                         selected_model_slots=[],
                     )
+
                 ui.button("Run Model Council (defaults)", on_click=_run_council_default).props(
                     "dense unelevated size=sm"
                 ).style(
@@ -228,6 +213,7 @@ class ModelCouncilPanel:
             elif not self._slots_sufficient:
                 self._render_insufficient_models_inline()
             else:
+
                 async def _run_council() -> None:
                     await self._run_comparison(
                         api_client=api_client,
@@ -242,14 +228,10 @@ class ModelCouncilPanel:
                 selected_count = len(self._selected_slots)
                 btn_label = f"Run Model Council ({selected_count} slot{'s' if selected_count != 1 else ''})"
 
-                ui.button(btn_label, on_click=_run_council).props(
-                    "dense unelevated size=sm"
-                ).style(
+                ui.button(btn_label, on_click=_run_council).props("dense unelevated size=sm").style(
                     f"margin-top: 12px; color: {C_CREAM}; background: {C_AMBER}; "
                     f"font-size: 10px; font-family: {F_MONO}; font-weight: 600;"
-                ).bind_enabled_from(
-                    self, "_selected_slots", backward=lambda s: len(s) >= 2
-                )
+                ).bind_enabled_from(self, "_selected_slots", backward=lambda s: len(s) >= 2)
 
     def _render_slot_selector(self) -> None:
         """Render the model slot selector with checkboxes."""
@@ -257,14 +239,12 @@ class ModelCouncilPanel:
 
         if not self._available_slots:
             ui.label("No text-generation slots available.").style(
-                f"font-size: 11px; color: {C_WARN_FG}; font-family: {F_SANS}; "
-                f"padding: 4px 0;"
+                f"font-size: 11px; color: {C_WARN_FG}; font-family: {F_SANS}; padding: 4px 0;"
             )
             return
 
         ui.label("Select at least 2 text-generation slots for comparison:").style(
-            f"font-size: 10px; color: {C_INK60}; font-family: {F_SANS}; "
-            f"padding: 2px 0; margin-bottom: 4px;"
+            f"font-size: 10px; color: {C_INK60}; font-family: {F_SANS}; padding: 2px 0; margin-bottom: 4px;"
         )
 
         for slot_info in self._available_slots:
@@ -276,26 +256,24 @@ class ModelCouncilPanel:
             # Determine if this slot should be checked by default
             is_checked = slot_name in self._selected_slots
 
-            with ui.row().classes("w-full items-center").style(
-                f"padding: 2px 0;"
-            ):
-                checkbox = ui.checkbox(
-                    value=is_checked,
-                    on_change=lambda checked, sn=slot_name: self._toggle_slot(sn, checked.value),
-                ).props("dense size=xs").style(
-                    f"color: {C_AMBER};"
+            with ui.row().classes("w-full items-center").style("padding: 2px 0;"):
+                (
+                    ui.checkbox(
+                        value=is_checked,
+                        on_change=lambda checked, sn=slot_name: self._toggle_slot(sn, checked.value),
+                    )
+                    .props("dense size=xs")
+                    .style(f"color: {C_AMBER};")
                 )
 
                 ui.label(f"{slot_name}").style(
-                    f"font-size: 10px; font-weight: 700; font-family: {F_MONO}; "
-                    f"color: {C_CREAM};"
+                    f"font-size: 10px; font-weight: 700; font-family: {F_MONO}; color: {C_CREAM};"
                 )
 
                 # Model display
                 if has_real_model:
                     ui.label(f"({model_display})").style(
-                        f"font-size: 9px; color: {C_INK60}; font-family: {F_MONO}; "
-                        f"margin-left: 4px;"
+                        f"font-size: 9px; color: {C_INK60}; font-family: {F_MONO}; margin-left: 4px;"
                     )
                 else:
                     ui.label("(unconfigured)").style(
@@ -305,15 +283,11 @@ class ModelCouncilPanel:
 
                 # Provider badge
                 ui.label(f"[{provider}]").style(
-                    f"font-size: 8px; color: {C_INK60}; font-family: {F_MONO}; "
-                    f"margin-left: 4px;"
+                    f"font-size: 8px; color: {C_INK60}; font-family: {F_MONO}; margin-left: 4px;"
                 )
 
         # Selection count indicator
-        count_label = ui.label().style(
-            f"font-size: 9px; color: {C_INK60}; font-family: {F_MONO}; "
-            f"margin-top: 4px;"
-        )
+        count_label = ui.label().style(f"font-size: 9px; color: {C_INK60}; font-family: {F_MONO}; margin-top: 4px;")
         count_label.text = f"{len(self._selected_slots)} selected — minimum 2 required"
 
     def _toggle_slot(self, slot_name: str, checked: bool) -> None:
@@ -326,22 +300,23 @@ class ModelCouncilPanel:
 
     def _render_insufficient_models_inline(self) -> None:
         """Render insufficient models notice inline in the initial state."""
-        with ui.column().classes("w-full").style(
-            f"padding: 8px; margin-top: 8px; "
-            f"background: {C_RAISED}; border: 0.5px solid {C_INK40}; "
-            f"border-radius: {R_SM};"
+        with (
+            ui.column()
+            .classes("w-full")
+            .style(
+                f"padding: 8px; margin-top: 8px; "
+                f"background: {C_RAISED}; border: 0.5px solid {C_INK40}; "
+                f"border-radius: {R_SM};"
+            )
         ):
             ui.label("INSUFFICIENT MODELS").style(
-                f"font-size: 10px; font-weight: 700; font-family: {F_MONO}; "
-                f"color: {C_WARN_FG}; letter-spacing: 0.5px;"
+                f"font-size: 10px; font-weight: 700; font-family: {F_MONO}; color: {C_WARN_FG}; letter-spacing: 0.5px;"
             )
             ui.label(
                 "Model Council requires at least two configured text-generation "
                 "model slots to produce a comparison report. The embedding slot "
                 "is excluded from text generation."
-            ).style(
-                f"font-size: 10px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;"
-            )
+            ).style(f"font-size: 10px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;")
             if self._available_slots:
                 slot_names = [s.get("slot_name", "?") for s in self._available_slots]
                 ui.label(f"Available: {', '.join(slot_names)}").style(
@@ -363,11 +338,11 @@ class ModelCouncilPanel:
 
         # Close and reopen with loading state
         self.close()
-        with ui.right_drawer(bordered=True).classes(
-            f"bg-{C_GROUND}"
-        ).style(
-            f"width: 480px; background: {C_GROUND}; border-left: 1px solid {C_INK40};"
-        ) as drawer:
+        with (
+            ui.right_drawer(bordered=True)
+            .classes(f"bg-{C_GROUND}")
+            .style(f"width: 480px; background: {C_GROUND}; border-left: 1px solid {C_INK40};") as drawer
+        ):
             self._drawer = drawer
             self._render_header()
             ui.label("Running Model Council comparison...").style(
@@ -392,11 +367,11 @@ class ModelCouncilPanel:
 
         # Re-render with results
         self.close()
-        with ui.right_drawer(bordered=True).classes(
-            f"bg-{C_GROUND}"
-        ).style(
-            f"width: 480px; background: {C_GROUND}; border-left: 1px solid {C_INK40};"
-        ) as drawer:
+        with (
+            ui.right_drawer(bordered=True)
+            .classes(f"bg-{C_GROUND}")
+            .style(f"width: 480px; background: {C_GROUND}; border-left: 1px solid {C_INK40};") as drawer
+        ):
             self._drawer = drawer
             self._render_header()
             self._render_report(result, api_client)
@@ -415,9 +390,7 @@ class ModelCouncilPanel:
         }
         status_color = status_colors.get(status, C_MUTED)
 
-        with ui.row().classes("w-full items-center").style(
-            f"padding: 8px 16px;"
-        ):
+        with ui.row().classes("w-full items-center").style("padding: 8px 16px;"):
             ui.label(f"Status: {status.upper()}").style(
                 f"font-size: 10px; font-weight: 700; font-family: {F_MONO}; "
                 f"color: {status_color}; letter-spacing: 0.5px; "
@@ -433,12 +406,9 @@ class ModelCouncilPanel:
         selected_models = data.get("selected_models", [])
         if selected_models:
             slot_names = [m.get("model_slot", "") for m in selected_models]
-            with ui.row().classes("w-full items-center").style(
-                f"padding: 2px 16px;"
-            ):
+            with ui.row().classes("w-full items-center").style("padding: 2px 16px;"):
                 ui.label(f"Slots: {', '.join(slot_names)}").style(
-                    f"font-size: 9px; color: {C_INK60}; font-family: {F_MONO}; "
-                    f"letter-spacing: 0.3px;"
+                    f"font-size: 9px; color: {C_INK60}; font-family: {F_MONO}; letter-spacing: 0.3px;"
                 )
 
         # Insufficient models state
@@ -472,23 +442,20 @@ class ModelCouncilPanel:
             self._render_section("Beast Conclusion", data.get("beast_conclusion", ""), C_CREAM)
             self._render_section("Recommended Decision", data.get("recommended_decision", ""), C_AMBER)
         elif synthesis_status == "unavailable":
-            with ui.column().classes("w-full").style(f"padding: 8px 16px;"):
+            with ui.column().classes("w-full").style("padding: 8px 16px;"):
                 ui.label("SYNTHESIS UNAVAILABLE").style(
                     f"font-size: 10px; font-weight: 700; font-family: {F_MONO}; "
                     f"color: {C_WARN_FG}; letter-spacing: 0.5px;"
                 )
                 ui.label(
-                    "Beast synthesis model is unavailable. "
-                    "Per-model results are available for individual review."
-                ).style(
-                    f"font-size: 11px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;"
-                )
+                    "Beast synthesis model is unavailable. Per-model results are available for individual review."
+                ).style(f"font-size: 11px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;")
                 # Show beast_conclusion if available (partial synthesis)
                 conclusion = data.get("beast_conclusion", "")
                 if conclusion:
                     self._render_section("Note", conclusion, C_MUTED)
         elif synthesis_status == "failed":
-            with ui.column().classes("w-full").style(f"padding: 8px 16px;"):
+            with ui.column().classes("w-full").style("padding: 8px 16px;"):
                 ui.label("SYNTHESIS FAILED").style(
                     f"font-size: 10px; font-weight: 700; font-family: {F_MONO}; "
                     f"color: {C_ERR_FG}; letter-spacing: 0.5px;"
@@ -498,21 +465,23 @@ class ModelCouncilPanel:
                 )
 
         # Advisory labels
-        with ui.row().classes("w-full items-center").style(
-            f"padding: 8px 16px; margin-top: 8px; border-top: 1px solid {C_INK40};"
+        with (
+            ui.row()
+            .classes("w-full items-center")
+            .style(f"padding: 8px 16px; margin-top: 8px; border-top: 1px solid {C_INK40};")
         ):
             ui.label("advisory_only: true  |  requires_DEFINER_approval: true").style(
-                f"font-size: 8px; color: {C_WARN_FG}; font-family: {F_MONO}; "
-                f"font-style: italic; letter-spacing: 0.3px;"
+                f"font-size: 8px; color: {C_WARN_FG}; font-family: {F_MONO}; font-style: italic; letter-spacing: 0.3px;"
             )
 
         # Save as artifact button
         if data.get("artifact_id"):
-            with ui.row().classes("w-full").style(f"padding: 8px 16px;"):
+            with ui.row().classes("w-full").style("padding: 8px 16px;"):
                 ui.label(f"Saved as artifact: {data['artifact_id'][:24]}...").style(
                     f"font-size: 9px; color: {C_OK_FG}; font-family: {F_MONO};"
                 )
         elif status in ("completed", "partial"):
+
             async def _save_artifact() -> None:
                 save_result = await api_client.run_model_council(
                     prompt=data.get("prompt", ""),
@@ -520,23 +489,19 @@ class ModelCouncilPanel:
                     session_id=data.get("session_id", ""),
                     existing_answer=data.get("existing_answer", ""),
                     sources=data.get("sources", []),
-                    selected_model_slots=[
-                        m.get("model_slot", "") for m in data.get("selected_models", [])
-                    ],
+                    selected_model_slots=[m.get("model_slot", "") for m in data.get("selected_models", [])],
                     save_as_artifact=True,
                 )
                 if save_result.get("artifact_id"):
                     ui.notify(
-                        f"Report saved as artifact: {save_result['artifact_id'][:24]}... "
-                        f"— requires DEFINER review",
-                        color="positive", timeout=6000,
+                        f"Report saved as artifact: {save_result['artifact_id'][:24]}... — requires DEFINER review",
+                        color="positive",
+                        timeout=6000,
                     )
                 else:
                     ui.notify("Failed to save report as artifact", color="negative")
 
-            ui.button("Save as Artifact", on_click=_save_artifact).props(
-                "dense flat size=xs"
-            ).style(
+            ui.button("Save as Artifact", on_click=_save_artifact).props("dense flat size=xs").style(
                 f"color: {C_OK_FG}; font-size: 9px; font-family: {F_MONO}; margin: 4px 16px;"
             )
 
@@ -554,20 +519,22 @@ class ModelCouncilPanel:
 
             status_color = C_OK_FG if pm_status == "completed" else C_ERR_FG
 
-            with ui.column().classes("w-full").style(
-                f"padding: 4px 16px; margin: 2px 0; "
-                f"background: {C_SURFACE}; border: 0.5px solid {C_INK40}; "
-                f"border-radius: {R_SM};"
+            with (
+                ui.column()
+                .classes("w-full")
+                .style(
+                    f"padding: 4px 16px; margin: 2px 0; "
+                    f"background: {C_SURFACE}; border: 0.5px solid {C_INK40}; "
+                    f"border-radius: {R_SM};"
+                )
             ):
                 # Model header
                 with ui.row().classes("w-full items-center"):
                     ui.label(f"{model_slot}").style(
-                        f"font-size: 10px; font-weight: 700; font-family: {F_MONO}; "
-                        f"color: {C_AMBER};"
+                        f"font-size: 10px; font-weight: 700; font-family: {F_MONO}; color: {C_AMBER};"
                     )
                     ui.label(f"({model_id})").style(
-                        f"font-size: 9px; color: {C_INK60}; font-family: {F_MONO}; "
-                        f"margin-left: 4px;"
+                        f"font-size: 9px; color: {C_INK60}; font-family: {F_MONO}; margin-left: 4px;"
                     )
                     ui.label(f"[{pm_status.upper()}]").style(
                         f"font-size: 8px; font-weight: 700; color: {status_color}; "
@@ -575,8 +542,7 @@ class ModelCouncilPanel:
                     )
                     if latency is not None:
                         ui.label(f"{latency}ms").style(
-                            f"font-size: 8px; color: {C_INK60}; font-family: {F_MONO}; "
-                            f"margin-left: 4px;"
+                            f"font-size: 8px; color: {C_INK60}; font-family: {F_MONO}; margin-left: 4px;"
                         )
 
                 # Answer text
@@ -588,16 +554,15 @@ class ModelCouncilPanel:
                     )
                 elif error:
                     ui.label(f"Error: {error[:200]}").style(
-                        f"font-size: 10px; color: {C_ERR_FG}; font-family: {F_SANS}; "
-                        f"margin-top: 4px;"
+                        f"font-size: 10px; color: {C_ERR_FG}; font-family: {F_SANS}; margin-top: 4px;"
                     )
 
     def _render_degraded_failed(self, degraded: list[str], failed: list[str]) -> None:
         """Render degraded/failed model notifications."""
-        with ui.row().classes("w-full items-center").style(
-            f"padding: 4px 16px; "
-            f"background: {C_RAISED}; border-radius: {R_SM}; "
-            f"border: 0.5px solid {C_INK40};"
+        with (
+            ui.row()
+            .classes("w-full items-center")
+            .style(f"padding: 4px 16px; background: {C_RAISED}; border-radius: {R_SM}; border: 0.5px solid {C_INK40};")
         ):
             if degraded:
                 ui.label(f"Degraded: {', '.join(degraded)}").style(
@@ -611,32 +576,27 @@ class ModelCouncilPanel:
 
     def _render_insufficient_models(self, data: dict[str, Any]) -> None:
         """Render the insufficient_models state."""
-        with ui.column().classes("w-full").style(f"padding: 16px;"):
+        with ui.column().classes("w-full").style("padding: 16px;"):
             ui.label("INSUFFICIENT MODELS").style(
-                f"font-size: 12px; font-weight: 700; font-family: {F_MONO}; "
-                f"color: {C_WARN_FG}; letter-spacing: 0.5px;"
+                f"font-size: 12px; font-weight: 700; font-family: {F_MONO}; color: {C_WARN_FG}; letter-spacing: 0.5px;"
             )
             ui.label(
                 "Model Council requires at least two configured text-generation "
                 "model slots to produce a comparison report. The embedding slot "
                 "is excluded from text generation."
-            ).style(
-                f"font-size: 11px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;"
-            )
+            ).style(f"font-size: 11px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;")
             error_msg = data.get("error", "")
             if error_msg:
                 ui.label(error_msg[:300]).style(
-                    f"font-size: 10px; color: {C_INK60}; font-family: {F_SANS}; "
-                    f"margin-top: 4px; word-wrap: break-word;"
+                    f"font-size: 10px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px; word-wrap: break-word;"
                 )
 
     def _render_error(self, data: dict[str, Any]) -> None:
         """Render the error state."""
         error_msg = data.get("error", "Unknown error")
-        with ui.column().classes("w-full").style(f"padding: 16px;"):
+        with ui.column().classes("w-full").style("padding: 16px;"):
             ui.label("MODEL COUNCIL ERROR").style(
-                f"font-size: 12px; font-weight: 700; font-family: {F_MONO}; "
-                f"color: {C_ERR_FG}; letter-spacing: 0.5px;"
+                f"font-size: 12px; font-weight: 700; font-family: {F_MONO}; color: {C_ERR_FG}; letter-spacing: 0.5px;"
             )
             ui.label(f"Comparison failed: {error_msg[:300]}").style(
                 f"font-size: 11px; color: {C_INK60}; font-family: {F_SANS}; margin-top: 4px;"
@@ -647,7 +607,7 @@ class ModelCouncilPanel:
         if not content:
             return
         self._render_section_label(title)
-        with ui.row().classes("w-full").style(f"padding: 4px 16px 8px 16px;"):
+        with ui.row().classes("w-full").style("padding: 4px 16px 8px 16px;"):
             ui.label(content).style(
                 f"font-size: 11px; color: {color}; font-family: {F_SANS}; "
                 f"line-height: 1.5; max-width: 420px; word-wrap: break-word;"
@@ -655,12 +615,9 @@ class ModelCouncilPanel:
 
     def _render_section_label(self, text: str) -> None:
         """Render a section label."""
-        with ui.row().classes("w-full").style(
-            f"padding: 8px 16px 2px 16px; margin-top: 4px;"
-        ):
+        with ui.row().classes("w-full").style("padding: 8px 16px 2px 16px; margin-top: 4px;"):
             ui.label(text.upper()).style(
-                f"font-size: 9px; font-weight: 700; font-family: {F_MONO}; "
-                f"color: {C_INK60}; letter-spacing: 0.5px;"
+                f"font-size: 9px; font-weight: 700; font-family: {F_MONO}; color: {C_INK60}; letter-spacing: 0.5px;"
             )
 
     def close(self) -> None:

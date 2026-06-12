@@ -1136,12 +1136,12 @@ def _build_cohort_panel(state: GuiState) -> None:
         # Synthesis model + estimated cost
         with ui.row().classes("w-full items-center gap-4"):
             ui.label("Synthesis model:").style(f"font-size:12px;color:{C_MUTED};")
-            synth_select = (
+            (
                 ui.select(_COHORT_SYNTH_OPTS, value=_COHORT_SYNTH_OPTS[0])
                 .props("dense outlined")
                 .classes("min-w-[260px]")
             )
-            cost_lbl = ui.label("Estimated cost: ~$0.03").style(f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};")
+            ui.label("Estimated cost: ~$0.03").style(f"font-size:11px;color:{C_MUTED};font-family:{F_MONO};")
 
         # ASK button
         ask_btn = (
@@ -1309,9 +1309,7 @@ def _build_unified_chat_panel(
             value=augment_on[0],
             on_change=lambda e: _on_augment_toggle(e.value),
         ).props("dense").style("color:{C_AMBER};")
-        ui.label("AUGMENT").style(
-            f"font-size:10px;color:{C_MUTED};font-weight:500;letter-spacing:0.5px;"
-        )
+        ui.label("AUGMENT").style(f"font-size:10px;color:{C_MUTED};font-weight:500;letter-spacing:0.5px;")
         # Separator
         ui.label("·").style(f"color:{C_INK60};font-size:12px;")
         # Chat mode picker
@@ -1343,8 +1341,7 @@ def _build_unified_chat_panel(
             if models:
                 # Build {model_id: display_label} mapping
                 lib_opts = {
-                    m["model_id"]: f"{m.get('display_name', m['model_id'])}  [{m.get('provider', '?')}]"
-                    for m in models
+                    m["model_id"]: f"{m.get('display_name', m['model_id'])}  [{m.get('provider', '?')}]" for m in models
                 }
                 # Merge with existing opts (library takes priority)
                 combined = dict.fromkeys(list(lib_opts.keys()) + opts)
@@ -1393,13 +1390,12 @@ def _build_unified_chat_panel(
     beast_visible: list[bool] = [True]
 
     # Main content area: flex row with conversation + Beast pane
-    with ui.row().classes("w-full").style(f"flex:1;min-height:0;"):
-
+    with ui.row().classes("w-full").style("flex:1;min-height:0;"):
         # ── LEFT: Conversation thread ──
         msgs = (
-            ui.column().classes("w-full px-4 py-2").style(
-                f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:320px;"
-            )
+            ui.column()
+            .classes("w-full px-4 py-2")
+            .style(f"flex:1;overflow-y:auto;background:{C_GROUND};min-height:320px;")
         )
         with msgs:
             ok = state.backend_reachable and state.api_client.has_openrouter_api_key()
@@ -1416,30 +1412,32 @@ def _build_unified_chat_panel(
         )
         with beast_col:
             # Beast pane header
-            with ui.row().classes("w-full items-center px-3 py-2 gap-2").style(
-                f"border-bottom:.5px solid {C_INK40};background:{C_RAISED};"
+            with (
+                ui.row()
+                .classes("w-full items-center px-3 py-2 gap-2")
+                .style(f"border-bottom:.5px solid {C_INK40};background:{C_RAISED};")
             ):
-                ui.label("BEAST").style(
-                    f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};"
-                )
+                ui.label("BEAST").style(f"font-size:11px;font-weight:600;letter-spacing:1px;color:{C_AMBER};")
                 ui.space()
                 # Pop-out stub (Phase 4)
-                ui.button(icon="open_in_new").props("dense flat").style(
-                    f"color:{C_INK60};font-size:10px;"
-                ).tooltip("Pop-out (Phase 4)")
+                ui.button(icon="open_in_new").props("dense flat").style(f"color:{C_INK60};font-size:10px;").tooltip(
+                    "Pop-out (Phase 4)"
+                )
                 # Collapse button
-                ui.button(icon="close", on_click=lambda: _toggle_beast(False)).props(
-                    "dense flat"
-                ).style(f"color:{C_INK60};font-size:10px;")
+                ui.button(icon="close", on_click=lambda: _toggle_beast(False)).props("dense flat").style(
+                    f"color:{C_INK60};font-size:10px;"
+                )
 
             beast_content = ui.column().classes("w-full px-3 py-2").style("gap:4px;")
 
     # Toggle button (shown when Beast pane is collapsed)
-    beast_toggle_btn = ui.button(
-        icon="visibility",
-        on_click=lambda: _toggle_beast(True),
-    ).props("dense flat").style(
-        f"color:{C_AMBER};position:absolute;right:12px;top:60px;z-index:10;"
+    beast_toggle_btn = (
+        ui.button(
+            icon="visibility",
+            on_click=lambda: _toggle_beast(True),
+        )
+        .props("dense flat")
+        .style(f"color:{C_AMBER};position:absolute;right:12px;top:60px;z-index:10;")
     )
     beast_toggle_btn.set_visibility(False)
 
@@ -1458,32 +1456,23 @@ def _build_unified_chat_panel(
     async def _beast_scan(query: str) -> None:
         """Fire Beast scan and render results in the pane (AIP-G-02)."""
         with beast_content:
-            ui.label("Scanning corpus...").style(
-                f"color:{C_MUTED};font-size:10px;font-family:{F_MONO};"
-            )
+            ui.label("Scanning corpus...").style(f"color:{C_MUTED};font-size:10px;font-family:{F_MONO};")
         scan = await state.api_client.beast_scan(query=query)
         beast_content.clear()
         with beast_content:
             if scan.get("error"):
-                ui.label("corpus unavailable").style(
-                    f"color:{C_ERR_FG};font-size:10px;font-family:{F_MONO};"
-                )
+                ui.label("corpus unavailable").style(f"color:{C_ERR_FG};font-size:10px;font-family:{F_MONO};")
                 return
             domain = scan.get("domain")
             confidence = scan.get("confidence", 0)
             if domain:
-                ui.label(f"Domain: {domain}").style(
-                    f"font-size:11px;font-weight:600;color:{C_AMBER};"
-                )
-                ui.label(f"Confidence: {confidence}").style(
-                    f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};"
-                )
+                ui.label(f"Domain: {domain}").style(f"font-size:11px;font-weight:600;color:{C_AMBER};")
+                ui.label(f"Confidence: {confidence}").style(f"font-size:10px;color:{C_MUTED};font-family:{F_MONO};")
             # Top turns
             turns = scan.get("top_turns", [])
             if turns:
                 ui.label("TOP TURNS").style(
-                    f"font-size:9px;font-weight:700;letter-spacing:1px;"
-                    f"color:{C_MUTED};margin-top:4px;"
+                    f"font-size:9px;font-weight:700;letter-spacing:1px;color:{C_MUTED};margin-top:4px;"
                 )
                 for t in turns[:5]:
                     with ui.row().classes("w-full").style("gap:2px;"):
@@ -1492,34 +1481,27 @@ def _build_unified_chat_panel(
                         )
                     snippet = t.get("snippet", "")[:80]
                     if snippet:
-                        ui.label(snippet + "...").style(
-                            f"font-size:10px;color:{C_MUTED};line-height:1.3;"
-                        )
+                        ui.label(snippet + "...").style(f"font-size:10px;color:{C_MUTED};line-height:1.3;")
             # Domain neighbors
             neighbors = scan.get("neighbors", [])
             if neighbors:
                 ui.label("DOMAIN NEIGHBORS").style(
-                    f"font-size:9px;font-weight:700;letter-spacing:1px;"
-                    f"color:{C_MUTED};margin-top:4px;"
+                    f"font-size:9px;font-weight:700;letter-spacing:1px;color:{C_MUTED};margin-top:4px;"
                 )
                 for n in neighbors[:5]:
-                    ui.label(
-                        f"{n.get('source')} → {n.get('target')}"
-                    ).style(
+                    ui.label(f"{n.get('source')} → {n.get('target')}").style(
                         f"font-size:10px;color:{C_CREAM};font-family:{F_MONO};"
                     )
             # Wiki coverage
             wiki = scan.get("wiki_coverage")
             if wiki:
                 ui.label("WIKI").style(
-                    f"font-size:9px;font-weight:700;letter-spacing:1px;"
-                    f"color:{C_MUTED};margin-top:4px;"
+                    f"font-size:9px;font-weight:700;letter-spacing:1px;color:{C_MUTED};margin-top:4px;"
                 )
                 status = wiki.get("status", "?")
                 wc = wiki.get("word_count", 0)
                 ui.label(f"{domain}: {status} ({wc}w)").style(
-                    f"font-size:10px;"
-                    f"color:{C_OK_FG if status == 'APPROVED' else C_WARN_FG};"
+                    f"font-size:10px;color:{C_OK_FG if status == 'APPROVED' else C_WARN_FG};"
                 )
 
     with (
@@ -1731,7 +1713,8 @@ async def main_page() -> None:
         # ── Global: force minimum text contrast on dark backgrounds ──
         f"body,.q-page,.q-layout{{background:{C_GROUND}!important;color:{C_MUTED}!important}}"
         # Tab bar
-        f".q-tab{{padding:14px 16px;font-size:13px;font-weight:500;color:{C_MUTED};border-bottom:2px solid transparent;}}"
+        f".q-tab{{padding:14px 16px;font-size:13px;font-weight:500;"
+        f"color:{C_MUTED};border-bottom:2px solid transparent;}}"
         f".q-tab--active{{color:{C_CREAM};border-bottom:2px solid {C_AMBER};}}"
         f".q-tabs{{border-bottom:0.5px solid {C_INK40};}}"
         f".q-tab__label{{font-size:13px;font-weight:500;font-family:{F_SANS}}}"

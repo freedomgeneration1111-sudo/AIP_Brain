@@ -24,7 +24,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -41,7 +40,9 @@ def _make_mock_provider(slots: list[str], resolve_config=None, call_fn=None):
     if call_fn:
         provider.call = AsyncMock(side_effect=call_fn)
     else:
-        provider.call = AsyncMock(return_value={"content": "{}", "model": "test", "usage": {}, "latency_ms": 100, "error": False})
+        provider.call = AsyncMock(
+            return_value={"content": "{}", "model": "test", "usage": {}, "latency_ms": 100, "error": False}
+        )
     return provider
 
 
@@ -62,8 +63,29 @@ class TestSelectedModelSlotsHonored:
 
         async def mock_call(slot_name, messages, **kwargs):
             if slot_name == "beast":
-                return {"content": json.dumps({"convergence": "Agree", "disagreements": "None", "unique_contributions": "Both", "risks": "Low", "beast_conclusion": "Good", "recommended_decision": "Accept"}), "model": "beast-model", "usage": {}, "latency_ms": 500, "error": False}
-            return {"content": f"Response from {slot_name}", "model": f"model-{slot_name}", "usage": {"total_tokens": 50}, "latency_ms": 300, "error": False}
+                return {
+                    "content": json.dumps(
+                        {
+                            "convergence": "Agree",
+                            "disagreements": "None",
+                            "unique_contributions": "Both",
+                            "risks": "Low",
+                            "beast_conclusion": "Good",
+                            "recommended_decision": "Accept",
+                        }
+                    ),
+                    "model": "beast-model",
+                    "usage": {},
+                    "latency_ms": 500,
+                    "error": False,
+                }
+            return {
+                "content": f"Response from {slot_name}",
+                "model": f"model-{slot_name}",
+                "usage": {"total_tokens": 50},
+                "latency_ms": 300,
+                "error": False,
+            }
 
         container = AipContainer({})
         container.model_provider = _make_mock_provider(
@@ -100,8 +122,29 @@ class TestSelectedModelSlotsHonored:
 
         async def mock_call(slot_name, messages, **kwargs):
             if slot_name == "beast":
-                return {"content": json.dumps({"convergence": "Agree", "disagreements": "None", "unique_contributions": "All", "risks": "Low", "beast_conclusion": "Good", "recommended_decision": "Accept"}), "model": "beast-model", "usage": {}, "latency_ms": 500, "error": False}
-            return {"content": f"Response from {slot_name}", "model": f"model-{slot_name}", "usage": {"total_tokens": 50}, "latency_ms": 300, "error": False}
+                return {
+                    "content": json.dumps(
+                        {
+                            "convergence": "Agree",
+                            "disagreements": "None",
+                            "unique_contributions": "All",
+                            "risks": "Low",
+                            "beast_conclusion": "Good",
+                            "recommended_decision": "Accept",
+                        }
+                    ),
+                    "model": "beast-model",
+                    "usage": {},
+                    "latency_ms": 500,
+                    "error": False,
+                }
+            return {
+                "content": f"Response from {slot_name}",
+                "model": f"model-{slot_name}",
+                "usage": {"total_tokens": 50},
+                "latency_ms": 300,
+                "error": False,
+            }
 
         container = AipContainer({})
         container.model_provider = _make_mock_provider(
@@ -141,8 +184,29 @@ class TestEmbeddingExclusion:
 
         async def mock_call(slot_name, messages, **kwargs):
             if slot_name == "beast":
-                return {"content": json.dumps({"convergence": "Agree", "disagreements": "None", "unique_contributions": "Both", "risks": "Low", "beast_conclusion": "Good", "recommended_decision": "Accept"}), "model": "beast-model", "usage": {}, "latency_ms": 500, "error": False}
-            return {"content": f"Response from {slot_name}", "model": f"model-{slot_name}", "usage": {"total_tokens": 50}, "latency_ms": 300, "error": False}
+                return {
+                    "content": json.dumps(
+                        {
+                            "convergence": "Agree",
+                            "disagreements": "None",
+                            "unique_contributions": "Both",
+                            "risks": "Low",
+                            "beast_conclusion": "Good",
+                            "recommended_decision": "Accept",
+                        }
+                    ),
+                    "model": "beast-model",
+                    "usage": {},
+                    "latency_ms": 500,
+                    "error": False,
+                }
+            return {
+                "content": f"Response from {slot_name}",
+                "model": f"model-{slot_name}",
+                "usage": {"total_tokens": 50},
+                "latency_ms": 300,
+                "error": False,
+            }
 
         container = AipContainer({})
         container.model_provider = _make_mock_provider(
@@ -208,8 +272,29 @@ class TestInvalidSlotHandling:
 
         async def mock_call(slot_name, messages, **kwargs):
             if slot_name == "beast":
-                return {"content": json.dumps({"convergence": "Agree", "disagreements": "None", "unique_contributions": "Both", "risks": "Low", "beast_conclusion": "Good", "recommended_decision": "Accept"}), "model": "beast-model", "usage": {}, "latency_ms": 500, "error": False}
-            return {"content": f"Response from {slot_name}", "model": f"model-{slot_name}", "usage": {"total_tokens": 50}, "latency_ms": 300, "error": False}
+                return {
+                    "content": json.dumps(
+                        {
+                            "convergence": "Agree",
+                            "disagreements": "None",
+                            "unique_contributions": "Both",
+                            "risks": "Low",
+                            "beast_conclusion": "Good",
+                            "recommended_decision": "Accept",
+                        }
+                    ),
+                    "model": "beast-model",
+                    "usage": {},
+                    "latency_ms": 500,
+                    "error": False,
+                }
+            return {
+                "content": f"Response from {slot_name}",
+                "model": f"model-{slot_name}",
+                "usage": {"total_tokens": 50},
+                "latency_ms": 300,
+                "error": False,
+            }
 
         container = AipContainer({})
         container.model_provider = _make_mock_provider(
@@ -332,8 +417,16 @@ class TestTextGenerationSlotsEndpoint:
         container.model_provider = _make_mock_provider(
             slots=["synthesis", "evaluation"],
             resolve_config=lambda slot: {
-                "synthesis": {"provider": "openai_compatible", "model": "gpt-4", "api_key": "sk-super-secret-key-12345"},
-                "evaluation": {"provider": "openai_compatible", "model": "claude-3", "api_key": "sk-another-secret-key"},
+                "synthesis": {
+                    "provider": "openai_compatible",
+                    "model": "gpt-4",
+                    "api_key": "sk-super-secret-key-12345",
+                },
+                "evaluation": {
+                    "provider": "openai_compatible",
+                    "model": "claude-3",
+                    "api_key": "sk-another-secret-key",
+                },
             }.get(slot, {"provider": "unknown", "model": f"<{slot}>"}),
         )
 
@@ -592,8 +685,7 @@ class TestGUIImportBoundary:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    assert not alias.name.startswith("aip.orchestration"), \
-                        f"Found orchestration import: {alias.name}"
+                    assert not alias.name.startswith("aip.orchestration"), f"Found orchestration import: {alias.name}"
             elif isinstance(node, ast.ImportFrom):
                 if node.module and node.module.startswith("aip.orchestration"):
                     pytest.fail(f"Found orchestration import from: {node.module}")
@@ -610,8 +702,9 @@ class TestGUIImportBoundary:
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
-                        assert not alias.name.startswith("aip.orchestration"), \
+                        assert not alias.name.startswith("aip.orchestration"), (
                             f"{module_name} imports from aip.orchestration: {alias.name}"
+                        )
                 elif isinstance(node, ast.ImportFrom):
                     if node.module and node.module.startswith("aip.orchestration"):
                         pytest.fail(f"{module_name} imports from aip.orchestration: {node.module}")
@@ -630,8 +723,7 @@ class TestBackendImportBoundary:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    assert not alias.name.startswith("aip.orchestration"), \
-                        f"Found orchestration import: {alias.name}"
+                    assert not alias.name.startswith("aip.orchestration"), f"Found orchestration import: {alias.name}"
             elif isinstance(node, ast.ImportFrom):
                 if node.module and node.module.startswith("aip.orchestration"):
                     pytest.fail(f"Found orchestration import from: {node.module}")
@@ -643,8 +735,7 @@ class TestBackendImportBoundary:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    assert not alias.name.startswith("aip.orchestration"), \
-                        f"Found orchestration import: {alias.name}"
+                    assert not alias.name.startswith("aip.orchestration"), f"Found orchestration import: {alias.name}"
             elif isinstance(node, ast.ImportFrom):
                 if node.module and node.module.startswith("aip.orchestration"):
                     pytest.fail(f"Found orchestration import from: {node.module}")

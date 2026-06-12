@@ -263,7 +263,9 @@ async def test_artifact_approve_missing_id_returns_validation_error():
 
 @pytest.mark.asyncio
 async def test_artifact_approve_no_ecs_store_returns_backend_unavailable():
-    container = _make_container(ecs_store=None, canonical_store=_MockCanonicalStore(), autonomy_gate=_MockAutonomyGate())
+    container = _make_container(
+        ecs_store=None, canonical_store=_MockCanonicalStore(), autonomy_gate=_MockAutonomyGate()
+    )
     server = AipMcpServer(container=container)
     result = await server.call_tool("aip_artifact_approve", {"artifact_id": "art1"})
     assert result["ok"] is False
@@ -523,7 +525,9 @@ async def test_no_hardcoded_approval():
     """Approval must not return hardcoded {"approved": True} without real work."""
     # When artifact doesn't exist, should return NOT_FOUND, not approved=True
     server = AipMcpServer(
-        container=_make_container(ecs_store=_MockEcsStore(states={}), canonical_store=_MockCanonicalStore(), autonomy_gate=_MockAutonomyGate())
+        container=_make_container(
+            ecs_store=_MockEcsStore(states={}), canonical_store=_MockCanonicalStore(), autonomy_gate=_MockAutonomyGate()
+        )
     )
     result = await server.call_tool("aip_artifact_approve", {"artifact_id": "nonexistent"})
     assert result["ok"] is False, "Approval of nonexistent artifact must not return ok=true"

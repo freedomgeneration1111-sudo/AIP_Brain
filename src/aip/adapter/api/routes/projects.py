@@ -7,7 +7,6 @@ SQLite-backed ProjectStore (db/state.db) and survive server restarts.
 from __future__ import annotations
 
 import uuid
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 

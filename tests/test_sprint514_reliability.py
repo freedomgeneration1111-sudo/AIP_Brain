@@ -16,10 +16,10 @@ import sqlite3
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class _FakeEmbeddingProvider:
     """Deterministic embedding provider for integration tests."""
@@ -44,23 +44,26 @@ class _FakeModelProvider:
 
     async def call(self, slot: str, messages: list[dict]) -> dict:
         return {
-            "content": json.dumps([
-                {
-                    "turn_id": "turn-1",
-                    "primary_domain": "unclassified",
-                    "domains": ["unclassified"],
-                    "tags": ["test"],
-                    "importance": 0.3,
-                    "bridges": [],
-                    "beast_confidence": 0.5,
-                }
-            ])
+            "content": json.dumps(
+                [
+                    {
+                        "turn_id": "turn-1",
+                        "primary_domain": "unclassified",
+                        "domains": ["unclassified"],
+                        "tags": ["test"],
+                        "importance": 0.3,
+                        "bridges": [],
+                        "beast_confidence": 0.5,
+                    }
+                ]
+            )
         }
 
 
 # ---------------------------------------------------------------------------
 # 1. CorpusTurnStore: no blocking sqlite3.connect() in __init__
 # ---------------------------------------------------------------------------
+
 
 class TestCorpusTurnStoreAsyncInit:
     """Verify that CorpusTurnStore.__init__ is non-blocking."""
@@ -91,9 +94,7 @@ class TestCorpusTurnStoreAsyncInit:
         assert store._tables_ready is True
 
         conn = sqlite3.connect(db_path)
-        tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' OR type='view'"
-        ).fetchall()
+        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table' OR type='view'").fetchall()
         table_names = [t[0] for t in tables]
         conn.close()
         assert "corpus_turns" in table_names
@@ -197,8 +198,12 @@ class TestCorpusTurnStoreAsyncInit:
         await store.write_turn(turn)
         await store.update_beast_tags(
             "bridge-1",
-            ["nbcm"], "nbcm", ["test"], 0.5,
-            ["nbcm->theology_research"], 0.8,
+            ["nbcm"],
+            "nbcm",
+            ["test"],
+            0.5,
+            ["nbcm->theology_research"],
+            0.8,
         )
 
         assert await store.has_bridge_tagged_turns() is True
@@ -207,7 +212,6 @@ class TestCorpusTurnStoreAsyncInit:
     async def test_count_domain_words_since(self, tmp_path):
         """count_domain_words_since() must count words correctly."""
         from aip.adapter.corpus_turn_store import CorpusTurnStore
-        from aip.foundation.schemas.corpus_turn import CorpusTurn
 
         db_path = str(tmp_path / "corpus_words.db")
         store = CorpusTurnStore(db_path)
@@ -238,6 +242,7 @@ class TestCorpusTurnStoreAsyncInit:
     async def test_no_ensure_tables_sync(self):
         """CorpusTurnStore must NOT have _ensure_tables_sync method."""
         from aip.adapter.corpus_turn_store import CorpusTurnStore
+
         assert not hasattr(CorpusTurnStore, "_ensure_tables_sync"), (
             "_ensure_tables_sync should have been removed in Sprint 5.14"
         )
@@ -275,6 +280,7 @@ class TestCorpusTurnStoreAsyncInit:
 # ---------------------------------------------------------------------------
 # 2. Vector Store Persistent Connection Lifecycle
 # ---------------------------------------------------------------------------
+
 
 class TestVectorStoreConnectionLifecycle:
     """Verify persistent connections and error recovery."""
@@ -364,6 +370,7 @@ class TestVectorStoreConnectionLifecycle:
 # ---------------------------------------------------------------------------
 # 3. Sexton Full Pipeline Verification
 # ---------------------------------------------------------------------------
+
 
 class TestSextonFullPipeline:
     """Integration tests covering the complete Sexton pipeline with real stores."""
@@ -481,7 +488,6 @@ class TestSextonFullPipeline:
         """_has_bridge_tagged_turns must use CorpusTurnStore async method."""
         from aip.adapter.corpus_turn_store import CorpusTurnStore
         from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
-        from aip.foundation.schemas.corpus_turn import CorpusTurn
         from aip.orchestration.actors.sexton import Sexton
 
         db_path = str(tmp_path / "sexton_bridge.db")
@@ -511,54 +517,62 @@ class TestSextonFullPipeline:
 # 4. AI Fingerprint Cleanup Verification
 # ---------------------------------------------------------------------------
 
+
 class TestAIFingerprintCleanup:
     """Verify cleaned-up modules import and function correctly."""
 
     def test_corpus_turn_store_no_sync_init(self):
         """CorpusTurnStore must NOT have _ensure_tables_sync."""
         from aip.adapter.corpus_turn_store import CorpusTurnStore
+
         assert not hasattr(CorpusTurnStore, "_ensure_tables_sync")
 
     def test_vss_store_no_sync_init(self):
         """SqliteVssVectorStore must NOT have _init_vss_sync."""
         from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
+
         assert not hasattr(SqliteVssVectorStore, "_init_vss_sync")
 
     def test_fts5_store_no_sync_init(self):
         """SqliteFts5LexicalStore must NOT have _ensure_tables_sync."""
         from aip.adapter.lexical.sqlite_fts5_store import SqliteFts5LexicalStore
+
         assert not hasattr(SqliteFts5LexicalStore, "_ensure_tables_sync")
 
     def test_retrieval_orchestrator_imports(self):
         """retrieval_orchestrator.py must import cleanly after cleanup."""
         from aip.orchestration.retrieval_orchestrator import (
-            RetrievalOrchestrator,
-            OrchestratorConfig,
-            rrf_fuse,
             apply_quality_gate,
+            rrf_fuse,
         )
+
         assert callable(rrf_fuse)
         assert callable(apply_quality_gate)
 
     def test_sexton_actor_imports(self):
         """actors/sexton.py must import cleanly after cleanup."""
         from aip.orchestration.actors.sexton import Sexton
+
         assert Sexton is not None
 
     def test_no_sprint_log_comments_in_orchestrator(self):
         """retrieval_orchestrator.py should not contain 'Sprint 5.' comments."""
         import inspect
+
         from aip.orchestration import retrieval_orchestrator
+
         source = inspect.getsource(retrieval_orchestrator)
         # Check that no "Sprint 5.X:" style comments remain in the module body
-        lines = [l for l in source.split('\n') if 'Sprint 5.' in l]
+        lines = [line for line in source.split("\n") if "Sprint 5." in line]
         # Allow at most 0 such lines (we cleaned them all)
         assert len(lines) == 0, f"Found Sprint-log comments in retrieval_orchestrator: {lines}"
 
     def test_corpus_turn_store_has_single_ddl_source(self):
         """CorpusTurnStore DDL should be module-level constants, not duplicated."""
-        from aip import adapter
         import inspect
+
+        from aip import adapter
+
         source = inspect.getsource(adapter.corpus_turn_store)
         # Count occurrences of "CREATE TABLE IF NOT EXISTS corpus_turns"
         count = source.count("CREATE TABLE IF NOT EXISTS corpus_turns")
@@ -569,12 +583,14 @@ class TestAIFingerprintCleanup:
 # 5. RuntimeMode / Brute-Force Fallback Policy
 # ---------------------------------------------------------------------------
 
+
 class TestRuntimeMode:
     """Verify RuntimeMode controls brute-force fallback behavior."""
 
     def test_runtime_mode_enum(self):
         """RuntimeMode must have DEVELOPMENT, PRODUCTION, STRICT."""
         from aip.adapter.vector.sqlite_vss_store import RuntimeMode
+
         assert RuntimeMode.DEVELOPMENT.value == "development"
         assert RuntimeMode.PRODUCTION.value == "production"
         assert RuntimeMode.STRICT.value == "strict"
@@ -582,7 +598,7 @@ class TestRuntimeMode:
     @pytest.mark.asyncio
     async def test_strict_mode_raises_on_brute_force(self, tmp_path):
         """STRICT mode must raise RuntimeError when VSS is unavailable."""
-        from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore, RuntimeMode
+        from aip.adapter.vector.sqlite_vss_store import RuntimeMode, SqliteVssVectorStore
 
         db_path = str(tmp_path / "strict.db")
         store = SqliteVssVectorStore(
@@ -605,7 +621,7 @@ class TestRuntimeMode:
     @pytest.mark.asyncio
     async def test_development_mode_allows_brute_force(self, tmp_path):
         """DEVELOPMENT mode must allow brute-force retrieval."""
-        from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore, RuntimeMode
+        from aip.adapter.vector.sqlite_vss_store import RuntimeMode, SqliteVssVectorStore
 
         db_path = str(tmp_path / "dev_mode.db")
         store = SqliteVssVectorStore(
@@ -630,7 +646,7 @@ class TestRuntimeMode:
     @pytest.mark.asyncio
     async def test_production_mode_allows_brute_force_with_warning(self, tmp_path):
         """PRODUCTION mode must allow brute-force retrieval (with warning)."""
-        from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore, RuntimeMode
+        from aip.adapter.vector.sqlite_vss_store import RuntimeMode, SqliteVssVectorStore
 
         db_path = str(tmp_path / "prod_mode.db")
         store = SqliteVssVectorStore(
@@ -658,7 +674,7 @@ class TestRuntimeMode:
     @pytest.mark.asyncio
     async def test_health_check_includes_runtime_mode(self, tmp_path):
         """health_check() must report the current runtime_mode."""
-        from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore, RuntimeMode
+        from aip.adapter.vector.sqlite_vss_store import RuntimeMode, SqliteVssVectorStore
 
         db_path = str(tmp_path / "hc_mode.db")
         store = SqliteVssVectorStore(

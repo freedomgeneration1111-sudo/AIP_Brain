@@ -30,10 +30,9 @@ import json
 import os
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -86,8 +85,8 @@ async def _run_single_eval(
     k: int = 10,
 ) -> dict[str, float]:
     """Run one evaluation with the given config and return aggregate metrics."""
-    from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
     from aip.orchestration.retrieval_eval import RetrievalEvalHarness
+    from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
 
     if mode == "fts-only":
         config = OrchestratorConfig(
@@ -140,7 +139,7 @@ async def run_grid_search(db_path: str, golden_path: str) -> list[WeightResult]:
     vector_available = False
 
     try:
-        from aip.orchestration.ask_pipeline import create_ask_stores, _register_retriever_channels
+        from aip.orchestration.ask_pipeline import _register_retriever_channels, create_ask_stores
         from aip.orchestration.retrieval_orchestrator import get_orchestrator_cache
 
         stores = await create_ask_stores(db_path)
@@ -149,7 +148,6 @@ async def run_grid_search(db_path: str, golden_path: str) -> list[WeightResult]:
         if stores.vector_store is not None and stores.embedding_provider is not None:
             try:
                 # Quick probe: try to retrieve with a dummy vector
-                import numpy as np
 
                 probe_vec = [0.0] * 768
                 hits = await stores.vector_store.retrieve(probe_vec, top_k=1)
@@ -165,8 +163,8 @@ async def run_grid_search(db_path: str, golden_path: str) -> list[WeightResult]:
         stores = None
 
     if stores is not None:
-        from aip.orchestration.retrieval_orchestrator import get_orchestrator_cache
         from aip.orchestration.ask_pipeline import _register_retriever_channels
+        from aip.orchestration.retrieval_orchestrator import get_orchestrator_cache
 
         cache = get_orchestrator_cache()
         cache.invalidate()  # Force fresh orchestrator
@@ -209,16 +207,26 @@ async def run_grid_search(db_path: str, golden_path: str) -> list[WeightResult]:
             )
         except Exception as exc:
             print(f"  FTS-only evaluation failed: {exc}")
-            results.append(WeightResult(
-                vector_weight=0.0, fts_weight=1.0, corpus_weight=1.0,
-                mode="fts-only", error=str(exc),
-            ))
+            results.append(
+                WeightResult(
+                    vector_weight=0.0,
+                    fts_weight=1.0,
+                    corpus_weight=1.0,
+                    mode="fts-only",
+                    error=str(exc),
+                )
+            )
     else:
         print("  Skipping FTS-only: no stores available")
-        results.append(WeightResult(
-            vector_weight=0.0, fts_weight=1.0, corpus_weight=1.0,
-            mode="fts-only", error="no stores available",
-        ))
+        results.append(
+            WeightResult(
+                vector_weight=0.0,
+                fts_weight=1.0,
+                corpus_weight=1.0,
+                mode="fts-only",
+                error="no stores available",
+            )
+        )
 
     # ---- Run hybrid grid search ----
     if not vector_available:
@@ -262,10 +270,15 @@ async def run_grid_search(db_path: str, golden_path: str) -> list[WeightResult]:
                 )
             except Exception as exc:
                 print(f"FAILED: {exc}")
-                results.append(WeightResult(
-                    vector_weight=vw, fts_weight=fts_w, corpus_weight=corpus_w,
-                    mode="hybrid", error=str(exc),
-                ))
+                results.append(
+                    WeightResult(
+                        vector_weight=vw,
+                        fts_weight=fts_w,
+                        corpus_weight=corpus_w,
+                        mode="hybrid",
+                        error=str(exc),
+                    )
+                )
 
     # Clean up stores
     if stores is not None:
@@ -352,14 +365,19 @@ def print_comparison(best_hybrid: WeightResult | None, fts_only: WeightResult | 
         print("  No valid hybrid results — vector store likely unavailable.")
         print("  FTS-only is the only mode evaluated.")
         if fts_only is not None:
-            print(f"    FTS-only: P@5={fts_only.precision_at_5:.4f}  R@10={fts_only.recall_at_10:.4f}  MRR={fts_only.mrr:.4f}")
+            print(
+                f"    FTS-only: P@5={fts_only.precision_at_5:.4f}  "
+                f"R@10={fts_only.recall_at_10:.4f}  MRR={fts_only.mrr:.4f}"
+            )
         print("=" * 90)
         return
 
     if fts_only is None:
         print("  No valid FTS-only baseline available for comparison.")
         print(f"  Best hybrid: vector={best_hybrid.vector_weight:.1f} fts={best_hybrid.fts_weight:.1f}")
-        print(f"    P@5={best_hybrid.precision_at_5:.4f}  R@10={best_hybrid.recall_at_10:.4f}  MRR={best_hybrid.mrr:.4f}")
+        print(
+            f"    P@5={best_hybrid.precision_at_5:.4f}  R@10={best_hybrid.recall_at_10:.4f}  MRR={best_hybrid.mrr:.4f}"
+        )
         print("=" * 90)
         return
 
@@ -373,22 +391,18 @@ def print_comparison(best_hybrid: WeightResult | None, fts_only: WeightResult | 
     r10_imp = _pct_improvement(best_hybrid.recall_at_10, fts_only.recall_at_10)
     mrr_imp = _pct_improvement(best_hybrid.mrr, fts_only.mrr)
 
-    print(f"  Best hybrid weights: vector={best_hybrid.vector_weight:.1f}  fts={best_hybrid.fts_weight:.1f}  corpus={best_hybrid.corpus_weight:.1f}")
+    print(
+        f"  Best hybrid weights: vector={best_hybrid.vector_weight:.1f}  "
+        f"fts={best_hybrid.fts_weight:.1f}  corpus={best_hybrid.corpus_weight:.1f}"
+    )
     print()
     print(f"  {'Metric':<15} {'Hybrid':>10} {'FTS-only':>10} {'Improvement':>12}")
     print(f"  {'-' * 15} {'-' * 10} {'-' * 10} {'-' * 12}")
     print(
-        f"  {'Precision@5':<15} {best_hybrid.precision_at_5:>10.4f} "
-        f"{fts_only.precision_at_5:>10.4f} {p5_imp:>+11.1f}%"
+        f"  {'Precision@5':<15} {best_hybrid.precision_at_5:>10.4f} {fts_only.precision_at_5:>10.4f} {p5_imp:>+11.1f}%"
     )
-    print(
-        f"  {'Recall@10':<15} {best_hybrid.recall_at_10:>10.4f} "
-        f"{fts_only.recall_at_10:>10.4f} {r10_imp:>+11.1f}%"
-    )
-    print(
-        f"  {'MRR':<15} {best_hybrid.mrr:>10.4f} "
-        f"{fts_only.mrr:>10.4f} {mrr_imp:>+11.1f}%"
-    )
+    print(f"  {'Recall@10':<15} {best_hybrid.recall_at_10:>10.4f} {fts_only.recall_at_10:>10.4f} {r10_imp:>+11.1f}%")
+    print(f"  {'MRR':<15} {best_hybrid.mrr:>10.4f} {fts_only.mrr:>10.4f} {mrr_imp:>+11.1f}%")
 
     if p5_imp > 0:
         print(f"\n  Hybrid retrieval improves Precision@5 by {p5_imp:.1f}% over FTS-only.")
@@ -449,6 +463,7 @@ def save_results(results: list[WeightResult], output_path: str) -> None:
 
     # Compute improvement if both are available
     if best_hybrid and fts_only:
+
         def _pct(h: float, f: float) -> float | None:
             if f == 0.0:
                 return None
@@ -526,8 +541,8 @@ def main() -> None:
 
     # Print recommendation
     if best_hybrid and not best_hybrid.error:
-        print(f"\n  RECOMMENDED: Set the following in config/aip.config.toml:")
-        print(f"    [retrieval.channel_weights]")
+        print("\n  RECOMMENDED: Set the following in config/aip.config.toml:")
+        print("    [retrieval.channel_weights]")
         print(f"    vector = {best_hybrid.vector_weight:.1f}")
         print(f"    fts = {best_hybrid.fts_weight:.1f}")
         print(f"    corpus = {best_hybrid.corpus_weight:.1f}")

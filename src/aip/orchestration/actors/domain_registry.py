@@ -13,7 +13,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
 
 
 @dataclass
@@ -174,13 +173,27 @@ def load_registry(registry_path: str) -> DomainRegistry:
 
         if in_connectors_section:
             # bridge tag line e.g. nbcm->theology_research
-            if "->" in line and not line.startswith("DOMAIN_ID") and not line[0].isspace() and "domain->domain" not in line.lower():
+            if (
+                "->" in line
+                and not line.startswith("DOMAIN_ID")
+                and not line[0].isspace()
+                and "domain->domain" not in line.lower()
+            ):
                 _flush_bridge()
                 current_bridge = line
                 bridge_desc_lines = []
                 continue
             # description continuation for current bridge (indented or following)
-            if current_bridge and (line.startswith("  ") or (not line.startswith("DOMAIN") and not any(line.startswith(p) for p in ("##", "DOMAIN_ID:", "DESCRIPTION:", "CORE_KEYWORDS:", "EXCLUDE:", "IMPORTANCE_FLOOR:")))):
+            if current_bridge and (
+                line.startswith("  ")
+                or (
+                    not line.startswith("DOMAIN")
+                    and not any(
+                        line.startswith(p)
+                        for p in ("##", "DOMAIN_ID:", "DESCRIPTION:", "CORE_KEYWORDS:", "EXCLUDE:", "IMPORTANCE_FLOOR:")
+                    )
+                )
+            ):
                 bridge_desc_lines.append(line)
                 continue
 

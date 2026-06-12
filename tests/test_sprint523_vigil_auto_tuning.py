@@ -12,14 +12,12 @@ from __future__ import annotations
 import json
 import tempfile
 from dataclasses import dataclass
-from typing import Any
 
 import pytest
 
+from aip.adapter.read_pool import ReadPoolAutoSizer, ReadPoolHealth
 from aip.foundation.schemas import SextonConfig, VigilConfig
 from aip.orchestration.actors.vigil import Vigil
-from aip.adapter.read_pool import ReadPoolAutoSizer, ReadPoolHealth
-
 
 # ============================================================================
 # Shared fakes
@@ -72,7 +70,7 @@ class FakeModelProvider:
                 "model": "test-eval-model",
                 "usage": {"prompt_tokens": 100, "completion_tokens": 50},
             }
-        return {"content": '[CI-FIXTURE]', "model": "ci-eval", "usage": {}}
+        return {"content": "[CI-FIXTURE]", "model": "ci-eval", "usage": {}}
 
 
 class FakeTraceStore:
@@ -86,6 +84,7 @@ class FakeTraceStore:
 @dataclass
 class FakeTurn:
     """Minimal turn object for Vigil evaluation tests."""
+
     turn_id: str = "turn-001"
     conversation_id: str = "conv-001"
     user_text: str = "What is the population of Tokyo?"
@@ -126,12 +125,14 @@ class FakeECSStore:
         self.transitions = []
 
     async def transition(self, artifact_id, to_state, actor, detail=None, **kwargs):
-        self.transitions.append({
-            "artifact_id": artifact_id,
-            "to_state": to_state,
-            "actor": actor,
-            "detail": detail,
-        })
+        self.transitions.append(
+            {
+                "artifact_id": artifact_id,
+                "to_state": to_state,
+                "actor": actor,
+                "detail": detail,
+            }
+        )
 
 
 class FakeEventStore:
@@ -205,12 +206,14 @@ class TestLLMFaithfulnessEvaluation:
         """When enabled and there are flagged turns, LLM evaluation is attempted."""
         vigil, model_provider, corpus_turns, _ = self._make_vigil_with_llm(
             llm_enabled=True,
-            model_response=json.dumps({
-                "faithfulness_score": 0.85,
-                "hallucination_flags": [],
-                "grounding_assessment": "mostly_grounded",
-                "explanation": "Response accurately reflects sources.",
-            }),
+            model_response=json.dumps(
+                {
+                    "faithfulness_score": 0.85,
+                    "hallucination_flags": [],
+                    "grounding_assessment": "mostly_grounded",
+                    "explanation": "Response accurately reflects sources.",
+                }
+            ),
         )
 
         # Add a turn with low citation rate (will be flagged)
@@ -260,11 +263,13 @@ class TestLLMFaithfulnessEvaluation:
     @pytest.mark.asyncio
     async def test_parse_faithfulness_response_handles_valid_json(self):
         """_parse_faithfulness_response correctly parses valid JSON."""
-        response = json.dumps({
-            "faithfulness_score": 0.9,
-            "hallucination_flags": ["Claim about X not supported"],
-            "explanation": "Mostly faithful.",
-        })
+        response = json.dumps(
+            {
+                "faithfulness_score": 0.9,
+                "hallucination_flags": ["Claim about X not supported"],
+                "explanation": "Mostly faithful.",
+            }
+        )
         result = Vigil._parse_faithfulness_response(response)
         assert result is not None
         assert result["faithfulness_score"] == 0.9
@@ -306,9 +311,12 @@ class TestReadPoolAutoSizing:
         """Auto-sizer does not suggest when exhaustion rate is low."""
         sizer = ReadPoolAutoSizer(consecutive_threshold=3)
         health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 1,
-            "checkout_count": 100, "fallback_count": 5,
-            "exhaustion_count": 5, "exhaustion_rate": 0.05,
+            "pool_size": 3,
+            "pool_active": 1,
+            "checkout_count": 100,
+            "fallback_count": 5,
+            "exhaustion_count": 5,
+            "exhaustion_rate": 0.05,
             "avg_checkout_latency_ms": 1.0,
             "p95_checkout_latency_ms": 2.0,
             "recommendation": "",
@@ -321,9 +329,12 @@ class TestReadPoolAutoSizing:
         """Auto-sizer generates a suggestion after consecutive high exhaustion."""
         sizer = ReadPoolAutoSizer(consecutive_threshold=3)
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -345,9 +356,12 @@ class TestReadPoolAutoSizing:
         """Critical exhaustion rate (>0.6) suggests doubling pool size."""
         sizer = ReadPoolAutoSizer(consecutive_threshold=2)
         critical_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 80,
-            "exhaustion_count": 80, "exhaustion_rate": 0.8,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 80,
+            "exhaustion_count": 80,
+            "exhaustion_rate": 0.8,
             "avg_checkout_latency_ms": 10.0,
             "p95_checkout_latency_ms": 20.0,
             "recommendation": "",
@@ -362,9 +376,12 @@ class TestReadPoolAutoSizing:
         """Suggestion is cleared when exhaustion rate drops below threshold."""
         sizer = ReadPoolAutoSizer(consecutive_threshold=2)
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -375,9 +392,12 @@ class TestReadPoolAutoSizing:
 
         # Recovery
         low_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 1,
-            "checkout_count": 200, "fallback_count": 10,
-            "exhaustion_count": 10, "exhaustion_rate": 0.05,
+            "pool_size": 3,
+            "pool_active": 1,
+            "checkout_count": 200,
+            "fallback_count": 10,
+            "exhaustion_count": 10,
+            "exhaustion_rate": 0.05,
             "avg_checkout_latency_ms": 1.0,
             "p95_checkout_latency_ms": 2.0,
             "recommendation": "",
@@ -390,9 +410,12 @@ class TestReadPoolAutoSizing:
         sizer = ReadPoolAutoSizer(consecutive_threshold=2)
         # Start with a high pool size already
         critical_health: ReadPoolHealth = {
-            "pool_size": 8, "pool_active": 8,
-            "checkout_count": 100, "fallback_count": 90,
-            "exhaustion_count": 90, "exhaustion_rate": 0.9,
+            "pool_size": 8,
+            "pool_active": 8,
+            "checkout_count": 100,
+            "fallback_count": 90,
+            "exhaustion_count": 90,
+            "exhaustion_rate": 0.9,
             "avg_checkout_latency_ms": 10.0,
             "p95_checkout_latency_ms": 20.0,
             "recommendation": "",
@@ -406,9 +429,12 @@ class TestReadPoolAutoSizing:
         """clear_suggestion removes a specific store's suggestion."""
         sizer = ReadPoolAutoSizer(consecutive_threshold=2)
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -682,12 +708,14 @@ class TestVigilSextonIntegration:
             llm_faithfulness_enabled=True,
             llm_faithfulness_model_slot="evaluation",
         )
-        llm_response = json.dumps({
-            "faithfulness_score": 0.3,
-            "hallucination_flags": ["Claim about 99.9% success rate not in sources"],
-            "grounding_assessment": "poorly_grounded",
-            "explanation": "Response contains unsupported statistical claims.",
-        })
+        llm_response = json.dumps(
+            {
+                "faithfulness_score": 0.3,
+                "hallucination_flags": ["Claim about 99.9% success rate not in sources"],
+                "grounding_assessment": "poorly_grounded",
+                "explanation": "Response contains unsupported statistical claims.",
+            }
+        )
         model_provider = FakeModelProvider(response_content=llm_response)
         corpus_turns = FakeCorpusTurnStore()
         artifacts = FakeArtifactStore()
@@ -700,8 +728,10 @@ class TestVigilSextonIntegration:
             turn_id="turn-hallucination",
             conversation_id="conv-test",
             user_text="What are the results?",
-            assistant_text="The results show a 99.9% success rate which is unprecedented.",  # No [source: ...] citations
-            metadata_json=json.dumps({"source_turn_ids": ["abc12345", "def67890"]}),  # IDs not in response
+            assistant_text=(
+                "The results show a 99.9% success rate which is unprecedented."
+            ),  # No [source: ...] citations
+            metadata_json=json.dumps({"source_turn_ids": ["abc12345", "def67890"]}),  # IDs not in resp
         )
         corpus_turns._turns = [turn]
 
@@ -759,7 +789,9 @@ class TestVigilSextonIntegration:
             assert pending[0]["artifact_id"] == "vigil-flag-turn-001"
 
             # DEFINER can approve it
-            result = await rq.decide(item_id, decision="approved", decided_by="definer", notes="Reviewed and acceptable")
+            result = await rq.decide(
+                item_id, decision="approved", decided_by="definer", notes="Reviewed and acceptable"
+            )
             assert result["ok"] is True
             assert result["decision"] == "approved"
 
@@ -768,7 +800,9 @@ class TestVigilSextonIntegration:
                 artifact_id="vigil-flag-turn-002",
                 reason="Hallucination detected",
             )
-            result2 = await rq.decide(item_id2, decision="rejected", decided_by="definer", notes="Unacceptable hallucination")
+            result2 = await rq.decide(
+                item_id2, decision="rejected", decided_by="definer", notes="Unacceptable hallucination"
+            )
             assert result2["ok"] is True
             assert result2["decision"] == "rejected"
 
@@ -786,7 +820,9 @@ class TestVigilSextonIntegration:
         # Create a well-cited turn
         turn = FakeTurn(
             turn_id="turn-good",
-            assistant_text="Based on [source: src-001], the population is 13.9 million. [source: src-002] confirms this.",
+            assistant_text=(
+                "Based on [source: src-001], the population is 13.9 million. [source: src-002] confirms this."
+            ),
             metadata_json=json.dumps({"source_turn_ids": ["src-001", "src-002"]}),
         )
         corpus_turns._turns = [turn]

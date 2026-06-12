@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import asyncio
 import json as _json
-import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
@@ -36,9 +35,10 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.logging import get_logger
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @router.get("/vigil/quality")
@@ -115,10 +115,7 @@ async def vigil_quality(
 
     # Apply since filter if not already handled by the store
     if since and not has_persistent_store:
-        cycle_history = [
-            c for c in cycle_history
-            if c.get("timestamp", "") > since
-        ]
+        cycle_history = [c for c in cycle_history if c.get("timestamp", "") > since]
 
     # Apply last_n_cycles filter if not already handled by the store
     if not has_persistent_store:
@@ -216,7 +213,9 @@ async def vigil_quality(
 
 @router.get("/vigil/quality/alerts")
 async def vigil_alerts(
-    alert_type: str | None = Query(default=None, description="Filter by alert type: quality_degradation, pool_adjustment, batch_reduction"),
+    alert_type: str | None = Query(
+        default=None, description="Filter by alert type: quality_degradation, pool_adjustment, batch_reduction"
+    ),
     severity: str | None = Query(default=None, description="Filter by severity: info, warning, critical"),
     since: str | None = Query(default=None, description="ISO 8601 datetime — only return alerts after this timestamp"),
     limit: int = Query(default=50, ge=1, le=200, description="Maximum number of alerts to return"),
@@ -245,12 +244,12 @@ async def vigil_alerts(
         }
 
     # Resolve Query parameters to plain values (direct test calls may pass Query objects)
-    _alert_type = alert_type.default if hasattr(alert_type, 'default') else alert_type
-    _severity = severity.default if hasattr(severity, 'default') else severity
-    _since = since.default if hasattr(since, 'default') else since
+    _alert_type = alert_type.default if hasattr(alert_type, "default") else alert_type
+    _severity = severity.default if hasattr(severity, "default") else severity
+    _since = since.default if hasattr(since, "default") else since
     if isinstance(limit, int):
         _limit = limit
-    elif hasattr(limit, 'default'):
+    elif hasattr(limit, "default"):
         _limit = limit.default
     else:
         _limit = int(limit)
@@ -566,11 +565,13 @@ def _get_ab_health_summary(alert_manager: Any) -> dict[str, Any]:
 
 class AcknowledgeRequest(BaseModel):
     """Request body for alert acknowledgment."""
+
     acknowledged_by: str = "operator"
 
 
 class DismissRequest(BaseModel):
     """Request body for alert dismissal."""
+
     dismissed_by: str = "operator"
 
 
@@ -665,6 +666,7 @@ async def vigil_alert_dismiss(
 
 class RetentionConfigUpdate(BaseModel):
     """Request body for updating retention configuration."""
+
     retention_days: int | None = None
     rollup_age_days: int | None = None
     weekly_rollup_age_weeks: int | None = None
@@ -830,6 +832,7 @@ async def vigil_delivery_status_stats(
 
 class MuteRuleRequest(BaseModel):
     """Request body for creating a mute rule."""
+
     alert_type: str
     subject: str
     duration_seconds: int = 3600
@@ -957,7 +960,7 @@ async def vigil_quality_sse(
 
         try:
             # Send initial connection event
-            yield f"event: connected\ndata: {{}}\n\n"
+            yield "event: connected\ndata: {}\n\n"
 
             while True:
                 try:
@@ -965,12 +968,13 @@ async def vigil_quality_sse(
                     # This sends keepalive comments to prevent connection drops
                     event = await asyncio.wait_for(queue.get(), timeout=30.0)
                     import json as _json
+
                     event_type = event.get("event", "update")
                     event_data = _json.dumps(event)
                     yield f"event: {event_type}\ndata: {event_data}\n\n"
                 except asyncio.TimeoutError:
                     # Send keepalive comment
-                    yield f": keepalive\n\n"
+                    yield ": keepalive\n\n"
         except asyncio.CancelledError:
             pass
         finally:
@@ -1031,13 +1035,8 @@ async def vigil_quality_websocket(
             return
 
     # Sprint 5.39: Native permessage-deflate negotiation
-    native_deflate_requested = (
-        websocket.query_params.get("compression", "") == "deflate"
-    )
-    native_deflate_supported = (
-        alert_manager is not None
-        and alert_manager.config.ws_native_permessage_deflate_enabled
-    )
+    native_deflate_requested = websocket.query_params.get("compression", "") == "deflate"
+    native_deflate_supported = alert_manager is not None and alert_manager.config.ws_native_permessage_deflate_enabled
     use_native_deflate = native_deflate_requested and native_deflate_supported
 
     # Accept with permessage-deflate if both sides support it
@@ -1058,6 +1057,7 @@ async def vigil_quality_websocket(
     # Sprint 5.33: Rate limiting state per connection
     _ws_command_timestamps: list[float] = []
     import time as _time
+
     _ws_rate_limit = alert_manager.config.ws_rate_limit_per_minute if alert_manager else 60
 
     # Register as a WebSocket subscriber for real-time events
@@ -1066,6 +1066,7 @@ async def vigil_quality_websocket(
 
     # Sprint 5.34: Register WS session with unique ID
     import uuid as _uuid
+
     session_id = str(_uuid.uuid4())
     remote_addr = websocket.client.host if websocket.client else ""
     if alert_manager is not None:
@@ -1078,11 +1079,13 @@ async def vigil_quality_websocket(
 
     try:
         # Send initial connection confirmation
-        await websocket.send_json({
-            "event": "ws_connected",
-            "message": "WebSocket connection established",
-            "session_id": session_id,
-        })
+        await websocket.send_json(
+            {
+                "event": "ws_connected",
+                "message": "WebSocket connection established",
+                "session_id": session_id,
+            }
+        )
 
         # Run two concurrent tasks:
         # 1. Push events from the queue to the WebSocket
@@ -1094,16 +1097,11 @@ async def vigil_quality_websocket(
             instead of simple keepalives. The heartbeat interval is
             configured via ws_heartbeat_interval_seconds.
             """
-            heartbeat_interval = (
-                alert_manager.config.ws_heartbeat_interval_seconds
-                if alert_manager else 30
-            )
+            heartbeat_interval = alert_manager.config.ws_heartbeat_interval_seconds if alert_manager else 30
             try:
                 while True:
                     try:
-                        event = await asyncio.wait_for(
-                            event_queue.get(), timeout=float(heartbeat_interval)
-                        )
+                        event = await asyncio.wait_for(event_queue.get(), timeout=float(heartbeat_interval))
                         await websocket.send_json(event)
                     except asyncio.TimeoutError:
                         # Sprint 5.35: Send heartbeat ping instead of plain keepalive
@@ -1294,7 +1292,7 @@ async def vigil_quality_websocket(
                     elif action == "tab_register":
                         tab_id = command.get("tab_id", "")
                         if tab_id:
-                            if not hasattr(alert_manager, '_registered_tabs'):
+                            if not hasattr(alert_manager, "_registered_tabs"):
                                 alert_manager._registered_tabs = {}
                             alert_manager._registered_tabs[tab_id] = {
                                 "registered_at": _time.time(),
@@ -1309,7 +1307,7 @@ async def vigil_quality_websocket(
                     # Sprint 5.37: Tab unregistration
                     elif action == "tab_unregister":
                         tab_id = command.get("tab_id", "")
-                        if tab_id and hasattr(alert_manager, '_registered_tabs'):
+                        if tab_id and hasattr(alert_manager, "_registered_tabs"):
                             alert_manager._registered_tabs.pop(tab_id, None)
                             result["unregistered"] = True
                             result["tab_id"] = tab_id
@@ -1419,6 +1417,7 @@ async def vigil_alert_groups(
 
 class BulkActionRequest(BaseModel):
     """Request body for bulk alert actions."""
+
     group_key: str
     acted_by: str = "operator"
 
@@ -1489,6 +1488,7 @@ async def vigil_bulk_dismiss(
 
 class PruningConfigUpdate(BaseModel):
     """Request body for updating delivery status pruning configuration."""
+
     max_age_days: int | None = None
     max_rows: int | None = None
 
@@ -1517,11 +1517,15 @@ async def vigil_delivery_status_prune(
 
     try:
         # Use provided params or fall back to config defaults
-        prune_age = max_age_days if max_age_days is not None else (
-            alert_manager.config.delivery_status_max_age_days if alert_manager else 30
+        prune_age = (
+            max_age_days
+            if max_age_days is not None
+            else (alert_manager.config.delivery_status_max_age_days if alert_manager else 30)
         )
-        prune_rows = max_rows if max_rows is not None else (
-            alert_manager.config.delivery_status_max_rows if alert_manager else 2000
+        prune_rows = (
+            max_rows
+            if max_rows is not None
+            else (alert_manager.config.delivery_status_max_rows if alert_manager else 2000)
         )
 
         deleted = alert_history_store.prune_delivery_status(
@@ -1627,12 +1631,14 @@ async def vigil_ws_sessions(
 
 class MergeGroupsRequest(BaseModel):
     """Request body for merging two alert groups."""
+
     source_key: str
     target_key: str
 
 
 class SplitGroupRequest(BaseModel):
     """Request body for splitting an alert group."""
+
     group_key: str
     correlation_ids: list[str]
     new_group_key: str | None = None
@@ -1692,6 +1698,7 @@ async def vigil_split_group(
 
 class PruneSchedulerConfig(BaseModel):
     """Request body for updating pruning scheduler configuration."""
+
     interval_seconds: int | None = None
     max_age_days: int | None = None
     max_rows: int | None = None
@@ -1835,6 +1842,7 @@ async def vigil_auto_merge_suggestions(
 
 class ApplyAutoMergeRequest(BaseModel):
     """Request body for applying an auto-merge suggestion."""
+
     source_key: str
     target_key: str
 
@@ -2003,6 +2011,7 @@ async def vigil_prediction_accuracy(
 
 class AutoMergePolicyUpdate(BaseModel):
     """Request body for updating auto-merge policy."""
+
     mode: str | None = None
     cooldown_seconds: int | None = None
     type_thresholds: dict[str, float] | None = None
@@ -2412,6 +2421,7 @@ async def get_rollback_dry_run_status(
 
 class BanditContextRewardRequest(BaseModel):
     """Request body for recording a contextual bandit reward."""
+
     variant: str = "variant"
     reward: float = 0.0
     context: dict[str, str] | None = None
@@ -2664,7 +2674,8 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   .controls button.danger { background: #ef4444; }
   .controls button.danger:hover { background: #dc2626; }
   .metric-toggles { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
-  .metric-toggles label { font-size: 13px; color: #cbd5e1; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  .metric-toggles label { font-size: 13px; color: #cbd5e1; display: flex;
+                          align-items: center; gap: 4px; cursor: pointer; }
   .metric-toggles input[type=checkbox] { accent-color: #3b82f6; }
   .status-bar { font-size: 12px; color: #64748b; margin-top: 16px; }
   .error { color: #f87171; padding: 12px; background: #1e293b; border-radius: 4px; border: 1px solid #7f1d1d; }
@@ -2982,7 +2993,10 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <div class="merge-suggest-panel" id="mergeSuggestPanel">
   <h3>Auto-Merge Suggestions</h3>
   <div id="merge-suggest-list"><span class="no-alerts">No merge suggestions</span></div>
-  <button onclick="fetchAutoMergeSuggestions()" style="margin-top:8px;font-size:11px;background:#3b82f6;color:white;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;">Refresh Suggestions</button>
+  <button onclick="fetchAutoMergeSuggestions()" style="margin-top:8px;font-size:11px;
+    background:#3b82f6;color:white;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;">
+    Refresh Suggestions
+  </button>
 </div>
 
 <!-- Sprint 5.36: Causal Chain Predictions Panel -->
@@ -3007,7 +3021,8 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <!-- Sprint 5.34: Causal Group Visualization -->
 <!-- Sprint 5.47: Experiment Monitoring Panel with Mini Charts -->
 <div class="causal-panel" id="experimentPanel">
-  <h3 onclick="document.getElementById('experimentPanelContent').style.display = document.getElementById('experimentPanelContent').style.display === 'none' ? 'block' : 'none'">
+  <h3 onclick="document.getElementById('experimentPanelContent').style.display =
+    document.getElementById('experimentPanelContent').style.display === 'none' ? 'block' : 'none'">
     A/B Experiment Monitoring
     <span style="font-size:10px;color:#4ade80;margin-left:6px;">●</span>
   </h3>
@@ -3027,7 +3042,8 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     </div>
     <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;">
       <div style="flex:1;min-width:200px;">
-        <h4 style="font-size:11px;color:#94a3b8;margin-bottom:4px;text-transform:uppercase;">Statistical Significance</h4>
+        <h4 style="font-size:11px;color:#94a3b8;margin-bottom:4px;
+          text-transform:uppercase;">Statistical Significance</h4>
         <div id="stats-significance-status"><span style="font-size:11px;color:#64748b;">Loading...</span></div>
       </div>
       <div style="flex:1;min-width:200px;">
@@ -3043,14 +3059,17 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     <div style="margin-top:12px;">
       <h4 style="font-size:12px;color:#94a3b8;margin-bottom:6px;text-transform:uppercase;">Event Timeline</h4>
       <div style="margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap;">
-        <select id="timeline-filter-type" style="font-size:10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:3px;padding:2px 4px;">
+        <select id="timeline-filter-type" style="font-size:10px;background:#1e293b;
+          color:#cbd5e1;border:1px solid #334155;border-radius:3px;padding:2px 4px;">
           <option value="">All Types</option>
           <option value="promotion">Promotion</option>
           <option value="rollback">Rollback</option>
           <option value="decay_recovery">Decay Recovery</option>
           <option value="bandit_decision">Bandit Decision</option>
         </select>
-        <input id="timeline-filter-name" type="text" placeholder="Filter by name..." style="font-size:10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:3px;padding:2px 6px;width:140px;">
+        <input id="timeline-filter-name" type="text" placeholder="Filter by name..."
+          style="font-size:10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;
+          border-radius:3px;padding:2px 6px;width:140px;">
       </div>
       <div id="event-timeline-list" style="max-height:250px;overflow-y:auto;">
         <span class="no-alerts">Loading timeline...</span>
@@ -3083,8 +3102,13 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     </label>
   </div>
   <div class="notif-row" style="margin-top:8px">
-    <button onclick="saveNotifPrefs()" style="font-size:11px;background:#3b82f6;color:white;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;">Save Preferences</button>
-    <button onclick="requestNotificationPermission()" style="font-size:11px;background:#f59e0b;color:#0f172a;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;">Enable Browser Notifications</button>
+    <button onclick="saveNotifPrefs()" style="font-size:11px;background:#3b82f6;
+      color:white;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;">
+      Save Preferences
+    </button>
+    <button onclick="requestNotificationPermission()" style="font-size:11px;
+      background:#f59e0b;color:#0f172a;border:none;padding:4px 12px;
+      border-radius:4px;cursor:pointer;">Enable Browser Notifications</button>
     <span id="notifPermStatus" style="font-size:10px;color:#64748b;"></span>
   </div>
 </div>
@@ -3097,7 +3121,8 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     <span class="prune-metric">Total Runs: <span id="pruneTotalRuns" class="value">0</span></span>
     <span class="prune-metric">Last Run: <span id="pruneLastRun" class="value">-</span></span>
   </div>
-  <div id="prune-history-list" style="margin-top:12px;max-height:120px;overflow-y:auto;font-size:11px;color:#94a3b8;"></div>
+  <div id="prune-history-list" style="margin-top:12px;max-height:120px;
+    overflow-y:auto;font-size:11px;color:#94a3b8;"></div>
 </div>
 
 <!-- Sprint 5.37: Auto-Merge Policy Controls -->
@@ -3123,13 +3148,15 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     <label>Slack Webhook:</label>
     <input type="text" id="slackWebhookUrl" placeholder="https://hooks.slack.com/services/..." size="30">
     <span class="status-dot not-configured" id="slackDot"></span>
-    <button onclick="configureSlack()" style="font-size:11px;background:#3b82f6;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Save</button>
+    <button onclick="configureSlack()" style="font-size:11px;background:#3b82f6;
+      color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Save</button>
   </div>
   <div class="channel-row">
     <label>PagerDuty Key:</label>
     <input type="text" id="pagerdutyKey" placeholder="Integration key..." size="30">
     <span class="status-dot not-configured" id="pagerdutyDot"></span>
-    <button onclick="configurePagerDuty()" style="font-size:11px;background:#3b82f6;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Save</button>
+    <button onclick="configurePagerDuty()" style="font-size:11px;background:#3b82f6;
+      color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Save</button>
   </div>
   <div id="channelStatus" style="font-size:11px;color:#94a3b8;margin-top:4px;"></div>
 </div>
@@ -3192,13 +3219,15 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     <span class="perf-metric">Known Transitions: <span id="lpTransitions" class="value">0</span></span>
     <span class="perf-metric">Learned Predictions: <span id="lpPredCount" class="value">0</span></span>
   </div>
-  <div id="transitionProbList" style="font-size:11px;color:#94a3b8;margin-top:8px;max-height:120px;overflow-y:auto;"></div>
+  <div id="transitionProbList" style="font-size:11px;color:#94a3b8;
+    margin-top:8px;max-height:120px;overflow-y:auto;"></div>
 </div>
 
 <script>
 const API_URL = '../vigil/quality';
 const ALERTS_URL = '../vigil/quality/alerts';
-const WS_URL = ((location.protocol === 'https:') ? 'wss:' : 'ws:') + '//' + location.host + '../vigil/quality/dashboard/ws';
+const WS_URL = ((location.protocol === 'https:') ? 'wss:' : 'ws:') + '//' +
+  location.host + '../vigil/quality/dashboard/ws';
 let currentData = null;
 let liveInterval = null;
 let isLive = false;
@@ -3368,7 +3397,8 @@ async function initServiceWorker() {
               }
             }
             if (replayed > 0) {
-              bc.postMessage({type: 'offline_queue_replayed', replayed: replayed, remaining: await getOfflineQueueCount()});
+              bc.postMessage({type: 'offline_queue_replayed', replayed: replayed,
+                remaining: await getOfflineQueueCount()});
             }
           } catch(e) {}
         }
@@ -3466,7 +3496,8 @@ async function initServiceWorker() {
               ws.send(msg.data);
             }
           } else if (msg.type === 'check_ws_status') {
-            bc.postMessage({type: 'ws_status', status: ws ? (ws.readyState === WebSocket.OPEN ? 'connected' : 'disconnected') : 'disconnected'});
+            bc.postMessage({type: 'ws_status', status: ws ?
+              (ws.readyState === WebSocket.OPEN ? 'connected' : 'disconnected') : 'disconnected'});
           } else if (msg.type === 'check_offline_queue') {
             // Sprint 5.39: Attempt to replay queued actions
             event.waitUntil(replayOfflineActions());
@@ -3584,7 +3615,8 @@ function initSharedWorkerFallback() {
       function connectWS() {
         if (reconnectAttempts >= maxReconnectAttempts) return;
         const wsProto = (typeof location !== 'undefined' && location.protocol === 'https:') ? 'wss:' : 'ws:';
-        const wsUrl = wsProto + '//' + (typeof location !== 'undefined' ? location.host : 'localhost') + '/vigil/quality/dashboard/ws?compression=deflate';
+        const wsUrl = wsProto + '//' + (typeof location !== 'undefined' ?
+          location.host : 'localhost') + '/vigil/quality/dashboard/ws?compression=deflate';
         try {
           ws = new WebSocket(wsUrl);
           ws.onopen = function() {
@@ -3669,7 +3701,8 @@ function handleIncomingWSMessage(rawData) {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({action: 'heartbeat_pong'}));
       } else if (sharedWorker) {
-        sharedWorker.port.postMessage({type: 'ws_send', data: JSON.stringify({action: 'heartbeat_pong'}), tabId: tabId});
+        sharedWorker.port.postMessage({type: 'ws_send',
+          data: JSON.stringify({action: 'heartbeat_pong'}), tabId: tabId});
       }
       return;
     }
@@ -3752,7 +3785,9 @@ function connectWebSocket() {
       if (useWS && wsReconnectAttempts < wsMaxReconnectAttempts) {
         const delay = Math.min(wsBaseReconnectDelay * Math.pow(2, wsReconnectAttempts), 30000);
         wsReconnectAttempts++;
-        updateConnStatus('disconnected', 'Reconnecting in ' + Math.round(delay/1000) + 's (attempt ' + wsReconnectAttempts + '/' + wsMaxReconnectAttempts + ')');
+        updateConnStatus('disconnected',
+          'Reconnecting in ' + Math.round(delay/1000) + 's (attempt ' +
+          wsReconnectAttempts + '/' + wsMaxReconnectAttempts + ')');
         wsReconnectTimer = setTimeout(() => { if (useWS) connectWebSocket(); }, delay);
       } else if (useWS) {
         updateConnStatus('disconnected', 'Max retries reached — SSE fallback');
@@ -3853,7 +3888,8 @@ function wsAcknowledge() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({acknowledged_by: 'dashboard'}),
   }).catch(function() {
-    queueOfflineAction('../vigil/quality/alerts/' + alertId + '/acknowledge', 'POST', {acknowledged_by: 'dashboard'}, 'acknowledge');
+    queueOfflineAction('../vigil/quality/alerts/' + alertId + '/acknowledge',
+      'POST', {acknowledged_by: 'dashboard'}, 'acknowledge');
   });
 }
 
@@ -3867,7 +3903,8 @@ function wsDismiss() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({dismissed_by: 'dashboard'}),
   }).catch(function() {
-    queueOfflineAction('../vigil/quality/alerts/' + alertId + '/dismiss', 'POST', {dismissed_by: 'dashboard'}, 'dismiss');
+    queueOfflineAction('../vigil/quality/alerts/' + alertId + '/dismiss',
+      'POST', {dismissed_by: 'dashboard'}, 'dismiss');
   });
 }
 
@@ -3882,7 +3919,8 @@ function wsMute() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({alert_type: type, subject: subject, duration_seconds: 3600}),
   }).catch(function() {
-    queueOfflineAction('../vigil/quality/alerts/mute', 'POST', {alert_type: type, subject: subject, duration_seconds: 3600}, 'mute');
+    queueOfflineAction('../vigil/quality/alerts/mute', 'POST',
+      {alert_type: type, subject: subject, duration_seconds: 3600}, 'mute');
   });
 }
 
@@ -4108,11 +4146,13 @@ async function ackAlert(alertId) {
       body: JSON.stringify({acknowledged_by: 'dashboard'}),
     });
     if (!resp.ok && !navigator.onLine) {
-      queueOfflineAction('../vigil/quality/alerts/' + alertId + '/acknowledge', 'POST', {acknowledged_by: 'dashboard'}, 'acknowledge');
+      queueOfflineAction('../vigil/quality/alerts/' + alertId + '/acknowledge',
+      'POST', {acknowledged_by: 'dashboard'}, 'acknowledge');
     }
   } catch(e) {
     if (!navigator.onLine) {
-      queueOfflineAction('../vigil/quality/alerts/' + alertId + '/acknowledge', 'POST', {acknowledged_by: 'dashboard'}, 'acknowledge');
+      queueOfflineAction('../vigil/quality/alerts/' + alertId + '/acknowledge',
+      'POST', {acknowledged_by: 'dashboard'}, 'acknowledge');
     }
   }
 }
@@ -4126,11 +4166,13 @@ async function dismissAlert(alertId) {
       body: JSON.stringify({dismissed_by: 'dashboard'}),
     });
     if (!resp.ok && !navigator.onLine) {
-      queueOfflineAction('../vigil/quality/alerts/' + alertId + '/dismiss', 'POST', {dismissed_by: 'dashboard'}, 'dismiss');
+      queueOfflineAction('../vigil/quality/alerts/' + alertId + '/dismiss',
+      'POST', {dismissed_by: 'dashboard'}, 'dismiss');
     }
   } catch(e) {
     if (!navigator.onLine) {
-      queueOfflineAction('../vigil/quality/alerts/' + alertId + '/dismiss', 'POST', {dismissed_by: 'dashboard'}, 'dismiss');
+      queueOfflineAction('../vigil/quality/alerts/' + alertId + '/dismiss',
+      'POST', {dismissed_by: 'dashboard'}, 'dismiss');
     }
   }
 }
@@ -4478,7 +4520,8 @@ function restoreDashboardState() {
     if (state.cycles) document.getElementById('cycles').value = state.cycles;
     if (state.tog_citation !== undefined) document.getElementById('tog-citation').checked = state.tog_citation;
     if (state.tog_grounding !== undefined) document.getElementById('tog-grounding').checked = state.tog_grounding;
-    if (state.tog_faithfulness !== undefined) document.getElementById('tog-faithfulness').checked = state.tog_faithfulness;
+    if (state.tog_faithfulness !== undefined)
+      document.getElementById('tog-faithfulness').checked = state.tog_faithfulness;
     if (state.tog_flag !== undefined) document.getElementById('tog-flag').checked = state.tog_flag;
     if (state.causalCollapsed) document.getElementById('causalPanel').classList.add('collapsed');
     // Sprint 5.36: Restore notification preferences
@@ -4666,7 +4709,8 @@ async function fetchPruningHistory() {
     document.getElementById('pruneTotalRuns').textContent = data.total_runs || 0;
     if (history.length > 0) {
       const last = history[history.length - 1];
-      document.getElementById('pruneLastRun').textContent = last.timestamp_iso ? new Date(last.timestamp_iso).toLocaleString() : '-';
+      document.getElementById('pruneLastRun').textContent =
+        last.timestamp_iso ? new Date(last.timestamp_iso).toLocaleString() : '-';
     }
     const list = document.getElementById('prune-history-list');
     if (history.length === 0) {
@@ -4738,7 +4782,8 @@ function configurePagerDuty() {
   const key = document.getElementById('pagerdutyKey').value;
   if (key) {
     document.getElementById('pagerdutyDot').className = 'status-dot configured';
-    document.getElementById('channelStatus').textContent = 'PagerDuty integration key configured (saved to server config)';
+    document.getElementById('channelStatus').textContent =
+      'PagerDuty integration key configured (saved to server config)';
   }
 }
 
@@ -4875,7 +4920,8 @@ function renderExperimentPanel(data) {
       <div style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:10px;margin-bottom:8px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <span style="font-weight:600;color:#f1f5f9;font-size:12px;">${exp.name}</span>
-          <span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(74,222,128,0.2);color:#4ade80;">RUNNING</span>
+          <span style="font-size:10px;padding:2px 8px;border-radius:3px;
+            background:rgba(74,222,128,0.2);color:#4ade80;">RUNNING</span>
         </div>
         <div style="display:flex;gap:16px;margin-top:6px;font-size:11px;color:#cbd5e1;">
           <span>Control: ${(exp.control_accuracy * 100).toFixed(1)}% (${exp.control_samples} samples)</span>
@@ -4905,7 +4951,8 @@ function renderExperimentPanel(data) {
           <span style="font-weight:600;color:#f1f5f9;">${p.experiment_name}</span>
           promoted <span style="color:#3b82f6;">${p.variant}</span>
           ${p.auto ? '<span style="color:#f59e0b;font-size:9px;margin-left:4px;">AUTO</span>' : ''}
-          <span style="color:#64748b;margin-left:6px;">C:${(p.control_accuracy*100).toFixed(1)}% V:${(p.variant_accuracy*100).toFixed(1)}%</span>
+          <span style="color:#64748b;margin-left:6px;">C:${(p.control_accuracy*100).toFixed(1)}%
+            V:${(p.variant_accuracy*100).toFixed(1)}%</span>
         </div>
       `).join('');
     }
@@ -4920,7 +4967,8 @@ function renderExperimentPanel(data) {
         ${ss.enabled ? 'ENABLED' : 'DISABLED'}
       </span>
       <span style="font-size:10px;color:#94a3b8;margin-left:8px;">
-        Method: ${ss.method} | p<${ss.p_value_threshold} | Tests: ${ss.total_tests_run} | Blocked: ${ss.total_promotions_blocked}
+        Method: ${ss.method} | p<${ss.p_value_threshold} | Tests: ${ss.total_tests_run}
+        | Blocked: ${ss.total_promotions_blocked}
       </span>`;
   }
 
@@ -4988,16 +5036,20 @@ function loadEventTimeline(filterType, filterName) {
         const ts = e.timestamp ? e.timestamp.substring(11, 19) : '';
         let detail = '';
         if (e.event_type === 'promotion') {
-          detail = `promoted <span style="color:${color};">${e.variant || ''}</span> ${e.auto_promoted ? '<span style="color:#f59e0b;font-size:9px;">AUTO</span>' : ''}`;
+          detail = `promoted <span style="color:${color};">${e.variant || ''}</span>
+            ${e.auto_promoted ? '<span style="color:#f59e0b;font-size:9px;">AUTO</span>' : ''}`;
         } else if (e.event_type === 'rollback') {
           detail = `rolled back <span style="color:${color};">${e.rolled_back_variant || ''}</span>`;
         } else if (e.event_type === 'decay_recovery') {
           detail = `decay: ${((e.decay_amount || 0) * 100).toFixed(1)}%`;
         } else if (e.event_type === 'bandit_decision') {
           const alloc = e.allocation || {};
-          detail = `method: ${e.method || ''} | C:${((alloc.control || 0) * 100).toFixed(0)}% V:${((alloc.variant || 0) * 100).toFixed(0)}%`;
+          detail = `method: ${e.method || ''} | C:${((alloc.control || 0) * 100).toFixed(0)}%
+            V:${((alloc.variant || 0) * 100).toFixed(0)}%`;
         }
-        return `<div style="padding:3px 8px;border-left:3px solid ${color};background:${color}11;margin-bottom:3px;font-size:10px;color:#cbd5e1;border-radius:2px;">
+        return `<div style="padding:3px 8px;border-left:3px solid ${color};
+          background:${color}11;margin-bottom:3px;font-size:10px;
+          color:#cbd5e1;border-radius:2px;">
           <span style="color:${color};">${icon}</span>
           <span style="color:#64748b;">${ts}</span>
           <span style="font-weight:600;color:#f1f5f9;">${e.experiment_name || ''}</span>

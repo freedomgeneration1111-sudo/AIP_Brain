@@ -171,14 +171,17 @@ class TestCreateLinkValid:
     """Test 1: Create link with valid object types/relation types."""
 
     def test_create_link_valid_types(self, links_client):
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:article:20260101",
-            "target_type": "artifact",
-            "target_id": "art:abc123",
-            "relation_type": "supports",
-            "confidence": 0.9,
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:article:20260101",
+                "target_type": "artifact",
+                "target_id": "art:abc123",
+                "relation_type": "supports",
+                "confidence": 0.9,
+            },
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert data["source_type"] == "wiki_article"
@@ -194,35 +197,57 @@ class TestCreateLinkValid:
     def test_create_link_all_valid_object_types(self, links_client):
         """Verify all 10 object types are accepted."""
         valid_types = [
-            "source_document", "chunk", "conversation_turn", "retrieval_trace",
-            "beast_commentary", "wiki_article", "artifact", "review_event",
-            "actor_event", "model_comparison_report",
+            "source_document",
+            "chunk",
+            "conversation_turn",
+            "retrieval_trace",
+            "beast_commentary",
+            "wiki_article",
+            "artifact",
+            "review_event",
+            "actor_event",
+            "model_comparison_report",
         ]
         for ot in valid_types:
-            resp = links_client.post("/api/v1/links", json={
-                "source_type": ot,
-                "source_id": f"test:{ot}:1",
-                "target_type": "wiki_article",
-                "target_id": "wiki:test:1",
-                "relation_type": "related_to",
-            })
+            resp = links_client.post(
+                "/api/v1/links",
+                json={
+                    "source_type": ot,
+                    "source_id": f"test:{ot}:1",
+                    "target_type": "wiki_article",
+                    "target_id": "wiki:test:1",
+                    "relation_type": "related_to",
+                },
+            )
             assert resp.status_code == 201, f"Failed for source_type={ot}: {resp.text}"
 
     def test_create_link_all_valid_relation_types(self, links_client):
         """Verify all 12 relation types are accepted."""
         valid_rels = [
-            "supports", "contradicts", "summarizes", "extends", "mentions",
-            "depends_on", "implements", "supersedes", "related_to",
-            "generated_from", "reviewed_by", "approved_by",
+            "supports",
+            "contradicts",
+            "summarizes",
+            "extends",
+            "mentions",
+            "depends_on",
+            "implements",
+            "supersedes",
+            "related_to",
+            "generated_from",
+            "reviewed_by",
+            "approved_by",
         ]
         for rel in valid_rels:
-            resp = links_client.post("/api/v1/links", json={
-                "source_type": "wiki_article",
-                "source_id": "wiki:test:1",
-                "target_type": "artifact",
-                "target_id": "art:1",
-                "relation_type": rel,
-            })
+            resp = links_client.post(
+                "/api/v1/links",
+                json={
+                    "source_type": "wiki_article",
+                    "source_id": "wiki:test:1",
+                    "target_type": "artifact",
+                    "target_id": "art:1",
+                    "relation_type": rel,
+                },
+            )
             assert resp.status_code == 201, f"Failed for relation_type={rel}: {resp.text}"
 
 
@@ -233,24 +258,30 @@ class TestRejectInvalidObjectType:
     """Test 2: Reject invalid object type."""
 
     def test_invalid_source_type_returns_400(self, links_client):
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "invalid_type",
-            "source_id": "test:1",
-            "target_type": "wiki_article",
-            "target_id": "wiki:test:1",
-            "relation_type": "supports",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "invalid_type",
+                "source_id": "test:1",
+                "target_type": "wiki_article",
+                "target_id": "wiki:test:1",
+                "relation_type": "supports",
+            },
+        )
         assert resp.status_code == 400
         assert "Invalid source_type" in resp.json()["detail"]
 
     def test_invalid_target_type_returns_400(self, links_client):
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:1",
-            "target_type": "not_a_type",
-            "target_id": "test:1",
-            "relation_type": "supports",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:1",
+                "target_type": "not_a_type",
+                "target_id": "test:1",
+                "relation_type": "supports",
+            },
+        )
         assert resp.status_code == 400
         assert "Invalid target_type" in resp.json()["detail"]
 
@@ -270,31 +301,40 @@ class TestRejectInvalidRelationType:
     """Test 3: Reject invalid relation type."""
 
     def test_invalid_relation_type_returns_400(self, links_client):
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:1",
-            "target_type": "artifact",
-            "target_id": "art:1",
-            "relation_type": "is_better_than",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:1",
+                "target_type": "artifact",
+                "target_id": "art:1",
+                "relation_type": "is_better_than",
+            },
+        )
         assert resp.status_code == 400
         assert "Invalid relation_type" in resp.json()["detail"]
 
     def test_patch_invalid_relation_type_returns_400(self, links_client):
         # First create a valid link
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:1",
-            "target_type": "artifact",
-            "target_id": "art:1",
-            "relation_type": "supports",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:1",
+                "target_type": "artifact",
+                "target_id": "art:1",
+                "relation_type": "supports",
+            },
+        )
         link_id = resp.json()["id"]
 
         # Try to update with invalid relation type
-        resp = links_client.patch(f"/api/v1/links/{link_id}", json={
-            "relation_type": "invalid_relation",
-        })
+        resp = links_client.patch(
+            f"/api/v1/links/{link_id}",
+            json={
+                "relation_type": "invalid_relation",
+            },
+        )
         assert resp.status_code == 400
 
 
@@ -305,13 +345,16 @@ class TestLinkDefaultsSuggested:
     """Test 4: Link defaults to suggested/unapproved."""
 
     def test_default_status_is_suggested(self, links_client):
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:1",
-            "target_type": "artifact",
-            "target_id": "art:1",
-            "relation_type": "supports",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:1",
+                "target_type": "artifact",
+                "target_id": "art:1",
+                "relation_type": "supports",
+            },
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert data["status"] == "suggested"
@@ -319,49 +362,61 @@ class TestLinkDefaultsSuggested:
         assert data["approved_at"] is None
 
     def test_cannot_create_with_rejected_status(self, links_client):
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:1",
-            "target_type": "artifact",
-            "target_id": "art:1",
-            "relation_type": "supports",
-            "status": "rejected",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:1",
+                "target_type": "artifact",
+                "target_id": "art:1",
+                "relation_type": "supports",
+                "status": "rejected",
+            },
+        )
         assert resp.status_code == 400
 
     def test_cannot_create_with_deleted_status(self, links_client):
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:1",
-            "target_type": "artifact",
-            "target_id": "art:1",
-            "relation_type": "supports",
-            "status": "deleted",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:1",
+                "target_type": "artifact",
+                "target_id": "art:1",
+                "relation_type": "supports",
+                "status": "deleted",
+            },
+        )
         assert resp.status_code == 400
 
     def test_cannot_create_approved_without_explicit_flag(self, links_client):
         """Creating with status=approved but approved_by_definer=False is rejected."""
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:1",
-            "target_type": "artifact",
-            "target_id": "art:1",
-            "relation_type": "supports",
-            "status": "approved",
-            "approved_by_definer": False,
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:1",
+                "target_type": "artifact",
+                "target_id": "art:1",
+                "relation_type": "supports",
+                "status": "approved",
+                "approved_by_definer": False,
+            },
+        )
         assert resp.status_code == 400
 
     def test_self_link_rejected(self, links_client):
         """Cannot create a self-referential link."""
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:1",
-            "target_type": "wiki_article",
-            "target_id": "wiki:test:1",
-            "relation_type": "related_to",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:1",
+                "target_type": "wiki_article",
+                "target_id": "wiki:test:1",
+                "relation_type": "related_to",
+            },
+        )
         assert resp.status_code == 400
         assert "self-referential" in resp.json()["detail"].lower()
 
@@ -374,14 +429,17 @@ class TestExplicitApproval:
 
     def test_approval_requires_explicit_patch(self, links_client):
         """Simply creating a link does NOT approve it, even if created_by=definer."""
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:1",
-            "target_type": "artifact",
-            "target_id": "art:1",
-            "relation_type": "supports",
-            "created_by": "definer",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:1",
+                "target_type": "artifact",
+                "target_id": "art:1",
+                "relation_type": "supports",
+                "created_by": "definer",
+            },
+        )
         data = resp.json()
         assert data["status"] == "suggested"
         assert data["approved_by_definer"] is False
@@ -396,20 +454,26 @@ class TestApproveLink:
 
     def test_approve_sets_fields(self, links_client):
         # Create link
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:1",
-            "target_type": "artifact",
-            "target_id": "art:1",
-            "relation_type": "supports",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:1",
+                "target_type": "artifact",
+                "target_id": "art:1",
+                "relation_type": "supports",
+            },
+        )
         link_id = resp.json()["id"]
         assert resp.json()["approved_by_definer"] is False
 
         # Approve via PATCH
-        resp = links_client.patch(f"/api/v1/links/{link_id}", json={
-            "approved_by_definer": True,
-        })
+        resp = links_client.patch(
+            f"/api/v1/links/{link_id}",
+            json={
+                "approved_by_definer": True,
+            },
+        )
         data = resp.json()
         assert data["approved_by_definer"] is True
         assert data["approved_at"] is not None
@@ -418,15 +482,18 @@ class TestApproveLink:
 
     def test_approve_with_explicit_status_approved(self, links_client):
         # Create link
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:1",
-            "target_type": "artifact",
-            "target_id": "art:1",
-            "relation_type": "supports",
-            "status": "approved",
-            "approved_by_definer": True,
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:1",
+                "target_type": "artifact",
+                "target_id": "art:1",
+                "relation_type": "supports",
+                "status": "approved",
+                "approved_by_definer": True,
+            },
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert data["status"] == "approved"
@@ -442,35 +509,47 @@ class TestRejectLink:
 
     def test_reject_via_patch(self, links_client):
         # Create link
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:1",
-            "target_type": "artifact",
-            "target_id": "art:1",
-            "relation_type": "contradicts",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:1",
+                "target_type": "artifact",
+                "target_id": "art:1",
+                "relation_type": "contradicts",
+            },
+        )
         link_id = resp.json()["id"]
 
         # Reject via PATCH
-        resp = links_client.patch(f"/api/v1/links/{link_id}", json={
-            "status": "rejected",
-        })
+        resp = links_client.patch(
+            f"/api/v1/links/{link_id}",
+            json={
+                "status": "rejected",
+            },
+        )
         data = resp.json()
         assert data["status"] == "rejected"
 
     def test_patch_invalid_status_returns_400(self, links_client):
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:1",
-            "target_type": "artifact",
-            "target_id": "art:1",
-            "relation_type": "supports",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:1",
+                "target_type": "artifact",
+                "target_id": "art:1",
+                "relation_type": "supports",
+            },
+        )
         link_id = resp.json()["id"]
 
-        resp = links_client.patch(f"/api/v1/links/{link_id}", json={
-            "status": "invalid_status",
-        })
+        resp = links_client.patch(
+            f"/api/v1/links/{link_id}",
+            json={
+                "status": "invalid_status",
+            },
+        )
         assert resp.status_code == 400
 
 
@@ -482,20 +561,26 @@ class TestBacklinks:
 
     def test_backlinks_return_links_pointing_to_object(self, links_client):
         # Create two links pointing to the same target
-        links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:alpha:1",
-            "target_type": "artifact",
-            "target_id": "art:shared:1",
-            "relation_type": "supports",
-        })
-        links_client.post("/api/v1/links", json={
-            "source_type": "conversation_turn",
-            "source_id": "turn:beta:1",
-            "target_type": "artifact",
-            "target_id": "art:shared:1",
-            "relation_type": "mentions",
-        })
+        links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:alpha:1",
+                "target_type": "artifact",
+                "target_id": "art:shared:1",
+                "relation_type": "supports",
+            },
+        )
+        links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "conversation_turn",
+                "source_id": "turn:beta:1",
+                "target_type": "artifact",
+                "target_id": "art:shared:1",
+                "relation_type": "mentions",
+            },
+        )
 
         # Get backlinks for the target
         resp = links_client.get("/api/v1/links/backlinks/artifact/art:shared:1")
@@ -509,13 +594,16 @@ class TestBacklinks:
 
     def test_forward_links_return_links_from_object(self, links_client):
         # Create a link from a source
-        links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:source:1",
-            "target_type": "artifact",
-            "target_id": "art:target:1",
-            "relation_type": "supports",
-        })
+        links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:source:1",
+                "target_type": "artifact",
+                "target_id": "art:target:1",
+                "relation_type": "supports",
+            },
+        )
 
         resp = links_client.get("/api/v1/links/forward/wiki_article/wiki:source:1")
         data = resp.json()
@@ -559,13 +647,16 @@ class TestDeleteLink:
 
     def test_delete_link_removes_it(self, links_client):
         # Create link
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:del:1",
-            "target_type": "artifact",
-            "target_id": "art:del:1",
-            "relation_type": "supports",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:del:1",
+                "target_type": "artifact",
+                "target_id": "art:del:1",
+                "relation_type": "supports",
+            },
+        )
         link_id = resp.json()["id"]
 
         # Delete it
@@ -583,9 +674,12 @@ class TestDeleteLink:
         assert resp.status_code == 404
 
     def test_patch_nonexistent_returns_404(self, links_client):
-        resp = links_client.patch("/api/v1/links/nonexistent_link_id", json={
-            "status": "approved",
-        })
+        resp = links_client.patch(
+            "/api/v1/links/nonexistent_link_id",
+            json={
+                "status": "approved",
+            },
+        )
         assert resp.status_code == 404
 
 
@@ -602,13 +696,16 @@ class TestNoLinkedObjectMutation:
         The links table is separate from all other tables.
         """
         # Create a link
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:test:immutable:1",
-            "target_type": "artifact",
-            "target_id": "art:immutable:1",
-            "relation_type": "supports",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:test:immutable:1",
+                "target_type": "artifact",
+                "target_id": "art:immutable:1",
+                "relation_type": "supports",
+            },
+        )
         assert resp.status_code == 201
 
         # Check that the link response does not contain any mutation signals
@@ -623,6 +720,7 @@ class TestNoLinkedObjectMutation:
         """Verify that creating a link only adds a row to knowledge_links,
         not to any other table."""
         import sqlite3
+
         conn = sqlite3.connect(links_db)
         # Count artifacts before
         artifacts_before = conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0]
@@ -632,13 +730,16 @@ class TestNoLinkedObjectMutation:
         events_before = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
 
         # Create link
-        links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:check:1",
-            "target_type": "artifact",
-            "target_id": "art:check:1",
-            "relation_type": "mentions",
-        })
+        links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:check:1",
+                "target_type": "artifact",
+                "target_id": "art:check:1",
+                "relation_type": "mentions",
+            },
+        )
 
         # Count after
         artifacts_after = conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0]
@@ -662,13 +763,16 @@ class TestNoArtifactApprovalExport:
 
     def test_link_creation_does_not_approve_artifacts(self, links_client):
         """Creating a link does not approve or export any artifact."""
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "artifact",
-            "source_id": "art:pending:1",
-            "target_type": "wiki_article",
-            "target_id": "wiki:ref:1",
-            "relation_type": "generated_from",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "artifact",
+                "source_id": "art:pending:1",
+                "target_type": "wiki_article",
+                "target_id": "wiki:ref:1",
+                "relation_type": "generated_from",
+            },
+        )
         data = resp.json()
         # The link itself is suggested/unapproved
         assert data["status"] == "suggested"
@@ -679,13 +783,16 @@ class TestNoArtifactApprovalExport:
 
     def test_no_secret_exposure_in_link_responses(self, links_client):
         """Link responses must not expose secrets."""
-        resp = links_client.post("/api/v1/links", json={
-            "source_type": "wiki_article",
-            "source_id": "wiki:testdoc:1",
-            "target_type": "artifact",
-            "target_id": "art:testdoc:1",
-            "relation_type": "supports",
-        })
+        resp = links_client.post(
+            "/api/v1/links",
+            json={
+                "source_type": "wiki_article",
+                "source_id": "wiki:testdoc:1",
+                "target_type": "artifact",
+                "target_id": "art:testdoc:1",
+                "relation_type": "supports",
+            },
+        )
         data = resp.json()
         response_text = str(data).lower()
         # Check for actual secret values, not test IDs that happen to contain "secret"
@@ -707,12 +814,14 @@ class TestLinkPanelImport:
     def test_link_panel_source_exists(self):
         """Link Panel source file exists."""
         import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "link_panel.py"
         assert p.exists(), "link_panel.py not found"
 
     def test_link_panel_has_correct_constants(self):
         """Link Panel has the correct valid object and relation types."""
         import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "link_panel.py"
         source = p.read_text()
         assert "wiki_article" in source
@@ -725,6 +834,7 @@ class TestLinkPanelImport:
     def test_link_panel_status_config(self):
         """Link Panel source defines status configuration."""
         import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "link_panel.py"
         source = p.read_text()
         assert "STATUS_CONFIG" in source
@@ -737,12 +847,14 @@ class TestLinkPanelImport:
     def test_link_editor_source_exists(self):
         """Link Editor source file exists."""
         import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "link_editor.py"
         assert p.exists(), "link_editor.py not found"
 
     def test_link_editor_has_form_fields(self):
         """Link Editor source has object type, relation type, and confidence fields."""
         import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "link_editor.py"
         source = p.read_text()
         assert "OBJECT_TYPES" in source
@@ -760,6 +872,7 @@ class TestWikiArticleViewLinkPanel:
     def test_wiki_article_view_accepts_api_client(self):
         """Wiki article view source code has api_client parameter."""
         import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "wiki_article_view.py"
         source = p.read_text()
         assert "api_client" in source
@@ -769,6 +882,7 @@ class TestWikiArticleViewLinkPanel:
     def test_wiki_article_view_renders_link_panel(self):
         """Wiki article view source code renders link panel."""
         import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "wiki_article_view.py"
         source = p.read_text()
         assert "render_link_panel" in source
@@ -784,6 +898,7 @@ class TestExistingPanelsNotBroken:
     def test_answer_card_source_has_link_wiki_callback(self):
         """Answer card source code supports on_link_wiki callback."""
         import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "answer_card.py"
         source = p.read_text()
         assert "on_link_wiki" in source
@@ -793,12 +908,14 @@ class TestExistingPanelsNotBroken:
     def test_beast_panel_source_exists(self):
         """Beast panel source file still exists."""
         import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "beast_panel.py"
         assert p.exists()
 
     def test_model_council_panel_source_exists(self):
         """Model Council panel source file still exists."""
         import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "model_council_panel.py"
         assert p.exists()
 
@@ -815,8 +932,9 @@ class TestGuiImportBoundary:
 
     def test_link_panel_does_not_import_orchestration(self):
         """Link Panel does not import from aip.orchestration (checked via AST, not docstrings)."""
-        import pathlib
         import ast
+        import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "link_panel.py"
         source = p.read_text()
         tree = ast.parse(source)
@@ -831,8 +949,9 @@ class TestGuiImportBoundary:
 
     def test_link_editor_does_not_import_orchestration(self):
         """Link Editor does not import from aip.orchestration (checked via AST, not docstrings)."""
-        import pathlib
         import ast
+        import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "link_editor.py"
         source = p.read_text()
         tree = ast.parse(source)
@@ -848,6 +967,7 @@ class TestGuiImportBoundary:
     def test_links_route_does_not_import_orchestration(self):
         """Links route does not import from aip.orchestration directly."""
         import aip.adapter.api.routes.links as mod
+
         source = open(mod.__file__).read()
         assert "aip.orchestration" not in source
 
@@ -855,16 +975,14 @@ class TestGuiImportBoundary:
         """status_types.py has KnowledgeLink types."""
         from gui.status_types import (
             KnowledgeLink,
-            KnowledgeLinkListResponse,
-            KnowledgeLinkCreateResponse,
-            KnowledgeLinkBacklinksResponse,
-            KnowledgeLinkForwardLinksResponse,
         )
+
         assert KnowledgeLink is not None
 
     def test_api_client_link_methods_exist(self):
         """AipApiClient has Crosslink System methods."""
         from gui.api_client import AipApiClient
+
         client = AipApiClient()
         assert hasattr(client, "list_knowledge_links")
         assert hasattr(client, "create_knowledge_link")
@@ -882,8 +1000,9 @@ class TestGeneralImportBoundary:
 
     def test_links_route_imports_only_from_adapter_and_foundation(self):
         """Links route only imports from adapter and foundation layers."""
-        import aip.adapter.api.routes.links as mod
         import ast
+
+        import aip.adapter.api.routes.links as mod
 
         source = open(mod.__file__).read()
         tree = ast.parse(source)
@@ -893,12 +1012,14 @@ class TestGeneralImportBoundary:
                 for alias in node.names:
                     mod_name = alias.name
                     if mod_name.startswith("aip."):
-                        assert mod_name.startswith("aip.adapter.") or mod_name.startswith("aip.foundation."), \
+                        assert mod_name.startswith("aip.adapter.") or mod_name.startswith("aip.foundation."), (
                             f"Links route imports from wrong layer: {mod_name}"
+                        )
             elif isinstance(node, ast.ImportFrom):
                 if node.module and node.module.startswith("aip."):
-                    assert node.module.startswith("aip.adapter.") or node.module.startswith("aip.foundation."), \
+                    assert node.module.startswith("aip.adapter.") or node.module.startswith("aip.foundation."), (
                         f"Links route imports from wrong layer: {node.module}"
+                    )
 
 
 # ── Test 18: Existing Wiki tests still pass (backward compatibility) ────
@@ -912,6 +1033,7 @@ class TestWikiBackwardCompatibility:
         api_client has a default of None, so existing callers don't break.
         """
         import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "wiki_article_view.py"
         source = p.read_text()
         # api_client has a default of None
@@ -920,6 +1042,7 @@ class TestWikiBackwardCompatibility:
     def test_wiki_page_source_exists(self):
         """Wiki page source still exists."""
         import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "pages" / "wiki.py"
         assert p.exists()
 
@@ -929,7 +1052,7 @@ class TestWikiBackwardCompatibility:
 
 class TestExistingTestsPass:
     """Test 19: Existing Ask/Beast/Model Council tests are not broken.
-    
+
     Uses source-file analysis since NiceGUI is not available in test env.
     """
 
@@ -938,6 +1061,7 @@ class TestExistingTestsPass:
         We test by reading the source and verifying key logic patterns.
         """
         import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "answer_card.py"
         source = p.read_text()
         assert "DIRECT MODEL ONLY" in source
@@ -947,6 +1071,7 @@ class TestExistingTestsPass:
     def test_beast_modes_still_defined_in_source(self):
         """Beast modes are still properly defined in source."""
         import pathlib
+
         p = pathlib.Path(__file__).parent.parent / "gui" / "components" / "beast_panel.py"
         source = p.read_text()
         assert "continuity" in source
@@ -966,6 +1091,7 @@ class TestKnowledgeLinkStore:
     async def test_store_creates_table_if_missing(self, links_db):
         """KnowledgeLinkStore creates the knowledge_links table on first use."""
         import sqlite3
+
         # Drop the table to test creation
         conn = sqlite3.connect(links_db)
         conn.execute("DROP TABLE IF EXISTS knowledge_links")
@@ -973,6 +1099,7 @@ class TestKnowledgeLinkStore:
         conn.close()
 
         from aip.adapter.api.routes.links import KnowledgeLinkStore
+
         store = KnowledgeLinkStore(links_db)
 
         link = {
@@ -1005,6 +1132,7 @@ class TestKnowledgeLinkStore:
     async def test_store_get_link(self, links_db):
         """KnowledgeLinkStore.get_link returns the correct link."""
         from aip.adapter.api.routes.links import KnowledgeLinkStore
+
         store = KnowledgeLinkStore(links_db)
 
         link = {
@@ -1037,6 +1165,7 @@ class TestKnowledgeLinkStore:
     async def test_store_list_links_with_filter(self, links_db):
         """KnowledgeLinkStore.list_links supports filtering."""
         from aip.adapter.api.routes.links import KnowledgeLinkStore
+
         store = KnowledgeLinkStore(links_db)
 
         for i in range(5):
@@ -1049,8 +1178,8 @@ class TestKnowledgeLinkStore:
                 "relation_type": "supports" if i < 3 else "contradicts",
                 "confidence": 1.0,
                 "created_by": "definer",
-                "created_at": f"2026-01-0{i+1}T00:00:00Z",
-                "updated_at": f"2026-01-0{i+1}T00:00:00Z",
+                "created_at": f"2026-01-0{i + 1}T00:00:00Z",
+                "updated_at": f"2026-01-0{i + 1}T00:00:00Z",
                 "approved_by_definer": False,
                 "approved_at": None,
                 "status": "suggested",
@@ -1072,6 +1201,7 @@ class TestKnowledgeLinkStore:
     async def test_store_delete_link(self, links_db):
         """KnowledgeLinkStore.delete_link removes the link."""
         from aip.adapter.api.routes.links import KnowledgeLinkStore
+
         store = KnowledgeLinkStore(links_db)
 
         link = {
@@ -1102,6 +1232,7 @@ class TestKnowledgeLinkStore:
     async def test_store_update_link_approval(self, links_db):
         """KnowledgeLinkStore.update_link handles approval correctly."""
         from aip.adapter.api.routes.links import KnowledgeLinkStore
+
         store = KnowledgeLinkStore(links_db)
 
         link = {
@@ -1124,12 +1255,15 @@ class TestKnowledgeLinkStore:
         await store.create_link(link)
 
         # Approve
-        result = await store.update_link("test:approve:1", {
-            "approved_by_definer": True,
-            "approved_at": "2026-01-02T00:00:00Z",
-            "status": "approved",
-            "updated_at": "2026-01-02T00:00:00Z",
-        })
+        result = await store.update_link(
+            "test:approve:1",
+            {
+                "approved_by_definer": True,
+                "approved_at": "2026-01-02T00:00:00Z",
+                "status": "approved",
+                "updated_at": "2026-01-02T00:00:00Z",
+            },
+        )
         assert result["approved_by_definer"] is True
         assert result["approved_at"] is not None
         assert result["status"] == "approved"

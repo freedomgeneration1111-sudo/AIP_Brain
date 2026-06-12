@@ -13,7 +13,8 @@ ingestion fires (default: True). Trajectory regulation checks run after
 each turn when SessionManager is available.
 
 Message flow (normal): message → model dispatch → response → [auto-save]
-Message flow (augmented): message → retrieve sources → assemble context → model dispatch → response + sources → [auto-save]
+Message flow (augmented): message → retrieve sources → assemble context → model dispatch
+→ response + sources → [auto-save]
 """
 
 from __future__ import annotations
@@ -108,12 +109,11 @@ async def _search_corpus_turns(
     domain: str | None = None,
     limit: int = 8,
     min_importance: float = 0.3,
+    container: Any = None,
 ) -> list[dict]:
     """Search corpus turns via FTS5 and return formatted source dicts."""
     try:
-        from aip.adapter.api.dependencies import get_container as _get_container
-        _container = _get_container(request)
-        _sanitize_fn = _container._sanitize_fts_query_fn if _container else None
+        _sanitize_fn = container._sanitize_fts_query_fn if container else None
         if _sanitize_fn:
             fts_query = _sanitize_fn(query)
         else:
@@ -282,6 +282,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                         domain=domain,
                                         limit=8,
                                         min_importance=0.3,
+                                        container=_container,
                                     )
                                     if source_dicts:
                                         corpus_turns_used = True
@@ -354,7 +355,9 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                     # Graph connections injection
                                     try:
                                         if query_domain:
-                                            graph_neighbors = await _get_graph_neighbors(query_domain, container=_container)
+                                            graph_neighbors = await _get_graph_neighbors(
+                                                query_domain, container=_container
+                                            )
                                             if graph_neighbors:
                                                 neighbors_str = ", ".join(graph_neighbors[:5])
                                                 messages.append(
@@ -387,7 +390,9 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                         ]
                                     else:
                                         # Use SmartContextPacker output
-                                        context = packed_ctx.context_text if packed_ctx else "No relevant sources found."
+                                        context = (
+                                            packed_ctx.context_text if packed_ctx else "No relevant sources found."
+                                        )
                                         response_sources = [
                                             {
                                                 "source_id": s.source_id,
@@ -412,7 +417,8 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                         {
                                             "role": "system",
                                             "content": (
-                                                "You are AIP, a source-grounded knowledge assistant for B. Moses Jorgensen. "
+                                                "You are AIP, a source-grounded knowledge assistant "
+                                                "for B. Moses Jorgensen. "
                                                 "Answer based on the provided corpus turns. "
                                                 "Cite sources using [source: turn_id] notation. "
                                                 "Draw on the DEFINER profile and domain context above. "
@@ -427,7 +433,8 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                             "content": (
                                                 "You are AIP, a knowledge assistant for B. Moses Jorgensen. "
                                                 "No relevant sources were found in the knowledge base for this query. "
-                                                "Answer based on your general knowledge but note that no source material was available."
+                                                "Answer based on your general knowledge but note "
+                                                "that no source material was available."
                                             ),
                                         }
                                     )
@@ -439,14 +446,17 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                         messages.append(
                                             {
                                                 "role": "system",
-                                                "content": f"You are acting in the {role_hint} role. Respond accordingly.",
+                                                "content": (
+                                                    f"You are acting in the {role_hint} role. Respond accordingly."
+                                                ),
                                             }
                                         )
                         else:
                             # Normal mode: direct model dispatch
                             if session_meta and session_meta.get("role"):
                                 role_hint = session_meta.get("role", "")
-                                if role_hint:  # only inject for explicit actor roles (plain chat uses role=None; prevents Beast leak)
+                                if role_hint:  # only inject for explicit actor roles
+                                    # (plain chat uses role=None; prevents Beast leak)
                                     messages.append(
                                         {
                                             "role": "system",
@@ -468,7 +478,10 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                     await websocket.send_json(
                                         {
                                             "type": "error",
-                                            "content": "Budget limit reached. Session token budget has been exceeded. Consider starting a new session.",
+                                            "content": (
+                                                "Budget limit reached. Session token budget "
+                                                "has been exceeded. Consider starting a new session."
+                                            ),
                                             "error_type": "budget_exhausted",
                                             "model_slot": effective_slot,
                                         }
@@ -552,15 +565,20 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                             ),
                             "latency_ms": result.get("latency_ms", 0),
                             "cost_usd": result.get("cost_usd", 0.0),
-                            "auto_save": auto_save_enabled and (
+                            "auto_save": auto_save_enabled
+                            and (
                                 (_container.artifact_store is not None and _container.lexical_store is not None)
                                 or _container.corpus_turn_store is not None
                             ),
                             "sources": response_sources,  # Empty in normal mode, populated in augmented mode
                             "mode": session_mode,  # Echo the mode so GUI knows how the response was generated
                             "trace_available": ret_trace is not None and bool(ret_trace),
-                            "lexical_only": getattr(ret_trace, "lexical_only", False) if ret_trace is not None else False,
-                            "vector_contributed": getattr(ret_trace, "vector_contributed", False) if ret_trace is not None else False,
+                            "lexical_only": getattr(ret_trace, "lexical_only", False)
+                            if ret_trace is not None
+                            else False,
+                            "vector_contributed": getattr(ret_trace, "vector_contributed", False)
+                            if ret_trace is not None
+                            else False,
                             "direct_model": False,  # WS path always goes through the backend
                         }
 
@@ -620,7 +638,9 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                         # trigger background ingestion if auto_save is enabled
                         # and at least one storage path is available (legacy pipeline
                         # or corpus_turn_store for Sexton tagging).
-                        _has_legacy_stores = _container.artifact_store is not None and _container.lexical_store is not None
+                        _has_legacy_stores = (
+                            _container.artifact_store is not None and _container.lexical_store is not None
+                        )
                         _has_corpus_store = _container.corpus_turn_store is not None
                         if auto_save_enabled and (_has_legacy_stores or _has_corpus_store):
                             try:
@@ -631,9 +651,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                                 _source_turn_ids: list[str] = []
                                 if session_mode == "augmented" and response_sources:
                                     _source_turn_ids = [
-                                        s.get("turn_id", "")
-                                        for s in (source_dicts or [])
-                                        if s.get("turn_id")
+                                        s.get("turn_id", "") for s in (source_dicts or []) if s.get("turn_id")
                                     ]
                                 asyncio.create_task(
                                     auto_save_chat_turn(
@@ -710,7 +728,9 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                             await websocket.send_json(
                                 {
                                     "type": "error",
-                                    "content": f"Review decision failed: {result.get('error', {}).get('message', 'unknown')}",
+                                    "content": (
+                                        f"Review decision failed: {result.get('error', {}).get('message', 'unknown')}"
+                                    ),
                                 }
                             )
                             continue

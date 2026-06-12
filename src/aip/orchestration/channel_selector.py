@@ -33,6 +33,10 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from aip.orchestration.retrieval_orchestrator import OrchestratorConfig
 
 logger = logging.getLogger(__name__)
 
@@ -103,16 +107,41 @@ _WIKI_PATTERNS = re.compile(
 )
 
 # Known sentence starters that should NOT be treated as entity signals
-_SENTENCE_STARTERS = frozenset({
-    "The", "This", "That", "These", "Those", "What", "Which", "Who",
-    "How", "When", "Where", "Why", "Is", "Are", "Was", "Were", "Can",
-    "Could", "Should", "Would", "Will", "Do", "Does", "Did", "Has",
-})
+_SENTENCE_STARTERS = frozenset(
+    {
+        "The",
+        "This",
+        "That",
+        "These",
+        "Those",
+        "What",
+        "Which",
+        "Who",
+        "How",
+        "When",
+        "Where",
+        "Why",
+        "Is",
+        "Are",
+        "Was",
+        "Were",
+        "Can",
+        "Could",
+        "Should",
+        "Would",
+        "Will",
+        "Do",
+        "Does",
+        "Did",
+        "Has",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
 # Query analysis result
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class QueryAnalysis:
@@ -192,6 +221,7 @@ def analyze_query(query: str) -> QueryAnalysis:
 # ---------------------------------------------------------------------------
 # ChannelSelector
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ChannelSelectionResult:
@@ -360,7 +390,7 @@ class ChannelSelector:
     def apply_to_config(
         self,
         query: str,
-        config: OrchestratorConfig | None = None,
+        config: "OrchestratorConfig" | None = None,
         explicit_channels: set[str] | None = None,
     ) -> "OrchestratorConfig":
         """Analyze a query and return an OrchestratorConfig with auto-enabled channels.

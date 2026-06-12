@@ -27,6 +27,7 @@ EXCLUDE_DIRS = {"config", "tests"}
 EXCLUDE_FILES = {".toml", ".md", ".txt"}
 EXCLUDE_SPECIFIC_FILES = {
     "ingestion/parsers/claude_parser.py",  # source_model="claude" is provenance tag not model API call
+    "foundation/source_types.py",  # authorized legacy-to-neutral mapping registry
 }
 
 PRODUCTION_DIRS = ["foundation", "orchestration", "adapter"]

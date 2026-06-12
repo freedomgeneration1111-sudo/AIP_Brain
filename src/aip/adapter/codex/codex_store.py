@@ -30,10 +30,7 @@ from aip.foundation.schemas.codex import (
     CodexContradiction,
     CodexDashboard,
     CodexSource,
-    CodexSourceStatus,
     CodexTopic,
-    ContradictionSeverity,
-    ContradictionStatus,
 )
 
 # ---------------------------------------------------------------------------
@@ -239,9 +236,7 @@ class CodexStore(StoreHealthMixin):
         """Get a source by ID."""
         conn = await self._get_conn()
         try:
-            cursor = await conn.execute(
-                "SELECT * FROM codex_sources WHERE source_id = ?", (source_id,)
-            )
+            cursor = await conn.execute("SELECT * FROM codex_sources WHERE source_id = ?", (source_id,))
             row = await cursor.fetchone()
             return self._row_to_source(row) if row else None
         except Exception:
@@ -310,9 +305,7 @@ class CodexStore(StoreHealthMixin):
         """Count sources grouped by status."""
         conn = await self._get_conn()
         try:
-            cursor = await conn.execute(
-                "SELECT status, COUNT(*) as c FROM codex_sources GROUP BY status"
-            )
+            cursor = await conn.execute("SELECT status, COUNT(*) as c FROM codex_sources GROUP BY status")
             rows = await cursor.fetchall()
             return {row["status"]: int(row["c"]) for row in rows}
         except Exception:
@@ -337,6 +330,7 @@ class CodexStore(StoreHealthMixin):
         conn = await self._get_conn()
         try:
             from datetime import timedelta
+
             cutoff = (datetime.now(timezone.utc) - timedelta(days=threshold_days)).isoformat()
             cursor = await conn.execute(
                 "SELECT * FROM codex_sources WHERE status = 'active' AND last_updated_at < ? "
@@ -369,8 +363,7 @@ class CodexStore(StoreHealthMixin):
         try:
             now = datetime.now(timezone.utc).isoformat()
             await conn.execute(
-                "UPDATE codex_sources SET status = 'superseded', superseded_by = ?, updated_at = ? "
-                "WHERE source_id = ?",
+                "UPDATE codex_sources SET status = 'superseded', superseded_by = ?, updated_at = ? WHERE source_id = ?",
                 (superseded_by, now, source_id),
             )
             await conn.commit()
@@ -448,9 +441,7 @@ class CodexStore(StoreHealthMixin):
         """Get a topic by ID."""
         conn = await self._get_conn()
         try:
-            cursor = await conn.execute(
-                "SELECT * FROM codex_topics WHERE topic_id = ?", (topic_id,)
-            )
+            cursor = await conn.execute("SELECT * FROM codex_topics WHERE topic_id = ?", (topic_id,))
             row = await cursor.fetchone()
             return self._row_to_topic(row) if row else None
         except Exception:
@@ -512,8 +503,7 @@ class CodexStore(StoreHealthMixin):
         conn = await self._get_conn()
         try:
             cursor = await conn.execute(
-                "SELECT * FROM codex_topics WHERE contradiction_count > 0 "
-                "ORDER BY contradiction_count DESC LIMIT ?",
+                "SELECT * FROM codex_topics WHERE contradiction_count > 0 ORDER BY contradiction_count DESC LIMIT ?",
                 (limit,),
             )
             rows = await cursor.fetchall()
@@ -527,8 +517,7 @@ class CodexStore(StoreHealthMixin):
         conn = await self._get_conn()
         try:
             cursor = await conn.execute(
-                "SELECT * FROM codex_topics WHERE staleness_score >= ? "
-                "ORDER BY staleness_score DESC LIMIT ?",
+                "SELECT * FROM codex_topics WHERE staleness_score >= ? ORDER BY staleness_score DESC LIMIT ?",
                 (staleness_threshold, limit),
             )
             rows = await cursor.fetchall()
@@ -742,9 +731,7 @@ class CodexStore(StoreHealthMixin):
         """Count contradictions grouped by status."""
         conn = await self._get_conn()
         try:
-            cursor = await conn.execute(
-                "SELECT status, COUNT(*) as c FROM codex_contradictions GROUP BY status"
-            )
+            cursor = await conn.execute("SELECT status, COUNT(*) as c FROM codex_contradictions GROUP BY status")
             rows = await cursor.fetchall()
             return {row["status"]: int(row["c"]) for row in rows}
         except Exception:
@@ -787,9 +774,7 @@ class CodexStore(StoreHealthMixin):
     # Duplicate candidate operations
     # ------------------------------------------------------------------
 
-    async def add_duplicate_candidate(
-        self, source_a_id: str, source_b_id: str, similarity_score: float
-    ) -> None:
+    async def add_duplicate_candidate(self, source_a_id: str, source_b_id: str, similarity_score: float) -> None:
         """Record a potential duplicate pair."""
         conn = await self._get_conn()
         try:
@@ -807,15 +792,12 @@ class CodexStore(StoreHealthMixin):
             await self._reset_conn()
             raise
 
-    async def list_duplicate_candidates(
-        self, status: str = "open", limit: int = 50
-    ) -> list[dict]:
+    async def list_duplicate_candidates(self, status: str = "open", limit: int = 50) -> list[dict]:
         """List duplicate candidate pairs."""
         conn = await self._get_conn()
         try:
             cursor = await conn.execute(
-                "SELECT * FROM codex_duplicate_candidates WHERE status = ? "
-                "ORDER BY similarity_score DESC LIMIT ?",
+                "SELECT * FROM codex_duplicate_candidates WHERE status = ? ORDER BY similarity_score DESC LIMIT ?",
                 (status, limit),
             )
             rows = await cursor.fetchall()
@@ -836,9 +818,7 @@ class CodexStore(StoreHealthMixin):
             await self._reset_conn()
             raise
 
-    async def resolve_duplicate(
-        self, candidate_id: int, resolved_by: str, resolution: str
-    ) -> None:
+    async def resolve_duplicate(self, candidate_id: int, resolved_by: str, resolution: str) -> None:
         """Resolve a duplicate candidate."""
         conn = await self._get_conn()
         try:
@@ -873,9 +853,7 @@ class CodexStore(StoreHealthMixin):
             # Topic counts
             all_topics = await self.list_topics(limit=10000)
             dash.total_topics = len(all_topics)
-            dash.topics_with_contradictions = sum(
-                1 for t in all_topics if t.contradiction_count > 0
-            )
+            dash.topics_with_contradictions = sum(1 for t in all_topics if t.contradiction_count > 0)
             dash.topics_with_wiki = sum(1 for t in all_topics if t.is_wiki_page)
 
             # Contradiction counts
@@ -907,9 +885,7 @@ class CodexStore(StoreHealthMixin):
             ]
 
             # Stale documents
-            stale_sources = await self.get_stale_sources(
-                threshold_days=config.stale_threshold_days, limit=10
-            )
+            stale_sources = await self.get_stale_sources(threshold_days=config.stale_threshold_days, limit=10)
             dash.stale_documents = [
                 {
                     "source_id": s.source_id,
@@ -922,9 +898,7 @@ class CodexStore(StoreHealthMixin):
             ]
 
             # Open contradictions
-            open_contradictions = await self.list_contradictions(
-                status="open", limit=10
-            )
+            open_contradictions = await self.list_contradictions(status="open", limit=10)
             dash.open_contradiction_list = [
                 {
                     "contradiction_id": c.contradiction_id,
@@ -962,29 +936,31 @@ class CodexStore(StoreHealthMixin):
         for sid in topic.source_ids:
             src = await self.get_source(sid)
             if src:
-                sources.append({
-                    "source_id": src.source_id,
-                    "title": src.title or src.source_path,
-                    "source_type": src.source_type,
-                    "status": src.status,
-                    "last_updated_at": src.last_updated_at,
-                })
+                sources.append(
+                    {
+                        "source_id": src.source_id,
+                        "title": src.title or src.source_path,
+                        "source_type": src.source_type,
+                        "status": src.status,
+                        "last_updated_at": src.last_updated_at,
+                    }
+                )
 
         # Get contradictions
-        contradictions = await self.list_contradictions(
-            topic_id=topic_id, status="open", limit=10
-        )
+        contradictions = await self.list_contradictions(topic_id=topic_id, status="open", limit=10)
 
         # Get related topic details
         related = []
         for rid in topic.related_topics:
             rt = await self.get_topic(rid)
             if rt:
-                related.append({
-                    "topic_id": rt.topic_id,
-                    "title": rt.title or rt.topic_id,
-                    "domain": rt.domain,
-                })
+                related.append(
+                    {
+                        "topic_id": rt.topic_id,
+                        "title": rt.title or rt.topic_id,
+                        "domain": rt.domain,
+                    }
+                )
 
         staleness_label = "fresh"
         if topic.staleness_score >= 0.8:

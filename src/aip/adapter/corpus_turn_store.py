@@ -150,6 +150,7 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
         self._tables_ready = False
         self._read_pool_config = config
         from aip.adapter.read_pool import resolve_pool_size
+
         self._init_read_pool(pool_size=resolve_pool_size("corpus_turn_store", config))
 
     async def _get_conn(self) -> aiosqlite.Connection:
@@ -234,7 +235,9 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
         try:
             now = datetime.now(timezone.utc).isoformat() + "Z"
 
-            cursor = await conn.execute("SELECT created_at, doc_version FROM corpus_turns WHERE turn_id = ?", (turn.turn_id,))
+            cursor = await conn.execute(
+                "SELECT created_at, doc_version FROM corpus_turns WHERE turn_id = ?", (turn.turn_id,)
+            )
             row = await cursor.fetchone()
             created_at = row["created_at"] if row and row["created_at"] else now
             # Preserve existing doc_version if not explicitly set on the new turn
@@ -253,7 +256,9 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
                     embedded, metadata_json, embedding_model, needs_reembed, last_embed_at,
                     embed_fail_count, last_embed_error,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
                 """,
                 (
                     turn.turn_id,
@@ -374,7 +379,9 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
             raise
 
     async def batch_mark_embedded(
-        self, turn_ids: list[str], embedding_model: str = "",
+        self,
+        turn_ids: list[str],
+        embedding_model: str = "",
     ) -> int:
         """Sprint 6.3: Mark multiple turns as embedded in a single transaction.
 
@@ -591,7 +598,7 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
                     "UPDATE corpus_turns SET needs_reembed = 1, embedded = 0 "
                     "WHERE embedded = 1 AND (embedding_model IS NULL OR embedding_model = '' "
                     "OR embedding_model != ?)",
-                    (except_model,)
+                    (except_model,),
                 )
             else:
                 cursor = await conn.execute(
@@ -839,14 +846,16 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
             sample_turns = []
             for row in turn_rows:
                 try:
-                    sample_turns.append({
-                        "turn_id": row["turn_id"],
-                        "importance": float(row["importance"]),
-                        "tags": json.loads(row["tags"] or "[]"),
-                        "bridges": json.loads(row["bridges"] or "[]"),
-                        "user_text": (row["user_text"] or "")[:300],
-                        "assistant_text": (row["assistant_text"] or "")[:500],
-                    })
+                    sample_turns.append(
+                        {
+                            "turn_id": row["turn_id"],
+                            "importance": float(row["importance"]),
+                            "tags": json.loads(row["tags"] or "[]"),
+                            "bridges": json.loads(row["bridges"] or "[]"),
+                            "user_text": (row["user_text"] or "")[:300],
+                            "assistant_text": (row["assistant_text"] or "")[:500],
+                        }
+                    )
                 except Exception:
                     pass
             data["sample_turns"] = sample_turns
@@ -936,8 +945,7 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
         try:
             now = datetime.now(timezone.utc).isoformat() + "Z"
             await conn.execute(
-                "UPDATE corpus_turns SET doc_version = doc_version + 1, updated_at = ? "
-                "WHERE conversation_id = ?",
+                "UPDATE corpus_turns SET doc_version = doc_version + 1, updated_at = ? WHERE conversation_id = ?",
                 (now, conversation_id),
             )
             await conn.commit()
@@ -976,8 +984,7 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
         try:
             now = datetime.now(timezone.utc).isoformat() + "Z"
             await conn.execute(
-                "UPDATE corpus_turns SET embed_fail_count = 0, last_embed_error = '', "
-                "updated_at = ? WHERE turn_id = ?",
+                "UPDATE corpus_turns SET embed_fail_count = 0, last_embed_error = '', updated_at = ? WHERE turn_id = ?",
                 (now, turn_id),
             )
             await conn.commit()
@@ -1012,9 +1019,7 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
         """Count of turns with embedding failures."""
         conn = await self._get_conn()
         try:
-            cursor = await conn.execute(
-                "SELECT COUNT(*) as c FROM corpus_turns WHERE embed_fail_count > 0"
-            )
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE embed_fail_count > 0")
             row = await cursor.fetchone()
             return int(row["c"]) if row else 0
         except Exception:
@@ -1089,10 +1094,7 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
                 "ORDER BY c DESC LIMIT 10"
             )
             rows = await cursor.fetchall()
-            result["duplicate_hashes"] = [
-                {"content_hash": row["content_hash"], "count": int(row["c"])}
-                for row in rows
-            ]
+            result["duplicate_hashes"] = [{"content_hash": row["content_hash"], "count": int(row["c"])} for row in rows]
 
             # Embedding model distribution
             cursor = await conn.execute(
@@ -1169,15 +1171,12 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
             result["needs_reembed"] = int(row["c"]) if row else 0
 
             cursor = await conn.execute(
-                "SELECT COUNT(DISTINCT source_path) as c FROM corpus_turns "
-                "WHERE source_path != ''"
+                "SELECT COUNT(DISTINCT source_path) as c FROM corpus_turns WHERE source_path != ''"
             )
             row = await cursor.fetchone()
             result["documents"] = int(row["c"]) if row else 0
 
-            cursor = await conn.execute(
-                "SELECT COUNT(DISTINCT conversation_id) as c FROM corpus_turns"
-            )
+            cursor = await conn.execute("SELECT COUNT(DISTINCT conversation_id) as c FROM corpus_turns")
             row = await cursor.fetchone()
             result["conversations"] = int(row["c"]) if row else 0
 
@@ -1228,7 +1227,8 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
                     SUM(CASE WHEN embedded = 0 THEN 1 ELSE 0 END) as unembedded_count,
                     SUM(CASE WHEN embed_fail_count > 0 THEN 1 ELSE 0 END) as embed_fail_count,
                     SUM(CASE WHEN needs_reembed = 1 THEN 1 ELSE 0 END) as needs_reembed_count,
-                    GROUP_CONCAT(DISTINCT CASE WHEN primary_domain != '' THEN primary_domain ELSE NULL END) as primary_domains,
+                    GROUP_CONCAT(DISTINCT CASE WHEN primary_domain != ''
+                        THEN primary_domain ELSE NULL END) as primary_domains,
                     MAX(updated_at) as last_updated,
                     COUNT(DISTINCT conversation_id) as conversation_count
                 FROM corpus_turns
@@ -1244,18 +1244,20 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
             docs = []
             for row in rows:
                 domains_str = row["primary_domains"] or ""
-                docs.append({
-                    "source_path": row["source_path"],
-                    "source_model": row["source_model"],
-                    "turn_count": int(row["turn_count"]),
-                    "embedded_count": int(row["embedded_count"]),
-                    "unembedded_count": int(row["unembedded_count"]),
-                    "embed_fail_count": int(row["embed_fail_count"]),
-                    "needs_reembed_count": int(row["needs_reembed_count"]),
-                    "primary_domains": [d.strip() for d in domains_str.split(",") if d.strip()],
-                    "last_updated": row["last_updated"],
-                    "conversation_count": int(row["conversation_count"]),
-                })
+                docs.append(
+                    {
+                        "source_path": row["source_path"],
+                        "source_model": row["source_model"],
+                        "turn_count": int(row["turn_count"]),
+                        "embedded_count": int(row["embedded_count"]),
+                        "unembedded_count": int(row["unembedded_count"]),
+                        "embed_fail_count": int(row["embed_fail_count"]),
+                        "needs_reembed_count": int(row["needs_reembed_count"]),
+                        "primary_domains": [d.strip() for d in domains_str.split(",") if d.strip()],
+                        "last_updated": row["last_updated"],
+                        "conversation_count": int(row["conversation_count"]),
+                    }
+                )
             return docs
         except Exception:
             await self._reset_conn()
@@ -1300,7 +1302,8 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
                     SUM(CASE WHEN embedded = 0 THEN 1 ELSE 0 END) as unembedded_count,
                     SUM(CASE WHEN embed_fail_count > 0 THEN 1 ELSE 0 END) as embed_fail_count,
                     SUM(CASE WHEN needs_reembed = 1 THEN 1 ELSE 0 END) as needs_reembed_count,
-                    GROUP_CONCAT(DISTINCT CASE WHEN primary_domain != '' THEN primary_domain ELSE NULL END) as primary_domains,
+                    GROUP_CONCAT(DISTINCT CASE WHEN primary_domain != ''
+                        THEN primary_domain ELSE NULL END) as primary_domains,
                     MIN(created_at) as first_turn_at,
                     MAX(updated_at) as last_updated,
                     COUNT(DISTINCT conversation_id) as conversation_count,
@@ -1433,16 +1436,12 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
             ]
 
             # Unembedded count
-            cursor = await conn.execute(
-                "SELECT COUNT(*) as c FROM corpus_turns WHERE embedded = 0"
-            )
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE embedded = 0")
             row = await cursor.fetchone()
             result["unembedded_count"] = int(row["c"]) if row else 0
 
             # Needs reembed count
-            cursor = await conn.execute(
-                "SELECT COUNT(*) as c FROM corpus_turns WHERE needs_reembed = 1"
-            )
+            cursor = await conn.execute("SELECT COUNT(*) as c FROM corpus_turns WHERE needs_reembed = 1")
             row = await cursor.fetchone()
             result["needs_reembed_count"] = int(row["c"]) if row else 0
 
@@ -1459,10 +1458,7 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
                 """
             )
             rows = await cursor.fetchall()
-            result["duplicate_hashes"] = [
-                {"content_hash": r["content_hash"], "count": int(r["c"])}
-                for r in rows
-            ]
+            result["duplicate_hashes"] = [{"content_hash": r["content_hash"], "count": int(r["c"])} for r in rows]
 
             # Stale docs: documents not updated in the last 30 days
             cursor = await conn.execute(

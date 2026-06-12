@@ -21,22 +21,15 @@ Deliverable 5: Causal Chain Prediction
 from __future__ import annotations
 
 import os
-import sqlite3
 import tempfile
 import time
-from datetime import datetime, timezone
-from typing import Any
-from unittest.mock import MagicMock
 
-import pytest
-
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import (
-    AlertConfig,
     Alert,
+    AlertConfig,
     AlertManager,
 )
-from aip.adapter.alert_history_store import AlertHistoryStore
-
 
 # ============================================================================
 # Deliverable 1: WebSocket Message Batching & Connection Pooling
@@ -71,14 +64,17 @@ class TestWebSocketBatching:
 
     def test_events_are_buffered_when_batching_enabled(self):
         """Events are buffered instead of sent immediately when batching is on."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ws_batch_window_seconds=10.0,  # Long window so it doesn't flush during test
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ws_batch_window_seconds=10.0,  # Long window so it doesn't flush during test
+                min_alert_interval_seconds=0,
+            )
+        )
 
         # Add a mock WS subscriber
         events_received = []
+
         class MockWS:
             def put_nowait(self, item):
                 events_received.append(item)
@@ -86,20 +82,26 @@ class TestWebSocketBatching:
         mgr.realtime_bus.add_ws_subscriber(MockWS())
 
         # Send an alert — event should be buffered, not sent immediately
-        cid = mgr.send_alert(Alert(
-            alert_type="batch_reduction", severity="warning",
-            subject="batch_test", message="Test",
-        ))
+        cid = mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="batch_test",
+                message="Test",
+            )
+        )
         assert cid  # Alert was sent
         assert len(mgr.realtime_bus._ws_batch_buffer) > 0  # Event was buffered
 
     def test_flush_ws_batch_sends_batch_message(self):
         """_flush_ws_batch() sends a batch_events message with all buffered events."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ws_batch_window_seconds=0,  # Disable batching for this test
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ws_batch_window_seconds=0,  # Disable batching for this test
+                min_alert_interval_seconds=0,
+            )
+        )
 
         # Manually buffer events
         with mgr.realtime_bus._lock:
@@ -110,6 +112,7 @@ class TestWebSocketBatching:
 
         # Add a mock subscriber to capture the batch message
         batch_messages = []
+
         class MockWS:
             def put_nowait(self, item):
                 batch_messages.append(item)
@@ -134,23 +137,30 @@ class TestWebSocketBatching:
 
     def test_batching_disabled_sends_immediately(self):
         """When ws_batch_window_seconds is 0, events are sent immediately."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            ws_batch_window_seconds=0,  # Disabled
-            min_alert_interval_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                ws_batch_window_seconds=0,  # Disabled
+                min_alert_interval_seconds=0,
+            )
+        )
 
         events_received = []
+
         class MockWS:
             def put_nowait(self, item):
                 events_received.append(item)
 
         mgr.realtime_bus.add_ws_subscriber(MockWS())
 
-        mgr.send_alert(Alert(
-            alert_type="batch_reduction", severity="warning",
-            subject="immediate_test", message="Test",
-        ))
+        mgr.send_alert(
+            Alert(
+                alert_type="batch_reduction",
+                severity="warning",
+                subject="immediate_test",
+                message="Test",
+            )
+        )
 
         # With batching disabled, event should be sent directly (not buffered)
         assert len(mgr.realtime_bus._ws_batch_buffer) == 0
@@ -169,12 +179,14 @@ class TestWebSocketBatching:
     def test_batching_endpoint_exists(self):
         """GET /vigil/quality/dashboard/ws/batching endpoint exists."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/dashboard/ws/batching" in route_paths
 
     def test_dashboard_html_handles_batch_events(self):
         """Dashboard HTML includes handleBatchEvents function."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "handleBatchEvents" in _DASHBOARD_HTML
         assert "batch_events" in _DASHBOARD_HTML
 
@@ -195,33 +207,29 @@ class TestAutoMergeBySimilarity:
 
     def test_compute_subject_similarity_identical(self):
         """_compute_subject_similarity returns 1.0 for identical keys."""
-        similarity = AlertManager._compute_subject_similarity(
-            "vigil_faithfulness", "vigil_faithfulness"
-        )
+        similarity = AlertManager._compute_subject_similarity("vigil_faithfulness", "vigil_faithfulness")
         assert similarity == 1.0
 
     def test_compute_subject_similarity_partial(self):
         """_compute_subject_similarity returns partial overlap score."""
-        similarity = AlertManager._compute_subject_similarity(
-            "vigil_faithfulness", "vigil_citation_rate"
-        )
+        similarity = AlertManager._compute_subject_similarity("vigil_faithfulness", "vigil_citation_rate")
         # "vigil" and "faithfulness" vs "vigil" and "citation" and "rate"
         # Overlap: "vigil" = 1 token, union = {vigil, faithfulness, citation, rate} = 4
         assert 0 < similarity < 1.0
 
     def test_compute_subject_similarity_no_overlap(self):
         """_compute_subject_similarity returns 0.0 for no overlap."""
-        similarity = AlertManager._compute_subject_similarity(
-            "abc_xyz", "def_uvw"
-        )
+        similarity = AlertManager._compute_subject_similarity("abc_xyz", "def_uvw")
         assert similarity == 0.0
 
     def test_suggest_auto_merges_disabled(self):
         """suggest_auto_merges() returns empty list when window is 0."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            auto_merge_window_seconds=0,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                auto_merge_window_seconds=0,
+            )
+        )
         mgr._alert_groups["group_a"] = ["cid-1"]
         mgr._alert_groups["group_b"] = ["cid-2"]
         mgr._alert_groups_metadata["group_a"] = time.time()
@@ -232,11 +240,13 @@ class TestAutoMergeBySimilarity:
 
     def test_suggest_auto_merges_finds_similar_groups(self):
         """suggest_auto_merges() finds groups with similar subjects."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            auto_merge_window_seconds=600,
-            auto_merge_similarity_threshold=0.2,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                auto_merge_window_seconds=600,
+                auto_merge_similarity_threshold=0.2,
+            )
+        )
         # Create groups with overlapping subject names
         # "vigil_faithfulness" and "vigil_citation_rate" share "vigil" (Jaccard=0.25)
         mgr._alert_groups["vigil_faithfulness"] = ["cid-1", "cid-2"]
@@ -253,11 +263,13 @@ class TestAutoMergeBySimilarity:
 
     def test_suggest_auto_merges_skips_stale_groups(self):
         """suggest_auto_merges() skips groups with old activity."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            auto_merge_window_seconds=60,
-            auto_merge_similarity_threshold=0.2,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                auto_merge_window_seconds=60,
+                auto_merge_similarity_threshold=0.2,
+            )
+        )
         # Use identical names to guarantee similarity >= threshold
         mgr._alert_groups["stale_group"] = ["cid-1"]
         mgr._alert_groups["fresh_group"] = ["cid-2"]
@@ -271,11 +283,13 @@ class TestAutoMergeBySimilarity:
 
     def test_suggest_auto_merges_skips_causal_groups(self):
         """suggest_auto_merges() skips causal: groups."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            auto_merge_window_seconds=600,
-            auto_merge_similarity_threshold=0.3,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                auto_merge_window_seconds=600,
+                auto_merge_similarity_threshold=0.3,
+            )
+        )
         mgr._alert_groups["causal:test"] = ["cid-1"]
         mgr._alert_groups["regular_test"] = ["cid-2"]
         mgr._alert_groups_metadata["causal:test"] = time.time()
@@ -310,13 +324,15 @@ class TestAutoMergeBySimilarity:
     def test_auto_merge_endpoints_exist(self):
         """Auto-merge API endpoints exist."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/alerts/groups/auto-merge" in route_paths
         assert "/vigil/quality/alerts/groups/auto-merge/apply" in route_paths
 
     def test_dashboard_html_has_auto_merge_panel(self):
         """Dashboard HTML includes auto-merge suggestion panel."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "fetchAutoMergeSuggestions" in _DASHBOARD_HTML
         assert "merge-suggest-panel" in _DASHBOARD_HTML
         assert "applyAutoMerge" in _DASHBOARD_HTML
@@ -333,6 +349,7 @@ class TestNotificationPreferences:
     def test_dashboard_html_has_notification_panel(self):
         """Dashboard HTML includes notification preferences panel."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "notifPanel" in _DASHBOARD_HTML
         assert "notif-critical" in _DASHBOARD_HTML
         assert "notif-warning" in _DASHBOARD_HTML
@@ -342,29 +359,34 @@ class TestNotificationPreferences:
     def test_dashboard_html_has_save_notif_prefs(self):
         """Dashboard HTML includes saveNotifPrefs function."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "saveNotifPrefs" in _DASHBOARD_HTML
         assert "aip_notif_prefs" in _DASHBOARD_HTML
 
     def test_dashboard_html_has_restore_notif_prefs(self):
         """Dashboard HTML includes restoreNotifPrefs function."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "restoreNotifPrefs" in _DASHBOARD_HTML
 
     def test_dashboard_html_has_notification_permission(self):
         """Dashboard HTML includes browser notification permission request."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "requestNotificationPermission" in _DASHBOARD_HTML
         assert "Notification" in _DASHBOARD_HTML
 
     def test_dashboard_html_has_should_notify(self):
         """Dashboard HTML includes shouldNotify for filtering notifications."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "shouldNotify" in _DASHBOARD_HTML
         assert "showBrowserNotification" in _DASHBOARD_HTML
 
     def test_dashboard_state_includes_notif_prefs(self):
         """Dashboard state saves notification preferences."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "notifCritical" in _DASHBOARD_HTML
         assert "notifWarning" in _DASHBOARD_HTML
         assert "notifInfo" in _DASHBOARD_HTML
@@ -373,6 +395,7 @@ class TestNotificationPreferences:
     def test_ws_command_update_notification_prefs(self):
         """WebSocket command 'update_notification_prefs' is handled."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "update_notification_prefs" in _DASHBOARD_HTML
 
 
@@ -398,15 +421,18 @@ class TestPruningObservability:
         """_run_scheduled_prune() records a history entry."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                delivery_status_max_age_days=30,
-                delivery_status_max_rows=2000,
-            ))
-            mgr.attach_history_store(store)
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    delivery_status_max_age_days=30,
+                    delivery_status_max_rows=2000,
+                )
+            )
+            mgr.attach_history_store(bridge)
 
             mgr._run_scheduled_prune()
 
@@ -421,14 +447,17 @@ class TestPruningObservability:
         """Pruning history is capped at pruning_history_size."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                pruning_history_size=3,
-            ))
-            mgr.attach_history_store(store)
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    pruning_history_size=3,
+                )
+            )
+            mgr.attach_history_store(bridge)
 
             for _ in range(5):
                 mgr._run_scheduled_prune()
@@ -440,14 +469,17 @@ class TestPruningObservability:
         """get_pruning_history() respects limit parameter."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                pruning_history_size=20,
-            ))
-            mgr.attach_history_store(store)
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    pruning_history_size=20,
+                )
+            )
+            mgr.attach_history_store(bridge)
 
             for _ in range(5):
                 mgr._run_scheduled_prune()
@@ -459,13 +491,16 @@ class TestPruningObservability:
         """get_prune_scheduler_status() includes history and total_rows_pruned."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-            ))
-            mgr.attach_history_store(store)
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                )
+            )
+            mgr.attach_history_store(bridge)
 
             mgr._run_scheduled_prune()
 
@@ -477,12 +512,14 @@ class TestPruningObservability:
     def test_prune_history_endpoint_exists(self):
         """GET /vigil/quality/alerts/delivery-status/prune/history endpoint exists."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/alerts/delivery-status/prune/history" in route_paths
 
     def test_dashboard_html_has_pruning_observability(self):
         """Dashboard HTML includes pruning metrics panel."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "fetchPruningHistory" in _DASHBOARD_HTML
         assert "pruneTotalPruned" in _DASHBOARD_HTML
         assert "pruneTotalRuns" in _DASHBOARD_HTML
@@ -505,27 +542,35 @@ class TestCausalChainPrediction:
 
     def test_predict_disabled_returns_empty(self):
         """predict_causal_chain() returns empty when disabled."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=False,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=False,
+            )
+        )
         alert = Alert(
-            alert_type="pool_adjustment", severity="warning",
-            subject="pred_test", message="Test",
+            alert_type="pool_adjustment",
+            severity="warning",
+            subject="pred_test",
+            message="Test",
         )
         predictions = mgr.predict_causal_chain(alert)
         assert predictions == []
 
     def test_predict_pool_adjustment(self):
         """predict_causal_chain() predicts chain from pool_adjustment."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=True,
-            causal_grouping_window_seconds=300,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=True,
+                causal_grouping_window_seconds=300,
+            )
+        )
         alert = Alert(
-            alert_type="pool_adjustment", severity="warning",
-            subject="pred_test", message="Test",
+            alert_type="pool_adjustment",
+            severity="warning",
+            subject="pred_test",
+            message="Test",
         )
         predictions = mgr.predict_causal_chain(alert)
         assert len(predictions) == 2
@@ -537,14 +582,18 @@ class TestCausalChainPrediction:
 
     def test_predict_quality_degradation(self):
         """predict_causal_chain() predicts chain from quality_degradation."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=True,
-            causal_grouping_window_seconds=300,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=True,
+                causal_grouping_window_seconds=300,
+            )
+        )
         alert = Alert(
-            alert_type="quality_degradation", severity="warning",
-            subject="pred_test2", message="Test",
+            alert_type="quality_degradation",
+            severity="warning",
+            subject="pred_test2",
+            message="Test",
         )
         predictions = mgr.predict_causal_chain(alert)
         assert len(predictions) == 1
@@ -552,40 +601,52 @@ class TestCausalChainPrediction:
 
     def test_predict_batch_reduction_no_followup(self):
         """predict_causal_chain() returns empty for batch_reduction (end of chain)."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=True,
+            )
+        )
         alert = Alert(
-            alert_type="batch_reduction", severity="warning",
-            subject="pred_test3", message="Test",
+            alert_type="batch_reduction",
+            severity="warning",
+            subject="pred_test3",
+            message="Test",
         )
         predictions = mgr.predict_causal_chain(alert)
         assert predictions == []
 
     def test_predict_unknown_type_returns_empty(self):
         """predict_causal_chain() returns empty for unknown alert types."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=True,
+            )
+        )
         alert = Alert(
-            alert_type="unknown_type", severity="info",
-            subject="pred_test4", message="Test",
+            alert_type="unknown_type",
+            severity="info",
+            subject="pred_test4",
+            message="Test",
         )
         predictions = mgr.predict_causal_chain(alert)
         assert predictions == []
 
     def test_predictions_are_stored(self):
         """Predictions are stored and queryable via get_causal_predictions()."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=True,
-            causal_grouping_window_seconds=300,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=True,
+                causal_grouping_window_seconds=300,
+            )
+        )
         alert = Alert(
-            alert_type="pool_adjustment", severity="warning",
-            subject="store_test", message="Test",
+            alert_type="pool_adjustment",
+            severity="warning",
+            subject="store_test",
+            message="Test",
         )
         mgr.predict_causal_chain(alert)
 
@@ -599,26 +660,33 @@ class TestCausalChainPrediction:
 
     def test_prediction_counter_increments(self):
         """_total_predictions_made counter increments correctly."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=True,
-            causal_grouping_window_seconds=300,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=True,
+                causal_grouping_window_seconds=300,
+            )
+        )
         alert = Alert(
-            alert_type="pool_adjustment", severity="warning",
-            subject="counter_test", message="Test",
+            alert_type="pool_adjustment",
+            severity="warning",
+            subject="counter_test",
+            message="Test",
         )
         mgr.predict_causal_chain(alert)
         assert mgr.prediction_mgr._total_predictions_made == 2  # 2 predictions for pool_adjustment
 
     def test_prediction_broadcasts_event(self):
         """predict_causal_chain() broadcasts causal_predictions event."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=True,
-            causal_grouping_window_seconds=300,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=True,
+                causal_grouping_window_seconds=300,
+            )
+        )
         events = []
+
         class MockQueue:
             def put_nowait(self, item):
                 events.append(item)
@@ -626,8 +694,10 @@ class TestCausalChainPrediction:
         mgr.realtime_bus.add_sse_subscriber(MockQueue())
 
         alert = Alert(
-            alert_type="pool_adjustment", severity="warning",
-            subject="broadcast_test", message="Test",
+            alert_type="pool_adjustment",
+            severity="warning",
+            subject="broadcast_test",
+            message="Test",
         )
         mgr.predict_causal_chain(alert)
 
@@ -639,12 +709,14 @@ class TestCausalChainPrediction:
     def test_predictions_endpoint_exists(self):
         """GET /vigil/quality/alerts/predictions endpoint exists."""
         from aip.adapter.api.routes.vigil_quality import router
-        route_paths = [r.path for r in router.routes if hasattr(r, 'path')]
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/vigil/quality/alerts/predictions" in route_paths
 
     def test_dashboard_html_has_prediction_panel(self):
         """Dashboard HTML includes prediction panel."""
         from aip.adapter.api.routes.vigil_quality import _DASHBOARD_HTML
+
         assert "predictionPanel" in _DASHBOARD_HTML
         assert "updatePredictions" in _DASHBOARD_HTML
         assert "fetchPredictions" in _DASHBOARD_HTML
@@ -652,10 +724,12 @@ class TestCausalChainPrediction:
 
     def test_get_status_includes_prediction_info(self):
         """get_status() includes causal_prediction info."""
-        mgr = AlertManager(AlertConfig(
-            enabled=True,
-            causal_prediction_enabled=True,
-        ))
+        mgr = AlertManager(
+            AlertConfig(
+                enabled=True,
+                causal_prediction_enabled=True,
+            )
+        )
         status = mgr.get_status()
         assert "causal_prediction" in status
         assert status["causal_prediction"]["enabled"] is True
@@ -665,19 +739,24 @@ class TestCausalChainPrediction:
         """predict_causal_chain() works with persistent store attached."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = AlertHistoryStore(os.path.join(tmp_dir, "alerts.db"))
-            store.initialize()
+            bridge = SyncAlertHistoryBridge(store)
+            bridge.initialize()
 
-            mgr = AlertManager(AlertConfig(
-                enabled=True,
-                min_alert_interval_seconds=0,
-                causal_prediction_enabled=True,
-                causal_grouping_window_seconds=300,
-            ))
-            mgr.attach_history_store(store)
+            mgr = AlertManager(
+                AlertConfig(
+                    enabled=True,
+                    min_alert_interval_seconds=0,
+                    causal_prediction_enabled=True,
+                    causal_grouping_window_seconds=300,
+                )
+            )
+            mgr.attach_history_store(bridge)
 
             alert = Alert(
-                alert_type="pool_adjustment", severity="warning",
-                subject="persist_pred", message="Test",
+                alert_type="pool_adjustment",
+                severity="warning",
+                subject="persist_pred",
+                message="Test",
             )
             predictions = mgr.predict_causal_chain(alert)
             assert len(predictions) == 2

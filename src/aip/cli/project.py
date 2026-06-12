@@ -15,6 +15,7 @@ import click
 def _get_db_path() -> str:
     """Resolve database path from shared config utility."""
     from aip.cli._db_path import get_default_db_path
+
     return get_default_db_path()
 
 
@@ -90,7 +91,7 @@ def create_project(name: str, domain: str) -> None:
         click.echo(f"Created project: {project_id} — {name} [{domain}]")
         click.echo(f"  Ingest with: aip ingest directory <path> --project {name}")
         click.echo(f"  Or: aip ingest directory <path> --domain {domain}")
-        click.echo(f"  Ask with: aip ask \"<question>\" --project {name}")
+        click.echo(f'  Ask with: aip ask "<question>" --project {name}')
     except ImportError:
         # Fallback: direct SQL
         try:
@@ -104,7 +105,7 @@ def create_project(name: str, domain: str) -> None:
             conn.close()
             click.echo(f"Created project: {project_id} — {name} [{domain}]")
             click.echo(f"  Ingest with: aip ingest directory <path> --project {name}")
-            click.echo(f"  Ask with: aip ask \"<question>\" --project {name}")
+            click.echo(f'  Ask with: aip ask "<question>" --project {name}')
         except Exception as exc:
             click.echo(f"Error creating project: {exc}")
     except Exception as exc:

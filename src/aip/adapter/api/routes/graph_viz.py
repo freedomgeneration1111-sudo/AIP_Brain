@@ -22,21 +22,26 @@ _GRAPH_HTML = """<!DOCTYPE html>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
-#header { padding: 10px 16px; background: #1a1a1a; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+body { font-family: 'Segoe UI', sans-serif; background: #0f0f0f;
+       color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
+#header { padding: 10px 16px; background: #1a1a1a; border-bottom: 1px solid #333;
+         display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 #header h1 { font-size: 16px; font-weight: 600; color: #fff; }
 .filter-group { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .filter-group label { color: #aaa; }
-select, input[type=range] { background: #2a2a2a; color: #e0e0e0; border: 1px solid #444; border-radius: 4px; padding: 3px 6px; font-size: 13px; }
+select, input[type=range] { background: #2a2a2a; color: #e0e0e0;
+  border: 1px solid #444; border-radius: 4px; padding: 3px 6px; font-size: 13px; }
 #stats { font-size: 12px; color: #888; margin-left: auto; }
 #main { display: flex; flex: 1; overflow: hidden; }
 #cy { flex: 1; background: #141414; }
-#detail { width: 280px; background: #1a1a1a; border-left: 1px solid #333; padding: 14px; overflow-y: auto; font-size: 13px; display: none; }
+#detail { width: 280px; background: #1a1a1a; border-left: 1px solid #333;
+         padding: 14px; overflow-y: auto; font-size: 13px; display: none; }
 #detail h2 { font-size: 14px; color: #fff; margin-bottom: 10px; }
 #detail .field { margin-bottom: 8px; }
 #detail .field-label { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
 #detail .field-value { color: #e0e0e0; margin-top: 2px; }
-#legend { padding: 8px 16px; background: #1a1a1a; border-top: 1px solid #333; display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; }
+#legend { padding: 8px 16px; background: #1a1a1a; border-top: 1px solid #333;
+         display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; }
 .legend-item { display: flex; align-items: center; gap: 5px; }
 .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
 </style>
@@ -162,9 +167,11 @@ function renderGraph(data, minConf, domainFilter, typeFilter) {
       <div class="field"><div class="field-label">ID</div><div class="field-value">${n.id}</div></div>
       <div class="field"><div class="field-label">Type</div><div class="field-value">${n.entity_type}</div></div>
       <div class="field"><div class="field-label">Domain</div><div class="field-value">${n.domain || '—'}</div></div>
-      <div class="field"><div class="field-label">Confidence</div><div class="field-value">${n.confidence.toFixed(2)}</div></div>
+      <div class="field"><div class="field-label">Confidence</div>
+       <div class="field-value">${n.confidence.toFixed(2)}</div></div>
       <div class="field"><div class="field-label">Source</div><div class="field-value">${n.source}</div></div>
-      <div class="field"><div class="field-label">Connections</div><div class="field-value">${evt.target.degree()}</div></div>
+      <div class="field"><div class="field-label">Connections</div>
+       <div class="field-value">${evt.target.degree()}</div></div>
     `;
   });
 
@@ -184,7 +191,9 @@ async function loadAndRender() {
       // Populate domain filter
       const domains = [...new Set(allData.nodes.map(n => n.domain).filter(Boolean))].sort();
       const sel = document.getElementById('domain-filter');
-      domains.forEach(d => { const o = document.createElement('option'); o.value = d; o.textContent = d; sel.appendChild(o); });
+      domains.forEach(d => {
+        const o = document.createElement('option'); o.value = d; o.textContent = d; sel.appendChild(o);
+      });
     } catch (e) {
       document.getElementById('stats').textContent = 'Error loading graph data';
       return;

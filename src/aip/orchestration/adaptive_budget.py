@@ -27,6 +27,7 @@ from typing import Any
 
 try:
     from aip.logging import get_logger
+
     logger = get_logger(__name__)
 except ImportError:
     logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Budget adjustment types
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class BudgetAdjustment:
@@ -73,6 +75,7 @@ class BudgetTuningResult:
 # ---------------------------------------------------------------------------
 # Adaptive budget tuner
 # ---------------------------------------------------------------------------
+
 
 class AdaptiveBudgetTuner:
     """Data-driven per-channel budget tuner.
@@ -151,8 +154,7 @@ class AdaptiveBudgetTuner:
 
         if total_queries < self._min_samples:
             result.summary = (
-                f"Insufficient data for tuning ({total_queries} queries, "
-                f"need {self._min_samples}). Skipping."
+                f"Insufficient data for tuning ({total_queries} queries, need {self._min_samples}). Skipping."
             )
             return result
 
@@ -223,13 +225,15 @@ class AdaptiveBudgetTuner:
                 confidence = 0.3
 
             if suggested != current_budget:
-                adjustments.append(BudgetAdjustment(
-                    channel_name=channel_name,
-                    current_budget=current_budget,
-                    suggested_budget=suggested,
-                    reason=reason,
-                    confidence=round(confidence, 2),
-                ))
+                adjustments.append(
+                    BudgetAdjustment(
+                        channel_name=channel_name,
+                        current_budget=current_budget,
+                        suggested_budget=suggested,
+                        reason=reason,
+                        confidence=round(confidence, 2),
+                    )
+                )
 
         result.adjustments = adjustments
         result.summary = (

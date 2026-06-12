@@ -14,22 +14,18 @@ import os
 import tempfile
 import time
 from dataclasses import dataclass
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from aip.foundation.schemas import SextonConfig, VigilConfig
-from aip.orchestration.actors.vigil import Vigil
+from aip.adapter.alerting import Alert, AlertConfig, AlertManager
+from aip.adapter.config_watcher import ConfigReloadEvent, ConfigWatcher
 from aip.adapter.read_pool import (
     ReadPoolAutoSizer,
     ReadPoolHealth,
-    PoolSizeAdjustment,
-    PoolSizeSuggestion,
 )
-from aip.adapter.alerting import AlertConfig, Alert, AlertManager
-from aip.adapter.config_watcher import ConfigWatcher, ConfigReloadEvent
-
+from aip.foundation.schemas import SextonConfig, VigilConfig
+from aip.orchestration.actors.vigil import Vigil
 
 # ============================================================================
 # Shared fakes (reused from Sprint 5.24 test infrastructure)
@@ -92,6 +88,7 @@ class FakeTraceStore:
 @dataclass
 class FakeTurn:
     """Minimal turn object for Vigil evaluation tests."""
+
     turn_id: str = "turn-001"
     conversation_id: str = "conv-001"
     user_text: str = "What is the population of Tokyo?"
@@ -132,12 +129,14 @@ class FakeECSStore:
         self.transitions = []
 
     async def transition(self, artifact_id, to_state, actor, detail=None, **kwargs):
-        self.transitions.append({
-            "artifact_id": artifact_id,
-            "to_state": to_state,
-            "actor": actor,
-            "detail": detail,
-        })
+        self.transitions.append(
+            {
+                "artifact_id": artifact_id,
+                "to_state": to_state,
+                "actor": actor,
+                "detail": detail,
+            }
+        )
 
 
 class FakeEventStore:
@@ -215,7 +214,7 @@ class TestAlertManager:
         )
 
         # First alert should go through (no transports, but not rate-limited)
-        result1 = manager.send_alert(alert1)
+        manager.send_alert(alert1)
         # Second identical alert should be rate-limited
         result2 = manager.send_alert(alert2)
         assert result2 == "rate_limited"  # Rate limited
@@ -227,8 +226,12 @@ class TestAlertManager:
         config = AlertConfig(enabled=True, min_alert_interval_seconds=100)
         manager = AlertManager(config)
 
-        alert1 = Alert(alert_type="pool_adjustment", severity="info", subject="read_pool.graph_store", message="Pool adjusted")
-        alert2 = Alert(alert_type="pool_adjustment", severity="info", subject="read_pool.vector_store", message="Pool adjusted")
+        alert1 = Alert(
+            alert_type="pool_adjustment", severity="info", subject="read_pool.graph_store", message="Pool adjusted"
+        )
+        alert2 = Alert(
+            alert_type="pool_adjustment", severity="info", subject="read_pool.vector_store", message="Pool adjusted"
+        )
 
         result1 = manager.send_alert(alert1)
         result2 = manager.send_alert(alert2)
@@ -323,12 +326,14 @@ class TestAlertManager:
     async def test_vigil_alerts_on_quality_degradation(self):
         """Vigil sends an alert when quality trend is degrading."""
         alert_mgr = AlertManager(AlertConfig(enabled=True))
-        llm_response = json.dumps({
-            "faithfulness_score": 0.9,
-            "hallucination_flags": [],
-            "grounding_assessment": "mostly_grounded",
-            "explanation": "Response accurately reflects sources.",
-        })
+        llm_response = json.dumps(
+            {
+                "faithfulness_score": 0.9,
+                "hallucination_flags": [],
+                "grounding_assessment": "mostly_grounded",
+                "explanation": "Response accurately reflects sources.",
+            }
+        )
         model_provider = FakeModelProvider(response_content=llm_response)
         config = VigilConfig()
         corpus_turns = FakeCorpusTurnStore()
@@ -350,13 +355,15 @@ class TestAlertManager:
             corpus_turn_store=corpus_turns,
             alert_manager=alert_mgr,
         )
-        vigil._cycle_report_history.append({
-            "avg_citation_rate": 0.9,
-            "avg_grounding_rate": 0.9,
-            "avg_llm_faithfulness": 0.9,
-            "evaluated_count": 10,
-            "flagged_count": 0,
-        })
+        vigil._cycle_report_history.append(
+            {
+                "avg_citation_rate": 0.9,
+                "avg_grounding_rate": 0.9,
+                "avg_llm_faithfulness": 0.9,
+                "evaluated_count": 10,
+                "flagged_count": 0,
+            }
+        )
 
         # Run a cycle with lower scores — should trigger degradation alert
         turn = FakeTurn(
@@ -365,14 +372,11 @@ class TestAlertManager:
             metadata_json=json.dumps({"source_turn_ids": ["src-001", "src-002"]}),
         )
         corpus_turns._turns = [turn]
-        result = await vigil.run_cycle()
+        await vigil.run_cycle()
 
         # An alert should have been dispatched
         assert alert_mgr.delivery_mgr._total_alerts_sent >= 1
-        quality_alerts = [
-            a for a in alert_mgr.lifecycle_mgr._alert_history
-            if a["alert_type"] == "quality_degradation"
-        ]
+        quality_alerts = [a for a in alert_mgr.lifecycle_mgr._alert_history if a["alert_type"] == "quality_degradation"]
         assert len(quality_alerts) >= 1
 
 
@@ -400,9 +404,12 @@ class TestReadPoolAutoRollback:
 
         # First: trigger an auto-apply by showing high exhaustion
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -414,9 +421,12 @@ class TestReadPoolAutoRollback:
 
         # Now: show sustained low exhaustion — should trigger auto-rollback
         low_health: ReadPoolHealth = {
-            "pool_size": store._read_pool_size, "pool_active": 1,
-            "checkout_count": 100, "fallback_count": 2,
-            "exhaustion_count": 2, "exhaustion_rate": 0.02,
+            "pool_size": store._read_pool_size,
+            "pool_active": 1,
+            "checkout_count": 100,
+            "fallback_count": 2,
+            "exhaustion_count": 2,
+            "exhaustion_rate": 0.02,
             "avg_checkout_latency_ms": 1.0,
             "p95_checkout_latency_ms": 2.0,
             "recommendation": "",
@@ -437,9 +447,12 @@ class TestReadPoolAutoRollback:
 
         # Show low exhaustion but no auto-increase was ever applied
         low_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 1,
-            "checkout_count": 100, "fallback_count": 2,
-            "exhaustion_count": 2, "exhaustion_rate": 0.02,
+            "pool_size": 3,
+            "pool_active": 1,
+            "checkout_count": 100,
+            "fallback_count": 2,
+            "exhaustion_count": 2,
+            "exhaustion_rate": 0.02,
             "avg_checkout_latency_ms": 1.0,
             "p95_checkout_latency_ms": 2.0,
             "recommendation": "",
@@ -461,9 +474,12 @@ class TestReadPoolAutoRollback:
 
         # First: auto-apply increase
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -476,9 +492,12 @@ class TestReadPoolAutoRollback:
 
         # Show 3 low-exhaustion observations (below threshold)
         low_health: ReadPoolHealth = {
-            "pool_size": increased_size, "pool_active": 1,
-            "checkout_count": 100, "fallback_count": 2,
-            "exhaustion_count": 2, "exhaustion_rate": 0.02,
+            "pool_size": increased_size,
+            "pool_active": 1,
+            "checkout_count": 100,
+            "fallback_count": 2,
+            "exhaustion_count": 2,
+            "exhaustion_rate": 0.02,
             "avg_checkout_latency_ms": 1.0,
             "p95_checkout_latency_ms": 2.0,
             "recommendation": "",
@@ -507,9 +526,12 @@ class TestReadPoolAutoRollback:
 
         # Auto-apply
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -519,9 +541,12 @@ class TestReadPoolAutoRollback:
 
         # Auto-rollback
         low_health: ReadPoolHealth = {
-            "pool_size": store._read_pool_size, "pool_active": 1,
-            "checkout_count": 100, "fallback_count": 2,
-            "exhaustion_count": 2, "exhaustion_rate": 0.02,
+            "pool_size": store._read_pool_size,
+            "pool_active": 1,
+            "checkout_count": 100,
+            "fallback_count": 2,
+            "exhaustion_count": 2,
+            "exhaustion_rate": 0.02,
             "avg_checkout_latency_ms": 1.0,
             "p95_checkout_latency_ms": 2.0,
             "recommendation": "",
@@ -540,9 +565,12 @@ class TestReadPoolAutoRollback:
         store = FakeReadPoolMixin(pool_size=3)
 
         health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 1,
-            "checkout_count": 100, "fallback_count": 2,
-            "exhaustion_count": 2, "exhaustion_rate": 0.02,
+            "pool_size": 3,
+            "pool_active": 1,
+            "checkout_count": 100,
+            "fallback_count": 2,
+            "exhaustion_count": 2,
+            "exhaustion_rate": 0.02,
             "avg_checkout_latency_ms": 1.0,
             "p95_checkout_latency_ms": 2.0,
             "recommendation": "",
@@ -682,6 +710,7 @@ class TestPerBatchTelemetry:
         # This is verified through the health endpoint code structure
         # The per_batch_telemetry key is added in Sprint 5.25
         from aip.adapter.api.routes.health import router
+
         assert router is not None
 
     def test_sexton_accepts_alert_manager(self):
@@ -712,10 +741,7 @@ class TestPerBatchTelemetry:
         assert sexton._current_batch_size == 2
 
         # Alert should have been dispatched
-        batch_alerts = [
-            a for a in alert_mgr.lifecycle_mgr._alert_history
-            if a["alert_type"] == "batch_reduction"
-        ]
+        batch_alerts = [a for a in alert_mgr.lifecycle_mgr._alert_history if a["alert_type"] == "batch_reduction"]
         assert len(batch_alerts) >= 1
         assert "reduced" in batch_alerts[0]["message"].lower()
 
@@ -731,7 +757,7 @@ class TestConfigHotReload:
     def test_config_watcher_initializes(self):
         """ConfigWatcher initializes and reads file mtime."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write('[read_pool]\npool_size = 3\n')
+            f.write("[read_pool]\npool_size = 3\n")
             f.flush()
             watcher = ConfigWatcher(config_path=f.name)
             assert watcher.enabled is True
@@ -741,7 +767,7 @@ class TestConfigHotReload:
     def test_config_watcher_no_change(self):
         """ConfigWatcher returns empty events when file hasn't changed."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write('[read_pool]\npool_size = 3\n')
+            f.write("[read_pool]\npool_size = 3\n")
             f.flush()
             watcher = ConfigWatcher(config_path=f.name)
             events = watcher.check_and_reload()
@@ -751,7 +777,7 @@ class TestConfigHotReload:
     def test_config_watcher_detects_change(self):
         """ConfigWatcher detects file modification and parses changes."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write('[read_pool]\npool_size = 3\n')
+            f.write("[read_pool]\npool_size = 3\n")
             f.flush()
             watcher = ConfigWatcher(config_path=f.name, poll_interval=0)
             # Force the check
@@ -760,13 +786,13 @@ class TestConfigHotReload:
             # Modify the file
             time.sleep(0.1)
             with open(f.name, "w") as f2:
-                f2.write('[read_pool]\npool_size = 5\n')
+                f2.write("[read_pool]\npool_size = 5\n")
                 f2.flush()
 
             # Reset debounce
             watcher._last_reload = 0
 
-            events = watcher.check_and_reload()
+            watcher.check_and_reload()
             # Should detect the pool_size change
             # Note: without a container, events won't be applied but changes
             # should still be detected
@@ -775,6 +801,7 @@ class TestConfigHotReload:
     def test_config_watcher_only_reloads_safe_keys(self):
         """ConfigWatcher only reloads values in hot-reloadable sections."""
         from aip.adapter.config_watcher import _HOT_RELOADABLE_KEYS
+
         assert "read_pool" in _HOT_RELOADABLE_KEYS
         assert "sexton" in _HOT_RELOADABLE_KEYS
         # Database path changes should NOT be hot-reloadable
@@ -783,7 +810,7 @@ class TestConfigHotReload:
     def test_config_watcher_status(self):
         """ConfigWatcher.get_status returns expected structure."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write('[read_pool]\npool_size = 3\n')
+            f.write("[read_pool]\npool_size = 3\n")
             f.flush()
             watcher = ConfigWatcher(config_path=f.name)
 
@@ -798,7 +825,7 @@ class TestConfigHotReload:
     def test_config_watcher_disabled(self):
         """ConfigWatcher can be disabled."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write('[read_pool]\npool_size = 3\n')
+            f.write("[read_pool]\npool_size = 3\n")
             f.flush()
             watcher = ConfigWatcher(config_path=f.name)
             watcher.enabled = False
@@ -830,7 +857,7 @@ class TestConfigHotReload:
     def test_config_watcher_handles_invalid_toml(self):
         """ConfigWatcher handles invalid TOML gracefully."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write('[read_pool\npool_size = 3\n')  # Invalid TOML
+            f.write("[read_pool\npool_size = 3\n")  # Invalid TOML
             f.flush()
             watcher = ConfigWatcher(config_path=f.name, poll_interval=0)
             watcher._last_check = 0
@@ -860,9 +887,12 @@ class TestPoolAdjustmentAlerting:
         store = FakeReadPoolMixin(pool_size=3)
 
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -872,10 +902,7 @@ class TestPoolAdjustmentAlerting:
             sizer.observe("graph_store", high_health, store=store)
 
         # Alert should have been sent
-        pool_alerts = [
-            a for a in alert_mgr.lifecycle_mgr._alert_history
-            if a["alert_type"] == "pool_adjustment"
-        ]
+        pool_alerts = [a for a in alert_mgr.lifecycle_mgr._alert_history if a["alert_type"] == "pool_adjustment"]
         assert len(pool_alerts) >= 1
 
     def test_pool_rollback_sends_alert(self):
@@ -889,9 +916,12 @@ class TestPoolAdjustmentAlerting:
 
         # First auto-apply
         high_health: ReadPoolHealth = {
-            "pool_size": 3, "pool_active": 3,
-            "checkout_count": 100, "fallback_count": 50,
-            "exhaustion_count": 50, "exhaustion_rate": 0.5,
+            "pool_size": 3,
+            "pool_active": 3,
+            "checkout_count": 100,
+            "fallback_count": 50,
+            "exhaustion_count": 50,
+            "exhaustion_rate": 0.5,
             "avg_checkout_latency_ms": 5.0,
             "p95_checkout_latency_ms": 10.0,
             "recommendation": "",
@@ -904,7 +934,8 @@ class TestPoolAdjustmentAlerting:
 
         # Check for rollback alert
         rollback_alerts = [
-            a for a in alert_mgr.lifecycle_mgr._alert_history
+            a
+            for a in alert_mgr.lifecycle_mgr._alert_history
             if a["alert_type"] == "pool_adjustment" and "rollback" in a.get("subject", "")
         ]
         assert len(rollback_alerts) >= 1

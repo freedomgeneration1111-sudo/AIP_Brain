@@ -18,7 +18,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sqlite3
 import sys
@@ -30,14 +29,14 @@ DEFAULT_DB_DIR = DEMO_ROOT / "db"
 
 # Private path patterns that should NEVER appear in demo data
 _PRIVATE_PATH_PATTERNS = [
-    re.compile(r"/home/[^/]+/"),       # /home/username/
-    re.compile(r"/Users/[^/]+/"),       # /Users/username/
-    re.compile(r"C:\\Users\\"),         # Windows user paths
-    re.compile(r"/var/lib/"),           # System data dirs
-    re.compile(r"/etc/"),               # System config
-    re.compile(r"ghp_[A-Za-z0-9]{36}"), # GitHub PATs
-    re.compile(r"sk-[A-Za-z0-9]{20,}"), # OpenAI API keys
-    re.compile(r"AKIA[A-Z0-9]{16}"),    # AWS access keys
+    re.compile(r"/home/[^/]+/"),  # /home/username/
+    re.compile(r"/Users/[^/]+/"),  # /Users/username/
+    re.compile(r"C:\\Users\\"),  # Windows user paths
+    re.compile(r"/var/lib/"),  # System data dirs
+    re.compile(r"/etc/"),  # System config
+    re.compile(r"ghp_[A-Za-z0-9]{36}"),  # GitHub PATs
+    re.compile(r"sk-[A-Za-z0-9]{20,}"),  # OpenAI API keys
+    re.compile(r"AKIA[A-Z0-9]{16}"),  # AWS access keys
 ]
 
 
@@ -103,11 +102,13 @@ def main() -> None:
     # 4. Check tags
     print("\n[4] Checking tags on turns...")
     tagged_count = conn.execute("SELECT COUNT(*) FROM corpus_turns WHERE tagging_version > 0").fetchone()[0]
-    turns_with_tags = conn.execute("SELECT COUNT(*) FROM corpus_turns WHERE tags != '[]' AND tags IS NOT NULL").fetchone()[0]
+    turns_with_tags = conn.execute(
+        "SELECT COUNT(*) FROM corpus_turns WHERE tags != '[]' AND tags IS NOT NULL"
+    ).fetchone()[0]
     if turns_with_tags > 0 and tagged_count > 0:
         print(f"  OK:   {tagged_count} turns tagged, {turns_with_tags} turns with tags")
     else:
-        print(f"  FAIL: No tagged turns found")
+        print("  FAIL: No tagged turns found")
         all_passed = False
 
     # 5. Check entities/graph nodes
@@ -118,7 +119,7 @@ def main() -> None:
         if node_count > 0:
             print(f"  OK:   {node_count} graph nodes, {edge_count} edges")
         else:
-            print(f"  FAIL: No graph nodes found")
+            print("  FAIL: No graph nodes found")
             all_passed = False
     except Exception as e:
         print(f"  FAIL: Could not query graph tables: {e}")
@@ -132,7 +133,7 @@ def main() -> None:
         pct = round(embedded_count / total_turns * 100, 1) if total_turns > 0 else 0
         print(f"  OK:   {embedded_count}/{total_turns} turns embedded ({pct}%)")
     else:
-        print(f"  INFO: No embeddings present (PENDING)")
+        print("  INFO: No embeddings present (PENDING)")
         print(f"        Run 'aip corpus embed --db-path {state_db_path}' after configuring an embedding provider.")
 
     # 7. Check for private paths
@@ -162,7 +163,7 @@ def main() -> None:
             print(f"        {match}")
         all_passed = False
     else:
-        print(f"  OK:   No private paths or secrets found")
+        print("  OK:   No private paths or secrets found")
 
     conn.close()
 
@@ -218,7 +219,7 @@ def main() -> None:
             print(f"  WARN: Could not query lexical DB: {e}")
         lex_conn.close()
     else:
-        print(f"  WARN: lexical.db missing or empty")
+        print("  WARN: lexical.db missing or empty")
 
     # Summary
     print("\n" + "=" * 60)

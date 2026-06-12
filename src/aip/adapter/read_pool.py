@@ -79,7 +79,6 @@ _DEFAULT_POOL_SIZE = 3
 _LATENCY_WINDOW = 20
 
 
-
 def resolve_pool_size(store_name: str, config: dict | None = None) -> int:
     """Resolve the read pool size for a given store from config.
 
@@ -203,12 +202,14 @@ class ReadPoolMixin:
                 self._health_track_connect()
             log.debug(
                 "read_pool_created store=%s size=%d",
-                self.__class__.__name__, self._read_pool_size,
+                self.__class__.__name__,
+                self._read_pool_size,
             )
         except Exception as exc:
             log.warning(
                 "read_pool_init_failed store=%s error=%s -- will fall back to write conn",
-                self.__class__.__name__, exc,
+                self.__class__.__name__,
+                exc,
             )
             # Clean up any partially created connections
             await self._close_read_pool()
@@ -299,9 +300,7 @@ class ReadPoolMixin:
         - recommendation: when exhaustion_rate > 0.3, suggests increasing
           pool_size; otherwise empty string.
         """
-        pool_active = sum(
-            1 for avail in getattr(self, "_read_pool_available", []) if not avail
-        )
+        pool_active = sum(1 for avail in getattr(self, "_read_pool_available", []) if not avail)
         latencies = getattr(self, "_pool_checkout_latencies", [])
         avg_latency_ms = 0.0
         p95_latency_ms = 0.0
@@ -372,8 +371,8 @@ _AUTO_APPLY_CONSECUTIVE_THRESHOLD = 5
 _AUTO_SIZE_MAX_POOL = 10
 
 # Auto-apply safeguards (Sprint 5.24)
-_AUTO_APPLY_MAX_INCREASE = 4   # Max additional connections auto-applied above configured
-_AUTO_APPLY_MAX_POOL = 12      # Absolute maximum pool size (hard cap)
+_AUTO_APPLY_MAX_INCREASE = 4  # Max additional connections auto-applied above configured
+_AUTO_APPLY_MAX_POOL = 12  # Absolute maximum pool size (hard cap)
 
 
 class PoolSizeAdjustment:
@@ -627,7 +626,7 @@ class ReadPoolAutoSizer:
 
         if len(obs) >= self._consecutive_threshold:
             # Sprint 5.27: Use policy-driven exhaustion threshold instead of hardcoded 0.3
-            recent = obs[-self._consecutive_threshold:]
+            recent = obs[-self._consecutive_threshold :]
             if all(rate > self._exhaustion_threshold for rate in recent):
                 # Sustained high exhaustion -- generate a suggestion
                 avg_rate = sum(recent) / len(recent)
@@ -650,9 +649,7 @@ class ReadPoolAutoSizer:
                     )
 
                     # Replace any existing suggestion for this store
-                    self._suggestions = [
-                        s for s in self._suggestions if s.store_name != store_name
-                    ]
+                    self._suggestions = [s for s in self._suggestions if s.store_name != store_name]
                     self._suggestions.append(suggestion)
 
                     log.info(
@@ -664,12 +661,8 @@ class ReadPoolAutoSizer:
                     )
 
         # Auto-apply check (Sprint 5.24)
-        if (
-            self.auto_apply_enabled
-            and store is not None
-            and len(obs) >= self._auto_apply_consecutive_threshold
-        ):
-            apply_recent = obs[-self._auto_apply_consecutive_threshold:]
+        if self.auto_apply_enabled and store is not None and len(obs) >= self._auto_apply_consecutive_threshold:
+            apply_recent = obs[-self._auto_apply_consecutive_threshold :]
             if all(rate > self._exhaustion_threshold for rate in apply_recent):
                 avg_rate = sum(apply_recent) / len(apply_recent)
                 applied = self._auto_apply_pool_size(
@@ -685,9 +678,7 @@ class ReadPoolAutoSizer:
         # Sprint 5.27: Use policy-driven threshold instead of hardcoded 0.3
         if exhaustion_rate <= self._exhaustion_threshold:
             prev_suggestions = len(self._suggestions)
-            self._suggestions = [
-                s for s in self._suggestions if s.store_name != store_name
-            ]
+            self._suggestions = [s for s in self._suggestions if s.store_name != store_name]
             if len(self._suggestions) < prev_suggestions:
                 log.info(
                     "read_pool_auto_size_cleared",
@@ -698,11 +689,7 @@ class ReadPoolAutoSizer:
         # Sprint 5.25: Auto-rollback check
         # When auto-increased and exhaustion drops below the healthy threshold
         # for sustained observations, automatically roll back to configured size.
-        if (
-            self.auto_rollback_enabled
-            and store is not None
-            and self._auto_applied_increase.get(store_name, 0) > 0
-        ):
+        if self.auto_rollback_enabled and store is not None and self._auto_applied_increase.get(store_name, 0) > 0:
             if exhaustion_rate < self._auto_rollback_healthy_threshold:
                 # Track consecutive low-exhaustion observations after increase
                 current_low = self._post_increase_low_obs.get(store_name, 0)
@@ -743,7 +730,7 @@ class ReadPoolAutoSizer:
         """
         current_size = store._read_pool_size
         configured_size = self._configured_pool_sizes.get(store_name, current_size)
-        already_increased = self._auto_applied_increase.get(store_name, 0)
+        self._auto_applied_increase.get(store_name, 0)
 
         # Compute target size based on exhaustion severity
         if exhaustion_rate > 0.6:
@@ -801,24 +788,27 @@ class ReadPoolAutoSizer:
         if self._alert_manager is not None:
             try:
                 from aip.adapter.alerting import Alert
+
                 severity = "warning" if exhaustion_rate > 0.6 else "info"
-                self._alert_manager.send_alert(Alert(
-                    alert_type="pool_adjustment",
-                    severity=severity,
-                    subject=f"read_pool.{store_name}",
-                    message=(
-                        f"Read pool auto-sized {store_name} from {old_size} to {target} connections "
-                        f"(configured={configured_size}, exhaustion_rate={exhaustion_rate:.1%}). "
-                        f"Sustained high exhaustion for {self._auto_apply_consecutive_threshold}+ observations."
-                    ),
-                    data={
-                        "store_name": store_name,
-                        "previous_pool_size": old_size,
-                        "new_pool_size": target,
-                        "configured_pool_size": configured_size,
-                        "exhaustion_rate": round(exhaustion_rate, 4),
-                    },
-                ))
+                self._alert_manager.send_alert(
+                    Alert(
+                        alert_type="pool_adjustment",
+                        severity=severity,
+                        subject=f"read_pool.{store_name}",
+                        message=(
+                            f"Read pool auto-sized {store_name} from {old_size} to {target} connections "
+                            f"(configured={configured_size}, exhaustion_rate={exhaustion_rate:.1%}). "
+                            f"Sustained high exhaustion for {self._auto_apply_consecutive_threshold}+ observations."
+                        ),
+                        data={
+                            "store_name": store_name,
+                            "previous_pool_size": old_size,
+                            "new_pool_size": target,
+                            "configured_pool_size": configured_size,
+                            "exhaustion_rate": round(exhaustion_rate, 4),
+                        },
+                    )
+                )
             except Exception:
                 pass  # Alerting is fire-and-forget
 
@@ -870,22 +860,25 @@ class ReadPoolAutoSizer:
         if self._alert_manager is not None:
             try:
                 from aip.adapter.alerting import Alert
-                self._alert_manager.send_alert(Alert(
-                    alert_type="pool_adjustment",
-                    severity="info",
-                    subject=f"read_pool.{store_name}.rollback",
-                    message=(
-                        f"Read pool for {store_name} rolled back from {old_size} to "
-                        f"configured value {configured_size}. Exhaustion has recovered."
-                    ),
-                    data={
-                        "store_name": store_name,
-                        "previous_pool_size": old_size,
-                        "new_pool_size": configured_size,
-                        "configured_pool_size": configured_size,
-                        "rollback": True,
-                    },
-                ))
+
+                self._alert_manager.send_alert(
+                    Alert(
+                        alert_type="pool_adjustment",
+                        severity="info",
+                        subject=f"read_pool.{store_name}.rollback",
+                        message=(
+                            f"Read pool for {store_name} rolled back from {old_size} to "
+                            f"configured value {configured_size}. Exhaustion has recovered."
+                        ),
+                        data={
+                            "store_name": store_name,
+                            "previous_pool_size": old_size,
+                            "new_pool_size": configured_size,
+                            "configured_pool_size": configured_size,
+                            "rollback": True,
+                        },
+                    )
+                )
             except Exception:
                 pass  # Alerting is fire-and-forget
         return True
@@ -949,15 +942,10 @@ class ReadPoolAutoSizer:
                 "auto_applied_increase": increase,
                 "recent_exhaustion_rate": round(recent_rate, 4),
                 "observations_count": len(obs),
-                "adjustments": len([
-                    a for a in self._adjustment_history if a.store_name == store_name
-                ]),
+                "adjustments": len([a for a in self._adjustment_history if a.store_name == store_name]),
                 # Sprint 5.25: Auto-rollback status
                 "consecutive_low_exhaustion_obs": low_obs_count,
-                "pending_auto_rollback": (
-                    increase > 0
-                    and low_obs_count >= self._auto_rollback_consecutive_threshold
-                ),
+                "pending_auto_rollback": (increase > 0 and low_obs_count >= self._auto_rollback_consecutive_threshold),
             }
 
         return {

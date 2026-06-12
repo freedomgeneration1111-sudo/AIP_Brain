@@ -19,7 +19,6 @@ ReadPoolMixin evaluation (Sprint 5.21):
 
 from __future__ import annotations
 
-import logging
 import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -30,8 +29,9 @@ import bcrypt
 from aip.adapter.store_health import StoreHealthMixin
 from aip.foundation.protocols import AuthStore
 from aip.foundation.schemas import AuthConfig
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SqliteSessionStore(AuthStore, StoreHealthMixin):

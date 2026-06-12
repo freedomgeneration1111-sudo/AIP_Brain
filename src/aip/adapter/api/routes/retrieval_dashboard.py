@@ -13,15 +13,15 @@ evaluation trend data, and adaptive per-channel budget tuning suggestions.
 from __future__ import annotations
 
 import json
-import logging
 import os
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 
 from aip.adapter.api.dependencies import AipContainer, get_container
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/retrieval", tags=["retrieval"])
 
@@ -66,8 +66,7 @@ async def retrieval_dashboard(container: AipContainer = Depends(get_container)):
     if not hasattr(trace_store, "get_dashboard_summary"):
         return {
             "status": "limited",
-            "message": "TraceStore does not support get_dashboard_summary(). "
-                       "Use TraceStoreAdapter for full analytics.",
+            "message": "TraceStore does not support get_dashboard_summary(). Use TraceStoreAdapter for full analytics.",
             "total_ask_queries": 0,
             "channels": [],
             "recent_traces": [],
@@ -115,8 +114,7 @@ async def retrieval_dashboard(container: AipContainer = Depends(get_container)):
     # Build per-channel health list
     channel_usage = summary.get("channel_usage", {})
     result["channels"] = [
-        {"name": ch, "dispatch_count": count}
-        for ch, count in sorted(channel_usage.items(), key=lambda x: -x[1])
+        {"name": ch, "dispatch_count": count} for ch, count in sorted(channel_usage.items(), key=lambda x: -x[1])
     ]
 
     # Extract recent traces from the event store (last 10 ask_query events)
@@ -214,7 +212,9 @@ async def retrieval_trace_by_session(
 
         per_channel_ms_raw = metadata.get("retrieval_per_channel_ms", "{}")
         try:
-            per_channel_ms = json.loads(per_channel_ms_raw) if isinstance(per_channel_ms_raw, str) else per_channel_ms_raw
+            per_channel_ms = (
+                json.loads(per_channel_ms_raw) if isinstance(per_channel_ms_raw, str) else per_channel_ms_raw
+            )
         except (json.JSONDecodeError, TypeError):
             per_channel_ms = {}
 
@@ -277,13 +277,15 @@ async def retrieval_channels(container: AipContainer = Depends(get_container)):
     channels = []
     for ch_name, dispatch_count in sorted(channel_usage.items(), key=lambda x: -x[1]):
         contrib = contribution_summary.get(ch_name, 0)
-        channels.append({
-            "name": ch_name,
-            "dispatch_count": dispatch_count,
-            "contribution_count": contrib,
-            "contribution_pct": round(contrib / total_contrib * 100, 1),
-            "status": "active",
-        })
+        channels.append(
+            {
+                "name": ch_name,
+                "dispatch_count": dispatch_count,
+                "contribution_count": contrib,
+                "contribution_pct": round(contrib / total_contrib * 100, 1),
+                "status": "active",
+            }
+        )
 
     return {"status": "ok", "channels": channels}
 
@@ -470,6 +472,7 @@ async def retrieval_test(payload: dict, container: AipContainer = Depends(get_co
     # Pass channel enable flags directly to _search_sources_with_trace
     # and disable auto_channel_selection so the user's selection is respected.
     import time as _time
+
     start_ms = _time.monotonic()
 
     try:
@@ -523,7 +526,7 @@ async def retrieval_test(payload: dict, container: AipContainer = Depends(get_co
         ch_reasons = getattr(trace, "channel_health_reasons", {}) or {}
         ch_details = getattr(trace, "channel_details", {}) or {}
         ch_elapsed = getattr(trace, "per_channel_elapsed_ms", {}) or {}
-        ch_contributions = getattr(trace, "channel_contributions", {}) or {}
+        getattr(trace, "channel_contributions", {}) or {}
 
         for ch_name in valid_channels:
             health_state = ch_health.get(ch_name, "not_configured")
@@ -705,6 +708,7 @@ async def retrieval_health(container: AipContainer = Depends(get_container)):
         if hasattr(vs, "get_backend_status"):
             try:
                 from aip.foundation.schemas.vector import VectorBackendStatus as _VBS
+
                 vbs = vs.get_backend_status()
                 if vbs == _VBS.AVAILABLE:
                     vector_backend_type = getattr(vs, "_backend_name", "sqlite_vss")
@@ -771,20 +775,13 @@ async def retrieval_health(container: AipContainer = Depends(get_container)):
     }
 
     # Wiki/CODEX channel
-    wiki_available = (
-        container.artifact_store is not None
-        and container.ecs_store is not None
-    )
+    wiki_available = container.artifact_store is not None and container.ecs_store is not None
     channels["wiki"] = {
         "channel": "wiki",
         "state": "active" if wiki_available else "unavailable",
         "backend_type": "artifact_store+ecs_store" if wiki_available else "none",
         "available": wiki_available,
-        "degradation_reason": (
-            ""
-            if wiki_available
-            else "ArtifactStore or EcsStore not initialized"
-        ),
+        "degradation_reason": ("" if wiki_available else "ArtifactStore or EcsStore not initialized"),
         "embedding_provider_configured": None,
         "vss_available": None,
     }
@@ -863,7 +860,9 @@ async def retrieval_health(container: AipContainer = Depends(get_container)):
 @router.get("/budget-tune")
 async def retrieval_budget_tune(
     auto_apply: bool = Query(False, description="Whether to auto-apply suggested adjustments"),
-    max_change_fraction: float = Query(0.30, ge=0.01, le=1.0, description="Maximum fractional change per channel per cycle"),
+    max_change_fraction: float = Query(
+        0.30, ge=0.01, le=1.0, description="Maximum fractional change per channel per cycle"
+    ),
     container: AipContainer = Depends(get_container),
 ):
     """Return adaptive per-channel budget tuning suggestions.
@@ -934,14 +933,16 @@ async def retrieval_budget_tune(
     # Build response
     adjustments = []
     for adj in tuning_result.adjustments:
-        adjustments.append({
-            "channel_name": adj.channel_name,
-            "current_budget": adj.current_budget,
-            "suggested_budget": adj.suggested_budget,
-            "change": adj.suggested_budget - adj.current_budget,
-            "reason": adj.reason,
-            "confidence": adj.confidence,
-        })
+        adjustments.append(
+            {
+                "channel_name": adj.channel_name,
+                "current_budget": adj.current_budget,
+                "suggested_budget": adj.suggested_budget,
+                "change": adj.suggested_budget - adj.current_budget,
+                "reason": adj.reason,
+                "confidence": adj.confidence,
+            }
+        )
 
     # Current budget snapshot (post-tuning if auto_apply)
     current_budgets = {
@@ -970,9 +971,7 @@ async def retrieval_budget_tune(
 # ---------------------------------------------------------------------------
 
 
-async def _get_recent_traces(
-    container: AipContainer, limit: int = 10
-) -> list[dict]:
+async def _get_recent_traces(container: AipContainer, limit: int = 10) -> list[dict]:
     """Retrieve the most recent retrieval traces from EventStore.
 
     Returns a list of trace dicts with query, timing, channel, and
@@ -1015,7 +1014,9 @@ async def _get_recent_traces(
 
         per_channel_ms_raw = metadata.get("retrieval_per_channel_ms", "{}")
         try:
-            per_channel_ms = json.loads(per_channel_ms_raw) if isinstance(per_channel_ms_raw, str) else per_channel_ms_raw
+            per_channel_ms = (
+                json.loads(per_channel_ms_raw) if isinstance(per_channel_ms_raw, str) else per_channel_ms_raw
+            )
         except (json.JSONDecodeError, TypeError):
             per_channel_ms = {}
 
@@ -1037,21 +1038,23 @@ async def _get_recent_traces(
             "entity_count": metadata.get("retrieval_llm_entity_count", 0),
         }
 
-        traces.append({
-            "session_id": getattr(ev, "actor", "") or metadata.get("session_id", ""),
-            "query": metadata.get("prompt", "")[:100],
-            "channels_queried": channels,
-            "per_channel_elapsed_ms": per_channel_ms,
-            "total_elapsed_ms": metadata.get("retrieval_total_ms", 0),
-            "hits_before_fusion": metadata.get("retrieval_hits_before_fusion", 0),
-            "hits_after_fusion": metadata.get("retrieval_hits_after_fusion", 0),
-            "hits_after_gate": metadata.get("retrieval_hits_after_gate", 0),
-            "verdict": metadata.get("retrieval_verdict", "UNKNOWN"),
-            "round": metadata.get("retrieval_round", 0),
-            "channel_contributions": channel_contributions,
-            "llm_entity_extraction": llm_entity_extraction,
-            "timestamp": getattr(ev, "timestamp", ""),
-        })
+        traces.append(
+            {
+                "session_id": getattr(ev, "actor", "") or metadata.get("session_id", ""),
+                "query": metadata.get("prompt", "")[:100],
+                "channels_queried": channels,
+                "per_channel_elapsed_ms": per_channel_ms,
+                "total_elapsed_ms": metadata.get("retrieval_total_ms", 0),
+                "hits_before_fusion": metadata.get("retrieval_hits_before_fusion", 0),
+                "hits_after_fusion": metadata.get("retrieval_hits_after_fusion", 0),
+                "hits_after_gate": metadata.get("retrieval_hits_after_gate", 0),
+                "verdict": metadata.get("retrieval_verdict", "UNKNOWN"),
+                "round": metadata.get("retrieval_round", 0),
+                "channel_contributions": channel_contributions,
+                "llm_entity_extraction": llm_entity_extraction,
+                "timestamp": getattr(ev, "timestamp", ""),
+            }
+        )
 
         if len(traces) >= limit:
             break
@@ -1059,19 +1062,14 @@ async def _get_recent_traces(
     return traces
 
 
-async def _get_top_failing_queries(
-    container: AipContainer, limit: int = 5
-) -> list[dict]:
+async def _get_top_failing_queries(container: AipContainer, limit: int = 5) -> list[dict]:
     """Return queries with the worst quality-gate outcomes.
 
     Prioritises NO_RESULTS and NEEDS_MORE_CONTEXT verdicts,
     sorted by total_elapsed_ms descending (slowest failures first).
     """
     traces = await _get_recent_traces(container, limit=100)
-    failing = [
-        t for t in traces
-        if t.get("verdict") in ("NO_RESULTS", "NEEDS_MORE_CONTEXT")
-    ]
+    failing = [t for t in traces if t.get("verdict") in ("NO_RESULTS", "NEEDS_MORE_CONTEXT")]
     # Sort: NO_RESULTS first, then by slowest elapsed time
     failing.sort(
         key=lambda t: (0 if t.get("verdict") == "NO_RESULTS" else 1, -t.get("total_elapsed_ms", 0)),
@@ -1079,9 +1077,7 @@ async def _get_top_failing_queries(
     return failing[:limit]
 
 
-async def _compute_channel_contribution_summary(
-    container: AipContainer, limit: int = 100
-) -> dict[str, int]:
+async def _compute_channel_contribution_summary(container: AipContainer, limit: int = 100) -> dict[str, int]:
     """Compute aggregated channel contribution counts from recent traces.
 
     Aggregates the channel_contributions field across
@@ -1098,9 +1094,7 @@ async def _compute_channel_contribution_summary(
     return summary
 
 
-async def _compute_llm_extraction_summary(
-    container: AipContainer, limit: int = 100
-) -> dict[str, Any]:
+async def _compute_llm_extraction_summary(container: AipContainer, limit: int = 100) -> dict[str, Any]:
     """Compute LLM entity extraction observability summary from recent traces.
 
     Aggregates LLM entity extraction timing and success
@@ -1160,10 +1154,7 @@ def _load_latest_eval_result() -> dict[str, Any] | None:
         return None
 
     try:
-        eval_files = [
-            f for f in os.listdir(eval_dir)
-            if f.startswith("eval_") and f.endswith(".json")
-        ]
+        eval_files = [f for f in os.listdir(eval_dir) if f.startswith("eval_") and f.endswith(".json")]
     except OSError:
         return None
 

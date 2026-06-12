@@ -101,8 +101,8 @@ async def _create_sqlite_vss(vector_cfg: dict, embedding_provider: Any = None) -
                 )
         else:
             logger.warning(
-                "sqlite_vss extension not available, using persistent sqlite metadata + "
-                "brute-force search (mode=%s)", runtime_mode.value,
+                "sqlite_vss extension not available, using persistent sqlite metadata + brute-force search (mode=%s)",
+                runtime_mode.value,
             )
         return store
     except Exception as e:

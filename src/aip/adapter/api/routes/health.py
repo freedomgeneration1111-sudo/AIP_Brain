@@ -11,18 +11,17 @@ Sprint 5.25 additions:
 - Config watcher status (if ConfigWatcher is wired)
 """
 
-import logging
 import time
 from typing import Any, TypedDict
 
 from fastapi import APIRouter, Depends
 
 from aip.adapter.api.dependencies import AipContainer, get_container
-from aip.adapter.store_health import ConnectionHealth
 from aip.config import DogfoodMode, get_dogfood_mode, validate_dogfood_readiness
+from aip.logging import get_logger
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class HealthEndpointResponse(TypedDict):
@@ -217,13 +216,15 @@ async def health(container: AipContainer = Depends(get_container)):
             vigil_llm_telemetry = {}
 
     # Component availability — determine degraded status
-    critical_available = all([
-        container.entity_store is not None,
-        container.canonical_store is not None,
-        container.event_store is not None,
-        container.autonomy_gate is not None,
-        container.artifact_store is not None,
-    ])
+    critical_available = all(
+        [
+            container.entity_store is not None,
+            container.canonical_store is not None,
+            container.event_store is not None,
+            container.autonomy_gate is not None,
+            container.artifact_store is not None,
+        ]
+    )
 
     optional_components = {
         "lexical_store": container.lexical_store is not None,
@@ -257,7 +258,8 @@ async def health(container: AipContainer = Depends(get_container)):
     if container.budget_manager is not None:
         try:
             status_result = await container.budget_manager.get_status(
-                scope="session", scope_id="health_check",
+                scope="session",
+                scope_id="health_check",
             )
             budget_status = "active" if status_result else "error"
         except Exception:
@@ -283,10 +285,22 @@ async def health(container: AipContainer = Depends(get_container)):
     # Connection health metrics — gather from stores that support StoreHealthMixin
     store_health = {}
     for store_name in (
-        "entity_store", "event_store", "artifact_store", "ecs_store",
-        "canonical_store", "budget_store", "project_store", "session_store",
-        "review_queue_store", "vigil_store", "corpus_turn_store", "lexical_store",
-        "graph_store", "vector_store", "knowledge_store", "autonomy_gate",
+        "entity_store",
+        "event_store",
+        "artifact_store",
+        "ecs_store",
+        "canonical_store",
+        "budget_store",
+        "project_store",
+        "session_store",
+        "review_queue_store",
+        "vigil_store",
+        "corpus_turn_store",
+        "lexical_store",
+        "graph_store",
+        "vector_store",
+        "knowledge_store",
+        "autonomy_gate",
         "auth_session_store",
     ):
         store = getattr(container, store_name, None)
@@ -312,6 +326,7 @@ async def health(container: AipContainer = Depends(get_container)):
     auto_sizer = getattr(container, "_read_pool_auto_sizer", None)
     if auto_sizer is None:
         from aip.adapter.read_pool import ReadPoolAutoSizer
+
         auto_sizer = ReadPoolAutoSizer()
         container._read_pool_auto_sizer = auto_sizer  # type: ignore[attr-defined]
 
@@ -327,11 +342,13 @@ async def health(container: AipContainer = Depends(get_container)):
             # Flag stores with high exhaustion rate (>0.3 suggests pool too small)
             rate = pool_data.get("exhaustion_rate", 0.0)
             if rate > 0.3:
-                read_pool_summary["stores_with_high_exhaustion"].append({
-                    "store": store_name,
-                    "exhaustion_rate": rate,
-                    "pool_size": pool_data.get("pool_size", 0),
-                })
+                read_pool_summary["stores_with_high_exhaustion"].append(
+                    {
+                        "store": store_name,
+                        "exhaustion_rate": rate,
+                        "pool_size": pool_data.get("pool_size", 0),
+                    }
+                )
             # Collect the actual store instance for auto-apply
             store_instance = getattr(container, store_name, None)
             if store_instance is not None and hasattr(store_instance, "_read_pool_size"):
@@ -392,10 +409,7 @@ async def health(container: AipContainer = Depends(get_container)):
         "batch_efficiency_ratio": 0.0,
         "summary": "",
     }
-    total_extractions = (
-        batch_telemetry_summary["batch_extractions"]
-        + batch_telemetry_summary["per_turn_extractions"]
-    )
+    total_extractions = batch_telemetry_summary["batch_extractions"] + batch_telemetry_summary["per_turn_extractions"]
     if total_extractions > 0:
         batch_telemetry_summary["batch_efficiency_ratio"] = round(
             batch_telemetry_summary["batch_extractions"] / total_extractions, 3
@@ -441,13 +455,11 @@ async def health(container: AipContainer = Depends(get_container)):
                 auto_tuning_status["graph_batch_auto_tune"]["configured_batch_size"] = (
                     sexton_config.graph_extraction_batch_size
                 )
-            auto_tuning_status["graph_batch_auto_tune"]["current_batch_size"] = (
-                getattr(container.sexton_actor, "_current_batch_size", 0)
+            auto_tuning_status["graph_batch_auto_tune"]["current_batch_size"] = getattr(
+                container.sexton_actor, "_current_batch_size", 0
             )
             adjustments = getattr(container.sexton_actor, "_auto_tune_adjustments", [])
-            auto_tuning_status["graph_batch_auto_tune"]["recent_adjustments"] = (
-                adjustments[-5:] if adjustments else []
-            )
+            auto_tuning_status["graph_batch_auto_tune"]["recent_adjustments"] = adjustments[-5:] if adjustments else []
         except Exception:
             pass
 
@@ -456,25 +468,21 @@ async def health(container: AipContainer = Depends(get_container)):
         try:
             vigil_config = getattr(container.vigil, "config", None)
             if vigil_config is not None:
-                auto_tuning_status["vigil_llm_evaluation"]["enabled"] = (
-                    vigil_config.llm_faithfulness_enabled
-                )
-                auto_tuning_status["vigil_llm_evaluation"]["model_slot"] = (
-                    vigil_config.llm_faithfulness_model_slot
-                )
+                auto_tuning_status["vigil_llm_evaluation"]["enabled"] = vigil_config.llm_faithfulness_enabled
+                auto_tuning_status["vigil_llm_evaluation"]["model_slot"] = vigil_config.llm_faithfulness_model_slot
             vigil_telem = getattr(container.vigil, "_llm_faithfulness_telemetry", {})
-            auto_tuning_status["vigil_llm_evaluation"]["total_evaluations"] = (
-                vigil_telem.get("total_llm_evaluations", 0)
+            auto_tuning_status["vigil_llm_evaluation"]["total_evaluations"] = vigil_telem.get(
+                "total_llm_evaluations", 0
             )
-            auto_tuning_status["vigil_llm_evaluation"]["total_hallucinations"] = (
-                vigil_telem.get("total_hallucinations_detected", 0)
+            auto_tuning_status["vigil_llm_evaluation"]["total_hallucinations"] = vigil_telem.get(
+                "total_hallucinations_detected", 0
             )
-            auto_tuning_status["vigil_llm_evaluation"]["avg_faithfulness_score"] = (
-                vigil_telem.get("avg_llm_faithfulness_score", 0.0)
+            auto_tuning_status["vigil_llm_evaluation"]["avg_faithfulness_score"] = vigil_telem.get(
+                "avg_llm_faithfulness_score", 0.0
             )
-            auto_tuning_status["vigil_llm_evaluation"]["recent_faithfulness_scores"] = (
-                [e.get("faithfulness_score", 0.0) for e in vigil_telem.get("last_llm_evaluations", [])[-5:]]
-            )
+            auto_tuning_status["vigil_llm_evaluation"]["recent_faithfulness_scores"] = [
+                e.get("faithfulness_score", 0.0) for e in vigil_telem.get("last_llm_evaluations", [])[-5:]
+            ]
             # Sprint 5.24: Vigil cycle report history
             cycle_history = getattr(container.vigil, "_cycle_report_history", [])
             auto_tuning_status["vigil_llm_evaluation"]["cycle_report_count"] = len(cycle_history)
@@ -499,15 +507,9 @@ async def health(container: AipContainer = Depends(get_container)):
     }
     if container.sexton_actor is not None:
         try:
-            per_batch_telemetry["total_batch_successes"] = getattr(
-                container.sexton_actor, "_total_batch_successes", 0
-            )
-            per_batch_telemetry["total_batch_failures"] = getattr(
-                container.sexton_actor, "_total_batch_failures", 0
-            )
-            per_batch_telemetry["recent_batches"] = getattr(
-                container.sexton_actor, "_per_batch_telemetry", []
-            )[-10:]
+            per_batch_telemetry["total_batch_successes"] = getattr(container.sexton_actor, "_total_batch_successes", 0)
+            per_batch_telemetry["total_batch_failures"] = getattr(container.sexton_actor, "_total_batch_failures", 0)
+            per_batch_telemetry["recent_batches"] = getattr(container.sexton_actor, "_per_batch_telemetry", [])[-10:]
             total = per_batch_telemetry["total_batch_successes"] + per_batch_telemetry["total_batch_failures"]
             per_batch_telemetry["failure_rate"] = (
                 round(per_batch_telemetry["total_batch_failures"] / total, 3) if total > 0 else 0.0
@@ -580,6 +582,7 @@ async def health(container: AipContainer = Depends(get_container)):
                     try:
                         vstatus = container.vector_store.get_backend_status()
                         from aip.foundation.schemas.vector import VectorBackendStatus
+
                         if "vector" in retrieval_channel_health:
                             retrieval_channel_health["vector"]["backend_status"] = vstatus.value
                             retrieval_channel_health["vector"]["backend_name"] = (
@@ -593,9 +596,12 @@ async def health(container: AipContainer = Depends(get_container)):
                                 else False
                             )
                             retrieval_channel_health["vector"]["state"] = (
-                                "active" if vstatus == VectorBackendStatus.AVAILABLE
-                                else "degraded" if vstatus == VectorBackendStatus.DEGRADED_BRUTEFORCE
-                                else "failed" if vstatus == VectorBackendStatus.FAILED
+                                "active"
+                                if vstatus == VectorBackendStatus.AVAILABLE
+                                else "degraded"
+                                if vstatus == VectorBackendStatus.DEGRADED_BRUTEFORCE
+                                else "failed"
+                                if vstatus == VectorBackendStatus.FAILED
                                 else "disabled"
                             )
                             if vstatus == VectorBackendStatus.DEGRADED_BRUTEFORCE:
@@ -772,18 +778,17 @@ async def dogfood_health(request: Any, container: AipContainer = Depends(get_con
                         channel_state_detail[ch_name] = "degraded"
                 elif ch_name == "graph":
                     channel_state_detail[ch_name] = (
-                        "available" if getattr(container, "graph_store", None) is not None
-                        else "unavailable"
+                        "available" if getattr(container, "graph_store", None) is not None else "unavailable"
                     )
                 elif ch_name == "wiki":
                     channel_state_detail[ch_name] = (
-                        "available" if container.artifact_store is not None and getattr(container, "ecs_store", None) is not None
+                        "available"
+                        if container.artifact_store is not None and getattr(container, "ecs_store", None) is not None
                         else "unavailable"
                     )
                 elif ch_name == "procedural":
                     channel_state_detail[ch_name] = (
-                        "available" if container.artifact_store is not None
-                        else "unavailable"
+                        "available" if container.artifact_store is not None else "unavailable"
                     )
                 else:
                     channel_state_detail[ch_name] = "unavailable"
@@ -796,10 +801,19 @@ async def dogfood_health(request: Any, container: AipContainer = Depends(get_con
 # UI Cycle 3: Operator Console Dashboard — consolidated status summary
 # ---------------------------------------------------------------------------
 
-_SECRET_KEYWORDS = frozenset({
-    "api_key", "apikey", "password", "secret", "token", "auth_token",
-    "access_token", "refresh_token", "private_key",
-})
+_SECRET_KEYWORDS = frozenset(
+    {
+        "api_key",
+        "apikey",
+        "password",
+        "secret",
+        "token",
+        "auth_token",
+        "access_token",
+        "refresh_token",
+        "private_key",
+    }
+)
 
 
 def _mask_secrets(d: dict) -> dict:
@@ -861,13 +875,15 @@ async def status_summary(container: AipContainer = Depends(get_container)):
             pass
 
     # Determine overall status using the same criteria as /health
-    critical_available = all([
-        container.entity_store is not None,
-        container.canonical_store is not None,
-        container.event_store is not None,
-        container.autonomy_gate is not None,
-        container.artifact_store is not None,
-    ])
+    critical_available = all(
+        [
+            container.entity_store is not None,
+            container.canonical_store is not None,
+            container.event_store is not None,
+            container.autonomy_gate is not None,
+            container.artifact_store is not None,
+        ]
+    )
     optional_components = {
         "lexical_store": container.lexical_store is not None,
         "vector_store": container.vector_store is not None,
@@ -921,10 +937,7 @@ async def status_summary(container: AipContainer = Depends(get_container)):
                     "state": summary.get("state", "unknown"),
                 }
                 # Collect last cycle time from whichever field the actor uses
-                last_cycle = (
-                    summary.get("last_cycle_time")
-                    or summary.get("last_eval_time")
-                )
+                last_cycle = summary.get("last_cycle_time") or summary.get("last_eval_time")
                 if last_cycle is not None:
                     entry["last_cycle_time"] = last_cycle
                 actor_status_summary[actor_name] = entry
@@ -976,6 +989,7 @@ async def status_summary(container: AipContainer = Depends(get_container)):
                 if "vector" in retrieval_health_summary and container.vector_store is not None:
                     try:
                         from aip.foundation.schemas.vector import VectorBackendStatus
+
                         vstatus = container.vector_store.get_backend_status()
                         if vstatus == VectorBackendStatus.AVAILABLE:
                             retrieval_health_summary["vector"]["state"] = "available"
@@ -994,9 +1008,7 @@ async def status_summary(container: AipContainer = Depends(get_container)):
                     "state": "not_configured",
                 }
     except Exception:
-        retrieval_health_summary = {
-            "_error": {"name": "_error", "registered": False, "state": "unavailable"}
-        }
+        retrieval_health_summary = {"_error": {"name": "_error", "registered": False, "state": "unavailable"}}
 
     # ------------------------------------------------------------------
     # 5. Corpus summary — total_turns, tagged, embedded, unembedded, percentage
@@ -1082,6 +1094,7 @@ async def status_summary(container: AipContainer = Depends(get_container)):
 
             db_path = "db/state.db"
             from pathlib import Path
+
             if Path(db_path).exists():
                 conn = await aiosqlite.connect(db_path)
                 conn.row_factory = aiosqlite.Row
@@ -1162,7 +1175,8 @@ async def status_summary(container: AipContainer = Depends(get_container)):
     if container.budget_manager is not None:
         try:
             status_result = await container.budget_manager.get_status(
-                scope="session", scope_id="status_summary_check",
+                scope="session",
+                scope_id="status_summary_check",
             )
             budget_status = "active" if status_result else "error"
         except Exception:

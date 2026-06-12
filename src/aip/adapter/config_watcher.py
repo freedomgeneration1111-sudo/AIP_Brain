@@ -32,9 +32,8 @@ portability across Linux, macOS, and CI environments.
 
 from __future__ import annotations
 
-import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -50,12 +49,14 @@ _DEFAULT_POLL_INTERVAL = 5.0
 _DEBOUNCE_INTERVAL = 2.0
 
 # Keys that are safe to hot-reload
-_HOT_RELOADABLE_KEYS = frozenset({
-    "read_pool",
-    "sexton",
-    "auto_tuning_policy",  # Sprint 5.26
-    "vigil_quality",       # Sprint 5.31
-})
+_HOT_RELOADABLE_KEYS = frozenset(
+    {
+        "read_pool",
+        "sexton",
+        "auto_tuning_policy",  # Sprint 5.26
+        "vigil_quality",  # Sprint 5.31
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Validation rules for hot-reloaded values (Sprint 5.26)
@@ -297,16 +298,19 @@ class ConfigWatcher:
             # Use tomllib (Python 3.11+) or fall back to toml package
             try:
                 import tomllib
+
                 with open(self._config_path, "rb") as f:
                     new_config = tomllib.load(f)
             except ImportError:
                 try:
                     import tomli as tomllib  # type: ignore[no-redef]
+
                     with open(self._config_path, "rb") as f:
                         new_config = tomllib.load(f)
                 except ImportError:
                     # Last resort — try the toml package
                     import toml  # type: ignore[import-not-found]
+
                     new_config = toml.load(str(self._config_path))
         except Exception as exc:
             self._total_reload_errors += 1
@@ -350,7 +354,7 @@ class ConfigWatcher:
                     )
                     self._rejected_history.append(rejected)
                     if len(self._rejected_history) > self._MAX_REJECTED_HISTORY:
-                        self._rejected_history = self._rejected_history[-self._MAX_REJECTED_HISTORY:]
+                        self._rejected_history = self._rejected_history[-self._MAX_REJECTED_HISTORY :]
                     logger.warning(
                         "config_hot_reload_rejected",
                         key=event.key,
@@ -400,11 +404,13 @@ class ConfigWatcher:
             elif new_value != current_value:
                 # Only reload numeric and boolean values (safe types)
                 if isinstance(new_value, (int, float, bool)):
-                    events.append(ConfigReloadEvent(
-                        key=f"{section}.{full_key}",
-                        old_value=current_value,
-                        new_value=new_value,
-                    ))
+                    events.append(
+                        ConfigReloadEvent(
+                            key=f"{section}.{full_key}",
+                            old_value=current_value,
+                            new_value=new_value,
+                        )
+                    )
 
         return events
 
@@ -504,9 +510,9 @@ class ConfigWatcher:
         """
         try:
             from aip.adapter.auto_tuning_policy import (
-                load_policy_from_config,
                 apply_policy_to_auto_sizer,
                 apply_policy_to_sexton,
+                load_policy_from_config,
             )
 
             current_config = getattr(self._container, "config", {})
@@ -591,6 +597,7 @@ class ConfigWatcher:
                     # Trigger immediate pruning with new retention settings
                     try:
                         import asyncio
+
                         try:
                             loop = asyncio.get_running_loop()
                             loop.create_task(quality_store._prune_if_needed())
@@ -612,7 +619,10 @@ class ConfigWatcher:
         new_size = max(1, min(20, int(new_size)))
         # Find all stores with ReadPoolMixin
         store_names = [
-            "lexical_store", "vector_store", "graph_store", "corpus_turn_store",
+            "lexical_store",
+            "vector_store",
+            "graph_store",
+            "corpus_turn_store",
         ]
         for store_name in store_names:
             self._update_store_pool_size(store_name, new_size)

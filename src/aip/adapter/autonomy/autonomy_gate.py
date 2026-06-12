@@ -57,7 +57,9 @@ class AutonomyGateImpl(AutonomyGate, StoreHealthMixin):
         self._config = config or {}
         # escalation_store param accepted for interface compatibility
         # (ignored; we manage table directly like other adapters)
-        self._db_path = self._config.get("db_path", "") or self._config.get("database", {}).get("db_path", "db/state.db")  # fallback; tests override via config
+        self._db_path = self._config.get("db_path", "") or self._config.get("database", {}).get(
+            "db_path", "db/state.db"
+        )  # fallback; tests override via config
         self._conn: aiosqlite.Connection | None = None
         self._tables_ready = False
 

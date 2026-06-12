@@ -393,8 +393,7 @@ def init(force: bool) -> None:
     if _init_state_db(state_db):
         click.echo("state.db: schema initialized")
         click.echo(
-            "  (artifacts, projects, events, ecs_state, ecs_transitions, "
-            "canonical_artifacts, entities, enabled_models)"
+            "  (artifacts, projects, events, ecs_state, ecs_transitions, canonical_artifacts, entities, enabled_models)"
         )
     else:
         state_db.touch(exist_ok=True)
@@ -487,6 +486,7 @@ def init(force: bool) -> None:
         if config_path.exists():
             try:
                 import tomllib
+
                 with open(config_path, "rb") as f:
                     config = tomllib.load(f)
             except Exception:
@@ -503,7 +503,7 @@ def init(force: bool) -> None:
             click.echo("  Start the API and check /health/dogfood for full diagnostics.")
         else:
             click.echo("  Minimal mode: core stores only; degraded operation is fine.")
-            click.echo("  Set [alpha] dogfood_mode = \"full\" in config for full validation.")
+            click.echo('  Set [alpha] dogfood_mode = "full" in config for full validation.')
 
         click.echo("  (Can also set AIP_DOGFOOD_MODE environment variable)")
     except Exception as e:
@@ -535,8 +535,8 @@ def init(force: bool) -> None:
         click.echo("  WARNING: No .db files found in db/ directory!")
 
     click.echo(f"\n  All databases: {db_dir.resolve()}/")
-    click.echo(f"  Backup: aip backup (VACUUM INTO for consistent snapshots)")
-    click.echo(f"  Restore: Copy .db files from backup/ to db/ (stop app first)")
+    click.echo("  Backup: aip backup (VACUUM INTO for consistent snapshots)")
+    click.echo("  Restore: Copy .db files from backup/ to db/ (stop app first)")
     click.echo("\nNext steps:")
     click.echo("  1. Run `aip status` to inspect current state.")
     click.echo("  2. Run `aip project create --name <name> --domain <domain>` to create a project.")

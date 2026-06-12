@@ -15,13 +15,12 @@ Deterministic, zero-token, no network, no LLM.
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from aip.adapter.alerting import AlertManager, AlertConfig, Alert
-from aip.adapter.alert_history_store import AlertHistoryStore
-
+from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
+from aip.adapter.alerting import AlertConfig, AlertManager
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -37,7 +36,7 @@ def _make_config(**overrides) -> AlertConfig:
     """Build an AlertConfig with sensible test defaults and optional overrides."""
     defaults = dict(
         enabled=True,
-        webhook_url="",          # No real transport needed
+        webhook_url="",  # No real transport needed
         email_to="",
         min_alert_interval_seconds=0,  # Disable rate-limiting for tests
         ab_experiment_enabled=True,
@@ -58,15 +57,16 @@ def _make_config(**overrides) -> AlertConfig:
     return AlertConfig(**defaults)
 
 
-def _make_store(tmp_path, db_name: str = "test_history.db") -> AlertHistoryStore:
-    """Create and initialize a fresh AlertHistoryStore."""
+def _make_store(tmp_path, db_name: str = "test_history.db") -> SyncAlertHistoryBridge:
+    """Create and initialize a fresh AlertHistoryStore via SyncAlertHistoryBridge."""
     db_path = str(tmp_path / db_name)
     store = AlertHistoryStore(db_path)
-    store.initialize()
-    return store
+    bridge = SyncAlertHistoryBridge(store)
+    bridge.initialize()
+    return bridge
 
 
-def _make_manager(config: AlertConfig | None = None, store: AlertHistoryStore | None = None) -> AlertManager:
+def _make_manager(config: AlertConfig | None = None, store: SyncAlertHistoryBridge | None = None) -> AlertManager:
     """Create an AlertManager with optional config and store."""
     cfg = config or _make_config()
     mgr = AlertManager(cfg)
@@ -394,8 +394,7 @@ class TestPromotionRollback:
 
         # Find the rollback alert
         rollback_alerts = [
-            a for a in mgr.lifecycle_mgr._alert_history
-            if a.get("alert_type") == "ab_experiment_rollback"
+            a for a in mgr.lifecycle_mgr._alert_history if a.get("alert_type") == "ab_experiment_rollback"
         ]
         assert len(rollback_alerts) >= 1
         assert rollback_alerts[-1]["subject"] == "experiment:notify_rb"

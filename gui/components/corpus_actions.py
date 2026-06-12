@@ -10,25 +10,17 @@ Never imports from aip.orchestration.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from typing import Callable
 
 from nicegui import ui
 
 from gui.theme import (
     C_AMBER,
     C_CREAM,
-    C_ERR_FG,
-    C_GROUND,
     C_INK40,
-    C_INK60,
     C_MUTED,
     C_OK_FG,
-    C_SURFACE,
-    C_WARN_FG,
-    F_MONO,
     F_SANS,
-    R_MD,
-    R_SM,
 )
 
 log = logging.getLogger("gui.components.corpus_actions")
@@ -66,43 +58,33 @@ class CorpusActions:
         if self._container is not None:
             self._container.clear()
 
-        with ui.row().classes("w-full").style(
-            "gap:8px; padding:4px 0; flex-wrap:wrap;"
-        ) as row:
+        with ui.row().classes("w-full").style("gap:8px; padding:4px 0; flex-wrap:wrap;") as row:
             self._container = row
 
             # Ingest button
             ingest_label = "Ingest File"
-            ui.button(ingest_label, on_click=self._handle_ingest).props(
-                "outline dense size=sm"
-            ).style(
+            ui.button(ingest_label, on_click=self._handle_ingest).props("outline dense size=sm").style(
                 f"color:{C_CREAM}; border-color:{C_INK40}; font-family:{F_SANS};"
             )
 
             # Backfill button
             if backfill_running:
-                ui.button("Backfill Running...").props(
-                    "outline dense size=sm disabled"
-                ).style(
+                ui.button("Backfill Running...").props("outline dense size=sm disabled").style(
                     f"color:{C_MUTED}; border-color:{C_INK40}; font-family:{F_SANS};"
                 )
             elif not has_embedding_provider:
-                ui.button("Backfill (unavailable)").props(
-                    "outline dense size=sm disabled"
-                ).style(
+                ui.button("Backfill (unavailable)").props("outline dense size=sm disabled").style(
                     f"color:{C_MUTED}; border-color:{C_INK40}; font-family:{F_SANS};"
                 ).tooltip("No embedding provider configured. Configure an embedding model slot in Settings.")
             else:
                 ui.button("Run Embedding Backfill", on_click=self._handle_backfill).props(
                     "outline dense size=sm"
-                ).style(
-                    f"color:{C_OK_FG}; border-color:{C_INK40}; font-family:{F_SANS};"
-                ).tooltip("Explicit DEFINER action. Starts embedding backfill for unembedded chunks.")
+                ).style(f"color:{C_OK_FG}; border-color:{C_INK40}; font-family:{F_SANS};").tooltip(
+                    "Explicit DEFINER action. Starts embedding backfill for unembedded chunks."
+                )
 
             # Retry failed button
-            ui.button("Retry Failed Embeds", on_click=self._handle_retry_failed).props(
-                "outline dense size=sm"
-            ).style(
+            ui.button("Retry Failed Embeds", on_click=self._handle_retry_failed).props("outline dense size=sm").style(
                 f"color:{C_AMBER}; border-color:{C_INK40}; font-family:{F_SANS};"
             ).tooltip("Explicit DEFINER action. Clears failure counters so failed turns will be retried.")
 

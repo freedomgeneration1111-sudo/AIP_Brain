@@ -16,16 +16,11 @@ Verifies:
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
-import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 
 # ── Test fixtures ───────────────────────────────────────────────────────
 
@@ -86,14 +81,16 @@ def wiki_db_with_articles(wiki_db: Path) -> Path:
             (
                 "beast:wiki:test_domain:20260611T120000",
                 "This is the test article content about the test domain.",
-                json.dumps({
-                    "title": "Test Domain Article",
-                    "domain": "test_domain",
-                    "summary": "A test article for verification",
-                    "tags": ["test", "verification"],
-                    "aliases": ["Test Article"],
-                    "source": "sexton_wiki",
-                }),
+                json.dumps(
+                    {
+                        "title": "Test Domain Article",
+                        "domain": "test_domain",
+                        "summary": "A test article for verification",
+                        "tags": ["test", "verification"],
+                        "aliases": ["Test Article"],
+                        "source": "sexton_wiki",
+                    }
+                ),
                 now,
             ),
         )
@@ -108,12 +105,14 @@ def wiki_db_with_articles(wiki_db: Path) -> Path:
             (
                 "beast:wiki:another_domain:20260611T130000",
                 "This is another generated article.",
-                json.dumps({
-                    "title": "Another Domain Article",
-                    "domain": "another_domain",
-                    "summary": "A generated article",
-                    "tags": ["generated"],
-                }),
+                json.dumps(
+                    {
+                        "title": "Another Domain Article",
+                        "domain": "another_domain",
+                        "summary": "A generated article",
+                        "tags": ["generated"],
+                    }
+                ),
                 now,
             ),
         )
@@ -128,14 +127,16 @@ def wiki_db_with_articles(wiki_db: Path) -> Path:
             (
                 "wiki:my_domain:user_article:20260611T140000",
                 "User created content here.",
-                json.dumps({
-                    "title": "User Created Article",
-                    "domain": "my_domain",
-                    "summary": "Created by DEFINER",
-                    "tags": ["user", "manual"],
-                    "source": "definer_create",
-                    "revision_history": [{"version": 1, "action": "created", "actor": "definer"}],
-                }),
+                json.dumps(
+                    {
+                        "title": "User Created Article",
+                        "domain": "my_domain",
+                        "summary": "Created by DEFINER",
+                        "tags": ["user", "manual"],
+                        "source": "definer_create",
+                        "revision_history": [{"version": 1, "action": "created", "actor": "definer"}],
+                    }
+                ),
                 now,
             ),
         )
@@ -160,12 +161,14 @@ class TestStorageBackendResolution:
     def test_returns_sqlite_compat_when_no_container(self):
         """No container → sqlite_compat."""
         from aip.adapter.api.routes.wiki import _resolve_storage_backend
+
         assert _resolve_storage_backend(None) == "sqlite_compat"
 
     def test_returns_sqlite_compat_when_no_artifact_store(self):
         """Container without artifact_store → sqlite_compat."""
-        from aip.adapter.api.routes.wiki import _resolve_storage_backend
         from aip.adapter.api.dependencies import AipContainer
+        from aip.adapter.api.routes.wiki import _resolve_storage_backend
+
         container = AipContainer({})
         container.artifact_store = None
         container.ecs_store = None
@@ -177,8 +180,9 @@ class TestStorageBackendResolution:
         ECS state management requires ecs_store for proper validation,
         so partial wiring degrades to sqlite_compat.
         """
-        from aip.adapter.api.routes.wiki import _resolve_storage_backend
         from aip.adapter.api.dependencies import AipContainer
+        from aip.adapter.api.routes.wiki import _resolve_storage_backend
+
         container = AipContainer({})
         container.artifact_store = MagicMock()
         container.ecs_store = None
@@ -186,8 +190,9 @@ class TestStorageBackendResolution:
 
     def test_returns_artifact_store_when_both_wired(self):
         """Container with artifact_store AND ecs_store → artifact_store."""
-        from aip.adapter.api.routes.wiki import _resolve_storage_backend
         from aip.adapter.api.dependencies import AipContainer
+        from aip.adapter.api.routes.wiki import _resolve_storage_backend
+
         container = AipContainer({})
         container.artifact_store = MagicMock()
         container.ecs_store = MagicMock()
@@ -203,6 +208,7 @@ class TestArticleIdStability:
     def test_generate_article_id_format(self):
         """Article ID must follow wiki:{domain}:{title}:{timestamp} format."""
         from aip.adapter.api.routes.wiki import _generate_article_id
+
         aid = _generate_article_id("Test Article", "my_domain")
         assert aid.startswith("wiki:my_domain:test_article:")
         # Must have exactly 4 colon-separated parts
@@ -212,12 +218,14 @@ class TestArticleIdStability:
     def test_generate_article_id_empty_domain(self):
         """Empty domain should default to 'general'."""
         from aip.adapter.api.routes.wiki import _generate_article_id
+
         aid = _generate_article_id("Some Title", "")
         assert aid.startswith("wiki:general:some_title:")
 
     def test_generate_article_id_special_chars(self):
         """Special characters in title/domain are slugified."""
         from aip.adapter.api.routes.wiki import _generate_article_id
+
         aid = _generate_article_id("Hello World!", "my-domain")
         assert "hello_world" in aid
         assert "my_domain" in aid
@@ -230,6 +238,7 @@ class TestArticleIdStability:
         is deterministic, unique, and survives server restarts.
         """
         from aip.adapter.api.routes.wiki import _generate_article_id
+
         aid = _generate_article_id("Crosslink Test", "systems")
         # Must not contain raw DB row IDs
         assert "row" not in aid.lower()
@@ -248,7 +257,7 @@ class TestWikiCreateArtifactStorePath:
     async def test_create_via_artifact_store_path(self):
         """Create should use container.artifact_store.write() and
         container.ecs_store.transition() when both are wired."""
-        from aip.adapter.api.routes.wiki import create_wiki_article, WikiArticleCreateRequest
+        from aip.adapter.api.routes.wiki import WikiArticleCreateRequest, create_wiki_article
 
         # Mock container with artifact_store and ecs_store
         container = MagicMock()
@@ -287,7 +296,7 @@ class TestWikiCreateArtifactStorePath:
     @pytest.mark.asyncio
     async def test_create_falls_back_to_sqlite_compat(self, wiki_db: Path, monkeypatch):
         """Create should fall back to sqlite_compat when container has no stores."""
-        from aip.adapter.api.routes.wiki import create_wiki_article, WikiArticleCreateRequest
+        from aip.adapter.api.routes.wiki import WikiArticleCreateRequest, create_wiki_article
 
         # Patch _STATE_DB to use our test database
         monkeypatch.setattr("aip.adapter.api.routes.wiki._STATE_DB", str(wiki_db))
@@ -333,7 +342,7 @@ class TestWikiEditNoAutoApprove:
     @pytest.mark.asyncio
     async def test_edit_via_artifact_store_path_preserves_state(self):
         """Edit via artifact_store should NOT change ECS state."""
-        from aip.adapter.api.routes.wiki import update_wiki_article, WikiArticleUpdateRequest
+        from aip.adapter.api.routes.wiki import WikiArticleUpdateRequest, update_wiki_article
 
         container = MagicMock()
         container.artifact_store = AsyncMock()
@@ -341,16 +350,18 @@ class TestWikiEditNoAutoApprove:
         container.event_store = AsyncMock()
 
         # Simulate existing article
-        container.artifact_store.read_with_metadata = AsyncMock(return_value=(
-            "Original content",
-            {
-                "title": "Test Article",
-                "domain": "test",
-                "summary": "Original summary",
-                "tags": ["test"],
-                "revision_history": [{"version": 1, "action": "created", "actor": "definer"}],
-            },
-        ))
+        container.artifact_store.read_with_metadata = AsyncMock(
+            return_value=(
+                "Original content",
+                {
+                    "title": "Test Article",
+                    "domain": "test",
+                    "summary": "Original summary",
+                    "tags": ["test"],
+                    "revision_history": [{"version": 1, "action": "created", "actor": "definer"}],
+                },
+            )
+        )
         container.artifact_store.list_versions = AsyncMock(return_value=[1])
         container.ecs_store.current_state = AsyncMock(return_value="GENERATED")
 
@@ -379,7 +390,7 @@ class TestWikiEditNoAutoApprove:
     @pytest.mark.asyncio
     async def test_edit_via_sqlite_compat_preserves_state(self, wiki_db_with_articles: Path, monkeypatch):
         """Edit via sqlite_compat should NOT change ECS state."""
-        from aip.adapter.api.routes.wiki import update_wiki_article, WikiArticleUpdateRequest
+        from aip.adapter.api.routes.wiki import WikiArticleUpdateRequest, update_wiki_article
 
         monkeypatch.setattr("aip.adapter.api.routes.wiki._STATE_DB", str(wiki_db_with_articles))
 
@@ -603,6 +614,7 @@ class TestWikiArticleSchemaStability:
     def test_wiki_article_has_storage_backend(self):
         """WikiArticle TypedDict should have storage_backend field."""
         from gui.status_types import WikiArticle
+
         assert "storage_backend" in WikiArticle.__annotations__
 
     def test_wiki_article_has_all_required_fields(self):
@@ -610,12 +622,30 @@ class TestWikiArticleSchemaStability:
         from gui.status_types import WikiArticle
 
         required_fields = {
-            "id", "title", "summary", "body", "status",
-            "tags", "aliases", "linked_articles", "backlinks",
-            "source_documents", "related_artifacts", "related_turns",
-            "related_beast_commentaries", "open_questions", "contradictions",
-            "revision_history", "created_at", "updated_at", "approved_at",
-            "domain", "artifact_type", "version", "word_count", "metadata",
+            "id",
+            "title",
+            "summary",
+            "body",
+            "status",
+            "tags",
+            "aliases",
+            "linked_articles",
+            "backlinks",
+            "source_documents",
+            "related_artifacts",
+            "related_turns",
+            "related_beast_commentaries",
+            "open_questions",
+            "contradictions",
+            "revision_history",
+            "created_at",
+            "updated_at",
+            "approved_at",
+            "domain",
+            "artifact_type",
+            "version",
+            "word_count",
+            "metadata",
             "storage_backend",
         }
 
@@ -626,31 +656,37 @@ class TestWikiArticleSchemaStability:
     def test_list_response_has_storage_backend(self):
         """WikiArticleListResponse should have storage_backend."""
         from gui.status_types import WikiArticleListResponse
+
         assert "storage_backend" in WikiArticleListResponse.__annotations__
 
     def test_create_response_has_storage_backend(self):
         """WikiArticleCreateResponse should have storage_backend."""
         from gui.status_types import WikiArticleCreateResponse
+
         assert "storage_backend" in WikiArticleCreateResponse.__annotations__
 
     def test_update_response_has_storage_backend(self):
         """WikiArticleUpdateResponse should have storage_backend."""
         from gui.status_types import WikiArticleUpdateResponse
+
         assert "storage_backend" in WikiArticleUpdateResponse.__annotations__
 
     def test_backlinks_response_has_storage_backend(self):
         """WikiBacklinksResponse should have storage_backend."""
         from gui.status_types import WikiBacklinksResponse
+
         assert "storage_backend" in WikiBacklinksResponse.__annotations__
 
     def test_contradictions_response_has_storage_backend(self):
         """WikiContradictionsResponse should have storage_backend."""
         from gui.status_types import WikiContradictionsResponse
+
         assert "storage_backend" in WikiContradictionsResponse.__annotations__
 
     def test_stale_response_has_storage_backend(self):
         """WikiStaleResponse should have storage_backend."""
         from gui.status_types import WikiStaleResponse
+
         assert "storage_backend" in WikiStaleResponse.__annotations__
 
 
@@ -665,6 +701,7 @@ class TestWikiNoSecretExposure:
         forbidden_keys = {"api_key", "password", "token", "secret", "auth_header"}
 
         from gui.status_types import WikiArticle
+
         annotations = WikiArticle.__annotations__
         for key in annotations:
             assert key.lower() not in forbidden_keys, f"Forbidden key '{key}' found in WikiArticle schema"
@@ -680,10 +717,7 @@ class TestWikiBackendRouteImportBoundary:
         """Wiki route module must not import from aip.orchestration."""
         import ast
 
-        route_path = (
-            Path(__file__).parent.parent
-            / "src" / "aip" / "adapter" / "api" / "routes" / "wiki.py"
-        )
+        route_path = Path(__file__).parent.parent / "src" / "aip" / "adapter" / "api" / "routes" / "wiki.py"
         if not route_path.exists():
             pytest.skip("wiki.py route not found")
 
@@ -697,16 +731,14 @@ class TestWikiBackendRouteImportBoundary:
 
     def test_wiki_route_imports_from_dependencies(self):
         """Wiki route should import AipContainer from dependencies."""
-        route_path = (
-            Path(__file__).parent.parent
-            / "src" / "aip" / "adapter" / "api" / "routes" / "wiki.py"
-        )
+        route_path = Path(__file__).parent.parent / "src" / "aip" / "adapter" / "api" / "routes" / "wiki.py"
         if not route_path.exists():
             pytest.skip("wiki.py route not found")
 
         source = route_path.read_text()
-        assert "from aip.adapter.api.dependencies import" in source, \
+        assert "from aip.adapter.api.dependencies import" in source, (
             "Wiki route must import from dependencies (container injection)"
+        )
 
     def test_wiki_gui_no_orchestration_imports(self):
         """GUI wiki components must not import from aip.orchestration."""
@@ -742,6 +774,7 @@ class TestWikiCreateNeverAutoApproves:
         source = wiki_route_path.read_text()
 
         import re
+
         create_class_match = re.search(
             r"class WikiArticleCreateRequest.*?(?=class )",
             source,
@@ -759,6 +792,7 @@ class TestWikiCreateNeverAutoApproves:
         source = wiki_route_path.read_text()
 
         import re
+
         update_class_match = re.search(
             r"class WikiArticleUpdateRequest.*?(?=@router|class )",
             source,
@@ -777,7 +811,7 @@ class TestWikiCreateNeverAutoApproves:
 
         assert "'GENERATED'" in source, "Create route must set state to GENERATED"
         # Verify both paths use GENERATED
-        assert "to_state=\"GENERATED\"" in source or "to_state='GENERATED'" in source or "'GENERATED'" in source
+        assert 'to_state="GENERATED"' in source or "to_state='GENERATED'" in source or "'GENERATED'" in source
 
 
 # ── Cycle 7.1: Backlinks Honest Empty State ────────────────────────────
@@ -826,8 +860,18 @@ class TestWikiBacklinksHonestEmpty:
                 )
             """)
             conn.execute(
-                "INSERT INTO graph_edges (source_id, source_type, target_id, relation_type, confidence) VALUES (?, ?, ?, ?, ?)",
-                ("beast:wiki:another_domain:20260611T130000", "wiki_article", "beast:wiki:test_domain:20260611T120000", "mentions", 0.9),
+                (
+                    "INSERT INTO graph_edges "
+                    "(source_id, source_type, target_id, relation_type, confidence) "
+                    "VALUES (?, ?, ?, ?, ?)"
+                ),
+                (
+                    "beast:wiki:another_domain:20260611T130000",
+                    "wiki_article",
+                    "beast:wiki:test_domain:20260611T120000",
+                    "mentions",
+                    0.9,
+                ),
             )
             conn.commit()
         finally:
@@ -869,9 +913,7 @@ class TestWikiVersionPreservation:
             conn.commit()
 
             # Verify both versions exist
-            cursor = conn.execute(
-                "SELECT version FROM artifacts WHERE id = ? ORDER BY version", (article_id,)
-            )
+            cursor = conn.execute("SELECT version FROM artifacts WHERE id = ? ORDER BY version", (article_id,))
             versions = [row[0] for row in cursor.fetchall()]
             assert versions == [1, 2], f"Expected [1, 2], got {versions}"
         finally:
@@ -880,23 +922,25 @@ class TestWikiVersionPreservation:
     @pytest.mark.asyncio
     async def test_edit_via_artifact_store_increments_version(self):
         """Edit via artifact_store should increment version via write()."""
-        from aip.adapter.api.routes.wiki import update_wiki_article, WikiArticleUpdateRequest
+        from aip.adapter.api.routes.wiki import WikiArticleUpdateRequest, update_wiki_article
 
         container = MagicMock()
         container.artifact_store = AsyncMock()
         container.ecs_store = AsyncMock()
         container.event_store = AsyncMock()
 
-        container.artifact_store.read_with_metadata = AsyncMock(return_value=(
-            "Original content",
-            {
-                "title": "Test",
-                "domain": "test",
-                "summary": "Summary",
-                "tags": [],
-                "revision_history": [{"version": 1, "action": "created", "actor": "definer"}],
-            },
-        ))
+        container.artifact_store.read_with_metadata = AsyncMock(
+            return_value=(
+                "Original content",
+                {
+                    "title": "Test",
+                    "domain": "test",
+                    "summary": "Summary",
+                    "tags": [],
+                    "revision_history": [{"version": 1, "action": "created", "actor": "definer"}],
+                },
+            )
+        )
         container.artifact_store.list_versions = AsyncMock(return_value=[1, 2, 3])
         container.ecs_store.current_state = AsyncMock(return_value="APPROVED")
 

@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 # Golden query types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class GoldenQuery:
     """A single golden test query with expected relevant results.
@@ -65,6 +66,7 @@ class GoldenQuery:
 # ---------------------------------------------------------------------------
 # Metric computation
 # ---------------------------------------------------------------------------
+
 
 def compute_recall_at_k(
     retrieved_ids: list[str],
@@ -182,6 +184,7 @@ def compute_entity_coverage(
 # ---------------------------------------------------------------------------
 # Evaluation result types
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class QueryEvalResult:
@@ -306,7 +309,8 @@ class EvalResult:
             total_contrib = sum(self.channel_contribution_summary.values()) or 1
             for ch, count in sorted(
                 self.channel_contribution_summary.items(),
-                key=lambda x: x[1], reverse=True,
+                key=lambda x: x[1],
+                reverse=True,
             ):
                 pct = count / total_contrib * 100
                 lines.append(f"    {ch:15s}  {count:4d} hits  ({pct:5.1f}%)")
@@ -353,6 +357,7 @@ class EvalResult:
 # ---------------------------------------------------------------------------
 # Golden query loading
 # ---------------------------------------------------------------------------
+
 
 def load_golden_queries(path: str | None = None) -> list[GoldenQuery]:
     """Load golden queries from a JSON or YAML file.
@@ -404,13 +409,15 @@ def _load_golden_queries_json(path: str) -> list[GoldenQuery]:
     for item in data:
         if not isinstance(item, dict) or "query" not in item:
             continue
-        queries.append(GoldenQuery(
-            query=item["query"],
-            relevant_ids=item.get("relevant_ids", []),
-            expected_entities=item.get("expected_entities", []),
-            domain=item.get("domain", ""),
-            tags=item.get("tags", []),
-        ))
+        queries.append(
+            GoldenQuery(
+                query=item["query"],
+                relevant_ids=item.get("relevant_ids", []),
+                expected_entities=item.get("expected_entities", []),
+                domain=item.get("domain", ""),
+                tags=item.get("tags", []),
+            )
+        )
     return queries
 
 
@@ -438,13 +445,15 @@ def _load_golden_queries_yaml(path: str) -> list[GoldenQuery]:
     for item in data["questions"]:
         if not isinstance(item, dict) or "query" not in item:
             continue
-        queries.append(GoldenQuery(
-            query=item["query"],
-            relevant_ids=item.get("relevant_ids", []),
-            expected_entities=item.get("expected_entities", []),
-            domain=item.get("domain", ""),
-            tags=item.get("tags", []),
-        ))
+        queries.append(
+            GoldenQuery(
+                query=item["query"],
+                relevant_ids=item.get("relevant_ids", []),
+                expected_entities=item.get("expected_entities", []),
+                domain=item.get("domain", ""),
+                tags=item.get("tags", []),
+            )
+        )
     return queries
 
 
@@ -614,6 +623,7 @@ def create_default_golden_queries(path: str) -> None:
 # Evaluation harness
 # ---------------------------------------------------------------------------
 
+
 class RetrievalEvalHarness:
     """Evaluation harness for retrieval quality.
 
@@ -689,22 +699,22 @@ class RetrievalEvalHarness:
             if trace is not None and hasattr(trace, "channel_contributions"):
                 ch_contrib = dict(trace.channel_contributions)
                 for ch, count in ch_contrib.items():
-                    aggregated_channel_contributions[ch] = (
-                        aggregated_channel_contributions.get(ch, 0) + count
-                    )
+                    aggregated_channel_contributions[ch] = aggregated_channel_contributions.get(ch, 0) + count
 
-            per_query.append(QueryEvalResult(
-                query=gq.query,
-                recall_at_k=recall,
-                precision_at_k=precision,
-                mrr=mrr,
-                entity_coverage=entity_cov,
-                num_retrieved=len(hits),
-                num_relevant=len(gq.relevant_ids),
-                retrieved_ids=retrieved_ids,
-                elapsed_ms=elapsed,
-                channel_contributions=ch_contrib,
-            ))
+            per_query.append(
+                QueryEvalResult(
+                    query=gq.query,
+                    recall_at_k=recall,
+                    precision_at_k=precision,
+                    mrr=mrr,
+                    entity_coverage=entity_cov,
+                    num_retrieved=len(hits),
+                    num_relevant=len(gq.relevant_ids),
+                    retrieved_ids=retrieved_ids,
+                    elapsed_ms=elapsed,
+                    channel_contributions=ch_contrib,
+                )
+            )
 
             recall_values.append(recall)
             precision_values.append(precision)
@@ -753,6 +763,7 @@ class RetrievalEvalHarness:
 # Regression protection
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class RegressionCheckResult:
     """Result of comparing current evaluation metrics against a baseline.
@@ -778,7 +789,7 @@ class RegressionCheckResult:
         if self.comparisons:
             lines.append("Metric Comparisons:")
             for c in self.comparisons:
-                delta_str = f"+{c['delta']:.4f}" if c['delta'] >= 0 else f"{c['delta']:.4f}"
+                delta_str = f"+{c['delta']:.4f}" if c["delta"] >= 0 else f"{c['delta']:.4f}"
                 status = "OK" if c.get("ok", True) else "REGRESSED"
                 lines.append(
                     f"  {c['metric']:25s}  baseline={c['baseline']:.4f}  "
@@ -891,6 +902,7 @@ def compare_against_baseline(
 # A/B Evaluation Comparison
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ABComparisonResult:
     """Result of comparing two evaluation runs (config A vs config B).
@@ -941,8 +953,7 @@ class ABComparisonResult:
             pct_str = f"+{pct:.1%}" if pct >= 0 else f"{pct:.1%}"
             indicator = "  << B" if delta > 0 else ("  << A" if delta < 0 else "  (tie)")
             lines.append(
-                f"  {metric_name:25s}  A={a_val:.4f}  B={b_val:.4f}  "
-                f"delta={delta_str}  ({pct_str}){indicator}"
+                f"  {metric_name:25s}  A={a_val:.4f}  B={b_val:.4f}  delta={delta_str}  ({pct_str}){indicator}"
             )
 
         # Channel contribution delta
@@ -1067,15 +1078,17 @@ def compare_eval_results(
             continue
         recall_delta = b_q.recall_at_k - a_q.recall_at_k
         mrr_delta = b_q.mrr - a_q.mrr
-        comparison.per_query_deltas.append({
-            "query": query,
-            "recall_a": round(a_q.recall_at_k, 4),
-            "recall_b": round(b_q.recall_at_k, 4),
-            "recall_delta": round(recall_delta, 4),
-            "mrr_a": round(a_q.mrr, 4),
-            "mrr_b": round(b_q.mrr, 4),
-            "mrr_delta": round(mrr_delta, 4),
-        })
+        comparison.per_query_deltas.append(
+            {
+                "query": query,
+                "recall_a": round(a_q.recall_at_k, 4),
+                "recall_b": round(b_q.recall_at_k, 4),
+                "recall_delta": round(recall_delta, 4),
+                "mrr_a": round(a_q.mrr, 4),
+                "mrr_b": round(b_q.mrr, 4),
+                "mrr_delta": round(mrr_delta, 4),
+            }
+        )
 
     # Determine overall winner
     if wins_b > wins_a:

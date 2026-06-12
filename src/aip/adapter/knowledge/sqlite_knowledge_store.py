@@ -158,8 +158,7 @@ class SqliteKnowledgeStore(KnowledgeStore, StoreHealthMixin):
         """
         if self._embedding_provider is None:
             logger.debug(
-                "No EmbeddingProvider configured — skipping embedding generation "
-                "for text (%d chars).",
+                "No EmbeddingProvider configured — skipping embedding generation for text (%d chars).",
                 len(text),
             )
             return None

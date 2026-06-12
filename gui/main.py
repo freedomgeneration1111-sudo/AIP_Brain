@@ -42,13 +42,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
 from nicegui import context, ui
 
-from gui.api_client import get_api_client, AipApiClient
+from gui.api_client import AipApiClient, get_api_client
 
 # Module-level logger for the GUI chat flow
 log = logging.getLogger("gui.chat")
@@ -58,6 +57,7 @@ log = logging.getLogger("gui.chat")
 # ---------------------------------------------------------------------------
 try:
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
@@ -102,7 +102,9 @@ class GuiState:
     def __init__(self) -> None:
         self.api_client: AipApiClient = get_api_client()
         self.session_id: str | None = None
-        self.current_role: str | None = None  # default: no actor role for plain chat (prevents "Beast" system prompt leakage into normal chat)
+        self.current_role: str | None = (
+            None  # default: no actor role for plain chat (prevents "Beast" system prompt leakage into normal chat)
+        )
         self.current_model_slot: str = "synthesis"
         self.current_mode: str = "normal"  # "normal" or "augmented"
         self.available_slots: list[dict[str, Any]] = []
@@ -286,6 +288,7 @@ async def send_prompt() -> None:
         # Top-level catch — asyncio.create_task silently swallows exceptions,
         # so we MUST catch everything here and show it to the user.
         import traceback
+
         traceback.print_exc()
         try:
             ui.notify(f"Send failed: {exc}", color="negative", timeout=8000)
@@ -322,8 +325,9 @@ async def _send_prompt_inner() -> None:
         ui.notify("No model selected. Go to Models page to select one.", color="warning")
         return
 
-    log.info("send_prompt: model=%s backend_reachable=%s prompt_len=%d",
-             chat_model, state.backend_reachable, len(prompt))
+    log.info(
+        "send_prompt: model=%s backend_reachable=%s prompt_len=%d", chat_model, state.backend_reachable, len(prompt)
+    )
 
     add_message("user", prompt)
     input_field.value = ""
@@ -355,9 +359,9 @@ async def _send_prompt_inner() -> None:
             state.backend_reachable = False
 
     if state.backend_reachable:
+
         def on_response(resp: dict[str, Any]) -> None:
-            log.info("on_response: model=%s content_len=%d",
-                     resp.get("model", "?"), len(resp.get("content", "")))
+            log.info("on_response: model=%s content_len=%d", resp.get("model", "?"), len(resp.get("content", "")))
             thinking_label.delete()
             content = resp.get("content", "")
             model = resp.get("model", resp.get("model_slot", ""))
@@ -411,8 +415,7 @@ async def _send_prompt_inner() -> None:
                     )
 
         try:
-            log.info("send_prompt: calling chat_via_websocket session=%s slot=%s",
-                     session_id, state.current_model_slot)
+            log.info("send_prompt: calling chat_via_websocket session=%s slot=%s", session_id, state.current_model_slot)
             await state.api_client.chat_via_websocket(
                 session_id=session_id,
                 message=prompt,
@@ -537,12 +540,14 @@ async def trigger_actor(actor_name: str) -> None:
     try:
         result = await state.api_client.trigger_actor_cycle(actor_name)
         triggered = result.get("triggered", False)
+
         def _notify():
             if triggered:
                 ui.notify(f"{actor_name.capitalize()} cycle triggered successfully", color="positive")
             else:
                 error = result.get("error", "Unknown error")
                 ui.notify(f"{actor_name.capitalize()} cycle failed: {error}", color="negative")
+
         if state.client is not None:
             with state.client:
                 _notify()
@@ -622,6 +627,7 @@ async def refresh_budget_status(label_ref, state: GuiState) -> None:
             consumed = budget.get("consumed_tokens", 0)
             limit = budget.get("limit", 0)
             fraction = budget.get("fraction_used", 0)
+
             # Update label in client context
             def _update_ui():
                 if limit > 0:
@@ -633,6 +639,7 @@ async def refresh_budget_status(label_ref, state: GuiState) -> None:
                         label_ref.classes("text-[10px] text-grey-6", remove="text-negative text-black")
                 elif budget.get("budget_manager") is False:
                     label_ref.text = "Budget: n/a"
+
             if state.client is not None:
                 with state.client:
                     _update_ui()
@@ -669,10 +676,14 @@ async def show_api_key_prompt() -> str | None:
             "Enter your OpenRouter API key to get started. "
             "You can get one at openrouter.ai/keys"
         ).classes("text-body2 q-mt-sm")
-        key_input = ui.input(
-            placeholder="sk-or-v1-...",
-            password=True,
-        ).props("outlined dense").classes("w-full q-mt-md")
+        key_input = (
+            ui.input(
+                placeholder="sk-or-v1-...",
+                password=True,
+            )
+            .props("outlined dense")
+            .classes("w-full q-mt-md")
+        )
         with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
             ui.button("Skip (limited functionality)", color="grey", on_click=lambda: dialog.submit(None))
             ui.button("Save Key", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
@@ -696,11 +707,7 @@ def build_model_options(slots: list[dict[str, Any]]) -> list[str]:
     4. Fallback message
     """
     selected = get_selected_models()
-    backend_models = [
-        s.get("model", "")
-        for s in slots
-        if s.get("model") and not s.get("model", "").startswith("<")
-    ]
+    backend_models = [s.get("model", "") for s in slots if s.get("model") and not s.get("model", "").startswith("<")]
     # Also include the hardcoded default from config as fallback
     config_defaults = ["google/gemma-3-4b-it"]
     all_options = list(dict.fromkeys(selected + backend_models + config_defaults))
@@ -741,7 +748,11 @@ async def main_page():
             state.api_client.set_openrouter_api_key(key)
             ui.notify("API key saved! All OpenRouter calls will use it.", color="positive", position="top")
         else:
-            ui.notify("No API key set. Model catalog and chat will not work. You can set it later via Models page.", color="warning", position="top")
+            ui.notify(
+                "No API key set. Model catalog and chat will not work. You can set it later via Models page.",
+                color="warning",
+                position="top",
+            )
 
     # ---- STEP 2: Load backend data ----
     backend_status = await check_backend_health()
@@ -782,25 +793,32 @@ async def main_page():
         ).classes("q-mr-xs")
         mode_label = ui.label("Chat").classes("q-ml-xs text-caption text-white")
         # Augmented mode indicator
-        ui.badge("USING INGESTED DATA", color="amber").classes(
-            "text-[9px] q-ml-xs"
-        ).bind_visibility_from(state, "current_mode", backward=lambda m: m == "augmented")
+        ui.badge("USING INGESTED DATA", color="amber").classes("text-[9px] q-ml-xs").bind_visibility_from(
+            state, "current_mode", backward=lambda m: m == "augmented"
+        )
         ui.space()
 
         # --- Chat Model selector (amber bordered) ---
-        with ui.row().classes(
-            "items-center q-pa-xs rounded-borders"
-        ).style("background: rgba(255,255,255,0.15); border: 2px solid #FFC107; border-radius: 6px;"):
+        with (
+            ui.row()
+            .classes("items-center q-pa-xs rounded-borders")
+            .style("background: rgba(255,255,255,0.15); border: 2px solid #FFC107; border-radius: 6px;")
+        ):
             ui.icon("chat", size="xs").classes("text-amber q-mr-xs")
             ui.label("Chat Model").classes("text-caption text-amber text-weight-bold q-mr-xs")
-            chat_model_select = ui.select(
-                all_model_options,
-                value=current_chat_model,
-                on_change=lambda e: on_chat_model_changed(e.value),
-            ).classes("min-w-[180px] text-black").props("dense")
+            (
+                ui.select(
+                    all_model_options,
+                    value=current_chat_model,
+                    on_change=lambda e: on_chat_model_changed(e.value),
+                )
+                .classes("min-w-[180px] text-black")
+                .props("dense")
+            )
 
         ui.checkbox(
-            "Auto-save", value=True,
+            "Auto-save",
+            value=True,
             on_change=lambda e: asyncio.create_task(on_auto_save_toggled(e.value)),
         ).classes("q-ml-xs text-caption text-white")
         ui.space()
@@ -815,11 +833,21 @@ async def main_page():
 
         ui.button("Models", on_click=lambda: ui.navigate.to("/models")).props("flat text-color=white dense")
         with ui.row().classes("items-center gap-0"):
-            ui.button(icon="storage", on_click=lambda: ui.navigate.to("/vector")).props("flat text-color=white dense round")
-            ui.button(icon="account_tree", on_click=lambda: ui.navigate.to("/graph")).props("flat text-color=white dense round")
-            ui.button(icon="menu_book", on_click=lambda: ui.navigate.to("/wiki")).props("flat text-color=white dense round")
-            ui.button(icon="source", on_click=lambda: ui.navigate.to("/sources")).props("flat text-color=white dense round")
-            ui.button(icon="rate_review", on_click=lambda: ui.navigate.to("/review")).props("flat text-color=white dense round")
+            ui.button(icon="storage", on_click=lambda: ui.navigate.to("/vector")).props(
+                "flat text-color=white dense round"
+            )
+            ui.button(icon="account_tree", on_click=lambda: ui.navigate.to("/graph")).props(
+                "flat text-color=white dense round"
+            )
+            ui.button(icon="menu_book", on_click=lambda: ui.navigate.to("/wiki")).props(
+                "flat text-color=white dense round"
+            )
+            ui.button(icon="source", on_click=lambda: ui.navigate.to("/sources")).props(
+                "flat text-color=white dense round"
+            )
+            ui.button(icon="rate_review", on_click=lambda: ui.navigate.to("/review")).props(
+                "flat text-color=white dense round"
+            )
 
     # ---- RIGHT DRAWER — Actor Roles (compact) ----
     with ui.right_drawer(fixed=True).classes("q-pa-xs bg-grey-2").style("width: 240px;"):
@@ -849,9 +877,11 @@ async def main_page():
         ]
 
         for slot_name, label, border_color, bg_color, actor_key, needs_model in actor_defs:
-            with ui.row().classes(
-                "w-full items-center no-wrap q-px-xs q-py-none q-mt-xs rounded-borders"
-            ).style(f"background: {bg_color}; border-left: 3px solid {border_color};"):
+            with (
+                ui.row()
+                .classes("w-full items-center no-wrap q-px-xs q-py-none q-mt-xs rounded-borders")
+                .style(f"background: {bg_color}; border-left: 3px solid {border_color};")
+            ):
                 actor = actors.get(actor_key, {})
                 actor_init = actor.get("initialized", False)
                 ui.icon(
@@ -864,7 +894,9 @@ async def main_page():
                     # Model dropdown for AI roles only
                     current_role_model = get_role_model(slot_name)
                     role_default = slot_models.get(slot_name, "")
-                    role_value = current_role_model or role_default or (all_model_options[0] if all_model_options else "")
+                    role_value = (
+                        current_role_model or role_default or (all_model_options[0] if all_model_options else "")
+                    )
                     if role_value not in all_model_options:
                         role_value = all_model_options[0] if all_model_options else ""
                     ui.select(
@@ -883,12 +915,15 @@ async def main_page():
         # Trigger buttons (compact)
         ui.separator().classes("q-my-xs")
         with ui.row().classes("w-full gap-1"):
-            ui.button("Run B", color="brown",
-                      on_click=lambda: asyncio.create_task(trigger_actor("beast"))).props("size=xs dense")
-            ui.button("Run V", color="indigo",
-                      on_click=lambda: asyncio.create_task(trigger_actor("vigil"))).props("size=xs dense")
-            ui.button("Run S", color="teal",
-                      on_click=lambda: asyncio.create_task(trigger_actor("sexton"))).props("size=xs dense")
+            ui.button("Run B", color="brown", on_click=lambda: asyncio.create_task(trigger_actor("beast"))).props(
+                "size=xs dense"
+            )
+            ui.button("Run V", color="indigo", on_click=lambda: asyncio.create_task(trigger_actor("vigil"))).props(
+                "size=xs dense"
+            )
+            ui.button("Run S", color="teal", on_click=lambda: asyncio.create_task(trigger_actor("sexton"))).props(
+                "size=xs dense"
+            )
 
         # Slot details — collapsible
         ui.separator().classes("q-my-xs")
@@ -906,10 +941,15 @@ async def main_page():
 
     if not state.backend_reachable:
         with chat_container:
-            ui.label("AIP Backend not reachable — chat will use direct OpenRouter API (no auto-save, no actors).").classes(
-                "text-warning text-weight-medium q-pa-md"
-            )
-            ui.label("For full features (auto-save, actors, augmented mode), start the backend: uvicorn aip.adapter.api.app:create_app --factory --port 8000").classes("text-caption q-px-md")
+            ui.label(
+                "AIP Backend not reachable — chat will use direct OpenRouter API (no auto-save, no actors)."
+            ).classes("text-warning text-weight-medium q-pa-md")
+            ui.label(
+                (
+                    "For full features (auto-save, actors, augmented mode), "
+                    "start the backend: uvicorn aip.adapter.api.app:create_app --factory --port 8000"
+                )
+            ).classes("text-caption q-px-md")
     else:
         with chat_container:
             api_key_status = "API key: Set" if state.api_client.has_openrouter_api_key() else "API key: MISSING"
@@ -917,7 +957,11 @@ async def main_page():
             ui.label(
                 f"Connected to AIP Backend. {len(slots)} slot(s). {api_key_status}. "
                 f"{selected_count} model(s) selected from catalog."
-            ).classes("text-positive text-caption q-pa-sm" if state.api_client.has_openrouter_api_key() else "text-warning text-caption q-pa-sm")
+            ).classes(
+                "text-positive text-caption q-pa-sm"
+                if state.api_client.has_openrouter_api_key()
+                else "text-warning text-caption q-pa-sm"
+            )
 
     # ---- INPUT AREA ----
     with ui.row().classes("w-full max-w-3xl mx-auto items-center q-pa-sm gap-2"):
@@ -952,7 +996,11 @@ async def show_key_dialog_and_update():
                 current = state.api_client.get_openrouter_api_key() or ""
                 masked = current[:8] + "..." + current[-4:] if len(current) > 12 else "(not set)"
                 ui.label(f"Current: {masked}").classes("text-caption q-mt-xs")
-                key_input = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("w-full q-mt-md")
+                key_input = (
+                    ui.input(placeholder="sk-or-v1-...", password=True)
+                    .props("outlined dense")
+                    .classes("w-full q-mt-md")
+                )
                 with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
                     ui.button("Cancel", color="grey", on_click=lambda: dialog.submit(None))
                     ui.button("Save", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
@@ -960,7 +1008,9 @@ async def show_key_dialog_and_update():
             result = await dialog
             if result:
                 state.api_client.set_openrouter_api_key(result)
-                ui.notify("API key updated! It will be used for all OpenRouter calls.", color="positive", position="top")
+                ui.notify(
+                    "API key updated! It will be used for all OpenRouter calls.", color="positive", position="top"
+                )
     else:
         # Fallback without client context
         with ui.dialog() as dialog, ui.card().classes("p-6 min-w-[480px]"):
@@ -968,7 +1018,9 @@ async def show_key_dialog_and_update():
             current = state.api_client.get_openrouter_api_key() or ""
             masked = current[:8] + "..." + current[-4:] if len(current) > 12 else "(not set)"
             ui.label(f"Current: {masked}").classes("text-caption q-mt-xs")
-            key_input = ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("w-full q-mt-md")
+            key_input = (
+                ui.input(placeholder="sk-or-v1-...", password=True).props("outlined dense").classes("w-full q-mt-md")
+            )
             with ui.row().classes("w-full justify-end gap-2 q-mt-md"):
                 ui.button("Cancel", color="grey", on_click=lambda: dialog.submit(None))
                 ui.button("Save", color="primary", on_click=lambda: dialog.submit(key_input.value.strip()))
@@ -994,9 +1046,7 @@ def on_chat_model_changed(model_id: str) -> None:
     state.reset_session()
     # Push to backend — set AIP_SYNTHESIS_MODEL env var via API
     api_key = state.api_client.get_openrouter_api_key()
-    asyncio.create_task(
-        state.api_client.update_slot_model("synthesis", model_id, api_key=api_key)
-    )
+    asyncio.create_task(state.api_client.update_slot_model("synthesis", model_id, api_key=api_key))
     ui.notify(f"Chat model → {model_id}", color="info")
 
 
@@ -1009,9 +1059,7 @@ def on_role_model_changed(slot_name: str, model_id: str) -> None:
     set_role_model(slot_name, model_id)
     state = get_state()
     api_key = state.api_client.get_openrouter_api_key()
-    asyncio.create_task(
-        state.api_client.update_slot_model(slot_name, model_id, api_key=api_key)
-    )
+    asyncio.create_task(state.api_client.update_slot_model(slot_name, model_id, api_key=api_key))
     ui.notify(f"{slot_name.capitalize()} → {model_id}", color="info")
 
 

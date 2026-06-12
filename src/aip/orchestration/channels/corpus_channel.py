@@ -63,21 +63,23 @@ def register(
         for i, turn in enumerate(corpus_turns):
             position_score = 1.0 - (i / max(len(corpus_turns), 1)) * 0.5
             importance_boost = float(turn.importance or 0.0) * 0.3
-            hits.append(RetrievalHit(
-                id=turn.turn_id,
-                content=turn.searchable_text or "",
-                score=position_score + importance_boost,
-                source_channel=CHANNEL_NAME,
-                domain=turn.primary_domain or "",
-                metadata={
-                    "type": "conversation_chunk",
-                    "conversation_id": turn.conversation_id,
-                    "source_format": "corpus_turn",
-                    "domain": turn.primary_domain or "",
-                    "importance": float(turn.importance or 0.0),
-                },
-                rank_in_channel=i + 1,
-            ))
+            hits.append(
+                RetrievalHit(
+                    id=turn.turn_id,
+                    content=turn.searchable_text or "",
+                    score=position_score + importance_boost,
+                    source_channel=CHANNEL_NAME,
+                    domain=turn.primary_domain or "",
+                    metadata={
+                        "type": "conversation_chunk",
+                        "conversation_id": turn.conversation_id,
+                        "source_format": "corpus_turn",
+                        "domain": turn.primary_domain or "",
+                        "importance": float(turn.importance or 0.0),
+                    },
+                    rank_in_channel=i + 1,
+                )
+            )
         return hits
 
     orchestrator.register_channel(

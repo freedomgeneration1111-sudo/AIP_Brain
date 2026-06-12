@@ -26,7 +26,6 @@ import hashlib
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any
 
 from aip.adapter.artifact_store_versioned import VersionedArtifactStore
 from aip.adapter.ecs_store_persistent import PersistentEcsStore
@@ -358,26 +357,28 @@ async def artifact_ledger(
             detail = f"SOVEREIGN OVERRIDE: exported from {bypassed}" + (f" — {reason}" if reason else "")
         elif ev.event_type == "ecs_transition":
             reason = meta.get("reason", "")
-            detail = f"State transition" + (f" — {reason}" if reason else "")
+            detail = "State transition" + (f" — {reason}" if reason else "")
         elif ev.event_type == "ask_query":
             prompt = meta.get("prompt", "")
-            detail = f"Ask query" + (f": {prompt[:80]}" if prompt else "")
+            detail = "Ask query" + (f": {prompt[:80]}" if prompt else "")
         else:
             detail = meta.get("detail", ev.event_type)
 
-        ledger_entries.append(ArtifactLedgerEntry(
-            event_type=ev.event_type,
-            actor=ev.actor,
-            artifact_id=artifact_id,
-            from_state=ev.from_state,
-            to_state=ev.to_state,
-            timestamp=ev.timestamp,
-            detail=detail,
-            metadata=meta,
-        ))
+        ledger_entries.append(
+            ArtifactLedgerEntry(
+                event_type=ev.event_type,
+                actor=ev.actor,
+                artifact_id=artifact_id,
+                from_state=ev.from_state,
+                to_state=ev.to_state,
+                timestamp=ev.timestamp,
+                detail=detail,
+                metadata=meta,
+            )
+        )
 
     # Build summary
-    creation_event = next(
+    next(
         (e for e in ledger_entries if e.event_type in ("artifact_created", "ecs_transition") and e.from_state is None),
         None,
     )
@@ -454,28 +455,32 @@ async def review_dashboard(
     force_export_summaries = []
     for ev in force_export_events:
         meta = ev.metadata if hasattr(ev, "metadata") and isinstance(ev.metadata, dict) else {}
-        force_export_summaries.append({
-            "artifact_id": ev.artifact_id,
-            "bypassed_state": meta.get("bypassed_state", ""),
-            "reason": meta.get("reason", ""),
-            "timestamp": ev.timestamp,
-            "actor": ev.actor,
-        })
+        force_export_summaries.append(
+            {
+                "artifact_id": ev.artifact_id,
+                "bypassed_state": meta.get("bypassed_state", ""),
+                "reason": meta.get("reason", ""),
+                "timestamp": ev.timestamp,
+                "actor": ev.actor,
+            }
+        )
 
     # Get recent events (all types)
     recent_events_raw = await stores.event_store.query(limit=recent_limit)
     recent_events = []
     for ev in recent_events_raw:
         meta = ev.metadata if hasattr(ev, "metadata") and isinstance(ev.metadata, dict) else {}
-        recent_events.append({
-            "event_type": ev.event_type,
-            "artifact_id": ev.artifact_id,
-            "actor": ev.actor,
-            "timestamp": ev.timestamp,
-            "from_state": ev.from_state,
-            "to_state": ev.to_state,
-            "detail": meta.get("detail", meta.get("note", meta.get("verdict", ""))),
-        })
+        recent_events.append(
+            {
+                "event_type": ev.event_type,
+                "artifact_id": ev.artifact_id,
+                "actor": ev.actor,
+                "timestamp": ev.timestamp,
+                "from_state": ev.from_state,
+                "to_state": ev.to_state,
+                "detail": meta.get("detail", meta.get("note", meta.get("verdict", ""))),
+            }
+        )
 
     summary = ReviewQueueSummary(
         generated_count=len(generated_ids),

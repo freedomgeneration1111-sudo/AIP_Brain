@@ -23,7 +23,6 @@ For PDF files (if support available), each page becomes a turn.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -32,11 +31,9 @@ from typing import Any
 
 from aip.foundation.schemas.corpus_turn import (
     CorpusTurn,
-    compute_content_hash,
     make_document_conversation_id,
     make_turn_id,
 )
-
 
 # Markdown heading pattern: # Heading, ## Heading, etc.
 _HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
@@ -351,7 +348,7 @@ def _split_at_headings(text: str) -> list[tuple[str, str]]:
     sections: list[tuple[str, str]] = []
 
     # Content before first heading (preamble)
-    preamble = text[:matches[0].start()].strip()
+    preamble = text[: matches[0].start()].strip()
     if preamble:
         sections.append(("Introduction", preamble))
 

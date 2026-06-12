@@ -13,20 +13,20 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
-import json
 import math
-import os
-import tempfile
 import time
 
 import pytest
 
+from aip.adapter.vector._in_memory import InMemoryVectorStore
+from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore
+from aip.foundation.schemas.ask import AskResult
+from aip.foundation.schemas.retrieval import RetrievalTrace
+from aip.foundation.schemas.vector import VectorBackendStatus, VectorDegradationInfo
+
 # ---------------------------------------------------------------------------
 # 1. VectorBackendStatus enum
 # ---------------------------------------------------------------------------
-
-from aip.foundation.schemas.vector import VectorBackendStatus, VectorDegradationInfo
 
 
 class TestVectorBackendStatus:
@@ -81,8 +81,6 @@ class TestVectorDegradationInfo:
 # 2. SqliteVssVectorStore backend status and degradation info
 # ---------------------------------------------------------------------------
 
-from aip.adapter.vector.sqlite_vss_store import SqliteVssVectorStore, RuntimeMode
-
 
 class TestSqliteVssBackendStatus:
     """Verify that SqliteVssVectorStore reports honest backend status."""
@@ -129,6 +127,7 @@ class TestSqliteVssBackendStatus:
 # 3. Metadata-only storage stamps _embed_failure
 # ---------------------------------------------------------------------------
 
+
 class TestEmbedFailureStamping:
     """Verify that metadata-only storage records _embed_failure in chunk metadata."""
 
@@ -143,6 +142,7 @@ class TestEmbedFailureStamping:
         await store.initialize()
 
         from aip.foundation.schemas import Chunk
+
         chunk = Chunk(id="test-1", content="hello world", metadata={}, domain="test")
         result_id = await store.store(chunk)
 
@@ -161,6 +161,7 @@ class TestEmbedFailureStamping:
         await store.initialize()
 
         from aip.foundation.schemas import Chunk
+
         for i in range(3):
             chunk = Chunk(id=f"fail-{i}", content=f"content {i}", metadata={}, domain="test")
             await store.store(chunk)
@@ -173,6 +174,7 @@ class TestEmbedFailureStamping:
 # ---------------------------------------------------------------------------
 # 4. Brute-force scan limits and truncation signaling
 # ---------------------------------------------------------------------------
+
 
 class TestBruteForceScanLimits:
     """Verify brute-force scan limits and truncation metadata."""
@@ -210,8 +212,6 @@ class TestBruteForceScanLimits:
 # ---------------------------------------------------------------------------
 # 5. RetrievalTrace.vector_degradation and degradation_summary()
 # ---------------------------------------------------------------------------
-
-from aip.foundation.schemas.retrieval import RetrievalTrace
 
 
 class TestRetrievalTraceDegradation:
@@ -252,8 +252,6 @@ class TestRetrievalTraceDegradation:
 # 6. AskResult.retrieval_degradation
 # ---------------------------------------------------------------------------
 
-from aip.foundation.schemas.ask import AskResult
-
 
 class TestAskResultDegradation:
     """Verify AskResult carries retrieval_degradation dict."""
@@ -269,6 +267,7 @@ class TestAskResultDegradation:
         )
         trace = RetrievalTrace(vector_degradation=vdi)
         from aip.orchestration.ask_pipeline import _build_degradation_dict
+
         degradation = _build_degradation_dict(trace)
         result = AskResult(
             status="OK",
@@ -282,6 +281,7 @@ class TestAskResultDegradation:
 # ---------------------------------------------------------------------------
 # 7. Performance smoke test with 1k+ rows and sqlite-vss absent
 # ---------------------------------------------------------------------------
+
 
 class TestBruteForcePerformance1k:
     """Performance smoke test: 1k+ embedded rows with brute-force (no sqlite-vss).
@@ -351,6 +351,7 @@ class TestBruteForcePerformance1k:
     async def test_brute_force_hard_cap_respected(self, db_path):
         """Verify that brute-force scan is capped at _BRUTE_FORCE_MAX_ROWS."""
         from aip.adapter.vector.sqlite_vss_store import _BRUTE_FORCE_MAX_ROWS
+
         dim = 8
         store = SqliteVssVectorStore(db_path=db_path, dimensions=dim)
         await store.initialize()
@@ -374,9 +375,9 @@ class TestBruteForcePerformance1k:
         # Retrieve and check truncation metadata
         if not store._vss_available:
             query_vec = [0.5] * dim
-            results = await store.retrieve(query_vec, domain="cap-test", top_k=5)
+            await store.retrieve(query_vec, domain="cap-test", top_k=5)
             # If rows exceed scan limit, truncation flag should be set
-            info = store.get_degradation_info()
+            store.get_degradation_info()
             # The scan should have been limited
             assert store._last_brute_force_rows_scanned <= _BRUTE_FORCE_MAX_ROWS
 
@@ -386,8 +387,6 @@ class TestBruteForcePerformance1k:
 # ---------------------------------------------------------------------------
 # 8. InMemoryVectorStore reports DISABLED
 # ---------------------------------------------------------------------------
-
-from aip.adapter.vector._in_memory import InMemoryVectorStore
 
 
 class TestInMemoryBackendStatus:

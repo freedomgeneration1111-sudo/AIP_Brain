@@ -7,11 +7,12 @@ batches, and fallback behavior on parse failures.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import tempfile
 from typing import Any
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 
 import pytest
 
@@ -20,7 +21,6 @@ from aip.adapter.graph_store import GraphStore
 from aip.foundation.schemas import SextonConfig
 from aip.foundation.schemas.corpus_turn import CorpusTurn
 from aip.orchestration.actors.sexton import Sexton
-
 
 # ---------------------------------------------------------------------------
 # Stub infrastructure
@@ -63,40 +63,61 @@ class BatchAwareModelProvider:
                 raise RuntimeError("Simulated LLM failure on batch call")
             if self.omit_turn_ids:
                 return {
-                    "content": json.dumps([
-                        {"entity_type": "CONCEPT", "canonical_name": "BatchEntity", "confidence": 0.9},
-                    ]),
+                    "content": json.dumps(
+                        [
+                            {"entity_type": "CONCEPT", "canonical_name": "BatchEntity", "confidence": 0.9},
+                        ]
+                    ),
                 }
             # Return items with turn_id — extract turn_ids from user prompt
             turn_ids = self._extract_turn_ids_from_prompt(messages[-1]["content"])
             items = []
             for tid in turn_ids:
-                items.append({"turn_id": tid, "entity_type": "CONCEPT", "canonical_name": f"Entity_{tid}", "confidence": 0.9})
-                items.append({"turn_id": tid, "relationship_type": "CONNECTS", "source": f"Entity_{tid}", "target": "SharedConcept", "confidence": 0.8})
+                items.append(
+                    {"turn_id": tid, "entity_type": "CONCEPT", "canonical_name": f"Entity_{tid}", "confidence": 0.9}
+                )
+                items.append(
+                    {
+                        "turn_id": tid,
+                        "relationship_type": "CONNECTS",
+                        "source": f"Entity_{tid}",
+                        "target": "SharedConcept",
+                        "confidence": 0.8,
+                    }
+                )
             return {"content": json.dumps(items)}
 
         # Single-turn graph extraction
         if "extracting entities" in system_msg.lower():
             return {
-                "content": json.dumps([
-                    {"entity_type": "CONCEPT", "canonical_name": "SingleEntity", "confidence": 0.9},
-                    {"relationship_type": "RELATES_TO", "source": "SingleEntity", "target": "OtherEntity", "confidence": 0.7},
-                ]),
+                "content": json.dumps(
+                    [
+                        {"entity_type": "CONCEPT", "canonical_name": "SingleEntity", "confidence": 0.9},
+                        {
+                            "relationship_type": "RELATES_TO",
+                            "source": "SingleEntity",
+                            "target": "OtherEntity",
+                            "confidence": 0.7,
+                        },
+                    ]
+                ),
             }
 
         # Tagging (default)
         return {
-            "content": json.dumps([
-                {
-                    "turn_id": "fallback_turn",
-                    "primary_domain": "test",
-                    "domains": ["test"],
-                    "tags": ["test"],
-                    "importance": 0.7,
-                    "bridges": [],
-                    "beast_confidence": 0.8,
-                }
-            ]),
+            "content": json.dumps(
+                [
+                    {
+                        "turn_id": "fallback_turn",
+                        "primary_domain": "test",
+                        "domains": ["test"],
+                        "tags": ["test"],
+                        "importance": 0.7,
+                        "bridges": [],
+                        "beast_confidence": 0.8,
+                    }
+                ]
+            ),
         }
 
     @staticmethod
@@ -146,6 +167,25 @@ def _make_turn(turn_id: str, importance: float = 0.9, bridges: list[str] | None 
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _fast_asyncio_sleep():
+    """Patch asyncio.sleep to be instant in tests.
+
+    The production Sexton._run_graph_extraction uses asyncio.sleep(5) for
+    rate-limiting between batches/turns. Without this patch each test would
+    take 5-10s per turn. We record sleep calls so the rate-limit test can
+    still verify sleeps happened.
+    """
+    original_sleep = asyncio.sleep
+
+    async def _instant_sleep(seconds):
+        # Don't actually sleep — just yield control briefly
+        await original_sleep(0)
+
+    with patch("asyncio.sleep", side_effect=_instant_sleep):
+        yield
+
+
 @pytest.fixture
 def tmp_db():
     """Provide a temporary database path."""
@@ -161,7 +201,7 @@ async def corpus_turn_store(tmp_db):
     # Write high-importance turns with bridge tags for graph extraction
     for i in range(4):
         turn = _make_turn(
-            turn_id=f"batch_turn_{i+1}",
+            turn_id=f"batch_turn_{i + 1}",
             importance=0.85,
             bridges=["test_bridge"],
         )
@@ -199,7 +239,11 @@ async def test_batch_extraction_maps_turn_ids(tmp_db, corpus_turn_store):
     assert result["relationships_created"] > 0
 
     # Verify the model provider was called (should be 2 batch calls for 4 turns with batch_size=2)
-    batch_calls = [c for c in model_provider.calls if "multiple conversation turns" in (c["messages"][0]["content"] if c["messages"] else "")]
+    batch_calls = [
+        c
+        for c in model_provider.calls
+        if "multiple conversation turns" in (c["messages"][0]["content"] if c["messages"] else "")
+    ]
     assert len(batch_calls) == 2, f"Expected 2 batch LLM calls, got {len(batch_calls)}"
 
 
@@ -256,7 +300,9 @@ async def test_batch_extraction_logs_turns(tmp_db, corpus_turn_store):
     graph_store = GraphStore(tmp_db)
     await graph_store.initialize()
     for i in range(4):
-        assert await graph_store.is_turn_extracted(f"batch_turn_{i+1}"), f"batch_turn_{i+1} should be logged as extracted"
+        assert await graph_store.is_turn_extracted(f"batch_turn_{i + 1}"), (
+            f"batch_turn_{i + 1} should be logged as extracted"
+        )
     await graph_store.close()
 
 
@@ -289,7 +335,12 @@ async def test_batch_fallback_on_llm_failure(tmp_db, corpus_turn_store):
     assert result["entities_created"] > 0
 
     # Verify fallback used per-turn calls
-    single_calls = [c for c in model_provider.calls if "extracting entities" in (c["messages"][0]["content"] if c["messages"] else "") and "multiple" not in (c["messages"][0]["content"] if c["messages"] else "")]
+    single_calls = [
+        c
+        for c in model_provider.calls
+        if "extracting entities" in (c["messages"][0]["content"] if c["messages"] else "")
+        and "multiple" not in (c["messages"][0]["content"] if c["messages"] else "")
+    ]
     assert len(single_calls) >= 4, f"Expected at least 4 per-turn fallback calls, got {len(single_calls)}"
 
 
@@ -325,7 +376,6 @@ async def test_batch_fallback_on_missing_turn_ids(tmp_db, corpus_turn_store):
 @pytest.mark.asyncio
 async def test_batch_rate_limiting_sleeps_between_batches(tmp_db, corpus_turn_store):
     """Batch mode should sleep between batches (not between individual turns)."""
-    import time
 
     model_provider = BatchAwareModelProvider()
     event_store = StubEventStore()
@@ -343,12 +393,14 @@ async def test_batch_rate_limiting_sleeps_between_batches(tmp_db, corpus_turn_st
 
     # Patch asyncio.sleep to track calls without actually sleeping
     sleep_calls: list[float] = []
-    original_sleep = Sexton.__module__
+    original_sleep = asyncio.sleep
 
-    with patch("asyncio.sleep") as mock_sleep:
-        mock_sleep.side_effect = lambda s: sleep_calls.append(s)
+    async def _tracked_sleep(seconds):
+        sleep_calls.append(seconds)
+        await original_sleep(0)  # Yield control but don't actually sleep
 
-        result = await sexton._run_graph_extraction(limit=10)
+    with patch("asyncio.sleep", side_effect=_tracked_sleep):
+        await sexton._run_graph_extraction(limit=10)
 
     # Should have 2 batch calls (4 turns / batch_size 2), so 2 sleeps between batches
     # The sleep calls should all be 5 seconds (rate-limit)
@@ -383,7 +435,11 @@ async def test_per_turn_mode_processes_individually(tmp_db, corpus_turn_store):
     assert result["turns_processed"] == 4
 
     # All calls should be single-turn (no "multiple" in system prompt)
-    batch_calls = [c for c in model_provider.calls if "multiple conversation turns" in (c["messages"][0]["content"] if c["messages"] else "")]
+    batch_calls = [
+        c
+        for c in model_provider.calls
+        if "multiple conversation turns" in (c["messages"][0]["content"] if c["messages"] else "")
+    ]
     assert len(batch_calls) == 0, "Should not have batch calls in per-turn mode"
 
 
@@ -475,44 +531,56 @@ class CrossTurnModelProvider:
 
         # Batch graph extraction — return cross-turn relationships
         if "multiple conversation turns" in system_msg.lower():
-            turn_ids = BatchAwareModelProvider._extract_turn_ids_from_prompt(
-                messages[-1]["content"]
-            )
+            turn_ids = BatchAwareModelProvider._extract_turn_ids_from_prompt(messages[-1]["content"])
             items = []
             # Entity shared across turns
             for tid in turn_ids:
-                items.append({
-                    "turn_id": tid,
-                    "entity_type": "CONCEPT",
-                    "canonical_name": "SharedConcept",
-                    "confidence": 0.95,
-                })
+                items.append(
+                    {
+                        "turn_id": tid,
+                        "entity_type": "CONCEPT",
+                        "canonical_name": "SharedConcept",
+                        "confidence": 0.95,
+                    }
+                )
             # Cross-turn relationship
             if len(turn_ids) >= 2:
-                items.append({
-                    "turn_id": turn_ids[0],
-                    "relationship_type": "CONNECTS",
-                    "source": "SharedConcept",
-                    "target": "OtherConcept",
-                    "confidence": 0.85,
-                })
+                items.append(
+                    {
+                        "turn_id": turn_ids[0],
+                        "relationship_type": "CONNECTS",
+                        "source": "SharedConcept",
+                        "target": "OtherConcept",
+                        "confidence": 0.85,
+                    }
+                )
             return {"content": json.dumps(items)}
 
         # Single-turn fallback
         if "extracting entities" in system_msg.lower():
             return {
-                "content": json.dumps([
-                    {"entity_type": "CONCEPT", "canonical_name": "FallbackEntity", "confidence": 0.9},
-                ]),
+                "content": json.dumps(
+                    [
+                        {"entity_type": "CONCEPT", "canonical_name": "FallbackEntity", "confidence": 0.9},
+                    ]
+                ),
             }
 
         # Tagging
         return {
-            "content": json.dumps([
-                {"turn_id": "t1", "primary_domain": "test", "domains": ["test"],
-                 "tags": ["test"], "importance": 0.7, "bridges": [],
-                 "beast_confidence": 0.8},
-            ]),
+            "content": json.dumps(
+                [
+                    {
+                        "turn_id": "t1",
+                        "primary_domain": "test",
+                        "domains": ["test"],
+                        "tags": ["test"],
+                        "importance": 0.7,
+                        "bridges": [],
+                        "beast_confidence": 0.8,
+                    },
+                ]
+            ),
         }
 
 
@@ -572,41 +640,59 @@ class PartialParseModelProvider:
         system_msg = messages[0]["content"] if messages else ""
 
         if "multiple conversation turns" in system_msg.lower():
-            turn_ids = BatchAwareModelProvider._extract_turn_ids_from_prompt(
-                messages[-1]["content"]
-            )
+            turn_ids = BatchAwareModelProvider._extract_turn_ids_from_prompt(messages[-1]["content"])
             items = []
             for tid in turn_ids:
                 # Valid entity
-                items.append({
-                    "turn_id": tid,
-                    "entity_type": "CONCEPT",
-                    "canonical_name": f"Valid_{tid}",
-                    "confidence": 0.9,
-                })
+                items.append(
+                    {
+                        "turn_id": tid,
+                        "entity_type": "CONCEPT",
+                        "canonical_name": f"Valid_{tid}",
+                        "confidence": 0.9,
+                    }
+                )
             # Add some malformed items (these should be gracefully skipped)
             items.append({"not_a_valid_key": True})  # No entity_type or relationship_type
             items.append({"entity_type": "CONCEPT", "canonical_name": "", "confidence": 0.9})  # Empty name
             items.append({"entity_type": "CONCEPT", "canonical_name": "LowConf", "confidence": 0.3})  # Below threshold
             # Valid relationship
             if len(turn_ids) >= 2:
-                items.append({
-                    "turn_id": turn_ids[0],
-                    "relationship_type": "RELATES_TO",
-                    "source": f"Valid_{turn_ids[0]}",
-                    "target": f"Valid_{turn_ids[1]}",
-                    "confidence": 0.8,
-                })
+                items.append(
+                    {
+                        "turn_id": turn_ids[0],
+                        "relationship_type": "RELATES_TO",
+                        "source": f"Valid_{turn_ids[0]}",
+                        "target": f"Valid_{turn_ids[1]}",
+                        "confidence": 0.8,
+                    }
+                )
             return {"content": json.dumps(items)}
 
         if "extracting entities" in system_msg.lower():
             return {
-                "content": json.dumps([
-                    {"entity_type": "CONCEPT", "canonical_name": "SingleEntity", "confidence": 0.9},
-                ]),
+                "content": json.dumps(
+                    [
+                        {"entity_type": "CONCEPT", "canonical_name": "SingleEntity", "confidence": 0.9},
+                    ]
+                ),
             }
 
-        return {"content": json.dumps([{"turn_id": "t", "primary_domain": "test", "domains": ["test"], "tags": ["test"], "importance": 0.7, "bridges": [], "beast_confidence": 0.8}])}
+        return {
+            "content": json.dumps(
+                [
+                    {
+                        "turn_id": "t",
+                        "primary_domain": "test",
+                        "domains": ["test"],
+                        "tags": ["test"],
+                        "importance": 0.7,
+                        "bridges": [],
+                        "beast_confidence": 0.8,
+                    }
+                ]
+            )
+        }
 
 
 @pytest.mark.asyncio
@@ -737,7 +823,11 @@ async def test_batch_size_larger_than_turns(tmp_db, corpus_turn_store):
 
     # All 4 turns should be processed in a single batch call
     assert result["turns_processed"] == 4
-    batch_calls = [c for c in model_provider.calls if "multiple conversation turns" in (c["messages"][0]["content"] if c["messages"] else "")]
+    batch_calls = [
+        c
+        for c in model_provider.calls
+        if "multiple conversation turns" in (c["messages"][0]["content"] if c["messages"] else "")
+    ]
     assert len(batch_calls) == 1, "Should have exactly 1 batch LLM call when batch_size > turns"
 
 
@@ -855,11 +945,11 @@ async def test_batch_telemetry_accumulates_across_cycles(tmp_db, corpus_turn_sto
     )
 
     # First cycle
-    result1 = await sexton._run_graph_extraction(limit=5)
+    await sexton._run_graph_extraction(limit=5)
     t1 = sexton._batch_telemetry.copy()
 
     # Second cycle (no new turns to extract, but telemetry should persist)
-    result2 = await sexton._run_graph_extraction(limit=5)
+    await sexton._run_graph_extraction(limit=5)
     t2 = sexton._batch_telemetry.copy()
 
     # Telemetry should accumulate (not reset)

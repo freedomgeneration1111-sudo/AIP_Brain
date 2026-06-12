@@ -10,29 +10,23 @@ falling back to individual endpoint data when summary is unavailable.
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from typing import Any
 
 from nicegui import ui
 
 from gui.state import GuiState
 from gui.theme import (
     C_AMBER,
-    C_CREAM,
     C_DOGFOOD_BARE,
     C_DOGFOOD_DEGRADED,
     C_DOGFOOD_FULL,
     C_ERR_FG,
     C_GROUND,
     C_INK40,
-    C_INK60,
     C_MUTED,
     C_OK_FG,
     C_WARN_FG,
     F_MONO,
-    R_SM,
-    SP_SM,
 )
 
 log = logging.getLogger("gui.panels.right_rail")
@@ -108,25 +102,19 @@ def _dogfood_section(state: GuiState) -> None:
         "DIRECT MODEL ONLY": C_DOGFOOD_BARE,
     }
     mc = mode_colors.get(mode, C_MUTED)
-    ui.label(mode).style(
-        f"font-size:12px; font-family:{F_MONO}; color:{mc}; font-weight:600;"
-    )
+    ui.label(mode).style(f"font-size:12px; font-family:{F_MONO}; color:{mc}; font-weight:600;")
     if mode == "DIRECT MODEL ONLY":
         ui.label("No retrieval. No corpus. No actors.").style(
             f"font-size:9px; color:{C_DOGFOOD_BARE}; font-family:{F_MONO};"
         )
     elif mode == "BARE":
-        ui.label("Backend up — no actors or retrieval.").style(
-            f"font-size:9px; color:{C_AMBER}; font-family:{F_MONO};"
-        )
+        ui.label("Backend up — no actors or retrieval.").style(f"font-size:9px; color:{C_AMBER}; font-family:{F_MONO};")
 
 
 def _actor_section(state: GuiState) -> None:
     """Render actor status section from status_summary data."""
     if not state.backend_reachable:
-        ui.label("UNAVAILABLE — backend unreachable").style(
-            f"font-size:10px; color:{C_ERR_FG}; font-family:{F_MONO};"
-        )
+        ui.label("UNAVAILABLE — backend unreachable").style(f"font-size:10px; color:{C_ERR_FG}; font-family:{F_MONO};")
         return
 
     # Prefer actor data from consolidated summary
@@ -174,6 +162,7 @@ def _actor_section(state: GuiState) -> None:
             if last_cycle:
                 try:
                     import datetime
+
                     if isinstance(last_cycle, (int, float)):
                         ts = datetime.datetime.fromtimestamp(last_cycle).strftime("%H:%M")
                         cycle_info = f" (last: {ts})"
@@ -197,9 +186,7 @@ def _retrieval_section(state: GuiState) -> None:
     """Render retrieval health section from status_summary data."""
     if not state.backend_reachable:
         for ch in ("Lexical", "Vector", "Graph", "CODEX", "Procedural"):
-            ui.label(f"  {ch}: UNAVAILABLE").style(
-                f"font-size:10px; color:{C_ERR_FG}; font-family:{F_MONO};"
-            )
+            ui.label(f"  {ch}: UNAVAILABLE").style(f"font-size:10px; color:{C_ERR_FG}; font-family:{F_MONO};")
         return
 
     # Prefer retrieval data from consolidated summary
@@ -249,14 +236,10 @@ def _retrieval_section(state: GuiState) -> None:
                     f"font-size:10px; font-family:{F_MONO}; color:{color};"
                 )
             else:
-                ui.label(f"  {display_name}: NO DATA").style(
-                    f"font-size:10px; font-family:{F_MONO}; color:{C_MUTED};"
-                )
+                ui.label(f"  {display_name}: NO DATA").style(f"font-size:10px; font-family:{F_MONO}; color:{C_MUTED};")
     else:
         for ch in ("Lexical", "Vector", "Graph", "CODEX", "Procedural"):
-            ui.label(f"  {ch}: NOT WIRED").style(
-                f"font-size:10px; font-family:{F_MONO}; color:{C_MUTED};"
-            )
+            ui.label(f"  {ch}: NOT WIRED").style(f"font-size:10px; font-family:{F_MONO}; color:{C_MUTED};")
 
 
 def _gates_section(state: GuiState) -> None:
@@ -272,10 +255,6 @@ def _warnings_section(state: GuiState) -> None:
     """Render active warnings."""
     if state.warnings:
         for w in state.warnings[:8]:
-            ui.label(f"! {w}").style(
-                f"font-size:10px; font-family:{F_MONO}; color:{C_DOGFOOD_BARE};"
-            )
+            ui.label(f"! {w}").style(f"font-size:10px; font-family:{F_MONO}; color:{C_DOGFOOD_BARE};")
     else:
-        ui.label("None").style(
-            f"font-size:10px; font-family:{F_MONO}; color:{C_MUTED};"
-        )
+        ui.label("None").style(f"font-size:10px; font-family:{F_MONO}; color:{C_MUTED};")

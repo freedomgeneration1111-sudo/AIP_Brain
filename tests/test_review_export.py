@@ -31,8 +31,6 @@ from __future__ import annotations
 import os
 import tempfile
 
-import pytest
-
 from aip.adapter.artifact_store_versioned import VersionedArtifactStore
 from aip.adapter.ecs_store_persistent import PersistentEcsStore
 from aip.adapter.event_store_queryable import QueryableEventStore
@@ -48,7 +46,6 @@ from aip.orchestration.review_export_pipeline import (
     review_show,
     review_sources,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers: create test stores with a generated artifact
@@ -183,9 +180,7 @@ class TestReviewSources:
             stores = await _create_test_stores(tmp)
             source_ids = ["chunk:conv1:0", "chunk:conv1:1"]
             source_types = ["conversation_chunk", "conversation_chunk"]
-            aid = await _create_project_and_artifact(
-                stores, source_ids=source_ids, source_types=source_types
-            )
+            aid = await _create_project_and_artifact(stores, source_ids=source_ids, source_types=source_types)
 
             result = await review_sources(aid, stores)
 
@@ -255,9 +250,7 @@ class TestApproveNoSources:
     async def test_approve_no_sources_ask_answer(self):
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
-            aid = await _create_project_and_artifact(
-                stores, source_ids=[], source_types=[]
-            )
+            aid = await _create_project_and_artifact(stores, source_ids=[], source_types=[])
 
             result = await review_approve(aid, stores)
 
@@ -307,9 +300,7 @@ class TestNeedsRevision:
             stores = await _create_test_stores(tmp)
             aid = await _create_project_and_artifact(stores)
 
-            result = await review_needs_revision(
-                aid, stores, instruction="Add more specific architecture details"
-            )
+            result = await review_needs_revision(aid, stores, instruction="Add more specific architecture details")
 
             assert "error" not in result
             assert result["lifecycle_state"] == "GENERATED"  # Unchanged
@@ -497,9 +488,7 @@ class TestExportProjectApproved:
     async def test_export_project_approved_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
-            aid1 = await _create_project_and_artifact(
-                stores, artifact_id="ask:approved1", content="Approved answer 1"
-            )
+            aid1 = await _create_project_and_artifact(stores, artifact_id="ask:approved1", content="Approved answer 1")
             await review_approve(aid1, stores)
 
             out_path = os.path.join(tmp, "project_export.md")
@@ -524,12 +513,8 @@ class TestExportProjectExcludesRejected:
     async def test_export_project_no_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
-            aid1 = await _create_project_and_artifact(
-                stores, artifact_id="ask:good1", content="Good answer"
-            )
-            aid2 = await _create_project_and_artifact(
-                stores, artifact_id="ask:bad1", content="Bad answer"
-            )
+            aid1 = await _create_project_and_artifact(stores, artifact_id="ask:good1", content="Good answer")
+            aid2 = await _create_project_and_artifact(stores, artifact_id="ask:bad1", content="Bad answer")
 
             # Approve first, reject second
             await review_approve(aid1, stores)
@@ -559,9 +544,7 @@ class TestExportProjectExcludesUnreviewed:
     async def test_export_project_no_unreviewed(self):
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
-            aid1 = await _create_project_and_artifact(
-                stores, artifact_id="ask:unreviewed1", content="Unreviewed answer"
-            )
+            await _create_project_and_artifact(stores, artifact_id="ask:unreviewed1", content="Unreviewed answer")
             # Don't approve — leave in GENERATED state
 
             out_path = os.path.join(tmp, "project_export.md")
@@ -598,9 +581,7 @@ class TestMissingArtifact:
         with tempfile.TemporaryDirectory() as tmp:
             stores = await _create_test_stores(tmp)
 
-            result = await export_artifact(
-                "nonexistent:artifact", os.path.join(tmp, "out.md"), stores, force=True
-            )
+            result = await export_artifact("nonexistent:artifact", os.path.join(tmp, "out.md"), stores, force=True)
             assert "error" in result
             assert result["error"]["code"] == "NOT_FOUND"
 
@@ -689,6 +670,7 @@ class TestCLIReviewExport:
 
     def test_review_command_registered(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -698,6 +680,7 @@ class TestCLIReviewExport:
 
     def test_review_list_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -707,6 +690,7 @@ class TestCLIReviewExport:
 
     def test_review_show_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -716,6 +700,7 @@ class TestCLIReviewExport:
 
     def test_review_sources_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -724,6 +709,7 @@ class TestCLIReviewExport:
 
     def test_review_approve_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -732,6 +718,7 @@ class TestCLIReviewExport:
 
     def test_review_reject_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -741,6 +728,7 @@ class TestCLIReviewExport:
 
     def test_review_needs_revision_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -750,6 +738,7 @@ class TestCLIReviewExport:
 
     def test_export_command_registered(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -759,6 +748,7 @@ class TestCLIReviewExport:
 
     def test_export_artifact_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()
@@ -769,6 +759,7 @@ class TestCLIReviewExport:
 
     def test_export_project_subcommand(self):
         from click.testing import CliRunner
+
         from aip.cli.main import cli
 
         runner = CliRunner()

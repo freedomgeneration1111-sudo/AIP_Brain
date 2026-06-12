@@ -115,9 +115,7 @@ def test_top_level_db_path_not_used():
     }
     # Lifespan now reads from [database] section
     db_path = config.get("database", {}).get("db_path", "db/state.db")
-    assert db_path == "correct/section.db", (
-        f"Expected 'correct/section.db' from [database] section, got '{db_path}'"
-    )
+    assert db_path == "correct/section.db", f"Expected 'correct/section.db' from [database] section, got '{db_path}'"
 
 
 @fastapi_skip
@@ -296,9 +294,7 @@ def test_app_starts_with_custom_db_path_no_port_conflict():
             assert resp.status_code == 200
 
             # Verify the custom db file was created
-            assert os.path.exists(custom_db), (
-                f"Custom db file not created: {custom_db}"
-            )
+            assert os.path.exists(custom_db), f"Custom db file not created: {custom_db}"
 
 
 @fastapi_skip

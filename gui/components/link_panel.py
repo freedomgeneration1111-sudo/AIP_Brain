@@ -34,16 +34,13 @@ from gui.theme import (
     C_AMBER,
     C_CREAM,
     C_ERR_FG,
-    C_GROUND,
     C_INK40,
     C_INK60,
     C_MUTED,
     C_OK_FG,
-    C_RAISED,
     C_SURFACE,
     C_WARN_FG,
     F_MONO,
-    F_SANS,
     R_MD,
     R_SM,
 )
@@ -109,9 +106,13 @@ def render_link_panel(
     Returns:
         The container column (for parent layout management)
     """
-    container = ui.column().classes("w-full").style(
-        f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
-        f"border-radius:{R_MD}; padding:0; margin-bottom:12px;"
+    container = (
+        ui.column()
+        .classes("w-full")
+        .style(
+            f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; "
+            f"border-radius:{R_MD}; padding:0; margin-bottom:12px;"
+        )
     )
 
     # Shared state for async callbacks
@@ -181,32 +182,23 @@ def _render_content(
 
     with container:
         # Header
-        with ui.row().classes("w-full items-center").style(
-            f"padding:8px 12px; border-bottom:0.5px solid {C_INK40};"
-        ):
+        with ui.row().classes("w-full items-center").style(f"padding:8px 12px; border-bottom:0.5px solid {C_INK40};"):
             ui.label("CROSSLINKS").style(
-                f"font-size:9px; font-weight:600; letter-spacing:1px; "
-                f"color:{C_AMBER}; text-transform:uppercase;"
+                f"font-size:9px; font-weight:600; letter-spacing:1px; color:{C_AMBER}; text-transform:uppercase;"
             )
             total = state["forward_total"] + state["backlink_total"]
-            ui.label(f"({total})").style(
-                f"font-size:9px; color:{C_INK60}; font-family:{F_MONO}; margin-left:4px;"
-            )
+            ui.label(f"({total})").style(f"font-size:9px; color:{C_INK60}; font-family:{F_MONO}; margin-left:4px;")
             ui.space()
             if show_create:
-                ui.button("+ Link", on_click=editor.open_create).props(
-                    "flat dense unelevated size=xs"
-                ).style(
+                ui.button("+ Link", on_click=editor.open_create).props("flat dense unelevated size=xs").style(
                     f"color:{C_AMBER}; font-size:9px; font-family:{F_MONO}; "
                     f"border:0.5px solid {C_AMBER}; border-radius:{R_SM}; padding:2px 8px;"
                 )
 
         # Storage availability indicator
         if not state["forward_available"] and not state["backlink_available"]:
-            with ui.row().classes("w-full").style(f"padding:8px 12px;"):
-                ui.label("Link storage unavailable").style(
-                    f"font-size:10px; color:{C_MUTED}; font-family:{F_MONO};"
-                )
+            with ui.row().classes("w-full").style("padding:8px 12px;"):
+                ui.label("Link storage unavailable").style(f"font-size:10px; color:{C_MUTED}; font-family:{F_MONO};")
             return
 
         # Forward links section
@@ -217,7 +209,9 @@ def _render_content(
                     link,
                     api_client=api_client,
                     is_forward=True,
-                    on_changed=lambda: _on_link_changed(state, api_client, container, editor, show_create, on_link_changed),
+                    on_changed=lambda: _on_link_changed(
+                        state, api_client, container, editor, show_create, on_link_changed
+                    ),
                 )
             if state["forward_total"] > 8:
                 ui.label(f"+ {state['forward_total'] - 8} more outgoing").style(
@@ -237,7 +231,9 @@ def _render_content(
                     link,
                     api_client=api_client,
                     is_forward=False,
-                    on_changed=lambda: _on_link_changed(state, api_client, container, editor, show_create, on_link_changed),
+                    on_changed=lambda: _on_link_changed(
+                        state, api_client, container, editor, show_create, on_link_changed
+                    ),
                 )
             if state["backlink_total"] > 8:
                 ui.label(f"+ {state['backlink_total'] - 8} more incoming").style(
@@ -252,16 +248,11 @@ def _render_content(
 
 def _render_section_label(text: str, count: int) -> None:
     """Render a section label with count."""
-    with ui.row().classes("w-full items-center").style(
-        f"padding:6px 12px 2px 12px; margin-top:4px;"
-    ):
+    with ui.row().classes("w-full items-center").style("padding:6px 12px 2px 12px; margin-top:4px;"):
         ui.label(text).style(
-            f"font-size:8px; font-weight:700; font-family:{F_MONO}; "
-            f"color:{C_INK60}; letter-spacing:0.5px;"
+            f"font-size:8px; font-weight:700; font-family:{F_MONO}; color:{C_INK60}; letter-spacing:0.5px;"
         )
-        ui.label(f"({count})").style(
-            f"font-size:8px; color:{C_INK60}; font-family:{F_MONO}; margin-left:4px;"
-        )
+        ui.label(f"({count})").style(f"font-size:8px; color:{C_INK60}; font-family:{F_MONO}; margin-left:4px;")
 
 
 def _render_link_item(
@@ -276,8 +267,8 @@ def _render_link_item(
     rel_type = link.get("relation_type", "?")
     status = link.get("status", "suggested")
     confidence = link.get("confidence", 1.0)
-    approved = link.get("approved_by_definer", False)
-    created_by = link.get("created_by", "?")
+    link.get("approved_by_definer", False)
+    link.get("created_by", "?")
 
     # Determine the "other side" of the link
     if is_forward:
@@ -289,15 +280,18 @@ def _render_link_item(
 
     cfg = STATUS_CONFIG.get(status, STATUS_CONFIG["suggested"])
 
-    with ui.row().classes("w-full items-center").style(
-        f"padding:4px 12px; "
-        f"border-left:2px solid {cfg['color']}; margin:2px 8px; "
-        f"background:{cfg['bg']}; border-radius:{R_SM};"
+    with (
+        ui.row()
+        .classes("w-full items-center")
+        .style(
+            f"padding:4px 12px; "
+            f"border-left:2px solid {cfg['color']}; margin:2px 8px; "
+            f"background:{cfg['bg']}; border-radius:{R_SM};"
+        )
     ):
         # Status badge
         ui.label(cfg["label"]).style(
-            f"font-size:8px; font-weight:700; font-family:{F_MONO}; "
-            f"color:{cfg['color']}; min-width:58px;"
+            f"font-size:8px; font-weight:700; font-family:{F_MONO}; color:{cfg['color']}; min-width:58px;"
         )
 
         # Relation type
@@ -315,47 +309,36 @@ def _render_link_item(
         )
 
         # Confidence
-        ui.label(f"({confidence:.1f})").style(
-            f"font-size:8px; color:{C_INK60}; font-family:{F_MONO}; margin-left:4px;"
-        )
+        ui.label(f"({confidence:.1f})").style(f"font-size:8px; color:{C_INK60}; font-family:{F_MONO}; margin-left:4px;")
 
         ui.space()
 
         # "requires DEFINER approval" label for suggested links
         if cfg["needs_approval"]:
             ui.label("requires DEFINER approval").style(
-                f"font-size:7px; color:{C_WARN_FG}; font-family:{F_MONO}; "
-                f"font-style:italic; margin-right:4px;"
+                f"font-size:7px; color:{C_WARN_FG}; font-family:{F_MONO}; font-style:italic; margin-right:4px;"
             )
 
         # Action buttons for suggested links
         if status == "suggested":
             ui.button("Approve", on_click=lambda: _approve_link(link_id, api_client, on_changed)).props(
                 "dense flat size=xs"
-            ).style(
-                f"color:{C_OK_FG}; font-size:8px; font-family:{F_MONO};"
-            )
+            ).style(f"color:{C_OK_FG}; font-size:8px; font-family:{F_MONO};")
             ui.button("Reject", on_click=lambda: _reject_link(link_id, api_client, on_changed)).props(
                 "dense flat size=xs"
-            ).style(
-                f"color:{C_ERR_FG}; font-size:8px; font-family:{F_MONO};"
-            )
+            ).style(f"color:{C_ERR_FG}; font-size:8px; font-family:{F_MONO};")
 
         # Delete button for non-deleted links
         if status not in ("deleted",):
             ui.button("✕", on_click=lambda: _delete_link(link_id, api_client, on_changed)).props(
                 "dense flat size=xs"
-            ).style(
-                f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};"
-            )
+            ).style(f"color:{C_INK60}; font-size:9px; font-family:{F_MONO};")
 
 
 async def _approve_link(link_id: str, api_client: Any, on_changed: Callable[[], None]) -> None:
     """Approve a suggested link."""
     try:
-        result = await api_client.update_knowledge_link(
-            link_id, approved_by_definer=True
-        )
+        result = await api_client.update_knowledge_link(link_id, approved_by_definer=True)
         if result.get("approved_by_definer"):
             ui.notify(f"Link approved: {link_id[:20]}...", color="positive")
         else:
@@ -368,9 +351,7 @@ async def _approve_link(link_id: str, api_client: Any, on_changed: Callable[[], 
 async def _reject_link(link_id: str, api_client: Any, on_changed: Callable[[], None]) -> None:
     """Reject a suggested link."""
     try:
-        result = await api_client.update_knowledge_link(
-            link_id, status="rejected", approved_by_definer=False
-        )
+        result = await api_client.update_knowledge_link(link_id, status="rejected", approved_by_definer=False)
         if result.get("status") == "rejected":
             ui.notify(f"Link rejected: {link_id[:20]}...", color="warning")
         else:
@@ -412,9 +393,7 @@ def _on_link_changed(
     on_link_changed: Callable[[], None] | None,
 ) -> None:
     """Handle link change (approve/reject/delete) — reload and re-render."""
-    asyncio.ensure_future(
-        _reload_with_editor(state, api_client, container, editor, show_create, on_link_changed)
-    )
+    asyncio.ensure_future(_reload_with_editor(state, api_client, container, editor, show_create, on_link_changed))
 
 
 async def _reload(

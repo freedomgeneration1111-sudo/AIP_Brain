@@ -20,10 +20,10 @@ and made Type E detection completely non-functional.
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 from aip.foundation.schemas import TrajectorySignal
+from aip.logging import get_logger
 from aip.orchestration.l4.anxiety_detector import ContextAnxietyDetector
 from aip.orchestration.l4.failure_streak import FailureStreakDetector
 from aip.orchestration.l4.loop_detector import LoopDetector
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from aip.foundation.protocols import TraceStore
     from aip.foundation.schemas import SessionContext
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Default substance_score for trace events that lack the field.
 # MUST be below the FailureStreakDetector substance_threshold (0.4 by default)

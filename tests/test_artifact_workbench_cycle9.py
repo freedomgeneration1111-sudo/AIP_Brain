@@ -28,13 +28,13 @@ import os
 import sqlite3
 import tempfile
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 # ---------------------------------------------------------------------------
 # Test fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def temp_db():
@@ -105,12 +105,17 @@ def temp_db():
         pass
 
 
-def _insert_artifact(db_path: str, artifact_id: str, content: str = "Test content", metadata: dict | None = None) -> None:
+def _insert_artifact(
+    db_path: str, artifact_id: str, content: str = "Test content", metadata: dict | None = None
+) -> None:
     """Insert an artifact into the test database."""
     meta = metadata or {}
     conn = sqlite3.connect(db_path)
     conn.execute(
-        "INSERT OR REPLACE INTO artifacts (id, version, content, metadata_json, created_at) VALUES (?, 1, ?, ?, datetime('now'))",
+        (
+            "INSERT OR REPLACE INTO artifacts "
+            "(id, version, content, metadata_json, created_at) VALUES (?, 1, ?, ?, datetime('now'))"
+        ),
         (artifact_id, content, json.dumps(meta)),
     )
     conn.commit()
@@ -128,12 +133,18 @@ def _insert_ecs_state(db_path: str, artifact_id: str, state: str = "GENERATED") 
     conn.close()
 
 
-def _insert_event(db_path: str, event_type: str, artifact_id: str, actor: str = "definer", metadata: dict | None = None) -> None:
+def _insert_event(
+    db_path: str, event_type: str, artifact_id: str, actor: str = "definer", metadata: dict | None = None
+) -> None:
     """Insert an event into the events table."""
     meta = metadata or {}
     conn = sqlite3.connect(db_path)
     conn.execute(
-        "INSERT INTO events (event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))",
+        (
+            "INSERT INTO events "
+            "(event_type, actor, artifact_id, from_state, to_state, metadata_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, datetime('now'))"
+        ),
         (event_type, actor, artifact_id, None, None, json.dumps(meta)),
     )
     conn.commit()
@@ -154,7 +165,10 @@ def _get_events(db_path: str, artifact_id: str, event_type: str | None = None) -
     conn = sqlite3.connect(db_path)
     if event_type:
         cursor = conn.execute(
-            "SELECT event_type, actor, metadata_json, created_at FROM events WHERE artifact_id = ? AND event_type = ? ORDER BY created_at",
+            (
+                "SELECT event_type, actor, metadata_json, created_at FROM events "
+                "WHERE artifact_id = ? AND event_type = ? ORDER BY created_at"
+            ),
             (artifact_id, event_type),
         )
     else:
@@ -164,15 +178,13 @@ def _get_events(db_path: str, artifact_id: str, event_type: str | None = None) -
         )
     rows = cursor.fetchall()
     conn.close()
-    return [
-        {"event_type": r[0], "actor": r[1], "metadata": json.loads(r[2]), "created_at": r[3]}
-        for r in rows
-    ]
+    return [{"event_type": r[0], "actor": r[1], "metadata": json.loads(r[2]), "created_at": r[3]} for r in rows]
 
 
 # ---------------------------------------------------------------------------
 # Backend route tests — using FastAPI TestClient
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def app_with_artifacts(temp_db):
@@ -214,12 +226,14 @@ def app_with_artifacts(temp_db):
 def client(app_with_artifacts):
     """Create a TestClient for the app."""
     from fastapi.testclient import TestClient
+
     return TestClient(app_with_artifacts)
 
 
 # ---------------------------------------------------------------------------
 # Test: List artifacts by state
 # ---------------------------------------------------------------------------
+
 
 class TestListArtifacts:
     """Tests for GET /api/v1/artifacts."""
@@ -291,12 +305,15 @@ class TestListArtifacts:
 # Test: Get artifact detail
 # ---------------------------------------------------------------------------
 
+
 class TestGetArtifactDetail:
     """Tests for GET /api/v1/artifacts/{artifact_id}."""
 
     def test_get_detail_existing(self, client, temp_db):
         """Get detail returns full artifact data."""
-        _insert_artifact(temp_db, "art:1", "Test content", {"title": "Test", "artifact_type": "ask_answer", "source_ids": ["s1"]})
+        _insert_artifact(
+            temp_db, "art:1", "Test content", {"title": "Test", "artifact_type": "ask_answer", "source_ids": ["s1"]}
+        )
         _insert_ecs_state(temp_db, "art:1", "GENERATED")
 
         resp = client.get("/api/v1/artifacts/art:1")
@@ -328,6 +345,7 @@ class TestGetArtifactDetail:
 # ---------------------------------------------------------------------------
 # Test: Approve artifact
 # ---------------------------------------------------------------------------
+
 
 class TestApproveArtifact:
     """Tests for POST /api/v1/artifacts/{artifact_id}/approve."""
@@ -368,6 +386,7 @@ class TestApproveArtifact:
 # Test: Reject artifact
 # ---------------------------------------------------------------------------
 
+
 class TestRejectArtifact:
     """Tests for POST /api/v1/artifacts/{artifact_id}/reject."""
 
@@ -396,6 +415,7 @@ class TestRejectArtifact:
 # ---------------------------------------------------------------------------
 # Test: Needs revision
 # ---------------------------------------------------------------------------
+
 
 class TestNeedsRevision:
     """Tests for POST /api/v1/artifacts/{artifact_id}/needs-revision."""
@@ -428,6 +448,7 @@ class TestNeedsRevision:
 # ---------------------------------------------------------------------------
 # Test: Export artifact
 # ---------------------------------------------------------------------------
+
 
 class TestExportArtifact:
     """Tests for POST /api/v1/artifacts/{artifact_id}/export."""
@@ -462,6 +483,7 @@ class TestExportArtifact:
 # Test: Force export
 # ---------------------------------------------------------------------------
 
+
 class TestForceExport:
     """Tests for POST /api/v1/artifacts/{artifact_id}/force-export."""
 
@@ -480,7 +502,9 @@ class TestForceExport:
         _insert_artifact(temp_db, "art:1", "Content")
         _insert_ecs_state(temp_db, "art:1", "GENERATED")
 
-        resp = client.post("/api/v1/artifacts/art:1/force-export", json={"force": True, "reason": "Emergency debug export"})
+        resp = client.post(
+            "/api/v1/artifacts/art:1/force-export", json={"force": True, "reason": "Emergency debug export"}
+        )
         if resp.status_code == 200:
             data = resp.json()
             assert data["force_bypass"] is True
@@ -506,12 +530,15 @@ class TestForceExport:
 # Test: Artifact sources
 # ---------------------------------------------------------------------------
 
+
 class TestArtifactSources:
     """Tests for GET /api/v1/artifacts/{artifact_id}/sources."""
 
     def test_sources_existing(self, client, temp_db):
         """Get sources returns source list."""
-        _insert_artifact(temp_db, "art:1", "Content", {"source_ids": ["s1", "s2"], "source_types": ["lexical", "vector"]})
+        _insert_artifact(
+            temp_db, "art:1", "Content", {"source_ids": ["s1", "s2"], "source_types": ["lexical", "vector"]}
+        )
         _insert_ecs_state(temp_db, "art:1", "GENERATED")
 
         resp = client.get("/api/v1/artifacts/art:1/sources")
@@ -541,6 +568,7 @@ class TestArtifactSources:
 # Test: Artifact reviews/ledger
 # ---------------------------------------------------------------------------
 
+
 class TestArtifactReviews:
     """Tests for GET /api/v1/artifacts/{artifact_id}/reviews."""
 
@@ -548,7 +576,9 @@ class TestArtifactReviews:
         """Get reviews returns ledger entries."""
         _insert_artifact(temp_db, "art:1", "Content")
         _insert_ecs_state(temp_db, "art:1", "GENERATED")
-        _insert_event(temp_db, "review_verdict", "art:1", "definer", {"verdict": "NEEDS_REVISION", "detail": "Needs more work"})
+        _insert_event(
+            temp_db, "review_verdict", "art:1", "definer", {"verdict": "NEEDS_REVISION", "detail": "Needs more work"}
+        )
 
         resp = client.get("/api/v1/artifacts/art:1/reviews")
         assert resp.status_code == 200
@@ -569,6 +599,7 @@ class TestArtifactReviews:
 # ---------------------------------------------------------------------------
 # Test: Artifact dashboard
 # ---------------------------------------------------------------------------
+
 
 class TestArtifactDashboard:
     """Tests for GET /api/v1/artifacts/dashboard."""
@@ -600,6 +631,7 @@ class TestArtifactDashboard:
 # Test: Evaluation endpoint — no fake data
 # ---------------------------------------------------------------------------
 
+
 class TestArtifactEvaluation:
     """Tests for GET /api/v1/artifacts/{artifact_id}/evaluation."""
 
@@ -621,6 +653,7 @@ class TestArtifactEvaluation:
 # ---------------------------------------------------------------------------
 # Test: GUI import boundary — new components
 # ---------------------------------------------------------------------------
+
 
 class TestArtifactGUIImports:
     """Tests that new artifact GUI components can be imported."""
@@ -650,13 +683,16 @@ class TestArtifactGUIImports:
 # Test: No aip.orchestration imports in GUI components
 # ---------------------------------------------------------------------------
 
+
 class TestArtifactGUIBoundary:
     """Tests that artifact GUI components don't import orchestration."""
 
     def test_artifact_list_no_orchestration(self):
         """artifact_list does not import from aip.orchestration."""
         import ast
+
         import gui.components.artifact_list as mod
+
         source = Path(mod.__file__).read_text()
         tree = ast.parse(source)
         for node in ast.walk(tree):
@@ -670,7 +706,9 @@ class TestArtifactGUIBoundary:
     def test_artifact_detail_no_orchestration(self):
         """artifact_detail does not import from aip.orchestration."""
         import ast
+
         import gui.components.artifact_detail as mod
+
         source = Path(mod.__file__).read_text()
         tree = ast.parse(source)
         for node in ast.walk(tree):
@@ -679,12 +717,16 @@ class TestArtifactGUIBoundary:
                     assert not alias.name.startswith("aip.orchestration"), f"artifact_detail imports {alias.name}"
             elif isinstance(node, ast.ImportFrom):
                 if node.module:
-                    assert not node.module.startswith("aip.orchestration"), f"artifact_detail imports from {node.module}"
+                    assert not node.module.startswith("aip.orchestration"), (
+                        f"artifact_detail imports from {node.module}"
+                    )
 
     def test_artifact_review_panel_no_orchestration(self):
         """artifact_review_panel does not import from aip.orchestration."""
         import ast
+
         import gui.components.artifact_review_panel as mod
+
         source = Path(mod.__file__).read_text()
         tree = ast.parse(source)
         for node in ast.walk(tree):
@@ -699,6 +741,7 @@ class TestArtifactGUIBoundary:
 # ---------------------------------------------------------------------------
 # Test: No secret exposure in API responses
 # ---------------------------------------------------------------------------
+
 
 class TestNoSecretExposure:
     """Tests that API responses never expose secrets."""
@@ -735,6 +778,7 @@ class TestNoSecretExposure:
 # Test: Review actions don't mutate wiki/links/config
 # ---------------------------------------------------------------------------
 
+
 class TestReviewActionSideEffects:
     """Tests that review actions don't have unexpected side effects."""
 
@@ -746,7 +790,7 @@ class TestReviewActionSideEffects:
         # Check links before
         resp_before = client.get("/api/v1/links?limit=100")
 
-        resp = client.post("/api/v1/artifacts/art:1/approve")
+        client.post("/api/v1/artifacts/art:1/approve")
         # Check result only if approval succeeded
 
         # Check links after — should be same

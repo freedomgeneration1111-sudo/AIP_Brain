@@ -141,6 +141,4 @@ def test_full_l3a_evaluation_in_orchestration_not_foundation():
         "import from aip.orchestration.l3a_orchestrator instead"
     )
     # foundation must NOT import orchestration (shim removed)
-    assert "aip.orchestration" not in source, (
-        "foundation/validation.py must not import from orchestration layer"
-    )
+    assert "aip.orchestration" not in source, "foundation/validation.py must not import from orchestration layer"

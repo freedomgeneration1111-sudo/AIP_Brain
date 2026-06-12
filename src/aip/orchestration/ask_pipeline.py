@@ -215,11 +215,7 @@ async def _search_sources_with_trace(
     )
 
     # Coverage-aware vector enablement
-    vector_available = (
-        enable_vector
-        and stores.vector_store is not None
-        and stores.embedding_provider is not None
-    )
+    vector_available = enable_vector and stores.vector_store is not None and stores.embedding_provider is not None
     vector_enabled = await check_vector_coverage(
         corpus_turn_store=stores.corpus_turn_store,
         vector_available=vector_available,
@@ -263,9 +259,7 @@ async def _search_sources_with_trace(
             query=query,
             verdict="NO_RESULTS",
         )
-        degraded_trace.degradation_warnings.append(
-            f"Orchestrator retrieval failed: {exc}"
-        )
+        degraded_trace.degradation_warnings.append(f"Orchestrator retrieval failed: {exc}")
         return [], degraded_trace, None
 
     if source_filter != "all":
@@ -287,12 +281,14 @@ async def _search_sources_with_trace(
     # concern out of the main search flow.
     if trace is not None:
         await enrich_vector_trace_detail(
-            trace, stores.vector_store, stores.embedding_provider,
+            trace,
+            stores.vector_store,
+            stores.embedding_provider,
         )
 
     # Populate final context info on the trace
     if trace is not None and packed is not None:
-        trace.final_context_token_count = packed.token_count if hasattr(packed, 'token_count') else 0
+        trace.final_context_token_count = packed.token_count if hasattr(packed, "token_count") else 0
         trace.final_context_source_ids = [h.id for h in hits]
 
     return sources, trace, packed
@@ -395,6 +391,7 @@ async def create_ask_stores(db_path: str) -> AskStores:
         config = _load_config()
         if config:
             from aip.adapter.embedding.factory import create_embedding_provider
+
             embedding_provider = create_embedding_provider(config)
     except Exception:
         logger.debug("No embedding provider configured — lexical-only search")
@@ -414,6 +411,7 @@ async def create_ask_stores(db_path: str) -> AskStores:
     corpus_turn_store = None
     try:
         from aip.adapter.corpus_turn_store import CorpusTurnStore
+
         corpus_turn_store = CorpusTurnStore(db_path)
         await corpus_turn_store.initialize()
     except Exception as exc:
@@ -423,6 +421,7 @@ async def create_ask_stores(db_path: str) -> AskStores:
     graph_store = None
     try:
         from aip.adapter.graph_store import GraphStore
+
         graph_store = GraphStore(db_path)
         await graph_store.initialize()
     except Exception as exc:
@@ -450,6 +449,7 @@ def _load_config() -> dict:
     Returns an empty dict (not None) when no config file is found.
     """
     from aip.config.loader import load_toml_config
+
     return load_toml_config()
 
 
@@ -489,6 +489,17 @@ async def ask(
     if project is not None:
         project_id = project.get("project_id", project_name)
         project_domain = project.get("domain") or project_name
+    else:
+        # Project not found — return explicit status so callers can distinguish
+        # "project doesn't exist" from "project exists but has no memory".
+        return AskResult(
+            status="NO_PROJECT",
+            answer=f"Project '{project_name}' not found. Create it first with: aip project create {project_name}",
+            prompt=question,
+            project_name=project_name,
+            project_id=project_id,
+            session_id=session_id,
+        )
 
     # Multi-channel retrieval via RetrievalOrchestrator + SmartContextPacker
     retrieval_trace: RetrievalTrace | None = None
@@ -563,11 +574,7 @@ async def ask(
             "If the sources do not contain enough information, say so explicitly. "
             "Do not fabricate information not present in the sources."
         )
-        system_content = (
-            f"{system_prompt_modifier}\n\n---\n\n{base_system}"
-            if system_prompt_modifier
-            else base_system
-        )
+        system_content = f"{system_prompt_modifier}\n\n---\n\n{base_system}" if system_prompt_modifier else base_system
         messages = [
             {
                 "role": "system",
@@ -613,8 +620,7 @@ async def ask(
         return AskResult(
             status="MODEL_FAILURE",
             answer=(
-                f"Model call failed: {'; '.join(model_errors)}. "
-                f"Retrieved sources are preserved below for inspection."
+                f"Model call failed: {'; '.join(model_errors)}. Retrieved sources are preserved below for inspection."
             ),
             sources=sources,
             prompt=question,
@@ -745,7 +751,8 @@ async def ask(
         prompt=question,
         errors=artifact_errors,
         retrieval_degradation=build_degradation_dict(
-            retrieval_trace, _last_registration_failures,
+            retrieval_trace,
+            _last_registration_failures,
         ),
         retrieval_warnings=build_retrieval_warnings(retrieval_trace),
     )
@@ -754,6 +761,7 @@ async def ask(
 # Backward-compatible aliases — these delegate to the extracted module
 # in ``channels.retrieval_trace_utils``.  They remain importable from
 # ``ask_pipeline`` so that existing tests and callers are not broken.
+
 
 def _build_degradation_dict(retrieval_trace: RetrievalTrace | None) -> dict:
     """Backward-compatible wrapper around build_degradation_dict."""
@@ -822,9 +830,7 @@ async def _record_trace(
 
     # Include channel registration failures in the trace for dashboard visibility
     if _last_registration_failures:
-        retrieval_meta["channel_registration_failures"] = json.dumps(
-            [f.to_dict() for f in _last_registration_failures]
-        )
+        retrieval_meta["channel_registration_failures"] = json.dumps([f.to_dict() for f in _last_registration_failures])
 
     try:
         await stores.event_store.write_event(

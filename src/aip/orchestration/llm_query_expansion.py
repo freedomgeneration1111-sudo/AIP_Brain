@@ -32,6 +32,7 @@ from typing import Any
 
 try:
     from aip.logging import get_logger
+
     logger = get_logger(__name__)
 except ImportError:
     logger = logging.getLogger(__name__)
@@ -133,6 +134,7 @@ async def expand_query_with_llm(
 
         # Parse the response as a JSON array
         import json
+
         try:
             # Try direct parse
             terms = json.loads(content)
@@ -212,7 +214,7 @@ def _extract_json_array(text: str) -> list:
     if s.startswith("```"):
         first_newline = s.find("\n")
         if first_newline != -1:
-            s = s[first_newline + 1:]
+            s = s[first_newline + 1 :]
         if s.rstrip().endswith("```"):
             s = s.rstrip()[:-3].rstrip()
 
@@ -229,7 +231,7 @@ def _extract_json_array(text: str) -> list:
     end = s.rfind("]")
     if start != -1 and end > start:
         try:
-            parsed = json.loads(s[start:end + 1])
+            parsed = json.loads(s[start : end + 1])
             if isinstance(parsed, list):
                 return parsed
         except (json.JSONDecodeError, ValueError):
