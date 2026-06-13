@@ -139,6 +139,24 @@ async def lifespan(app: FastAPI):
     # --- Wire adapter stores from config ---
     db_path = config.get("database", {}).get("db_path", "db/state.db")
 
+    # --- Ensure DB parent directories exist before opening connections ---
+    # A clean checkout should not require manual "mkdir -p db" before startup.
+    # This mirrors what "aip init" does (cli/init.py) but is safe to call
+    # idempotently from the API server startup path as well.
+    _db_parent = Path(db_path).parent
+    if _db_parent and str(_db_parent) != ".":
+        try:
+            _db_parent.mkdir(parents=True, exist_ok=True)
+            log.info("db_parent_directory_ensured", path=str(_db_parent))
+        except PermissionError as exc:
+            raise StartupError(
+                f"Cannot create database directory {_db_parent}: permission denied. "
+                f"Ensure the directory is writable or configure [database].db_path "
+                f"to point to a writable location. Error: {exc}"
+            ) from exc
+        except OSError as exc:
+            raise StartupError(f"Cannot create database directory {_db_parent}: {exc}") from exc
+
     # =====================================================================
     # REQUIRED COMPONENTS — startup fails if these cannot initialize
     # =====================================================================
