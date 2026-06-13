@@ -339,12 +339,14 @@ augmented answer.
         (
             "ingest:e2e_fixture_doc",
             fixture_content,
-            json.dumps({
-                "artifact_type": "ingested_conversation",
-                "project_id": "e2e_project",
-                "domain": "e2e_test",
-                "source_path": "e2e_test_document.md",
-            }),
+            json.dumps(
+                {
+                    "artifact_type": "ingested_conversation",
+                    "project_id": "e2e_project",
+                    "domain": "e2e_test",
+                    "source_path": "e2e_test_document.md",
+                }
+            ),
         ),
     )
     conn.execute(
@@ -455,9 +457,7 @@ class TestStep1StartAppHarness:
     def test_health_endpoint_responds(self, app_client):
         """The /health endpoint must respond with 200 or 503."""
         resp = app_client.get("/api/v1/health")
-        assert resp.status_code in (200, 503), (
-            f"Health endpoint returned {resp.status_code}, expected 200 or 503"
-        )
+        assert resp.status_code in (200, 503), f"Health endpoint returned {resp.status_code}, expected 200 or 503"
         if resp.status_code == 200:
             data = resp.json()
             # Must not claim healthy when it's not
@@ -488,9 +488,7 @@ class TestStep2DashboardDogfoodState:
         `request: Any`. The test accepts 422 as honest degraded for now.
         """
         resp = app_client.get("/api/v1/health/dogfood")
-        assert resp.status_code in (200, 503, 422), (
-            f"/health/dogfood returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503, 422), f"/health/dogfood returned {resp.status_code}"
         if resp.status_code == 200:
             data = resp.json()
             mode = data.get("dogfood_mode", "")
@@ -518,9 +516,7 @@ class TestStep2DashboardDogfoodState:
     def test_status_summary_endpoint(self, app_client):
         """/status/summary must return honest state."""
         resp = app_client.get("/api/v1/status/summary")
-        assert resp.status_code in (200, 503), (
-            f"/status/summary returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503), f"/status/summary returned {resp.status_code}"
         if resp.status_code == 200:
             data = resp.json()
             # dogfood_mode must be present and honest
@@ -562,9 +558,7 @@ class TestStep3IngestDocument:
                 files={"file": ("aip_loom_decisions.md", f, "text/markdown")},
             )
         # Accept 200 (success), 201 (created), 503 (store not wired), 422 (validation)
-        assert resp.status_code in (200, 201, 503, 422), (
-            f"/ingest/file returned {resp.status_code}: {resp.text[:500]}"
-        )
+        assert resp.status_code in (200, 201, 503, 422), f"/ingest/file returned {resp.status_code}: {resp.text[:500]}"
         if resp.status_code in (200, 201):
             data = resp.json()
             # Must not claim success with empty results
@@ -583,9 +577,7 @@ class TestStep3IngestDocument:
             json={"domain": "e2e_test", "content": "Test ingest for E2E cycle 15."},
         )
         # Accept various honest responses
-        assert resp.status_code in (200, 201, 503, 404, 422), (
-            f"/corpus/ingest returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 201, 503, 404, 422), f"/corpus/ingest returned {resp.status_code}"
         if resp.status_code in (200, 201):
             _record("3_document_ingest", "PASS")
         elif resp.status_code in (503, 404):
@@ -605,9 +597,7 @@ class TestStep4CorpusStatusUpdate:
     def test_corpus_status_endpoint(self, app_client):
         """GET /corpus/status must reflect ingested content."""
         resp = app_client.get("/api/v1/corpus/status")
-        assert resp.status_code in (200, 503), (
-            f"/corpus/status returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503), f"/corpus/status returned {resp.status_code}"
         if resp.status_code == 200:
             data = resp.json()
             # Must have honest fields — not fake healthy
@@ -621,9 +611,7 @@ class TestStep4CorpusStatusUpdate:
     def test_corpus_stats_endpoint(self, app_client):
         """GET /corpus/stats must provide corpus statistics."""
         resp = app_client.get("/api/v1/corpus/stats")
-        assert resp.status_code in (200, 503), (
-            f"/corpus/stats returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503), f"/corpus/stats returned {resp.status_code}"
         if resp.status_code == 200:
             _record("4_corpus_status", "PASS")
         else:
@@ -656,8 +644,7 @@ class TestStep5EmbeddingBackfillVisibility:
             # Must not claim 100% when we know coverage is ~1.8% or not_configured
             if isinstance(pct, (int, float)) and pct == 100:
                 pytest.fail(
-                    "Fake healthy: embedding coverage claims 100% — "
-                    "known to be ~1.8% or not configured in test"
+                    "Fake healthy: embedding coverage claims 100% — known to be ~1.8% or not configured in test"
                 )
             _record("5_embedding_visibility", "PASS")
         else:
@@ -667,9 +654,7 @@ class TestStep5EmbeddingBackfillVisibility:
     def test_corpus_embedding_progress(self, app_client):
         """GET /corpus/embedding-progress must report backfill state."""
         resp = app_client.get("/api/v1/corpus/embedding-progress")
-        assert resp.status_code in (200, 503, 404), (
-            f"/corpus/embedding-progress returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503, 404), f"/corpus/embedding-progress returned {resp.status_code}"
         if resp.status_code == 200:
             data = resp.json()
             # Must include backfill_state or honest unavailable
@@ -678,9 +663,16 @@ class TestStep5EmbeddingBackfillVisibility:
                 # Known states: not_configured, configured_idle, backfill_pending,
                 # backfill_running, partially_embedded, embedded, degraded, failed
                 assert state in (
-                    "not_configured", "configured_idle", "backfill_pending",
-                    "backfill_running", "partially_embedded", "embedded",
-                    "degraded", "failed", "unavailable", "error",
+                    "not_configured",
+                    "configured_idle",
+                    "backfill_pending",
+                    "backfill_running",
+                    "partially_embedded",
+                    "embedded",
+                    "degraded",
+                    "failed",
+                    "unavailable",
+                    "error",
                 ), f"Unexpected backfill_state: {state}"
             _record("5_embedding_visibility", "PASS")
         else:
@@ -726,9 +718,7 @@ class TestStep6AskQuestion:
                 "source": "all",
             },
         )
-        assert resp.status_code in (200, 400, 503, 422), (
-            f"/ask returned {resp.status_code}: {resp.text[:500]}"
-        )
+        assert resp.status_code in (200, 400, 503, 422), f"/ask returned {resp.status_code}: {resp.text[:500]}"
         if resp.status_code == 200:
             data = resp.json()
             status = data.get("status", "")
@@ -740,8 +730,7 @@ class TestStep6AskQuestion:
                 direct_model = data.get("direct_model", False)
                 if direct_model and status == "OK":
                     pytest.fail(
-                        "Fake healthy: direct_model=True but status=OK. "
-                        "Direct model fallback must be labeled honestly."
+                        "Fake healthy: direct_model=True but status=OK. Direct model fallback must be labeled honestly."
                     )
             elif status == "NEEDS_CONFIGURATION":
                 # Honest — still must show sources
@@ -808,9 +797,7 @@ class TestStep7SourceInspection:
     def test_sources_endpoint(self, app_client):
         """GET /sources must list available sources or honest unavailable."""
         resp = app_client.get("/api/v1/sources")
-        assert resp.status_code in (200, 503), (
-            f"/sources returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503), f"/sources returned {resp.status_code}"
         if resp.status_code == 200:
             _record("7_source_inspection", "PASS")
         else:
@@ -832,17 +819,13 @@ class TestStep8RetrievalTraceInspection:
             "/api/v1/retrieval/test",
             json={"query": "sovereign knowledge loop", "channels": ["fts"]},
         )
-        assert resp.status_code in (200, 503, 404, 422), (
-            f"/retrieval/test returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503, 404, 422), f"/retrieval/test returned {resp.status_code}"
         if resp.status_code == 200:
             data = resp.json()
             # Must not fake trace data
             trace_available = data.get("trace_available", True)
             if not trace_available and data.get("trace"):
-                pytest.fail(
-                    "Fake trace: trace_available=False but trace data present"
-                )
+                pytest.fail("Fake trace: trace_available=False but trace data present")
             _record("8_retrieval_trace", "PASS")
         elif resp.status_code in (503, 404):
             _record("8_retrieval_trace", "HONESTLY DEGRADED / UNAVAILABLE")
@@ -892,9 +875,7 @@ class TestStep9BeastCommentary:
         The /beast/scan endpoint requires a 'query' query parameter.
         """
         resp = app_client.get("/api/v1/beast/scan", params={"query": "test query"})
-        assert resp.status_code in (200, 503, 404, 422), (
-            f"/beast/scan returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503, 404, 422), f"/beast/scan returned {resp.status_code}"
         if resp.status_code == 200:
             data = resp.json()
             # Must not fake commentary when no model is wired
@@ -911,9 +892,7 @@ class TestStep9BeastCommentary:
     def test_beast_commentary_endpoint(self, app_client):
         """GET /turns/{id}/beast-commentary must return honest state."""
         resp = app_client.get("/api/v1/turns/1/beast-commentary")
-        assert resp.status_code in (200, 404, 503), (
-            f"/turns/1/beast-commentary returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 404, 503), f"/turns/1/beast-commentary returned {resp.status_code}"
         if resp.status_code == 200:
             data = resp.json()
             # If Beast is not wired, must say so honestly
@@ -936,9 +915,7 @@ class TestStep10BeastLinkSuggestions:
     def test_crosslink_list_endpoint(self, app_client):
         """GET /links must list knowledge links or honest unavailable."""
         resp = app_client.get("/api/v1/links")
-        assert resp.status_code in (200, 503, 404), (
-            f"/links returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503, 404), f"/links returned {resp.status_code}"
         if resp.status_code == 200:
             data = resp.json()
             # Links must not auto-approve
@@ -999,9 +976,7 @@ class TestStep11WikiCreateLink:
             data = resp.json()
             # Article state MUST be GENERATED, never APPROVED or EXPORTED
             state = data.get("state", "")
-            assert state in ("GENERATED", "DRAFT", ""), (
-                f"Wiki article must be created in GENERATED state, got: {state}"
-            )
+            assert state in ("GENERATED", "DRAFT", ""), f"Wiki article must be created in GENERATED state, got: {state}"
             assert state not in ("APPROVED", "EXPORTED"), (
                 f"Wiki article auto-approved! State: {state} — no auto-approve allowed"
             )
@@ -1014,9 +989,7 @@ class TestStep11WikiCreateLink:
     def test_wiki_list_articles(self, app_client):
         """GET /wiki/articles must list articles or honest unavailable."""
         resp = app_client.get("/api/v1/wiki/articles")
-        assert resp.status_code in (200, 503, 404), (
-            f"/wiki/articles returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503, 404), f"/wiki/articles returned {resp.status_code}"
         if resp.status_code == 200:
             _record("11_wiki_create", "PASS")
         else:
@@ -1046,9 +1019,7 @@ class TestStep12SaveArtifact:
             # Artifact must be in GENERATED state — no auto-approve
             state = data.get("lifecycle_state") or data.get("state") or data.get("ecs_state", "")
             if state:
-                assert state == "GENERATED", (
-                    f"Saved artifact must be GENERATED, got: {state} — no auto-approve"
-                )
+                assert state == "GENERATED", f"Saved artifact must be GENERATED, got: {state} — no auto-approve"
             # Must return artifact_id
             artifact_id = data.get("artifact_id")
             assert artifact_id is not None, "Must return artifact_id after save"
@@ -1070,9 +1041,7 @@ class TestStep13ArtifactReview:
     def test_review_list(self, app_client):
         """GET /reviews must list reviewable artifacts or honest unavailable."""
         resp = app_client.get("/api/v1/reviews")
-        assert resp.status_code in (200, 503, 404), (
-            f"/reviews returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503, 404), f"/reviews returned {resp.status_code}"
         if resp.status_code == 200:
             _record("13_artifact_review", "PASS")
         else:
@@ -1081,9 +1050,7 @@ class TestStep13ArtifactReview:
     def test_artifacts_list(self, app_client):
         """GET /artifacts must list artifacts or honest unavailable."""
         resp = app_client.get("/api/v1/artifacts")
-        assert resp.status_code in (200, 503), (
-            f"/artifacts returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503), f"/artifacts returned {resp.status_code}"
         if resp.status_code == 200:
             data = resp.json()
             # Must not list artifacts as APPROVED if they're GENERATED
@@ -1118,9 +1085,7 @@ class TestStep14ArtifactApproval:
             # After approval, state must be APPROVED (legitimate transition)
             state = data.get("lifecycle_state") or data.get("state") or data.get("ecs_state", "")
             if state:
-                assert state == "APPROVED", (
-                    f"Artifact state after approve should be APPROVED, got: {state}"
-                )
+                assert state == "APPROVED", f"Artifact state after approve should be APPROVED, got: {state}"
             _record("14_artifact_approval", "PASS")
         elif resp.status_code in (403,):
             # 403 = DEFINER gate enforced (auth is disabled but route checks role)
@@ -1154,9 +1119,7 @@ class TestStep14ArtifactApproval:
                     assert state in ("GENERATED", "SPECIFIED", ""), (
                         f"New artifact must start in GENERATED, got: {state} — no auto-approve"
                     )
-                    assert state not in ("APPROVED", "EXPORTED"), (
-                        f"New artifact auto-approved! State: {state}"
-                    )
+                    assert state not in ("APPROVED", "EXPORTED"), f"New artifact auto-approved! State: {state}"
         # This test passes if no auto-approve is detected
         _record("14_artifact_approval", "PASS")
 
@@ -1235,9 +1198,7 @@ class TestStep16MaintenanceActorRun:
     def test_maintenance_status(self, app_client):
         """GET /maintenance/status must return actor states or honest unavailable."""
         resp = app_client.get("/api/v1/maintenance/status")
-        assert resp.status_code in (200, 503, 404), (
-            f"/maintenance/status returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503, 404), f"/maintenance/status returned {resp.status_code}"
         if resp.status_code == 200:
             data = resp.json()
             # Actor states must be honest
@@ -1256,9 +1217,7 @@ class TestStep16MaintenanceActorRun:
     def test_actors_status(self, app_client):
         """GET /actors/status must return actor status or honest unavailable."""
         resp = app_client.get("/api/v1/actors/status")
-        assert resp.status_code in (200, 503), (
-            f"/actors/status returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503), f"/actors/status returned {resp.status_code}"
         if resp.status_code == 200:
             _record("16_maintenance_actor", "PASS")
         else:
@@ -1297,11 +1256,7 @@ class TestStep17DashboardActivityUpdate:
 
         data = resp.json()
         # alerting_status or alerting_health must be present
-        has_alerting = (
-            "alerting_status" in data
-            or "alerting_health" in data
-            or data.get("actors") is not None
-        )
+        has_alerting = "alerting_status" in data or "alerting_health" in data or data.get("actors") is not None
         assert has_alerting, "/health must include alerting status"
         _record("17_dashboard_activity", "PASS")
 
@@ -1338,9 +1293,7 @@ class TestStep18RestartReinitialize:
 
         # Health must still respond
         resp = client2.get("/api/v1/health")
-        assert resp.status_code in (200, 503), (
-            f"New client health check returned {resp.status_code}"
-        )
+        assert resp.status_code in (200, 503), f"New client health check returned {resp.status_code}"
 
         # The project we created must still exist
         proj_resp = client2.get("/api/v1/projects")
@@ -1373,9 +1326,7 @@ class TestStep19StatePersistence:
             rows = conn.execute("SELECT artifact_id FROM artifacts").fetchall()
             assert len(rows) > 0, "No artifacts found in DB — state did not persist"
             artifact_ids = [r[0] for r in rows]
-            assert "ingest:e2e_fixture_doc" in artifact_ids, (
-                "Fixture document not found in DB — state did not persist"
-            )
+            assert "ingest:e2e_fixture_doc" in artifact_ids, "Fixture document not found in DB — state did not persist"
             _record("19_state_persistence", "PASS")
         finally:
             conn.close()
@@ -1436,9 +1387,7 @@ class TestHonestyInvariants:
             data = resp.json()
             state = data.get("lifecycle_state") or data.get("state") or data.get("ecs_state", "")
             if state:
-                assert state not in ("APPROVED", "EXPORTED"), (
-                    f"save-as-artifact auto-approved! State: {state}"
-                )
+                assert state not in ("APPROVED", "EXPORTED"), f"save-as-artifact auto-approved! State: {state}"
         # PASS if 503/404/422 (store not wired) or state is correct
 
     def test_no_fake_healthy_in_health(self, app_client):
@@ -1452,9 +1401,7 @@ class TestHonestyInvariants:
         critical = data.get("critical_components", True)
 
         if status == "ok" and not critical:
-            pytest.fail(
-                "Fake healthy: /health reports status='ok' but critical_components=False"
-            )
+            pytest.fail("Fake healthy: /health reports status='ok' but critical_components=False")
 
     def test_direct_model_fallback_labeled(self, app_client):
         """When direct model fallback is used, it must be labeled honestly."""
