@@ -45,13 +45,11 @@ to exercise the API surface that the GUI Operator Console consumes.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -734,9 +732,8 @@ class TestStep6AskQuestion:
                     )
             elif status == "NEEDS_CONFIGURATION":
                 # Honest — still must show sources
-                sources = data.get("sources", [])
-                # Sources should be present (we ingested content)
-                # But we accept empty if the retrieval genuinely found nothing
+                # Sources may be present even without model
+                # We accept empty if the retrieval genuinely found nothing
                 _record("6_ask_question", "HONESTLY DEGRADED / UNAVAILABLE")
                 return
             _record("6_ask_question", "PASS")
@@ -1060,7 +1057,7 @@ class TestStep13ArtifactReview:
                         # Check it's actually approved in ECS
                         pass  # Detail check done in step 14
             elif isinstance(data, dict):
-                artifacts = data.get("artifacts", data.get("items", []))
+                data.get("artifacts", data.get("items", []))
                 # Same check
                 pass
             _record("13_artifact_review", "PASS")
@@ -1418,7 +1415,7 @@ class TestHonestyInvariants:
 
         data = resp.json()
         direct_model = data.get("direct_model", False)
-        lexical_only = data.get("lexical_only", False)
+        data.get("lexical_only", False)  # Checked: lexical_only is informational
         status = data.get("status", "")
 
         # If direct_model is True, the answer must NOT claim to be augmented
