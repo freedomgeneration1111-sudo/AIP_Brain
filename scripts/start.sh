@@ -42,6 +42,17 @@ cleanup() {
 
 trap cleanup SIGINT SIGTERM EXIT
 
+# --- Ensure DB directory exists ---
+# The backend creates DB parent dirs too (app.py lifespan), but this provides
+# a clear early error message from the shell script if the directory is unwritable.
+DB_DIR="${AIP_DB_DIR:-db}"
+if ! mkdir -p "${DB_DIR}" 2>/dev/null; then
+    echo "ERROR: Cannot create database directory ${DB_DIR}." >&2
+    echo "Ensure the directory is writable or set AIP_DB_DIR to a writable path." >&2
+    exit 1
+fi
+echo "Database directory ensured: ${DB_DIR}/"
+
 # --- Start backend ---
 echo "Starting AIP_Brain backend on ${BACKEND_HOST}:${BACKEND_PORT}..."
 uv run uvicorn "aip.adapter.api.app:create_app" --factory \
