@@ -477,39 +477,46 @@ class TestStep2DashboardDogfoodState:
     """Step 2: Dashboard shows full dogfood mode or honest degraded state."""
 
     def test_health_dogfood_endpoint(self, app_client):
-        """/health/dogfood must report dogfood_mode honestly.
+        """/health/dogfood must respond 200 and return honest dogfood/degraded status fields.
 
-        NOTE: The /health/dogfood endpoint has a known signature bug where
-        `request: Any` is not recognized as a FastAPI Request injection,
-        causing 422 Unprocessable Entity. This is documented as a MEDIUM
-        bug (BUG-C15-001) — the route needs `request: Request` instead of
-        `request: Any`. The test accepts 422 as honest degraded for now.
+        BUG-C15-001 was fixed: the route signature changed from `request: Any`
+        to `request: Request` so FastAPI properly injects the Request object.
+        A 422 here is no longer acceptable — it was a product bug, not an
+        honest degraded subsystem state.
         """
         resp = app_client.get("/api/v1/health/dogfood")
-        assert resp.status_code in (200, 503, 422), f"/health/dogfood returned {resp.status_code}"
-        if resp.status_code == 200:
-            data = resp.json()
-            mode = data.get("dogfood_mode", "")
-            # dogfood_mode must be a real value, not "unknown" or empty
-            assert mode in ("FULL", "DIAGNOSTIC", "MINIMAL", "degraded", "unavailable", ""), (
-                f"Unexpected dogfood_mode: {mode}"
+        assert resp.status_code == 200, (
+            f"/health/dogfood must return 200, got {resp.status_code}. "
+            "A 422 indicates a broken route signature, not an honest degraded state."
+        )
+        data = resp.json()
+        mode = data.get("dogfood_mode", "")
+        # dogfood_mode must be a real value, not "unknown" or empty
+        assert mode in (
+            "FULL",
+            "full",
+            "DIAGNOSTIC",
+            "diagnostic",
+            "MINIMAL",
+            "minimal",
+            "degraded",
+            "unavailable",
+            "",
+        ), f"Unexpected dogfood_mode: {mode}"
+        # is_ready must be a boolean
+        assert isinstance(data.get("is_ready"), (bool, type(None))), (
+            f"is_ready must be bool or None, got {type(data.get('is_ready'))}"
+        )
+        # Must NOT report is_ready=True when mode is not FULL
+        if mode not in ("FULL", "full") and data.get("is_ready") is True:
+            pytest.fail(
+                f"Fake healthy: is_ready=True but dogfood_mode={mode}. "
+                "The system must not claim readiness when not in FULL mode."
             )
-            # is_ready must be a boolean
-            assert isinstance(data.get("is_ready"), (bool, type(None))), (
-                f"is_ready must be bool or None, got {type(data.get('is_ready'))}"
-            )
-            # Must NOT report is_ready=True when mode is not FULL
-            if mode != "FULL" and data.get("is_ready") is True:
-                pytest.fail(
-                    f"Fake healthy: is_ready=True but dogfood_mode={mode}. "
-                    "The system must not claim readiness when not in FULL mode."
-                )
-            _record("2_dashboard_state", "PASS")
-        elif resp.status_code == 422:
-            # Known bug: request: Any not recognized as Request injection
-            _record("2_dashboard_state", "HONESTLY DEGRADED / UNAVAILABLE")
-        else:
-            _record("2_dashboard_state", "HONESTLY DEGRADED / UNAVAILABLE")
+        _record(
+            "2_dashboard_state",
+            "PASS — /health/dogfood responds 200 and returns honest dogfood/degraded status fields",
+        )
 
     def test_status_summary_endpoint(self, app_client):
         """/status/summary must return honest state."""
