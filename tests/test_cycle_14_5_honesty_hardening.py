@@ -117,9 +117,7 @@ class TestSextonActorHonesty:
 
         sexton = Sexton.__new__(Sexton)
         sexton._trace_store = AsyncMock()
-        sexton._trace_store.get_unclassified_failures = AsyncMock(
-            side_effect=RuntimeError("trace store down")
-        )
+        sexton._trace_store.get_unclassified_failures = AsyncMock(side_effect=RuntimeError("trace store down"))
 
         with caplog.at_level(logging.WARNING):
             result = await sexton.count_unclassified()
@@ -186,9 +184,7 @@ class TestCORSSafetyGuard:
         """SurfaceConfig must accept explicit origin URLs."""
         from aip.foundation.schemas.surface import SurfaceConfig
 
-        config = SurfaceConfig(
-            api_cors_origins=["http://localhost:3000", "http://localhost:8080"]
-        )
+        config = SurfaceConfig(api_cors_origins=["http://localhost:3000", "http://localhost:8080"])
         assert config.api_cors_origins == ["http://localhost:3000", "http://localhost:8080"]
 
     def test_default_origins_are_safe(self):
@@ -268,8 +264,7 @@ class TestRetrievalQueryBounds:
                     if hasattr(node.func, "attr") and node.func.attr == "retrieve":
                         kw_names = [kw.arg for kw in node.keywords]
                         assert "top_k" in kw_names, (
-                            f"MCP search must pass explicit top_k to vector_store.retrieve, "
-                            f"got keywords: {kw_names}"
+                            f"MCP search must pass explicit top_k to vector_store.retrieve, got keywords: {kw_names}"
                         )
 
 
@@ -373,8 +368,7 @@ class TestNoFakeHealthyState:
                         break
 
         assert silent_count < 15, (
-            f"Too many silent `except Exception: pass` in beast.py: {silent_count}. "
-            "Load-bearing paths should log."
+            f"Too many silent `except Exception: pass` in beast.py: {silent_count}. Load-bearing paths should log."
         )
 
     def test_entity_extractor_search_logs_failure(self):
