@@ -222,7 +222,7 @@ def _retrieval_section(state: GuiState) -> None:
                     status = "DEGRADED"
                     color = C_WARN_FG
                 elif ch_state == "unavailable":
-                    status = "DOWN"
+                    status = "UNAVAILABLE"
                     color = C_ERR_FG
                 elif ch_state == "empty":
                     status = "EMPTY"

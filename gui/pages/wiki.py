@@ -163,6 +163,7 @@ async def wiki_page():
     async def _load_and_render():
         """Load wiki articles from API and render the UI."""
         articles = []
+        articles_error = None
         backend_ok = state.backend_reachable
 
         if backend_ok:
@@ -172,6 +173,8 @@ async def wiki_page():
             except Exception as exc:
                 log.error("Failed to load wiki articles: %s", exc)
                 articles = []
+                articles_error = str(exc)
+                log.warning("wiki_articles_load_failed: %s", exc)
 
         # Store in wiki state
         wiki_state.articles = articles
@@ -179,6 +182,8 @@ async def wiki_page():
         # Render article list
         list_container.clear()
         with list_container:
+            if articles_error:
+                ui.label(f"Failed to load articles: {articles_error}").style(f"font-size:11px; color:{C_ERR_FG};")
             render_wiki_article_list(
                 articles,
                 on_select=_on_article_select,
