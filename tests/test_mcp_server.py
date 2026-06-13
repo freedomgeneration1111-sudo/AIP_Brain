@@ -53,7 +53,7 @@ class _MockVectorStore:
     def __init__(self, results: list | None = None):
         self._results = results or []
 
-    async def retrieve(self, query_vector, domain=None):
+    async def retrieve(self, query_vector, domain=None, top_k=None):
         return self._results
 
 
