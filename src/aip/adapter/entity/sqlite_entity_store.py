@@ -29,7 +29,7 @@ _DDL_ENTITIES = """
         entity_id TEXT PRIMARY KEY,
         entity_type TEXT,
         name TEXT,
-        metadata TEXT NOT NULL,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
@@ -107,7 +107,7 @@ class SqliteEntityStore(EntityStore, StoreHealthMixin):
         conn = await self._get_conn()
         try:
             cursor = await conn.execute(
-                "SELECT entity_id, entity_type, name, metadata, created_at, updated_at "
+                "SELECT entity_id, entity_type, name, metadata_json, created_at, updated_at "
                 "FROM entities WHERE entity_id = ?",
                 (entity_id,),
             )
@@ -118,7 +118,7 @@ class SqliteEntityStore(EntityStore, StoreHealthMixin):
                 "entity_id": row["entity_id"],
                 "entity_type": row["entity_type"],
                 "name": row["name"],
-                "metadata": json.loads(row["metadata"]) if row["metadata"] else {},
+                "metadata": json.loads(row["metadata_json"]) if row["metadata_json"] else {},
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
             }
@@ -131,13 +131,13 @@ class SqliteEntityStore(EntityStore, StoreHealthMixin):
         try:
             if entity_type:
                 cursor = await conn.execute(
-                    "SELECT entity_id, entity_type, name, metadata, created_at, updated_at "
+                    "SELECT entity_id, entity_type, name, metadata_json, created_at, updated_at "
                     "FROM entities WHERE entity_type = ? ORDER BY updated_at DESC LIMIT ?",
                     (entity_type, limit),
                 )
             else:
                 cursor = await conn.execute(
-                    "SELECT entity_id, entity_type, name, metadata, created_at, updated_at "
+                    "SELECT entity_id, entity_type, name, metadata_json, created_at, updated_at "
                     "FROM entities ORDER BY updated_at DESC LIMIT ?",
                     (limit,),
                 )
@@ -150,7 +150,7 @@ class SqliteEntityStore(EntityStore, StoreHealthMixin):
                         "entity_id": row["entity_id"],
                         "entity_type": row["entity_type"],
                         "name": row["name"],
-                        "metadata": json.loads(row["metadata"]) if row["metadata"] else {},
+                        "metadata": json.loads(row["metadata_json"]) if row["metadata_json"] else {},
                         "created_at": row["created_at"],
                         "updated_at": row["updated_at"],
                     },
@@ -165,13 +165,13 @@ class SqliteEntityStore(EntityStore, StoreHealthMixin):
         try:
             now = datetime.now(timezone.utc).isoformat() + "Z"
             cursor = await conn.execute(
-                "SELECT metadata FROM entities WHERE entity_id = ?",
+                "SELECT metadata_json FROM entities WHERE entity_id = ?",
                 (entity_id,),
             )
             existing = await cursor.fetchone()
 
             if existing:
-                meta = json.loads(existing["metadata"]) if existing["metadata"] else {}
+                meta = json.loads(existing["metadata_json"]) if existing["metadata_json"] else {}
                 if "metadata" in updates:
                     meta.update(updates["metadata"])
                     updates = {**updates, "metadata": meta}
@@ -182,7 +182,7 @@ class SqliteEntityStore(EntityStore, StoreHealthMixin):
                     if k in ("entity_id", "created_at"):
                         continue
                     if k == "metadata":
-                        set_clauses.append("metadata = ?")
+                        set_clauses.append("metadata_json = ?")
                         params.append(json.dumps(v))
                     else:
                         set_clauses.append(f"{k} = ?")
@@ -199,7 +199,7 @@ class SqliteEntityStore(EntityStore, StoreHealthMixin):
                 meta = updates.get("metadata", {})
                 await conn.execute(
                     """
-                    INSERT INTO entities (entity_id, entity_type, name, metadata, created_at, updated_at)
+                    INSERT INTO entities (entity_id, entity_type, name, metadata_json, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (

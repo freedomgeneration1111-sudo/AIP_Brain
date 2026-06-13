@@ -915,20 +915,16 @@ def _index_lexical(lexical_db_path: Path, state_db_path: Path) -> int:
 
     for turn_id, text, domain in turns:
         lex_conn.execute(
-            (
-                "INSERT OR REPLACE INTO fts_documents "
-                "(doc_id, content, domain, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
-            ),
+            "INSERT OR REPLACE INTO fts_documents "
+            "(doc_id, content, domain, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
             (f"turn:{turn_id}", text, domain, json.dumps({"type": "corpus_turn", "turn_id": turn_id}), now),
         )
         count += 1
 
     for topic_id, description, domain in wiki:
         lex_conn.execute(
-            (
-                "INSERT OR REPLACE INTO fts_documents "
-                "(doc_id, content, domain, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
-            ),
+            "INSERT OR REPLACE INTO fts_documents "
+            "(doc_id, content, domain, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
             (f"wiki:{topic_id}", description, domain, json.dumps({"type": "wiki", "topic_id": topic_id}), now),
         )
         count += 1

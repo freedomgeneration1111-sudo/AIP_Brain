@@ -197,21 +197,9 @@ is acceptable — flag only unsupported assertions."""
 
         # Sprint 5.26: Persistent quality history store
         self._quality_store = quality_store
-        # If a quality store is provided, load history from it on startup
-        if self._quality_store is not None:
-            try:
-                persisted = self._quality_store.get_cycles(last_n_cycles=10)
-                if persisted:
-                    self._cycle_report_history = persisted
-                    logger.info(
-                        "vigil_quality_history_loaded_from_store",
-                        loaded_cycles=len(persisted),
-                    )
-            except Exception as exc:
-                logger.warning(
-                    "vigil_quality_history_load_failed",
-                    error=str(exc),
-                )
+        # History is loaded lazily on first run_cycle() via _load_quality_history()
+        # because get_cycles() is async and cannot be awaited in __init__.
+        self._history_loaded = False
 
     # ------------------------------------------------------------------
     # Status summary for operator visibility (Sprint 6.2)
@@ -253,6 +241,31 @@ is acceptable — flag only unsupported assertions."""
     # ADR-011 Quality Evaluation Cycle
     # ------------------------------------------------------------------
 
+    async def _load_quality_history(self) -> None:
+        """Load cycle report history from the quality store (async).
+
+        Called lazily on first run_cycle() because get_cycles() is async
+        and cannot be awaited in __init__.  Idempotent — subsequent calls
+        are no-ops.
+        """
+        if self._history_loaded:
+            return
+        self._history_loaded = True
+        if self._quality_store is not None:
+            try:
+                persisted = await self._quality_store.get_cycles(last_n_cycles=10)
+                if persisted:
+                    self._cycle_report_history = persisted
+                    logger.info(
+                        "vigil_quality_history_loaded_from_store",
+                        loaded_cycles=len(persisted),
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "vigil_quality_history_load_failed",
+                    error=str(exc),
+                )
+
     async def run_cycle(self) -> dict:
         """Execute a Vigil quality evaluation cycle (ADR-011).
 
@@ -272,6 +285,9 @@ is acceptable — flag only unsupported assertions."""
 
         Returns a summary dict with evaluation results.
         """
+        # Lazy-load quality history from store on first cycle
+        await self._load_quality_history()
+
         cycle_start = time.monotonic()
 
         # Sprint 6.2: Structured start event with cycle count
