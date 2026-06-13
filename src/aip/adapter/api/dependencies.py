@@ -261,26 +261,40 @@ class AipContainer:
                         # No running loop — create one
                         try:
                             asyncio.run(self._trigger_reembed(new_model))
-                        except Exception:
-                            pass
-            except Exception:
-                pass  # Non-critical: re-embedding will happen on next Sexton cycle
+                        except Exception as _reembed_fallback_exc:
+                            from aip.logging import get_logger as _get_logger
+
+                            _get_logger(__name__).warning(
+                                "reembed_trigger_fallback_failed",
+                                error=str(_reembed_fallback_exc),
+                            )
+            except Exception as _reembed_outer_exc:
+                from aip.logging import get_logger as _get_logger
+
+                _get_logger(__name__).warning(
+                    "reembed_trigger_setup_failed",
+                    error=str(_reembed_outer_exc),
+                )
 
     async def _trigger_reembed(self, new_model: str) -> None:
         """Mark corpus turns for re-embedding and log the trigger."""
+        from aip.logging import get_logger as _get_logger
+
+        _log = _get_logger(__name__)
         try:
             count = await self.corpus_turn_store.mark_all_for_reembed(except_model=new_model)
-            import logging
-
-            logging.getLogger(__name__).info(
+            _log.info(
                 "reembed_triggered",
                 new_model=new_model,
                 turns_marked=count,
             )
         except Exception as exc:
-            import logging
-
-            logging.getLogger(__name__).warning("reembed_trigger_failed", error=str(exc))
+            _log.warning(
+                "reembed_trigger_failed",
+                error=str(exc),
+                new_model=new_model,
+                exc_info=True,
+            )
 
 
 def get_container(request: "Request") -> AipContainer:
