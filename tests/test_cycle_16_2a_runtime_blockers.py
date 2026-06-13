@@ -127,7 +127,11 @@ class TestF02VigilCoroutineCrash:
             result[-1]
 
         # Clean up the coroutine to avoid RuntimeWarning
-        asyncio.get_event_loop().run_until_complete(result)
+        try:
+            asyncio.run(result)
+        except RuntimeError:
+            # If event loop is already running or closed, just close the coroutine
+            result.close()
 
     def test_awaited_get_cycles_returns_list(self) -> None:
         """Properly awaiting get_cycles returns the list as expected."""
