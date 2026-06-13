@@ -120,7 +120,8 @@ async def _build_artifact_list_item(
     if container.ecs_store is not None:
         try:
             ecs_state = await container.ecs_store.current_state(artifact_id) or "UNKNOWN"
-        except Exception:
+        except Exception as exc:
+            logger.warning("artifact_ecs_state_failed", artifact_id=artifact_id, error=str(exc))
             ecs_state = "UNKNOWN"
 
     # Check for NEEDS_REVISION verdict
@@ -137,10 +138,8 @@ async def _build_artifact_list_item(
                 if isinstance(meta, dict) and meta.get("verdict") == "NEEDS_REVISION":
                     has_needs_revision = True
                     break
-        except Exception:
-            pass
-
-    # Check for export events
+        except Exception as exc:
+            logger.debug("artifact_needs_revision_check_failed", artifact_id=artifact_id, error=str(exc))
     has_export = False
     if container.event_store is not None:
         try:
@@ -151,8 +150,8 @@ async def _build_artifact_list_item(
             )
             if export_events:
                 has_export = True
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("artifact_export_check_failed", artifact_id=artifact_id, error=str(exc))
 
     source_ids = metadata.get("source_ids", [])
 

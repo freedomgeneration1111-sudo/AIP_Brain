@@ -126,19 +126,20 @@ class SqliteEntityStore(EntityStore, StoreHealthMixin):
             await self._reset_conn()
             raise
 
-    async def list_entities(self, entity_type: str | None = None) -> list[dict]:
+    async def list_entities(self, entity_type: str | None = None, limit: int = 500) -> list[dict]:
         conn = await self._get_conn()
         try:
             if entity_type:
                 cursor = await conn.execute(
                     "SELECT entity_id, entity_type, name, metadata, created_at, updated_at "
-                    "FROM entities WHERE entity_type = ? ORDER BY updated_at DESC",
-                    (entity_type,),
+                    "FROM entities WHERE entity_type = ? ORDER BY updated_at DESC LIMIT ?",
+                    (entity_type, limit),
                 )
             else:
                 cursor = await conn.execute(
                     "SELECT entity_id, entity_type, name, metadata, created_at, updated_at "
-                    "FROM entities ORDER BY updated_at DESC",
+                    "FROM entities ORDER BY updated_at DESC LIMIT ?",
+                    (limit,),
                 )
 
             rows = await cursor.fetchall()

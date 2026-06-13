@@ -619,8 +619,8 @@ class Beast:
                                 dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                                 if (now - dt).total_seconds() > 24 * 3600:
                                     old_ids.append(aid)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            log.debug("beast_stale_artifact_meta_failed", artifact_id=aid, error=str(exc))
                     heartbeat["stale_generated_flagged"] = len(old_ids)
                     if old_ids:
                         await self._emit_event(
@@ -628,8 +628,8 @@ class Beast:
                             artifact_id="system",
                             metadata={"count": len(old_ids), "examples": old_ids[:5]},
                         )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    log.warning("beast_stale_generated_check_failed", error=str(exc))
 
             await self._emit_event(
                 event_type="beast_heartbeat",
@@ -658,7 +658,8 @@ class Beast:
                     if dom not in latest or ts > latest[dom]:
                         latest[dom] = ts
             return latest
-        except Exception:
+        except Exception as exc:
+            log.warning("beast_corpus_modified_map_failed", error=str(exc))
             return {}
 
     async def _get_latest_beast_summary_time(self, domain: str) -> str | None:
@@ -679,7 +680,8 @@ class Beast:
                 return None
             candidates.sort(reverse=True)
             return candidates[0][0]
-        except Exception:
+        except Exception as exc:
+            log.warning("beast_latest_summary_time_failed", domain=domain, error=str(exc))
             return None
 
     async def _sample_chunks_for_domain(self, domain: str, max_chunks: int = 20) -> tuple[int, list[str]]:
@@ -737,10 +739,11 @@ class Beast:
                                 # fallback from events? use last
                                 note = "Summary rejected by DEFINER (see review notes)"
                             return note
-                except Exception:
-                    pass
+                except Exception as exc:
+                    log.debug("beast_rejection_transitions_failed", artifact_id=aid, error=str(exc))
             return None
-        except Exception:
+        except Exception as exc:
+            log.warning("beast_rejection_feedback_failed", domain=domain, error=str(exc))
             return None
 
     async def _write_beast_summary_artifact(self, domain: str, content: str, meta_extra: dict, cycle_num: int) -> str:
@@ -760,8 +763,8 @@ class Beast:
                     if p.get("domain") == domain:
                         project_name = p.get("name") or p.get("project_id")
                         break
-            except Exception:
-                pass
+            except Exception as exc:
+                log.debug("beast_project_name_lookup_failed", domain=domain, error=str(exc))
 
         full_meta = {
             "artifact_type": "beast_domain_summary",
@@ -1118,8 +1121,12 @@ Example response structure:
                         await self._corpus_turns.update_beast_tags(
                             getattr(t, "turn_id", ""), [], "unclassified", [], 0.0, [], 0.0
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log.warning(
+                            "beast_tagging_batch_fallback_failed",
+                            turn_id=getattr(t, "turn_id", "?"),
+                            error=str(exc),
+                        )
                 failed += len(batch)
                 continue
 
@@ -1360,8 +1367,8 @@ Example response structure:
                     # The store method is async-safe and uses the persistent connection.
                     try:
                         await self._corpus_turns.mark_embedded(tid)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log.warning("beast_mark_embedded_failed", turn_id=tid, error=str(exc))
                     embedded += 1
                 except Exception as exc:
                     log.warning("beast_embedding_failed", turn_id=tid, error=str(exc))

@@ -262,7 +262,8 @@ class SqliteSessionStore(AuthStore, StoreHealthMixin):
             cursor = await conn.execute("SELECT identity FROM users WHERE identity = ? AND revoked = 0", (identity,))
             row = await cursor.fetchone()
             return row is not None
-        except Exception:
+        except Exception as exc:
+            logger.warning("auth_create_user_failed", identity=identity, error=str(exc))
             return False
 
     async def update_user_role(self, identity: str, new_role: str) -> bool:
@@ -277,7 +278,8 @@ class SqliteSessionStore(AuthStore, StoreHealthMixin):
             await conn.execute("UPDATE users SET role = ? WHERE identity = ?", (new_role, identity))
             await conn.commit()
             return True
-        except Exception:
+        except Exception as exc:
+            logger.warning("auth_update_role_failed", identity=identity, error=str(exc))
             return False
 
     async def revoke_user(self, identity: str) -> bool:
@@ -297,5 +299,6 @@ class SqliteSessionStore(AuthStore, StoreHealthMixin):
             await conn.execute("UPDATE api_keys SET revoked = 1 WHERE identity = ?", (identity,))
             await conn.commit()
             return True
-        except Exception:
+        except Exception as exc:
+            logger.warning("auth_revoke_user_failed", identity=identity, error=str(exc))
             return False

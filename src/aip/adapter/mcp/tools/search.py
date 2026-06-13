@@ -41,7 +41,7 @@ async def aip_search(container: Any, query: str, domain: str | None = None) -> l
                 from aip.adapter.embedding.ollama_embed import fake_embed_via_provider
 
                 query_vector = fake_embed_via_provider(query)
-            vector_results = await container.vector_store.retrieve(query_vector, domain=domain)
+            vector_results = await container.vector_store.retrieve(query_vector, domain=domain, top_k=10)
             results.extend(
                 [{"id": r.id, "content": r.content, "score": r.score, "source": "vector"} for r in vector_results],
             )

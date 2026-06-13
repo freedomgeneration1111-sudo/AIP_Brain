@@ -29,7 +29,11 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from aip.foundation.schemas.corpus_turn import (
+from aip.logging import get_logger
+
+logger = get_logger(__name__)
+
+from aip.foundation.schemas.corpus_turn import (  # noqa: E402
     CorpusTurn,
     make_document_conversation_id,
     make_turn_id,
@@ -285,8 +289,8 @@ def _try_parse_pdf(
         return turns
     except ImportError:
         pass
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("pdf_parse_pymupdf_failed", file_path=file_path, error=str(exc))
 
     # Try pdfplumber
     try:
@@ -328,7 +332,8 @@ def _try_parse_pdf(
         return turns
     except ImportError:
         return []  # No PDF library available — graceful skip
-    except Exception:
+    except Exception as exc:
+        logger.warning("pdf_parse_pdfplumber_failed", file_path=file_path, error=str(exc))
         return []
 
 

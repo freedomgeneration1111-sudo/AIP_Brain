@@ -6,13 +6,13 @@ Uses VectorBackendStatus enum for explicit status reporting.
 
 from __future__ import annotations
 
-import logging
 import time
 from typing import Any
 
 from aip.foundation.schemas.vector import VectorBackendStatus
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def system_health_check(config: Any) -> dict:
@@ -124,7 +124,8 @@ async def system_health_check(config: Any) -> dict:
                 model_slots[slot_name] = resolver.resolve(slot_name)
             except Exception as exc:
                 logger.debug("Model slot resolve failed for %s: %s", slot_name, exc)
-    except Exception:
+    except Exception as exc:
+        logger.warning("health_model_resolver_unavailable", error=str(exc))
         model_slots = {"error": "resolver not available"}
 
     # Compute uptime from app start time (if available)

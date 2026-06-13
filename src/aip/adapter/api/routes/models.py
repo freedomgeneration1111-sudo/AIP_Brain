@@ -64,7 +64,8 @@ async def api_key_status(
     result: dict[str, Any] = {"has_any_key": False, "slots": {}}
     try:
         slot_names = model_provider.list_slots()
-    except Exception:
+    except Exception as exc:
+        log.warning("model_list_slots_failed", error=str(exc))
         slot_names = []
 
     for slot_name in slot_names:
@@ -78,7 +79,8 @@ async def api_key_status(
             }
             if has_key:
                 result["has_any_key"] = True
-        except Exception:
+        except Exception as exc:
+            log.debug("model_slot_config_resolve_failed", slot=slot_name, error=str(exc))
             result["slots"][slot_name] = {"has_key": False, "provider": "unknown"}
 
     return result
@@ -99,7 +101,8 @@ async def list_model_slots(container: AipContainer = Depends(get_container)):
     slots_info = []
     try:
         slot_names = model_provider.list_slots()
-    except Exception:
+    except Exception as exc:
+        log.warning("model_list_slots_failed", error=str(exc))
         slot_names = []
 
     ci_mode = getattr(model_provider, "_ci_mode", True)
@@ -118,7 +121,8 @@ async def list_model_slots(container: AipContainer = Depends(get_container)):
                     "fallback_model": resolved.get("fallback_model"),
                 }
             )
-        except Exception:
+        except Exception as exc:
+            log.debug("model_slot_config_resolve_failed", slot=slot_name, error=str(exc))
             slots_info.append(
                 {
                     "slot_name": slot_name,
@@ -161,7 +165,8 @@ async def list_text_generation_slots(container: AipContainer = Depends(get_conta
     all_slots_info = []
     try:
         slot_names = model_provider.list_slots()
-    except Exception:
+    except Exception as exc:
+        log.warning("model_list_slots_failed", error=str(exc))
         slot_names = []
 
     ci_mode = getattr(model_provider, "_ci_mode", True)
@@ -182,7 +187,8 @@ async def list_text_generation_slots(container: AipContainer = Depends(get_conta
                     "has_real_model": not (model_id.startswith("<") and model_id.endswith(">")),
                 }
             )
-        except Exception:
+        except Exception as exc:
+            log.debug("model_slot_config_resolve_failed", slot=slot_name, error=str(exc))
             all_slots_info.append(
                 {
                     "slot_name": slot_name,
@@ -249,7 +255,8 @@ async def update_slot_model(
     # Verify the slot exists
     try:
         slot_names = model_provider.list_slots()
-    except Exception:
+    except Exception as exc:
+        log.warning("model_list_slots_failed", error=str(exc))
         slot_names = []
 
     if slot_name not in slot_names:

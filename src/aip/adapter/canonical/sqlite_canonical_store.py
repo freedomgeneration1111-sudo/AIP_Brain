@@ -158,21 +158,22 @@ class SqliteCanonicalStore(CanonicalStore, StoreHealthMixin):
             await self._reset_conn()
             raise
 
-    async def list_canonical(self, domain: str | None = None) -> list[dict]:
+    async def list_canonical(self, domain: str | None = None, limit: int = 500) -> list[dict]:
         conn = await self._get_conn()
         try:
             if domain:
                 cursor = await conn.execute(
                     "SELECT artifact_id, content, approved_by, domain, created_at, superseded_by "
                     "FROM canonical_artifacts WHERE domain = ? AND superseded_by IS NULL "
-                    "ORDER BY created_at DESC",
-                    (domain,),
+                    "ORDER BY created_at DESC LIMIT ?",
+                    (domain, limit),
                 )
             else:
                 cursor = await conn.execute(
                     "SELECT artifact_id, content, approved_by, domain, created_at, superseded_by "
                     "FROM canonical_artifacts WHERE superseded_by IS NULL "
-                    "ORDER BY created_at DESC",
+                    "ORDER BY created_at DESC LIMIT ?",
+                    (limit,),
                 )
 
             rows = await cursor.fetchall()
