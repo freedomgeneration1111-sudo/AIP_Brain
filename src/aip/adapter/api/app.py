@@ -983,12 +983,14 @@ async def lifespan(app: FastAPI):
                         exp["accuracy_timeseries"] = ts
 
             # Sprint 5.49: Restore confidence calibration
-            calib_count = container._alert_manager.restore_confidence_calibration(container._alert_history_store)
+            # Use the sync bridge (not the raw async store) for sync restore methods
+            _sync_store = container._alert_history_bridge or container._alert_history_store
+            calib_count = container._alert_manager.restore_confidence_calibration(_sync_store)
             if calib_count > 0:
                 log.info("confidence_calibration_restored_on_startup", count=calib_count)
 
             # Sprint 5.49: Restore pre-promotion config snapshots
-            snapshot_count = container._alert_manager.restore_pre_promotion_snapshots(container._alert_history_store)
+            snapshot_count = container._alert_manager.restore_pre_promotion_snapshots(_sync_store)
             if snapshot_count > 0:
                 log.info("pre_promotion_snapshots_restored_on_startup", count=snapshot_count)
 
@@ -1603,23 +1605,27 @@ async def lifespan(app: FastAPI):
             log.warning("ab_experiments_persist_failed", error=str(exc))
 
         # Sprint 5.48: Persist statistical test results
-        if hasattr(container, "_alert_history_store") and container._alert_history_store is not None:
+        # Use the sync bridge (not the raw async store) for sync persist methods
+        _shutdown_sync_store = getattr(container, "_alert_history_bridge", None) or getattr(
+            container, "_alert_history_store", None
+        )
+        if _shutdown_sync_store is not None:
             try:
-                stat_count = container._alert_manager.persist_statistical_test_results(container._alert_history_store)
+                stat_count = container._alert_manager.persist_statistical_test_results(_shutdown_sync_store)
                 log.info("statistical_test_results_persisted_on_shutdown", count=stat_count)
             except Exception as exc:
                 log.warning("statistical_test_results_persist_failed", error=str(exc))
 
         # Sprint 5.50: Persist confidence calibration and snapshots on shutdown
-        if hasattr(container, "_alert_history_store") and container._alert_history_store is not None:
+        if _shutdown_sync_store is not None:
             try:
-                calib_count = container._alert_manager.persist_confidence_calibration(container._alert_history_store)
+                calib_count = container._alert_manager.persist_confidence_calibration(_shutdown_sync_store)
                 log.info("confidence_calibration_persisted_on_shutdown", count=calib_count)
             except Exception as exc:
                 log.warning("confidence_calibration_persist_failed", error=str(exc))
 
             try:
-                snap_count = container._alert_manager.persist_pre_promotion_snapshots(container._alert_history_store)
+                snap_count = container._alert_manager.persist_pre_promotion_snapshots(_shutdown_sync_store)
                 log.info("pre_promotion_snapshots_persisted_on_shutdown", count=snap_count)
             except Exception as exc:
                 log.warning("pre_promotion_snapshots_persist_failed", error=str(exc))

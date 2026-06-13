@@ -460,22 +460,34 @@ is acceptable — flag only unsupported assertions."""
         # Emit vigil event
         if self._events is not None:
             try:
-                await self._events.emit(
-                    event_type="vigil_eval_complete",
-                    artifact_id="system",
-                    metadata={
-                        "evaluated_count": evaluated_count,
-                        "flagged_count": flagged_count,
-                        "avg_citation_rate": avg_citation_rate,
-                        "avg_grounding_rate": avg_grounding_rate,
-                        "hedging_detected_count": hedging_detected_count,
-                        "llm_faithfulness_enabled": self.config.llm_faithfulness_enabled,
-                        "llm_eval_count": llm_eval_count,
-                        "llm_hallucinations_detected": llm_hallucinations,
-                        "avg_llm_faithfulness_score": avg_llm_faithfulness,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    },
-                )
+                _vigil_event_metadata = {
+                    "evaluated_count": evaluated_count,
+                    "flagged_count": flagged_count,
+                    "avg_citation_rate": avg_citation_rate,
+                    "avg_grounding_rate": avg_grounding_rate,
+                    "hedging_detected_count": hedging_detected_count,
+                    "llm_faithfulness_enabled": self.config.llm_faithfulness_enabled,
+                    "llm_eval_count": llm_eval_count,
+                    "llm_hallucinations_detected": llm_hallucinations,
+                    "avg_llm_faithfulness_score": avg_llm_faithfulness,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                # Adapt to QueryableEventStore.write_event() interface
+                if hasattr(self._events, "write_event"):
+                    await self._events.write_event(
+                        event_type="vigil_eval_complete",
+                        actor="vigil",
+                        artifact_id="system",
+                        **_vigil_event_metadata,
+                    )
+                elif hasattr(self._events, "emit"):
+                    await self._events.emit(
+                        event_type="vigil_eval_complete",
+                        artifact_id="system",
+                        metadata=_vigil_event_metadata,
+                    )
+                else:
+                    logger.warning("vigil_event_store_no_write_method")
             except Exception as exc:
                 logger.warning("vigil_eval_complete_event_failed", error=str(exc))
 
