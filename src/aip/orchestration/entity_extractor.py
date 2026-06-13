@@ -34,12 +34,13 @@ adapter directly — GraphStore and ModelProvider are injected.
 
 from __future__ import annotations
 
-import logging
 import re
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
-logger = logging.getLogger(__name__)
+from aip.logging import get_logger
+
+logger = get_logger(__name__)
 
 # Type alias for an optional LLM entity extraction callable.
 # Signature: async (query: str) -> list[str]

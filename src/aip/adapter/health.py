@@ -6,13 +6,13 @@ Uses VectorBackendStatus enum for explicit status reporting.
 
 from __future__ import annotations
 
-import logging
 import time
 from typing import Any
 
 from aip.foundation.schemas.vector import VectorBackendStatus
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def system_health_check(config: Any) -> dict:

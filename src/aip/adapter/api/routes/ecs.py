@@ -16,15 +16,15 @@ The ECS state machine enforces valid transitions:
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from aip.adapter.api.dependencies import AipContainer, get_container
 from aip.foundation.ecs_graph import ALL_STATES, VALID_TRANSITIONS
+from aip.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 

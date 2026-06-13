@@ -24,13 +24,14 @@ For PDF files (if support available), each page becomes a turn.
 from __future__ import annotations
 
 import json
-import logging
 import os
 import re
 from datetime import datetime, timezone
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from aip.logging import get_logger
+
+logger = get_logger(__name__)
 
 from aip.foundation.schemas.corpus_turn import (  # noqa: E402
     CorpusTurn,
