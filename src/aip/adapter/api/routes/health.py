@@ -14,7 +14,7 @@ Sprint 5.25 additions:
 import time
 from typing import Any, TypedDict
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from aip.adapter.api.dependencies import AipContainer, get_container
 from aip.config import DogfoodMode, get_dogfood_mode, validate_dogfood_readiness
@@ -673,7 +673,7 @@ async def datastore_health(container: AipContainer = Depends(get_container)):
 
 
 @router.get("/health/dogfood")
-async def dogfood_health(request: Any, container: AipContainer = Depends(get_container)):
+async def dogfood_health(request: Request, container: AipContainer = Depends(get_container)):
     """Dogfood readiness check — is the system ready for full internal use?
 
     Sprint 8: Returns dogfood mode, component/actor readiness, embedding
