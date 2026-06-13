@@ -533,13 +533,16 @@ class GraphStore(GraphStoreProtocol, StoreHealthMixin, ReadPoolMixin):
         finally:
             self._return_read_conn(conn)
 
-    async def get_all_nodes(self, min_confidence: float = 0.0) -> list[GraphNode]:
-        """Return all nodes above min_confidence, ordered by id."""
+    async def get_all_nodes(self, min_confidence: float = 0.0, limit: int = 500) -> list[GraphNode]:
+        """Return all nodes above min_confidence, ordered by id.
+
+        limit caps results to prevent unbounded growth on large graphs.
+        """
         conn = await self._checkout_read_conn()
         try:
             cursor = await conn.execute(
-                "SELECT * FROM graph_nodes WHERE confidence >= ? ORDER BY id",
-                (min_confidence,),
+                "SELECT * FROM graph_nodes WHERE confidence >= ? ORDER BY id LIMIT ?",
+                (min_confidence, limit),
             )
             rows = await cursor.fetchall()
             return [self._row_to_node(r) for r in rows]
@@ -549,13 +552,16 @@ class GraphStore(GraphStoreProtocol, StoreHealthMixin, ReadPoolMixin):
         finally:
             self._return_read_conn(conn)
 
-    async def get_all_edges(self, min_confidence: float = 0.0) -> list[GraphEdge]:
-        """Return all edges above min_confidence, ordered by id."""
+    async def get_all_edges(self, min_confidence: float = 0.0, limit: int = 1000) -> list[GraphEdge]:
+        """Return all edges above min_confidence, ordered by id.
+
+        limit caps results to prevent unbounded growth on large graphs.
+        """
         conn = await self._checkout_read_conn()
         try:
             cursor = await conn.execute(
-                "SELECT * FROM graph_edges WHERE confidence >= ? ORDER BY id",
-                (min_confidence,),
+                "SELECT * FROM graph_edges WHERE confidence >= ? ORDER BY id LIMIT ?",
+                (min_confidence, limit),
             )
             rows = await cursor.fetchall()
             return [self._row_to_edge(r) for r in rows]

@@ -64,7 +64,8 @@ class Sexton:
 
         try:
             events = await self._trace_store.get_unclassified_failures(limit=limit)
-        except Exception:
+        except Exception as exc:
+            logger.warning("sexton_classify_recent_failures_failed: %s", exc)
             return []
 
         classified: list[dict] = []
@@ -108,7 +109,8 @@ class Sexton:
 
         try:
             events = await self._trace_store.get_unclassified_failures(limit=self._config.classification_batch_size)
-        except Exception:
+        except Exception as exc:
+            logger.warning("sexton_classify_failures_fetch_failed: %s", exc)
             return []
 
         results: list[FailureClassification] = []
@@ -133,7 +135,8 @@ class Sexton:
             try:
                 events = await self._trace_store.get_unclassified_failures(limit=1)
                 event = events[0] if events else None
-            except Exception:
+            except Exception as exc:
+                logger.debug("sexton_single_event_fetch_failed: %s", exc)
                 event = None
 
         if not event:
@@ -158,8 +161,14 @@ class Sexton:
                 confidence = float(parsed.get("confidence", 0.7))
                 rationale = parsed.get("rationale", rationale)
                 model_gen_assumption = parsed.get("model_gen_assumption", model_gen_assumption)
-            except Exception:
+            except Exception as exc:
                 failure_type = self._classify(event)
+                logger.warning("sexton_llm_classification_failed: %s", exc)
+                model_gen_assumption = (
+                    "LLM classification failed; fell back to deterministic rules. "
+                    "Deterministic classification may misclassify subtle or "
+                    "domain-adjacent failures."
+                )
         else:
             # CI / deterministic path (reuses existing _classify)
             failure_type = self._classify(event)
@@ -200,7 +209,8 @@ class Sexton:
         try:
             events = await self._trace_store.get_unclassified_failures(limit=10_000)
             return len([e for e in events if not e.get("failure_type")])
-        except Exception:
+        except Exception as exc:
+            logger.warning("sexton_count_unclassified_failed: %s", exc)
             return 0
 
     async def run_classification_cycle(self) -> None:
@@ -248,7 +258,8 @@ class Sexton:
 
         try:
             return json.loads(content)
-        except Exception:
+        except Exception as exc:
+            logger.debug("sexton_parse_classification_response_failed: %s", exc)
             return {}
 
     # --- deterministic _classify preserved for CI fixtures ---

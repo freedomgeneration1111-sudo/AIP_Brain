@@ -923,13 +923,13 @@ class CorpusTurnStore(StoreHealthMixin, ReadPoolMixin):
         finally:
             self._return_read_conn(conn)
 
-    async def find_by_source_path(self, source_path: str) -> list[CorpusTurn]:
+    async def find_by_source_path(self, source_path: str, limit: int = 5000) -> list[CorpusTurn]:
         """Find all turns from a given source path. Used for re-ingest detection."""
         conn = await self._checkout_read_conn()
         try:
             cursor = await conn.execute(
-                "SELECT * FROM corpus_turns WHERE source_path = ? ORDER BY turn_index ASC",
-                (source_path,),
+                "SELECT * FROM corpus_turns WHERE source_path = ? ORDER BY turn_index ASC LIMIT ?",
+                (source_path, limit),
             )
             rows = await cursor.fetchall()
             return [self._row_to_turn(row) for row in rows]

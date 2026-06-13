@@ -130,7 +130,8 @@ async def list_ecs_artifacts(
             ids = await container.ecs_store.list_by_state(s)
             summary[s] = {"count": len(ids), "sample_ids": ids[:10]}
             total += len(ids)
-        except Exception:
-            summary[s] = {"count": 0, "sample_ids": []}
+        except Exception as exc:
+            logger.warning("ecs_list_by_state_failed", state=s, error=str(exc))
+            summary[s] = {"count": 0, "sample_ids": [], "error": True}
 
     return {"summary": summary, "total_artifacts": total}

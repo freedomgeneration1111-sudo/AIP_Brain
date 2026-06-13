@@ -315,7 +315,8 @@ async def fuzzy_match_graph_entities(
                 query=candidate,
                 limit=5,
             )
-        except Exception:
+        except Exception as exc:
+            logger.warning("entity_search_nodes_failed", candidate=candidate, error=str(exc))
             search_results = []
 
         for node in search_results:

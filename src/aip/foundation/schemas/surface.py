@@ -28,6 +28,22 @@ class SurfaceConfig:
     review_page_size: int = 20
     artifact_page_size: int = 20
 
+    def __post_init__(self) -> None:
+        """Validate CORS origins are safe with credentials.
+
+        Browsers reject ``allow_credentials=True`` combined with wildcard
+        origins (``"*"``).  Starlette/Starlette's CORSMiddleware will log a
+        warning but still serve the middleware, which means requests silently
+        fail in the browser.  Fail loudly at config-load time instead.
+        """
+        if "*" in self.api_cors_origins:
+            raise ValueError(
+                "CORS misconfiguration: api_cors_origins contains '*' which is "
+                "incompatible with allow_credentials=True (browsers will reject "
+                "credentialed requests). Use explicit origin URLs instead, e.g. "
+                '["http://localhost:3000", "http://localhost:8080"].'
+            )
+
 
 @dataclass
 class ApiRoute:

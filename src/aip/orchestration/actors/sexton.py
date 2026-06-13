@@ -840,8 +840,12 @@ Example response structure:
                         await self._corpus_turns.update_beast_tags(
                             getattr(t, "turn_id", ""), [], "unclassified", [], 0.0, [], 0.0
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log.warning(
+                            "sexton_tagging_fallback_failed",
+                            turn_id=getattr(t, "turn_id", "?"),
+                            error=str(exc),
+                        )
                 failed += len(batch)
                 continue
 
@@ -1541,8 +1545,8 @@ CRITICAL CONSTRAINTS:
                     if in_overview and line.strip():
                         overview_lines.append(line.strip())
                 overview_text = " ".join(overview_lines).strip()
-            except Exception:
-                pass
+            except Exception as exc:
+                log.debug("sexton_overview_extract_failed", domain=domain_id, error=str(exc))
 
             word_count = len(wiki_content.split())
             meta = {
@@ -2116,12 +2120,11 @@ CRITICAL CONSTRAINTS:
             if fallback_graph_store:
                 try:
                     await graph_store.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    log.debug("sexton_graph_store_close_failed", error=str(exc))
 
     # ------------------------------------------------------------------
     # Batch size auto-tuning (Sprint 5.23)
-    # ------------------------------------------------------------------
 
     def _auto_tune_batch_size(self) -> dict:
         """Adjust batch_size based on parse success/failure rate.
@@ -2297,8 +2300,8 @@ CRITICAL CONSTRAINTS:
             for tid in failed_ids[:100]:  # Cap at 100 per pass
                 try:
                     await self._corpus_turns.record_embed_failure(tid, f"embedding_failed:model={embedding_model}")
-                except Exception:
-                    pass  # Best effort — don't let failure recording break the pipeline
+                except Exception as exc:
+                    log.debug("sexton_embed_failure_record_failed", turn_id=tid, error=str(exc))
 
         # Legacy: Write event to EventStore
         if self._events is not None:

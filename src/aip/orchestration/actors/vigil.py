@@ -460,8 +460,8 @@ is acceptable — flag only unsupported assertions."""
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("vigil_eval_complete_event_failed", error=str(exc))
 
         # --- Step 6: Per-cycle quality report artifact (Sprint 5.24) ---
         elapsed = time.monotonic() - cycle_start
@@ -1177,8 +1177,8 @@ is acceptable — flag only unsupported assertions."""
                         actor="vigil",
                         detail=detail,
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("vigil_flag_ecs_transition_failed", artifact_id=artifact_id, error=str(exc))
 
         except Exception as exc:
             logger.warning(
@@ -1382,8 +1382,8 @@ is acceptable — flag only unsupported assertions."""
                         actor="vigil",
                         detail=detail,
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("vigil_report_ecs_transition_failed", artifact_id=artifact_id, error=str(exc))
 
         except Exception as exc:
             logger.warning(
@@ -1414,13 +1414,14 @@ is acceptable — flag only unsupported assertions."""
                 "degraded_count": len(stale),
                 "status": "healthy" if len(stale) == 0 else "degraded",
             }
-        except Exception:
+        except Exception as exc:
+            logger.warning("vigil_canonical_health_failed", error=str(exc))
             return {
                 "total_count": 0,
                 "stale_count": 0,
                 "healthy_count": 0,
                 "degraded_count": 0,
-                "status": "unknown",
+                "status": "unavailable",
             }
 
     async def detect_stale_canonicals(self) -> list[dict]:
@@ -1433,7 +1434,8 @@ is acceptable — flag only unsupported assertions."""
         try:
             threshold_days = self.config.stale_threshold_days
             return await self.vigil_store.list_stale_canonicals(threshold_days=threshold_days)
-        except Exception:
+        except Exception as exc:
+            logger.warning("vigil_stale_canonicals_failed", error=str(exc))
             return []
 
     async def detect_entity_inconsistencies(self) -> list[dict]:
@@ -1455,7 +1457,8 @@ is acceptable — flag only unsupported assertions."""
                     if entity_data and entity_data.get("updated_since_canonical"):
                         inconsistencies.append(entity_data)
             return inconsistencies
-        except Exception:
+        except Exception as exc:
+            logger.warning("vigil_entity_inconsistencies_failed", error=str(exc))
             return []
 
     async def on_model_slot_change(
