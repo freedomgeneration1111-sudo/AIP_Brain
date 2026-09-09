@@ -11,7 +11,6 @@ from __future__ import annotations
 import inspect
 from pathlib import Path
 
-import pytest
 from click.testing import CliRunner
 
 from aip.cli.export import export
@@ -85,9 +84,10 @@ class TestExportManualCLI:
     def test_manual_export_with_articles(self, tmp_path: Path):
         """Export with matching articles produces a markdown manual."""
         import asyncio
-        import aiosqlite
         import json
         from datetime import datetime, timezone
+
+        import aiosqlite
 
         db_path = tmp_path / "state.db"
 

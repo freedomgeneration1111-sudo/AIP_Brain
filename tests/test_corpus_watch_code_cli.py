@@ -7,11 +7,9 @@ detection helpers are tested directly.
 
 from __future__ import annotations
 
-import os
 import time
 from pathlib import Path
 
-import pytest
 from click.testing import CliRunner
 
 from aip.cli.corpus import corpus
@@ -57,10 +55,6 @@ class TestCorpusWatchCodeCli:
 
         # Monkeypatch time.sleep to raise KeyboardInterrupt on first call
         # (after the initial ingest, when the polling loop starts)
-        import aip.cli.corpus as corpus_module
-
-        original_sleep = corpus_module.time.sleep if hasattr(corpus_module, "time") else None
-
         # We can't easily patch the `import time` inside the function, so
         # instead we use a very short interval and send a KeyboardInterrupt
         # via the runner's input. But CliRunner doesn't support stdin
@@ -73,7 +67,6 @@ class TestCorpusWatchCodeCli:
 
         # Use a very short interval so the test doesn't hang long
         # The runner will catch the KeyboardInterrupt if we patch time.sleep
-        import builtins
 
         _real_sleep = time.sleep
         _call_count = [0]

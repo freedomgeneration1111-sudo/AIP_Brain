@@ -24,8 +24,7 @@ Run:
 from __future__ import annotations
 
 import asyncio
-import io
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -95,6 +94,7 @@ class TestChatUploadHandler:
         # MagicMock auto-creates e.content as a new MagicMock, which would
         # let .read() succeed. We need a real object that raises AttributeError.
         from dataclasses import dataclass
+
         from nicegui.elements.upload_files import SmallFileUpload
 
         @dataclass
@@ -131,8 +131,9 @@ class TestChatUploadHandler:
         """
         # Read the source of gui/components/chat.py and verify it doesn't
         # contain the hardcoded wrong port.
-        import gui.components.chat as chat_mod
         import inspect
+
+        import gui.components.chat as chat_mod
 
         src = inspect.getsource(chat_mod)
         # The old buggy line was: "http://localhost:8001/aristotle/upload"
@@ -162,6 +163,7 @@ class TestAristotleChatUploadHandler:
         legitimately mention the old buggy pattern for documentation).
         """
         import ast
+
         import gui.pages.ask as ask_mod
 
         # Parse the module AST and find all Attribute accesses on the
@@ -176,7 +178,7 @@ class TestAristotleChatUploadHandler:
         violations = []
 
         def check_node(node):
-            # Match: e.content.read()  →  Call(func=Attribute(value=Attribute(value=Name('e'), attr='content'), attr='read'))
+            # Match e.content.read() as a Call on the nested content attribute.
             if isinstance(node, ast.Call):
                 func = node.func
                 if isinstance(func, ast.Attribute) and func.attr == "read":
@@ -199,8 +201,9 @@ class TestAristotleChatUploadHandler:
     def test_ask_py_uses_e_file_name_not_e_name(self):
         """ask.py must use `e.file.name`, not `getattr(e, 'name', ...)`
         (e has no .name attribute in NiceGUI 3.x)."""
-        import gui.pages.ask as ask_mod
         import inspect
+
+        import gui.pages.ask as ask_mod
 
         src = inspect.getsource(ask_mod)
 

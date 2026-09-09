@@ -22,10 +22,6 @@ ADR-008 §4 (multi-corpus retrieval), ADR-008 §8 Chunk 7 (code corpus).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock
-
-import pytest
 
 from aip.adapter.api.routes._augmented_context import assemble_augmented_context
 from aip.adapter.code_ingest_pipeline import ingest_python_directory

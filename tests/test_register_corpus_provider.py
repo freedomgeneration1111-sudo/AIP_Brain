@@ -86,8 +86,8 @@ class TestRegisterCorpusProviderAPI:
 
     def test_raises_outside_on_load(self):
         """register_corpus_provider must raise RuntimeError when called outside on_load."""
-        from aip.adapter.extensions.host import ExtensionHost
         from aip.adapter.api.dependencies import AipContainer
+        from aip.adapter.extensions.host import ExtensionHost
 
         container = AipContainer({})
         host = ExtensionHost(
@@ -100,8 +100,8 @@ class TestRegisterCorpusProviderAPI:
 
     def test_rejects_role_with_colon(self):
         """register_corpus_provider must reject roles containing ':' (namespacing)."""
-        from aip.adapter.extensions.host import ExtensionHost
         from aip.adapter.api.dependencies import AipContainer
+        from aip.adapter.extensions.host import ExtensionHost
 
         container = AipContainer({})
         host = ExtensionHost(
@@ -117,8 +117,8 @@ class TestRegisterCorpusProviderAPI:
 
     def test_rejects_invalid_corpus_type(self):
         """register_corpus_provider must reject invalid corpus_type values."""
-        from aip.adapter.extensions.host import ExtensionHost
         from aip.adapter.api.dependencies import AipContainer
+        from aip.adapter.extensions.host import ExtensionHost
 
         container = AipContainer({})
         host = ExtensionHost(
@@ -133,8 +133,8 @@ class TestRegisterCorpusProviderAPI:
 
     def test_records_pending_provider(self):
         """When called inside on_load, a PendingCorpusProvider is recorded on the extension record."""
-        from aip.adapter.extensions.host import ExtensionHost
         from aip.adapter.api.dependencies import AipContainer
+        from aip.adapter.extensions.host import ExtensionHost
 
         container = AipContainer({})
         host = ExtensionHost(
@@ -177,9 +177,9 @@ class TestExecutePendingCorpusProviders:
 
     def test_skips_when_registry_not_wired(self):
         """When corpus_registry is None, pending providers are skipped (not crash)."""
+        from aip.adapter.api.dependencies import AipContainer
         from aip.adapter.extensions.host import ExtensionHost
         from aip.adapter.extensions.manifest import Manifest
-        from aip.adapter.api.dependencies import AipContainer
 
         container = AipContainer({})  # no corpus_registry
         host = ExtensionHost(

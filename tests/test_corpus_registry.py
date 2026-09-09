@@ -29,11 +29,11 @@ from aip.adapter.corpus_registry import CorpusRegistry
 from aip.adapter.corpus_store_factory import MIGRATIONS, CorpusStoreFactory
 from aip.adapter.corpus_stores import CorpusStores
 from aip.foundation.corpus_exceptions import (
-    RestrictedCorpusAccessViolation,
     ConnectionBudgetExceeded,
     CorpusMigrationError,
     CorpusNotFound,
     DeletionStateError,
+    RestrictedCorpusAccessViolation,
 )
 from aip.foundation.corpus_types import CorpusDeletionState, CorpusType
 

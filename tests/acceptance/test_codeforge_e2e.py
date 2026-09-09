@@ -23,9 +23,7 @@ import pytest
 
 from aip.adapter.code_ingest_pipeline import ingest_python_directory
 from aip.adapter.corpus_registry import CorpusRegistry
-from aip.adapter.corpus_turn_store import CorpusTurnStore
 from aip.foundation.corpus_types import CorpusType
-
 
 # ---------------------------------------------------------------------------
 # Test fixtures

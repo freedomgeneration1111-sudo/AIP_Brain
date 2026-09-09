@@ -107,8 +107,9 @@ def build_chat_input(state: GuiState, chat_container, send_fn) -> ui.input:
         attribute name) which raised AttributeError silently in the
         asyncio task. Also fixed: wrong port 8001 → _BACKEND_URL (8000).
         """
-        import httpx
         import os as _os
+
+        import httpx
 
         try:
             filename = getattr(e.file, "name", "file")

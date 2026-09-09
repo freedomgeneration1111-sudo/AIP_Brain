@@ -31,7 +31,6 @@ import json
 import os
 import sys
 import warnings
-from typing import Any
 
 warnings.filterwarnings("ignore")
 
@@ -69,12 +68,6 @@ class _ScriptedIntakeModel:
         self.calls.append((slot_name, messages))
         if slot_name != "beast":
             return {"content": "", "model": "fake", "usage": {}, "latency_ms": 1}
-
-        user_msg = ""
-        for m in reversed(messages):
-            if m.get("role") == "user":
-                user_msg = m.get("content", "")
-                break
 
         self._turn += 1
         # Decide which canned response based on turn number + content.
@@ -146,21 +139,30 @@ class _ScriptedIntakeModel:
                         "topic": "Newton's First Law",
                         "subtopic": "inertia",
                         "bloom_target": 2,
-                        "content_primary": "Objects resist changes in motion. An object at rest stays at rest; an object in motion stays in motion unless acted on by a net external force.",
+                        "content_primary": (
+                            "Objects resist changes in motion. An object at rest stays at rest; "
+                            "an object in motion stays in motion unless acted on by a net external force."
+                        ),
                         "prerequisite_concept_id": None,
                     },
                     {
                         "topic": "Newton's Second Law",
                         "subtopic": "F = ma",
                         "bloom_target": 3,
-                        "content_primary": "The acceleration of an object is directly proportional to the net force acting on it and inversely proportional to its mass.",
+                        "content_primary": (
+                            "The acceleration of an object is directly proportional to the net force "
+                            "acting on it and inversely proportional to its mass."
+                        ),
                         "prerequisite_concept_id": 0,
                     },
                     {
                         "topic": "Newton's Third Law",
                         "subtopic": "action-reaction pairs",
                         "bloom_target": 3,
-                        "content_primary": "For every action there is an equal and opposite reaction. Forces come in pairs acting on different bodies.",
+                        "content_primary": (
+                            "For every action there is an equal and opposite reaction. Forces come in "
+                            "pairs acting on different bodies."
+                        ),
                         "prerequisite_concept_id": 1,
                     },
                 ],

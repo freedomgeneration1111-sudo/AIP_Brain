@@ -154,6 +154,7 @@ class TestCodeforgeCorpusStartupRegistration:
         from the lifespan without updating tests.
         """
         import inspect
+
         from aip.adapter.api import app
 
         lifespan_src = inspect.getsource(app)

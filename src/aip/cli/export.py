@@ -22,6 +22,8 @@ from pathlib import Path
 
 import click
 
+from aip.cli._db_path import get_default_db_path
+
 
 @click.group("export")
 def export() -> None:
@@ -159,7 +161,7 @@ def export_project(
 
 
 def _get_db_path(db_path: str | None) -> str:
-    from aip.cli._db_path import ensure_db_dir, get_default_db_path
+    from aip.cli._db_path import ensure_db_dir
 
     if db_path is None:
         db_path = get_default_db_path()
@@ -333,7 +335,7 @@ def export_manual(domain: str, out: str, include_unreviewed: bool, db_path: str 
             lines.append("")
             lines.append(f"*Compiled: {date.today().isoformat()}*")
             lines.append(f"*Articles: {len(articles)}*")
-            lines.append(f"*Source: AIP Brain wiki corpus*")
+            lines.append("*Source: AIP Brain wiki corpus*")
             lines.append("")
             lines.append("---")
             lines.append("")

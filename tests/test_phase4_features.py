@@ -153,7 +153,12 @@ class TestVigilConsistencyCheckerMethods:
         """_parse_consistency_response strips markdown fences."""
         from aip.orchestration.actors.vigil import Vigil
 
-        content = f"```json\n{json.dumps({'consistency_score': 0.5, 'contradictions': [{'topic': 'test'}], 'explanation': 'test'})}\n```"
+        payload = {
+            "consistency_score": 0.5,
+            "contradictions": [{"topic": "test"}],
+            "explanation": "test",
+        }
+        content = f"```json\n{json.dumps(payload)}\n```"
         result = Vigil._parse_consistency_response(content)
         assert result is not None
         assert result["consistency_score"] == 0.5

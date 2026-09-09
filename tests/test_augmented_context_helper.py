@@ -47,6 +47,10 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _AUGMENTED_CONTEXT_PY = _REPO_ROOT / "src" / "aip" / "adapter" / "api" / "routes" / "_augmented_context.py"
 _CHAT_PY = _REPO_ROOT / "src" / "aip" / "adapter" / "api" / "routes" / "chat.py"
 _MODEL_COUNCIL_PY = _REPO_ROOT / "src" / "aip" / "adapter" / "api" / "routes" / "model_council.py"
+_EMPTY_JUDGE_RESPONSE = (
+    '{"status":"completed","analysis":{"consensus":[],"contradictions":[],'
+    '"partial_coverage":[],"unique_insights":[],"blind_spots":[]}}'
+)
 
 
 def _read_augmented_context_source() -> str:
@@ -343,7 +347,7 @@ class TestCompareModelsCallsHelper:
         async def fake_call(slot_name, messages, **kwargs):
             # Return a JSON judge response so the fusion pipeline completes
             return {
-                "content": '{"status":"completed","analysis":{"consensus":[],"contradictions":[],"partial_coverage":[],"unique_insights":[],"blind_spots":[]}}',
+                "content": _EMPTY_JUDGE_RESPONSE,
                 "model": slot_name,
                 "usage": {},
                 "latency_ms": 10,
@@ -391,7 +395,7 @@ class TestCompareModelsCallsHelper:
                 "aip.adapter.api.routes.model_council._call_fusion_engine",
                 new=AsyncMock(
                     return_value={
-                        "content": '{"status":"completed","analysis":{"consensus":[],"contradictions":[],"partial_coverage":[],"unique_insights":[],"blind_spots":[]}}',
+                        "content": _EMPTY_JUDGE_RESPONSE,
                         "model": "fake-judge",
                         "usage": {},
                         "latency_ms": 10,
@@ -411,7 +415,7 @@ class TestCompareModelsCallsHelper:
                 assemble_augmented_context=True,  # opt in
                 selected_model_slots=["synthesis", "beast"],
             )
-            result = await compare_models(request, container=container)
+            await compare_models(request, container=container)
 
         # The helper must have been called (we verify by checking the
         # augmented prefix was prepended to panel calls).
@@ -444,7 +448,7 @@ class TestCompareModelsCallsHelper:
 
         async def fake_call(slot_name, messages, **kwargs):
             return {
-                "content": '{"status":"completed","analysis":{"consensus":[],"contradictions":[],"partial_coverage":[],"unique_insights":[],"blind_spots":[]}}',
+                "content": _EMPTY_JUDGE_RESPONSE,
                 "model": slot_name,
                 "usage": {},
                 "latency_ms": 10,
@@ -482,7 +486,7 @@ class TestCompareModelsCallsHelper:
                 "aip.adapter.api.routes.model_council._call_fusion_engine",
                 new=AsyncMock(
                     return_value={
-                        "content": '{"status":"completed","analysis":{"consensus":[],"contradictions":[],"partial_coverage":[],"unique_insights":[],"blind_spots":[]}}',
+                        "content": _EMPTY_JUDGE_RESPONSE,
                         "model": "fake-judge",
                         "usage": {},
                         "latency_ms": 10,
@@ -502,7 +506,7 @@ class TestCompareModelsCallsHelper:
                 turn_id="real-turn-id-123",
                 selected_model_slots=["synthesis", "beast"],
             )
-            result = await compare_models(request, container=container)
+            await compare_models(request, container=container)
 
         # Helper must NOT have been called
         mock_helper.assert_not_called()
@@ -539,7 +543,7 @@ class TestCompareModelsCallsHelper:
 
         async def fake_call(slot_name, messages, **kwargs):
             return {
-                "content": '{"status":"completed","analysis":{"consensus":[],"contradictions":[],"partial_coverage":[],"unique_insights":[],"blind_spots":[]}}',
+                "content": _EMPTY_JUDGE_RESPONSE,
                 "model": slot_name,
                 "usage": {},
                 "latency_ms": 10,
@@ -576,7 +580,7 @@ class TestCompareModelsCallsHelper:
                 "aip.adapter.api.routes.model_council._call_fusion_engine",
                 new=AsyncMock(
                     return_value={
-                        "content": '{"status":"completed","analysis":{"consensus":[],"contradictions":[],"partial_coverage":[],"unique_insights":[],"blind_spots":[]}}',
+                        "content": _EMPTY_JUDGE_RESPONSE,
                         "model": "fake-judge",
                         "usage": {},
                         "latency_ms": 10,
@@ -597,7 +601,7 @@ class TestCompareModelsCallsHelper:
                 assemble_augmented_context=True,
                 selected_model_slots=["synthesis", "beast"],
             )
-            result = await compare_models(request, container=container)
+            await compare_models(request, container=container)
 
         # Helper must NOT have been called (turn_id is empty)
         mock_helper.assert_not_called()

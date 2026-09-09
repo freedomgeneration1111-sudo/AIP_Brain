@@ -178,12 +178,9 @@ class TestFusionPipelineExecution:
             if slot_name == "beast":
                 # Differentiate Judge vs Synth by inspecting the system prompt
                 system_content = ""
-                user_content = ""
                 for msg in messages:
                     if msg.get("role") == "system":
                         system_content = msg.get("content", "")
-                    elif msg.get("role") == "user":
-                        user_content = msg.get("content", "")
 
                 if "JUDGE" in system_content:
                     return {
@@ -234,7 +231,11 @@ class TestFusionPipelineExecution:
                     }
                 if "SYNTHESIZER" in system_content:
                     return {
-                        "content": "AIP (AI Poiesis) is a local-first sovereign knowledge engine that manages the full knowledge lifecycle from ingestion through synthesis, evaluation, review, and canonical promotion.",
+                        "content": (
+                            "AIP (AI Poiesis) is a local-first sovereign knowledge engine that manages "
+                            "the full knowledge lifecycle from ingestion through synthesis, evaluation, "
+                            "review, and canonical promotion."
+                        ),
                         "model": "deepseek-chat",
                         "usage": {"prompt_tokens": 400, "completion_tokens": 100, "total_tokens": 500},
                         "latency_ms": 1500,
@@ -275,7 +276,7 @@ class TestFusionPipelineExecution:
 
         request = ModelCouncilRequest(prompt="What is AIP?")
         with patch("aip.adapter.api.routes.model_council.logger"):
-            result = await compare_models(request, container=fusion_container)
+            await compare_models(request, container=fusion_container)
 
         all_beast_calls = [c for c in fusion_container._test_beast_call_log if c["slot"] == "beast"]
         # Isolate the Fusion calls by inspecting the system prompt

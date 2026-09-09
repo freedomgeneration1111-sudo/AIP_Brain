@@ -43,7 +43,7 @@ async def test_sexton_writes_beast_wiki_artifact_type():
     domain_entry.domain_id = "aip_brain"
 
     # Call _write_wiki_artifact
-    result = await sexton._write_wiki_artifact(
+    await sexton._write_wiki_artifact(
         domain_id="aip_brain",
         domain_entry=domain_entry,
         wiki_content="## Overview\nTest wiki content for the aip_brain domain.",

@@ -123,8 +123,6 @@ class CorpusSummaryCards:
 
             # Backfill state card — honest about API key status
             backfill_status = status.get("backfill_state", "")
-            # Check for API key / provider status
-            has_api_key = not bool(status.get("error", ""))
             embed_error = status.get("error", "")
             if embed_error and (
                 "api_key" in embed_error.lower()

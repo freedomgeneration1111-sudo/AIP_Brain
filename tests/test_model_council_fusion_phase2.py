@@ -505,7 +505,7 @@ class TestFusionEndToEndWithRetrieval:
                 assemble_augmented_context=True,
                 selected_model_slots=["synthesis", "beast"],
             )
-            result = await compare_models(request, container=container)
+            await compare_models(request, container=container)
 
         # Every panel call must have received the augmented prefix
         assert len(captured_messages) == 2

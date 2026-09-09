@@ -29,7 +29,6 @@ from aip.foundation.corpus_constants import (
     SEXTON_WRITE_BATCH_SIZE,
 )
 from aip.foundation.corpus_exceptions import (
-    RestrictedCorpusAccessViolation,
     ConnectionBudgetExceeded,
     CorpusError,
     CorpusMigrationError,
@@ -37,6 +36,7 @@ from aip.foundation.corpus_exceptions import (
     DeletionStateError,
     EcsTransitionError,
     EmbeddingModelMismatch,
+    RestrictedCorpusAccessViolation,
 )
 from aip.foundation.corpus_types import (
     MIGRATIONS_FOR_CORPUS_TYPE,

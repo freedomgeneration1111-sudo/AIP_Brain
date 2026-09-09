@@ -15,14 +15,10 @@ ADR-014 §5.2, DEBT-020.
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
-from typing import Any
-
-import pytest
 
 from aip.adapter.extensions.host import ExtensionHost, _actor_scheduler_loop
 from aip.adapter.extensions.registry import ActorRegistration
-from aip.foundation.protocols.actors import Actor, ActorContext, ActorResult
+from aip.foundation.protocols.actors import ActorContext, ActorResult
 
 
 class _CycleCountingActor:
@@ -91,7 +87,6 @@ class TestStartPolicyFix:
 
         asyncio.create_task(_cancel_after_delay())
 
-        ctx = ActorContext(container=None, config=None, logger=None, cancel_event=cancel_event)
         await _actor_scheduler_loop(
             registration=reg,
             container=None,
@@ -142,7 +137,6 @@ class TestStartPolicyFix:
     def test_host_register_actor_accepts_start_policy(self):
         """host.register_actor must accept start_policy as a keyword arg."""
         import inspect
-        from aip.adapter.extensions.host import ExtensionHost
 
         sig = inspect.signature(ExtensionHost.register_actor)
         assert "start_policy" in sig.parameters, "register_actor must have a start_policy parameter"

@@ -111,6 +111,7 @@ from gui.theme import (
     C_WARN_BG,
     C_WARN_FG,
     F_MONO,
+    F_SANS,
     R_SM,
     btn_primary,
     btn_secondary,
@@ -499,7 +500,7 @@ async def _ask_page_impl():
         except Exception:
             # Corpus selector is non-critical — if it fails to import or
             # render, the rest of the Ask page must still work.
-            logger.debug("corpus_selector_wiring_failed", exc_info=True)
+            log.debug("corpus_selector_wiring_failed", exc_info=True)
 
         # ── Direct model fallback banner ──────────────────────────
         if not state.backend_reachable:
@@ -1076,7 +1077,6 @@ async def _send_multicast(
     # made it impossible to diagnose "why no codeforge material?"
     augmented_sources = result.get("augmented_sources", [])
     retrieval_attempted = result.get("retrieval_attempted", False)
-    context_assembled = result.get("context_assembled", False)
     active_corpus_ids = result.get("active_corpus_ids", [])
     retrieval_warnings = result.get("retrieval_warnings", [])
     source_count = result.get("source_count", 0)
@@ -2044,8 +2044,6 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                                     except Exception:
                                         continue
                                     status_val = status.get("status", "")
-                                    steps_done = status.get("steps_done", 0)
-                                    steps_total = status.get("steps_total", 6)
                                     if status_val == "COMPLETE":
                                         nonlocal _plan_id
                                         _plan_id = status.get("plan_id", "")
@@ -2778,7 +2776,6 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                                                     status = r.json()
                                             except Exception:
                                                 continue
-                                            phase = status.get("phase", "")
                                             status_val = status.get("status", "")
                                             if status_val == "COMPLETE":
                                                 chunks = status.get("chunks_total", 0)

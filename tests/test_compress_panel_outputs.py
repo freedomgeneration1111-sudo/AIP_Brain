@@ -219,7 +219,7 @@ class TestCompressionPassRuns:
                 prompt="test",
                 compress_panel_outputs=True,
             )
-            result = await compare_models(request, container=container)
+            await compare_models(request, container=container)
 
         # Compression calls happened (3 panelists → 3 compression calls)
         compression_calls = [
@@ -314,7 +314,7 @@ class TestCompressionDisabledByDefault:
         ):
             # Default: compress_panel_outputs=False
             request = ModelCouncilRequest(prompt="test")
-            result = await compare_models(request, container=container)
+            await compare_models(request, container=container)
 
         # NO compression calls happened
         compression_calls = [
@@ -384,10 +384,11 @@ class TestCompressionGracefulDegrade:
                         "error_message": "simulated compression failure for evaluation",
                     }
                 # Succeed for synthesis + beast
+                model_label = user_msg.split("Model: ", 1)[1].splitlines()[0] if "Model: " in user_msg else "unknown"
                 return {
                     "content": _valid_compression_json(
                         [
-                            f"Compressed claim from {user_msg.split('Model: ')[1].split('\\n')[0] if 'Model: ' in user_msg else 'unknown'}",
+                            f"Compressed claim from {model_label}",
                         ]
                     ),
                     "model": "fake-compressor",
@@ -429,7 +430,7 @@ class TestCompressionGracefulDegrade:
                 prompt="test",
                 compress_panel_outputs=True,
             )
-            result = await compare_models(request, container=container)
+            await compare_models(request, container=container)
 
         # The Judge's answers_block must contain:
         # - compressed claims for synthesis + beast
@@ -531,7 +532,7 @@ class TestSynthUnaffectedByCompression:
                 prompt="test",
                 compress_panel_outputs=True,
             )
-            result = await compare_models(request, container=container)
+            await compare_models(request, container=container)
 
         # Find the Synth call
         synth_calls = [c for c in engine_calls if "ACTING AS THE SYNTHESIZER" in c["system"].upper()]

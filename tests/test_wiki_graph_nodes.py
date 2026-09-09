@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import inspect
 
-import pytest
-
 
 class TestWikiGraphNodes:
     """Phase β-3 — verify wiki articles become graph nodes on creation."""

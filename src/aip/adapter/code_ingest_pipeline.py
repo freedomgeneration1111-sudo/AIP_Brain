@@ -171,7 +171,7 @@ async def build_code_graph(
 
     Returns a counts dict: {"nodes_created", "edges_created"}.
     """
-    from aip.adapter.graph_store import GraphNode, GraphEdge
+    from aip.adapter.graph_store import GraphEdge, GraphNode
 
     counts = {"nodes_created": 0, "edges_created": 0}
 

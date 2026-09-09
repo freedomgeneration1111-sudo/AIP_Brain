@@ -6,10 +6,8 @@ the codeforge corpus. ADR-008 §8 Chunk 7 / Phase 1.6 Codebase-as-Corpus.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-import pytest
 from click.testing import CliRunner
 
 from aip.cli.corpus import corpus

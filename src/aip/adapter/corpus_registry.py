@@ -45,10 +45,10 @@ from aip.foundation.corpus_constants import (
     NON_CORPUS_READ_POOL_SIZE,
 )
 from aip.foundation.corpus_exceptions import (
-    RestrictedCorpusAccessViolation,
     ConnectionBudgetExceeded,
     CorpusNotFound,
     DeletionStateError,
+    RestrictedCorpusAccessViolation,
 )
 from aip.foundation.corpus_types import CorpusDeletionState, CorpusType
 from aip.foundation.protocols.corpus_registry import ReviewItem

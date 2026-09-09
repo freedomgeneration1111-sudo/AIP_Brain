@@ -39,6 +39,10 @@ _MODEL_COUNCIL_PY = _REPO_ROOT / "src" / "aip" / "adapter" / "api" / "routes" / 
 _JUDGE_PY = _MODEL_COUNCIL_PY  # Judge prompt lives in model_council.py
 _VIGIL_PY = _REPO_ROOT / "src" / "aip" / "orchestration" / "actors" / "vigil.py"
 _SEXTON_PY = _REPO_ROOT / "src" / "aip" / "orchestration" / "actors" / "sexton.py"
+_EMPTY_JUDGE_RESPONSE = (
+    '{"status":"completed","analysis":{"consensus":[],"contradictions":[],'
+    '"partial_coverage":[],"unique_insights":[],"blind_spots":[]}}'
+)
 
 
 def _read_model_council_source() -> str:
@@ -226,7 +230,7 @@ class TestAcceptanceCriteria1PanelPromptTest:
                 "aip.adapter.api.routes.model_council._call_fusion_engine",
                 new=AsyncMock(
                     return_value={
-                        "content": '{"status":"completed","analysis":{"consensus":[],"contradictions":[],"partial_coverage":[],"unique_insights":[],"blind_spots":[]}}',
+                        "content": _EMPTY_JUDGE_RESPONSE,
                         "model": "fake-judge",
                         "usage": {},
                         "latency_ms": 10,
@@ -244,7 +248,7 @@ class TestAcceptanceCriteria1PanelPromptTest:
                 prompt=probe_question,
                 selected_model_slots=["synthesis", "evaluation", "beast"],
             )
-            result = await compare_models(request, container=container)
+            await compare_models(request, container=container)
 
         # Every panel call must have the clean [system, user] shape
         assert len(captured_messages) == 3, "all 3 slots must have been called"
@@ -383,7 +387,7 @@ class TestAcceptanceCriteria2DispatchCompleteness:
         async def fake_fusion_engine(kind, engine_id, messages, container, timeout):
             captured_judge_messages.append(list(messages))
             return {
-                "content": '{"status":"completed","analysis":{"consensus":[],"contradictions":[],"partial_coverage":[],"unique_insights":[],"blind_spots":[]}}',
+                "content": _EMPTY_JUDGE_RESPONSE,
                 "model": "fake-judge",
                 "usage": {},
                 "latency_ms": 10,
@@ -479,7 +483,7 @@ class TestAcceptanceCriteria2DispatchCompleteness:
                 "aip.adapter.api.routes.model_council._call_fusion_engine",
                 new=AsyncMock(
                     return_value={
-                        "content": '{"status":"completed","analysis":{"consensus":[],"contradictions":[],"partial_coverage":[],"unique_insights":[],"blind_spots":[]}}',
+                        "content": _EMPTY_JUDGE_RESPONSE,
                         "model": "fake-judge",
                         "usage": {},
                         "latency_ms": 10,
@@ -498,7 +502,7 @@ class TestAcceptanceCriteria2DispatchCompleteness:
                     prompt="test",
                     selected_model_slots=["synthesis", "evaluation", "beast", "sexton"],
                 )
-                result = await compare_models(request, container=container)
+                await compare_models(request, container=container)
 
         # 4 dispatch entries
         dispatch_entries = [r for r in caplog.records if "[PANEL] Dispatching" in r.getMessage()]

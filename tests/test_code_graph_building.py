@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
+from aip.adapter.code_ingest_pipeline import build_code_graph, ingest_python_directory
+from aip.adapter.corpus_registry import CorpusRegistry
 from aip.adapter.python_ast_parser import (
     CodeTurnSpec,
     _extract_calls,
@@ -21,8 +21,6 @@ from aip.adapter.python_ast_parser import (
     make_code_corpus_turn,
     parse_python_file,
 )
-from aip.adapter.code_ingest_pipeline import build_code_graph, ingest_python_directory
-from aip.adapter.corpus_registry import CorpusRegistry
 from aip.foundation.corpus_types import CorpusType
 
 

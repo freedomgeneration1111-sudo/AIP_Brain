@@ -12,8 +12,6 @@ from __future__ import annotations
 import inspect
 from pathlib import Path
 
-import pytest
-
 
 def _lifespan_source() -> str:
     """Return the source of the app.py lifespan function."""

@@ -319,7 +319,8 @@ def _render_related_info_row(
                     .style(f"padding:8px 12px; border-bottom:0.5px solid {C_INK40};")
                 ):
                     ui.label("OPEN QUESTIONS").style(
-                        f"font-size:9px; font-weight:600; letter-spacing:1px; color:{C_WARN_FG}; text-transform:uppercase;"
+                        f"font-size:9px; font-weight:600; letter-spacing:1px; "
+                        f"color:{C_WARN_FG}; text-transform:uppercase;"
                     )
                 with ui.column().style("padding:8px 12px; min-height:40px;"):
                     for q in open_questions[:5]:

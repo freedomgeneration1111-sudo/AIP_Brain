@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from aip.adapter.corpus_registry import CorpusRegistry
 from aip.foundation.corpus_types import CorpusType
 

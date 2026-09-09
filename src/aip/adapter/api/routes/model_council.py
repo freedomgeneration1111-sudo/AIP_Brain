@@ -695,8 +695,8 @@ async def compare_models(
     user_prompt = f"""{request.prompt[:4000]}{sources_text}{existing_answer_block}"""
 
     # --- Phase 1 retrieval bridge: assemble augmented context ONCE ---
-    # When ``request.assemble_augmented_context`` is True AND a valid
-    # session exists (``request.session_id`` is non-empty), call the
+    # When ``request.assemble_augmented_context`` is True AND a session
+    # scope exists (``request.session_id`` or the legacy ``request.turn_id``), call the
     # shared ``routes/_augmented_context.py::assemble_augmented_context()``
     # helper to build the augmented system messages (corpus turns +
     # wiki + graph + definer profile). The resulting messages are
@@ -707,7 +707,7 @@ async def compare_models(
     # The Judge and Synth calls do NOT receive this prefix (the Judge
     # reads panel outputs; the Synth reads only the Judge JSON).
     #
-    # When the flag is False (default) or no session exists,
+    # When the flag is False (default) or no session scope exists,
     # ``augmented_prefix`` is an empty list and the panel calls
     # proceed with the bare prompt (existing behavior — backward
     # compatible).
@@ -719,15 +719,10 @@ async def compare_models(
     # material?" without guessing.  These are populated below and
     # attached to the ModelCouncilResponse.
     #
-    # ADR-017 gate fix: the retrieval gate is now
-    # ``request.assemble_augmented_context and request.session_id``
-    # (previously ``and request.turn_id``).  The old gate required a
-    # non-empty turn_id, which the GUI faked by passing session_id as
-    # turn_id.  The real gate should be "did the user request retrieval
-    # AND do we have a session to look up corpus selection from?" —
-    # turn_id is irrelevant to the assembler (it uses session_id for
-    # session_meta lookup).  The fake turn_id workaround is no longer
-    # needed.
+    # Prefer the true session ID for corpus-selection lookup. Retain the
+    # legacy turn_id signal as a fallback for API clients that predate the
+    # session_id field; this preserves the original retrieval bridge
+    # contract without requiring the GUI to fake a turn ID.
     augmented_prefix: list[dict] = []
     augmented_sources: list[dict] = []
     # Telemetry variables (populated below, attached to the response)
@@ -736,7 +731,8 @@ async def compare_models(
     retrieval_active_corpus_ids: list[str] = []
     retrieval_warnings: list[str] = []
 
-    if request.assemble_augmented_context and request.session_id:
+    retrieval_session_id = request.session_id or request.turn_id
+    if request.assemble_augmented_context and retrieval_session_id:
         from aip.adapter.api.routes._augmented_context import assemble_augmented_context
         from aip.adapter.api.routes.sessions import get_session_meta, get_session_meta_async
 
@@ -747,10 +743,10 @@ async def compare_models(
             # _sessions dict, which may be empty if the session was
             # created on a different worker or persisted to SQLite).
             try:
-                session_meta = await get_session_meta_async(request.session_id, container) or {}
+                session_meta = await get_session_meta_async(retrieval_session_id, container) or {}
                 if not session_meta:
                     # Fall back to sync version (in-memory only)
-                    session_meta = get_session_meta(request.session_id) or {}
+                    session_meta = get_session_meta(retrieval_session_id) or {}
                 retrieval_active_corpus_ids = list(session_meta.get("active_corpus_ids") or [])
             except Exception:
                 session_meta = {}
@@ -771,7 +767,7 @@ async def compare_models(
 
             aug = await assemble_augmented_context(
                 content=request.prompt,
-                session_id=request.session_id,
+                session_id=retrieval_session_id,
                 container=container,
                 session_meta=session_meta,
             )
@@ -796,7 +792,8 @@ async def compare_models(
                     "Corpus Selection panel and click 'Update Selection'."
                 )
             logger.info(
-                "council_augmented_context_assembled assembled=%s messages=%d sources=%d domain=%s active_corpus_ids=%s",
+                "council_augmented_context_assembled "
+                "assembled=%s messages=%d sources=%d domain=%s active_corpus_ids=%s",
                 aug.assembled,
                 len(aug.messages),
                 len(aug.sources),
@@ -1825,7 +1822,7 @@ async def _compress_panel_outputs(
         return {}
 
     task_labels = list(compression_tasks.keys())
-    task_coros = [compression_tasks[l] for l in task_labels]
+    task_coros = [compression_tasks[label] for label in task_labels]
     task_results = await asyncio.gather(*task_coros, return_exceptions=True)
 
     compressed: dict[str, list[str]] = {}

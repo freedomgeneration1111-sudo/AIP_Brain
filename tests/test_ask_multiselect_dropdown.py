@@ -53,6 +53,10 @@ _GUI_API_CLIENT = _REPO_ROOT / "gui" / "api_client.py"
 _GUI_STATE = _REPO_ROOT / "gui" / "state.py"
 _ASK_PY = _GUI_PAGES / "ask.py"
 _MODEL_COUNCIL_PY = _REPO_ROOT / "src" / "aip" / "adapter" / "api" / "routes" / "model_council.py"
+_EMPTY_JUDGE_RESPONSE = (
+    '{"status":"completed","analysis":{"consensus":[],"contradictions":[],'
+    '"partial_coverage":[],"unique_insights":[],"blind_spots":[]}}'
+)
 
 
 def _read_ask_source() -> str:
@@ -567,7 +571,7 @@ class TestEndToEndSkipDefaultSlots:
                 "aip.adapter.api.routes.model_council._call_fusion_engine",
                 new=AsyncMock(
                     return_value={
-                        "content": '{"status":"completed","analysis":{"consensus":[],"contradictions":[],"partial_coverage":[],"unique_insights":[],"blind_spots":[]}}',
+                        "content": _EMPTY_JUDGE_RESPONSE,
                         "model": "fake-judge",
                         "usage": {},
                         "latency_ms": 10,
@@ -642,7 +646,7 @@ class TestEndToEndSkipDefaultSlots:
                 "aip.adapter.api.routes.model_council._call_fusion_engine",
                 new=AsyncMock(
                     return_value={
-                        "content": '{"status":"completed","analysis":{"consensus":[],"contradictions":[],"partial_coverage":[],"unique_insights":[],"blind_spots":[]}}',
+                        "content": _EMPTY_JUDGE_RESPONSE,
                         "model": "fake-judge",
                         "usage": {},
                         "latency_ms": 10,

@@ -363,7 +363,6 @@ class TestGuiCompressToggle:
 
     def test_api_client_payload_includes_compress_panel_outputs(self):
         """The POST payload includes compress_panel_outputs."""
-        source = _read_ask_source()
         # The api_client is in a different file; read it directly
         api_client_source = (_REPO_ROOT / "gui" / "api_client.py").read_text(encoding="utf-8")
         # Find the run_model_council method

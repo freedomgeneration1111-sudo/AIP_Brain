@@ -224,7 +224,9 @@ async def list_wiki_articles(
 
     # Build WHERE clause
     conditions = [
-        "(a.id LIKE 'beast:wiki:%' OR a.id LIKE 'beast:proposal:%' OR a.id LIKE 'wiki:%' OR a.id LIKE 'sexton:wiki:%' OR a.id LIKE 'manual:%')"
+        "(a.id LIKE 'beast:wiki:%' OR a.id LIKE 'beast:proposal:%' "
+        "OR a.id LIKE 'wiki:%' OR a.id LIKE 'sexton:wiki:%' "
+        "OR a.id LIKE 'manual:%')"
     ]
     params: list[str] = []
 
@@ -1053,7 +1055,10 @@ async def wiki_stats(
                 SELECT e.current_state, COUNT(*) as c
                 FROM artifacts a
                 INNER JOIN ecs_state e ON a.id = e.artifact_id
-                WHERE a.id LIKE 'beast:wiki:%' OR a.id LIKE 'beast:proposal:%' OR a.id LIKE 'wiki:%' OR a.id LIKE 'manual:%'
+                WHERE a.id LIKE 'beast:wiki:%'
+                   OR a.id LIKE 'beast:proposal:%'
+                   OR a.id LIKE 'wiki:%'
+                   OR a.id LIKE 'manual:%'
                 GROUP BY e.current_state
                 """,
             )
@@ -1078,7 +1083,10 @@ async def wiki_stats(
                     COUNT(*) as c
                 FROM artifacts a
                 INNER JOIN ecs_state e ON a.id = e.artifact_id
-                WHERE a.id LIKE 'beast:wiki:%' OR a.id LIKE 'beast:proposal:%' OR a.id LIKE 'wiki:%' OR a.id LIKE 'manual:%'
+                WHERE a.id LIKE 'beast:wiki:%'
+                   OR a.id LIKE 'beast:proposal:%'
+                   OR a.id LIKE 'wiki:%'
+                   OR a.id LIKE 'manual:%'
                 GROUP BY domain, e.current_state
                 ORDER BY domain
                 """,
