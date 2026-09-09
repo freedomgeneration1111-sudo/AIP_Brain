@@ -477,7 +477,8 @@ async def assemble_augmented_context(
             audit_fn = getattr(registry, "_write_audit", None)
             logger.info(
                 "augmented_context_multi_corpus_path active_corpus_ids=%s allowed_restricted=%s",
-                active_corpus_ids, allowed_restricted,
+                active_corpus_ids,
+                allowed_restricted,
             )
             multi_hits, _suppressed = await gather_corpus_results(
                 query=content,

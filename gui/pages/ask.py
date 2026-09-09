@@ -443,9 +443,9 @@ async def _ask_page_impl():
                 expansion_elem.clear()
                 with expansion_elem:
                     if not corpora:
-                        ui.label(
-                            "No corpora registered (backend may not have the registry wired)."
-                        ).style(f"font-size:11px; color:{C_MUTED};")
+                        ui.label("No corpora registered (backend may not have the registry wired).").style(
+                            f"font-size:11px; color:{C_MUTED};"
+                        )
                         return
                     nonlocal _corpus_checkboxes
                     _corpus_checkboxes = render_corpus_selector(
@@ -457,11 +457,7 @@ async def _ask_page_impl():
             async def _on_update_corpora() -> None:
                 """Read checkbox values and persist to state + PATCH the session."""
                 # definer is always active
-                selected = [
-                    cid
-                    for cid, cb in _corpus_checkboxes.items()
-                    if cb.value
-                ]
+                selected = [cid for cid, cb in _corpus_checkboxes.items() if cb.value]
                 if "definer" not in selected:
                     selected = ["definer"] + selected
 
@@ -478,23 +474,21 @@ async def _ask_page_impl():
                     )
                     return
 
-                ok = await update_session_corpora(
-                    state.api_client, state.session_id, selected
-                )
+                ok = await update_session_corpora(state.api_client, state.session_id, selected)
                 if ok:
-                    ui.notify(
-                        f"Active corpora: {', '.join(selected)}", color="positive"
-                    )
+                    ui.notify(f"Active corpora: {', '.join(selected)}", color="positive")
                 else:
                     ui.notify("Failed to update corpus selection.", color="negative")
 
-            with ui.expansion(
-                "Corpus Selection",
-                icon="library_books",
-                value=False,
-            ).classes("w-full").style(
-                f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; margin-top:4px;"
-            ) as _corpus_expansion:
+            with (
+                ui.expansion(
+                    "Corpus Selection",
+                    icon="library_books",
+                    value=False,
+                )
+                .classes("w-full")
+                .style(f"background:{C_SURFACE}; border:0.5px solid {C_INK40}; margin-top:4px;") as _corpus_expansion
+            ):
                 ui.label("Loading corpora...").style(f"font-size:11px; color:{C_MUTED};")
                 # Load on expansion open (deferred so the page renders first)
                 ui.timer(
@@ -1776,10 +1770,7 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
         with (
             ui.row()
             .classes("w-full items-center")
-            .style(
-                f"padding:8px 16px; background:{C_SURFACE}; "
-                f"border-bottom:0.5px solid {C_INK40};"
-            )
+            .style(f"padding:8px 16px; background:{C_SURFACE}; border-bottom:0.5px solid {C_INK40};")
         ):
             ui.label("ARISTOTLE").style(
                 f"font-size:10px; font-weight:700; color:{C_GROUND}; "
@@ -1787,16 +1778,17 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                 f"letter-spacing:0.5px;"
             )
             phase_label = ui.label("Onboarding").style(
-                f"font-size:12px; color:{C_MUTED}; font-family:{F_MONO}; "
-                f"margin-left:12px; letter-spacing:0.3px;"
+                f"font-size:12px; color:{C_MUTED}; font-family:{F_MONO}; margin-left:12px; letter-spacing:0.3px;"
             )
             ui.space()
 
         # Chat container — the single conversation surface. Holds every
         # message from intake, placer, and tutoring. flex:1 so it fills
         # the viewport between header and chat bar.
-        chat_container = ui.column().classes("w-full flex-1").style(
-            "padding:16px; gap:12px; overflow-y:auto; flex:1; min-height:300px;"
+        chat_container = (
+            ui.column()
+            .classes("w-full flex-1")
+            .style("padding:16px; gap:12px; overflow-y:auto; flex:1; min-height:300px;")
         )
 
         # Chat bar — VISIBLE from the first render. The learner types
@@ -1806,14 +1798,16 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
         with (
             ui.row()
             .classes("w-full items-center gap-2")
-            .style(
-                f"padding:8px 16px; background:{C_SURFACE}; "
-                f"border-top:0.5px solid {C_INK40};"
-            )
+            .style(f"padding:8px 16px; background:{C_SURFACE}; border-top:0.5px solid {C_INK40};")
         ):
-            input_field = ui.input(
-                placeholder="Type your reply to Aristotle...",
-            ).props("dense dark outlined").classes("flex-1").style("font-size:15px;")
+            input_field = (
+                ui.input(
+                    placeholder="Type your reply to Aristotle...",
+                )
+                .props("dense dark outlined")
+                .classes("flex-1")
+                .style("font-size:15px;")
+            )
 
             async def _render_aristotle_message(text: str) -> None:
                 """Append an Aristotle chat bubble to chat_container."""
@@ -1871,9 +1865,7 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                         ui.label(
                             "Here's the concept sequence I'm proposing. "
                             "Type 'looks good' to confirm, or tell me what to change."
-                        ).style(
-                            f"font-size:12px; color:{C_MUTED}; font-family:{F_MONO};"
-                        )
+                        ).style(f"font-size:12px; color:{C_MUTED}; font-family:{F_MONO};")
                         for i, concept in enumerate(draft_plan, 1):
                             topic = concept.get("topic", f"Concept {i}")
                             subtopic = concept.get("subtopic", "")
@@ -1886,13 +1878,11 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                                 )
                                 with ui.column().style("gap:2px; flex:1;"):
                                     ui.label(topic).style(
-                                        f"font-size:13px; font-weight:600; color:{C_CREAM}; "
-                                        f"font-family:{F_MONO};"
+                                        f"font-size:13px; font-weight:600; color:{C_CREAM}; font-family:{F_MONO};"
                                     )
                                     if subtopic:
                                         ui.label(subtopic).style(
-                                            f"font-size:11px; color:{C_MUTED}; "
-                                            f"font-family:{F_MONO};"
+                                            f"font-size:11px; color:{C_MUTED}; font-family:{F_MONO};"
                                         )
                                     if content:
                                         ui.label(content).style(
@@ -1901,17 +1891,13 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                                             f"line-height:1.4;"
                                         )
                                     ui.label(f"Bloom level: {bloom}").style(
-                                        f"font-size:10px; color:{C_MUTED}; "
-                                        f"font-family:{F_MONO};"
+                                        f"font-size:10px; color:{C_MUTED}; font-family:{F_MONO};"
                                     )
 
             async def _render_error(msg: str) -> None:
                 """Append a red error bubble — backend unreachable, etc."""
                 with chat_container:
-                    ui.label(msg).style(
-                        f"font-size:13px; color:{C_ERR_FG}; font-family:{F_MONO}; "
-                        f"padding:8px;"
-                    )
+                    ui.label(msg).style(f"font-size:13px; color:{C_ERR_FG}; font-family:{F_MONO}; padding:8px;")
 
             async def _render_http_error(exc: Exception, route: str) -> None:
                 """Render an actionable error for HTTP failures.
@@ -1935,8 +1921,7 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                         except Exception:
                             pass
                         await _render_error(
-                            f"Backend returned HTTP {status} for {route}."
-                            + (f" Response: {body}" if body else "")
+                            f"Backend returned HTTP {status} for {route}." + (f" Response: {body}" if body else "")
                         )
                 elif isinstance(exc, httpx.ConnectError):
                     await _render_error(
@@ -2045,8 +2030,10 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                                 "knowledge gaps, and building a phased curriculum. "
                                 "This takes 1-2 minutes — I'll let you know when it's ready."
                             )
+
                             async def _poll_plan_progress(job_id: str) -> None:
                                 import asyncio as _asyncio
+
                                 for _ in range(120):  # poll for up to 10 min
                                     await _asyncio.sleep(5)
                                     try:
@@ -2074,14 +2061,14 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                                     elif status_val == "FAILED":
                                         error = status.get("error", "unknown error")
                                         await _render_error(
-                                            f"Plan generation failed: {error}. "
-                                            f"Please try confirming your plan again."
+                                            f"Plan generation failed: {error}. Please try confirming your plan again."
                                         )
                                         return
                                 await _render_error(
                                     "Plan generation is taking longer than expected. "
                                     "Please check the backend logs or try again."
                                 )
+
                             asyncio.create_task(_poll_plan_progress(plan_job_id))
                 except Exception as exc:
                     await _render_http_error(exc, "/aristotle/intake/step")
@@ -2090,9 +2077,7 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                 """Begin placement calibration for the completed plan."""
                 nonlocal _placer_session
                 if not _plan_id:
-                    await _render_error(
-                        "Cannot start placement — no learning plan was produced."
-                    )
+                    await _render_error("Cannot start placement — no learning plan was produced.")
                     return
                 # Brief orientation message before the first probe.
                 await _render_aristotle_message(
@@ -2206,15 +2191,11 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                         pass
 
                 if not _concept_id:
-                    await _render_error(
-                        "No concept available to start tutoring. "
-                        "Ingest course material first."
-                    )
+                    await _render_error("No concept available to start tutoring. Ingest course material first.")
                     return
 
                 await _render_aristotle_message(
-                    "Great — let's begin. I'll ask what you think first, "
-                    "then teach, then check your understanding."
+                    "Great — let's begin. I'll ask what you think first, then teach, then check your understanding."
                 )
                 try:
                     async with httpx.AsyncClient(base_url=_BACKEND_URL, timeout=300.0) as client:
@@ -2264,8 +2245,7 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                         if _tutor_session.get("state") == "SESSION_COMPLETE":
                             await _set_phase("COMPLETE")
                             await _render_aristotle_message(
-                                f"Great work, {_student_name}. "
-                                f"That's the end of this session."
+                                f"Great work, {_student_name}. That's the end of this session."
                             )
                             clear_active_extension()
                             input_field.set_enabled(False)
@@ -2340,10 +2320,7 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                         ui.label(
                             "I found existing learning plans on this machine. "
                             "Pick one to resume, or start a new subject."
-                        ).style(
-                            f"font-size:13px; color:{C_CREAM}; font-family:{F_MONO}; "
-                            f"line-height:1.5;"
-                        )
+                        ).style(f"font-size:13px; color:{C_CREAM}; font-family:{F_MONO}; line-height:1.5;")
 
                         for plan in plans:
                             plan_id = plan.get("id", "")
@@ -2362,10 +2339,7 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                             else:
                                 status_str = "not started yet"
 
-                            label = (
-                                f"Resume: {subject}  "
-                                f"({idx}/{total} concepts, {status_str})"
-                            )
+                            label = f"Resume: {subject}  ({idx}/{total} concepts, {status_str})"
 
                             # Task 20: each plan row is now a row
                             # containing the Resume button (main click
@@ -2383,15 +2357,12 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                             # a real destructive action with no undo —
                             # a one-click delete on live student data
                             # is not acceptable per the task brief.
-                            with ui.row().classes("w-full items-center gap-2").style(
-                                "margin:2px 0;"
-                            ):
+                            with ui.row().classes("w-full items-center gap-2").style("margin:2px 0;"):
+
                                 async def _on_resume(_evt, pid=plan_id) -> None:
                                     await _resume_plan(pid)
 
-                                ui.button(label, on_click=_on_resume).props(
-                                    "flat dense align=left no-caps"
-                                ).style(
+                                ui.button(label, on_click=_on_resume).props("flat dense align=left no-caps").style(
                                     f"color:{C_CREAM}; font-family:{F_MONO}; "
                                     f"font-size:13px; text-transform:none; "
                                     f"justify-content:flex-start; "
@@ -2404,24 +2375,18 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                                 async def _on_delete_click(_evt, pid=plan_id, psub=subject) -> None:
                                     await _confirm_delete_plan(pid, psub)
 
-                                ui.button("🗑", on_click=_on_delete_click).props(
-                                    "flat dense round no-caps"
-                                ).style(
+                                ui.button("🗑", on_click=_on_delete_click).props("flat dense round no-caps").style(
                                     f"color:{C_ERR_FG}; font-size:14px; "
                                     f"min-width:32px; padding:4px 8px; "
                                     f"border:0.5px solid {C_INK40};"
-                                ).tooltip(
-                                    f"Delete plan: {subject} (irreversible)"
-                                )
+                                ).tooltip(f"Delete plan: {subject} (irreversible)")
 
                         ui.separator().style(f"background:{C_INK40}; margin:8px 0;")
 
                         async def _on_new(_evt) -> None:
                             await _start_new_plan()
 
-                        ui.button("Start a new subject", on_click=_on_new).props(
-                            "flat dense align=left no-caps"
-                        ).style(
+                        ui.button("Start a new subject", on_click=_on_new).props("flat dense align=left no-caps").style(
                             f"color:{C_AMBER}; font-family:{F_MONO}; "
                             f"font-size:13px; text-transform:none; "
                             f"justify-content:flex-start;"
@@ -2500,14 +2465,9 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                 pick one of the two buttons to dismiss it, no way to
                 accidentally trigger the delete by clicking elsewhere.
                 """
-                with ui.dialog() as dialog, ui.card().style(
-                    f"background:{C_SURFACE}; padding:24px; "
-                    f"max-width:480px;"
-                ):
+                with ui.dialog() as dialog, ui.card().style(f"background:{C_SURFACE}; padding:24px; max-width:480px;"):
                     ui.label("Delete this learning plan?").style(
-                        f"font-size:16px; font-weight:700; "
-                        f"color:{C_ERR_FG}; font-family:{F_MONO}; "
-                        f"margin-bottom:12px;"
+                        f"font-size:16px; font-weight:700; color:{C_ERR_FG}; font-family:{F_MONO}; margin-bottom:12px;"
                     )
                     ui.label(
                         f"Plan: {subject}\n\n"
@@ -2523,20 +2483,15 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                         f"white-space:pre-wrap; margin-bottom:20px;"
                     )
                     with ui.row().classes("w-full justify-end gap-2"):
-                        ui.button("Cancel", on_click=dialog.close).props(
-                            "flat no-caps"
-                        ).style(
-                            f"color:{C_MUTED}; font-family:{F_MONO}; "
-                            f"font-size:12px;"
+                        ui.button("Cancel", on_click=dialog.close).props("flat no-caps").style(
+                            f"color:{C_MUTED}; font-family:{F_MONO}; font-size:12px;"
                         )
 
                         async def _on_confirm() -> None:
                             dialog.close()
                             await _delete_plan(plan_id, subject)
 
-                        ui.button("Delete permanently", on_click=_on_confirm).props(
-                            "no-caps"
-                        ).style(
+                        ui.button("Delete permanently", on_click=_on_confirm).props("no-caps").style(
                             f"background:{C_ERR_FG}; color:{C_GROUND}; "
                             f"font-family:{F_MONO}; font-size:12px; "
                             f"font-weight:700;"
@@ -2560,9 +2515,7 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                 """
                 # Clear the picker (we're going to re-render it after).
                 chat_container.clear()
-                await _render_aristotle_message(
-                    f"Deleting plan '{subject}'..."
-                )
+                await _render_aristotle_message(f"Deleting plan '{subject}'...")
                 try:
                     async with httpx.AsyncClient(base_url=_BACKEND_URL, timeout=30.0) as client:
                         resp = await client.delete(f"/aristotle/plans/{plan_id}")
@@ -2619,9 +2572,7 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                     # timeout). The model call can take 30-60s on
                     # OpenRouter — the old 10s poll gave up prematurely.
                     if _intake_start_task is not None and not _intake_start_task.done():
-                        await _render_aristotle_message(
-                            "Let me think for a moment..."
-                        )
+                        await _render_aristotle_message("Let me think for a moment...")
                         await _intake_start_task
                     _intake_start_task = None
 
@@ -2688,10 +2639,7 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                     filename = getattr(e.file, "name", "file")
                     content = await e.file.read()
                 except Exception as exc:
-                    await _render_error(
-                        f"Could not read uploaded file: {exc}\n\n"
-                        f"Traceback:\n{_tb.format_exc()[:500]}"
-                    )
+                    await _render_error(f"Could not read uploaded file: {exc}\n\nTraceback:\n{_tb.format_exc()[:500]}")
                     return
 
                 ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
@@ -2815,12 +2763,16 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                                 #   - large RAG prompt → long LLM call → OpenRouter timeout
                                 #   - "Something went wrong" error
                                 if ingest_job_id:
+
                                     async def _poll_ingest_progress(job_id: str) -> None:
                                         import asyncio as _asyncio
+
                                         for _ in range(60):  # poll for up to 5 min
                                             await _asyncio.sleep(5)
                                             try:
-                                                async with httpx.AsyncClient(base_url=_BACKEND_URL, timeout=10.0) as client:
+                                                async with httpx.AsyncClient(
+                                                    base_url=_BACKEND_URL, timeout=10.0
+                                                ) as client:
                                                     r = await client.get(f"/aristotle/ingest/{job_id}/status")
                                                     r.raise_for_status()
                                                     status = r.json()
@@ -2863,6 +2815,7 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                                         # Auto-trigger even on timeout (legacy path)
                                         if _phase == "INTAKE" and _intake_session:
                                             await _step_intake("")
+
                                     asyncio.create_task(_poll_ingest_progress(ingest_job_id))
                                 else:
                                     # No ingest job (paper too short or upload issue) —
@@ -2889,16 +2842,14 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                 on_upload=_handle_aristotle_upload,
                 auto_upload=True,
                 max_file_size=10_000_000,
-            ).props("flat dense dark").style(
-                "max-width:40px; min-width:40px;"
-            ).tooltip("Upload textbook, paper, or notes")
+            ).props("flat dense dark").style("max-width:40px; min-width:40px;").tooltip(
+                "Upload textbook, paper, or notes"
+            )
 
             ui.button(
                 "Send",
                 on_click=lambda: asyncio.create_task(_on_aristotle_send()),
-            ).props("dense").style(
-                f"background:{C_AMBER}; color:#0d1117; font-family:{F_MONO};"
-            )
+            ).props("dense").style(f"background:{C_AMBER}; color:#0d1117; font-family:{F_MONO};")
 
             input_field.on(
                 "keydown.enter",

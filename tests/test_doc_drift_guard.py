@@ -102,8 +102,7 @@ class TestCodebaseAsCorpusGuard:
         the ingest pipeline exists."""
         pipeline = REPO_ROOT / "src" / "aip" / "adapter" / "code_ingest_pipeline.py"
         assert pipeline.exists(), (
-            "code_ingest_pipeline.py not found — PLANNED_FEATURES.md claims "
-            "Chunk 7 is ✅ Complete."
+            "code_ingest_pipeline.py not found — PLANNED_FEATURES.md claims Chunk 7 is ✅ Complete."
         )
         src = _read(pipeline)
         assert "async def ingest_python_directory" in src, (
@@ -114,8 +113,7 @@ class TestCodebaseAsCorpusGuard:
         """PLANNED_FEATURES.md claims the AST parser is complete. Verify."""
         parser = REPO_ROOT / "src" / "aip" / "adapter" / "python_ast_parser.py"
         assert parser.exists(), (
-            "python_ast_parser.py not found in adapter/ — PLANNED_FEATURES.md "
-            "claims Chunk 7 is ✅ Complete."
+            "python_ast_parser.py not found in adapter/ — PLANNED_FEATURES.md claims Chunk 7 is ✅ Complete."
         )
         src = _read(parser)
         assert "def parse_python_file" in src
@@ -157,8 +155,7 @@ class TestCorpusSelectorGuard:
         """PLANNED_FEATURES.md:142 claims Chunk 5 GUI is complete. Verify."""
         selector = REPO_ROOT / "gui" / "components" / "corpus_selector.py"
         assert selector.exists(), (
-            "gui/components/corpus_selector.py not found — PLANNED_FEATURES.md "
-            "claims Chunk 5 is ✅ Complete."
+            "gui/components/corpus_selector.py not found — PLANNED_FEATURES.md claims Chunk 5 is ✅ Complete."
         )
 
     def test_corpus_registry_endpoint_exists(self):
@@ -203,9 +200,7 @@ class TestMaxCorporaConsistency:
 
     def test_constant_matches_test_assertion(self):
         """The constant value and the test assertion must agree."""
-        constants_src = _read(
-            REPO_ROOT / "src" / "aip" / "foundation" / "corpus_constants.py"
-        )
+        constants_src = _read(REPO_ROOT / "src" / "aip" / "foundation" / "corpus_constants.py")
         # Extract the MAX_CORPORA value
         match = re.search(r"^MAX_CORPORA:\s*int\s*=\s*(\d+)", constants_src, re.MULTILINE)
         assert match, "MAX_CORPORA constant not found in corpus_constants.py"
@@ -215,13 +210,11 @@ class TestMaxCorporaConsistency:
         # The test asserts MAX_CORPORA == N
         test_match = re.search(r"assert MAX_CORPORA == (\d+)", test_src)
         assert test_match, (
-            "test_corpus_foundation.py must assert MAX_CORPORA == N "
-            "(test_connection_budget_formula_constants)"
+            "test_corpus_foundation.py must assert MAX_CORPORA == N (test_connection_budget_formula_constants)"
         )
         test_value = int(test_match.group(1))
         assert constant_value == test_value, (
-            f"MAX_CORPORA constant={constant_value} but test asserts =={test_value}. "
-            "They must agree."
+            f"MAX_CORPORA constant={constant_value} but test asserts =={test_value}. They must agree."
         )
 
 

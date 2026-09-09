@@ -394,8 +394,13 @@ class ModelSlotResolver(ModelProvider):
         # rate-limit/timeout — treat that as retryable).
         start = time.perf_counter()
         primary_result = await self._dispatch(
-            slot_name, provider, model, base_url, resolved.get("api_key"),
-            messages, **kwargs,
+            slot_name,
+            provider,
+            model,
+            base_url,
+            resolved.get("api_key"),
+            messages,
+            **kwargs,
         )
         primary_failed = (
             primary_result.get("error")
@@ -417,9 +422,13 @@ class ModelSlotResolver(ModelProvider):
                 primary_error=primary_result.get("error_message", "empty content"),
             )
             fallback_result = await self._dispatch(
-                slot_name, fallback_provider, fallback_model,
-                fallback_base_url, fallback_api_key,
-                messages, **kwargs,
+                slot_name,
+                fallback_provider,
+                fallback_model,
+                fallback_base_url,
+                fallback_api_key,
+                messages,
+                **kwargs,
             )
             # If fallback succeeded, use it. If fallback also failed,
             # return the fallback's error (more recent signal).
@@ -478,7 +487,11 @@ class ModelSlotResolver(ModelProvider):
                 return await self._call_ollama(base_url, model, messages, **kwargs)
             elif provider == PROVIDER_OPENAI_COMPATIBLE:
                 return await self._call_openai_compatible(
-                    base_url, model, api_key, messages, **kwargs,
+                    base_url,
+                    model,
+                    api_key,
+                    messages,
+                    **kwargs,
                 )
             else:
                 raise ValueError(
@@ -502,8 +515,7 @@ class ModelSlotResolver(ModelProvider):
                 "cost_usd": 0.0,
                 "error": True,
                 "error_message": (
-                    f"Model call failed for slot '{slot_name}' "
-                    f"(provider={provider}, model={model}): {exc}"
+                    f"Model call failed for slot '{slot_name}' (provider={provider}, model={model}): {exc}"
                 ),
             }
 

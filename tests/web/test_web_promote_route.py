@@ -76,20 +76,39 @@ def _make_and_store_record(source_store, *, source_id="src_test", url="https://e
     """Create a web source record and store it."""
     retrieved_at = datetime(2026, 7, 28, 12, 0, 0, tzinfo=timezone.utc)
     sr = SearchResult(
-        provider="tavily", query="q", rank=1, url=url, title="Title", snippet="s",
+        provider="tavily",
+        query="q",
+        rank=1,
+        url=url,
+        title="Title",
+        snippet="s",
     )
     fr = FetchedResource(
-        requested_url=url, final_url=url, status_code=200, content_type="text/html",
-        content_bytes_ref=f"fake:{url}", retrieved_at=retrieved_at, content_hash=sha256_hex(text),
+        requested_url=url,
+        final_url=url,
+        status_code=200,
+        content_type="text/html",
+        content_bytes_ref=f"fake:{url}",
+        retrieved_at=retrieved_at,
+        content_hash=sha256_hex(text),
     )
     ed = ExtractedDocument(
-        source_url=url, canonical_url=url, title="Title", text=text,
-        retrieved_at=retrieved_at, content_hash=sha256_hex(text),
+        source_url=url,
+        canonical_url=url,
+        title="Title",
+        text=text,
+        retrieved_at=retrieved_at,
+        content_hash=sha256_hex(text),
         extraction_method="html_readability",
     )
     record = WebSourceRecord(
-        source_id=source_id, search_result=sr, fetched=fr, extracted=ed,
-        provider="tavily", retrieved_at=retrieved_at, content_hash=sha256_hex(text),
+        source_id=source_id,
+        search_result=sr,
+        fetched=fr,
+        extracted=ed,
+        provider="tavily",
+        retrieved_at=retrieved_at,
+        content_hash=sha256_hex(text),
     )
     asyncio.run(source_store.put(record))
     return record
@@ -108,10 +127,13 @@ def test_promote_happy_path():
 
     app = _make_app(source_store=source_store, corpus_turn_store=corpus_store)
     with _client(app) as client:
-        resp = client.post("/api/v1/web/promote", json={
-            "source_id": record.source_id,
-            "approval": "definer-approved",
-        })
+        resp = client.post(
+            "/api/v1/web/promote",
+            json={
+                "source_id": record.source_id,
+                "approval": "definer-approved",
+            },
+        )
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
@@ -135,12 +157,20 @@ def test_promote_dedup():
 
     app = _make_app(source_store=source_store, corpus_turn_store=corpus_store)
     with _client(app) as client:
-        resp1 = client.post("/api/v1/web/promote", json={
-            "source_id": record.source_id, "approval": "yes",
-        })
-        resp2 = client.post("/api/v1/web/promote", json={
-            "source_id": record.source_id, "approval": "yes",
-        })
+        resp1 = client.post(
+            "/api/v1/web/promote",
+            json={
+                "source_id": record.source_id,
+                "approval": "yes",
+            },
+        )
+        resp2 = client.post(
+            "/api/v1/web/promote",
+            json={
+                "source_id": record.source_id,
+                "approval": "yes",
+            },
+        )
     assert resp1.json()["deduplicated"] is False
     assert resp2.json()["deduplicated"] is True
     assert resp1.json()["corpus_turn_id"] == resp2.json()["corpus_turn_id"]
@@ -157,9 +187,13 @@ def test_promote_source_not_found_returns_404():
     corpus_store = StubCorpusTurnStore()
     app = _make_app(source_store=source_store, corpus_turn_store=corpus_store)
     with _client(app) as client:
-        resp = client.post("/api/v1/web/promote", json={
-            "source_id": "src_nonexistent", "approval": "yes",
-        })
+        resp = client.post(
+            "/api/v1/web/promote",
+            json={
+                "source_id": "src_nonexistent",
+                "approval": "yes",
+            },
+        )
     assert resp.status_code == 404
     assert resp.json()["detail"]["error"] == "source_not_found"
 
@@ -168,10 +202,13 @@ def test_promote_missing_approval_returns_422():
     """Missing approval field fails pydantic validation (422)."""
     app = _make_app()
     with _client(app) as client:
-        resp = client.post("/api/v1/web/promote", json={
-            "source_id": "src_test",
-            # approval missing
-        })
+        resp = client.post(
+            "/api/v1/web/promote",
+            json={
+                "source_id": "src_test",
+                # approval missing
+            },
+        )
     assert resp.status_code == 422  # pydantic validation
 
 
@@ -179,9 +216,13 @@ def test_promote_empty_approval_returns_422():
     """Empty approval string fails pydantic min_length=1 validation."""
     app = _make_app()
     with _client(app) as client:
-        resp = client.post("/api/v1/web/promote", json={
-            "source_id": "src_test", "approval": "",
-        })
+        resp = client.post(
+            "/api/v1/web/promote",
+            json={
+                "source_id": "src_test",
+                "approval": "",
+            },
+        )
     assert resp.status_code == 422
 
 
@@ -191,9 +232,13 @@ def test_promote_source_store_not_wired_returns_503():
     # Explicitly unwire
     app.state.container.web_source_store = None
     with _client(app) as client:
-        resp = client.post("/api/v1/web/promote", json={
-            "source_id": "src_test", "approval": "yes",
-        })
+        resp = client.post(
+            "/api/v1/web/promote",
+            json={
+                "source_id": "src_test",
+                "approval": "yes",
+            },
+        )
     assert resp.status_code == 503
     assert resp.json()["detail"]["error"] == "not_configured"
 
@@ -205,9 +250,13 @@ def test_promote_corpus_store_not_wired_returns_503():
     app = _make_app(source_store=source_store)
     app.state.container.corpus_turn_store = None  # unwire
     with _client(app) as client:
-        resp = client.post("/api/v1/web/promote", json={
-            "source_id": "src_test", "approval": "yes",
-        })
+        resp = client.post(
+            "/api/v1/web/promote",
+            json={
+                "source_id": "src_test",
+                "approval": "yes",
+            },
+        )
     assert resp.status_code == 503
     assert resp.json()["detail"]["error"] == "not_configured"
 
@@ -225,9 +274,13 @@ def test_promoted_turn_carries_web_provenance():
 
     app = _make_app(source_store=source_store, corpus_turn_store=corpus_store)
     with _client(app) as client:
-        resp = client.post("/api/v1/web/promote", json={
-            "source_id": record.source_id, "approval": "yes",
-        })
+        resp = client.post(
+            "/api/v1/web/promote",
+            json={
+                "source_id": record.source_id,
+                "approval": "yes",
+            },
+        )
     assert resp.status_code == 200
 
     turn = corpus_store.all_turns()[0]
@@ -253,10 +306,13 @@ def test_promote_with_custom_target_corpus():
 
     app = _make_app(source_store=source_store, corpus_turn_store=corpus_store)
     with _client(app) as client:
-        resp = client.post("/api/v1/web/promote", json={
-            "source_id": record.source_id,
-            "approval": "yes",
-            "target_corpus_id": "research",
-        })
+        resp = client.post(
+            "/api/v1/web/promote",
+            json={
+                "source_id": record.source_id,
+                "approval": "yes",
+                "target_corpus_id": "research",
+            },
+        )
     assert resp.status_code == 200
     assert resp.json()["target_corpus_id"] == "research"

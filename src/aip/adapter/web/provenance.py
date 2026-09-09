@@ -44,20 +44,22 @@ logger = logging.getLogger(__name__)
 #: Keys in ``provider_metadata`` that are redacted from the stored record.
 #: Matched case-insensitively against the EXACT key name (not substrings)
 #: so that legitimate keys like "safe_key" or "nested_key" are preserved.
-_REDACTED_METADATA_KEYS = frozenset({
-    "api_key",
-    "key",
-    "token",
-    "secret",
-    "authorization",
-    "password",
-    "credential",
-    "access_token",
-    "refresh_token",
-    "client_secret",
-    "private_key",
-    "api_key_id",
-})
+_REDACTED_METADATA_KEYS = frozenset(
+    {
+        "api_key",
+        "key",
+        "token",
+        "secret",
+        "authorization",
+        "password",
+        "credential",
+        "access_token",
+        "refresh_token",
+        "client_secret",
+        "private_key",
+        "api_key_id",
+    }
+)
 
 #: Value used in place of redacted fields.
 _REDACTED_PLACEHOLDER = "[redacted]"

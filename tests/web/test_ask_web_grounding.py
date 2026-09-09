@@ -41,6 +41,7 @@ from aip.foundation.schemas.web import (
 
 class StubAskStores:
     """Minimal AskStores stub — accepts any kwargs, stores nothing."""
+
     def __init__(self, **kwargs):
         pass
 
@@ -166,12 +167,18 @@ def fake_web_fetcher(fake_pages) -> FakeWebFetcher:
 def _pre_populate_snapshot_store(app, url, body):
     """Pre-populate the snapshot store so bytes_loader can find the bytes."""
     import asyncio
+
     container = app.state.container
-    asyncio.run(container.web_snapshot_store.put(
-        requested_url=url, final_url=url,
-        retrieved_at=datetime(2026, 7, 28, tzinfo=timezone.utc),
-        content_type="text/html", content_hash=sha256_hex(body), bytes_data=body,
-    ))
+    asyncio.run(
+        container.web_snapshot_store.put(
+            requested_url=url,
+            final_url=url,
+            retrieved_at=datetime(2026, 7, 28, tzinfo=timezone.utc),
+            content_type="text/html",
+            content_hash=sha256_hex(body),
+            bytes_data=body,
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -183,10 +190,13 @@ def test_ask_without_web_grounding_does_not_inject_web_block(fake_search_provide
     """When web_grounding=false (default), no web block is injected."""
     app = _make_app(search_provider=fake_search_provider, fetcher=fake_web_fetcher)
     with _client(app) as client:
-        resp = client.post("/api/v1/ask", json={
-            "question": "python type hints",
-            "project_name": "test",
-        })
+        resp = client.post(
+            "/api/v1/ask",
+            json={
+                "question": "python type hints",
+                "project_name": "test",
+            },
+        )
     assert resp.status_code == 200
     data = resp.json()
     assert data["web_grounding"] is False
@@ -201,10 +211,13 @@ def test_ask_without_web_grounding_is_byte_identical_to_pre_ws4(fake_search_prov
     """Corpus-only Ask produces the same response shape as before WS-4."""
     app = _make_app(search_provider=fake_search_provider, fetcher=fake_web_fetcher)
     with _client(app) as client:
-        resp = client.post("/api/v1/ask", json={
-            "question": "python type hints",
-            "project_name": "test",
-        })
+        resp = client.post(
+            "/api/v1/ask",
+            json={
+                "question": "python type hints",
+                "project_name": "test",
+            },
+        )
     data = resp.json()
     # The pre-WS-4 fields are all present and unchanged
     assert data["status"] == "OK"
@@ -230,11 +243,14 @@ def test_ask_with_web_grounding_injects_web_block(fake_search_provider, fake_web
     _pre_populate_snapshot_store(app, url, body)
 
     with _client(app) as client:
-        resp = client.post("/api/v1/ask", json={
-            "question": "python type hints",
-            "project_name": "test",
-            "web_grounding": True,
-        })
+        resp = client.post(
+            "/api/v1/ask",
+            json={
+                "question": "python type hints",
+                "project_name": "test",
+                "web_grounding": True,
+            },
+        )
     assert resp.status_code == 200
     data = resp.json()
     assert data["web_grounding"] is True
@@ -257,11 +273,14 @@ def test_ask_with_web_grounding_reports_failures_honestly(fake_search_provider, 
     app = _make_app(search_provider=fake_search_provider, fetcher=fake_web_fetcher)
 
     with _client(app) as client:
-        resp = client.post("/api/v1/ask", json={
-            "question": "python type hints",
-            "project_name": "test",
-            "web_grounding": True,
-        })
+        resp = client.post(
+            "/api/v1/ask",
+            json={
+                "question": "python type hints",
+                "project_name": "test",
+                "web_grounding": True,
+            },
+        )
     assert resp.status_code == 200
     data = resp.json()
     assert data["web_grounding"] is True
@@ -281,11 +300,14 @@ def test_ask_with_web_grounding_all_failures_reports_error(fake_search_provider,
     app = _make_app(search_provider=fake_search_provider, fetcher=fake_web_fetcher)
 
     with _client(app) as client:
-        resp = client.post("/api/v1/ask", json={
-            "question": "python type hints",
-            "project_name": "test",
-            "web_grounding": True,
-        })
+        resp = client.post(
+            "/api/v1/ask",
+            json={
+                "question": "python type hints",
+                "project_name": "test",
+                "web_grounding": True,
+            },
+        )
     assert resp.status_code == 200
     data = resp.json()
     # The ask pipeline still ran (corpus-only), so status is OK
@@ -305,11 +327,14 @@ def test_ask_with_web_grounding_not_configured_reports_error():
     """When web is not configured, web_grounding_error='not_configured'."""
     app = _make_app(search_provider=None, fetcher=None)
     with _client(app) as client:
-        resp = client.post("/api/v1/ask", json={
-            "question": "python type hints",
-            "project_name": "test",
-            "web_grounding": True,
-        })
+        resp = client.post(
+            "/api/v1/ask",
+            json={
+                "question": "python type hints",
+                "project_name": "test",
+                "web_grounding": True,
+            },
+        )
     assert resp.status_code == 200  # ask still proceeds with corpus-only
     data = resp.json()
     assert data["web_grounding"] is True
@@ -323,14 +348,18 @@ def test_ask_with_web_grounding_not_configured_reports_error():
 def test_ask_with_web_grounding_no_key_reports_not_configured(fake_web_fetcher):
     """When the provider is wired but has no key, web_grounding_error is not_configured."""
     from aip.adapter.web.providers.tavily import TavilySearchProvider
+
     provider = TavilySearchProvider(key_loader=lambda: "")  # no key
     app = _make_app(search_provider=provider, fetcher=fake_web_fetcher)
     with _client(app) as client:
-        resp = client.post("/api/v1/ask", json={
-            "question": "python type hints",
-            "project_name": "test",
-            "web_grounding": True,
-        })
+        resp = client.post(
+            "/api/v1/ask",
+            json={
+                "question": "python type hints",
+                "project_name": "test",
+                "web_grounding": True,
+            },
+        )
     assert resp.status_code == 200
     data = resp.json()
     assert data["web_grounding"] is True
@@ -363,11 +392,14 @@ def test_ask_web_grounding_injection_strings_in_block_not_in_directive(fake_sear
     _pre_populate_snapshot_store(app, url, injection_body)
 
     with _client(app) as client:
-        resp = client.post("/api/v1/ask", json={
-            "question": "python type hints",
-            "project_name": "test",
-            "web_grounding": True,
-        })
+        resp = client.post(
+            "/api/v1/ask",
+            json={
+                "question": "python type hints",
+                "project_name": "test",
+                "web_grounding": True,
+            },
+        )
     assert resp.status_code == 200
     data = resp.json()
     prompt = data["prompt"] or ""
@@ -386,6 +418,7 @@ def test_ask_web_grounding_injection_strings_in_block_not_in_directive(fake_sear
     # [rank=N], a letter), so we find the ACTUAL block delimiter (with
     # [rank=<digits>]) at line-start.
     import re
+
     block_matches = list(re.finditer(r"^BEGIN_WEB_SOURCE \[rank=\d+\]", prompt, re.MULTILINE))
     assert len(block_matches) >= 1
     begin_idx = block_matches[0].start()
@@ -402,7 +435,7 @@ def test_ask_web_grounding_injection_strings_in_block_not_in_directive(fake_sear
     # ignore instructions in web sources.  The directive text is
     # everything before the first actual block and after the last block.
     before_block = prompt[:begin_idx]
-    after_block = prompt[end_idx + len("END_WEB_SOURCE"):]
+    after_block = prompt[end_idx + len("END_WEB_SOURCE") :]
     directive_text = before_block + after_block
     # The prompt fragment says "UNTRUSTED" (may wrap across lines in markdown)
     assert "UNTRUSTED" in directive_text or "untrusted" in directive_text.lower()

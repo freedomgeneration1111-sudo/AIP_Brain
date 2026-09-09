@@ -278,11 +278,7 @@ def export_manual(domain: str, out: str, include_unreviewed: bool, db_path: str 
         async def _run_manual_export() -> dict:
             import aiosqlite
 
-            states_filter = (
-                "AND e.current_state = 'APPROVED'"
-                if not include_unreviewed
-                else ""
-            )
+            states_filter = "AND e.current_state = 'APPROVED'" if not include_unreviewed else ""
 
             async with aiosqlite.connect(resolved_db_path) as conn:
                 conn.row_factory = __import__("sqlite3").Row
@@ -301,9 +297,10 @@ def export_manual(domain: str, out: str, include_unreviewed: bool, db_path: str 
                 rows = await cursor.fetchall()
 
             if not rows:
-                return {"error": f"No wiki articles found for domain '{domain}'" + (
-                    " (try --include-unreviewed)" if not include_unreviewed else ""
-                )}
+                return {
+                    "error": f"No wiki articles found for domain '{domain}'"
+                    + (" (try --include-unreviewed)" if not include_unreviewed else "")
+                }
 
             # Filter by domain in metadata
             import json
@@ -313,15 +310,17 @@ def export_manual(domain: str, out: str, include_unreviewed: bool, db_path: str 
                 meta = json.loads(row["metadata_json"] or "{}")
                 article_domain = meta.get("domain", "")
                 if article_domain == domain:
-                    articles.append({
-                        "id": row["id"],
-                        "title": meta.get("title", row["id"]),
-                        "summary": meta.get("summary", ""),
-                        "content": row["content"] or "",
-                        "state": row["current_state"] or "UNKNOWN",
-                        "created_at": row["created_at"],
-                        "tags": meta.get("tags", []),
-                    })
+                    articles.append(
+                        {
+                            "id": row["id"],
+                            "title": meta.get("title", row["id"]),
+                            "summary": meta.get("summary", ""),
+                            "content": row["content"] or "",
+                            "state": row["current_state"] or "UNKNOWN",
+                            "created_at": row["created_at"],
+                            "tags": meta.get("tags", []),
+                        }
+                    )
 
             if not articles:
                 return {"error": f"No wiki articles with domain='{domain}' found"}

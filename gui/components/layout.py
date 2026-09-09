@@ -256,9 +256,7 @@ def _right_extension_panel() -> None:
                 f"text-decoration:none; padding:4px 0; display:block;"
             ).on("click", lambda p=link_path: ui.navigate.to(p, new_tab=True))
     else:
-        ui.label("Session active").style(
-            f"font-size:11px; color:{C_MUTED}; font-family:{F_MONO};"
-        )
+        ui.label("Session active").style(f"font-size:11px; color:{C_MUTED}; font-family:{F_MONO};")
 
 
 @ui.refreshable

@@ -205,42 +205,30 @@ class TavilySearchProvider:
                     headers={"Content-Type": "application/json"},
                 )
             except httpx.TimeoutException as exc:
-                raise WebProviderError(
-                    f"Tavily request timed out after {self._timeout_seconds}s: {exc}"
-                ) from exc
+                raise WebProviderError(f"Tavily request timed out after {self._timeout_seconds}s: {exc}") from exc
             except httpx.HTTPError as exc:
-                raise WebProviderError(
-                    f"Tavily HTTP error: {exc}"
-                ) from exc
+                raise WebProviderError(f"Tavily HTTP error: {exc}") from exc
 
             # Handle HTTP error status codes.
             if response.status_code == 429:
                 raise WebProviderError("Tavily rate limit exceeded (HTTP 429)")
             if response.status_code == 401:
-                raise WebProviderNotConfigured(
-                    "Tavily API key rejected (HTTP 401) — check AIP_WEB_SEARCH_API_KEY"
-                )
+                raise WebProviderNotConfigured("Tavily API key rejected (HTTP 401) — check AIP_WEB_SEARCH_API_KEY")
             if response.status_code >= 400:
                 # Redact the key from any error body before raising.
                 body_preview = _redact_key_from_text(response.text[:500])
-                raise WebProviderError(
-                    f"Tavily returned HTTP {response.status_code}: {body_preview}"
-                )
+                raise WebProviderError(f"Tavily returned HTTP {response.status_code}: {body_preview}")
 
             # Parse JSON.
             try:
                 data = response.json()
             except ValueError as exc:
-                raise WebProviderError(
-                    f"Tavily returned non-JSON response: {exc}"
-                ) from exc
+                raise WebProviderError(f"Tavily returned non-JSON response: {exc}") from exc
 
             # Map results.
             raw_results = data.get("results", [])
             if not isinstance(raw_results, list):
-                raise WebProviderError(
-                    f"Tavily 'results' field is not a list: {type(raw_results).__name__}"
-                )
+                raise WebProviderError(f"Tavily 'results' field is not a list: {type(raw_results).__name__}")
 
             search_results: list[SearchResult] = []
             for index, item in enumerate(raw_results, start=1):
@@ -260,8 +248,7 @@ class TavilySearchProvider:
                 # Preserve the raw item under "raw_response" for debugging,
                 # but the API boundary will redact sensitive subkeys.
                 provider_metadata["raw_response"] = {
-                    k: v for k, v in item.items()
-                    if k not in ("url", "title", "content", "published_date", "score")
+                    k: v for k, v in item.items() if k not in ("url", "title", "content", "published_date", "score")
                 }
 
                 search_results.append(
@@ -311,12 +298,13 @@ def _redact_key_from_text(text: str) -> str:
     Also redacts any ``"api_key": "..."`` JSON-style occurrences.
     """
     import re
+
     # Redact tvly-* keys
     redacted = re.sub(r"tvly-[A-Za-z0-9]+", "tvly-[redacted]", text)
     # Redact "api_key":"..." patterns
     redacted = re.sub(
         r'("api_key"\s*:\s*")[^"]+(")',
-        r'\1[redacted]\2',
+        r"\1[redacted]\2",
         redacted,
     )
     return redacted

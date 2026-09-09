@@ -161,9 +161,7 @@ class TestCodeforgeCorpusStartupRegistration:
             "app.py lifespan must register the codeforge corpus (QW1). "
             "Expected ('codeforge', CorpusType.CODE, ...) in corpora_to_register."
         )
-        assert "CorpusType.CODE" in lifespan_src, (
-            "app.py lifespan must use CorpusType.CODE for the codeforge corpus."
-        )
+        assert "CorpusType.CODE" in lifespan_src, "app.py lifespan must use CorpusType.CODE for the codeforge corpus."
 
 
 # ---------------------------------------------------------------------------

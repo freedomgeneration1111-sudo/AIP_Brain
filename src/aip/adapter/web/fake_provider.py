@@ -174,15 +174,11 @@ class FakeWebFetcher:
         retrieved_at: datetime | None = None,
     ) -> None:
         # Normalize page URLs to lower for case-insensitive match.
-        self._pages: dict[str, bytes] = {
-            (k or "").lower(): v for k, v in (pages or {}).items()
-        }
+        self._pages: dict[str, bytes] = {(k or "").lower(): v for k, v in (pages or {}).items()}
         self._statuses: dict[str, tuple[int, str, dict[str, str]]] = {
             (k or "").lower(): v for k, v in (statuses or {}).items()
         }
-        self._redirects: dict[str, str] = {
-            (k or "").lower(): v for k, v in (redirects or {}).items()
-        }
+        self._redirects: dict[str, str] = {(k or "").lower(): v for k, v in (redirects or {}).items()}
         # Post-truncation bytes keyed by content_bytes_ref. Populated by fetch().
         # The bytes_loader reads from here first, then falls back to _pages
         # so tests can also call the loader directly on a registered page.
@@ -256,9 +252,7 @@ class FakeWebFetcher:
             truncated = True
 
         # Default status/content-type if not registered
-        status_code, content_type, extra_headers = self._statuses.get(
-            page_key, (200, "text/html; charset=utf-8", {})
-        )
+        status_code, content_type, extra_headers = self._statuses.get(page_key, (200, "text/html; charset=utf-8", {}))
 
         # Strip sensitive headers (mirrors the real fetcher contract)
         safe_headers: dict[str, str] = {}

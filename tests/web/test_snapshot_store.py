@@ -237,9 +237,15 @@ async def test_source_get_by_hash_unknown(source_store):
 
 async def test_source_list_by_query_most_recent_first(source_store):
     """list_by_query returns records most-recent-first (reverse insertion order)."""
-    rec1 = _make_source_record("src_1", "q", "h1", datetime(2026, 7, 1, tzinfo=timezone.utc), url="https://a.example.com")
-    rec2 = _make_source_record("src_2", "q", "h2", datetime(2026, 7, 2, tzinfo=timezone.utc), url="https://b.example.com")
-    rec3 = _make_source_record("src_3", "q", "h3", datetime(2026, 7, 3, tzinfo=timezone.utc), url="https://c.example.com")
+    rec1 = _make_source_record(
+        "src_1", "q", "h1", datetime(2026, 7, 1, tzinfo=timezone.utc), url="https://a.example.com"
+    )
+    rec2 = _make_source_record(
+        "src_2", "q", "h2", datetime(2026, 7, 2, tzinfo=timezone.utc), url="https://b.example.com"
+    )
+    rec3 = _make_source_record(
+        "src_3", "q", "h3", datetime(2026, 7, 3, tzinfo=timezone.utc), url="https://c.example.com"
+    )
     await source_store.put(rec1)
     await source_store.put(rec2)
     await source_store.put(rec3)
@@ -254,7 +260,9 @@ async def test_source_list_by_query_most_recent_first(source_store):
 async def test_source_list_by_query_respects_limit(source_store):
     for i in range(5):
         rec = _make_source_record(
-            f"src_{i}", "q", f"h{i}",
+            f"src_{i}",
+            "q",
+            f"h{i}",
             datetime(2026, 7, i + 1, tzinfo=timezone.utc),
             url=f"https://example.com/{i}",
         )

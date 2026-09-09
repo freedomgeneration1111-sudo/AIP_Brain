@@ -21,21 +21,15 @@ class TestWikiGraphNodes:
         from aip.adapter.api.routes import wiki
 
         src = inspect.getsource(wiki.create_wiki_article)
-        assert "WIKI_ARTICLE" in src, (
-            "create_wiki_article must create a WIKI_ARTICLE entity_type graph node"
-        )
-        assert "upsert_node" in src, (
-            "create_wiki_article must call graph_store.upsert_node"
-        )
+        assert "WIKI_ARTICLE" in src, "create_wiki_article must create a WIKI_ARTICLE entity_type graph node"
+        assert "upsert_node" in src, "create_wiki_article must call graph_store.upsert_node"
 
     def test_graph_node_creation_is_best_effort(self):
         """The graph node creation must be wrapped in try/except (best-effort)."""
         from aip.adapter.api.routes import wiki
 
         src = inspect.getsource(wiki.create_wiki_article)
-        assert "wiki_graph_node_failed" in src, (
-            "graph node creation must log a debug message on failure (best-effort)"
-        )
+        assert "wiki_graph_node_failed" in src, "graph node creation must log a debug message on failure (best-effort)"
 
     def test_graph_node_uses_wiki_article_id(self):
         """The graph node ID must be derived from the wiki article ID."""
@@ -59,6 +53,6 @@ class TestWikiGraphNodes:
         from aip.adapter.api.routes import wiki
 
         src = inspect.getsource(wiki.create_wiki_article)
-        assert 'getattr(container, "graph_store", None)' in src or (
-            "graph_store" in src and "is not None" in src
-        ), "must check graph_store availability before upsert"
+        assert 'getattr(container, "graph_store", None)' in src or ("graph_store" in src and "is not None" in src), (
+            "must check graph_store availability before upsert"
+        )

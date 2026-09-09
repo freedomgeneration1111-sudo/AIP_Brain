@@ -92,7 +92,7 @@ class CodeTurnSpec:
     kind: str  # "function" | "class" | "module_registration"
     metadata: dict[str, Any]
     imports: list[str] = None  # populated by parse_python_file (Phase β-1)
-    calls: list[str] = None    # populated by _make_function_spec / _make_class_spec (Phase β-1)
+    calls: list[str] = None  # populated by _make_function_spec / _make_class_spec (Phase β-1)
 
     def __post_init__(self):
         if self.imports is None:

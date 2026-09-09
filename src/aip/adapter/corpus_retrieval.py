@@ -218,7 +218,8 @@ async def gather_corpus_results(
         except Exception as exc:
             logger.warning(
                 "corpus_search_failed corpus_id=%s error=%s",
-                cid, exc,
+                cid,
+                exc,
             )
             return []
 

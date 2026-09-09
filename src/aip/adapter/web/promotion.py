@@ -291,7 +291,9 @@ class WebSourcePromoter:
             await self._corpus_turn_store.write_turn(turn)
             logger.info(
                 "web_source_promoted: source_id=%s turn_id=%s url=%s",
-                source_id, turn.turn_id, record.fetched.final_url,
+                source_id,
+                turn.turn_id,
+                record.fetched.final_url,
             )
             return PromotionResult(
                 success=True,

@@ -32,6 +32,7 @@ class TestImportExtraction:
     def test_extract_simple_imports(self):
         """import asyncio, import os → ["asyncio", "os"]"""
         import ast
+
         tree = ast.parse("import asyncio\nimport os\n")
         imports = _extract_imports(tree)
         assert "asyncio" in imports
@@ -40,6 +41,7 @@ class TestImportExtraction:
     def test_extract_from_imports(self):
         """from pathlib import Path → ["pathlib.Path"]"""
         import ast
+
         tree = ast.parse("from pathlib import Path\n")
         imports = _extract_imports(tree)
         assert "pathlib.Path" in imports
@@ -47,6 +49,7 @@ class TestImportExtraction:
     def test_extract_dotted_imports(self):
         """from aip.adapter.graph_store import GraphStore → ["aip.adapter.graph_store.GraphStore"]"""
         import ast
+
         tree = ast.parse("from aip.adapter.graph_store import GraphStore\n")
         imports = _extract_imports(tree)
         assert "aip.adapter.graph_store.GraphStore" in imports
@@ -58,6 +61,7 @@ class TestCallExtraction:
     def test_extract_simple_calls(self):
         """def f(): print(x) → calls includes "print" """
         import ast
+
         tree = ast.parse("def f():\n    print(x)\n")
         func_node = tree.body[0]
         calls = _extract_calls(func_node)
@@ -66,6 +70,7 @@ class TestCallExtraction:
     def test_extract_method_calls(self):
         """def f(): registry.register(x) → calls includes "registry.register" """
         import ast
+
         tree = ast.parse("def f():\n    registry.register(x)\n")
         func_node = tree.body[0]
         calls = _extract_calls(func_node)
@@ -74,6 +79,7 @@ class TestCallExtraction:
     def test_extract_multiple_calls(self):
         """Multiple calls are all extracted, deduplicated."""
         import ast
+
         tree = ast.parse("def f():\n    logger.info(x)\n    logger.info(y)\n    print(z)\n")
         func_node = tree.body[0]
         calls = _extract_calls(func_node)
@@ -117,12 +123,7 @@ class TestCodeTurnSpecFields:
 
     def test_parse_file_populates_calls(self):
         """parse_python_file populates the calls field on function specs."""
-        source = (
-            "def greet(name):\n"
-            '    """Greet."""\n'
-            '    print(f"Hello, {name}")\n'
-            "    logger.info('greeted')\n"
-        )
+        source = 'def greet(name):\n    """Greet."""\n    print(f"Hello, {name}")\n    logger.info(\'greeted\')\n'
         specs = parse_python_file(source, "test.py")
         func_specs = [s for s in specs if s.kind == "function"]
         assert len(func_specs) > 0
@@ -144,6 +145,7 @@ class TestCodeTurnSpecFields:
         )
         turn = make_code_corpus_turn(spec, turn_index=0)
         import json
+
         meta = json.loads(turn.metadata_json)
         assert meta["imports"] == ["asyncio", "os"]
         assert meta["calls"] == ["print", "logger.info"]
@@ -155,9 +157,7 @@ class TestBuildCodeGraph:
     async def test_graph_nodes_created(self, tmp_path: Path):
         """build_code_graph creates FUNCTION/CLASS nodes in the graph store."""
         registry = CorpusRegistry(max_corpora=8)
-        await registry.startup(
-            corpora_to_register=[("codeforge", CorpusType.CODE, tmp_path / "codeforge.db")]
-        )
+        await registry.startup(corpora_to_register=[("codeforge", CorpusType.CODE, tmp_path / "codeforge.db")])
         stores = await registry.get_stores("codeforge")
         assert stores.graph_store is not None
 
@@ -202,9 +202,7 @@ class TestBuildCodeGraph:
     async def test_graph_edges_created(self, tmp_path: Path):
         """build_code_graph creates imports + calls edges."""
         registry = CorpusRegistry(max_corpora=8)
-        await registry.startup(
-            corpora_to_register=[("codeforge", CorpusType.CODE, tmp_path / "codeforge.db")]
-        )
+        await registry.startup(corpora_to_register=[("codeforge", CorpusType.CODE, tmp_path / "codeforge.db")])
         stores = await registry.get_stores("codeforge")
 
         specs = [
@@ -238,21 +236,19 @@ class TestBuildCodeGraph:
     async def test_ingest_with_graph_store(self, tmp_path: Path):
         """ingest_python_directory builds graph when graph_store is provided."""
         registry = CorpusRegistry(max_corpora=8)
-        await registry.startup(
-            corpora_to_register=[("codeforge", CorpusType.CODE, tmp_path / "codeforge.db")]
-        )
+        await registry.startup(corpora_to_register=[("codeforge", CorpusType.CODE, tmp_path / "codeforge.db")])
         stores = await registry.get_stores("codeforge")
 
         src_dir = tmp_path / "src"
         src_dir.mkdir()
         (src_dir / "sample.py").write_text(
-            'import asyncio\n'
-            'from pathlib import Path\n'
-            '\n'
-            'def greet(name):\n'
+            "import asyncio\n"
+            "from pathlib import Path\n"
+            "\n"
+            "def greet(name):\n"
             '    """Greet."""\n'
             '    print(f"Hello, {name}")\n'
-            '    return name\n'
+            "    return name\n"
         )
 
         counts = await ingest_python_directory(

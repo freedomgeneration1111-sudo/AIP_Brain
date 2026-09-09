@@ -114,9 +114,9 @@ class TestMultiCorpusChatE2E:
         src_dir = tmp_path / "src"
         src_dir.mkdir()
         (src_dir / "budget.py").write_text(
-            'def _validate_connection_budget():\n'
+            "def _validate_connection_budget():\n"
             '    """Enforce MAX_CORPORA and MAX_CONNECTIONS budget."""\n'
-            '    raise ConnectionBudgetExceeded()\n',
+            "    raise ConnectionBudgetExceeded()\n",
             encoding="utf-8",
         )
         codeforge_stores = await registry.get_stores("codeforge")
@@ -153,19 +153,11 @@ class TestMultiCorpusChatE2E:
         # Must have sources from BOTH corpora (source_id is namespaced)
         has_definer_hit = any(sid.startswith("definer:") for sid in source_ids)
         has_codeforge_hit = any(sid.startswith("codeforge:") for sid in source_ids)
-        assert has_definer_hit, (
-            f"Must have at least one source from definer corpus. "
-            f"source_ids: {source_ids}"
-        )
-        assert has_codeforge_hit, (
-            f"Must have at least one source from codeforge corpus. "
-            f"source_ids: {source_ids}"
-        )
+        assert has_definer_hit, f"Must have at least one source from definer corpus. source_ids: {source_ids}"
+        assert has_codeforge_hit, f"Must have at least one source from codeforge corpus. source_ids: {source_ids}"
 
         # Verify the content is budget-related
-        assert "budget" in all_source_text, (
-            f"Sources must include budget-related content. Got: {source_texts}"
-        )
+        assert "budget" in all_source_text, f"Sources must include budget-related content. Got: {source_texts}"
 
         # Cleanup
         for cid in await registry.list_corpora():
@@ -192,7 +184,7 @@ class TestMultiCorpusChatE2E:
         src_dir = tmp_path / "src"
         src_dir.mkdir()
         (src_dir / "unique.py").write_text(
-            'def unique_function_name_xyz():\n'
+            "def unique_function_name_xyz():\n"
             '    """This function only exists in codeforge."""\n'
             '    return "codeforge_only"\n',
             encoding="utf-8",
@@ -251,9 +243,7 @@ class TestMultiCorpusChatE2E:
         src_dir = tmp_path / "src"
         src_dir.mkdir()
         (src_dir / "importance_check.py").write_text(
-            'def xyzzy_plugh_function():\n'
-            '    """Verify code turns pass the importance filter."""\n'
-            '    return True\n',
+            'def xyzzy_plugh_function():\n    """Verify code turns pass the importance filter."""\n    return True\n',
             encoding="utf-8",
         )
         stores = await registry.get_stores("codeforge")
@@ -284,9 +274,7 @@ class TestMultiCorpusChatE2E:
 
         source_texts = [s.get("content_snippet", "") + s.get("title", "") for s in result.sources]
         all_source_text = " ".join(source_texts).lower()
-        assert "xyzzy" in all_source_text, (
-            f"Must find the ingested function. Sources: {source_texts}"
-        )
+        assert "xyzzy" in all_source_text, f"Must find the ingested function. Sources: {source_texts}"
 
         # Cleanup
         for cid in await registry.list_corpora():

@@ -62,10 +62,21 @@ _LOGIN_WALL_SIGNALS = [
 ]
 
 # Boilerplate tags to remove before text extraction
-_BOILERPLATE_TAGS = frozenset({
-    "script", "style", "noscript", "nav", "footer", "header",
-    "aside", "form", "iframe", "svg", "button",
-})
+_BOILERPLATE_TAGS = frozenset(
+    {
+        "script",
+        "style",
+        "noscript",
+        "nav",
+        "footer",
+        "header",
+        "aside",
+        "form",
+        "iframe",
+        "svg",
+        "button",
+    }
+)
 
 
 class HtmlContentExtractor:
@@ -179,7 +190,7 @@ def _extract_charset(content_type: str) -> str | None:
     for part in content_type.split(";"):
         part = part.strip()
         if part.lower().startswith("charset="):
-            return part[len("charset="):].strip().strip('"').strip("'")
+            return part[len("charset=") :].strip().strip('"').strip("'")
     return None
 
 

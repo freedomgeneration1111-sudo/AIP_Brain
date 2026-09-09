@@ -751,9 +751,7 @@ async def compare_models(
                 if not session_meta:
                     # Fall back to sync version (in-memory only)
                     session_meta = get_session_meta(request.session_id) or {}
-                retrieval_active_corpus_ids = list(
-                    session_meta.get("active_corpus_ids") or []
-                )
+                retrieval_active_corpus_ids = list(session_meta.get("active_corpus_ids") or [])
             except Exception:
                 session_meta = {}
                 retrieval_active_corpus_ids = []
@@ -765,7 +763,10 @@ async def compare_models(
             _has_lex = getattr(container, "lexical_store", None) is not None
             logger.info(
                 "council_retrieval_stores registry=%s corpus_turn_store=%s lexical_store=%s active_corpus_ids=%s",
-                _has_registry, _has_cts, _has_lex, retrieval_active_corpus_ids,
+                _has_registry,
+                _has_cts,
+                _has_lex,
+                retrieval_active_corpus_ids,
             )
 
             aug = await assemble_augmented_context(
@@ -786,8 +787,7 @@ async def compare_models(
                 )
             if not augmented_sources and aug.assembled:
                 retrieval_warnings.append(
-                    "Retrieval ran but returned zero sources — check corpus "
-                    "selection and min_importance threshold."
+                    "Retrieval ran but returned zero sources — check corpus selection and min_importance threshold."
                 )
             if not retrieval_active_corpus_ids:
                 retrieval_warnings.append(

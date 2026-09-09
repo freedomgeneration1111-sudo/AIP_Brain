@@ -84,9 +84,7 @@ def test_build_record_happy_path():
     sr = _make_search_result()
     fr = _make_fetched()
     ed = _make_extracted()
-    record = build_web_source_record(
-        search_result=sr, fetched=fr, extracted=ed, fetch_warnings=()
-    )
+    record = build_web_source_record(search_result=sr, fetched=fr, extracted=ed, fetch_warnings=())
     assert record.source_id.startswith("src_")
     assert record.provider == "tavily"
     assert record.content_hash == "extracted_hash_def"
@@ -99,9 +97,7 @@ def test_build_record_direct_fetch_no_search_result():
     """Direct URL fetches carry search_result=None and provider='direct'."""
     fr = _make_fetched()
     ed = _make_extracted()
-    record = build_web_source_record(
-        search_result=None, fetched=fr, extracted=ed, fetch_warnings=()
-    )
+    record = build_web_source_record(search_result=None, fetched=fr, extracted=ed, fetch_warnings=())
     assert record.search_result is None
     assert record.provider == "direct"
     assert record.content_hash == "extracted_hash_def"
@@ -124,7 +120,9 @@ def test_build_record_carries_fetch_warnings():
     fr = _make_fetched()
     ed = _make_extracted()
     record = build_web_source_record(
-        search_result=sr, fetched=fr, extracted=ed,
+        search_result=sr,
+        fetched=fr,
+        extracted=ed,
         fetch_warnings=("SSL verification skipped", "redirect loop recovered"),
     )
     assert record.fetch_warnings == ("SSL verification skipped", "redirect loop recovered")
@@ -142,9 +140,7 @@ def test_build_record_redacts_provider_metadata():
     )
     fr = _make_fetched()
     ed = _make_extracted()
-    record = build_web_source_record(
-        search_result=sr, fetched=fr, extracted=ed, fetch_warnings=()
-    )
+    record = build_web_source_record(search_result=sr, fetched=fr, extracted=ed, fetch_warnings=())
     assert record.search_result is not None
     meta = record.search_result.provider_metadata
     assert meta["score"] == 0.95  # not redacted
@@ -159,9 +155,7 @@ def test_build_record_retrieved_at_from_fetched():
     ts = datetime(2026, 7, 29, 8, 30, 0, tzinfo=timezone.utc)
     fr = _make_fetched(retrieved_at=ts)
     ed = _make_extracted()
-    record = build_web_source_record(
-        search_result=sr, fetched=fr, extracted=ed, fetch_warnings=()
-    )
+    record = build_web_source_record(search_result=sr, fetched=fr, extracted=ed, fetch_warnings=())
     assert record.retrieved_at == ts
 
 

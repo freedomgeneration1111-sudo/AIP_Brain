@@ -207,7 +207,7 @@ async def build_code_graph(
             logger.warning("code_graph_node_failed name=%s error=%s", spec.qualified_name, exc)
 
         # Create `imports` edges
-        for imp in (spec.imports or []):
+        for imp in spec.imports or []:
             target_id = imp.replace(".", "_").lower()
             edge = GraphEdge(
                 id=f"{node_id}__imports__{target_id}",
@@ -224,7 +224,7 @@ async def build_code_graph(
                 pass  # best-effort; edge to non-existent node is OK
 
         # Create `calls` edges
-        for call in (spec.calls or []):
+        for call in spec.calls or []:
             target_id = call.replace(".", "_").lower()
             edge = GraphEdge(
                 id=f"{node_id}__calls__{target_id}",

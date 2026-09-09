@@ -1889,9 +1889,7 @@ async def lifespan(app: FastAPI):
                     )
                 await asyncio.sleep(interval)
 
-        codeforge_ingest_task = asyncio.create_task(
-            _codeforge_ingest_scheduler(), name="codeforge-ingest-scheduler"
-        )
+        codeforge_ingest_task = asyncio.create_task(_codeforge_ingest_scheduler(), name="codeforge-ingest-scheduler")
         log.info(
             "codeforge_ingest_scheduler_created",
             source_dir=_codeforge_source_dir,

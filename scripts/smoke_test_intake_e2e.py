@@ -253,6 +253,7 @@ def main() -> None:
 
     # Quiet down the AIP logger noise.
     import logging
+
     for name in ("aip", "aristotle", "uvicorn", "httpx", "httpcore"):
         logging.getLogger(name).setLevel(logging.ERROR)
     logging.getLogger().setLevel(logging.ERROR)
@@ -428,15 +429,15 @@ def main() -> None:
         )
         if draft_plan:
             _stage(
-            "   draft_plan[0] has required fields",
-            all(k in draft_plan[0] for k in ("topic", "bloom_target", "content_primary")),
-            f"keys={list(draft_plan[0].keys())}",
-        )
+                "   draft_plan[0] has required fields",
+                all(k in draft_plan[0] for k in ("topic", "bloom_target", "content_primary")),
+                f"keys={list(draft_plan[0].keys())}",
+            )
             _stage(
-            "   material_id attached to session",
-            material_id in session.get("material_ids", []),
-            f"material_ids={session.get('material_ids')}",
-        )
+                "   material_id attached to session",
+                material_id in session.get("material_ids", []),
+                f"material_ids={session.get('material_ids')}",
+            )
         _stage(
             "   schedule_minutes extracted = 30",
             session.get("schedule_minutes") == 30,
@@ -488,12 +489,12 @@ def main() -> None:
         if mastery:
             topics = [m.get("topic") for m in mastery]
             _stage(
-            "   concepts include Newton's First/Second/Third Law",
-            any("First" in (t or "") for t in topics)
+                "   concepts include Newton's First/Second/Third Law",
+                any("First" in (t or "") for t in topics)
                 and any("Second" in (t or "") for t in topics)
                 and any("Third" in (t or "") for t in topics),
-            f"topics={topics}",
-        )
+                f"topics={topics}",
+            )
 
         # ------------------------------------------------------------------
         # STAGE 9: GET /aristotle/concepts — concepts persisted to DB

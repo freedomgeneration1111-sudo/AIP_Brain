@@ -44,9 +44,7 @@ class TestCorpusIngestCodeCli:
         # Create a small .py file
         src_dir = tmp_path / "src"
         src_dir.mkdir()
-        (src_dir / "sample.py").write_text(
-            'def hello():\n    """Say hello."""\n    return "world"\n'
-        )
+        (src_dir / "sample.py").write_text('def hello():\n    """Say hello."""\n    return "world"\n')
 
         # Use a db path in tmp_path so we don't pollute the real db/
         db_path = tmp_path / "state.db"
@@ -65,9 +63,7 @@ class TestCorpusIngestCodeCli:
         """Re-ingesting the same file skips it (content_hash matches)."""
         src_dir = tmp_path / "src"
         src_dir.mkdir()
-        (src_dir / "sample.py").write_text(
-            'def hello():\n    """Say hello."""\n    return "world"\n'
-        )
+        (src_dir / "sample.py").write_text('def hello():\n    """Say hello."""\n    return "world"\n')
 
         db_path = tmp_path / "state.db"
         runner = CliRunner()
@@ -87,9 +83,7 @@ class TestCorpusIngestCodeCli:
         """--force re-ingests even if content_hash matches."""
         src_dir = tmp_path / "src"
         src_dir.mkdir()
-        (src_dir / "sample.py").write_text(
-            'def hello():\n    """Say hello."""\n    return "world"\n'
-        )
+        (src_dir / "sample.py").write_text('def hello():\n    """Say hello."""\n    return "world"\n')
 
         db_path = tmp_path / "state.db"
         runner = CliRunner()
@@ -100,9 +94,7 @@ class TestCorpusIngestCodeCli:
         assert "Turns created:    1" in result1.output
 
         # Second ingest with --force
-        result2 = runner.invoke(
-            corpus, ["ingest-code", str(src_dir), "--db-path", str(db_path), "--force"]
-        )
+        result2 = runner.invoke(corpus, ["ingest-code", str(src_dir), "--db-path", str(db_path), "--force"])
         assert result2.exit_code == 0
         assert "Turns created:    1" in result2.output  # re-created
         assert "Skipped (stale):  0" in result2.output
@@ -117,8 +109,8 @@ class TestCorpusIngestCodeCli:
         src_dir = tmp_path / "src"
         src_dir.mkdir()
         (src_dir / "real.py").write_text('def real():\n    """real func"""\n    return 1\n')
-        (src_dir / "test_real.py").write_text('def test_real(): assert True\n')
-        (src_dir / "types.pyi").write_text('def typed(x: int) -> int: ...\n')
+        (src_dir / "test_real.py").write_text("def test_real(): assert True\n")
+        (src_dir / "types.pyi").write_text("def typed(x: int) -> int: ...\n")
 
         db_path = tmp_path / "state.db"
         runner = CliRunner()

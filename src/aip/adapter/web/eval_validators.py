@@ -300,16 +300,14 @@ def _is_in_quotes(text: str, marker: str) -> bool:
     while idx != -1:
         # Check the characters around the marker
         before = text_lower[:idx]
-        after = text_lower[idx + len(marker_lower):]
+        after = text_lower[idx + len(marker_lower) :]
         # Count quotes before and after
         double_before = before.count('"')
         double_after = after.count('"')
         single_before = before.count("'")
         single_after = after.count("'")
         # If there's an odd number of quotes before and after, it's inside
-        if (double_before % 2 == 1 and double_after % 2 == 1) or (
-            single_before % 2 == 1 and single_after % 2 == 1
-        ):
+        if (double_before % 2 == 1 and double_after % 2 == 1) or (single_before % 2 == 1 and single_after % 2 == 1):
             return True
         # Move to next occurrence
         idx = text_lower.find(marker_lower, idx + 1)
@@ -409,20 +407,24 @@ def run_validators(
     for name in names:
         validator = VALIDATORS.get(name)
         if validator is None:
-            results.append(ValidationResult(
-                passed=False,
-                validator=name,
-                message=f"Unknown validator: {name}",
-            ))
+            results.append(
+                ValidationResult(
+                    passed=False,
+                    validator=name,
+                    message=f"Unknown validator: {name}",
+                )
+            )
             continue
         try:
             results.append(validator(result, case))
         except Exception as exc:
-            results.append(ValidationResult(
-                passed=False,
-                validator=name,
-                message=f"Validator raised an exception: {exc}",
-            ))
+            results.append(
+                ValidationResult(
+                    passed=False,
+                    validator=name,
+                    message=f"Validator raised an exception: {exc}",
+                )
+            )
     return results
 
 

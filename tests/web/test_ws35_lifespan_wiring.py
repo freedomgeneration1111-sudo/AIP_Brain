@@ -107,6 +107,7 @@ def test_enabled_no_key_wires_provider_but_not_configured(monkeypatch):
     assert container.web_search_provider.name == "tavily"
     # is_provider_configured returns False (no key in env)
     from aip.adapter.web.providers.factory import is_provider_configured
+
     assert is_provider_configured(container.web_search_provider) is False
 
 
@@ -132,6 +133,7 @@ def test_enabled_with_key_wires_configured_provider(monkeypatch):
 
     assert container.web_search_provider is not None
     from aip.adapter.web.providers.factory import is_provider_configured
+
     assert is_provider_configured(container.web_search_provider) is True
 
     # Fetcher is wired because provider is wired
@@ -345,6 +347,7 @@ def test_fake_provider_wired_via_config():
     assert isinstance(container.web_search_provider, FakeSearchProvider)
     # Fake provider is always "configured" (no key concept)
     from aip.adapter.web.providers.factory import is_provider_configured
+
     assert is_provider_configured(container.web_search_provider) is True
     # Fetcher is wired because provider is wired
     assert container.web_fetcher is not None

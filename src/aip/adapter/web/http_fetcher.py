@@ -100,14 +100,16 @@ def _default_dns_resolver(hostname: str) -> list[str]:
 # Sensitive headers to strip
 # ---------------------------------------------------------------------------
 
-_SENSITIVE_RESPONSE_HEADERS = frozenset({
-    "set-cookie",
-    "authorization",
-    "cookie",
-    "www-authenticate",
-    "proxy-authenticate",
-    "proxy-authorization",
-})
+_SENSITIVE_RESPONSE_HEADERS = frozenset(
+    {
+        "set-cookie",
+        "authorization",
+        "cookie",
+        "www-authenticate",
+        "proxy-authenticate",
+        "proxy-authorization",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -173,10 +175,9 @@ class HttpxWebFetcher:
         if not _is_ip_literal(host):
             resolved = self._dns_resolver(host)
             if not resolved:
-                raise WebFetchDenied(
-                    url, f"DNS resolution failed for {host!r} (denied defensively)"
-                )
+                raise WebFetchDenied(url, f"DNS resolution failed for {host!r} (denied defensively)")
             import ipaddress
+
             for addr_str in resolved:
                 try:
                     addr = ipaddress.ip_address(addr_str)
@@ -241,9 +242,7 @@ class HttpxWebFetcher:
                     # If we've hit the redirect cap, raise instead of following.
                     if hop >= policy.max_redirects:
                         await response.aclose()
-                        raise WebFetchError(
-                            f"exceeded max_redirects={policy.max_redirects} for {url!r}"
-                        )
+                        raise WebFetchError(f"exceeded max_redirects={policy.max_redirects} for {url!r}")
 
                     location = response.headers.get("location", "")
                     if not location:
@@ -271,6 +270,7 @@ class HttpxWebFetcher:
                                 f"DNS resolution failed for redirect target {next_host!r}",
                             )
                         import ipaddress
+
                         for addr_str in resolved:
                             try:
                                 addr = ipaddress.ip_address(addr_str)
@@ -365,9 +365,7 @@ class HttpxWebFetcher:
             # This line is unreachable: the loop either returns a
             # FetchedResource or raises WebFetchError when the redirect
             # cap is hit.  Defensive raise for exhaustiveness.
-            raise WebFetchError(
-                f"unexpected loop exit fetching {url!r}"
-            )
+            raise WebFetchError(f"unexpected loop exit fetching {url!r}")
         finally:
             await client.aclose()
 

@@ -520,17 +520,19 @@ async def web_ground(
             except Exception as exc:
                 logger.warning("web_ground_source_store_failed: %s", exc)
 
-        sources.append({
-            "source_id": record.source_id,
-            "url": fetched.final_url,
-            "title": extracted.title,
-            "text": extracted.text,
-            "text_chars": len(extracted.text),
-            "extraction_method": extracted.extraction_method,
-            "warnings": list(extracted.warnings),
-            "rank": result.rank,
-            "snippet": result.snippet,
-        })
+        sources.append(
+            {
+                "source_id": record.source_id,
+                "url": fetched.final_url,
+                "title": extracted.title,
+                "text": extracted.text,
+                "text_chars": len(extracted.text),
+                "extraction_method": extracted.extraction_method,
+                "warnings": list(extracted.warnings),
+                "rank": result.rank,
+                "snippet": result.snippet,
+            }
+        )
 
     return WebGroundResponse(
         query=request.query,

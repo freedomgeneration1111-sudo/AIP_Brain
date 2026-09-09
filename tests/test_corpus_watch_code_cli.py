@@ -51,9 +51,7 @@ class TestCorpusWatchCodeCli:
         """
         src_dir = tmp_path / "src"
         src_dir.mkdir()
-        (src_dir / "sample.py").write_text(
-            'def hello():\n    """Say hello."""\n    return "world"\n'
-        )
+        (src_dir / "sample.py").write_text('def hello():\n    """Say hello."""\n    return "world"\n')
 
         db_path = tmp_path / "state.db"
 
@@ -76,6 +74,7 @@ class TestCorpusWatchCodeCli:
         # Use a very short interval so the test doesn't hang long
         # The runner will catch the KeyboardInterrupt if we patch time.sleep
         import builtins
+
         _real_sleep = time.sleep
         _call_count = [0]
 

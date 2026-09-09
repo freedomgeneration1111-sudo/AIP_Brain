@@ -212,6 +212,7 @@ def _wire_snapshot_bytes(fetcher: FakeWebFetcher, container):
     populating the snapshot store under the content_bytes_ref the fake fetcher
     will produce.
     """
+
     # The FakeWebFetcher stores bytes under "fake:{url}" refs.  We pre-populate
     # the snapshot store so the route's bytes_loader can find them.
     async def _populate():
@@ -231,7 +232,9 @@ def _wire_snapshot_bytes(fetcher: FakeWebFetcher, container):
             # to alias.  For test simplicity, we monkey-patch the bytes_loader path
             # by storing the bytes under the ref name as the snapshot_id.
             # This is a test-only bridge.
+
     import asyncio
+
     asyncio.get_event_loop().run_until_complete(_populate())
 
 
@@ -242,11 +245,17 @@ def test_fetch_happy_path(fake_search_provider, fake_web_fetcher, fake_pages):
     url = "https://example.com/article1"
     body = fake_pages[url]
     import asyncio
-    asyncio.run(container.web_snapshot_store.put(
-        requested_url=url, final_url=url,
-        retrieved_at=datetime(2026, 7, 28, tzinfo=timezone.utc),
-        content_type="text/html", content_hash=sha256_hex(body), bytes_data=body,
-    ))
+
+    asyncio.run(
+        container.web_snapshot_store.put(
+            requested_url=url,
+            final_url=url,
+            retrieved_at=datetime(2026, 7, 28, tzinfo=timezone.utc),
+            content_type="text/html",
+            content_hash=sha256_hex(body),
+            bytes_data=body,
+        )
+    )
 
     with _client(app) as client:
         resp = client.post("/api/v1/web/fetch", json={"url": url})
@@ -302,12 +311,18 @@ def test_ground_happy_path(fake_search_provider, fake_web_fetcher, fake_pages):
     app, container = _make_app(search_provider=fake_search_provider, fetcher=fake_web_fetcher)
     # Pre-populate snapshot store for both URLs
     import asyncio
+
     for url, body in fake_pages.items():
-        asyncio.run(container.web_snapshot_store.put(
-            requested_url=url, final_url=url,
-            retrieved_at=datetime(2026, 7, 28, tzinfo=timezone.utc),
-            content_type="text/html", content_hash=sha256_hex(body), bytes_data=body,
-        ))
+        asyncio.run(
+            container.web_snapshot_store.put(
+                requested_url=url,
+                final_url=url,
+                retrieved_at=datetime(2026, 7, 28, tzinfo=timezone.utc),
+                content_type="text/html",
+                content_hash=sha256_hex(body),
+                bytes_data=body,
+            )
+        )
 
     with _client(app) as client:
         resp = client.post(
@@ -332,11 +347,17 @@ def test_ground_partial_failure_reported(fake_search_provider, fake_web_fetcher,
     url = "https://example.com/article1"
     body = fake_pages[url]
     import asyncio
-    asyncio.run(container.web_snapshot_store.put(
-        requested_url=url, final_url=url,
-        retrieved_at=datetime(2026, 7, 28, tzinfo=timezone.utc),
-        content_type="text/html", content_hash=sha256_hex(body), bytes_data=body,
-    ))
+
+    asyncio.run(
+        container.web_snapshot_store.put(
+            requested_url=url,
+            final_url=url,
+            retrieved_at=datetime(2026, 7, 28, tzinfo=timezone.utc),
+            content_type="text/html",
+            content_hash=sha256_hex(body),
+            bytes_data=body,
+        )
+    )
     # Remove article2 from fetcher pages so it fails
     fake_web_fetcher._pages.pop("https://example.com/article2", None)
 
@@ -369,24 +390,37 @@ def test_get_source_happy_path(fake_search_provider, fake_web_fetcher):
     app, container = _make_app(search_provider=fake_search_provider, fetcher=fake_web_fetcher)
     # Manually insert a source record
     from aip.adapter.web.provenance import build_web_source_record
+
     sr = SearchResult(
-        provider="fake", query="q", rank=1,
-        url="https://example.com/x", title="T", snippet="S",
+        provider="fake",
+        query="q",
+        rank=1,
+        url="https://example.com/x",
+        title="T",
+        snippet="S",
     )
     fr = FetchedResource(
-        requested_url="https://example.com/x", final_url="https://example.com/x",
-        status_code=200, content_type="text/html", content_bytes_ref="ref",
+        requested_url="https://example.com/x",
+        final_url="https://example.com/x",
+        status_code=200,
+        content_type="text/html",
+        content_bytes_ref="ref",
         retrieved_at=datetime(2026, 7, 28, tzinfo=timezone.utc),
         content_hash="hash_x",
     )
     from aip.foundation.schemas.web import ExtractedDocument
+
     ed = ExtractedDocument(
-        source_url="https://example.com/x", canonical_url="https://example.com/x",
-        title="T", text="body text", content_hash="hash_x",
+        source_url="https://example.com/x",
+        canonical_url="https://example.com/x",
+        title="T",
+        text="body text",
+        content_hash="hash_x",
         extraction_method="html_readability",
     )
     record = build_web_source_record(search_result=sr, fetched=fr, extracted=ed)
     import asyncio
+
     asyncio.run(container.web_source_store.put(record))
 
     with _client(app) as client:

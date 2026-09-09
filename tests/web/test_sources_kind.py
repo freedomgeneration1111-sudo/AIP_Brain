@@ -61,17 +61,30 @@ def _client(app: FastAPI) -> TestClient:
 def _make_web_source_record(url: str, title: str, query: str = ""):
     """Build a WebSourceRecord for testing."""
     sr = SearchResult(
-        provider="fake", query=query, rank=1, url=url, title=title, snippet="snippet",
+        provider="fake",
+        query=query,
+        rank=1,
+        url=url,
+        title=title,
+        snippet="snippet",
     )
     fr = FetchedResource(
-        requested_url=url, final_url=url, status_code=200, content_type="text/html",
-        content_bytes_ref=f"fake:{url}", retrieved_at=datetime(2026, 7, 28, tzinfo=timezone.utc),
+        requested_url=url,
+        final_url=url,
+        status_code=200,
+        content_type="text/html",
+        content_bytes_ref=f"fake:{url}",
+        retrieved_at=datetime(2026, 7, 28, tzinfo=timezone.utc),
         content_hash="hash_" + url,
     )
     ed = ExtractedDocument(
-        source_url=url, canonical_url=url, title=title, text="body text",
+        source_url=url,
+        canonical_url=url,
+        title=title,
+        text="body text",
         retrieved_at=datetime(2026, 7, 28, tzinfo=timezone.utc),
-        content_hash="hash_" + url, extraction_method="html_readability",
+        content_hash="hash_" + url,
+        extraction_method="html_readability",
     )
     return build_web_source_record(search_result=sr, fetched=fr, extracted=ed)
 
@@ -101,6 +114,7 @@ def test_sources_includes_web_sources_with_kind_tag():
     """When the WebSourceStore has records, they appear with kind="web"."""
     store = InMemoryWebSourceStore()
     import asyncio
+
     record = _make_web_source_record("https://example.com/article", "Test Article", query="python")
     asyncio.run(store.put(record))
 
@@ -126,6 +140,7 @@ def test_sources_filter_kind_web_returns_only_web():
     """kind=web returns only web sources."""
     store = InMemoryWebSourceStore()
     import asyncio
+
     record = _make_web_source_record("https://example.com/a1", "A1", query="q")
     asyncio.run(store.put(record))
 
@@ -142,6 +157,7 @@ def test_sources_filter_kind_corpus_returns_only_corpus():
     """kind=corpus returns only corpus sources (no web sources)."""
     store = InMemoryWebSourceStore()
     import asyncio
+
     record = _make_web_source_record("https://example.com/a1", "A1", query="q")
     asyncio.run(store.put(record))
 
@@ -159,6 +175,7 @@ def test_sources_no_kind_filter_returns_both():
     """Omitting kind returns both corpus and web sources (when both exist)."""
     store = InMemoryWebSourceStore()
     import asyncio
+
     record = _make_web_source_record("https://example.com/a1", "A1", query="q")
     asyncio.run(store.put(record))
 
@@ -181,6 +198,7 @@ def test_web_source_record_carries_provenance_fields():
     """Web source records in /sources carry url, retrieved_at, content_hash, extraction_method."""
     store = InMemoryWebSourceStore()
     import asyncio
+
     record = _make_web_source_record("https://example.com/provenance", "Provenance Test", query="q")
     asyncio.run(store.put(record))
 

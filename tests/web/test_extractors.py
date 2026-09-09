@@ -52,8 +52,10 @@ def _make_fetched(
 
 def _make_bytes_loader(body: bytes):
     """Return a bytes_loader callable that always returns ``body``."""
+
     def loader(ref: str) -> bytes:
         return body
+
     return loader
 
 

@@ -188,9 +188,7 @@ class TestExecutePendingCorpusProviders:
         )
 
         rec = ExtensionRecord(id="test-ext", ext_dir=Path("/tmp"))
-        rec.pending_corpus_providers.append(
-            PendingCorpusProvider(role="test", corpus_type="document")
-        )
+        rec.pending_corpus_providers.append(PendingCorpusProvider(role="test", corpus_type="document"))
 
         # Build a minimal manifest (the method needs manifest.id)
         manifest = Manifest(
@@ -198,10 +196,17 @@ class TestExecutePendingCorpusProviders:
             id="test-ext",
             name="Test",
             version="0.1.0",
-            contributes={"corpora": [], "actors": [], "channels": [], "workflows_dir": "workflows", "migrations": "migrations"},
+            contributes={
+                "corpora": [],
+                "actors": [],
+                "channels": [],
+                "workflows_dir": "workflows",
+                "migrations": "migrations",
+            },
         )
 
         # Should not raise even though registry is None
         # (the method logs a warning and returns)
         import asyncio
+
         asyncio.run(host._execute_pending_corpus_providers(rec, manifest))

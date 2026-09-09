@@ -95,9 +95,7 @@ class InMemoryWebSnapshotStore:
         if not isinstance(cutoff, datetime):
             raise TypeError(f"cutoff must be a datetime, got {type(cutoff)!r}")
         async with self._lock:
-            to_delete = [
-                sid for sid, rec in self._records.items() if rec.retrieved_at < cutoff
-            ]
+            to_delete = [sid for sid, rec in self._records.items() if rec.retrieved_at < cutoff]
             for sid in to_delete:
                 rec = self._records.pop(sid)
                 self._bytes.pop(sid, None)

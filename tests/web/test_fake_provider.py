@@ -72,8 +72,12 @@ async def test_search_is_case_insensitive():
         results={
             "Python Type Hints": [
                 SearchResult(
-                    provider="fake", query="Python Type Hints", rank=1,
-                    url="u", title="t", snippet="s",
+                    provider="fake",
+                    query="Python Type Hints",
+                    rank=1,
+                    url="u",
+                    title="t",
+                    snippet="s",
                 ),
             ],
         },
@@ -282,7 +286,10 @@ async def test_fetch_unknown_url_raises_web_fetch_error(fake_web_fetcher, strict
 
 
 async def test_extractor_returns_text_from_html(
-    fake_web_fetcher, fake_content_extractor, strict_policy, fake_bytes_loader,
+    fake_web_fetcher,
+    fake_content_extractor,
+    strict_policy,
+    fake_bytes_loader,
 ):
     fr = await fake_web_fetcher.fetch("https://docs.python.org/3/library/typing.html", strict_policy)
     ed = await fake_content_extractor.extract(fr, bytes_loader=fake_bytes_loader)
@@ -294,7 +301,8 @@ async def test_extractor_returns_text_from_html(
 
 
 async def test_extractor_reports_truncation_warning(
-    tiny_policy, fixed_time,
+    tiny_policy,
+    fixed_time,
 ):
     fetcher = FakeWebFetcher(
         pages={"https://example.com/": b"<html>" + b"x" * 1024 + b"</html>"},
@@ -308,7 +316,10 @@ async def test_extractor_reports_truncation_warning(
 
 
 async def test_extractor_computes_distinct_hash_from_raw(
-    fake_web_fetcher, fake_content_extractor, strict_policy, fake_bytes_loader,
+    fake_web_fetcher,
+    fake_content_extractor,
+    strict_policy,
+    fake_bytes_loader,
 ):
     """The extracted-text hash differs from the raw-bytes hash (per ADR-017)."""
     fr = await fake_web_fetcher.fetch("https://docs.python.org/3/library/typing.html", strict_policy)

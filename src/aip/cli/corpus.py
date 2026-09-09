@@ -399,9 +399,7 @@ def corpus_watch_code_cmd(
                     pass
             return mtimes
 
-        def _detect_changes(
-            old: dict[Path, float], new: dict[Path, float]
-        ) -> tuple[list[Path], list[Path]]:
+        def _detect_changes(old: dict[Path, float], new: dict[Path, float]) -> tuple[list[Path], list[Path]]:
             """Return (changed, deleted) file lists."""
             changed = [p for p in new if p not in old or new[p] != old[p]]
             deleted = [p for p in old if p not in new]

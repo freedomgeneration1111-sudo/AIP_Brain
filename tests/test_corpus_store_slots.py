@@ -35,9 +35,7 @@ class TestCorpusStoreSlots:
 
         for cid in ["definer", "codeforge"]:
             stores = await registry.get_stores(cid)
-            assert stores.lexical_store is not None, (
-                f"lexical_store must not be None for corpus {cid} (ND3)"
-            )
+            assert stores.lexical_store is not None, f"lexical_store must not be None for corpus {cid} (ND3)"
 
         # Cleanup
         for cid in await registry.list_corpora():
@@ -58,9 +56,7 @@ class TestCorpusStoreSlots:
 
         for cid in ["definer", "codeforge"]:
             stores = await registry.get_stores(cid)
-            assert stores.graph_store is not None, (
-                f"graph_store must not be None for corpus {cid} (ND3)"
-            )
+            assert stores.graph_store is not None, f"graph_store must not be None for corpus {cid} (ND3)"
 
         # Cleanup
         for cid in await registry.list_corpora():
@@ -136,9 +132,7 @@ class TestCorpusStoreSlots:
         stores = await registry.get_stores("codeforge")
         # GraphStore.node_count() should work (returns 0 for empty graph)
         node_count = await stores.graph_store.node_count()
-        assert node_count == 0, (
-            f"New codeforge graph should have 0 nodes, got {node_count}"
-        )
+        assert node_count == 0, f"New codeforge graph should have 0 nodes, got {node_count}"
 
         # Cleanup
         for cid in await registry.list_corpora():

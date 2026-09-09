@@ -597,10 +597,12 @@ async def test_fallback_also_fails_returns_error(fallback_config):
     resolver = ModelSlotResolver(fallback_config)
 
     mock_client = AsyncMock()
-    mock_client.post = AsyncMock(side_effect=[
-        ConnectionError("primary timeout"),
-        ConnectionError("fallback also down"),
-    ])
+    mock_client.post = AsyncMock(
+        side_effect=[
+            ConnectionError("primary timeout"),
+            ConnectionError("fallback also down"),
+        ]
+    )
 
     with patch.object(resolver, "_get_http_client", return_value=mock_client):
         result = await resolver.call(

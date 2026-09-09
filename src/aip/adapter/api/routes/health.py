@@ -679,6 +679,7 @@ def _web_health(container: AipContainer) -> dict[str, Any]:
         provider_name = None
     else:
         from aip.adapter.web.providers.factory import provider_status
+
         provider_state = provider_status(provider)
         provider_name = getattr(provider, "name", "unknown")
 

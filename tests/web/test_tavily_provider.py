@@ -84,9 +84,7 @@ TAVILY_RESPONSE_OK = {
 @respx.mock
 async def test_search_returns_results(tavily_with_key):
     """A 200 response with results maps to SearchResult list."""
-    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(200, json=TAVILY_RESPONSE_OK)
-    )
+    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(200, json=TAVILY_RESPONSE_OK))
     results = await tavily_with_key.search("python type hints")
     assert len(results) == 2
     assert results[0].provider == "tavily"
@@ -103,9 +101,7 @@ async def test_search_returns_results(tavily_with_key):
 @respx.mock
 async def test_search_empty_results(tavily_with_key):
     """A 200 response with empty results list returns []."""
-    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(200, json={"results": []})
-    )
+    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(200, json={"results": []}))
     results = await tavily_with_key.search("nonexistent topic")
     assert results == []
 
@@ -113,9 +109,7 @@ async def test_search_empty_results(tavily_with_key):
 @respx.mock
 async def test_search_preserves_query_in_results(tavily_with_key):
     """Each SearchResult carries the query for provenance."""
-    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(200, json=TAVILY_RESPONSE_OK)
-    )
+    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(200, json=TAVILY_RESPONSE_OK))
     results = await tavily_with_key.search("my query")
     assert all(r.query == "my query" for r in results)
 
@@ -123,9 +117,7 @@ async def test_search_preserves_query_in_results(tavily_with_key):
 @respx.mock
 async def test_search_ranks_sequentially(tavily_with_key):
     """Results are ranked 1..N in the order returned by Tavily."""
-    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(200, json=TAVILY_RESPONSE_OK)
-    )
+    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(200, json=TAVILY_RESPONSE_OK))
     results = await tavily_with_key.search("test")
     assert [r.rank for r in results] == [1, 2]
 
@@ -155,9 +147,7 @@ async def test_provider_constructible_without_key(tavily_no_key):
 @respx.mock
 async def test_search_rate_limit_raises_provider_error(tavily_with_key):
     """A 429 response raises WebProviderError."""
-    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(429, text="Rate limit exceeded")
-    )
+    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(429, text="Rate limit exceeded"))
     with pytest.raises(WebProviderError, match="rate limit"):
         await tavily_with_key.search("test")
 
@@ -165,9 +155,7 @@ async def test_search_rate_limit_raises_provider_error(tavily_with_key):
 @respx.mock
 async def test_search_auth_failure_raises_not_configured(tavily_with_key):
     """A 401 response raises WebProviderNotConfigured (key rejected)."""
-    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(401, text="Invalid API key")
-    )
+    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(401, text="Invalid API key"))
     with pytest.raises(WebProviderNotConfigured, match="401"):
         await tavily_with_key.search("test")
 
@@ -175,9 +163,7 @@ async def test_search_auth_failure_raises_not_configured(tavily_with_key):
 @respx.mock
 async def test_search_server_error_raises_provider_error(tavily_with_key):
     """A 500 response raises WebProviderError."""
-    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(500, text="Internal server error")
-    )
+    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(500, text="Internal server error"))
     with pytest.raises(WebProviderError, match="HTTP 500"):
         await tavily_with_key.search("test")
 
@@ -185,9 +171,7 @@ async def test_search_server_error_raises_provider_error(tavily_with_key):
 @respx.mock
 async def test_search_timeout_raises_provider_error(tavily_with_key):
     """A timeout raises WebProviderError."""
-    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        side_effect=httpx.ReadTimeout("timed out")
-    )
+    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(side_effect=httpx.ReadTimeout("timed out"))
     with pytest.raises(WebProviderError, match="timed out"):
         await tavily_with_key.search("test")
 
@@ -195,9 +179,7 @@ async def test_search_timeout_raises_provider_error(tavily_with_key):
 @respx.mock
 async def test_search_malformed_json_raises_provider_error(tavily_with_key):
     """A non-JSON response raises WebProviderError."""
-    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(200, text="not json at all")
-    )
+    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(200, text="not json at all"))
     with pytest.raises(WebProviderError, match="non-JSON"):
         await tavily_with_key.search("test")
 
@@ -220,12 +202,11 @@ async def test_search_results_not_list_raises(tavily_with_key):
 @respx.mock
 async def test_search_limit_capped_at_max(tavily_with_key):
     """limit > MAX_TAVILY_LIMIT (20) is capped."""
-    route = respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(200, json={"results": []})
-    )
+    route = respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(200, json={"results": []}))
     await tavily_with_key.search("test", options=SearchOptions(limit=100))
     sent_payload = route.calls[0].request.read()
     import json
+
     payload = json.loads(sent_payload)
     assert payload["max_results"] == 20
 
@@ -233,11 +214,10 @@ async def test_search_limit_capped_at_max(tavily_with_key):
 @respx.mock
 async def test_search_freshness_days_passed_to_provider(tavily_with_key):
     """freshness_days is sent as 'days' in the payload."""
-    route = respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(200, json={"results": []})
-    )
+    route = respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(200, json={"results": []}))
     await tavily_with_key.search("test", options=SearchOptions(freshness_days=7))
     import json
+
     payload = json.loads(route.calls[0].request.read())
     assert payload["days"] == 7
 
@@ -245,13 +225,10 @@ async def test_search_freshness_days_passed_to_provider(tavily_with_key):
 @respx.mock
 async def test_search_domains_passed_to_provider(tavily_with_key):
     """domains is sent as 'include_domains' in the payload."""
-    route = respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(200, json={"results": []})
-    )
-    await tavily_with_key.search(
-        "test", options=SearchOptions(domains=("arxiv.org", "github.com"))
-    )
+    route = respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(200, json={"results": []}))
+    await tavily_with_key.search("test", options=SearchOptions(domains=("arxiv.org", "github.com")))
     import json
+
     payload = json.loads(route.calls[0].request.read())
     assert payload["include_domains"] == ["arxiv.org", "github.com"]
 
@@ -259,11 +236,10 @@ async def test_search_domains_passed_to_provider(tavily_with_key):
 @respx.mock
 async def test_search_topic_passed_to_provider(tavily_with_key):
     """topic is sent in the payload when set."""
-    route = respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(200, json={"results": []})
-    )
+    route = respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(200, json={"results": []}))
     await tavily_with_key.search("test", options=SearchOptions(topic="news"))
     import json
+
     payload = json.loads(route.calls[0].request.read())
     assert payload["topic"] == "news"
 
@@ -276,11 +252,10 @@ async def test_search_topic_passed_to_provider(tavily_with_key):
 @respx.mock
 async def test_key_sent_in_payload(tavily_with_key):
     """The API key is sent in the request payload (Tavily's expected auth)."""
-    route = respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(200, json={"results": []})
-    )
+    route = respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(200, json={"results": []}))
     await tavily_with_key.search("test")
     import json
+
     payload = json.loads(route.calls[0].request.read())
     assert payload["api_key"] == "tvly-test-key-12345"
 
@@ -305,9 +280,7 @@ def test_key_not_cached_on_instance(tavily_with_key):
     """The API key must not appear as an attribute on the provider instance."""
     # Walk the instance's __dict__ to ensure no plaintext key.
     for attr_name, attr_value in vars(tavily_with_key).items():
-        assert attr_value != "tvly-test-key-12345", (
-            f"attribute {attr_name!r} contains the plaintext API key"
-        )
+        assert attr_value != "tvly-test-key-12345", f"attribute {attr_name!r} contains the plaintext API key"
 
 
 # ---------------------------------------------------------------------------
@@ -318,9 +291,7 @@ def test_key_not_cached_on_instance(tavily_with_key):
 @respx.mock
 async def test_provider_metadata_carries_score_and_raw(tavily_with_key):
     """provider_metadata includes 'score' and 'raw_response' (extras)."""
-    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(200, json=TAVILY_RESPONSE_OK)
-    )
+    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(200, json=TAVILY_RESPONSE_OK))
     results = await tavily_with_key.search("test")
     assert "score" in results[0].provider_metadata
     # 'raw_response' carries fields not in the standard schema
@@ -330,9 +301,7 @@ async def test_provider_metadata_carries_score_and_raw(tavily_with_key):
 @respx.mock
 async def test_published_date_parsed(tavily_with_key):
     """Tavily's published_date string is parsed to a datetime."""
-    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(200, json=TAVILY_RESPONSE_OK)
-    )
+    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(200, json=TAVILY_RESPONSE_OK))
     results = await tavily_with_key.search("test")
     assert results[0].published_at is not None
     assert results[0].published_at.year == 2024
@@ -352,9 +321,7 @@ async def test_skips_results_without_url(tavily_with_key):
             {"url": "https://example.com/2", "title": "T2", "content": "C2"},
         ]
     }
-    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(200, json=response)
-    )
+    respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(return_value=httpx.Response(200, json=response))
     results = await tavily_with_key.search("test")
     assert len(results) == 2
     assert results[0].url == "https://example.com/1"

@@ -52,8 +52,7 @@ def _client(app) -> TestClient:
 def _assert_no_key(text: str):
     """Assert the known key does not appear anywhere in ``text``."""
     assert KNOWN_KEY not in text, (
-        f"API key leaked into response body.  "
-        f"Key {KNOWN_KEY!r} found in response (length {len(text)})."
+        f"API key leaked into response body.  Key {KNOWN_KEY!r} found in response (length {len(text)})."
     )
 
 
@@ -66,16 +65,19 @@ def _assert_no_key(text: str):
 def test_search_response_does_not_leak_key(app_with_tavily):
     """The /search response body must not contain the API key."""
     respx.post(f"{DEFAULT_TAVILY_ENDPOINT}/search").mock(
-        return_value=httpx.Response(200, json={
-            "results": [
-                {
-                    "url": "https://example.com/x",
-                    "title": "Title",
-                    "content": "Snippet",
-                    "score": 0.9,
-                }
-            ]
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "url": "https://example.com/x",
+                        "title": "Title",
+                        "content": "Snippet",
+                        "score": 0.9,
+                    }
+                ]
+            },
+        )
     )
     with _client(app_with_tavily) as client:
         resp = client.post("/api/v1/web/search", json={"query": "test"})

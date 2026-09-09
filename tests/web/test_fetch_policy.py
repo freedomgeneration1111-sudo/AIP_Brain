@@ -181,10 +181,10 @@ def test_ipv4_mapped_ipv6_private_denied(strict_policy):
 @pytest.mark.parametrize(
     "obf",
     [
-        "2130706433",       # decimal int = 127.0.0.1
-        "0x7f000001",       # hex int = 127.0.0.1
-        "0177.0.0.1",       # octal first octet = 127.0.0.1
-        "0x7f.0.0.1",       # hex first octet = 127.0.0.1
+        "2130706433",  # decimal int = 127.0.0.1
+        "0x7f000001",  # hex int = 127.0.0.1
+        "0177.0.0.1",  # octal first octet = 127.0.0.1
+        "0x7f.0.0.1",  # hex first octet = 127.0.0.1
         "0x7f.0x00.0x00.0x01",  # all hex = 127.0.0.1
     ],
 )
@@ -223,9 +223,9 @@ def test_public_ipv4_allowed(ip, strict_policy):
 @pytest.mark.parametrize(
     "ip",
     [
-        "192.0.2.1",     # TEST-NET-1 (RFC 5737)
+        "192.0.2.1",  # TEST-NET-1 (RFC 5737)
         "198.51.100.1",  # TEST-NET-2
-        "203.0.113.1",   # TEST-NET-3
+        "203.0.113.1",  # TEST-NET-3
     ],
 )
 def test_documentation_ranges_denied(ip, strict_policy):

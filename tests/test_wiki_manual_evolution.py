@@ -37,18 +37,14 @@ class TestManualChapterArtifactType:
         from aip.adapter.api.routes import wiki
 
         src = inspect.getsource(wiki)
-        assert "manual_chapter" in src, (
-            "wiki route must classify manual:* IDs as manual_chapter artifact_type"
-        )
+        assert "manual_chapter" in src, "wiki route must classify manual:* IDs as manual_chapter artifact_type"
 
     def test_wiki_like_patterns_include_manual(self):
         """The wiki SQL LIKE patterns must include manual:%."""
         from aip.adapter.api.routes import wiki
 
         src = inspect.getsource(wiki)
-        assert "LIKE 'manual:%'" in src, (
-            "wiki SQL queries must include manual:% in LIKE patterns"
-        )
+        assert "LIKE 'manual:%'" in src, "wiki SQL queries must include manual:% in LIKE patterns"
 
 
 class TestExportManualCLI:
@@ -74,8 +70,14 @@ class TestExportManualCLI:
         runner = CliRunner()
         result = runner.invoke(
             export,
-            ["manual", "nonexistent_domain", "--out", str(tmp_path / "manual.md"),
-             "--db-path", str(tmp_path / "state.db")],
+            [
+                "manual",
+                "nonexistent_domain",
+                "--out",
+                str(tmp_path / "manual.md"),
+                "--db-path",
+                str(tmp_path / "state.db"),
+            ],
         )
         assert result.exit_code == 1
         assert "No wiki articles" in result.output or "Error" in result.output

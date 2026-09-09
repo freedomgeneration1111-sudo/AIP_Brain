@@ -49,6 +49,7 @@ def fake_dns() -> dict:
 @pytest.fixture
 def fetcher(fake_dns) -> HttpxWebFetcher:
     """An HttpxWebFetcher with a fake DNS resolver (no real DNS lookups)."""
+
     def resolver(hostname: str) -> list[str]:
         return fake_dns.get(hostname.lower(), ["93.184.216.34"])
 
@@ -104,6 +105,7 @@ async def test_fetch_computes_content_hash(fetcher, strict_policy):
         return_value=httpx.Response(200, content=body, headers={"content-type": "text/html"})
     )
     import hashlib
+
     expected = hashlib.sha256(body).hexdigest()
     fr = await fetcher.fetch("https://example.com/", strict_policy)
     assert fr.content_hash == expected
@@ -224,9 +226,7 @@ async def test_fetch_exhausts_redirect_cap(fetcher):
 @respx.mock
 async def test_fetch_redirect_without_location_raises(fetcher, strict_policy):
     """A redirect response without a Location header raises WebFetchError."""
-    respx.get("https://example.com/bad").mock(
-        return_value=httpx.Response(302, headers={})
-    )
+    respx.get("https://example.com/bad").mock(return_value=httpx.Response(302, headers={}))
     with pytest.raises(WebFetchError, match="Location"):
         await fetcher.fetch("https://example.com/bad", strict_policy)
 
@@ -290,6 +290,7 @@ async def test_fetch_truncates_at_max_bytes():
     assert fr.truncated is True
     # The content_hash is of the truncated body (100 bytes), not the original
     import hashlib
+
     assert fr.content_hash == hashlib.sha256(b"x" * 100).hexdigest()
 
 

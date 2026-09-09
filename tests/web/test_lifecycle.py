@@ -357,15 +357,9 @@ async def test_fetcher_lifecycle_simulation():
             raise
 
     # Three in-flight fetches: one fast, two slow.
-    fast = create_registered_task(
-        registry, "web_fetch:fast", simulated_fetch("https://fast.example.com", 0.05)
-    )
-    slow_1 = create_registered_task(
-        registry, "web_fetch:slow_1", simulated_fetch("https://slow1.example.com", 10.0)
-    )
-    slow_2 = create_registered_task(
-        registry, "web_fetch:slow_2", simulated_fetch("https://slow2.example.com", 10.0)
-    )
+    fast = create_registered_task(registry, "web_fetch:fast", simulated_fetch("https://fast.example.com", 0.05))
+    slow_1 = create_registered_task(registry, "web_fetch:slow_1", simulated_fetch("https://slow1.example.com", 10.0))
+    slow_2 = create_registered_task(registry, "web_fetch:slow_2", simulated_fetch("https://slow2.example.com", 10.0))
 
     # Let the fast fetch complete.
     result = await fast

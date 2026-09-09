@@ -43,6 +43,7 @@ def snapshot_store() -> InMemoryWebSnapshotStore:
 @pytest.fixture
 def fetcher_with_sink(fake_dns, snapshot_store):
     """An HttpxWebFetcher with a bytes_sink that persists to the snapshot store."""
+
     def resolver(hostname: str) -> list[str]:
         return fake_dns.get(hostname.lower(), ["93.184.216.34"])
 
@@ -63,6 +64,7 @@ def fetcher_with_sink(fake_dns, snapshot_store):
 @pytest.fixture
 def fetcher_no_sink(fake_dns):
     """An HttpxWebFetcher with no bytes_sink (backward compatible)."""
+
     def resolver(hostname: str) -> list[str]:
         return fake_dns.get(hostname.lower(), ["93.184.216.34"])
 

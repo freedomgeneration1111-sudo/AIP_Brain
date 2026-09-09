@@ -324,9 +324,7 @@ class AipApiClient:
             return data
         return []
 
-    async def update_session_corpora(
-        self, session_id: str, active_corpus_ids: list[str]
-    ) -> dict[str, Any]:
+    async def update_session_corpora(self, session_id: str, active_corpus_ids: list[str]) -> dict[str, Any]:
         """Update the session's active corpora via PATCH /api/v1/sessions/{id}.
 
         QW8 (2026-07-23). Writes ``active_corpus_ids`` to the session's

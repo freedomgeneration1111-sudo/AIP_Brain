@@ -40,38 +40,31 @@ class TestCodeforgeAutoIngestWiring:
     def test_task_created_with_correct_name(self):
         """The task must be created with the name 'codeforge-ingest-scheduler'."""
         src = _lifespan_source()
-        assert 'name="codeforge-ingest-scheduler"' in src, (
-            "task must be created with name='codeforge-ingest-scheduler'"
-        )
+        assert 'name="codeforge-ingest-scheduler"' in src, "task must be created with name='codeforge-ingest-scheduler'"
 
     def test_task_in_shutdown_cancellation_list(self):
         """The codeforge_ingest_task must be in the shutdown cancellation list."""
         src = _lifespan_source()
         assert '"codeforge_ingest", codeforge_ingest_task' in src, (
-            "codeforge_ingest_task must be in the shutdown cancellation list "
-            "alongside beast, vigil, sexton_actor, etc."
+            "codeforge_ingest_task must be in the shutdown cancellation list alongside beast, vigil, sexton_actor, etc."
         )
 
     def test_config_keys_read(self):
         """The scheduler must read [codeforge] config: auto_ingest, source_dir, interval_seconds."""
         src = _lifespan_source()
-        assert '_codeforge_auto_ingest' in src, "must read codeforge.auto_ingest config"
-        assert '_codeforge_source_dir' in src, "must read codeforge.source_dir config"
-        assert '_codeforge_interval' in src, "must read codeforge.interval_seconds config"
+        assert "_codeforge_auto_ingest" in src, "must read codeforge.auto_ingest config"
+        assert "_codeforge_source_dir" in src, "must read codeforge.source_dir config"
+        assert "_codeforge_interval" in src, "must read codeforge.interval_seconds config"
 
     def test_guards_against_missing_registry(self):
         """The scheduler must not start if corpus_registry is None."""
         src = _lifespan_source()
-        assert 'corpus_registry", None) is not None' in src, (
-            "must guard against corpus_registry being None"
-        )
+        assert 'corpus_registry", None) is not None' in src, "must guard against corpus_registry being None"
 
     def test_guards_against_missing_source_dir(self):
         """The scheduler must not start if source_dir doesn't exist."""
         src = _lifespan_source()
-        assert '_codeforge_source_dir).exists()' in src, (
-            "must guard against source_dir not existing"
-        )
+        assert "_codeforge_source_dir).exists()" in src, "must guard against source_dir not existing"
 
     def test_awaits_corpus_migration_ready(self):
         """The scheduler must await _await_corpus_migration_ready() before first ingest."""
@@ -83,23 +76,17 @@ class TestCodeforgeAutoIngestWiring:
     def test_uses_skip_existing_true(self):
         """The scheduler must use skip_existing=True for stale detection."""
         src = _lifespan_source()
-        assert "skip_existing=True" in src, (
-            "must use skip_existing=True (content_hash stale detection)"
-        )
+        assert "skip_existing=True" in src, "must use skip_existing=True (content_hash stale detection)"
 
     def test_handles_cancelled_error(self):
         """The scheduler must handle asyncio.CancelledError for graceful shutdown."""
         src = _lifespan_source()
-        assert "asyncio.CancelledError" in src, (
-            "must handle asyncio.CancelledError for graceful shutdown"
-        )
+        assert "asyncio.CancelledError" in src, "must handle asyncio.CancelledError for graceful shutdown"
 
     def test_startup_status_log_includes_codeforge(self):
         """The startup status log must include codeforge_auto_ingest field."""
         src = _lifespan_source()
-        assert "codeforge_auto_ingest" in src, (
-            "startup status log must include codeforge_auto_ingest field"
-        )
+        assert "codeforge_auto_ingest" in src, "startup status log must include codeforge_auto_ingest field"
 
 
 class TestCodeforgeAutoIngestConfigDefaults:

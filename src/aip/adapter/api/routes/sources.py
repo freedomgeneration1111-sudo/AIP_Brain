@@ -118,22 +118,24 @@ async def list_sources(
                 recent_web = await web_source_store.list_by_query("", limit=20)
                 for record in recent_web:
                     extracted = record.extracted
-                    sources.append({
-                        "source_id": record.source_id,
-                        "source_type": "web",
-                        "kind": "web",
-                        "domain": "",
-                        "title": extracted.title if extracted else "",
-                        "url": record.fetched.final_url if record.fetched else "",
-                        "retrieved_at": record.retrieved_at.isoformat() if record.retrieved_at else "",
-                        "content_hash": record.content_hash,
-                        "extraction_method": extracted.extraction_method if extracted else "",
-                        "metadata": {
-                            "provider": record.provider,
-                            "fetch_warnings": list(record.fetch_warnings),
-                            "extraction_warnings": list(extracted.warnings) if extracted else [],
-                        },
-                    })
+                    sources.append(
+                        {
+                            "source_id": record.source_id,
+                            "source_type": "web",
+                            "kind": "web",
+                            "domain": "",
+                            "title": extracted.title if extracted else "",
+                            "url": record.fetched.final_url if record.fetched else "",
+                            "retrieved_at": record.retrieved_at.isoformat() if record.retrieved_at else "",
+                            "content_hash": record.content_hash,
+                            "extraction_method": extracted.extraction_method if extracted else "",
+                            "metadata": {
+                                "provider": record.provider,
+                                "fetch_warnings": list(record.fetch_warnings),
+                                "extraction_warnings": list(extracted.warnings) if extracted else [],
+                            },
+                        }
+                    )
             except Exception as exc:
                 logger.warning("Failed to list web sources: %s", exc)
 

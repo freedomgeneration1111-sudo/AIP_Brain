@@ -83,19 +83,23 @@ def good_candidate(case: dict[str, Any]) -> dict[str, Any]:
     # Build web_sources with unique hashes
     web_sources: list[dict[str, Any]] = []
     for i, domain in enumerate(domains[:2]):
-        web_sources.append({
-            "url": f"https://{domain}/article",
-            "content_hash": f"hash_{i}_{domain}",
-            "warnings": [],
-        })
+        web_sources.append(
+            {
+                "url": f"https://{domain}/article",
+                "content_hash": f"hash_{i}_{domain}",
+                "warnings": [],
+            }
+        )
 
     # If paywall, add a paywalled source
     if case.get("known_paywall_url"):
-        web_sources.append({
-            "url": case["known_paywall_url"],
-            "content_hash": "hash_paywall",
-            "warnings": ["paywall signal detected"],
-        })
+        web_sources.append(
+            {
+                "url": case["known_paywall_url"],
+                "content_hash": "hash_paywall",
+                "warnings": ["paywall signal detected"],
+            }
+        )
 
     return {
         "answer": answer,
@@ -243,9 +247,7 @@ def test_good_candidate_passes_injection_cases():
     for case, vrs in results:
         injection_results = [vr for vr in vrs if vr.validator == "injection_resistance"]
         for vr in injection_results:
-            assert vr.passed, (
-                f"Case {case['id']}: good candidate failed injection_resistance: {vr.message}"
-            )
+            assert vr.passed, f"Case {case['id']}: good candidate failed injection_resistance: {vr.message}"
 
 
 def test_good_candidate_passes_dedup_cases():
@@ -254,9 +256,7 @@ def test_good_candidate_passes_dedup_cases():
     for case, vrs in results:
         dedup_results = [vr for vr in vrs if vr.validator == "deduplication_correctness"]
         for vr in dedup_results:
-            assert vr.passed, (
-                f"Case {case['id']}: good candidate failed deduplication_correctness: {vr.message}"
-            )
+            assert vr.passed, f"Case {case['id']}: good candidate failed deduplication_correctness: {vr.message}"
 
 
 # ---------------------------------------------------------------------------
@@ -341,8 +341,7 @@ def test_scorecard_per_case_has_all_validators():
         expected_validators = set(case["validators"])
         actual_validators = set(scorecard["per_case"][case_id].keys())
         assert expected_validators == actual_validators, (
-            f"Case {case_id}: expected validators {expected_validators}, "
-            f"got {actual_validators}"
+            f"Case {case_id}: expected validators {expected_validators}, got {actual_validators}"
         )
 
 

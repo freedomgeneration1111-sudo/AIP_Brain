@@ -170,10 +170,7 @@ def test_sha256_hex_encodes_str_as_utf8():
 def test_sha256_hex_known_value():
     """Verify against a known SHA-256 to catch algorithm regressions."""
     # SHA-256("hello") = 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
-    assert (
-        sha256_hex("hello")
-        == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-    )
+    assert sha256_hex("hello") == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
 
 
 def test_normalize_text_for_hash_strips_trailing_whitespace_per_line():

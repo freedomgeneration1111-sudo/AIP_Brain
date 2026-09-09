@@ -293,12 +293,11 @@ class GuiState:
         # user can re-select via the Corpus Selection panel.
         if self.active_corpus_ids and self.active_corpus_ids != ["definer"]:
             try:
-                await self.api_client.update_session_corpora(
-                    self.session_id, self.active_corpus_ids
-                )
+                await self.api_client.update_session_corpora(self.session_id, self.active_corpus_ids)
                 log.info(
                     "ensure_session_applied_corpora session_id=%s active_corpus_ids=%s",
-                    self.session_id, self.active_corpus_ids,
+                    self.session_id,
+                    self.active_corpus_ids,
                 )
             except Exception as exc:
                 # Non-fatal — the session is usable, just without the
@@ -306,7 +305,9 @@ class GuiState:
                 # diagnosable (previously this was a silent pass).
                 log.warning(
                     "ensure_session_corpus_apply_failed session_id=%s active_corpus_ids=%s error=%s",
-                    self.session_id, self.active_corpus_ids, exc,
+                    self.session_id,
+                    self.active_corpus_ids,
+                    exc,
                 )
 
         return self.session_id

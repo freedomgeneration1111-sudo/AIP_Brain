@@ -66,6 +66,7 @@ class TestChatUploadHandler:
         If it uses e.content.read(), AttributeError is raised before the
         try/except, the task dies silently, and the learner sees no feedback.
         """
+
         # Import the module to get the _handle_upload closure.
         # We can't easily extract the closure, so we re-implement the
         # handler's critical lines here and verify they work with the
@@ -99,6 +100,7 @@ class TestChatUploadHandler:
         @dataclass
         class RealShapeEvent:
             """Mimics UploadEventArguments — only .file exists, NOT .content."""
+
             sender: object
             client: object
             file: SmallFileUpload
@@ -131,6 +133,7 @@ class TestChatUploadHandler:
         # contain the hardcoded wrong port.
         import gui.components.chat as chat_mod
         import inspect
+
         src = inspect.getsource(chat_mod)
         # The old buggy line was: "http://localhost:8001/aristotle/upload"
         assert "localhost:8001" not in src, (
@@ -190,8 +193,7 @@ class TestAristotleChatUploadHandler:
 
         assert not violations, (
             "gui/pages/ask.py contains the buggy e.content.read() pattern "
-            "(should be `await e.file.read()` per NiceGUI 3.x API): "
-            + "; ".join(violations)
+            "(should be `await e.file.read()` per NiceGUI 3.x API): " + "; ".join(violations)
         )
 
     def test_ask_py_uses_e_file_name_not_e_name(self):
@@ -199,6 +201,7 @@ class TestAristotleChatUploadHandler:
         (e has no .name attribute in NiceGUI 3.x)."""
         import gui.pages.ask as ask_mod
         import inspect
+
         src = inspect.getsource(ask_mod)
 
         # The old buggy pattern: getattr(e, "name", "file")
@@ -217,6 +220,4 @@ class TestAristotleChatUploadHandler:
             "_handle_aristotle_upload still uses getattr(e, 'name', ...) — "
             "should be getattr(e.file, 'name', ...) per NiceGUI 3.x API."
         )
-        assert "e.file" in handler_src, (
-            "_handle_aristotle_upload must reference e.file (NiceGUI 3.x)."
-        )
+        assert "e.file" in handler_src, "_handle_aristotle_upload must reference e.file (NiceGUI 3.x)."

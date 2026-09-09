@@ -84,16 +84,27 @@ def _make_web_source_record(
     """Build a WebSourceRecord for testing."""
     retrieved_at = datetime(2026, 7, 28, 12, 0, 0, tzinfo=timezone.utc)
     sr = SearchResult(
-        provider="tavily", query="test query", rank=1,
-        url=url, title=title, snippet="snippet",
+        provider="tavily",
+        query="test query",
+        rank=1,
+        url=url,
+        title=title,
+        snippet="snippet",
     )
     fr = FetchedResource(
-        requested_url=url, final_url=url, status_code=200, content_type="text/html",
-        content_bytes_ref=f"fake:{url}", retrieved_at=retrieved_at,
+        requested_url=url,
+        final_url=url,
+        status_code=200,
+        content_type="text/html",
+        content_bytes_ref=f"fake:{url}",
+        retrieved_at=retrieved_at,
         content_hash=content_hash or sha256_hex(text),
     )
     ed = ExtractedDocument(
-        source_url=url, canonical_url=url, title=title, text=text,
+        source_url=url,
+        canonical_url=url,
+        title=title,
+        text=text,
         retrieved_at=retrieved_at,
         content_hash=content_hash or sha256_hex(text),
         extraction_method="html_readability",
@@ -254,7 +265,9 @@ async def test_promote_changed_content_increments_version(promoter, source_store
     """Re-promoting the same URL with different text increments doc_version."""
     # First promotion: original content
     record1 = _make_web_source_record(
-        source_id="src_v1", url="https://example.com/changed", text="version 1 text",
+        source_id="src_v1",
+        url="https://example.com/changed",
+        text="version 1 text",
     )
     await source_store.put(record1)
     result1 = await promoter.promote("src_v1", approval="yes")
@@ -266,7 +279,9 @@ async def test_promote_changed_content_increments_version(promoter, source_store
 
     # Second promotion: same URL, different text → different content_hash
     record2 = _make_web_source_record(
-        source_id="src_v2", url="https://example.com/changed", text="version 2 text is different",
+        source_id="src_v2",
+        url="https://example.com/changed",
+        text="version 2 text is different",
     )
     await source_store.put(record2)
     result2 = await promoter.promote("src_v2", approval="yes")
@@ -301,9 +316,13 @@ async def test_promote_no_extracted_content(promoter, source_store):
     # Build a record with extracted=None
     retrieved_at = datetime(2026, 7, 28, tzinfo=timezone.utc)
     fr = FetchedResource(
-        requested_url="https://example.com/failed", final_url="https://example.com/failed",
-        status_code=200, content_type="text/html", content_bytes_ref="ref",
-        retrieved_at=retrieved_at, content_hash="hash_failed",
+        requested_url="https://example.com/failed",
+        final_url="https://example.com/failed",
+        status_code=200,
+        content_type="text/html",
+        content_bytes_ref="ref",
+        retrieved_at=retrieved_at,
+        content_hash="hash_failed",
     )
     record = WebSourceRecord(
         source_id="src_no_extract",
@@ -389,6 +408,7 @@ async def test_promote_with_custom_target_corpus(promoter, stored_record):
 
 async def test_promote_lookup_failure_returns_error(promoter):
     """A lookup failure (store exception) returns a structured error."""
+
     # Use a store that raises on get
     class FailingSourceStore:
         async def get(self, source_id):

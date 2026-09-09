@@ -88,9 +88,7 @@ async def async_fetch(url: str) -> str:
     )
 
     # A test file (should be skipped by the parser)
-    (src_dir / "test_module.py").write_text(
-        'def test_greet(): assert True\n', encoding="utf-8"
-    )
+    (src_dir / "test_module.py").write_text("def test_greet(): assert True\n", encoding="utf-8")
 
     return src_dir
 

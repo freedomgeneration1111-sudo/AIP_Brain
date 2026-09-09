@@ -141,18 +141,17 @@ def test_web_file_list_is_complete():
     extractors_dir = web_dir / "extractors"
     providers_dir = web_dir / "providers"
 
-    actual_web_files = sorted(
-        p.relative_to(repo_root).as_posix()
-        for p in web_dir.glob("*.py")
+    actual_web_files = sorted(p.relative_to(repo_root).as_posix() for p in web_dir.glob("*.py"))
+    actual_extractor_files = (
+        sorted(p.relative_to(repo_root).as_posix() for p in extractors_dir.glob("*.py"))
+        if extractors_dir.exists()
+        else []
     )
-    actual_extractor_files = sorted(
-        p.relative_to(repo_root).as_posix()
-        for p in extractors_dir.glob("*.py")
-    ) if extractors_dir.exists() else []
-    actual_provider_files = sorted(
-        p.relative_to(repo_root).as_posix()
-        for p in providers_dir.glob("*.py")
-    ) if providers_dir.exists() else []
+    actual_provider_files = (
+        sorted(p.relative_to(repo_root).as_posix() for p in providers_dir.glob("*.py"))
+        if providers_dir.exists()
+        else []
+    )
 
     actual_files = actual_web_files + actual_extractor_files + actual_provider_files
     expected_files = NETWORK_FREE_FILES + NETWORK_ALLOWED_FILES

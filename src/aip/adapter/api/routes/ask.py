@@ -87,9 +87,7 @@ async def _run_web_grounding(
 
     # Search
     try:
-        search_results = await provider.search(
-            question, options=SearchOptions(limit=max_sources)
-        )
+        search_results = await provider.search(question, options=SearchOptions(limit=max_sources))
     except WebProviderNotConfigured as exc:
         return [], [], f"not_configured: {exc}"
     except WebProviderError as exc:
@@ -138,19 +136,21 @@ async def _run_web_grounding(
             except Exception as exc:
                 logger.warning("ask_web_source_store_failed: %s", exc)
 
-        web_sources.append({
-            "source_id": record.source_id,
-            "url": fetched.final_url,
-            "title": extracted.title or result.title,
-            "text": extracted.text,
-            "text_chars": len(extracted.text),
-            "rank": result.rank,
-            "retrieved_at": fetched.retrieved_at.isoformat(),
-            "content_hash": extracted.content_hash,
-            "extraction_method": extracted.extraction_method,
-            "warnings": list(extracted.warnings),
-            "snippet": result.snippet,
-        })
+        web_sources.append(
+            {
+                "source_id": record.source_id,
+                "url": fetched.final_url,
+                "title": extracted.title or result.title,
+                "text": extracted.text,
+                "text_chars": len(extracted.text),
+                "rank": result.rank,
+                "retrieved_at": fetched.retrieved_at.isoformat(),
+                "content_hash": extracted.content_hash,
+                "extraction_method": extracted.extraction_method,
+                "warnings": list(extracted.warnings),
+                "snippet": result.snippet,
+            }
+        )
 
     return web_sources, web_failures, None
 
@@ -245,7 +245,9 @@ async def ask_query(payload: dict, container: AipContainer = Depends(get_contain
     web_grounding_error: str | None = None
     if web_grounding:
         web_sources, web_failures, web_grounding_error = await _run_web_grounding(
-            container, question, max_sources=3,
+            container,
+            question,
+            max_sources=3,
         )
         if web_sources:
             # Build the prompt-injection-isolated context block and

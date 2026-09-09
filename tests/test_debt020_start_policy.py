@@ -58,9 +58,7 @@ class TestStartPolicyFix:
             factory=lambda: None,
             cadence=0.0,
         )
-        assert reg.start_policy == "scheduled", (
-            "default start_policy must be 'scheduled' (backward compat)"
-        )
+        assert reg.start_policy == "scheduled", "default start_policy must be 'scheduled' (backward compat)"
 
     def test_start_policy_can_be_set_to_manual_only(self):
         """ActorRegistration accepts start_policy='manual_only'."""
@@ -102,9 +100,7 @@ class TestStartPolicyFix:
             cancel_event=cancel_event,
         )
 
-        assert actor.cycle_count == 1, (
-            f"scheduled actor must run exactly 1 cycle on startup, got {actor.cycle_count}"
-        )
+        assert actor.cycle_count == 1, f"scheduled actor must run exactly 1 cycle on startup, got {actor.cycle_count}"
 
     async def test_manual_only_actor_skips_startup_cycle(self):
         """start_policy='manual_only' does NOT run a cycle on startup.
@@ -149,9 +145,5 @@ class TestStartPolicyFix:
         from aip.adapter.extensions.host import ExtensionHost
 
         sig = inspect.signature(ExtensionHost.register_actor)
-        assert "start_policy" in sig.parameters, (
-            "register_actor must have a start_policy parameter"
-        )
-        assert sig.parameters["start_policy"].default == "scheduled", (
-            "start_policy default must be 'scheduled'"
-        )
+        assert "start_policy" in sig.parameters, "register_actor must have a start_policy parameter"
+        assert sig.parameters["start_policy"].default == "scheduled", "start_policy default must be 'scheduled'"
