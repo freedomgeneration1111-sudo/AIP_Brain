@@ -120,6 +120,26 @@ from gui.theme import (
 log = logging.getLogger("gui.pages.ask")
 
 
+def _log_safe_failure(operation: str, exc: Exception, *, level: int = logging.WARNING) -> None:
+    """Log diagnostic metadata without exposing provider or credential data."""
+    log.log(level, "%s failed (error_type=%s)", operation, type(exc).__name__)
+
+
+async def _prompt_openrouter_api_key(state: GuiState) -> None:
+    """Prompt for and save an API key without exposing it on failure."""
+    try:
+        key = await show_api_key_prompt()
+        if not key:
+            return
+        state.api_client.set_openrouter_api_key(key)
+    except Exception as exc:
+        _log_safe_failure("OpenRouter API key prompt or save", exc)
+        ui.notify("API key could not be saved.", color="negative")
+        return
+
+    ui.notify("API key saved! Refresh the page to use chat.", color="positive", position="top")
+
+
 @ui.page("/ask")
 async def ask_page(extension: str = "", debug: str = "", concept: str = ""):
     """Ask Workbench — chat interface with backend or direct model fallback.
@@ -143,7 +163,7 @@ async def ask_page(extension: str = "", debug: str = "", concept: str = ""):
         else:
             await _ask_page_impl()
     except Exception as exc:
-        log.exception("ask_page_crash: %s", exc)
+        _log_safe_failure("Ask page initialization", exc, level=logging.ERROR)
         # Render minimal shell so the user sees something instead of blank white
         try:
             state = get_session_state()
@@ -156,7 +176,7 @@ async def ask_page(extension: str = "", debug: str = "", concept: str = ""):
                 ui.label("Ask Workbench — Fatal Error").style(
                     f"font-size:16px; font-weight:700; color:{C_ERR_FG}; font-family:{F_SANS};"
                 )
-                ui.label(f"The Ask page crashed during initialization: {exc}").style(
+                ui.label("The Ask page could not finish initialization.").style(
                     f"font-size:12px; color:{C_CREAM}; font-family:{F_MONO}; margin-top:8px;"
                 )
                 ui.label("Check the console logs for details. The backend may be down or misconfigured.").style(
@@ -190,20 +210,20 @@ async def _ask_page_impl():
     try:
         await _check_backend_health(state)
     except Exception as exc:
-        log.warning("Backend health check failed: %s", exc)
+        _log_safe_failure("Backend health check", exc)
         state.backend_reachable = False
-        _init_error = f"Backend health check failed: {exc}"
+        _init_error = "Backend health check failed."
 
     # ── Load Model Slots ──────────────────────────────────────
     slots: list[dict[str, Any]] = []
     try:
         slots = await _load_model_slots(state)
     except AttributeError as exc:
-        log.error("Model slot loading failed (missing API client method): %s", exc)
-        _init_error = f"API client method missing: {exc}"
+        _log_safe_failure("Model slot loading (missing API client method)", exc, level=logging.ERROR)
+        _init_error = "Model slot loading is unavailable."
     except Exception as exc:
-        log.warning("Model slot loading failed: %s", exc)
-        _init_error = f"Model slot loading failed: {exc}"
+        _log_safe_failure("Model slot loading", exc)
+        _init_error = "Model slot loading failed."
 
     # Populate role model assignments from backend slot config
     for s in slots:
@@ -218,7 +238,7 @@ async def _ask_page_impl():
     try:
         await refresh_enabled_models()
     except Exception as exc:
-        log.warning("Enabled models refresh failed: %s", exc)
+        _log_safe_failure("Enabled models refresh", exc)
     all_model_options = build_model_options(state.available_slots)
 
     # Determine current chat model
@@ -235,18 +255,18 @@ async def _ask_page_impl():
     try:
         await state.refresh_status_summary()
     except Exception as exc:
-        log.warning("Status summary refresh failed: %s", exc)
+        _log_safe_failure("Status summary refresh", exc)
         if not _init_error:
-            _init_error = f"Status summary refresh failed: {exc}"
+            _init_error = "Status summary refresh failed."
 
     # ── API Key Check (deferred — do not block page render) ──
     try:
         if not state.api_client.has_openrouter_api_key():
             _api_key_missing = True
     except Exception as exc:
-        log.warning("API key check failed: %s", exc)
+        _log_safe_failure("OpenRouter API key check", exc)
         if not _init_error:
-            _init_error = f"API key check failed: {exc}"
+            _init_error = "API key configuration could not be checked."
 
     # ── BUILD LAYOUT ──────────────────────────────────────────
     build_top_bar(state)
@@ -268,21 +288,9 @@ async def _ask_page_impl():
                     "Set your key via the Settings page or the OPENROUTER_API_KEY environment variable."
                 ).style(f"font-size:12px; color:{C_CREAM}; font-family:{F_MONO}; margin-top:4px;")
                 with ui.row().style("margin-top:8px; gap:8px;"):
-
-                    async def _prompt_key():
-                        try:
-                            key = await show_api_key_prompt()
-                            if key:
-                                state.api_client.set_openrouter_api_key(key)
-                                ui.notify(
-                                    "API key saved! Refresh the page to use chat.", color="positive", position="top"
-                                )
-                        except Exception as exc:
-                            log.warning("API key prompt failed: %s", exc)
-
-                    ui.button("Enter API Key", on_click=lambda: asyncio.create_task(_prompt_key())).props(
-                        "dense"
-                    ).style(f"font-family:{F_SANS};")
+                    ui.button(
+                        "Enter API Key", on_click=lambda: asyncio.create_task(_prompt_openrouter_api_key(state))
+                    ).props("dense").style(f"font-family:{F_SANS};")
                     ui.link("Settings", "/settings").style(
                         f"font-size:11px; color:{C_AMBER}; text-decoration:underline; align-self:center;"
                     )
@@ -295,7 +303,7 @@ async def _ask_page_impl():
                     "The Ask page loaded with errors. Some features may not work. "
                     "Check that the backend is running and an API key is set."
                 ).style(f"font-size:11px; color:{C_MUTED}; margin-top:4px;")
-            log.error("ask_page_init_error: %s (api_key_missing=%s)", _init_error, _api_key_missing)
+            log.error("ask_page_init_error (api_key_missing=%s)", _api_key_missing)
 
     # Main content
     with (
@@ -497,10 +505,10 @@ async def _ask_page_impl():
                     lambda: asyncio.create_task(_load_and_render_corpora(_corpus_expansion)),
                     once=True,
                 )
-        except Exception:
+        except Exception as exc:
             # Corpus selector is non-critical — if it fails to import or
             # render, the rest of the Ask page must still work.
-            log.debug("corpus_selector_wiring_failed", exc_info=True)
+            _log_safe_failure("Corpus selector wiring", exc, level=logging.DEBUG)
 
         # ── Direct model fallback banner ──────────────────────────
         if not state.backend_reachable:
@@ -581,7 +589,8 @@ async def _check_backend_health(state: GuiState) -> str:
         return "Backend: TIMEOUT (>4s)"
     except Exception as exc:
         state.backend_reachable = False
-        return f"Backend: UNREACHABLE — {exc}"
+        _log_safe_failure("Backend health check", exc)
+        return "Backend: UNREACHABLE"
 
 
 async def _load_model_slots(state: GuiState) -> list[dict[str, Any]]:
@@ -591,8 +600,9 @@ async def _load_model_slots(state: GuiState) -> list[dict[str, Any]]:
         state.available_slots = slots
         state.backend_reachable = True
         return slots
-    except Exception:
+    except Exception as exc:
         state.backend_reachable = False
+        _log_safe_failure("Model slot loading", exc)
         return []
 
 
@@ -620,7 +630,7 @@ async def _on_chat_model_changed(model_id: str, state: GuiState) -> None:
         )
         ui.notify(f"Chat model -> {model_id}", color="info")
     except Exception as exc:
-        log.warning("model_slot_update_failed: %s", exc)
+        _log_safe_failure("Model slot update", exc)
         ui.notify("Model slot change failed — backend may not have updated", color="warning")
 
 
@@ -719,7 +729,8 @@ async def _on_auto_save_toggled(enabled: bool, state: GuiState) -> None:
             status = "enabled" if enabled else "disabled"
             ui.notify(f"Auto-save {status}", color="positive" if enabled else "warning")
         except Exception as exc:
-            ui.notify(f"Failed to update auto-save: {exc}", color="negative")
+            _log_safe_failure("Auto-save update", exc)
+            ui.notify("Failed to update auto-save.", color="negative")
     else:
         status = "enabled" if enabled else "disabled"
         ui.notify(f"Auto-save will be {status} for next session", color="info")
@@ -1007,9 +1018,9 @@ async def _send_multicast(
     try:
         session_id = await state.ensure_session()
     except Exception as exc:
-        log.warning("send_multicast: ensure_session failed: %s", exc)
+        _log_safe_failure("Multi-Cast session creation", exc)
         thinking_label.delete()
-        add_system_message(chat_container, f"Session creation failed: {exc}")
+        add_system_message(chat_container, "Session creation failed.")
         return
 
     try:
@@ -1045,24 +1056,23 @@ async def _send_multicast(
             compress_panel_outputs=state.compress_panel_outputs,  # Phase 3d
         )
     except Exception as exc:
-        log.exception("send_multicast: run_model_council failed: %s", exc)
+        _log_safe_failure("Multi-Cast model council request", exc, level=logging.ERROR)
         thinking_label.delete()
-        add_system_message(chat_container, f"Multi-Cast failed: {exc}")
-        ui.notify(f"Multi-Cast failed: {exc}", color="negative")
+        add_system_message(chat_container, "Multi-Cast request failed.")
+        ui.notify("Multi-Cast request failed.", color="negative")
         return
 
     thinking_label.delete()
 
     status = result.get("status", "error")
     if status == "error":
-        err = result.get("error", "Unknown error")
-        add_system_message(chat_container, f"Multi-Cast error: {err}")
-        ui.notify(f"Multi-Cast error: {err}", color="negative")
+        log.warning("Multi-Cast returned an error response (status=%s)", status)
+        add_system_message(chat_container, "Multi-Cast request failed.")
+        ui.notify("Multi-Cast request failed.", color="negative")
         return
 
     if status == "insufficient_models":
-        err = result.get("error", "Insufficient models selected")
-        add_system_message(chat_container, f"Multi-Cast unavailable: {err}")
+        add_system_message(chat_container, "Multi-Cast unavailable: insufficient models selected.")
         ui.notify(
             "Multi-Cast needs ≥2 selected models — pick more in the dropdown",
             color="warning",
@@ -1169,9 +1179,10 @@ async def _send_multicast(
                 turn_data=turn_data,
             )
         elif pm_status == "failed" and error:
+            log.warning("Multi-Cast panel model failed (model=%s)", display_label)
             add_system_message(
                 chat_container,
-                f"Multi-Cast model '{display_label}' FAILED: {error[:200]}",
+                f"Multi-Cast model '{display_label}' failed.",
             )
 
     # Render the Beast Fusion synthesis as a final answer card if available.
@@ -1305,11 +1316,12 @@ async def _handle_link_wiki(state: GuiState, turn_data: dict) -> None:
             relation_type="references",
         )
         if result.get("error"):
-            ui.notify(f"Link failed: {result['error']}", color="negative")
+            log.warning("Knowledge-link request returned an error response")
+            ui.notify("Wiki link request failed.", color="negative")
         else:
             ui.notify("Wiki link created", color="positive")
     except Exception as exc:
-        log.warning("link_wiki_failed: %s", exc)
+        _log_safe_failure("Knowledge-link request", exc)
         ui.notify("Wiki link failed — backend may be unavailable", color="warning")
 
 
@@ -1352,10 +1364,11 @@ async def _save_artifact_async(state: GuiState, session_id: str, content: str) -
                 timeout=6000,
             )
         else:
-            error = result.get("error", "unknown error")
-            ui.notify(f"Save failed: {error}", color="negative")
+            log.warning("Save artifact request returned an error response")
+            ui.notify("Artifact could not be saved.", color="negative")
     except Exception as exc:
-        ui.notify(f"Save artifact failed: {exc}", color="negative")
+        _log_safe_failure("Save artifact request", exc)
+        ui.notify("Artifact could not be saved.", color="negative")
 
 
 async def _send_prompt(
@@ -1396,11 +1409,9 @@ async def _send_prompt(
                 model_council_panel,
             )
     except Exception as exc:
-        import traceback
-
-        traceback.print_exc()
+        _log_safe_failure("Ask prompt dispatch", exc, level=logging.ERROR)
         try:
-            ui.notify(f"Send failed: {exc}", color="negative", timeout=8000)
+            ui.notify("Send failed. Check the backend and model configuration.", color="negative", timeout=8000)
         except Exception:
             pass
 
@@ -1463,7 +1474,7 @@ async def _send_prompt_inner(
             session_id = await state.ensure_session()
             log.info("send_prompt: session_id=%s", session_id)
         except Exception as exc:
-            log.warning("send_prompt: ensure_session failed: %s", exc)
+            _log_safe_failure("Chat session creation", exc)
             state.backend_reachable = False
 
     if state.backend_reachable:
@@ -1530,8 +1541,8 @@ async def _send_prompt_inner(
             content = err.get("content", "Unknown error")
             log.error("on_error: backend_error content_length=%d", len(str(content)))
             thinking_label.delete()
-            add_system_message(chat_container, f"Error: {content}")
-            ui.notify(content, color="negative")
+            add_system_message(chat_container, "Backend chat request failed.")
+            ui.notify("Backend chat request failed.", color="negative")
 
         def on_gate(gate: dict[str, Any]) -> None:
             log.info("on_gate: gate_type=%s", gate.get("gate_type", "?"))
@@ -1580,8 +1591,9 @@ async def _send_prompt_inner(
         thinking_label.delete()
 
         if result.get("error"):
-            add_system_message(chat_container, f"Error: {result.get('content', 'Unknown error')}")
-            ui.notify(result.get("content", "Chat failed"), color="negative")
+            log.warning("Direct OpenRouter returned an error response")
+            add_system_message(chat_container, "Direct OpenRouter request failed.")
+            ui.notify("Direct OpenRouter request failed.", color="negative")
         else:
             # Direct model fallback — use answer card with direct_model=True.
             # turn_id is intentionally empty here: the backend is unreachable,
@@ -1652,25 +1664,26 @@ async def _handle_gate_response(approved: bool, state: GuiState, chat_container)
             with ctx:
                 _do_ui()
                 if result.get("type") == "error":
-                    add_system_message(chat_container, f"Gate response error: {result.get('content', 'Unknown error')}")
-                    ui.notify(f"Gate response failed: {result.get('content', 'Unknown error')}", color="negative")
+                    add_system_message(chat_container, "Gate response request failed.")
+                    ui.notify("Gate response request failed.", color="negative")
                 elif result.get("type") == "response":
                     content = result.get("content", "")
                     add_message(chat_container, "assistant", content)
         else:
             _do_ui()
             if result.get("type") == "error":
-                add_system_message(chat_container, f"Gate response error: {result.get('content', 'Unknown error')}")
+                add_system_message(chat_container, "Gate response request failed.")
             elif result.get("type") == "response":
                 add_message(chat_container, "assistant", result.get("content", ""))
     except Exception as exc:
+        _log_safe_failure("Gate response", exc)
         if ctx is not None:
             with ctx:
-                add_system_message(chat_container, f"Gate response failed: {exc}")
-                ui.notify(f"Gate response failed: {exc}", color="negative")
+                add_system_message(chat_container, "Gate response request failed.")
+                ui.notify("Gate response request failed.", color="negative")
         else:
-            add_system_message(chat_container, f"Gate response failed: {exc}")
-            ui.notify(f"Gate response failed: {exc}", color="negative")
+            add_system_message(chat_container, "Gate response request failed.")
+            ui.notify("Gate response request failed.", color="negative")
         return
 
     state.pending_gate = None
@@ -1900,46 +1913,34 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                     ui.label(msg).style(f"font-size:13px; color:{C_ERR_FG}; font-family:{F_MONO}; padding:8px;")
 
             async def _render_http_error(exc: Exception, route: str) -> None:
-                """Render an actionable error for HTTP failures.
+                """Render a safe, actionable error for HTTP failures.
 
                 Distinguishes 404 (route missing — AIP_Aristotle out of
-                date) from other status codes and from connection errors.
+                date) from other status codes and from connection errors,
+                without exposing provider responses or exception details.
                 """
                 if isinstance(exc, httpx.HTTPStatusError):
                     status = exc.response.status_code
+                    log.warning("Aristotle backend request failed (http_status=%s)", status)
                     if status == 404:
                         await _render_error(
-                            f"The Aristotle backend returned 404 for {route}. "
-                            f"This usually means AIP_Aristotle is out of date — "
-                            f"run 'git pull origin main' in ~/AIP_Aristotle "
-                            f"and restart ./start.sh."
+                            "The Aristotle backend returned HTTP 404. "
+                            "This usually means AIP_Aristotle is out of date — "
+                            "run 'git pull origin main' in ~/AIP_Aristotle "
+                            "and restart ./start.sh."
                         )
                     else:
-                        body = ""
-                        try:
-                            body = exc.response.text[:200]
-                        except Exception:
-                            pass
-                        await _render_error(
-                            f"Backend returned HTTP {status} for {route}." + (f" Response: {body}" if body else "")
-                        )
+                        await _render_error(f"The Aristotle backend returned HTTP {status}.")
                 elif isinstance(exc, httpx.ConnectError):
+                    _log_safe_failure("Aristotle backend connection", exc)
                     await _render_error(
                         "I can't reach my brain right now. "
                         "Please make sure the AIP backend is running "
                         "(./start.sh from ~/AIP_Brain)."
                     )
                 else:
-                    # BUG-004 fix: surface the exception detail + HTTP status
-                    # code + response body so the operator can diagnose
-                    # instead of seeing a generic "Something went wrong".
-                    detail = str(exc)
-                    if hasattr(exc, "response"):
-                        try:
-                            detail += f" | HTTP {exc.response.status_code}: {exc.response.text[:200]}"
-                        except Exception:
-                            pass
-                    await _render_error(f"Something went wrong: {detail}")
+                    _log_safe_failure("Aristotle backend request", exc)
+                    await _render_error("The Aristotle backend request failed. Please try again.")
 
             async def _set_phase(new_phase: str) -> None:
                 """Update the phase label in the header (operator visibility)."""
@@ -2057,9 +2058,8 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                                         await _start_placer()
                                         return
                                     elif status_val == "FAILED":
-                                        error = status.get("error", "unknown error")
                                         await _render_error(
-                                            f"Plan generation failed: {error}. Please try confirming your plan again."
+                                            "Plan generation failed. Please try confirming your plan again."
                                         )
                                         return
                                 await _render_error(
@@ -2631,13 +2631,12 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                 except Exception:
                     pass  # don't let the toast itself crash the handler
 
-                import traceback as _tb
-
                 try:
                     filename = getattr(e.file, "name", "file")
                     content = await e.file.read()
                 except Exception as exc:
-                    await _render_error(f"Could not read uploaded file: {exc}\n\nTraceback:\n{_tb.format_exc()[:500]}")
+                    _log_safe_failure("Aristotle upload file read", exc)
+                    await _render_error("Could not read the uploaded file.")
                     return
 
                 ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
@@ -2792,11 +2791,10 @@ async def _ask_page_aristotle(concept_from_url: str = "", is_debug: bool = False
                                                     await _step_intake("")
                                                 return
                                             elif status_val == "FAILED":
-                                                error = status.get("error", "unknown error")
                                                 await _render_error(
-                                                    f"Paper ingestion failed: {error}. "
-                                                    f"You can continue chatting, but I'll use "
-                                                    f"the legacy truncation path instead of RAG."
+                                                    "Paper ingestion failed. "
+                                                    "You can continue chatting, but I'll use "
+                                                    "the legacy truncation path instead of RAG."
                                                 )
                                                 # On failure, still auto-trigger so the
                                                 # learner gets a response (legacy path).
