@@ -33,4 +33,4 @@ async def test_api_key_save_failure_does_not_expose_secret(monkeypatch, caplog):
     assert secret not in caplog.text
     assert all(secret not in message for message in notifications)
     assert notifications == ["API key could not be saved."]
-    assert "error_type=RuntimeError" in caplog.text
+    assert "OpenRouter API key prompt or save failed" in caplog.text

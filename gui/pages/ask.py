@@ -132,8 +132,8 @@ async def _prompt_openrouter_api_key(state: GuiState) -> None:
         if not key:
             return
         state.api_client.set_openrouter_api_key(key)
-    except Exception as exc:
-        _log_safe_failure("OpenRouter API key prompt or save", exc)
+    except Exception:
+        log.warning("OpenRouter API key prompt or save failed")
         ui.notify("API key could not be saved.", color="negative")
         return
 
