@@ -198,6 +198,17 @@ class CorpusRegistry:
             len(self._corpora),
         )
 
+    async def close(self) -> None:
+        """Close every registered corpus bundle during application shutdown."""
+        for corpus_id, stores in list(self._corpora.items()):
+            try:
+                await stores.close_all()
+            except Exception as exc:
+                logger.warning("corpus_registry_close_failed corpus=%s error=%s", corpus_id, exc)
+        self._corpora.clear()
+        self._definer_stores = None
+        self._migration_ready.clear()
+
     # ------------------------------------------------------------------
     # register() — ADR-008 Rev 3.1 §8 Chunk 2
     # ------------------------------------------------------------------

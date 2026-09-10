@@ -48,6 +48,10 @@ CI runs on every push to main — failures block merge.
 - Regression test documentation in test file docstrings
 
 ## Known Gotchas
+- **Async store ownership**: Sprint tests that construct AlertManager,
+  AlertHistoryStore, SyncAlertHistoryBridge, or VigilQualityStore must close
+  them in fixture teardown before pytest closes that test's event loop.
+
 - **Wiki metadata versus ID contract**: Sexton wiki IDs remain `sexton:wiki:*`,
   while their canonical metadata type is `beast_wiki`. Assert both at their
   correct boundary rather than conflating them.
@@ -65,6 +69,10 @@ CI runs on every push to main — failures block merge.
   Forgetting the mark causes the test to be skipped silently.
 
 ## Last Cycle
+- **Sprint 523–529 regression coverage**: test-owned alert workers and
+  persistent stores are tracked by module fixtures and closed in dependency
+  order, so the clean-CI shard exits after its pytest summary.
+
 - **Merge-gate repair**: wiki E2E and retrieval-contract tests now track the
   shared augmented-context lookup, and vector integration pins CI-fixture
   faithfulness recognition.

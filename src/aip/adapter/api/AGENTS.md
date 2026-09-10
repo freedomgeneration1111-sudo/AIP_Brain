@@ -27,6 +27,11 @@ into foundation-backed services and return explicit, source-grounded responses.
   provenance telemetry, and retrieval warnings.
 
 ## Known Gotchas
+- **Lifespan teardown is ownership-ordered**: stop AlertManager work before
+  its history bridge, close normal stores, then close every CorpusRegistry
+  bundle. The registry includes codeforge stores that are not exposed through
+  the definer convenience properties.
+
 - **Public health errors must be generic**: log a safe exception type internally
   and return stable unavailable messaging, never `str(exc)` in API responses.
 
@@ -35,6 +40,10 @@ into foundation-backed services and return explicit, source-grounded responses.
 - Compression task labels must be descriptive; avoid the ambiguous name `l`.
 
 ## Last Cycle
+- **Sprint 523–529 shutdown repair**: app lifespan closes superseded legacy
+  corpus stores at registry handoff and calls `CorpusRegistry.close()` during
+  shutdown, preventing `aiosqlite` workers from surviving pytest.
+
 - **Merge-gate repair**: health diagnostics no longer expose raw exceptions;
   WorkflowEngine and WorkflowRegistry are runtime-loaded through importlib.
 

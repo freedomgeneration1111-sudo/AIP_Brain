@@ -624,6 +624,12 @@ async def lifespan(app: FastAPI):
     # ecs_store) are overwritten to point to the registry's stores — so all
     # existing call sites automatically use the registry without code changes.
     try:
+        _superseded_legacy_stores = (
+            ("corpus_turn_store", container._legacy_corpus_turn_store),
+            ("artifact_store", container._legacy_artifact_store),
+            ("ecs_store", container._legacy_ecs_store),
+        )
+
         from pathlib import Path as _Path
 
         from aip.adapter.corpus_registry import CorpusRegistry
@@ -713,6 +719,25 @@ async def lifespan(app: FastAPI):
         # Overwrite legacy attributes with the registry's stores.
         # This makes all 264 call sites automatically use the registry.
         if container.definer_stores is not None:
+            _registry_stores = (
+                container.definer_stores.turn_store,
+                container.definer_stores.artifact_store,
+                container.definer_stores.ecs_store,
+            )
+            for (_store_name, _legacy_store), _registry_store in zip(
+                _superseded_legacy_stores,
+                _registry_stores,
+                strict=True,
+            ):
+                if _legacy_store is not None and _legacy_store is not _registry_store:
+                    try:
+                        await _legacy_store.close()
+                    except Exception as exc:
+                        log.warning(
+                            "superseded_legacy_store_close_failed",
+                            store=_store_name,
+                            error_type=type(exc).__name__,
+                        )
             container.corpus_turn_store = container.definer_stores.turn_store
             container.artifact_store = container.definer_stores.artifact_store
             container.ecs_store = container.definer_stores.ecs_store
@@ -2181,6 +2206,11 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+        try:
+            container._alert_manager.close()
+        except Exception as exc:
+            log.warning("alert_manager_close_failed", error_type=type(exc).__name__)
+
     # Close SyncAlertHistoryBridge (stops background thread)
     if getattr(container, "_alert_history_bridge", None) is not None:
         try:
@@ -2216,6 +2246,12 @@ async def lifespan(app: FastAPI):
                 await store.close()
             except Exception as exc:
                 log.warning("store_close_failed", store=store_name, error=str(exc))
+
+    if container.corpus_registry is not None:
+        try:
+            await container.corpus_registry.close()
+        except Exception as exc:
+            log.warning("corpus_registry_close_failed", error_type=type(exc).__name__)
 
     log.info("shutdown_complete")
 

@@ -374,6 +374,11 @@ config/aip.config.toml ([models] section)
 ```
 
 ## Known Gotchas
+- **Corpus lifecycle ownership**: `CorpusRegistry.close()` must close every
+  registered bundle (including codeforge). When app startup replaces a legacy
+  store with the registry's definer store, close the superseded instance first
+  so its `aiosqlite` workers cannot outlive the application event loop.
+
 - **Re-embed scheduling is non-fatal, never silent**: a failed scheduling
   attempt during an embedding-provider swap must log a warning with exception
   context while leaving the provider update intact.
@@ -417,6 +422,11 @@ config/aip.config.toml ([models] section)
   the `{EXT_ID Upper}_...` namespace convention (ADR-014 §10).
 
 ## Last Cycle
+- **Sprint 523–529 shutdown repair**: AlertManager now cancels and joins its
+  owned dispatch work before dependent stores close; SyncAlertHistoryBridge
+  closes its AlertHistoryStore before stopping its loop; CorpusRegistry has a
+  deterministic close lifecycle invoked by FastAPI shutdown.
+
 - **Merge-gate repair**: registry re-embed setup now logs failures; API lifespan
   loads workflow runtime classes through `importlib` instead of static
   orchestration imports.

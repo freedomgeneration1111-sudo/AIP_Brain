@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 import tempfile
 import time
 from unittest.mock import MagicMock
 
 import pytest
+import pytest_asyncio
 
 from aip.adapter.alerting import (
     Alert,
@@ -36,6 +38,39 @@ from aip.adapter.config_watcher import (
     ConfigWatcher,
 )
 from aip.adapter.read_pool import ReadPoolAutoSizer, ReadPoolHealth
+from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
+
+_BaseAlertManager = AlertManager
+_BaseVigilQualityStore = VigilQualityStore
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _close_test_owned_resources(monkeypatch):
+    """Close alert workers and SQLite connections before a test loop closes."""
+    alert_managers = []
+    quality_stores = []
+
+    class TrackedAlertManager(_BaseAlertManager):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            alert_managers.append(self)
+
+    class TrackedVigilQualityStore(_BaseVigilQualityStore):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            quality_stores.append(self)
+
+    test_module = sys.modules[__name__]
+    monkeypatch.setattr(test_module, "AlertManager", TrackedAlertManager)
+    monkeypatch.setattr(test_module, "VigilQualityStore", TrackedVigilQualityStore)
+
+    yield
+
+    for manager in reversed(alert_managers):
+        manager.close()
+    for store in reversed(quality_stores):
+        await store.close()
+
 
 # ============================================================================
 # Shared fakes
@@ -254,8 +289,6 @@ class TestVigilQualityStore:
 
     async def _create_store(self, tmp_path):
         """Helper to create a VigilQualityStore in a temp directory."""
-        from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
-
         db_path = os.path.join(tmp_path, "vigil_quality.db")
         # Use retention_days=0 so test timestamps from 2025 are not pruned
         store = VigilQualityStore(db_path, retention_days=0)
@@ -381,8 +414,6 @@ class TestVigilQualityStore:
     async def test_graceful_degradation_on_bad_db(self, tmp_path):
         """VigilQualityStore handles DB errors gracefully."""
         import sqlite3
-
-        from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
 
         # Point to a nonexistent directory
         store = VigilQualityStore("/nonexistent/path/quality.db")
@@ -587,7 +618,6 @@ class TestVigilQualityDashboard:
     async def test_quality_endpoint_with_persistent_store(self):
         """The quality endpoint uses persistent store when available."""
         from aip.adapter.api.routes.vigil_quality import vigil_quality
-        from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
 
         # Create a store with data
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 import tempfile
 from unittest.mock import MagicMock
 
 import pytest
+import pytest_asyncio
 
 from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import (
@@ -24,6 +26,58 @@ from aip.adapter.alerting import (
     AlertManager,
 )
 from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
+
+_BaseAlertHistoryStore = AlertHistoryStore
+_BaseSyncAlertHistoryBridge = SyncAlertHistoryBridge
+_BaseAlertManager = AlertManager
+_BaseVigilQualityStore = VigilQualityStore
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _close_test_owned_resources(monkeypatch):
+    """Close persistent stores and delivery workers before each test loop ends."""
+    alert_managers = []
+    history_stores = []
+    history_bridges = []
+    quality_stores = []
+
+    class TrackedAlertHistoryStore(_BaseAlertHistoryStore):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            history_stores.append(self)
+
+    class TrackedSyncAlertHistoryBridge(_BaseSyncAlertHistoryBridge):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            history_bridges.append(self)
+
+    class TrackedAlertManager(_BaseAlertManager):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            alert_managers.append(self)
+
+    class TrackedVigilQualityStore(_BaseVigilQualityStore):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            quality_stores.append(self)
+
+    test_module = sys.modules[__name__]
+    monkeypatch.setattr(test_module, "AlertHistoryStore", TrackedAlertHistoryStore)
+    monkeypatch.setattr(test_module, "SyncAlertHistoryBridge", TrackedSyncAlertHistoryBridge)
+    monkeypatch.setattr(test_module, "AlertManager", TrackedAlertManager)
+    monkeypatch.setattr(test_module, "VigilQualityStore", TrackedVigilQualityStore)
+
+    yield
+
+    for manager in reversed(alert_managers):
+        manager.close()
+    for bridge in reversed(history_bridges):
+        bridge.close()
+    for store in reversed(history_stores):
+        await store.close()
+    for store in reversed(quality_stores):
+        await store.close()
+
 
 # ============================================================================
 # Deliverable 1: Alerting Durability — AlertHistoryStore
@@ -355,6 +409,7 @@ class TestAlertManagerWithHistoryStore:
             mgr.attach_history_store(bridge)
 
             assert mgr._history_store is bridge
+            mgr.close()
             bridge.close()
 
     @pytest.mark.asyncio
@@ -384,6 +439,7 @@ class TestAlertManagerWithHistoryStore:
             alerts = bridge.get_alert_history(alert_type="batch_reduction")
             assert len(alerts) >= 1
             assert alerts[0]["alert_type"] == "batch_reduction"
+            mgr.close()
             bridge.close()
 
     @pytest.mark.asyncio
@@ -413,6 +469,7 @@ class TestAlertManagerWithHistoryStore:
             history = mgr.get_alert_history()
             assert len(history) == 1
             assert history[0]["message"] == "Pre-restart alert"
+            mgr.close()
             bridge.close()
 
     @pytest.mark.asyncio
@@ -451,6 +508,7 @@ class TestAlertManagerWithHistoryStore:
             # Check persistent store has the delivery failure via the sync bridge
             failures = bridge.get_delivery_failures()
             assert len(failures) >= 1
+            mgr.close()
             bridge.close()
 
     @pytest.mark.asyncio
@@ -483,6 +541,7 @@ class TestAlertManagerWithHistoryStore:
             assert result["status"] == "ok"
             assert len(result["alerts"]) == 1
             assert result["alerts"][0]["message"] == "Historical alert from before restart"
+            mgr.close()
             bridge.close()
 
 
@@ -981,4 +1040,5 @@ class TestHealthEndpoint:
             result = await vigil_quality_health(container=container)
             assert result["alerting"]["history_store_attached"] is True
             assert result["components"]["alert_history_store"] is True
+            alert_mgr.close()
             bridge.close()
