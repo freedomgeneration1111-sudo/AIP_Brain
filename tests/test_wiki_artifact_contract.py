@@ -8,7 +8,7 @@ These tests verify:
 1. Sexton._write_wiki_artifact writes artifact_type="beast_wiki"
 2. Sexton._wiki_needs_generation reads artifact_type="beast_wiki"
 3. Wiki channel reads artifact_type="beast_wiki"
-4. Chat route reads artifact_type="beast_wiki"
+4. Chat route delegates wiki retrieval to the shared augmented-context helper
 5. /wiki/articles API route matches sexton:wiki:* IDs
 """
 
@@ -131,19 +131,21 @@ def test_wiki_channel_reads_beast_wiki():
 
 
 # ---------------------------------------------------------------------------
-# Test 4: Chat route reads beast_wiki
+# Test 4: Chat delegates to shared augmented-context wiki lookup
 # ---------------------------------------------------------------------------
 
 
 def test_chat_route_reads_beast_wiki():
-    """Chat route must filter by artifact_type='beast_wiki'."""
-    from pathlib import Path
+    """Chat delegates to the helper that performs the beast_wiki lookup."""
+    routes_dir = Path(__file__).parent.parent / "src" / "aip" / "adapter" / "api" / "routes"
+    chat_source = (routes_dir / "chat.py").read_text()
+    augmented_context_source = (routes_dir / "_augmented_context.py").read_text()
 
-    source_file = Path(__file__).parent.parent / "src" / "aip" / "adapter" / "api" / "routes" / "chat.py"
-    source = source_file.read_text()
-
-    assert 'value="beast_wiki"' in source or "value='beast_wiki'" in source, (
-        "Contract violation: chat.py must read artifact_type='beast_wiki'"
+    assert "assemble_augmented_context" in chat_source, (
+        "Contract violation: chat.py must delegate augmented retrieval to assemble_augmented_context"
+    )
+    assert 'value="beast_wiki"' in augmented_context_source or "value='beast_wiki'" in augmented_context_source, (
+        "Contract violation: _augmented_context.py must query artifact_type='beast_wiki'"
     )
 
 

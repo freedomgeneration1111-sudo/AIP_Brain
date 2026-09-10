@@ -77,6 +77,9 @@ sexton.py (_embedding_backfill_state, _rate_limited)
 ```
 
 ## Known Gotchas
+- **External model errors are untrusted**: do not log raw backend error content
+  or exceptions from direct OpenRouter calls; log only safe metadata such as an
+  error type and content length.
 - **UnboundLocalError on async handlers**: NiceGUI `ui.button(on_click=func)` requires
   `func` to be defined BEFORE the button references it. Always define `async def`
   handlers above their `ui.button()` calls. NEVER use `lambda: coroutine()` — use
@@ -232,6 +235,8 @@ sexton.py (_embedding_backfill_state, _rate_limited)
   unavailable/failed" instead of just "Beast synthesis".
 
 ## Last Cycle
+- **Merge-gate security repair**: Ask page diagnostics now omit raw model
+  provider failures from logs and operator-visible fallback messages.
 - **QW8 — Wired corpus_selector.py into Ask page sidebar** (this cycle):
   the corpus selector component (`gui/components/corpus_selector.py`) was
   previously dead code — it called `GET /corpus-registry/corpora` and

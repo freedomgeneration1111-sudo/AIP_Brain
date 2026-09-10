@@ -81,6 +81,9 @@ orchestration/review_export_pipeline.py (review decision)
 ```
 
 ## Known Gotchas
+- **Evaluation-slot CI fixture collision**: the shared `evaluation` slot can
+  return ARISTOTLE's JSON fixture. Faithfulness must identify its explicit
+  marker before schema validation; only complete faithfulness JSON is real.
 - **No direct adapter imports**: If you write `from aip.adapter import ...` in
   orchestration, you've violated the layer discipline. Use Protocols.
 - **ECS transitions live in ecs_graph.py only**: Never implement transition logic
@@ -91,6 +94,9 @@ orchestration/review_export_pipeline.py (review decision)
   checks. Vigil does NOT do tagging. Mixing these breaks the ADR-011 contract.
 
 ## Last Cycle
+- **Merge-gate repair**: faithfulness now recognizes the structured
+  `[CI-FIXTURE]` evaluation response and rejects incomplete production schemas
+  as real evaluations.
 - **QW3 — Deleted unused duplicate `ingestion/parsers/python_ast_parser.py`** (this cycle):
   - The file was a byte-identical copy of `adapter/python_ast_parser.py`
     (411 lines each, `diff -q` confirmed identical). It was created during

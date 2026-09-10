@@ -28,6 +28,27 @@ logger = logging.getLogger(__name__)
 _CI_COHERENCE_SCORE = 0.90
 
 
+def _is_ci_fixture_response(content: str, result: dict[str, Any]) -> bool:
+    """Recognize explicit CI fixtures before validating coherence JSON."""
+    if result.get("ci_fixture") is True:
+        return True
+
+    if "ci-evaluation" in str(result.get("model", "")).casefold():
+        return True
+
+    try:
+        parsed = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return "[ci-fixture" in content.casefold() or "[ci fixture" in content.casefold()
+
+    if not isinstance(parsed, dict):
+        return False
+
+    feedback = parsed.get("feedback")
+    is_aristotle_fixture = {"score", "mastery_achieved", "diagnosis"}.issubset(parsed) and isinstance(feedback, str)
+    return is_aristotle_fixture and "[ci-fixture" in feedback.casefold()
+
+
 async def evaluate_domain_coherence(
     artifact_id: str,
     artifact_content: str,
@@ -78,8 +99,9 @@ async def evaluate_domain_coherence(
             content = result.get("content", "")
             tokens_consumed = result.get("usage", {}).get("total_tokens", 0)
 
-            # CI fixture detection
-            if "CI fixture" in content or "ci-evaluation" in result.get("model", ""):
+            # The shared evaluation slot's ARISTOTLE fixture is valid JSON,
+            # but it is not a domain coherence response.
+            if _is_ci_fixture_response(content, result):
                 return DomainCoherenceResult(
                     artifact_id=artifact_id,
                     coherence_score=_CI_COHERENCE_SCORE,
@@ -101,16 +123,22 @@ async def evaluate_domain_coherence(
                     ci_fixture=True,
                 )
 
-            # Parse real model response
+            # Parse and validate a real coherence response. Missing fields
+            # must not be accepted as a successful production evaluation.
             try:
                 parsed = json.loads(content)
-                coherence_score = float(parsed.get("coherence_score", 0.0))
-                violations = parsed.get("violations", [])
-                rationale = parsed.get("rationale", "Model evaluation")
+                required_fields = {"coherence_score", "violations", "rationale"}
+                if not isinstance(parsed, dict) or not required_fields.issubset(parsed):
+                    raise ValueError("coherence response is missing required fields")
+                if not isinstance(parsed["violations"], list):
+                    raise ValueError("violations must be a list")
+
+                coherence_score = float(parsed["coherence_score"])
+                violations = parsed["violations"]
+                rationale = str(parsed["rationale"])
                 ci_fixture = False  # Real evaluation succeeded
-            except (json.JSONDecodeError, ValueError):
-                # Model response was not valid JSON — still a fixture
-                logger.warning("Domain coherence model response was not valid JSON; using CI fixture")
+            except (json.JSONDecodeError, TypeError, ValueError):
+                logger.warning("Domain coherence response was not a valid schema; using CI fixture")
 
         except Exception:
             # Model call failed entirely — use CI fixture

@@ -1284,9 +1284,13 @@ async def extensions_health(container: AipContainer = Depends(get_container)):
             "extensions": host.health(),
         }
     except Exception as exc:
-        logger.warning("extensions_health_failed error=%s", exc, exc_info=True)
+        logger.warning(
+            "extensions_health_failed error_type=%s",
+            type(exc).__name__,
+            exc_info=True,
+        )
         return {
             "host_running": False,
             "extensions": [],
-            "error": f"health() raised: {type(exc).__name__}: {exc}",
+            "error": "Extension health is temporarily unavailable.",
         }

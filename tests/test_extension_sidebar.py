@@ -26,11 +26,23 @@ warnings.filterwarnings("ignore", message="coroutine.*was never awaited")
 # ---------------------------------------------------------------------------
 
 
-def test_known_extensions_loaded_from_config():
-    """Load aip.config.toml, assert extensions.known has at least one entry
-    with name, health_url, nav fields.
-    """
+def test_known_extensions_loaded_from_config(tmp_path, monkeypatch):
+    """Load an explicit test config without relying on operator config."""
     from gui.components.layout import _load_known_extensions
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "aip.config.toml").write_text(
+        """
+[extensions]
+[[extensions.known]]
+name = "aristotle"
+health_url = "http://localhost:8001/health"
+nav = [{ label = "Tutor", route = "/ask" }]
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
 
     known = _load_known_extensions()
     assert len(known) >= 1, "expected at least one known extension in config"

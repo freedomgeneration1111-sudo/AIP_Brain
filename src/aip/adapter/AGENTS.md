@@ -374,6 +374,9 @@ config/aip.config.toml ([models] section)
 ```
 
 ## Known Gotchas
+- **Re-embed scheduling is non-fatal, never silent**: a failed scheduling
+  attempt during an embedding-provider swap must log a warning with exception
+  context while leaving the provider update intact.
 - **aiosqlite is mandatory**: Using `sqlite3.connect()` in an async method
   blocks the event loop and causes random hangs. Always use `aiosqlite`.
 - **429 must be detected before `raise_for_status()`**: If you call
@@ -414,6 +417,9 @@ config/aip.config.toml ([models] section)
   the `{EXT_ID Upper}_...` namespace convention (ADR-014 §10).
 
 ## Last Cycle
+- **Merge-gate repair**: registry re-embed setup now logs failures; API lifespan
+  loads workflow runtime classes through `importlib` instead of static
+  orchestration imports.
 - **Phase β-3 — Wiki as graph nodes** (this cycle): the POST
   /wiki/articles endpoint now creates a WIKI_ARTICLE graph node (via
   graph_store.upsert_node) when a wiki article is created. The node has

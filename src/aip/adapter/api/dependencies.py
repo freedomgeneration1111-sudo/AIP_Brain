@@ -300,8 +300,14 @@ class AipContainer:
                     loop.create_task(old_provider.close())
                 except RuntimeError:
                     pass
-            except Exception:
-                pass
+            except Exception as exc:
+                from aip.logging import get_logger as _get_logger
+
+                _get_logger(__name__).warning(
+                    "embedding_provider_close_failed",
+                    error_type=type(exc).__name__,
+                    exc_info=True,
+                )
 
         self.embedding_provider = provider
 
@@ -315,8 +321,14 @@ class AipContainer:
                     loop.create_task(self._registry_reembed(provider))
                 except RuntimeError:
                     asyncio.run(self._registry_reembed(provider))
-            except Exception:
-                pass
+            except Exception as exc:
+                from aip.logging import get_logger as _get_logger
+
+                _get_logger(__name__).warning(
+                    "registry_reembed_trigger_setup_failed",
+                    error_type=type(exc).__name__,
+                    exc_info=True,
+                )
             # Still update beast/knowledge_store/sexton (not per-corpus)
             self._update_non_corpus_embed_dependents(provider)
             return

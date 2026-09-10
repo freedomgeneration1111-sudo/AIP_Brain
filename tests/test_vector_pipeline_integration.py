@@ -95,6 +95,7 @@ async def test_sqlite_vss_full_pipeline():
         model_resolver=resolver,
     )
     assert faith.faithfulness_score > 0.0
+    assert faith.ci_fixture is True
 
     coh = await evaluate_domain_coherence(
         artifact_id="art-1",
@@ -103,6 +104,7 @@ async def test_sqlite_vss_full_pipeline():
         model_resolver=resolver,
     )
     assert coh.coherence_score > 0.0
+    assert coh.ci_fixture is True
 
     if hasattr(store, "close"):
         await store.close()

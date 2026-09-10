@@ -416,7 +416,7 @@ async def test_sexton_wiki_generation_writes_artifact(corpus_turn_store, test_re
     # Should have written at least one wiki artifact
     all_artifacts = artifact_store.get_all()
     wiki_artifacts = {
-        aid: a for aid, a in all_artifacts.items() if a.get("metadata", {}).get("artifact_type") == "sexton_wiki"
+        aid: a for aid, a in all_artifacts.items() if a.get("metadata", {}).get("artifact_type") == "beast_wiki"
     }
 
     assert len(wiki_artifacts) >= 1, f"Expected at least 1 wiki artifact, got {len(wiki_artifacts)}"
@@ -478,7 +478,7 @@ async def test_sexton_wiki_generation_ecs_transition(corpus_turn_store, test_reg
     wiki_arts = {
         aid: a
         for aid, a in artifact_store.get_all().items()
-        if a.get("metadata", {}).get("artifact_type") == "sexton_wiki"
+        if a.get("metadata", {}).get("artifact_type") == "beast_wiki"
     }
     for aid in wiki_arts:
         state = await ecs_store.current_state(aid)
@@ -549,7 +549,7 @@ async def test_sexton_wiki_overview_extraction(corpus_turn_store, test_registry)
     wiki_arts = {
         aid: a
         for aid, a in artifact_store.get_all().items()
-        if a.get("metadata", {}).get("artifact_type") == "sexton_wiki"
+        if a.get("metadata", {}).get("artifact_type") == "beast_wiki"
     }
     assert len(wiki_arts) >= 1
     for aid, art in wiki_arts.items():

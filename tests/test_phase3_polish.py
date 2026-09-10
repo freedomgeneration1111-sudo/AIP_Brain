@@ -40,7 +40,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _PANEL_PY = _REPO_ROOT / "gui" / "components" / "model_council_panel.py"
 _ASK_PY = _REPO_ROOT / "gui" / "pages" / "ask.py"
 _MODEL_COUNCIL_PY = _REPO_ROOT / "src" / "aip" / "adapter" / "api" / "routes" / "model_council.py"
-_CONFIG_TOML = _REPO_ROOT / "config" / "aip.config.toml"
+_CONFIG_TOML = _REPO_ROOT / "config" / "aip.config.toml.example"
 
 
 def _read_panel_source() -> str:
@@ -322,12 +322,12 @@ class TestDedicatedJudgeSlot:
         )
 
     def test_config_has_commented_judge_slot_example(self):
-        """config/aip.config.toml has a commented [models.judge] example
+        """The committed example config has a commented [models.judge] example
         so users know how to configure the dedicated Judge slot."""
         source = _read_config_source()
         # The commented example must exist
         assert "[models.judge]" in source, (
-            "Phase 3c: config/aip.config.toml must have a commented [models.judge] example"
+            "Phase 3c: config/aip.config.toml.example must have a commented [models.judge] example"
         )
         # Must mention AIP_JUDGE_API_KEY env var
         assert "AIP_JUDGE_API_KEY" in source, "Phase 3c: config must document the AIP_JUDGE_API_KEY env var override"

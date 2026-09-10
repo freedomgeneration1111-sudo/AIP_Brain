@@ -1527,9 +1527,9 @@ async def _send_prompt_inner(
                 add_system_message(chat_container, "Auto-save: indexing...")
 
         def on_error(err: dict[str, Any]) -> None:
-            log.error("on_error: %s", err.get("content", "Unknown"))
-            thinking_label.delete()
             content = err.get("content", "Unknown error")
+            log.error("on_error: backend_error content_length=%d", len(str(content)))
+            thinking_label.delete()
             add_system_message(chat_container, f"Error: {content}")
             ui.notify(content, color="negative")
 
@@ -1563,11 +1563,11 @@ async def _send_prompt_inner(
             )
             return
         except Exception as exc:
-            log.error("send_prompt: websocket failed: %s", exc)
+            log.error("send_prompt: websocket failed (error_type=%s)", type(exc).__name__)
             thinking_label.delete()
             state.backend_reachable = False
             state.reset_session()
-            add_system_message(chat_container, f"Backend chat failed, trying direct OpenRouter: {exc}")
+            add_system_message(chat_container, "Backend chat failed, trying direct OpenRouter.")
 
     # ── Route 2: Backend unreachable -> direct OpenRouter API call ─
     log.info("send_prompt: using direct OpenRouter with model=%s", chat_model)
@@ -1626,10 +1626,10 @@ async def _send_prompt_inner(
                 add_system_message(chat_container, f"Tokens: {tokens}")
             add_system_message(chat_container, "DIRECT MODEL ONLY — NOT DOGFOOD — backend not connected")
     except Exception as exc:
-        log.error("send_prompt: direct OpenRouter failed: %s", exc)
+        log.error("send_prompt: direct OpenRouter failed (error_type=%s)", type(exc).__name__)
         thinking_label.delete()
-        add_system_message(chat_container, f"Direct OpenRouter call failed: {exc}")
-        ui.notify(f"Chat failed: {exc}", color="negative")
+        add_system_message(chat_container, "Direct OpenRouter call failed. Check the backend and model configuration.")
+        ui.notify("Chat failed. Check the backend and model configuration.", color="negative")
 
 
 async def _handle_gate_response(approved: bool, state: GuiState, chat_container) -> None:

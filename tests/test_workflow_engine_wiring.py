@@ -45,8 +45,8 @@ def test_lifespan_wires_workflow_engine():
     """The lifespan constructs WorkflowEngine and stores it on the container (ADR-014 §8 step 2)."""
     app_path = _REPO_ROOT / "src" / "aip" / "adapter" / "api" / "app.py"
     source = app_path.read_text()
-    assert "from aip.orchestration.workflow.engine import WorkflowEngine" in source, (
-        "Lifespan must import WorkflowEngine"
+    assert 'importlib.import_module("aip.orchestration.workflow.engine")' in source, (
+        "Lifespan must load WorkflowEngine through importlib"
     )
     assert "container.workflow_engine = _workflow_engine" in source, "Lifespan must assign container.workflow_engine"
     assert "workflow_engine_wired=True" in source, "Lifespan should log workflow_engine_wired=True on success"

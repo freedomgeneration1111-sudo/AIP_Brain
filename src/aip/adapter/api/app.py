@@ -745,8 +745,11 @@ async def lifespan(app: FastAPI):
         from pathlib import Path as _Path
 
         from aip.adapter.extensions import ExtensionHost
-        from aip.orchestration.workflow.engine import WorkflowEngine
-        from aip.orchestration.workflow_registry import WorkflowRegistry
+
+        _workflow_engine_module = importlib.import_module("aip.orchestration.workflow.engine")
+        _workflow_registry_module = importlib.import_module("aip.orchestration.workflow_registry")
+        WorkflowEngine = _workflow_engine_module.WorkflowEngine
+        WorkflowRegistry = _workflow_registry_module.WorkflowRegistry
 
         _extensions_dir = _Path(config.get("extensions", {}).get("dir", "extensions"))
         _manifest_range = tuple(config.get("extensions", {}).get("manifest_version_range", (1, 1)))

@@ -48,6 +48,11 @@ CI runs on every push to main — failures block merge.
 - Regression test documentation in test file docstrings
 
 ## Known Gotchas
+- **Wiki metadata versus ID contract**: Sexton wiki IDs remain `sexton:wiki:*`,
+  while their canonical metadata type is `beast_wiki`. Assert both at their
+  correct boundary rather than conflating them.
+- **Runtime config is private**: tests must create a temporary config or read
+  `config/aip.config.toml.example`; never require untracked `aip.config.toml`.
 - **Don't remove `ci_fixture=True` to make a test pass**: That's hiding a real
   issue. Find the actual cause.
 - **MagicMock detected as "degraded"**: `type(MagicMock()).__name__` contains "Mock",
@@ -60,6 +65,11 @@ CI runs on every push to main — failures block merge.
   Forgetting the mark causes the test to be skipped silently.
 
 ## Last Cycle
+- **Merge-gate repair**: wiki E2E and retrieval-contract tests now track the
+  shared augmented-context lookup, and vector integration pins CI-fixture
+  faithfulness recognition.
+- **Merge-gate repair**: extension-sidebar tests now create an explicit config,
+  and Phase 3 checks the committed example config for the Judge-slot guidance.
 - **QW14 — Codeforge end-to-end acceptance test added** (this cycle): new
   `tests/acceptance/test_codeforge_e2e.py` (4 tests, AC-10). Exercises the
   full Phase 1.6 Codebase-as-Corpus flow: register codeforge corpus →

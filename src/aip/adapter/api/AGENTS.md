@@ -27,12 +27,16 @@ into foundation-backed services and return explicit, source-grounded responses.
   provenance telemetry, and retrieval warnings.
 
 ## Known Gotchas
+- **Public health errors must be generic**: log a safe exception type internally
+  and return stable unavailable messaging, never `str(exc)` in API responses.
 
 - Reflowing SQL or structured logs must not alter predicates, ordering, bound
   parameters, or logger arguments.
 - Compression task labels must be descriptive; avoid the ambiguous name `l`.
 
 ## Last Cycle
+- **Merge-gate repair**: health diagnostics no longer expose raw exceptions;
+  WorkflowEngine and WorkflowRegistry are runtime-loaded through importlib.
 
 - Created during the merge lint repair to document route-level formatting and
   Model Council task-label safety.

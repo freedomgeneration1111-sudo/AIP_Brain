@@ -88,6 +88,9 @@ config/aip.config.toml ([embedding] section)
 ```
 
 ## Known Gotchas
+- **Tests read the committed example, not runtime config**: configuration
+  documentation assertions must target `aip.config.toml.example`; the real TOML
+  is untracked and may contain operator-specific values.
 - **Key name mismatches are silent**: A typo in a TOML key doesn't raise an error —
   the Python code just gets `None` or the default. Always verify both sides.
 - **Partial renames cause blockers**: If you rename a key in TOML but not in the
@@ -100,6 +103,8 @@ config/aip.config.toml ([embedding] section)
   env var can override it. Check `os.environ` when config seems wrong.
 
 ## Last Cycle
+- **Merge-gate repair**: added the safe commented `[models.judge]` example and
+  documented `AIP_JUDGE_API_KEY`; no runtime config or secret was added.
 - **Commit 14d3a73**: No config changes. Config was stable during the operator
   console debugging cycle. Sexton's `[sexton]` section was already correct.
 
