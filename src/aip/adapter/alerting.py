@@ -6804,27 +6804,26 @@ class AlertManager:
         # Sprint 5.32: Use per-type digest overrides if configured
         # Sprint 5.61: Delegates buffering and flush decision to DigestManager
         if self._config.digest_enabled and alert.severity == "info" and not escalated:
-            with self._lock:
-                self._digest_mgr.buffer_alert(alert_dict)
-                # Check if we should flush the digest
-                if self._digest_mgr.should_flush(alert.alert_type):
-                    buffered = self._digest_mgr.flush_digest()
-                    self._handle_digest_flush(buffered)
-                # Record delivery status as "buffered" for digest
-                status_dict = {
-                    "status": "buffered_for_digest",
-                    "correlation_id": correlation_id,
-                    "alert_type": alert.alert_type,
-                    "severity": alert.severity,
-                    "subject": alert.subject,
-                    "transports": transports,
-                    "transport_results": {},
-                    "dispatched_at": datetime.now(timezone.utc).isoformat(),
-                }
-                # Sprint 5.62: Store delivery status via AlertLifecycleManager
-                self._lifecycle_mgr.set_delivery_status(correlation_id, status_dict)
-                # Sprint 5.32: Persist delivery status to SQLite
-                self._persist_delivery_status(status_dict)
+            # DigestManager owns its buffer lock. Do not hold AlertManager's
+            # lock while running a flush callback: it starts a dispatch worker
+            # and therefore needs to acquire manager state itself.
+            self._digest_mgr.buffer_alert(alert_dict)
+            buffered = self._digest_mgr.flush_digest() if self._digest_mgr.should_flush(alert.alert_type) else []
+            # Record delivery status as "buffered" for digest.
+            status_dict = {
+                "status": "buffered_for_digest",
+                "correlation_id": correlation_id,
+                "alert_type": alert.alert_type,
+                "severity": alert.severity,
+                "subject": alert.subject,
+                "transports": transports,
+                "transport_results": {},
+                "dispatched_at": datetime.now(timezone.utc).isoformat(),
+            }
+            # Sprint 5.62: Store delivery status via AlertLifecycleManager
+            self._lifecycle_mgr.set_delivery_status(correlation_id, status_dict)
+            # Sprint 5.32: Persist delivery status to SQLite
+            self._persist_delivery_status(status_dict)
             # Notify SSE/WebSocket subscribers about the buffered alert
             self._realtime_bus.notify_realtime_subscribers(
                 {
@@ -6835,6 +6834,8 @@ class AlertManager:
                     "subject": alert.subject,
                 }
             )
+            if buffered:
+                self._handle_digest_flush(buffered)
             return correlation_id
 
         # Sprint 5.30: Dispatch to transports in a background thread
