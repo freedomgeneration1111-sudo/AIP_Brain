@@ -11,10 +11,12 @@ Deliverable 5: Integration Smoke Test with Lifespan
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 from unittest.mock import MagicMock
 
 import pytest
+import pytest_asyncio
 
 from aip.adapter.alerting import (
     Alert,
@@ -22,6 +24,38 @@ from aip.adapter.alerting import (
     AlertManager,
 )
 from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
+
+_BaseAlertManager = AlertManager
+_BaseVigilQualityStore = VigilQualityStore
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _close_test_owned_resources(monkeypatch):
+    """Close alert workers and SQLite connections before a test loop closes."""
+    alert_managers = []
+    quality_stores = []
+
+    class TrackedAlertManager(_BaseAlertManager):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            alert_managers.append(self)
+
+    class TrackedVigilQualityStore(_BaseVigilQualityStore):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            quality_stores.append(self)
+
+    test_module = sys.modules[__name__]
+    monkeypatch.setattr(test_module, "AlertManager", TrackedAlertManager)
+    monkeypatch.setattr(test_module, "VigilQualityStore", TrackedVigilQualityStore)
+
+    yield
+
+    for manager in reversed(alert_managers):
+        manager.close()
+    for store in reversed(quality_stores):
+        await store.close()
+
 
 # ============================================================================
 # Shared fakes

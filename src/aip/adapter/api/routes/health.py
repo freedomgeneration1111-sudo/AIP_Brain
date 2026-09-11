@@ -656,6 +656,40 @@ async def health(container: AipContainer = Depends(get_container)):
         "dogfood_mode": get_dogfood_mode(container.config).value,
         # Chunk 5: Per-channel retrieval health
         "retrieval_channel_health": retrieval_channel_health,
+        # ADR-017: Web Source Acquisition health
+        "web": _web_health(container),
+    }
+
+
+def _web_health(container: AipContainer) -> dict[str, Any]:
+    """Build the web-source-acquisition health block.
+
+    Reports the provider's configured/available state WITHOUT calling
+    the provider live (per ADR-017 + W2 pattern: derive readiness from
+    actual container state, never claim "available" when unconfigured).
+    """
+    provider = getattr(container, "web_search_provider", None)
+    fetcher = getattr(container, "web_fetcher", None)
+    source_store = getattr(container, "web_source_store", None)
+    snapshot_store = getattr(container, "web_snapshot_store", None)
+
+    # Provider state: not_configured / available / unknown
+    if provider is None:
+        provider_state = "not_configured"
+        provider_name = None
+    else:
+        from aip.adapter.web.providers.factory import provider_status
+
+        provider_state = provider_status(provider)
+        provider_name = getattr(provider, "name", "unknown")
+
+    return {
+        "enabled": provider is not None,
+        "provider": provider_name,
+        "provider_state": provider_state,
+        "fetcher_wired": fetcher is not None,
+        "source_store_wired": source_store is not None,
+        "snapshot_store_wired": snapshot_store is not None,
     }
 
 
@@ -1194,6 +1228,7 @@ async def status_summary(container: AipContainer = Depends(get_container)):
     # Build final response
     # ------------------------------------------------------------------
     return {
+        "backend_reachable": True,
         "dogfood_mode": dogfood_mode,
         "backend_health": backend_health,
         "actor_status_summary": actor_status_summary,
@@ -1206,3 +1241,56 @@ async def status_summary(container: AipContainer = Depends(get_container)):
         "warnings": warnings,
         "recent_activity": recent_activity,
     }
+
+
+# ---------------------------------------------------------------------------
+# ADR-014 §7 — Extension health surface
+# ---------------------------------------------------------------------------
+
+
+@router.get("/health/extensions")
+async def extensions_health(container: AipContainer = Depends(get_container)):
+    """Per-extension health snapshot (ADR-014 §7).
+
+    Returns the state of every discovered extension plus its failures.
+    Backs the operator/teacher "extension health" tab. ARISTOTLE's
+    "session opens itself" promise is gated on REGISTERED (backend live);
+    the GUI learning view is gated on MOUNTED (v1.1, stage 4).
+
+    Returns:
+        {
+            "host_running": bool,
+            "extensions": [
+                {
+                    "id": "aristotle",
+                    "version": "0.1.0",
+                    "state": "REGISTERED",
+                    "failures": [{"stage": "...", "contribution": "...", "reason": "..."}]
+                }
+            ]
+        }
+    """
+    host = getattr(container, "extensions", None)
+    if host is None:
+        return {
+            "host_running": False,
+            "extensions": [],
+            "error": "ExtensionHost not wired (container.extensions is None)",
+        }
+
+    try:
+        return {
+            "host_running": host.is_running(),
+            "extensions": host.health(),
+        }
+    except Exception as exc:
+        logger.warning(
+            "extensions_health_failed error_type=%s",
+            type(exc).__name__,
+            exc_info=True,
+        )
+        return {
+            "host_running": False,
+            "extensions": [],
+            "error": "Extension health is temporarily unavailable.",
+        }

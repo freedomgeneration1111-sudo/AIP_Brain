@@ -5,8 +5,13 @@
 # and MUST be provided via environment variables instead:
 #   AIP_SYNTHESIS_API_KEY, AIP_EVALUATION_API_KEY, etc.
 #
-# Do NOT commit real keys. The live `config/aip.config.toml` is (or should be)
-# ignored by .gitignore.
+# IMPORTANT (June 2026): config/aip.config.toml is now UNTRACKED by git
+# (removed from version control). Your real config — with your real API
+# keys — lives only on your machine and will NEVER conflict with upstream
+# pulls again. The .example file you're reading is the tracked template;
+# copy it to config/aip.config.toml and add your keys there.
+#
+# Do NOT commit real keys. The live `config/aip.config.toml` is gitignored.
 #
 # Model names, hosts, ports, limits, and other non-secret values are shown
 # as working laptop-profile examples. Adjust for production as needed.
@@ -24,6 +29,14 @@ provider = "openai_compatible"
 model = "text-embedding-3-small"
 base_url = "https://openrouter.ai/api"
 # api_key provided via env (AIP_EMBEDDING_API_KEY or similar)
+
+# Optional dedicated Fusion Judge slot. The API key is supplied only through
+# AIP_JUDGE_API_KEY (or the global AIP_OPENAI_API_KEY fallback), never TOML.
+# [models.judge]
+# provider = "openai_compatible"
+# model = "anthropic/claude-3.5-sonnet"
+# base_url = "https://openrouter.ai/api"
+# api_key = ""  # AIP_JUDGE_API_KEY environment override
 
 [sexton]
 classification_batch_size = 50
@@ -215,6 +228,34 @@ memory_limit_mb = 4096
 [database]
 db_path = "db/state.db"
 
+# ---------------------------------------------------------------------------
+# Multi-Corpus Configuration (Phase α-2, 2026-07-23)
+# ADR-008 Multi-Corpus Architecture. Declare additional corpora here —
+# the app.py lifespan reads this section and registers them at startup.
+# Operators can add corpora without editing app.py.
+#
+# 'definer' (conversation) and 'codeforge' (code) are ALWAYS registered
+# by default — do NOT declare them here. Only declare additional corpora.
+#
+# Each [corpora.{id}] section has:
+#   type        = "conversation" | "code" | "document" | "book"  (required)
+#   db_path     = "db/{id}.db"  (optional, defaults to db/{corpus_id}.db)
+#   sensitive   = false  (optional, default false — requires session opt-in)
+#   access_note = "..."  (optional, shown in GUI when sensitive=true)
+#
+# Example: a restricted research document corpus
+# [corpora.branham]
+# type = "document"
+# sensitive = true
+# access_note = "Restricted research corpus — requires explicit session allowlist"
+#
+# Example: a manuscript corpus
+# [corpora.sparkle_thirst]
+# type = "book"
+# ---------------------------------------------------------------------------
+
+# (no corpora declared by default — definer + codeforge are auto-registered)
+
 # Read pool sizing for SQLite WAL mode stores (lexical, vector, graph, corpus_turn).
 # Pool auto-sizing can automatically increase pool_size when exhaustion_rate
 # is sustained high, with safeguards (max cap, logged changes, rollback).
@@ -357,3 +398,58 @@ cooldown_seconds = 60
 # ---------------------------------------------------------------------------
 [alpha]
 dogfood_mode = "minimal"   # Change to "full" when all components are wired
+
+# ---------------------------------------------------------------------------
+# QW13b (2026-07-23): Codeforge Auto-Ingest
+# Background task that automatically ingests AIP's own Python source into
+# the codeforge corpus on server startup and re-ingests periodically to
+# keep it in sync. Enables "AIP asks about AIP" without a separate
+# `aip corpus watch-code` terminal.
+#
+# The task:
+#   1. Awaits corpus migration ready (same gate as Sexton)
+#   2. Runs an initial ingest of source_dir into the codeforge corpus
+#   3. Re-ingests every interval_seconds (skip_existing=True → stale
+#      detection skips unchanged turns, supersedes changed ones)
+#
+# Set auto_ingest = false to disable (e.g. for CI or test environments
+# where src/aip/ doesn't exist). The CLI watcher (aip corpus watch-code)
+# remains available for non-server contexts.
+# ---------------------------------------------------------------------------
+[codeforge]
+auto_ingest = true
+source_dir = "src/aip"
+interval_seconds = 60
+
+# ---------------------------------------------------------------------------
+# ADR-017: Web Source Acquisition (Dogfood Phase D2)
+# Web grounding is OFF by default. Enable here and provide
+# AIP_WEB_SEARCH_API_KEY in the environment to activate.
+#
+# When disabled, /api/v1/web/* routes return 503 not_configured and
+# the /health endpoint reports web.provider_state = "not_configured".
+#
+# When enabled + key set:
+#   - /api/v1/web/search  runs a Tavily search
+#   - /api/v1/web/fetch   fetches + extracts a single URL
+#   - /api/v1/web/ground  search + fetch + extract top-N for grounding
+#   - /api/v1/web/sources/{id} retrieves a stored source record
+#
+# The OpenRouter key (AIP_OPENAI_API_KEY) is for model slots only —
+# do NOT use it for web search.  Tavily has its own key.
+# ---------------------------------------------------------------------------
+[web]
+enabled = false
+default_provider = "tavily"
+max_results = 8
+fetch_timeout_seconds = 20
+max_resource_bytes = 20000000
+snapshot_enabled = true
+allow_private_networks = false   # NEVER set to true in production
+grounding_max_sources = 3        # cap for ephemeral Ask grounding
+grounding_context_chars = 8000   # cap per source in augmented context
+
+[web.providers.tavily]
+api_key_env = "AIP_WEB_SEARCH_API_KEY"
+# options: endpoint, timeout_seconds, topic, include_raw_content
+# topic = "general"  # "general" | "news"

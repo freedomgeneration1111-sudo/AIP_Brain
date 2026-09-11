@@ -35,6 +35,7 @@ import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -71,6 +72,7 @@ from aip.adapter.api.routes import (
     sessions,
     sources,
     turns,
+    web,
     wiki,
 )
 from aip.adapter.embedding.factory import create_embedding_provider
@@ -121,6 +123,155 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
         return response
+
+
+# ---------------------------------------------------------------------------
+# ADR-017 WS-3.5: Web Source Acquisition lifespan wiring.
+#
+# This helper is called once during lifespan startup.  It reads the [web]
+# and [web.providers.<name>] config sections and constructs:
+#   - container.web_search_provider  (SearchProvider | None)
+#   - container.web_fetcher          (WebFetcher | None)
+#   - container.web_source_store     (WebSourceStore)
+#   - container.web_snapshot_store   (WebSnapshotStore)
+#   - container.web_task_registry    (BackgroundTaskRegistry)
+#   - container.web_fetch_policy     (FetchPolicy)
+#
+# All components are None-safe: if [web] enabled = false, the routes
+# return 503 not_configured, which is the honest "off" state.
+#
+# The stores default to in-memory implementations for the MVP.  A future
+# slice can swap in SQLite-backed stores by checking config and
+# constructing the appropriate class — the Protocols are stable.
+# ---------------------------------------------------------------------------
+
+
+def _wire_web_source_acquisition(container: AipContainer, config: dict, logger: Any) -> None:
+    """Construct and wire Web Source Acquisition components from config.
+
+    Idempotent and failure-tolerant: if any step raises, the remaining
+    web_* attributes stay None and the routes return 503.  This matches
+    the existing lifespan pattern (component failures are logged, not
+    fatal, unless they're on the critical path — web is optional).
+    """
+    web_config = config.get("web", {}) or {}
+    # Guard against non-dict config values (e.g. "web = true" in TOML).
+    if not isinstance(web_config, dict):
+        web_config = {}
+    providers_config = web_config.get("providers", {}) or {}
+    if not isinstance(providers_config, dict):
+        providers_config = {}
+
+    # ---- 1. Search provider ----
+    try:
+        from aip.adapter.web.providers.factory import build_search_provider
+
+        provider = build_search_provider(web_config, providers_config=providers_config)
+        container.web_search_provider = provider
+        if provider is not None:
+            logger.info(
+                "web_search_provider_wired",
+                provider=getattr(provider, "name", "unknown"),
+            )
+        else:
+            logger.info("web_search_disabled")
+    except Exception as exc:
+        logger.warning("web_search_provider_wiring_failed", error=str(exc))
+        container.web_search_provider = None
+
+    # ---- 2. Task registry (always wired, even if provider is None) ----
+    # The registry is needed by the fetcher for lifecycle management.
+    # We construct it unconditionally so the shutdown handler can call
+    # cancel_all() without None-checking.
+    try:
+        from aip.adapter.web.lifecycle import BackgroundTaskRegistry
+
+        container.web_task_registry = BackgroundTaskRegistry()
+        logger.info("web_task_registry_wired")
+    except Exception as exc:
+        logger.warning("web_task_registry_wiring_failed", error=str(exc))
+        container.web_task_registry = None
+
+    # ---- 3. Fetcher (only when the provider is wired — no point otherwise) ----
+    if container.web_search_provider is not None:
+        try:
+            from aip.adapter.web.http_fetcher import HttpxWebFetcher
+
+            # Build a bytes_sink that persists fetched bytes to the
+            # snapshot store.  The sink returns the snapshot_id, which
+            # the fetcher stores as content_bytes_ref — so downstream
+            # extractors can retrieve the bytes directly via
+            # snapshot_store.get_bytes(content_bytes_ref).
+            # This closes the WS-3 known limitation where bytes were
+            # lost after the fetch returned.
+            snapshot_store_ref = container.web_snapshot_store
+
+            async def _bytes_sink(body: bytes, fetched: Any) -> str:
+                if snapshot_store_ref is None:
+                    return ""
+                sid, _deduped = await snapshot_store_ref.put(
+                    requested_url=fetched.requested_url,
+                    final_url=fetched.final_url,
+                    retrieved_at=fetched.retrieved_at,
+                    content_type=fetched.content_type,
+                    content_hash=fetched.content_hash,
+                    bytes_data=body,
+                )
+                return sid
+
+            container.web_fetcher = HttpxWebFetcher(
+                task_registry=container.web_task_registry,
+                bytes_sink=_bytes_sink,
+            )
+            logger.info("web_fetcher_wired", bytes_sink=True)
+        except Exception as exc:
+            logger.warning("web_fetcher_wiring_failed", error=str(exc))
+            container.web_fetcher = None
+    else:
+        container.web_fetcher = None
+
+    # ---- 4. Snapshot store (in-memory for MVP; SQLite variant is a future slice) ----
+    try:
+        from aip.adapter.web.snapshot import (
+            InMemoryWebSnapshotStore,
+            InMemoryWebSourceStore,
+        )
+
+        container.web_snapshot_store = InMemoryWebSnapshotStore()
+        container.web_source_store = InMemoryWebSourceStore()
+        logger.info("web_stores_wired", backend="in_memory")
+    except Exception as exc:
+        logger.warning("web_stores_wiring_failed", error=str(exc))
+        container.web_snapshot_store = None
+        container.web_source_store = None
+
+    # ---- 5. Fetch policy (from [web] config fields) ----
+    try:
+        from aip.foundation.schemas.web import FetchPolicy
+
+        container.web_fetch_policy = FetchPolicy(
+            allowed_schemes=("http", "https"),
+            max_redirects=5,
+            timeout_seconds=float(web_config.get("fetch_timeout_seconds", 20.0)),
+            max_bytes=int(web_config.get("max_resource_bytes", 20_000_000)),
+            allowed_content_types=None,
+            allow_private_networks=bool(web_config.get("allow_private_networks", False)),
+        )
+        logger.info(
+            "web_fetch_policy_wired",
+            timeout=container.web_fetch_policy.timeout_seconds,
+            max_bytes=container.web_fetch_policy.max_bytes,
+            allow_private_networks=container.web_fetch_policy.allow_private_networks,
+        )
+    except Exception as exc:
+        logger.warning("web_fetch_policy_wiring_failed", error=str(exc))
+        # Fall back to default policy so the fetcher still works.
+        try:
+            from aip.foundation.schemas.web import FetchPolicy
+
+            container.web_fetch_policy = FetchPolicy()
+        except Exception:
+            container.web_fetch_policy = None
 
 
 @asynccontextmanager
@@ -462,6 +613,233 @@ async def lifespan(app: FastAPI):
             "component_failed",
             component="graph_store",
             degradation="no_graph_retrieval",
+            error=str(exc),
+        )
+
+    # --- ADR-008 Multi-Corpus: wire the CorpusRegistry ---
+    # The registry is the primary store-access interface. It creates per-corpus
+    # stores (turn_store, ecs_store, artifact_store) for the definer corpus
+    # pointing at the same db_path as the legacy stores. After the registry is
+    # wired, the legacy container attributes (corpus_turn_store, artifact_store,
+    # ecs_store) are overwritten to point to the registry's stores — so all
+    # existing call sites automatically use the registry without code changes.
+    try:
+        _superseded_legacy_stores = (
+            ("corpus_turn_store", container._legacy_corpus_turn_store),
+            ("artifact_store", container._legacy_artifact_store),
+            ("ecs_store", container._legacy_ecs_store),
+        )
+
+        from pathlib import Path as _Path
+
+        from aip.adapter.corpus_registry import CorpusRegistry
+        from aip.foundation.corpus_constants import MAX_CORPORA
+        from aip.foundation.corpus_types import CorpusType
+
+        # ── Build the corpora_to_register list ──────────────────────
+        # Phase α-2 (2026-07-23): corpora are declared in the [corpora.*]
+        # section of aip.config.toml. Definer is always registered first
+        # (it's the anchor corpus — owns the review queue fan-in + bridge
+        # edges). Codeforge is registered by default (QW1) so AIP can
+        # search its own source code. Additional corpora are read from
+        # TOML config, allowing operators to add corpora without editing
+        # app.py.
+        _db_dir = _Path(db_path).parent
+
+        # Start with the default corpora (always registered)
+        _corpora_to_register: list[tuple[str, CorpusType, _Path]] = [
+            ("definer", CorpusType.CONVERSATION, _Path(db_path)),
+            ("codeforge", CorpusType.CODE, _db_dir / "codeforge.db"),
+        ]
+
+        # Read additional corpora from [corpora.{id}] TOML sections.
+        # Each section has: type (required), sensitive (optional),
+        # access_note (optional), db_path (optional, defaults to
+        # db/{corpus_id}.db).
+        _corpora_cfg = config.get("corpora", {})
+        if isinstance(_corpora_cfg, dict):
+            for _cid, _ccfg in _corpora_cfg.items():
+                if not isinstance(_ccfg, dict) or _cid in ("definer", "codeforge"):
+                    continue  # skip non-dict sections + duplicates of defaults
+                _ctype_str = _ccfg.get("type", "")
+                try:
+                    _ctype = CorpusType(_ctype_str)
+                except ValueError:
+                    log.warning(
+                        "corpus_config_skipped",
+                        corpus_id=_cid,
+                        reason=f"unknown type: {_ctype_str!r} (must be one of {[t.value for t in CorpusType]})",
+                    )
+                    continue
+                _cdb_path = _ccfg.get("db_path")
+                if _cdb_path:
+                    _cdb_path = _Path(_cdb_path)
+                else:
+                    _cdb_path = _db_dir / f"{_cid}.db"
+                _corpora_to_register.append((_cid, _ctype, _cdb_path))
+                log.info(
+                    "corpus_config_found",
+                    corpus_id=_cid,
+                    type=_ctype.value,
+                    db_path=str(_cdb_path),
+                    sensitive=_ccfg.get("sensitive", False),
+                )
+
+        _registry = CorpusRegistry(max_corpora=MAX_CORPORA)
+        await _registry.startup(
+            corpora_to_register=_corpora_to_register,
+        )
+
+        # Register sensitive flag + access_note for TOML-declared corpora
+        # (startup() doesn't take sensitive/access_note — we set them
+        # post-registration via the registry's internal CorpusStores).
+        if isinstance(_corpora_cfg, dict):
+            for _cid, _ccfg in _corpora_cfg.items():
+                if not isinstance(_ccfg, dict) or _cid in ("definer", "codeforge"):
+                    continue
+                if _ccfg.get("sensitive", False):
+                    _stores = _registry._corpora.get(_cid)
+                    if _stores is not None:
+                        _stores._sensitive = True
+                        _stores._access_note = _ccfg.get("access_note", "")
+                        log.info(
+                            "corpus_sensitive_flag_set",
+                            corpus_id=_cid,
+                            access_note=_stores._access_note,
+                        )
+
+        container.corpus_registry = _registry
+
+        # Fix contract gaps: the factory's ECS store doesn't have event_store
+        # set (the legacy code passed event_store=container.event_store).
+        # Fix it here so ECS transitions write events.
+        if container.definer_stores is not None and container.definer_stores.ecs_store is not None:
+            container.definer_stores.ecs_store._event_store = container.event_store
+
+        # Overwrite legacy attributes with the registry's stores.
+        # This makes all 264 call sites automatically use the registry.
+        if container.definer_stores is not None:
+            _registry_stores = (
+                container.definer_stores.turn_store,
+                container.definer_stores.artifact_store,
+                container.definer_stores.ecs_store,
+            )
+            for (_store_name, _legacy_store), _registry_store in zip(
+                _superseded_legacy_stores,
+                _registry_stores,
+                strict=True,
+            ):
+                if _legacy_store is not None and _legacy_store is not _registry_store:
+                    try:
+                        await _legacy_store.close()
+                    except Exception as exc:
+                        log.warning(
+                            "superseded_legacy_store_close_failed",
+                            store=_store_name,
+                            error_type=type(exc).__name__,
+                        )
+            container.corpus_turn_store = container.definer_stores.turn_store
+            container.artifact_store = container.definer_stores.artifact_store
+            container.ecs_store = container.definer_stores.ecs_store
+
+        _registered = await _registry.list_corpora()
+        log.info(
+            "component_initialized",
+            component="corpus_registry",
+            definer_wired=container.definer_stores is not None,
+            codeforge_wired="codeforge" in _registered,
+            corpora_registered=_registered,
+        )
+    except Exception as exc:
+        log.warning(
+            "component_failed",
+            component="corpus_registry",
+            degradation="legacy_singletons_only",
+            error=str(exc),
+        )
+
+    # --- ADR-014 Phase 0: wire the ExtensionHost ---
+    # The host discovers, validates, migrates, registers, and (v1.1) mounts
+    # every extension under the operator-owned extensions/ dir. It runs AFTER
+    # CorpusRegistry.startup (so contributed corpora can register) and BEFORE
+    # the actor schedulers (so extension actors are registered before the first
+    # Beast/Vigil/Sexton cycle). A broken extension never takes down the host —
+    # per-stage sandbox transitions the extension to DEGRADED/FAILED.
+    extensions_host: Any = None
+    try:
+        from pathlib import Path as _Path
+
+        from aip.adapter.extensions import ExtensionHost
+
+        _workflow_engine_module = importlib.import_module("aip.orchestration.workflow.engine")
+        _workflow_registry_module = importlib.import_module("aip.orchestration.workflow_registry")
+        WorkflowEngine = _workflow_engine_module.WorkflowEngine
+        WorkflowRegistry = _workflow_registry_module.WorkflowRegistry
+
+        _extensions_dir = _Path(config.get("extensions", {}).get("dir", "extensions"))
+        _manifest_range = tuple(config.get("extensions", {}).get("manifest_version_range", (1, 1)))
+        # ADR-014 §5.4: WorkflowRegistry is host-owned. Construct it with the
+        # default workflows/ dir (backward compat), then let the host call
+        # add_path() for each extension's workflows_dir at stage 3.
+        _workflow_registry = WorkflowRegistry(workflows_dir=config.get("workflows", {}).get("dir", "workflows"))
+        container.workflow_registry = _workflow_registry
+
+        # ADR-014 §8 step 2: WorkflowEngine is host-owned. Construct it with
+        # the container's stores so workflows can retrieve/synthesize/review.
+        # The engine executes YAML workflows (including extension-contributed
+        # ones discovered via WorkflowRegistry.add_path). Extensions access it
+        # via ctx.container.workflow_engine.run_workflow(path, variables).
+        _workflow_engine = WorkflowEngine(
+            vector_store=container.vector_store,
+            trace_store=container.trace_store,
+            artifact_store=getattr(container, "artifact_store", None),
+            ecs_store=getattr(container, "ecs_store", None),
+            event_store=container.event_store,
+            config=config,
+            budget_store=container.budget_store,
+            autonomy_gate=container.autonomy_gate,
+        )
+        container.workflow_engine = _workflow_engine
+
+        extensions_host = ExtensionHost(
+            extensions_dir=_extensions_dir,
+            container=container,
+            manifest_version_range=_manifest_range,  # type: ignore[arg-type]
+            workflow_registry=_workflow_registry,
+        )
+        container.extensions = extensions_host
+        await extensions_host.start()
+        log.info(
+            "component_initialized",
+            component="extension_host",
+            extensions_dir=str(_extensions_dir),
+            extension_count=len(extensions_host.health()),
+            workflow_templates=len(_workflow_registry.list_templates()),
+            workflow_engine_wired=True,
+        )
+
+        # ADR-014 v1.1: include extension API routers.
+        # Extensions register their API routers via host.register_api_router()
+        # in their on_load hook (called inside start()). The host stores them;
+        # the platform includes them here. This must happen inside lifespan
+        # (NOT in create_app) because `container.extensions` is only populated
+        # after host.start() runs — create_app returns before lifespan starts.
+        # Per-router try/except: a bad router never blocks the host.
+        for router_info in extensions_host.registered_api_routers():
+            try:
+                app.include_router(router_info["router"], tags=[router_info["ext_id"]])
+                log.info("extension_api_router_mounted ext=%s", router_info["ext_id"])
+            except Exception as exc:
+                log.warning(
+                    "extension_api_router_mount_failed ext=%s error=%s",
+                    router_info["ext_id"],
+                    exc,
+                )
+    except Exception as exc:
+        log.warning(
+            "component_failed",
+            component="extension_host",
+            degradation="no_extensions_loaded",
             error=str(exc),
         )
 
@@ -1215,6 +1593,16 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.warning("dogfood_readiness_check_failed", error=str(exc))
 
+    # --- ADR-008 Multi-Corpus: migration gate helper (§A5) ---
+    # Actors MUST await the registry's _migration_ready event before their
+    # first write, so they don't write during schema migration. This is
+    # defensive: if the registry isn't wired yet (pre-Chunk-3), the gate
+    # is a no-op and actors proceed (backward-compatible with single-corpus).
+    async def _await_corpus_migration_ready() -> None:
+        registry = getattr(container, "corpus_registry", None)
+        if registry is not None:
+            await registry.migration_ready.wait()
+
     # --- Beast background scheduler ---
     beast_task: asyncio.Task | None = None
     if container.beast is not None:
@@ -1225,6 +1613,7 @@ async def lifespan(app: FastAPI):
             Each cycle gets its own correlation ID so that all log messages
             within a single cycle can be traced back to that cycle.
             """
+            await _await_corpus_migration_ready()  # ADR-008 §A5
             interval = container.beast._config.health_check_interval_seconds
             # Enforce a reasonable minimum to avoid busy-looping
             if interval < 60:
@@ -1269,6 +1658,7 @@ async def lifespan(app: FastAPI):
             Vigil monitors canonical health and detects stale items.
             Runs on a configurable interval (default: 3600s = 1 hour).
             """
+            await _await_corpus_migration_ready()  # ADR-008 §A5
             interval = container.vigil.config.canonical_health_check_interval_seconds
             if interval < 60:
                 interval = 3600
@@ -1312,6 +1702,7 @@ async def lifespan(app: FastAPI):
 
             Runs on a 300s cadence per ADR-011.
             """
+            await _await_corpus_migration_ready()  # ADR-008 §A5
             interval = 300  # ADR-011: vigil cycle every 300s
             # Allow config override via sexton.classification_interval_seconds
             try:
@@ -1367,6 +1758,7 @@ async def lifespan(app: FastAPI):
     if container.sexton_actor is not None:
 
         async def _sexton_startup_run():
+            await _await_corpus_migration_ready()  # ADR-008 §A5
             try:
                 log.info("sexton_actor_startup_run_start")
                 await container.sexton_actor.run_cycle()
@@ -1381,6 +1773,7 @@ async def lifespan(app: FastAPI):
     if container.vigil is not None:
 
         async def _vigil_startup_run():
+            await _await_corpus_migration_ready()  # ADR-008 §A5
             try:
                 log.info("vigil_startup_run_start")
                 await container.vigil.run()
@@ -1422,6 +1815,121 @@ async def lifespan(app: FastAPI):
 
         config_watcher_task = asyncio.create_task(_config_watcher_scheduler(), name="config-watcher-scheduler")
         log.info("config_watcher_scheduler_created")
+
+    # --- Codeforge auto-ingest scheduler (QW13b, 2026-07-23) ---
+    # ADR-008 §8 Chunk 7 / Phase 1.6 Codebase-as-Corpus.
+    # Background task that:
+    #   1. Runs an initial ingest of src/aip/ into the codeforge corpus on startup
+    #   2. Re-ingests every interval_seconds (default 60s) to keep the code
+    #      corpus in sync as files change (skip_existing=True → stale detection
+    #      skips unchanged turns, supersedes changed ones)
+    # This makes "AIP asks about AIP" work automatically — no separate
+    # `aip corpus watch-code` terminal needed. The CLI watcher (QW13) remains
+    # available for non-server contexts (CI, manual runs, external repos).
+    #
+    # Config ([codeforge] section in aip.config.toml):
+    #   auto_ingest = true          # default: enable the background task
+    #   source_dir = "src/aip"      # default: AIP's own source tree
+    #   interval_seconds = 60       # default: re-ingest every 60s
+    codeforge_ingest_task: asyncio.Task | None = None
+    _codeforge_cfg = config.get("codeforge", {})
+    _codeforge_auto_ingest = _codeforge_cfg.get("auto_ingest", True)
+    _codeforge_source_dir = _codeforge_cfg.get("source_dir", "src/aip")
+    _codeforge_interval = float(_codeforge_cfg.get("interval_seconds", 60))
+
+    if (
+        _codeforge_auto_ingest
+        and getattr(container, "corpus_registry", None) is not None
+        and _Path(_codeforge_source_dir).exists()
+    ):
+
+        async def _codeforge_ingest_scheduler():
+            """Background loop that keeps the codeforge corpus in sync.
+
+            QW13b (2026-07-23) — runs ingest_python_directory on
+            source_dir every interval_seconds. Uses skip_existing=True
+            (content_hash stale detection) so unchanged turns are skipped
+            and changed turns are superseded. The initial cycle runs
+            immediately on startup; subsequent cycles poll for changes.
+            """
+            await _await_corpus_migration_ready()  # ADR-008 §A5
+            registry = container.corpus_registry
+            source_dir = _Path(_codeforge_source_dir)
+            interval = _codeforge_interval
+
+            # Verify codeforge is registered (it should be — app.py:496
+            # registers it — but guard against config drift).
+            registered = await registry.list_corpora()
+            if "codeforge" not in registered:
+                log.warning(
+                    "codeforge_ingest_skipped",
+                    reason="codeforge corpus not registered",
+                    registered_corpora=registered,
+                )
+                return
+
+            log.info(
+                "codeforge_ingest_starting",
+                source_dir=str(source_dir),
+                interval_s=interval,
+            )
+
+            from aip.adapter.code_ingest_pipeline import ingest_python_directory
+
+            cycle_num = 0
+            while True:
+                cycle_num += 1
+                try:
+                    stores = await registry.get_stores("codeforge")
+                    if stores.turn_store is None:
+                        log.warning("codeforge_ingest_skipped", reason="turn_store is None", cycle=cycle_num)
+                        await asyncio.sleep(interval)
+                        continue
+
+                    counts = await ingest_python_directory(
+                        source_dir=source_dir,
+                        turn_store=stores.turn_store,
+                        corpus_id="codeforge",
+                        skip_existing=True,
+                        graph_store=stores.graph_store,  # Phase β-1: build code dependency graph
+                    )
+
+                    # Only log when something changed (avoids log spam on no-op cycles)
+                    if counts["turns_created"] > 0 or counts["turns_superseded"] > 0:
+                        log.info(
+                            "codeforge_ingest_cycle_complete",
+                            cycle=cycle_num,
+                            files_scanned=counts["files_scanned"],
+                            files_parsed=counts["files_parsed"],
+                            turns_created=counts["turns_created"],
+                            turns_skipped_stale=counts["turns_skipped_stale"],
+                            turns_superseded=counts["turns_superseded"],
+                        )
+                except asyncio.CancelledError:
+                    log.info("codeforge_ingest_scheduler_cancelled", cycle=cycle_num)
+                    raise
+                except Exception as exc:
+                    log.warning(
+                        "codeforge_ingest_cycle_failed",
+                        cycle=cycle_num,
+                        error=str(exc),
+                        exc_info=True,
+                    )
+                await asyncio.sleep(interval)
+
+        codeforge_ingest_task = asyncio.create_task(_codeforge_ingest_scheduler(), name="codeforge-ingest-scheduler")
+        log.info(
+            "codeforge_ingest_scheduler_created",
+            source_dir=_codeforge_source_dir,
+            interval_s=_codeforge_interval,
+        )
+    elif not _codeforge_auto_ingest:
+        log.info("codeforge_ingest_disabled", reason="config codeforge.auto_ingest=false")
+    elif not _Path(_codeforge_source_dir).exists():
+        log.info(
+            "codeforge_ingest_disabled",
+            reason=f"source_dir not found: {_codeforge_source_dir}",
+        )
 
     # --- Quality Store Rollup scheduler (Sprint 5.27) ---
     # Runs rollup once per day to aggregate older quality data, keeping
@@ -1556,6 +2064,15 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.warning("orchestration_functions_wiring_failed", module="adaptive_budget", error=str(exc))
 
+    # =====================================================================
+    # ADR-017 WS-3.5: Wire Web Source Acquisition from [web] config.
+    # Constructs the search provider, fetcher, stores, and task registry
+    # and assigns them to the container.  All default to None when [web]
+    # enabled = false or no provider is configured — the routes return
+    # 503 not_configured, which is the honest "off" state.
+    # =====================================================================
+    _wire_web_source_acquisition(container, config, log)
+
     log.info(
         "startup_complete",
         required_initialized=5,
@@ -1579,6 +2096,14 @@ async def lifespan(app: FastAPI):
         config_watcher=getattr(container, "_config_watcher", None) is not None,
         auto_sizer=getattr(container, "_read_pool_auto_sizer", None) is not None,
         auto_tuning_policy=getattr(container, "_auto_tuning_policy", None) is not None,
+        # QW13b (2026-07-23): codeforge auto-ingest background task
+        codeforge_auto_ingest=codeforge_ingest_task is not None,
+        codeforge_source_dir=_codeforge_source_dir if codeforge_ingest_task is not None else None,
+        codeforge_interval_s=_codeforge_interval if codeforge_ingest_task is not None else None,
+        # ADR-017: Web Source Acquisition wired state
+        web_enabled=getattr(container, "web_search_provider", None) is not None,
+        web_provider=getattr(getattr(container, "web_search_provider", None), "name", None),
+        web_fetcher=getattr(container, "web_fetcher", None) is not None,
         # Sprint 8: Dogfood mode
         dogfood_mode=getattr(dogfood_mode, "value", "unknown") if "dogfood_mode" in dir() else "unknown",
     )
@@ -1586,12 +2111,23 @@ async def lifespan(app: FastAPI):
     yield
 
     # --- Shutdown ---
+    # ADR-017 WS-3.5: cancel in-flight web fetches BEFORE closing stores,
+    # so HTTP connections release before the snapshot/source stores close.
+    _web_registry = getattr(container, "web_task_registry", None)
+    if _web_registry is not None:
+        try:
+            _cancelled = await _web_registry.cancel_all(timeout_per_task=5.0)
+            log.info("web_task_registry_cancelled", cancelled=_cancelled)
+        except Exception as exc:
+            log.warning("web_task_registry_cancel_failed", error=str(exc))
+
     # Cancel scheduler tasks first (long-running loops)
     for task_name, task in [
         ("beast", beast_task),
         ("vigil", vigil_task),
         ("sexton_actor", sexton_actor_task),
         ("config_watcher", config_watcher_task),
+        ("codeforge_ingest", codeforge_ingest_task),
         ("quality_rollup", quality_rollup_task),
         ("quality_weekly_rollup", quality_weekly_rollup_task),
     ]:
@@ -1615,6 +2151,18 @@ async def lifespan(app: FastAPI):
                 await task
             except asyncio.CancelledError:
                 pass
+
+    # ADR-014: stop the ExtensionHost (cancels extension actor schedulers,
+    # calls on_unload hooks sandboxed, marks every extension DISABLED).
+    # The host manages its own task lifecycle internally — this is a single
+    # await, not a loop. Errors are logged but never propagated (the host's
+    # own stop() is already sandboxed per extension).
+    if extensions_host is not None:
+        try:
+            await extensions_host.stop()
+            log.info("extension_host_stopped")
+        except Exception as exc:
+            log.warning("extension_host_stop_failed", error=str(exc))
 
     # Sprint 5.46: Graceful shutdown persistence — persist all A/B experiments and stop checkers
     # Sprint 5.48: Also persist statistical test results and accuracy timeseries
@@ -1658,6 +2206,11 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+        try:
+            container._alert_manager.close()
+        except Exception as exc:
+            log.warning("alert_manager_close_failed", error_type=type(exc).__name__)
+
     # Close SyncAlertHistoryBridge (stops background thread)
     if getattr(container, "_alert_history_bridge", None) is not None:
         try:
@@ -1693,6 +2246,12 @@ async def lifespan(app: FastAPI):
                 await store.close()
             except Exception as exc:
                 log.warning("store_close_failed", store=store_name, error=str(exc))
+
+    if container.corpus_registry is not None:
+        try:
+            await container.corpus_registry.close()
+        except Exception as exc:
+            log.warning("corpus_registry_close_failed", error_type=type(exc).__name__)
 
     log.info("shutdown_complete")
 
@@ -1804,6 +2363,7 @@ def create_app(config: dict | None = None) -> "FastAPI":
     app.include_router(ecs.router, prefix="/api/v1", tags=["ecs"])
     app.include_router(sources.router, prefix="/api/v1", tags=["sources"])
     app.include_router(corpus.router, prefix="/api/v1", tags=["corpus"])
+    app.include_router(web.router, prefix="/api/v1", tags=["web"])
     app.include_router(maintenance.router, prefix="/api/v1", tags=["maintenance"])
     app.include_router(turns.router, prefix="/api/v1", tags=["turns"])
     app.include_router(beast_commentary.router, prefix="/api/v1", tags=["beast_commentary"])
@@ -1824,6 +2384,13 @@ def create_app(config: dict | None = None) -> "FastAPI":
 
     app.include_router(vigil_quality.router, prefix="/api/v1", tags=["vigil"])
 
+    # ADR-014 v1.1: extension API routers are mounted INSIDE the lifespan
+    # function (after host.start()) — see the lifespan block above. They
+    # cannot be mounted here in create_app because container.extensions is
+    # only populated when the lifespan runs, which happens AFTER create_app
+    # returns. Earlier code attempted `getattr(container, "extensions", None)`
+    # here, but `container` is a lifespan-local — referencing it here raised
+    # NameError and crashed backend startup.
     # Web UI static (HTMX dashboard)
     import pathlib
 

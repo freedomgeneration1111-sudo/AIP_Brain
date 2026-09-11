@@ -7,13 +7,16 @@ This module preserves backward compatibility so that existing imports like::
 continue to work unchanged.
 
 The actual definitions live in domain-specific sub-modules:
-    storage, model, auth, budget, actors, knowledge, plugin
+    storage, model, auth, budget, actors, knowledge, plugin, corpus_registry
 """
 
 from __future__ import annotations
 
 # -- actors --
 from .actors import (
+    Actor,
+    ActorContext,
+    ActorResult,
     VigilStore,
 )
 
@@ -26,6 +29,12 @@ from .auth import (
 # -- budget --
 from .budget import (
     BudgetStore,
+)
+
+# -- corpus_registry (ADR-008 Multi-Corpus) --
+from .corpus_registry import (
+    CorpusRegistryProtocol,
+    ReviewItem,
 )
 
 # -- knowledge --
@@ -59,6 +68,15 @@ from .storage import (
     VectorStore,
 )
 
+# -- web (ADR-017) --
+from .web import (
+    ContentExtractor,
+    SearchProvider,
+    WebFetcher,
+    WebSnapshotStore,
+    WebSourceStore,
+)
+
 __all__ = [
     # storage
     "VectorStore",
@@ -82,8 +100,20 @@ __all__ = [
     "BudgetStore",
     # actors
     "VigilStore",
+    "Actor",
+    "ActorContext",
+    "ActorResult",
     # knowledge
     "KnowledgeStore",
     # plugin
     "PluginProvider",
+    # corpus_registry (ADR-008 Multi-Corpus)
+    "CorpusRegistryProtocol",
+    "ReviewItem",
+    # web (ADR-017)
+    "SearchProvider",
+    "WebFetcher",
+    "ContentExtractor",
+    "WebSnapshotStore",
+    "WebSourceStore",
 ]

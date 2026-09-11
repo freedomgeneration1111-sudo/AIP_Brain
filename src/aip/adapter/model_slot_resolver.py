@@ -240,6 +240,8 @@ class ModelSlotResolver(ModelProvider):
             "api_key": rt_api_key or env_api_key or slot_cfg.get("api_key"),
             "fallback_provider": slot_cfg.get("fallback_provider"),
             "fallback_model": slot_cfg.get("fallback_model"),
+            "fallback_base_url": slot_cfg.get("fallback_base_url"),
+            "fallback_api_key": slot_cfg.get("fallback_api_key"),
             "dimensions": slot_cfg.get("dimensions"),
         }
 
@@ -326,9 +328,39 @@ class ModelSlotResolver(ModelProvider):
         base_url = resolved["base_url"]
 
         if self._ci_mode:
-            # Deterministic fixture — content is a hash of the input for reproducibility
+            # Deterministic fixture — content is a hash of the input for reproducibility.
+            # Slot-specific fixtures: some slots have a documented JSON output contract
+            # that callers parse with json.loads(). Returning plain text for those slots
+            # breaks the contract and forces the caller into a fallback path.
+            # Currently slot-specific: "evaluation" → Aristotle EXAMINER's evaluate()
+            # expects {"score": float, "mastery_achieved": bool, "feedback": str,
+            # "diagnosis": dict | None}. Phase B.5 (ADR-002 §3) added the diagnosis
+            # field — it's a dict when the answer is wrong, None when correct.
+            # The CI fixture returns the mastered/correct case (score=0.9,
+            # mastery_achieved=True, diagnosis=None) so CI-mode dogfood runs
+            # exercise the mastered=True branch (without this, ARISTOTLE-DEBT-010 —
+            # the learner can never master anything in CI mode). Other slots keep
+            # the plain-text fixture (their callers don't parse JSON, or they have
+            # robust extraction like Sexton/Beast's find-first-bracket logic).
             prompt = messages[-1]["content"] if messages else ""
-            content = f"[CI-FIXTURE for {slot_name}] {prompt[:80]}..."
+            if slot_name == "evaluation":
+                import json as _json
+
+                content = _json.dumps(
+                    {
+                        "score": 0.9,
+                        "mastery_achieved": True,
+                        "feedback": (f"[CI-FIXTURE for {slot_name}] {prompt[:60]}..."),
+                        # Phase B.5: diagnosis is None when mastery_achieved is True.
+                        # The CI fixture is deterministic (always the mastered case),
+                        # so diagnosis is always None here. Unit tests that need the
+                        # wrong-answer path use _FakeModelProvider with explicit
+                        # JSON responses including a diagnosis dict.
+                        "diagnosis": None,
+                    }
+                )
+            else:
+                content = f"[CI-FIXTURE for {slot_name}] {prompt[:80]}..."
             log.debug("ci_fixture_response", slot=slot_name)
             return {
                 "content": content,
@@ -356,46 +388,56 @@ class ModelSlotResolver(ModelProvider):
                 ),
             }
 
-        # Real dispatch
+        # Real dispatch — try primary, then fallback if configured + failed.
+        # A "failure" is: exception, result.error=True, or empty content
+        # (OpenRouter free models often return 200 with empty content on
+        # rate-limit/timeout — treat that as retryable).
         start = time.perf_counter()
-        try:
-            if provider == PROVIDER_OLLAMA:
-                result = await self._call_ollama(base_url, model, messages, **kwargs)
-            elif provider == PROVIDER_OPENAI_COMPATIBLE:
-                result = await self._call_openai_compatible(
-                    base_url,
-                    model,
-                    resolved.get("api_key"),
-                    messages,
-                    **kwargs,
-                )
-            else:
-                raise ValueError(
-                    f"Unsupported provider '{provider}' for slot '{slot_name}'. "
-                    f"Supported providers: {PROVIDER_OLLAMA}, {PROVIDER_OPENAI_COMPATIBLE}",
-                )
-        except Exception as exc:
-            elapsed_ms = int((time.perf_counter() - start) * 1000)
-            log.error(
-                "model_call_failed",
+        primary_result = await self._dispatch(
+            slot_name,
+            provider,
+            model,
+            base_url,
+            resolved.get("api_key"),
+            messages,
+            **kwargs,
+        )
+        primary_failed = (
+            primary_result.get("error")
+            or not primary_result.get("content")
+            or not str(primary_result.get("content", "")).strip()
+        )
+
+        fallback_provider = resolved.get("fallback_provider")
+        fallback_model = resolved.get("fallback_model")
+        if primary_failed and fallback_provider and fallback_model:
+            # Primary failed + fallback configured → retry with fallback.
+            fallback_base_url = resolved.get("fallback_base_url") or base_url
+            fallback_api_key = resolved.get("fallback_api_key") or resolved.get("api_key")
+            log.warning(
+                "model_call_fallback_retry",
                 slot=slot_name,
-                provider=provider,
-                model=model,
-                error=str(exc),
-                exc_info=True,
+                primary_model=model,
+                fallback_model=fallback_model,
+                primary_error=primary_result.get("error_message", "empty content"),
             )
-            # Return a structured error result instead of raising
-            return {
-                "content": "",
-                "model": model,
-                "usage": {},
-                "latency_ms": elapsed_ms,
-                "cost_usd": 0.0,
-                "error": True,
-                "error_message": (
-                    f"Model call failed for slot '{slot_name}' (provider={provider}, model={model}): {exc}"
-                ),
-            }
+            fallback_result = await self._dispatch(
+                slot_name,
+                fallback_provider,
+                fallback_model,
+                fallback_base_url,
+                fallback_api_key,
+                messages,
+                **kwargs,
+            )
+            # If fallback succeeded, use it. If fallback also failed,
+            # return the fallback's error (more recent signal).
+            if not fallback_result.get("error") and fallback_result.get("content", "").strip():
+                result = fallback_result
+            else:
+                result = fallback_result
+        else:
+            result = primary_result
 
         elapsed_ms = int((time.perf_counter() - start) * 1000)
 
@@ -411,7 +453,7 @@ class ModelSlotResolver(ModelProvider):
             "model_call_complete",
             slot=slot_name,
             provider=provider,
-            model=model,
+            model=result.get("model", model),
             latency_ms=elapsed_ms,
             prompt_tokens=usage.get("prompt_tokens", 0),
             completion_tokens=usage.get("completion_tokens", 0),
@@ -419,6 +461,63 @@ class ModelSlotResolver(ModelProvider):
         )
 
         return result
+
+    # ------------------------------------------------------------------
+    # Provider dispatch (with error normalization)
+    # ------------------------------------------------------------------
+
+    async def _dispatch(
+        self,
+        slot_name: str,
+        provider: str,
+        model: str,
+        base_url: str | None,
+        api_key: str | None,
+        messages: list[dict],
+        **kwargs: Any,
+    ) -> dict:
+        """Dispatch to the appropriate provider and normalize errors.
+
+        Returns a result dict (same shape as _call_ollama/_call_openai_compatible)
+        with error=True + error_message on failure, or the provider's result
+        dict on success. Never raises — callers (call()) handle the result.
+        """
+        try:
+            if provider == PROVIDER_OLLAMA:
+                return await self._call_ollama(base_url, model, messages, **kwargs)
+            elif provider == PROVIDER_OPENAI_COMPATIBLE:
+                return await self._call_openai_compatible(
+                    base_url,
+                    model,
+                    api_key,
+                    messages,
+                    **kwargs,
+                )
+            else:
+                raise ValueError(
+                    f"Unsupported provider '{provider}' for slot '{slot_name}'. "
+                    f"Supported providers: {PROVIDER_OLLAMA}, {PROVIDER_OPENAI_COMPATIBLE}",
+                )
+        except Exception as exc:
+            log.error(
+                "model_call_failed",
+                slot=slot_name,
+                provider=provider,
+                model=model,
+                error=str(exc),
+                exc_info=True,
+            )
+            return {
+                "content": "",
+                "model": model,
+                "usage": {},
+                "latency_ms": 0,
+                "cost_usd": 0.0,
+                "error": True,
+                "error_message": (
+                    f"Model call failed for slot '{slot_name}' (provider={provider}, model={model}): {exc}"
+                ),
+            }
 
     # ------------------------------------------------------------------
     # Provider implementations

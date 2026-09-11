@@ -60,8 +60,13 @@ async def corpus_page():
     state.client = context.client
     api = get_api_client()
 
+    # Refresh backend status BEFORE rendering layout so top bar/right rail
+    # show accurate state instead of stale defaults (backend_reachable=False).
+    await state.refresh_status_summary()
+
     build_top_bar(state)
     build_left_nav(state, active_page="/corpus")
+    build_right_rail(state)
 
     # ── State ──────────────────────────────────────────────────────
 
@@ -156,8 +161,6 @@ async def corpus_page():
         problems_container = ui.column().classes("w-full")
         with problems_container:
             problems_panel.render({"available": False})
-
-    build_right_rail(state)
 
     # ── Data loading ───────────────────────────────────────────────
 
@@ -298,12 +301,6 @@ async def corpus_page():
                 .style("width:100%;")
             )
 
-            with ui.row().style("gap:8px; margin-top:12px;"):
-                ui.button("Ingest", on_click=lambda: _do_ingest()).props("dense").style(f"font-family:{F_SANS};")
-                ui.button("Cancel", on_click=dialog.close).props("flat dense").style(
-                    f"color:{C_MUTED}; font-family:{F_SANS};"
-                )
-
             async def _do_ingest():
                 path = path_input.value or ""
                 if not path:
@@ -324,6 +321,14 @@ async def corpus_page():
                     msg = f"Ingested: {ingested}, Skipped: {skipped}, Failed: {failed}"
                     ui.notify(msg, type="positive" if failed == 0 else "warning")
                 await _load_all()
+
+            with ui.row().style("gap:8px; margin-top:12px;"):
+                ui.button("Ingest", on_click=_do_ingest).props("dense").style(f"font-family:{F_SANS};")
+                ui.button("Cancel", on_click=dialog.close).props("flat dense").style(
+                    f"color:{C_MUTED}; font-family:{F_SANS};"
+                )
+
+            dialog.open()
 
     async def _handle_backfill():
         """Handle backfill action — confirm and trigger."""
@@ -347,14 +352,6 @@ async def corpus_page():
                 .style("width:100%;")
             )
 
-            with ui.row().style("gap:8px; margin-top:12px;"):
-                ui.button("Start Backfill", on_click=lambda: _do_backfill()).props("dense").style(
-                    f"font-family:{F_SANS};"
-                )
-                ui.button("Cancel", on_click=dialog.close).props("flat dense").style(
-                    f"color:{C_MUTED}; font-family:{F_SANS};"
-                )
-
             async def _do_backfill():
                 dialog.close()
                 ui.notify("Starting backfill...", type="info")
@@ -373,6 +370,14 @@ async def corpus_page():
                     ui.notify(f"Backfill failed: {msg}", type="negative")
                 await _load_all()
 
+            with ui.row().style("gap:8px; margin-top:12px;"):
+                ui.button("Start Backfill", on_click=_do_backfill).props("dense").style(f"font-family:{F_SANS};")
+                ui.button("Cancel", on_click=dialog.close).props("flat dense").style(
+                    f"color:{C_MUTED}; font-family:{F_SANS};"
+                )
+
+            dialog.open()
+
     async def _handle_retry_failed():
         """Handle retry failed embeds action."""
         with (
@@ -388,12 +393,6 @@ async def corpus_page():
                     "so they will be retried in the next cycle."
                 )
             ).style(f"font-size:11px; color:{C_MUTED}; margin-bottom:8px;")
-
-            with ui.row().style("gap:8px; margin-top:12px;"):
-                ui.button("Retry Failed", on_click=lambda: _do_retry()).props("dense").style(f"font-family:{F_SANS};")
-                ui.button("Cancel", on_click=dialog.close).props("flat dense").style(
-                    f"color:{C_MUTED}; font-family:{F_SANS};"
-                )
 
             async def _do_retry():
                 dialog.close()
@@ -411,6 +410,14 @@ async def corpus_page():
                 else:
                     ui.notify(f"Retry failed: {msg}", type="negative")
                 await _load_all()
+
+            with ui.row().style("gap:8px; margin-top:12px;"):
+                ui.button("Retry Failed", on_click=_do_retry).props("dense").style(f"font-family:{F_SANS};")
+                ui.button("Cancel", on_click=dialog.close).props("flat dense").style(
+                    f"color:{C_MUTED}; font-family:{F_SANS};"
+                )
+
+            dialog.open()
 
     # ── Initial load ───────────────────────────────────────────────
 

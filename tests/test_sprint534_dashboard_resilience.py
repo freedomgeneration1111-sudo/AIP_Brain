@@ -12,9 +12,12 @@ Deliverable 5: Alert Group TTL & Auto-Cleanup (TTL config, metadata tracking, cl
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 import time
 from unittest.mock import MagicMock
+
+import pytest_asyncio
 
 from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import (
@@ -22,6 +25,48 @@ from aip.adapter.alerting import (
     AlertConfig,
     AlertManager,
 )
+
+_BaseAlertHistoryStore = AlertHistoryStore
+_BaseSyncAlertHistoryBridge = SyncAlertHistoryBridge
+_BaseAlertManager = AlertManager
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _close_test_owned_resources(monkeypatch):
+    """Close alert workers and stores before the owning test loop ends."""
+    alert_managers = []
+    history_stores = []
+    history_bridges = []
+
+    class TrackedAlertHistoryStore(_BaseAlertHistoryStore):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            history_stores.append(self)
+
+    class TrackedSyncAlertHistoryBridge(_BaseSyncAlertHistoryBridge):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            history_bridges.append(self)
+
+    class TrackedAlertManager(_BaseAlertManager):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            alert_managers.append(self)
+
+    test_module = sys.modules[__name__]
+    monkeypatch.setattr(test_module, "AlertHistoryStore", TrackedAlertHistoryStore)
+    monkeypatch.setattr(test_module, "SyncAlertHistoryBridge", TrackedSyncAlertHistoryBridge)
+    monkeypatch.setattr(test_module, "AlertManager", TrackedAlertManager)
+
+    yield
+
+    for manager in reversed(alert_managers):
+        manager.close()
+    for bridge in reversed(history_bridges):
+        bridge.close()
+    for store in reversed(history_stores):
+        await store.close()
+
 
 # ============================================================================
 # Deliverable 1: WebSocket Reconnection Logic

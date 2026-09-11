@@ -45,6 +45,7 @@ async def dashboard_page():
     # Build layout
     build_top_bar(state)
     build_left_nav(state, active_page="/")
+    build_right_rail(state)
 
     # Main content
     with (
@@ -82,8 +83,6 @@ async def dashboard_page():
         with ui.row().classes("w-full gap-4").style("flex-wrap:wrap; margin-top:16px;"):
             _warnings_card(state)
             _recent_activity_card(state)
-
-    build_right_rail(state)
 
 
 # ── Card helpers ───────────────────────────────────────────────────────

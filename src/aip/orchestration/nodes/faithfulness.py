@@ -32,6 +32,33 @@ _CI_FAITHFULNESS_SCORE = 0.85
 _CI_CONTEXT_COVERAGE = 0.80
 
 
+def _is_ci_fixture_response(content: str, result: dict[str, Any]) -> bool:
+    """Recognize explicit CI fixtures before validating faithfulness JSON.
+
+    The shared evaluation slot also serves ARISTOTLE. In CI it returns that
+    feature's structured fixture, not the faithfulness schema. The fixture is
+    marked in its feedback field, so recognize that marker without accepting
+    arbitrary malformed production JSON as a valid faithfulness evaluation.
+    """
+    if result.get("ci_fixture") is True:
+        return True
+
+    if "ci-evaluation" in str(result.get("model", "")).casefold():
+        return True
+
+    try:
+        parsed = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return "[ci-fixture" in content.casefold() or "[ci fixture" in content.casefold()
+
+    if not isinstance(parsed, dict):
+        return False
+
+    feedback = parsed.get("feedback")
+    is_aristotle_fixture = {"score", "mastery_achieved", "diagnosis"}.issubset(parsed) and isinstance(feedback, str)
+    return is_aristotle_fixture and "[ci-fixture" in feedback.casefold()
+
+
 async def evaluate_faithfulness(
     artifact_id: str,
     artifact_content: str,
@@ -93,8 +120,10 @@ async def evaluate_faithfulness(
             content = result.get("content", "")
             tokens_consumed = result.get("usage", {}).get("total_tokens", 0)
 
-            # CI fixture detection: return deterministic result with explicit flag
-            if "CI fixture" in content or "ci-evaluation" in result.get("model", ""):
+            # CI fixture detection must precede real-schema validation. The
+            # evaluation slot's ARISTOTLE fixture is valid JSON, but it is not
+            # a faithfulness evaluation response.
+            if _is_ci_fixture_response(content, result):
                 return FaithfulnessResult(
                     artifact_id=artifact_id,
                     faithfulness_score=_CI_FAITHFULNESS_SCORE,
@@ -116,17 +145,23 @@ async def evaluate_faithfulness(
                     ci_fixture=True,
                 )
 
-            # Parse real model response
+            # Parse and validate a real faithfulness response. Missing fields
+            # must not be accepted as a successful production evaluation.
             try:
                 parsed = json.loads(content)
-                faithfulness_score = float(parsed.get("faithfulness_score", 0.0))
-                context_coverage = float(parsed.get("context_coverage", 0.0))
-                hallucination_flags = parsed.get("hallucination_flags", [])
-                rationale = parsed.get("rationale", "Model evaluation")
+                required_fields = {"faithfulness_score", "context_coverage", "hallucination_flags", "rationale"}
+                if not isinstance(parsed, dict) or not required_fields.issubset(parsed):
+                    raise ValueError("faithfulness response is missing required fields")
+                if not isinstance(parsed["hallucination_flags"], list):
+                    raise ValueError("hallucination_flags must be a list")
+
+                faithfulness_score = float(parsed["faithfulness_score"])
+                context_coverage = float(parsed["context_coverage"])
+                hallucination_flags = parsed["hallucination_flags"]
+                rationale = str(parsed["rationale"])
                 ci_fixture = False  # Real evaluation succeeded
-            except (json.JSONDecodeError, ValueError):
-                # Model response was not valid JSON — still a fixture
-                logger.warning("Faithfulness model response was not valid JSON; using CI fixture")
+            except (json.JSONDecodeError, TypeError, ValueError):
+                logger.warning("Faithfulness response was not a valid schema; using CI fixture")
 
         except Exception:
             # Model call failed entirely — use CI fixture

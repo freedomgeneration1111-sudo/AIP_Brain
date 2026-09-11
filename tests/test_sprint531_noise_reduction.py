@@ -12,12 +12,15 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
+import pytest_asyncio
 
 from aip.adapter.alert_history_store import AlertHistoryStore, SyncAlertHistoryBridge
 from aip.adapter.alerting import (
@@ -26,6 +29,58 @@ from aip.adapter.alerting import (
     AlertManager,
 )
 from aip.adapter.vigil.vigil_quality_store import VigilQualityStore
+
+_BaseAlertHistoryStore = AlertHistoryStore
+_BaseSyncAlertHistoryBridge = SyncAlertHistoryBridge
+_BaseAlertManager = AlertManager
+_BaseVigilQualityStore = VigilQualityStore
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _close_test_owned_resources(monkeypatch):
+    """Close alert workers and stores before the owning test loop ends."""
+    alert_managers = []
+    history_stores = []
+    history_bridges = []
+    quality_stores = []
+
+    class TrackedAlertHistoryStore(_BaseAlertHistoryStore):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            history_stores.append(self)
+
+    class TrackedSyncAlertHistoryBridge(_BaseSyncAlertHistoryBridge):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            history_bridges.append(self)
+
+    class TrackedAlertManager(_BaseAlertManager):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            alert_managers.append(self)
+
+    class TrackedVigilQualityStore(_BaseVigilQualityStore):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            quality_stores.append(self)
+
+    test_module = sys.modules[__name__]
+    monkeypatch.setattr(test_module, "AlertHistoryStore", TrackedAlertHistoryStore)
+    monkeypatch.setattr(test_module, "SyncAlertHistoryBridge", TrackedSyncAlertHistoryBridge)
+    monkeypatch.setattr(test_module, "AlertManager", TrackedAlertManager)
+    monkeypatch.setattr(test_module, "VigilQualityStore", TrackedVigilQualityStore)
+
+    yield
+
+    for manager in reversed(alert_managers):
+        manager.close()
+    for bridge in reversed(history_bridges):
+        bridge.close()
+    for store in reversed(history_stores):
+        await store.close()
+    for store in reversed(quality_stores):
+        await store.close()
+
 
 # ============================================================================
 # Deliverable 1: Alert Delivery Status Tracking
@@ -461,7 +516,6 @@ class TestRetentionHotReload:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = VigilQualityStore(os.path.join(tmp_dir, "quality.db"), retention_days=90)
-            store.initialize()
 
             container = MagicMock()
             container._vigil_quality_store = store
@@ -481,7 +535,6 @@ class TestRetentionHotReload:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = VigilQualityStore(os.path.join(tmp_dir, "quality.db"), rollup_age_days=7)
-            store.initialize()
 
             container = MagicMock()
             container._vigil_quality_store = store
@@ -677,16 +730,28 @@ class TestAlertDigest:
             )
         )
 
-        # Send 3 info alerts to trigger the flush
-        for i in range(3):
-            mgr.send_alert(
-                Alert(
-                    alert_type="batch_reduction",
-                    severity="info",
-                    subject=f"test_{i}",
-                    message=f"Info alert {i}",
-                )
-            )
+        worker_errors = []
+
+        def send_threshold_alerts():
+            try:
+                # Send 3 info alerts to trigger the flush.
+                for i in range(3):
+                    mgr.send_alert(
+                        Alert(
+                            alert_type="batch_reduction",
+                            severity="info",
+                            subject=f"test_{i}",
+                            message=f"Info alert {i}",
+                        )
+                    )
+            except Exception as exc:
+                worker_errors.append(exc)
+
+        worker = threading.Thread(target=send_threshold_alerts)
+        worker.start()
+        worker.join(timeout=1)
+        assert not worker.is_alive(), "digest threshold flush must not deadlock"
+        assert not worker_errors
 
         # After 3 alerts, the buffer should have been flushed
         # The buffer should be empty after flush

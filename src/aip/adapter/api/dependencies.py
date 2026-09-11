@@ -15,11 +15,9 @@ from typing import Any
 from fastapi import Request
 
 from aip.foundation.protocols import (
-    ArtifactStore,
     AutonomyGate,
     BudgetStore,
     CanonicalStore,
-    EcsStore,
     EmbeddingProvider,
     EntityStore,
     EventStore,
@@ -47,8 +45,12 @@ class AipContainer:
         self.config = config
         # Will be populated by lifespan / factory
         self.vector_store: VectorStore | None = None
-        self.ecs_store: EcsStore | None = None
-        self.artifact_store: ArtifactStore | None = None
+        # ADR-008 Chunk 3: ecs_store, artifact_store, corpus_turn_store are
+        # now PROPERTIES that delegate to definer_stores when the registry
+        # is wired. The _legacy_* attributes hold the pre-registry values
+        # for backward compat (tests, pre-wiring lifespan).
+        self._legacy_ecs_store: Any = None
+        self._legacy_artifact_store: Any = None
         self.event_store: EventStore | None = None
         self.trace_store: TraceStore | None = None
         self.budget_store: BudgetStore | None = None
@@ -81,8 +83,8 @@ class AipContainer:
         self.review_queue_store: Any = None
         # SessionStore — None when not initialized (degrades to in-memory)
         self.session_store: Any = None
-        # CorpusTurnStore — None when not initialized (degrades to no corpus search in augmented chat)
-        self.corpus_turn_store: Any = None
+        # CorpusTurnStore — now a property delegating to definer_stores.
+        self._legacy_corpus_turn_store: Any = None
         # GraphStore — knowledge graph nodes and edges (degrades to no graph retrieval)
         self.graph_store: GraphStore | None = None
         # Sprint 5.27: Operational components wired into the running application
@@ -95,6 +97,15 @@ class AipContainer:
         self._alert_history_store: Any = None  # AlertHistoryStore for SQLite-backed alert history
         # SyncAlertHistoryBridge for AlertManager compatibility (wraps async store)
         self._alert_history_bridge: Any = None
+        # ADR-017 Web Source Acquisition: wired in lifespan from [web] config.
+        # None when [web] enabled = false or no provider is configured.
+        # Routes use is_provider_configured() to produce honest 503s.
+        self.web_search_provider: Any = None  # SearchProvider | None
+        self.web_fetcher: Any = None  # WebFetcher | None
+        self.web_source_store: Any = None  # WebSourceStore | None
+        self.web_snapshot_store: Any = None  # WebSnapshotStore | None
+        self.web_task_registry: Any = None  # BackgroundTaskRegistry | None
+        self.web_fetch_policy: Any = None  # FetchPolicy | None
         # Backfill status for async backfill tracking (simple in-memory for now)
         self.backfill_status: dict = {"running": False, "last_result": None, "progress": {}}
         # Startup background tasks — stored on container so shutdown can cancel them
@@ -123,6 +134,77 @@ class AipContainer:
         # Populated during lifespan startup as each store is initialized.
         # Used by startup validation, backup, and the /health/datastore endpoint.
         self._store_registry: dict[str, str] = {}
+        # ADR-008 Multi-Corpus: the primary store-access interface.
+        # None until lifespan calls corpus_registry.startup(). Once set,
+        # routes/actors access per-corpus stores via get_stores(corpus_id)
+        # or the definer_stores convenience property.
+        self.corpus_registry: Any = None
+        # ADR-014 Phase 0 Extension Platform: the ExtensionHost that drives
+        # discover → validate → migrate → register → ready for every installed
+        # extension. None until lifespan constructs it (after CorpusRegistry).
+        # Routes/health endpoints access extension state via container.extensions.
+        self.extensions: Any = None
+        # ADR-014 §5.4: WorkflowRegistry is host-owned. The host calls
+        # add_path() for each extension's workflows_dir at stage 3. None until
+        # lifespan constructs it (alongside the ExtensionHost).
+        self.workflow_registry: Any = None
+        # ADR-014 §8 step 2: WorkflowEngine is host-owned. The engine executes
+        # YAML workflows (including extension-contributed ones discovered via
+        # WorkflowRegistry.add_path). None until lifespan constructs it.
+        # Extensions access it via ctx.container.workflow_engine.run_workflow(path, vars).
+        self.workflow_engine: Any = None
+
+    # ADR-008 Chunk 3: per-corpus store properties that delegate to the
+    # registry's definer_stores when wired, falling back to legacy
+    # singletons otherwise. This makes all 264 call sites automatically
+    # use the registry without mechanical rewriting.
+    @property
+    def corpus_turn_store(self) -> Any:
+        """CorpusTurnStore — delegates to definer_stores when registry is wired."""
+        ds = self.definer_stores
+        return ds.turn_store if ds is not None else self._legacy_corpus_turn_store
+
+    @corpus_turn_store.setter
+    def corpus_turn_store(self, value: Any) -> None:
+        self._legacy_corpus_turn_store = value
+
+    @property
+    def artifact_store(self) -> Any:
+        """ArtifactStore — delegates to definer_stores when registry is wired."""
+        ds = self.definer_stores
+        return ds.artifact_store if ds is not None else self._legacy_artifact_store
+
+    @artifact_store.setter
+    def artifact_store(self, value: Any) -> None:
+        self._legacy_artifact_store = value
+
+    @property
+    def ecs_store(self) -> Any:
+        """EcsStore — delegates to definer_stores when registry is wired."""
+        ds = self.definer_stores
+        return ds.ecs_store if ds is not None else self._legacy_ecs_store
+
+    @ecs_store.setter
+    def ecs_store(self, value: Any) -> None:
+        self._legacy_ecs_store = value
+
+    @property
+    def definer_stores(self) -> Any:
+        """Convenience accessor for the definer corpus's CorpusStores bundle.
+
+        ADR-008 Rev 3.1 §8 Chunk 3: returns the definer corpus's stores
+        (turn_store, lexical_store, vector_store, graph_store, artifact_store,
+        ecs_store) cached on the registry after startup(). Returns None if
+        the registry isn't wired or the definer corpus isn't registered.
+
+        This is a SYNC property (not async) so routes can use it without
+        await. The registry caches _definer_stores during startup() so this
+        is a simple attribute lookup.
+        """
+        registry = self.corpus_registry
+        if registry is None:
+            return None
+        return registry._definer_stores
 
     def register_store(self, name: str, db_path: str) -> None:
         """Register a store's database path in the datastore registry.
@@ -198,14 +280,15 @@ class AipContainer:
     def set_embedding_provider(self, provider: "EmbeddingProvider | None") -> None:
         """Safely replace the embedding provider.
 
-        Updates the container reference and pokes private attributes on
-        dependent components (vector_store, beast, knowledge_store, sexton_actor)
-        so that runtime changes (e.g. from PATCH /models/slots/embedding/model)
-        take effect without requiring a full restart.
+        ADR-008 Rev 3.1 §A6: when corpus_registry is wired, iterates all
+        registered corpora and updates each corpus's vector_store +
+        turn_store.mark_all_for_reembed(). Falls back to legacy singleton
+        poking when the registry isn't wired (pre-Chunk-3 wiring).
 
-        Sprint 6.1: Also triggers re-embedding of all corpus turns whose
-        embedding_model differs from the new provider's model, so that
-        the Sexton actor will re-embed them on its next cycle.
+        Updates the container reference and pokes private attributes on
+        dependent components (beast, knowledge_store, sexton_actor) so that
+        runtime changes (e.g. from PATCH /models/slots/embedding/model)
+        take effect without requiring a full restart.
         """
         old_provider = self.embedding_provider
         if old_provider is not None and hasattr(old_provider, "close"):
@@ -217,30 +300,48 @@ class AipContainer:
                     loop.create_task(old_provider.close())
                 except RuntimeError:
                     pass
-            except Exception:
-                pass
+            except Exception as exc:
+                from aip.logging import get_logger as _get_logger
+
+                _get_logger(__name__).warning(
+                    "embedding_provider_close_failed",
+                    error_type=type(exc).__name__,
+                    exc_info=True,
+                )
 
         self.embedding_provider = provider
 
-        # Update dependents (fragile private attrs, but now in one place)
+        # ADR-008 §A6: registry-aware path — iterate all corpora
+        if self.corpus_registry is not None:
+            try:
+                import asyncio
+
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(self._registry_reembed(provider))
+                except RuntimeError:
+                    asyncio.run(self._registry_reembed(provider))
+            except Exception as exc:
+                from aip.logging import get_logger as _get_logger
+
+                _get_logger(__name__).warning(
+                    "registry_reembed_trigger_setup_failed",
+                    error_type=type(exc).__name__,
+                    exc_info=True,
+                )
+            # Still update beast/knowledge_store/sexton (not per-corpus)
+            self._update_non_corpus_embed_dependents(provider)
+            return
+
+        # Legacy path — poke singletons directly (pre-Chunk-3 wiring)
         if self.vector_store is not None and hasattr(self.vector_store, "_embedding_provider"):
             self.vector_store._embedding_provider = provider
-        if self.beast is not None and hasattr(self.beast, "_embed"):
-            self.beast._embed = provider
-        if self.knowledge_store is not None and hasattr(self.knowledge_store, "_embedding_provider"):
-            self.knowledge_store._embedding_provider = provider
 
-        # Sprint 6.1: Update Sexton's embedding provider reference
-        if self.sexton_actor is not None and hasattr(self.sexton_actor, "update_embedding_provider"):
-            self.sexton_actor.update_embedding_provider(provider)
-        elif self.sexton_actor is not None and hasattr(self.sexton_actor, "_embed"):
-            # Fallback for actors that don't have the update method yet
-            self.sexton_actor._embed = provider
+        self._update_non_corpus_embed_dependents(provider)
 
-        # Sprint 6.1: Trigger re-embedding when the embedding model changes
+        # Legacy: trigger re-embedding on the singleton corpus_turn_store
         if provider is not None and self.corpus_turn_store is not None:
             try:
-                # Determine new model name
                 new_model = ""
                 for attr in ("model", "_model", "model_name", "_model_name"):
                     val = getattr(provider, attr, None)
@@ -250,7 +351,6 @@ class AipContainer:
                 if not new_model:
                     new_model = provider.__class__.__name__
 
-                # Mark turns with different model for re-embedding
                 if hasattr(self.corpus_turn_store, "mark_all_for_reembed"):
                     import asyncio
 
@@ -258,7 +358,6 @@ class AipContainer:
                         loop = asyncio.get_running_loop()
                         loop.create_task(self._trigger_reembed(new_model))
                     except RuntimeError:
-                        # No running loop — create one
                         try:
                             asyncio.run(self._trigger_reembed(new_model))
                         except Exception as _reembed_fallback_exc:
@@ -275,6 +374,55 @@ class AipContainer:
                     "reembed_trigger_setup_failed",
                     error=str(_reembed_outer_exc),
                 )
+
+    def _update_non_corpus_embed_dependents(self, provider: "EmbeddingProvider | None") -> None:
+        """Update beast, knowledge_store, sexton_actor with the new provider.
+
+        These are not per-corpus — they're global actors/stores that reference
+        the embedding provider directly.
+        """
+        if self.beast is not None and hasattr(self.beast, "_embed"):
+            self.beast._embed = provider
+        if self.knowledge_store is not None and hasattr(self.knowledge_store, "_embedding_provider"):
+            self.knowledge_store._embedding_provider = provider
+        if self.sexton_actor is not None and hasattr(self.sexton_actor, "update_embedding_provider"):
+            self.sexton_actor.update_embedding_provider(provider)
+        elif self.sexton_actor is not None and hasattr(self.sexton_actor, "_embed"):
+            self.sexton_actor._embed = provider
+
+    async def _registry_reembed(self, provider: "EmbeddingProvider | None") -> None:
+        """ADR-008 §A6: iterate all registered corpora, update vector_store
+        and mark turns for re-embedding on each corpus."""
+        if provider is None:
+            return
+        from aip.logging import get_logger as _get_logger
+
+        _log = _get_logger(__name__)
+        try:
+            new_model = ""
+            for attr in ("model", "_model", "model_name", "_model_name"):
+                val = getattr(provider, attr, None)
+                if val and isinstance(val, str):
+                    new_model = val
+                    break
+            if not new_model:
+                new_model = provider.__class__.__name__
+
+            total_marked = 0
+            for cid in await self.corpus_registry.list_corpora():
+                try:
+                    stores = await self.corpus_registry.get_stores(cid)
+                    if stores.vector_store is not None and hasattr(stores.vector_store, "_embedding_provider"):
+                        stores.vector_store._embedding_provider = provider
+                    if stores.turn_store is not None and hasattr(stores.turn_store, "mark_all_for_reembed"):
+                        count = await stores.turn_store.mark_all_for_reembed(except_model=new_model)
+                        total_marked += count
+                except Exception as exc:
+                    _log.warning("registry_reembed_corpus_failed", corpus=cid, error=str(exc))
+
+            _log.info("registry_reembed_triggered", new_model=new_model, turns_marked=total_marked)
+        except Exception as exc:
+            _log.warning("registry_reembed_failed", error=str(exc), exc_info=True)
 
     async def _trigger_reembed(self, new_model: str) -> None:
         """Mark corpus turns for re-embedding and log the trigger."""

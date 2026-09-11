@@ -22,7 +22,7 @@ import logging
 from nicegui import context, ui
 
 from gui.api_client import get_api_client
-from gui.components.layout import build_left_nav, build_right_rail, build_top_bar
+from gui.components.layout import build_left_nav, build_top_bar
 from gui.state import get_session_state
 from gui.theme import (
     C_AMBER,
@@ -97,7 +97,9 @@ async def settings_page():
                         f"font-size:11px; color:{C_ERR_FG};"
                     )
                 elif mode == "BARE":
-                    ui.label("Backend up — no actors or retrieval.").style(f"font-size:11px; color:{C_WARN_FG};")
+                    ui.label("Backend up — actors and retrieval status vary.").style(
+                        f"font-size:11px; color:{C_WARN_FG};"
+                    )
                 elif mode == "DEGRADED":
                     ui.label("Some subsystems down.").style(f"font-size:11px; color:{C_WARN_FG};")
                 else:
@@ -145,7 +147,7 @@ async def settings_page():
 
             try:
                 # Try the text-generation-slots endpoint
-                slots_data = await api_client.get_text_generation_slots()
+                slots_data = await api_client.list_text_generation_slots()
                 slots = slots_data.get("slots", [])
                 ci_mode = slots_data.get("ci_mode", False)
 
@@ -191,8 +193,6 @@ async def settings_page():
                 )
 
     asyncio.create_task(_load_model_slots())
-
-    build_right_rail(state)
 
 
 # ── Card helpers ──────────────────────────────────────────────────────

@@ -176,6 +176,39 @@ or where code does something the docs do not mention.
 | Resolution | None needed |
 | Assigned to | N/A |
 
+### DDR-013 — `corpus_registry.py::delete_corpus` docstring calls Phase 2 a "Stub" but it is implemented
+
+| Field | Value |
+|---|---|
+| File | `src/aip/adapter/corpus_registry.py` lines 353-354 (docstring of `delete_corpus`) |
+| Claim | "Phase 2: delete_bridge_edges(corpus_id) in definer graph. (Stub — implemented in Chunk 6 when bridge edges exist.)" |
+| Reality | The bridge-edge cleanup IS implemented in Chunk 6 — `corpus_registry.py:378-396` calls `GraphStore.delete_bridge_edges(corpus_id)` for real, with best-effort error handling and logging. The docstring was never updated when Chunk 6 landed. |
+| Severity | **LOW** |
+| Impact | Anyone reading the registry source would believe the bridge-edge cleanup is unimplemented and might try to "fix" it, duplicating work or introducing bugs. No runtime impact. |
+| Resolution | **RESOLVED 2026-07-23** — docstring updated to describe the real implementation. Discovered in the 2026-07-23 tech-debt assessment (item D5). |
+
+### DDR-014 — `gui/pages/graph.py` empty-state guidance claims "Manual graph node creation via the API" but no POST endpoint exists
+
+| Field | Value |
+|---|---|
+| File | `gui/pages/graph.py` line 183 (empty-state guidance card) |
+| Claim | "Graph nodes are created by: (1) Running the seed bootstrap on first install, (2) Sexton extracting entities from corpus turns, (3) Manual graph node creation via the API" |
+| Reality | The `/api/v1/graph/*` routes are read-only: only `GET /graph/data`, `GET /graph/neighbors/{node_id}`, `GET /graph/stats` exist. No POST endpoint. The real node-creation paths are: (1) first-install seed bootstrap (`aip init`), (2) Sexton background actor entity extraction, (3) CLI `aip corpus graph --build-from-bridges`, (4) CLI `aip corpus graph --extract --limit N`. |
+| Severity | **LOW** |
+| Impact | An operator reading the empty-state guidance would believe they can create graph nodes via an API call that does not exist. They would either waste time looking for the endpoint or give up on graph population entirely. No runtime impact (the graph just stays empty). |
+| Resolution | **RESOLVED 2026-07-23** — guidance text replaced with the four real paths (bootstrap, Sexton, two CLI commands) plus an explicit "read-only" disclaimer. Discovered in the 2026-07-23 tech-debt assessment (item D10). |
+
+### DDR-015 — `docs/UI_CONVENTIONS.md` reads as descriptive but is mostly aspirational
+
+| Field | Value |
+|---|---|
+| File | `docs/UI_CONVENTIONS.md` (entire document, dated 2026-06-20) |
+| Claim | Document describes the "Three-Panel Shell" with LEFT + MAIN + RIGHT SIDEBAR, a "+ Menu" button, extension mode shift, and a Right Sidebar reference map listing 9 extensions (Aristotle, CodeForge, Loom, Praxis, Herald, Chronicle, Company Brain, Agent Studio, Federation). Reads as a description of the current UI. |
+| Reality | The doc is a target spec, not a description. As of 2026-07-23: (1) the right sidebar is conditional, not always-on (only renders when `_active_extension` is truthy in `gui/components/layout.py`); (2) the + menu is not implemented (no adjacent + button on the chat input); (3) only ARISTOTLE exists of the 9 listed extensions — the other 8 are spec only with zero Python code, no manifest, no entry point. |
+| Severity | **MEDIUM** |
+| Impact | A contributor reading UI_CONVENTIONS.md would believe 8 extensions exist that don't, and would waste time looking for the + menu and the always-on right sidebar. The doc reads as authoritative/descriptive when it is aspirational. |
+| Resolution | **RESOLVED 2026-07-23** — added a prominent "⚠️ TARGET SPEC — NOT ALL FEATURES IMPLEMENTED" banner at the top with an itemized status list. The Right Sidebar reference table now has a Status column marking ARISTOTLE as SHIPPED and the other 8 as "spec only." Discovered in the 2026-07-23 tech-debt assessment (items D6/D7). |
+
 ---
 
 ## Summary Table
@@ -194,8 +227,11 @@ or where code does something the docs do not mention.
 | DDR-010 | MEDIUM | Root TECH_DEBT.md | Split debt register | Merge or delete |
 | DDR-011 | LOW | README.md | ADR count is 7 not 13+ | Update count |
 | DDR-012 | N/A | STATUS.md | NOT a discrepancy | None |
+| DDR-013 | LOW (RESOLVED) | corpus_registry.py | delete_corpus Phase 2 docstring said "Stub" but was implemented | Docstring fix (resolved 2026-07-23) |
+| DDR-014 | LOW (RESOLVED) | gui/pages/graph.py | Empty-state guidance claimed "Manual graph node creation via the API" but no POST endpoint exists | Guidance text fix (resolved 2026-07-23) |
+| DDR-015 | MEDIUM (RESOLVED) | docs/UI_CONVENTIONS.md | Doc reads as descriptive but is mostly aspirational (8 of 9 extensions don't exist, + menu not implemented, right rail is conditional not always-on) | Target-spec banner + Status column in extension table (resolved 2026-07-23) |
 
 **Critical:** 0 (DDR-008 reclassified to HIGH — non-live debt)
 **High:** 3 (DDR-001, DDR-002, DDR-008)
-**Medium:** 5 (DDR-003, DDR-004, DDR-006, DDR-007, DDR-010)
-**Low:** 3 (DDR-005, DDR-009, DDR-011)
+**Medium:** 5 (DDR-003, DDR-004, DDR-006, DDR-007, DDR-010) + 1 RESOLVED (DDR-015)
+**Low:** 3 (DDR-005, DDR-009, DDR-011) + 2 RESOLVED (DDR-013, DDR-014)

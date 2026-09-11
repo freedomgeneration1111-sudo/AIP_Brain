@@ -3168,6 +3168,8 @@ class SyncAlertHistoryBridge:
     def __init__(self, store: AlertHistoryStore) -> None:
         self._store = store
         self._loop = asyncio.new_event_loop()
+        self._closed = False
+        self._state_lock = threading.Lock()
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
 
@@ -3178,17 +3180,34 @@ class SyncAlertHistoryBridge:
 
     def _call(self, coro):
         """Submit a coroutine and block until result."""
-        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        with self._state_lock:
+            if self._closed:
+                coro.close()
+                raise RuntimeError("alert history bridge is closed")
+            future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         return future.result(timeout=10.0)
 
     def _call_fire_and_forget(self, coro):
         """Submit a coroutine without waiting for result."""
-        asyncio.run_coroutine_threadsafe(coro, self._loop)
+        with self._state_lock:
+            if self._closed:
+                coro.close()
+                return
+            asyncio.run_coroutine_threadsafe(coro, self._loop)
 
     def close(self) -> None:
-        """Stop the background event loop."""
-        self._loop.call_soon_threadsafe(self._loop.stop)
-        self._thread.join(timeout=5.0)
+        """Close the store, then stop and join the bridge event-loop thread."""
+        with self._state_lock:
+            if self._closed:
+                return
+            self._closed = True
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(self._store.close(), self._loop)
+            future.result(timeout=5.0)
+        finally:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+            self._thread.join(timeout=5.0)
 
     # Delegate all methods that AlertManager calls
     def record_alert(self, alert_dict: dict) -> bool:

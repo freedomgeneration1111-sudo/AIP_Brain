@@ -46,8 +46,12 @@ async def artifacts_page():
     state = get_session_state()
     state.client = context.client
 
+    # Refresh backend status before rendering layout
+    await state.refresh_status_summary()
+
     build_top_bar(state)
     build_left_nav(state, active_page="/artifacts")
+    build_right_rail(state)
 
     from gui.api_client import get_api_client
 
@@ -65,7 +69,7 @@ async def artifacts_page():
             ui.column()
             .classes("")
             .style(
-                "width:360px; min-width:320px; max-width:400px; "
+                "width:280px; min-width:240px; max-width:320px; "
                 f"border-right:0.5px solid {C_INK40}; overflow-y:auto; "
                 f"padding:0; background:{C_GROUND};"
             )
@@ -105,7 +109,7 @@ async def artifacts_page():
                 )
 
         # ── Right: Artifact Detail ───────────────────────────
-        detail_area = ui.column().classes("flex-1").style(f"padding:16px; overflow-y:auto; background:{C_GROUND};")
+        detail_area = ui.column().classes("flex-1").style(f"padding:24px; overflow-y:auto; background:{C_GROUND};")
 
         # Initial empty state
         with detail_area:
@@ -122,8 +126,6 @@ async def artifacts_page():
 
     # Load summary
     _update_summary(summary_label, api_client, state)
-
-    build_right_rail(state)
 
 
 def _render_detail(

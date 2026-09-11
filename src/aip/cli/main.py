@@ -12,10 +12,12 @@ import click
 
 from aip.cli import artifact as artifact_cmd
 from aip.cli import ask as ask_cmd
+from aip.cli import audit as audit_cmd
 from aip.cli import backup as backup_cmd
 from aip.cli import codex as codex_cmd
 from aip.cli import config as config_cmd
 from aip.cli import corpus as corpus_cmd
+from aip.cli import corpus_migrate as corpus_migrate_cmd
 from aip.cli import eval as eval_cmd
 from aip.cli import export as export_cmd
 from aip.cli import history as history_cmd
@@ -94,10 +96,12 @@ cli.add_command(artifact_cmd.artifact)
 cli.add_command(review_cmd.review)
 cli.add_command(history_cmd.history)
 cli.add_command(corpus_cmd.corpus)
+cli.add_command(corpus_migrate_cmd.corpus_migrate)
 cli.add_command(codex_cmd.codex)
 cli.add_command(eval_cmd.eval_cmd)
 cli.add_command(export_cmd.export)
 cli.add_command(backup_cmd.backup)
+cli.add_command(audit_cmd.audit)
 cli.add_command(validate)
 
 

@@ -13,6 +13,7 @@ Never imports from aip.orchestration.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -40,6 +41,64 @@ log = logging.getLogger("gui.components.model_council_panel")
 # Default text-generation slots to pre-select if none provided
 _DEFAULT_SELECTED_SLOTS = ["synthesis", "evaluation", "beast"]
 
+# Dialog container width — single source of truth for all Model Council dialogs.
+# Was previously a right-side drawer (width:480px). Moved to centered modal in
+# this cycle so it doesn't compete with main content for horizontal space.
+_DIALOG_STYLE = (
+    f"width:90vw; max-width:1000px; background:{C_GROUND}; "
+    f"border:0.5px solid {C_INK40}; border-radius:{R_SM}; padding:0;"
+)
+
+# ── Phase 3: per-model color mapping ───────────────────────────────────
+#
+# A deterministic per-model color palette so the same model always gets
+# the same color across the Judge analysis rendering (unique_insights
+# badges + contradictions stance table). This lets the human visually
+# track a single model's contributions across sections without reading
+# the label every time.
+#
+# The palette is a fixed 8-color set drawn from the AIP brand system
+# (amber + teal + 6 complementary accents). Colors are assigned by
+# hashing the model label (slot name or OpenRouter ID) — same label →
+# same color, no matter how many times it appears.
+
+_MODEL_COLOR_PALETTE = [
+    C_AMBER,  # primary amber (slot 0)
+    "#4A9B8E",  # slate-teal (brand accent 1)
+    "#9B6B4A",  # warm copper
+    "#6B8E9B",  # steel blue
+    "#9B4A6B",  # muted rose
+    "#4A6B9B",  # dusty blue
+    "#8E9B4A",  # olive
+    "#6B4A9B",  # violet
+]
+
+
+def _model_color(model_label: str) -> str:
+    """Return a deterministic color for a model label.
+
+    Phase 3: per-model attribution badges + stance color-coding. The
+    same model label always maps to the same color so the human can
+    visually track a model's contributions across the Judge analysis
+    sections (unique_insights, contradictions) without reading the
+    label every time.
+
+    Args:
+        model_label: the slot name (e.g. "synthesis") or OpenRouter
+            model ID (e.g. "anthropic/claude-3-opus").
+
+    Returns:
+        A hex color string from the ``_MODEL_COLOR_PALETTE``.
+    """
+    if not model_label:
+        return _MODEL_COLOR_PALETTE[0]
+    # Simple deterministic hash — sum of byte values modulo palette size.
+    # Not cryptographically secure, but stable across runs and good
+    # enough for color assignment (collisions just mean two models
+    # share a color, which is acceptable).
+    h = sum(ord(c) for c in str(model_label))
+    return _MODEL_COLOR_PALETTE[h % len(_MODEL_COLOR_PALETTE)]
+
 
 class ModelCouncilPanel:
     """Model Council panel — advisory multi-model comparison report.
@@ -51,13 +110,37 @@ class ModelCouncilPanel:
     """
 
     def __init__(self) -> None:
+        # _drawer holds the ui.dialog; _content_container holds the inner
+        # scrollable column. Content rendering methods must add to
+        # _content_container (not _drawer) so new children appear inside the
+        # scrollable region rather than as siblings of it.
         self._drawer: Any = None
+        self._content_container: Any = None
         self._loading: bool = False
         self._last_report: dict[str, Any] | None = None
         self._available_slots: list[dict[str, Any]] = []
         self._selected_slots: list[str] = []
         self._slots_loaded: bool = False
         self._slots_sufficient: bool = False
+
+    def _open_dialog(self) -> Any:
+        """Open a fresh centered dialog and return the inner content column.
+
+        Replaces the previous right-drawer surface. The dialog itself is
+        assigned to ``self._drawer`` and its inner scrollable column to
+        ``self._content_container`` so subsequent render methods can append
+        children inside the scrollable region.
+        """
+        self.close()
+        dialog = ui.dialog().props("persistent=false; maximized=false").style(_DIALOG_STYLE)
+        self._drawer = dialog
+        content_column = ui.column().classes("w-full").style("max-height:85vh; overflow-y:auto;")
+        self._content_container = content_column
+        try:
+            dialog.open()
+        except Exception as exc:
+            log.debug("model_council_dialog_open_failed: %s", exc)
+        return content_column
 
     async def show_council(
         self,
@@ -82,27 +165,21 @@ class ModelCouncilPanel:
         self._slots_sufficient = False
         self._available_slots = []
 
-        self.close()
-
-        with (
-            ui.right_drawer(bordered=True)
-            .classes(f"bg-{C_GROUND}")
-            .style(f"width: 480px; background: {C_GROUND}; border-left: 1px solid {C_INK40};") as drawer
-        ):
-            self._drawer = drawer
-
+        # Open fresh dialog and capture the inner content column
+        content_column = self._open_dialog()
+        with content_column:
             # Header
             self._render_header()
 
-            # Load slots and show initial state
-            await self._load_slots_and_render(
-                api_client=api_client,
-                prompt=prompt,
-                turn_id=turn_id,
-                session_id=session_id,
-                existing_answer=existing_answer,
-                sources=sources or [],
-            )
+        # Load slots and show initial state
+        await self._load_slots_and_render(
+            api_client=api_client,
+            prompt=prompt,
+            turn_id=turn_id,
+            session_id=session_id,
+            existing_answer=existing_answer,
+            sources=sources or [],
+        )
 
     async def _load_slots_and_render(
         self,
@@ -168,7 +245,7 @@ class ModelCouncilPanel:
         sources: list[dict],
     ) -> None:
         """Render initial state with slot selector and run button."""
-        with ui.column().classes("w-full").style("padding: 16px;"):
+        with self._content_container:
             if not prompt and not existing_answer:
                 ui.label("No prompt or answer available for Model Council.").style(
                     f"font-size: 12px; color: {C_INK60}; font-family: {F_SANS};"
@@ -337,13 +414,8 @@ class ModelCouncilPanel:
         self._loading = True
 
         # Close and reopen with loading state
-        self.close()
-        with (
-            ui.right_drawer(bordered=True)
-            .classes(f"bg-{C_GROUND}")
-            .style(f"width: 480px; background: {C_GROUND}; border-left: 1px solid {C_INK40};") as drawer
-        ):
-            self._drawer = drawer
+        content_column = self._open_dialog()
+        with content_column:
             self._render_header()
             ui.label("Running Model Council comparison...").style(
                 f"font-size: 11px; color: {C_INK60}; font-family: {F_MONO}; padding: 16px;"
@@ -366,13 +438,8 @@ class ModelCouncilPanel:
         self._last_report = result
 
         # Re-render with results
-        self.close()
-        with (
-            ui.right_drawer(bordered=True)
-            .classes(f"bg-{C_GROUND}")
-            .style(f"width: 480px; background: {C_GROUND}; border-left: 1px solid {C_INK40};") as drawer
-        ):
-            self._drawer = drawer
+        content_column = self._open_dialog()
+        with content_column:
             self._render_header()
             self._render_report(result, api_client)
 
@@ -435,12 +502,29 @@ class ModelCouncilPanel:
         # Synthesis sections
         synthesis_status = data.get("synthesis_status", "unknown")
         if synthesis_status == "completed":
+            # Phase 1 Fusion: the new headline is ``fusion_answer`` (the
+            # Synth-Beast output). Legacy structured fields (convergence,
+            # disagreements, etc.) are still rendered below as supporting
+            # detail — they're populated from the Judge JSON.
+            fusion_answer = data.get("fusion_answer", "")
+            if fusion_answer:
+                self._render_section("Fusion Synthesis", fusion_answer, C_OK_FG)
+            # Legacy structured-analysis fields (best-effort from Judge JSON)
             self._render_section("Convergence", data.get("convergence", ""), C_OK_FG)
             self._render_section("Disagreements", data.get("disagreements", ""), C_AMBER)
             self._render_section("Unique Contributions", data.get("unique_contributions", ""), C_CREAM)
             self._render_section("Risks", data.get("risks", ""), C_ERR_FG)
-            self._render_section("Beast Conclusion", data.get("beast_conclusion", ""), C_CREAM)
+            # Beast Conclusion is mirrored from fusion_answer in Phase 1,
+            # so only render it separately if it differs (legacy fallback)
+            beast_conclusion = data.get("beast_conclusion", "")
+            if beast_conclusion and beast_conclusion != fusion_answer:
+                self._render_section("Beast Conclusion", beast_conclusion, C_CREAM)
             self._render_section("Recommended Decision", data.get("recommended_decision", ""), C_AMBER)
+            # Phase 1 Fix B: render the full structured Judge JSON
+            # (consensus / contradictions stance table / partial_coverage /
+            # unique_insights / blind_spots) plus a collapsible raw-JSON
+            # disclosure for audit. Empty dict → nothing rendered.
+            self._render_judge_analysis(data.get("judge_analysis", {}))
         elif synthesis_status == "unavailable":
             with ui.column().classes("w-full").style("padding: 8px 16px;"):
                 ui.label("SYNTHESIS UNAVAILABLE").style(
@@ -620,11 +704,171 @@ class ModelCouncilPanel:
                 f"font-size: 9px; font-weight: 700; font-family: {F_MONO}; color: {C_INK60}; letter-spacing: 0.5px;"
             )
 
+    def _render_judge_analysis(self, judge_analysis: dict[str, Any]) -> None:
+        """Render the full structured Judge JSON for audit visibility.
+
+        Phase 1 Fix B: previously the rich ``judge_analysis`` dict was
+        returned by the backend but never surfaced in the GUI — only the
+        flattened legacy strings (``convergence``, ``disagreements``,
+        etc.) were rendered, losing the per-model attribution that the
+        new schema provides. This method renders:
+
+          - ``analysis.consensus[]`` as a bulleted list
+          - ``analysis.contradictions[]`` as a per-topic stance table
+            (each row = one topic, with per-model stance cells)
+          - ``analysis.partial_coverage[]`` as a per-model-attributed list
+          - ``analysis.unique_insights[]`` as a per-model-attributed list
+          - ``analysis.blind_spots[]`` as a bulleted list (the gaps NO
+            model addressed — the most important field for the human)
+          - a collapsible raw-JSON disclosure at the end (``ui.expansion``)
+            for full audit
+
+        Empty/missing dict → nothing rendered (no empty sections).
+        """
+        if not judge_analysis or not isinstance(judge_analysis, dict):
+            return
+
+        analysis = judge_analysis.get("analysis")
+        if not isinstance(analysis, dict):
+            # Judge produced something but no ``analysis`` key — fall back
+            # to showing just the raw JSON disclosure so the human still
+            # has visibility.
+            analysis = {}
+
+        # ── Consensus ──
+        consensus = analysis.get("consensus", [])
+        if isinstance(consensus, list) and consensus:
+            self._render_section_label("Judge · Consensus (all models agree)")
+            with ui.column().classes("w-full").style("padding: 2px 16px 8px 24px;"):
+                for point in consensus:
+                    ui.label(f"• {point}").style(
+                        f"font-size: 11px; color: {C_OK_FG}; font-family: {F_SANS}; line-height: 1.5;"
+                    )
+
+        # ── Contradictions stance table ──
+        contradictions = analysis.get("contradictions", [])
+        if isinstance(contradictions, list) and contradictions:
+            self._render_section_label("Judge · Contradictions (per-model stances)")
+            with ui.column().classes("w-full").style("padding: 2px 16px 8px 16px;"):
+                for c in contradictions:
+                    if not isinstance(c, dict):
+                        continue
+                    topic = c.get("topic", "?")
+                    stances = c.get("stances", [])
+                    with (
+                        ui.column()
+                        .classes("w-full")
+                        .style(
+                            f"padding: 6px 10px; margin: 2px 0; "
+                            f"border-left: 2px solid {C_AMBER}; background: {C_GROUND};"
+                        )
+                    ):
+                        ui.label(topic).style(
+                            f"font-size: 11px; font-weight: 700; color: {C_CREAM}; "
+                            f"font-family: {F_SANS}; margin-bottom: 4px;"
+                        )
+                        if isinstance(stances, list):
+                            for s in stances:
+                                if not isinstance(s, dict):
+                                    continue
+                                model = s.get("model", "?")
+                                stance = s.get("stance", "?")
+                                # Phase 3b: per-model stance color-coding.
+                                # The model label gets a deterministic
+                                # color so the human can visually track
+                                # the same model's stance across
+                                # contradiction topics.
+                                model_clr = _model_color(str(model))
+                                with ui.row().classes("w-full").style("gap: 6px;"):
+                                    ui.label(model).style(
+                                        f"font-size: 10px; font-weight: 600; color: {model_clr}; "
+                                        f"font-family: {F_MONO}; min-width: 120px; max-width: 200px; "
+                                        f"word-break: break-all; "
+                                        f"border-left: 2px solid {model_clr}; padding-left: 4px;"
+                                    )
+                                    ui.label(stance).style(
+                                        f"font-size: 10px; color: {C_INK60}; "
+                                        f"font-family: {F_SANS}; line-height: 1.4; flex: 1;"
+                                    )
+
+        # ── Partial coverage ──
+        partial = analysis.get("partial_coverage", [])
+        if isinstance(partial, list) and partial:
+            self._render_section_label("Judge · Partial Coverage (some models only)")
+            with ui.column().classes("w-full").style("padding: 2px 16px 8px 24px;"):
+                for p in partial:
+                    if not isinstance(p, dict):
+                        continue
+                    models = p.get("models", [])
+                    point = p.get("point", "?")
+                    models_str = ", ".join(str(m) for m in models) if isinstance(models, list) else str(models)
+                    ui.label(f"• [{models_str}] {point}").style(
+                        f"font-size: 11px; color: {C_CREAM}; font-family: {F_SANS}; line-height: 1.5;"
+                    )
+
+        # ── Unique insights ──
+        unique = analysis.get("unique_insights", [])
+        if isinstance(unique, list) and unique:
+            self._render_section_label("Judge · Unique Insights (per-model)")
+            with ui.column().classes("w-full").style("padding: 2px 16px 8px 24px;"):
+                for u in unique:
+                    if not isinstance(u, dict):
+                        continue
+                    model = u.get("model", "?")
+                    insight = u.get("insight", "?")
+                    # Phase 3a: per-model attribution badge. The model
+                    # label renders as a colored badge (deterministic
+                    # color from _model_color) so the human can visually
+                    # track which model contributed each unique insight
+                    # without reading the label every time.
+                    model_clr = _model_color(str(model))
+                    with ui.row().classes("w-full items-start").style("gap: 6px;"):
+                        ui.label(model).style(
+                            f"font-size: 9px; font-weight: 700; color: {C_GROUND}; "
+                            f"font-family: {F_MONO}; background: {model_clr}; "
+                            f"padding: 1px 6px; border-radius: {R_SM}; "
+                            f"min-width: 60px; max-width: 180px; "
+                            f"text-align: center; word-break: break-all; "
+                            f"letter-spacing: 0.3px; flex-shrink: 0; margin-top: 1px;"
+                        )
+                        ui.label(insight).style(
+                            f"font-size: 11px; color: {C_CREAM}; font-family: {F_SANS}; line-height: 1.5; flex: 1;"
+                        )
+
+        # ── Blind spots (the most important field for the human) ──
+        blind = analysis.get("blind_spots", [])
+        if isinstance(blind, list) and blind:
+            self._render_section_label("Judge · Blind Spots (no model addressed)")
+            with ui.column().classes("w-full").style("padding: 2px 16px 8px 24px;"):
+                for b in blind:
+                    ui.label(f"• {b}").style(
+                        f"font-size: 11px; color: {C_ERR_FG}; font-family: {F_SANS}; "
+                        f"line-height: 1.5; font-style: italic;"
+                    )
+
+        # ── Collapsible raw JSON for full audit ──
+        try:
+            raw_json = json.dumps(judge_analysis, ensure_ascii=False, indent=2)
+        except (TypeError, ValueError):
+            raw_json = str(judge_analysis)
+        with (
+            ui.expansion(
+                "Judge Analysis (raw JSON)",
+                icon="format_quote",
+            )
+            .classes("w-full")
+            .style(f"padding: 4px 16px; font-family: {F_MONO};")
+        ):
+            ui.code(raw_json, language="json").style(
+                f"font-size: 10px; font-family: {F_MONO}; background: {C_GROUND}; color: {C_INK60};"
+            )
+
     def close(self) -> None:
-        """Close the Model Council drawer."""
+        """Close the Model Council dialog."""
         if self._drawer is not None:
             try:
                 self._drawer.close()
             except Exception as exc:
                 log.debug("drawer_close_error: %s", exc)
             self._drawer = None
+            self._content_container = None

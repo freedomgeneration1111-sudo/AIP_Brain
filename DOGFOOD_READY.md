@@ -1,5 +1,5 @@
 ---
-## ⚠️ Read This First — Alpha Test Release (2026-06-10)
+## ⚠️ Read This First — Alpha Test Release (2026-06-17)
 
 AIP v0.1 is now in **alpha test release**. The dogfood guide below describes the foundational
 ingest→ask→review→export loop. This still works. However AIP has grown significantly since
@@ -15,6 +15,17 @@ that guide was written, and there are important caveats for alpha testers:
 - Crosslink System v1 — knowledge links between wiki articles, artifacts, turns, and other first-class objects with approve/reject workflow
 - Retrieval Lab v1 — standalone retrieval testing without answer synthesis
 - Maintenance Center v1 — actor status (Beast, Vigil, Sexton), maintenance job controls (backfill embeddings, rebuild graph/CODEX, retrieval eval, stale docs, contradictions), recent maintenance log, and problem panel
+- **Multi-Model Fusion pipeline** (Phase 1-3 + 4.1, 2026-06-17) — Multi-Cast with ≥2 models triggers Beast Fusion (Judge-Beast → Synth-Beast). Per-model answer cards + a fusion synthesis card with structured Judge JSON (consensus, contradictions, partial_coverage, unique_insights, blind_spots). Models are NOT tied to actor slots — pick any 2+ from the unified dropdown.
+- **Augmented Multi-Cast** (Phase 1 retrieval bridge) — when Augmented mode is ON + Multi-Cast ≥2 models, the panel sees the same corpus context as single-model augmented chat. Dogfood-confirmed: panel models correctly identify AIP as AI Poiesis.
+- **Real-time provenance widget** (Phase 4.1) — every answer card with sources shows an inline provenance strip (source count + domain badges + collapsible detail list) so the DEFINER can trace provenance instantly without clicking a button.
+- **Context Preparer visualizer** (Phase 4.1) — the Trace panel shows a 4-step fusion flow diagram (channel retrieval → RRF fusion → gating → final context) so the DEFINER can see which channel misfired when retrieval goes wrong.
+- **Vigil consistency checker** (Phase 4.1) — Vigil's 5th evaluation pass detects cross-turn contradictions. Writes `vigil_consistency_score` + `vigil_consistency_contradictions` to turn metadata.
+- **Per-model compression pass** (Phase 2) — opt-in via the "Compress" checkbox in the Ask page header. Summarizes each panelist's answer to 5-8 key claims before the Judge reads them (reduces context pressure on long panel outputs).
+- **Dedicated [models.judge] slot** (Phase 3) — optional TOML slot for a dedicated Judge model. Uncomment in `config/aip.config.toml` to use a different model for judging vs the Beast actor's maintenance calls.
+- **Web Source Acquisition (ADR-017 D2.0–D2.5)** (2026-07-30) — AIP can now ground answers on current web sources. Tavily search provider + bounded HTTP fetcher (SSRF defense, DNS-rebinding defense) + HTML/PDF extractors with paywall detection + prompt-injection boundary (BEGIN_WEB_SOURCE / END_WEB_SOURCE markers). 5 API routes: POST /api/v1/web/search, /web/fetch, /web/ground, /web/promote, GET /web/sources/{id}. Ask page gains `web_grounding` toggle — when True, the route runs search+fetch+extract and injects results into the synthesis prompt. Sources panel shows web sources with `kind=web` alongside corpus sources. Explicit promotion (POST /web/promote) writes web content to the definer corpus with `source_model="web"` and dedup by content_hash. Config: `[web]` section in `aip.config.toml` + `AIP_WEB_SEARCH_API_KEY` env var (separate from AIP_OPENAI_API_KEY). ~490 tests.
+- **Multi-Cast retrieval telemetry** (2026-07-30) — ModelCouncilResponse now carries 6 retrieval fields: `retrieval_attempted`, `context_assembled`, `active_corpus_ids`, `source_count`, `augmented_sources`, `retrieval_warnings`. The GUI renders sources and warnings on each per-model card instead of hardcoding `sources=[]` / `trace_available=False`. When retrieval is off (Normal mode), the UI surfaces a clear "Retrieval is OFF — switch to Augmented mode" message. When retrieval runs but finds nothing, the warning explains why (e.g. "Session has no active_corpus_ids").
+- **Corpus selection persistence** (2026-07-30) — `active_corpus_ids` is now a workspace-level preference in `GuiState`, independent of `session_id`. It survives `reset_session()` (called when models/modes change) and is re-applied to replacement sessions by `ensure_session()`. The corpus selector checkbox fires `on_change` immediately (no need to click "Update Selection" separately). This fixes the bug where changing models before sending Multi-Cast silently lost the codeforge selection.
+- **FTS5 file-path query fix** (2026-07-30) — `sanitize_fts_query` now strips `/` from queries. Previously, file paths like `gui/pages/ask.py` caused `sqlite3.OperationalError: fts5: syntax error near "/"`, crashing the entire retrieval. This was the root cause of "assembled=False" on code-related queries.
 
 **Known limitations:**
 - **Embedding coverage is low (~1.8%)** — Sexton will automatically embed turns when an

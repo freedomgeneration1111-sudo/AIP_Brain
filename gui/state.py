@@ -195,6 +195,21 @@ class GuiState:
         self.current_project: str | None = None
         self.client = None  # NiceGUI client reference for background task UI updates
 
+        # ── ADR-017 / Multi-Corpus: persistent corpus selection ──
+        # ``active_corpus_ids`` is the user's workspace-level corpus
+        # selection, INDEPENDENT of session_id.  It survives
+        # reset_session() (which only clears session_id, not workspace
+        # preferences).  When ensure_session() creates a replacement
+        # session, it immediately applies this selection so retrieval
+        # doesn't silently fall back to the definer-only default.
+        #
+        # This fixes the bug where changing models/modes called
+        # reset_session(), discarding the session — and the replacement
+        # session created by ensure_session() had no active_corpus_ids,
+        # so Multi-Cast retrieval fell back to the legacy single-corpus
+        # path and codeforge material never reached the panel.
+        self.active_corpus_ids: list[str] = ["definer"]
+
         # ── New fields for UI Cycle 2 ──
         self.dogfood_mode: str = "BARE"  # "FULL" | "DEGRADED" | "BARE" | "DIRECT MODEL ONLY"
         self.actor_status: dict[str, Any] = {}
@@ -205,8 +220,63 @@ class GuiState:
         # ── UI Cycle 3: Consolidated status summary from /api/v1/status/summary ──
         self.status_summary: dict[str, Any] = {}
 
+        # ── Multi-Model selection (Ask page) ──
+        # The Ask page chat header now uses a single multi-select
+        # dropdown (checkboxes) for picking N models from the unified
+        # "available models" pool (OpenRouter library IDs + slot model
+        # IDs). The send handler auto-routes based on the count:
+        #   - 0 or 1 selected → normal single-model chat (WS chat route,
+        #     uses the synthesis slot's configured model — set via
+        #     ``set_role_model("synthesis", X)`` when the dropdown
+        #     changes)
+        #   - ≥2 selected → Multi-Cast (POST /beast/compare-models).
+        #     The selected models are sent as ``selected_model_ids``
+        #     (OpenRouter IDs); ``selected_model_slots`` is sent as
+        #     ``[]`` with ``skip_default_slots=True`` so the backend
+        #     does NOT auto-add the default TOML slots (synthesis/
+        #     evaluation/beast). The ``beast`` slot is used ONLY for
+        #     the Judge+Synth synthesis stages, not as a panel model.
+        # This restores the original "checkbox dropdown → auto-trigger
+        # synthesis" UX. The separate "Multi-Cast: ON/OFF" button and
+        # the second row of slot/library checkboxes were removed.
+        # ``multicast_selected_model_ids`` is the canonical selected-
+        # models list (OpenRouter IDs, NOT slot names). Backward-compat
+        # name is preserved so existing references in ask.py keep
+        # working.
+        self.multicast_selected_model_ids: list[str] = []
+        # Deprecated: ``multicast_enabled`` is now a derived property
+        # (``len(self.multicast_selected_model_ids) >= 2``). The field
+        # is kept for back-compat with any code that reads it, but the
+        # Ask page no longer sets it directly. It defaults to False and
+        # is recomputed by the page on each model-selection change.
+        self.multicast_enabled: bool = False
+        # Deprecated: ``multicast_selected_slots`` (TOML slot names) is
+        # no longer populated by the GUI. The "models not tied to actor
+        # slots/roles" rule means the GUI sends only OpenRouter IDs.
+        # The field is kept (always empty) so the request payload shape
+        # is unchanged for the backend contract.
+        self.multicast_selected_slots: list[str] = []
+        # ── Phase 3d: per-model compression pass toggle ──
+        # When True, the Multi-Cast send handler passes
+        # ``compress_panel_outputs=True`` to ``run_model_council``. The
+        # backend runs a per-panelist compression pass BEFORE the Judge
+        # reads the panel outputs — each answer is summarized to 5-8
+        # key claims. This reduces the Judge's context window pressure
+        # on long panel outputs. Default False (off) — opt-in via the
+        # Ask page header checkbox. Only applies when ≥2 models are
+        # selected (Multi-Cast mode); ignored for single-model chat.
+        self.compress_panel_outputs: bool = False
+
     async def ensure_session(self) -> str:
-        """Create a session if one doesn't exist, or return the existing one."""
+        """Create a session if one doesn't exist, or return the existing one.
+
+        When creating a NEW session, immediately applies the persistent
+        ``active_corpus_ids`` selection so retrieval uses the user's
+        chosen corpora (e.g. codeforge) rather than falling back to the
+        definer-only default.  This fixes the bug where changing
+        models/modes called reset_session() and the replacement session
+        lost the corpus selection.
+        """
         if self.session_id is not None:
             return self.session_id
 
@@ -216,10 +286,40 @@ class GuiState:
             mode=self.current_mode,
         )
         self.session_id = result["id"]
+
+        # Apply the persistent corpus selection to the new session.
+        # This is best-effort — if the PATCH fails, the session still
+        # exists with the default (definer-only) selection, and the
+        # user can re-select via the Corpus Selection panel.
+        if self.active_corpus_ids and self.active_corpus_ids != ["definer"]:
+            try:
+                await self.api_client.update_session_corpora(self.session_id, self.active_corpus_ids)
+                log.info(
+                    "ensure_session_applied_corpora session_id=%s active_corpus_ids=%s",
+                    self.session_id,
+                    self.active_corpus_ids,
+                )
+            except Exception as exc:
+                # Non-fatal — the session is usable, just without the
+                # custom corpus selection.  Log the failure so it's
+                # diagnosable (previously this was a silent pass).
+                log.warning(
+                    "ensure_session_corpus_apply_failed session_id=%s active_corpus_ids=%s error=%s",
+                    self.session_id,
+                    self.active_corpus_ids,
+                    exc,
+                )
+
         return self.session_id
 
     def reset_session(self) -> None:
-        """Reset session state (e.g., when changing models/modes)."""
+        """Reset session state (e.g., when changing models/modes).
+
+        IMPORTANT: does NOT clear ``active_corpus_ids`` — that is a
+        workspace-level preference, not disposable conversation state.
+        The next ``ensure_session()`` call will re-apply it to the new
+        session.
+        """
         self.session_id = None
         self.pending_gate = None
         self.ingestion_status = "idle"
@@ -235,10 +335,22 @@ class GuiState:
         DEGRADED:  backend reachable, some subsystems down
         BARE:      backend reachable, no actors or retrieval
         DIRECT MODEL ONLY: backend unreachable
+
+        Note: the backend returns 'minimal' for what the GUI calls 'BARE'.
+        This method normalizes the backend terminology to GUI terminology.
         """
+        # Map backend dogfood_mode values to GUI display values
+        _MODE_MAP = {
+            "minimal": "BARE",
+            "full": "FULL",
+            "diagnostic": "DIAGNOSTIC",
+            "degraded": "DEGRADED",
+        }
+
         # Prefer the authoritative dogfood_mode from the consolidated endpoint
         if self.status_summary and "dogfood_mode" in self.status_summary:
-            self.dogfood_mode = self.status_summary["dogfood_mode"]
+            raw_mode = self.status_summary["dogfood_mode"]
+            self.dogfood_mode = _MODE_MAP.get(raw_mode, raw_mode.upper())
             return
 
         if not self.backend_reachable:
@@ -266,12 +378,24 @@ class GuiState:
           - pending_gates_count (from review_queue_summary.count)
 
         This is the single-call refresh path for UI Cycle 3.
-        If the fetch fails, fields are left unchanged and backend_reachable is set False.
+        Backend reachability is determined by successful HTTP contact:
+          - If /status/summary succeeds → backend_reachable = True, full status.
+          - If /status/summary fails but /health succeeds → backend_reachable = True
+            with a warning that status summary is unavailable.
+          - If both fail → backend_reachable = False.
         """
         try:
             summary = await self.api_client.get_status_summary()
             if not summary:
-                self.backend_reachable = False
+                # Empty dict from get_status_summary means the HTTP call failed.
+                # Fall back to /health check before declaring backend down.
+                reachable = await self.api_client.is_backend_reachable()
+                if reachable:
+                    self.backend_reachable = True
+                    self.warnings = ["Status summary unavailable — showing limited info"]
+                    self.refresh_dogfood_mode()
+                else:
+                    self.backend_reachable = False
                 return
 
             self.status_summary = summary
@@ -302,7 +426,17 @@ class GuiState:
 
         except Exception as exc:
             log.error("refresh_status_summary failed: %s", exc)
-            self.backend_reachable = False
+            # Fall back to /health check before declaring backend down
+            try:
+                reachable = await self.api_client.is_backend_reachable()
+                if reachable:
+                    self.backend_reachable = True
+                    self.warnings = ["Status summary unavailable — showing limited info"]
+                    self.refresh_dogfood_mode()
+                else:
+                    self.backend_reachable = False
+            except Exception:
+                self.backend_reachable = False
 
 
 def get_session_state() -> GuiState:

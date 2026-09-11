@@ -1,6 +1,6 @@
 """Wiki API routes — browse, create, and edit wiki/CODEX articles.
 
-Wiki articles are stored as artifacts (beast:wiki:* / beast:proposal:* / wiki:*)
+Wiki articles are stored as artifacts (beast:wiki:* / beast:proposal:* / wiki:* / sexton:wiki:*)
 via the container's artifact_store with ECS state tracking. This route module provides:
 
   GET  /wiki/articles           — List articles (existing, enhanced with WikiArticle schema)
@@ -179,9 +179,15 @@ def _row_to_article(
         "approved_at": row["updated_at"] if current_state == "APPROVED" else None,
         # Convenience fields
         "domain": article_domain,
-        "artifact_type": "wiki"
-        if artifact_id.startswith("beast:wiki:") or artifact_id.startswith("wiki:")
-        else "proposal",
+        "artifact_type": (
+            "manual_chapter"
+            if artifact_id.startswith("manual:")
+            else "wiki"
+            if artifact_id.startswith("beast:wiki:")
+            or artifact_id.startswith("wiki:")
+            or artifact_id.startswith("sexton:wiki:")
+            else "proposal"
+        ),
         "version": row["version"],
         "word_count": len(content_text.split()) if content_text else 0,
         "metadata": metadata,
@@ -217,7 +223,11 @@ async def list_wiki_articles(
     items: list[dict] = []
 
     # Build WHERE clause
-    conditions = ["(a.id LIKE 'beast:wiki:%' OR a.id LIKE 'beast:proposal:%' OR a.id LIKE 'wiki:%')"]
+    conditions = [
+        "(a.id LIKE 'beast:wiki:%' OR a.id LIKE 'beast:proposal:%' "
+        "OR a.id LIKE 'wiki:%' OR a.id LIKE 'sexton:wiki:%' "
+        "OR a.id LIKE 'manual:%')"
+    ]
     params: list[str] = []
 
     if state:
@@ -482,6 +492,30 @@ async def create_wiki_article(
                 article_id,
                 request.title,
             )
+
+            # Phase β-3 (2026-07-23): create a WIKI_ARTICLE graph node so wiki
+            # articles appear as first-class graph entities. This enables
+            # "what concepts does this wiki article relate to?" queries and
+            # makes the wiki visible in the graph visualization.
+            try:
+                from aip.adapter.graph_store import GraphNode
+
+                _graph_store = getattr(container, "graph_store", None)
+                if _graph_store is not None:
+                    _node_id = f"wiki_{article_id.replace(':', '_').lower()}"
+                    _wiki_node = GraphNode(
+                        id=_node_id,
+                        entity_type="WIKI_ARTICLE",
+                        canonical_name=request.title,
+                        domain=request.domain,
+                        confidence=1.0,
+                        source="wiki_create",
+                        metadata={"article_id": article_id, "tags": request.tags},
+                    )
+                    await _graph_store.upsert_node(_wiki_node)
+                    logger.info("wiki_graph_node_created id=%s title='%s'", _node_id, request.title)
+            except Exception as _graph_exc:
+                logger.debug("wiki_graph_node_failed article=%s error=%s", article_id, _graph_exc)
 
             return {
                 "id": article_id,
@@ -1021,7 +1055,10 @@ async def wiki_stats(
                 SELECT e.current_state, COUNT(*) as c
                 FROM artifacts a
                 INNER JOIN ecs_state e ON a.id = e.artifact_id
-                WHERE a.id LIKE 'beast:wiki:%' OR a.id LIKE 'beast:proposal:%' OR a.id LIKE 'wiki:%'
+                WHERE a.id LIKE 'beast:wiki:%'
+                   OR a.id LIKE 'beast:proposal:%'
+                   OR a.id LIKE 'wiki:%'
+                   OR a.id LIKE 'manual:%'
                 GROUP BY e.current_state
                 """,
             )
@@ -1046,7 +1083,10 @@ async def wiki_stats(
                     COUNT(*) as c
                 FROM artifacts a
                 INNER JOIN ecs_state e ON a.id = e.artifact_id
-                WHERE a.id LIKE 'beast:wiki:%' OR a.id LIKE 'beast:proposal:%' OR a.id LIKE 'wiki:%'
+                WHERE a.id LIKE 'beast:wiki:%'
+                   OR a.id LIKE 'beast:proposal:%'
+                   OR a.id LIKE 'wiki:%'
+                   OR a.id LIKE 'manual:%'
                 GROUP BY domain, e.current_state
                 ORDER BY domain
                 """,

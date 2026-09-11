@@ -149,6 +149,11 @@ class AipApiClient:
             log.warning("text_generation_slots_fetch_failed: %s", exc)
             return {"slots": [], "ci_mode": False, "sufficient_for_council": False, "error": str(exc)}
 
+    # Compatibility alias — some callers use get_ prefix
+    async def get_text_generation_slots(self) -> dict[str, Any]:
+        """Alias for list_text_generation_slots()."""
+        return await self.list_text_generation_slots()
+
     async def list_model_library(self, enabled_only: bool = True) -> list[dict[str, Any]]:
         """Fetch model library from GET /api/v1/models/library.
 
@@ -296,6 +301,41 @@ class AipApiClient:
         resp = await client.delete(f"{self.base_url}/api/v1/sessions/{session_id}")
         resp.raise_for_status()
         return resp.json()
+
+    # ------------------------------------------------------------------
+    # Corpus Registry (QW9, 2026-07-23 — ADR-008 Multi-Corpus)
+    # ------------------------------------------------------------------
+
+    async def get_registered_corpora(self) -> list[dict[str, Any]]:
+        """Fetch the list of registered corpora via GET /api/v1/corpus-registry/corpora.
+
+        QW9 (2026-07-23). Returns a list of dicts with keys:
+        corpus_id, corpus_type, sensitive, deletion_state, access_note.
+        Returns [] on error or when the registry is not wired.
+
+        Consumed by gui/components/corpus_selector.py for the corpus
+        multi-select UI on the Ask page.
+        """
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}/api/v1/corpus-registry/corpora")
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, list):
+            return data
+        return []
+
+    async def update_session_corpora(self, session_id: str, active_corpus_ids: list[str]) -> dict[str, Any]:
+        """Update the session's active corpora via PATCH /api/v1/sessions/{id}.
+
+        QW8 (2026-07-23). Writes ``active_corpus_ids`` to the session's
+        metadata. The chat WebSocket reads this via ``get_session_meta()``
+        and ``_augmented_context.py`` uses it to scope multi-corpus retrieval.
+
+        Note: we use the existing PATCH /sessions/{id} endpoint (not a
+        dedicated POST /sessions/{id}/corpora) because the session metadata
+        is a flat dict and ``active_corpus_ids`` is just a key in it.
+        """
+        return await self.update_session(session_id, {"active_corpus_ids": active_corpus_ids})
 
     # ------------------------------------------------------------------
     # Projects
@@ -1348,7 +1388,11 @@ class AipApiClient:
         existing_answer: str = "",
         sources: list[dict] | None = None,
         selected_model_slots: list[str] | None = None,
+        selected_model_ids: list[str] | None = None,
         save_as_artifact: bool = False,
+        skip_default_slots: bool = False,
+        assemble_augmented_context: bool = False,
+        compress_panel_outputs: bool = False,
     ) -> dict[str, Any]:
         """Run a Model Council multi-model comparison report.
 
@@ -1356,6 +1400,36 @@ class AipApiClient:
         Returns an advisory comparison report with per-model results,
         convergence, disagreements, risks, and Beast synthesis.
         Reports are ADVISORY ONLY — never auto-approved.
+
+        Two parallel model sources are accepted:
+          - ``selected_model_slots`` — TOML slot names routed via
+            ModelSlotResolver (synthesis, evaluation, beast, …)
+          - ``selected_model_ids``   — OpenRouter model IDs from the
+            enabled_models SQLite library (e.g.
+            ``deepseek/deepseek-v4-flash:free``), routed via direct
+            OpenRouter calls.
+        Both lists are merged; the backend requires ≥2 usable models
+        total (slots + library IDs combined).
+
+        ``skip_default_slots`` (default ``False``): when ``True``, the
+        backend will NOT fall back to ``_DEFAULT_COMPARISON_SLOTS``
+        (synthesis/evaluation/beast) when ``selected_model_slots`` is
+        empty — the panel is built ONLY from ``selected_model_ids``.
+        This is the GUI's "models not tied to actor slots/roles" mode:
+        the ``beast`` slot is used ONLY for the Judge+Synth synthesis
+        stages, not as a panel model.
+
+        ``assemble_augmented_context`` (default ``False``): when
+        ``True`` AND ``turn_id`` is non-empty, the backend calls the
+        shared ``routes/_augmented_context.py::assemble_augmented_context()``
+        helper to build the augmented system messages (corpus turns +
+        wiki + graph + definer profile) and PREPENDS them to each
+        panel call's user prompt. This is the Phase 1 retrieval
+        bridge — fixes the AIP-acronym bug where Multi-Cast panel
+        models answered blind without seeing the corpus. The GUI
+        should pass ``True`` when ``state.current_mode == 'augmented'``
+        AND a real ``turn_id`` is computed (via
+        ``make_turn_id(session_id, turn_count)``).
         """
         client = self._get_http_client()
         payload: dict[str, Any] = {
@@ -1365,7 +1439,11 @@ class AipApiClient:
             "existing_answer": existing_answer,
             "sources": sources or [],
             "selected_model_slots": selected_model_slots or [],
+            "selected_model_ids": selected_model_ids or [],
             "save_as_artifact": save_as_artifact,
+            "skip_default_slots": skip_default_slots,
+            "assemble_augmented_context": assemble_augmented_context,
+            "compress_panel_outputs": compress_panel_outputs,
         }
         try:
             resp = await client.post(

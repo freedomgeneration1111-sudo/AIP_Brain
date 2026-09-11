@@ -13,12 +13,14 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 import tempfile
 import time
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
+import pytest_asyncio
 
 from aip.adapter.alert_history_store import AlertHistoryStore
 from aip.adapter.alerting import (
@@ -26,6 +28,38 @@ from aip.adapter.alerting import (
     AlertConfig,
     AlertManager,
 )
+
+_BaseAlertHistoryStore = AlertHistoryStore
+_BaseAlertManager = AlertManager
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _close_test_owned_resources(monkeypatch):
+    """Close alert workers and stores before the owning test loop ends."""
+    alert_managers = []
+    history_stores = []
+
+    class TrackedAlertHistoryStore(_BaseAlertHistoryStore):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            history_stores.append(self)
+
+    class TrackedAlertManager(_BaseAlertManager):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            alert_managers.append(self)
+
+    test_module = sys.modules[__name__]
+    monkeypatch.setattr(test_module, "AlertHistoryStore", TrackedAlertHistoryStore)
+    monkeypatch.setattr(test_module, "AlertManager", TrackedAlertManager)
+
+    yield
+
+    for manager in reversed(alert_managers):
+        manager.close()
+    for store in reversed(history_stores):
+        await store.close()
+
 
 # ============================================================================
 # Deliverable 1: Alert Delivery Status Persistence

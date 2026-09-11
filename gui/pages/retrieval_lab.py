@@ -54,8 +54,12 @@ async def retrieval_lab_page():
     state.client = context.client
     api = get_api_client()
 
+    # Refresh backend status before rendering layout
+    await state.refresh_status_summary()
+
     build_top_bar(state)
     build_left_nav(state, active_page="/retrieval")
+    build_right_rail(state)
 
     # ── State ──────────────────────────────────────────────────────────
     health_data: dict[str, Any] = {}
@@ -142,8 +146,6 @@ async def retrieval_lab_page():
 
         # Trace detail (collapsible)
         trace_container = ui.column().classes("w-full")
-
-    build_right_rail(state)
 
     # ── Data Loading ───────────────────────────────────────────────────
 

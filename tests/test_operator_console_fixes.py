@@ -1,0 +1,849 @@
+"""Tests for Operator Console fixes — status, async actions, seed bootstrap, graph visibility.
+
+Covers:
+A. Backend status truthfulness:
+   - /api/v1/status/summary returns backend_reachable: true
+   - GUI state treats health success as backend reachable even if rich status is degraded
+   - Status summary fallback to /health when /status/summary fails
+   - No contradictory BACKEND OK/BACKEND DOWN indicators
+
+B. Corpus Workbench async actions:
+   - CorpusActions awaits async callbacks
+   - Sync lambdas wrapping async handlers are fixed
+
+C. First-run seed bootstrap:
+   - Skips when DB is not empty or sentinel exists
+   - Runs on empty DB when AIP_AUTO_SEED is not false
+   - Skips when AIP_AUTO_SEED=false
+
+D. Graph visibility:
+   - Graph nav item is registered in layout
+   - Graph page is registered in app
+   - /api/v1/graph/stats endpoint exists
+
+E. Backend status summary endpoint:
+   - /api/v1/status/summary includes backend_reachable field
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import sqlite3
+import tempfile
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+# ── A. Backend Status Truthfulness ──────────────────────────────────
+
+
+class TestStatusSummaryEndpoint:
+    """Test that /api/v1/status/summary returns backend_reachable: true."""
+
+    def test_status_summary_returns_backend_reachable(self):
+        """The status summary endpoint should include backend_reachable: true."""
+        from aip.adapter.api.routes.health import status_summary
+
+        container = MagicMock()
+        container._app_start_time = None
+        container.config = {}
+        container.entity_store = MagicMock()
+        container.canonical_store = MagicMock()
+        container.event_store = AsyncMock()
+        container.autonomy_gate = MagicMock()
+        container.artifact_store = MagicMock()
+        container.lexical_store = None
+        container.vector_store = None
+        container.embedding_provider = None
+        container.project_store = None
+        container.budget_store = None
+        container.budget_manager = None
+        container.vigil_store = None
+        container.model_provider = None
+        container.knowledge_store = None
+        container.session_store = None
+        container.ecs_store = None
+        container.review_queue_store = None
+        container.trace_store = None
+        container.graph_store = None
+        container.beast = None
+        container.vigil = None
+        container.sexton_actor = None
+
+        # Mock event_store.write_event as async
+        container.event_store.write_event = AsyncMock()
+
+        result = asyncio.run(status_summary(container=container))
+
+        assert "backend_reachable" in result
+        assert result["backend_reachable"] is True
+
+    def test_status_summary_includes_dogfood_mode(self):
+        """The status summary should include dogfood_mode."""
+        from aip.adapter.api.routes.health import status_summary
+
+        container = MagicMock()
+        container._app_start_time = None
+        container.config = {}
+        container.entity_store = MagicMock()
+        container.canonical_store = MagicMock()
+        container.event_store = AsyncMock()
+        container.autonomy_gate = MagicMock()
+        container.artifact_store = MagicMock()
+        container.lexical_store = None
+        container.vector_store = None
+        container.embedding_provider = None
+        container.project_store = None
+        container.budget_store = None
+        container.budget_manager = None
+        container.vigil_store = None
+        container.model_provider = None
+        container.knowledge_store = None
+        container.session_store = None
+        container.ecs_store = None
+        container.review_queue_store = None
+        container.trace_store = None
+        container.graph_store = None
+        container.beast = None
+        container.vigil = None
+        container.sexton_actor = None
+
+        container.event_store.write_event = AsyncMock()
+
+        result = asyncio.run(status_summary(container=container))
+
+        assert "dogfood_mode" in result
+        # Even with no actors, the mode should be one of the valid values
+        assert result["dogfood_mode"] in ("FULL", "DEGRADED", "BARE", "minimal", "unknown")
+
+
+class TestGuiStateBackendReachability:
+    """Test that GUI state correctly handles backend reachability."""
+
+    def test_health_success_means_backend_reachable(self):
+        """If /health succeeds but /status/summary returns empty, backend should still be reachable."""
+        from gui.state import GuiState
+
+        state = GuiState()
+        assert state.backend_reachable is False  # Default
+
+        # Simulate: get_status_summary fails (returns {}), but is_backend_reachable succeeds
+        async def _test():
+            with patch.object(state.api_client, "get_status_summary", return_value={}):
+                with patch.object(state.api_client, "is_backend_reachable", return_value=True):
+                    await state.refresh_status_summary()
+
+            assert state.backend_reachable is True
+            assert "Status summary unavailable" in " ".join(state.warnings)
+
+        asyncio.run(_test())
+
+    def test_both_fail_means_backend_down(self):
+        """If both /status/summary and /health fail, backend_reachable should be False."""
+        from gui.state import GuiState
+
+        state = GuiState()
+
+        async def _test():
+            with patch.object(state.api_client, "get_status_summary", return_value={}):
+                with patch.object(state.api_client, "is_backend_reachable", return_value=False):
+                    await state.refresh_status_summary()
+
+            assert state.backend_reachable is False
+
+        asyncio.run(_test())
+
+    def test_status_summary_success_means_backend_reachable(self):
+        """If /status/summary succeeds, backend_reachable should be True."""
+        from gui.state import GuiState
+
+        state = GuiState()
+
+        async def _test():
+            summary = {
+                "backend_reachable": True,
+                "dogfood_mode": "BARE",
+                "actor_status_summary": {},
+                "retrieval_health_summary": {},
+                "warnings": [],
+            }
+            with patch.object(state.api_client, "get_status_summary", return_value=summary):
+                await state.refresh_status_summary()
+
+            assert state.backend_reachable is True
+            assert state.dogfood_mode == "BARE"
+
+        asyncio.run(_test())
+
+    def test_degraded_status_summary_still_reachable(self):
+        """Degraded status summary should still report backend reachable."""
+        from gui.state import GuiState
+
+        state = GuiState()
+
+        async def _test():
+            summary = {
+                "backend_reachable": True,
+                "dogfood_mode": "DEGRADED",
+                "actor_status_summary": {
+                    "beast": {"initialized": False, "state": "not_configured"},
+                    "vigil": {"initialized": False, "state": "not_configured"},
+                    "sexton": {"initialized": False, "state": "not_configured"},
+                },
+                "retrieval_health_summary": {},
+                "warnings": ["Backend running in degraded mode"],
+            }
+            with patch.object(state.api_client, "get_status_summary", return_value=summary):
+                await state.refresh_status_summary()
+
+            assert state.backend_reachable is True
+            assert state.dogfood_mode == "DEGRADED"
+
+        asyncio.run(_test())
+
+
+# ── B. Corpus Workbench Async Actions ───────────────────────────────
+
+
+class TestCorpusActionsAsync:
+    """Test that CorpusActions properly handles async callbacks."""
+
+    def test_async_ingest_callback_is_awaited(self):
+        """Async ingest callback should be awaited, not just called."""
+        from gui.components.corpus_actions import CorpusActions
+
+        awaited = False
+
+        async def on_ingest():
+            nonlocal awaited
+            awaited = True
+
+        actions = CorpusActions(on_ingest=on_ingest)
+        asyncio.run(actions._handle_ingest())
+        assert awaited is True
+
+    def test_async_backfill_callback_is_awaited(self):
+        """Async backfill callback should be awaited."""
+        from gui.components.corpus_actions import CorpusActions
+
+        awaited = False
+
+        async def on_backfill():
+            nonlocal awaited
+            awaited = True
+
+        actions = CorpusActions(on_backfill=on_backfill)
+        asyncio.run(actions._handle_backfill())
+        assert awaited is True
+
+    def test_async_retry_callback_is_awaited(self):
+        """Async retry callback should be awaited."""
+        from gui.components.corpus_actions import CorpusActions
+
+        awaited = False
+
+        async def on_retry():
+            nonlocal awaited
+            awaited = True
+
+        actions = CorpusActions(on_retry_failed=on_retry)
+        asyncio.run(actions._handle_retry_failed())
+        assert awaited is True
+
+    def test_sync_callback_still_works(self):
+        """Sync callbacks should continue to work as before."""
+        from gui.components.corpus_actions import CorpusActions
+
+        called = False
+
+        def on_ingest():
+            nonlocal called
+            called = True
+
+        actions = CorpusActions(on_ingest=on_ingest)
+        asyncio.run(actions._handle_ingest())
+        assert called is True
+
+    def test_no_callback_does_not_error(self):
+        """No callback set should not raise an error."""
+        from gui.components.corpus_actions import CorpusActions
+
+        actions = CorpusActions()
+        # Should not raise
+        asyncio.run(actions._handle_ingest())
+        asyncio.run(actions._handle_backfill())
+        asyncio.run(actions._handle_retry_failed())
+
+
+# ── C. First-Run Seed Bootstrap ─────────────────────────────────────
+
+
+class TestSeedBootstrap:
+    """Test seed bootstrap logic — distinct status outcomes and correct exit codes."""
+
+    def test_first_run_on_empty_db_exits_zero_and_writes_sentinel(self):
+        """First run on empty DB should return SEEDED (exit 0) and write sentinel."""
+        from aip.cli._seed_bootstrap import SeedStatus, run_seed_bootstrap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "state.db"
+            sentinel_path = Path(tmpdir) / ".seed_bootstrapped"
+            db_dir = Path(tmpdir)
+
+            with (
+                patch("aip.cli._seed_bootstrap._DB_PATH", db_path),
+                patch("aip.cli._seed_bootstrap._DB_DIR", db_dir),
+                patch("aip.cli._seed_bootstrap._SENTINEL_PATH", sentinel_path),
+                patch.dict(os.environ, {"AIP_AUTO_SEED": "true"}),
+            ):
+                result = run_seed_bootstrap()
+
+            assert result is SeedStatus.SEEDED
+            assert result.exit_code == 0
+            assert sentinel_path.exists()
+
+    def test_second_run_with_sentinel_exits_zero(self):
+        """Second run with sentinel present should return SKIPPED (exit 0)."""
+        from aip.cli._seed_bootstrap import SeedStatus, run_seed_bootstrap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sentinel = Path(tmpdir) / ".seed_bootstrapped"
+            sentinel.write_text("seed_bootstrapped\ngraph_nodes=51\ncorpus_turns=114\n")
+
+            with patch("aip.cli._seed_bootstrap._SENTINEL_PATH", sentinel):
+                result = run_seed_bootstrap()
+
+            assert result is SeedStatus.SKIPPED
+            assert result.exit_code == 0
+
+    def test_nonempty_db_exits_zero_as_skipped(self):
+        """Non-empty DB should cause SKIPPED (exit 0), not FAILED."""
+        from aip.cli._seed_bootstrap import SeedStatus, _is_empty_db, run_seed_bootstrap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "state.db"
+            sentinel_path = Path(tmpdir) / ".seed_bootstrapped"
+            db_dir = Path(tmpdir)
+
+            # Create DB with existing graph nodes
+            conn = sqlite3.connect(str(db_path))
+            conn.execute("CREATE TABLE graph_nodes (id TEXT PRIMARY KEY)")
+            conn.execute("INSERT INTO graph_nodes (id) VALUES ('test_node')")
+            conn.commit()
+            conn.close()
+
+            assert _is_empty_db(db_path) is False
+
+            with (
+                patch("aip.cli._seed_bootstrap._DB_PATH", db_path),
+                patch("aip.cli._seed_bootstrap._DB_DIR", db_dir),
+                patch("aip.cli._seed_bootstrap._SENTINEL_PATH", sentinel_path),
+            ):
+                result = run_seed_bootstrap()
+
+            assert result is SeedStatus.SKIPPED
+            assert result.exit_code == 0
+
+    def test_auto_seed_false_exits_zero_as_skipped(self):
+        """AIP_AUTO_SEED=false should cause SKIPPED (exit 0), not FAILED."""
+        from aip.cli._seed_bootstrap import SeedStatus, run_seed_bootstrap
+
+        with patch.dict(os.environ, {"AIP_AUTO_SEED": "false"}):
+            result = run_seed_bootstrap()
+
+        assert result is SeedStatus.SKIPPED
+        assert result.exit_code == 0
+
+    def test_broken_sql_path_exits_nonzero(self):
+        """Forced broken seed path / missing SQL should return FAILED (exit 1)."""
+        from aip.cli._seed_bootstrap import SeedStatus, run_seed_bootstrap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "state.db"
+            sentinel_path = Path(tmpdir) / ".seed_bootstrapped"
+            db_dir = Path(tmpdir)
+            # Point SQL to a nonexistent file
+            fake_sql = Path(tmpdir) / "nonexistent_seed_bootstrap.sql"
+
+            with (
+                patch("aip.cli._seed_bootstrap._DB_PATH", db_path),
+                patch("aip.cli._seed_bootstrap._DB_DIR", db_dir),
+                patch("aip.cli._seed_bootstrap._SENTINEL_PATH", sentinel_path),
+                patch("aip.cli._seed_bootstrap._SQL_PATH", fake_sql),
+                patch.dict(os.environ, {"AIP_AUTO_SEED": "true"}),
+            ):
+                result = run_seed_bootstrap()
+
+            assert result is SeedStatus.FAILED
+            assert result.exit_code == 1
+
+    def test_skips_when_sentinel_exists(self):
+        """Bootstrap should skip when sentinel file exists."""
+        from aip.cli._seed_bootstrap import SeedStatus, run_seed_bootstrap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sentinel = Path(tmpdir) / ".seed_bootstrapped"
+            sentinel.write_text("seed_bootstrapped\n")
+
+            with patch("aip.cli._seed_bootstrap._SENTINEL_PATH", sentinel):
+                result = run_seed_bootstrap()
+
+            assert result is SeedStatus.SKIPPED
+
+    def test_skips_when_auto_seed_false(self):
+        """Bootstrap should skip when AIP_AUTO_SEED=false."""
+        from aip.cli._seed_bootstrap import SeedStatus, run_seed_bootstrap
+
+        with patch.dict(os.environ, {"AIP_AUTO_SEED": "false"}):
+            result = run_seed_bootstrap()
+
+        assert result is SeedStatus.SKIPPED
+
+    def test_skips_when_db_not_empty(self):
+        """Bootstrap should skip when DB has existing graph nodes."""
+        from aip.cli._seed_bootstrap import _is_empty_db
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "state.db"
+            conn = sqlite3.connect(str(db_path))
+            conn.execute("CREATE TABLE graph_nodes (id TEXT PRIMARY KEY)")
+            conn.execute("INSERT INTO graph_nodes (id) VALUES ('test_node')")
+            conn.commit()
+            conn.close()
+
+            assert _is_empty_db(db_path) is False
+
+    def test_runs_on_empty_db(self):
+        """Bootstrap should run on empty DB when AIP_AUTO_SEED is not false."""
+        from aip.cli._seed_bootstrap import SeedStatus, run_seed_bootstrap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "state.db"
+            sentinel_path = Path(tmpdir) / ".seed_bootstrapped"
+            db_dir = Path(tmpdir)
+
+            with (
+                patch("aip.cli._seed_bootstrap._DB_PATH", db_path),
+                patch("aip.cli._seed_bootstrap._DB_DIR", db_dir),
+                patch("aip.cli._seed_bootstrap._SENTINEL_PATH", sentinel_path),
+                patch.dict(os.environ, {"AIP_AUTO_SEED": "true"}),
+            ):
+                result = run_seed_bootstrap()
+
+            assert result is SeedStatus.SEEDED
+            assert sentinel_path.exists()
+
+    def test_empty_db_detection(self):
+        """_is_empty_db should return True for empty or missing DB."""
+        from aip.cli._seed_bootstrap import _is_empty_db
+
+        # Missing DB
+        assert _is_empty_db(Path("/nonexistent/path.db")) is True
+
+        # Empty DB
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "state.db"
+            conn = sqlite3.connect(str(db_path))
+            conn.execute("CREATE TABLE graph_nodes (id TEXT PRIMARY KEY)")
+            conn.commit()
+            conn.close()
+
+            assert _is_empty_db(db_path) is True
+
+
+class TestSeedBootstrapCanonicalSchema:
+    """Test that seed bootstrap creates corpus_turns with the canonical schema.
+
+    This is a regression test for the bug where _seed_bootstrap.py had a
+    divergent ad-hoc schema missing columns like embedded, conversation_id,
+    and tagging_version — causing 'no such column' errors at runtime.
+    """
+
+    def test_corpus_turns_has_required_columns_after_bootstrap(self):
+        """After seed bootstrap, PRAGMA table_info must include embedded,
+        conversation_id, and tagging_version."""
+        from aip.cli._seed_bootstrap import SeedStatus, run_seed_bootstrap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "state.db"
+            sentinel_path = Path(tmpdir) / ".seed_bootstrapped"
+            db_dir = Path(tmpdir)
+
+            with (
+                patch("aip.cli._seed_bootstrap._DB_PATH", db_path),
+                patch("aip.cli._seed_bootstrap._DB_DIR", db_dir),
+                patch("aip.cli._seed_bootstrap._SENTINEL_PATH", sentinel_path),
+                patch.dict(os.environ, {"AIP_AUTO_SEED": "true"}),
+            ):
+                result = run_seed_bootstrap()
+
+            assert result is SeedStatus.SEEDED
+
+            # Verify schema
+            conn = sqlite3.connect(str(db_path))
+            cols = [row[1] for row in conn.execute("PRAGMA table_info(corpus_turns)").fetchall()]
+            conn.close()
+
+            for required in ["embedded", "conversation_id", "tagging_version"]:
+                assert required in cols, f"Missing required column: {required}"
+
+    def test_corpus_turns_has_user_text_and_assistant_text(self):
+        """The canonical schema uses user_text/assistant_text, not role/content."""
+        from aip.cli._seed_bootstrap import SeedStatus, run_seed_bootstrap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "state.db"
+            sentinel_path = Path(tmpdir) / ".seed_bootstrapped"
+            db_dir = Path(tmpdir)
+
+            with (
+                patch("aip.cli._seed_bootstrap._DB_PATH", db_path),
+                patch("aip.cli._seed_bootstrap._DB_DIR", db_dir),
+                patch("aip.cli._seed_bootstrap._SENTINEL_PATH", sentinel_path),
+                patch.dict(os.environ, {"AIP_AUTO_SEED": "true"}),
+            ):
+                result = run_seed_bootstrap()
+
+            assert result is SeedStatus.SEEDED
+
+            conn = sqlite3.connect(str(db_path))
+            cols = [row[1] for row in conn.execute("PRAGMA table_info(corpus_turns)").fetchall()]
+            conn.close()
+
+            # Canonical columns must exist
+            assert "user_text" in cols
+            assert "assistant_text" in cols
+            assert "searchable_text" in cols
+            assert "word_count" in cols
+
+            # Old ad-hoc columns must NOT exist
+            assert "role" not in cols
+            assert "content" not in cols
+            assert "embedding_status" not in cols
+
+    def test_raw_count_and_api_count_agree(self):
+        """Raw corpus_turns count should match what the API would report.
+
+        After seed bootstrap, the turn count in the DB should be > 0 and
+        consistent with what CorpusTurnStore would return.
+        """
+        from aip.cli._seed_bootstrap import SeedStatus, run_seed_bootstrap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "state.db"
+            sentinel_path = Path(tmpdir) / ".seed_bootstrapped"
+            db_dir = Path(tmpdir)
+
+            with (
+                patch("aip.cli._seed_bootstrap._DB_PATH", db_path),
+                patch("aip.cli._seed_bootstrap._DB_DIR", db_dir),
+                patch("aip.cli._seed_bootstrap._SENTINEL_PATH", sentinel_path),
+                patch.dict(os.environ, {"AIP_AUTO_SEED": "true"}),
+            ):
+                result = run_seed_bootstrap()
+
+            assert result is SeedStatus.SEEDED
+
+            conn = sqlite3.connect(str(db_path))
+            raw_count = conn.execute("SELECT COUNT(*) FROM corpus_turns").fetchone()[0]
+            conn.close()
+
+            assert raw_count > 0
+
+    def test_schema_validation_detects_missing_columns(self):
+        """_validate_corpus_schema should reject a table missing required columns."""
+        from aip.cli._seed_bootstrap import _validate_corpus_schema
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "state.db"
+            conn = sqlite3.connect(str(db_path))
+            # Create table with OLD ad-hoc schema (missing required columns)
+            conn.execute("""
+                CREATE TABLE corpus_turns (
+                    turn_id TEXT PRIMARY KEY,
+                    role TEXT NOT NULL DEFAULT '',
+                    content TEXT NOT NULL DEFAULT ''
+                )
+            """)
+            conn.commit()
+
+            # Should fail validation — missing embedded, conversation_id, tagging_version
+            assert _validate_corpus_schema(conn) is False
+            conn.close()
+
+    def test_schema_validation_passes_with_canonical_schema(self):
+        """_validate_corpus_schema should accept the canonical schema."""
+        from aip.cli._seed_bootstrap import _validate_corpus_schema
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "state.db"
+            conn = sqlite3.connect(str(db_path))
+
+            # Apply canonical DDL
+            from aip.adapter.corpus_turn_store import _DDL_CORPUS_TURNS, _DDL_MIGRATIONS
+
+            conn.execute(_DDL_CORPUS_TURNS)
+            for mig in _DDL_MIGRATIONS:
+                try:
+                    conn.execute(mig)
+                except sqlite3.OperationalError:
+                    pass
+            conn.commit()
+
+            assert _validate_corpus_schema(conn) is True
+            conn.close()
+
+    def test_sentinel_includes_graph_edges(self):
+        """Sentinel file should include graph_edges count."""
+        from aip.cli._seed_bootstrap import SeedStatus, run_seed_bootstrap
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "state.db"
+            sentinel_path = Path(tmpdir) / ".seed_bootstrapped"
+            db_dir = Path(tmpdir)
+
+            with (
+                patch("aip.cli._seed_bootstrap._DB_PATH", db_path),
+                patch("aip.cli._seed_bootstrap._DB_DIR", db_dir),
+                patch("aip.cli._seed_bootstrap._SENTINEL_PATH", sentinel_path),
+                patch.dict(os.environ, {"AIP_AUTO_SEED": "true"}),
+            ):
+                result = run_seed_bootstrap()
+
+            assert result is SeedStatus.SEEDED
+            sentinel_text = sentinel_path.read_text()
+            assert "graph_edges=" in sentinel_text
+
+
+# ── D. Graph Visibility ─────────────────────────────────────────────
+
+
+class TestGraphNavRegistration:
+    """Test that Graph appears in the Operator Console navigation."""
+
+    def test_graph_in_nav_items(self):
+        """Graph should be in the _NAV_ITEMS list."""
+        from gui.components.layout import _NAV_ITEMS
+
+        routes = [route for _, route, _ in _NAV_ITEMS]
+        assert "/graph" in routes
+
+    def test_graph_page_module_exists(self):
+        """gui.pages.graph module should be importable."""
+        import gui.pages.graph  # noqa: F401
+
+        assert hasattr(gui.pages.graph, "graph_page")
+
+    def test_graph_page_registered_in_app(self):
+        """gui.app should import gui.pages.graph."""
+        import gui.app
+
+        # Check that the import exists in the module's source
+        source = Path(gui.app.__file__).read_text()
+        assert "gui.pages.graph" in source
+
+
+class TestGraphStatsEndpoint:
+    """Test that /api/v1/graph/stats endpoint is functional."""
+
+    def test_graph_stats_with_empty_store(self):
+        """Graph stats endpoint should return zero counts for empty store."""
+        from aip.adapter.api.routes.graph import graph_stats
+
+        container = MagicMock()
+        container.graph_store = None
+        container.config = {}
+
+        result = asyncio.run(graph_stats(container=container))
+
+        # Should return either stats or error dict, not raise
+        assert isinstance(result, dict)
+        assert "nodes" in result
+        assert "edges" in result
+
+
+# ── E. Combined Status Consistency ──────────────────────────────────
+
+
+class TestStatusConsistency:
+    """Test that top bar and right rail use the same status source."""
+
+    def test_dogfood_bare_does_not_imply_up_without_fetch(self):
+        """BARE mode should not imply 'Backend up' when no status has been fetched.
+
+        Before any status fetch, backend_reachable is False and dogfood_mode
+        is 'BARE'. The right rail should NOT say 'Backend up'.
+        """
+        from gui.state import GuiState
+
+        state = GuiState()
+        # Default state: backend_reachable=False, dogfood_mode="BARE"
+        assert state.backend_reachable is False
+        assert state.dogfood_mode == "BARE"
+        # The _dogfood_section in right_rail.py now checks state.backend_reachable
+        # before showing "Backend reachable" message.
+
+    def test_status_summary_and_health_agree_on_reachability(self):
+        """When status summary succeeds, backend_reachable should be True
+        and consistent with the summary's backend_reachable field."""
+        from gui.state import GuiState
+
+        state = GuiState()
+
+        async def _test():
+            summary = {
+                "backend_reachable": True,
+                "dogfood_mode": "DEGRADED",
+                "actor_status_summary": {},
+                "retrieval_health_summary": {},
+                "warnings": ["Backend running in degraded mode"],
+            }
+            with patch.object(state.api_client, "get_status_summary", return_value=summary):
+                await state.refresh_status_summary()
+
+            assert state.backend_reachable is True
+            assert state.status_summary.get("backend_reachable") is True
+
+        asyncio.run(_test())
+
+
+# ── F. API Client Method Mismatch ──────────────────────────────────
+
+
+class TestApiClientMethodMismatch:
+    """Regression test: Settings page must not call a nonexistent API client method.
+
+    Bug: settings.py called get_text_generation_slots() but the API client
+    only had list_text_generation_slots(). This caused AttributeError at runtime.
+    """
+
+    def test_api_client_has_get_text_generation_slots(self):
+        """AipApiClient must have get_text_generation_slots (alias or direct)."""
+        from gui.api_client import AipApiClient
+
+        client = AipApiClient()
+        assert hasattr(client, "get_text_generation_slots"), (
+            "AipApiClient is missing get_text_generation_slots. Settings page calls this method."
+        )
+
+    def test_api_client_has_list_text_generation_slots(self):
+        """AipApiClient must have list_text_generation_slots (canonical name)."""
+        from gui.api_client import AipApiClient
+
+        client = AipApiClient()
+        assert hasattr(client, "list_text_generation_slots")
+
+    def test_settings_page_uses_correct_method_name(self):
+        """Settings page source should not reference the old wrong method name."""
+        import gui.pages.settings
+
+        source = Path(gui.pages.settings.__file__).read_text()
+        # The OLD broken call should NOT exist
+        assert "get_text_generation_slots()" not in source, (
+            "Settings page still calls get_text_generation_slots() directly. "
+            "Should use list_text_generation_slots() or the alias."
+        )
+
+
+# ── G. Ask Page Crash Boundary ─────────────────────────────────────
+
+
+class TestAskPageCrashBoundary:
+    """Test that the Ask page does not go blank on API client errors."""
+
+    def test_ask_page_function_exists(self):
+        """gui.pages.ask must have an ask_page function."""
+        import gui.pages.ask
+
+        assert hasattr(gui.pages.ask, "ask_page")
+
+    def test_ask_page_has_crash_boundary(self):
+        """Ask page must have a try/except around _ask_page_impl."""
+        import gui.pages.ask
+
+        source = Path(gui.pages.ask.__file__).read_text()
+        assert "try:" in source
+        assert "_ask_page_impl" in source
+        # Must have AttributeError catch for missing API methods
+        assert "AttributeError" in source, "Ask page must catch AttributeError from missing API client methods"
+
+    def test_ask_page_api_key_does_not_block_render(self):
+        """Ask page must not block page render on API key prompt.
+
+        The old code called show_api_key_prompt() at the top, which
+        is a blocking dialog that prevents the page from rendering
+        until the user dismisses it. The fix moves the check to
+        post-render with a non-blocking flag.
+        """
+        import gui.pages.ask
+
+        source = Path(gui.pages.ask.__file__).read_text()
+        # The old pattern was: if not has_key: await show_api_key_prompt()
+        # This is now replaced with setting _api_key_missing flag
+        assert "_api_key_missing" in source, (
+            "Ask page should set an _api_key_missing flag instead of "
+            "blocking on show_api_key_prompt() before rendering layout"
+        )
+
+
+# ── H. Graph Page Visualization ─────────────────────────────────────
+
+
+class TestGraphPageVisualization:
+    """Test that graph page has proper iframe embedding and fallback links."""
+
+    def test_graph_page_has_iframe(self):
+        """Graph page source must include an iframe for visualization."""
+        import gui.pages.graph
+
+        source = Path(gui.pages.graph.__file__).read_text()
+        assert "iframe" in source, "Graph page must embed visualization in iframe"
+
+    def test_graph_page_has_direct_link_fallback(self):
+        """Graph page must have a direct link fallback if iframe is blank."""
+        import gui.pages.graph
+
+        source = Path(gui.pages.graph.__file__).read_text()
+        assert "new_tab" in source or "target=" in source, (
+            "Graph page must provide a direct link to /graph-viz as fallback"
+        )
+
+    def test_graph_page_has_sandbox_attribute(self):
+        """Iframe must have sandbox attribute for security."""
+        import gui.pages.graph
+
+        source = Path(gui.pages.graph.__file__).read_text()
+        assert "sandbox" in source, "Graph iframe must have sandbox attribute for Cytoscape.js"
+
+
+# ── I. Dogfood Mode Nuanced Wording ────────────────────────────────
+
+
+class TestDogfoodModeWording:
+    """Test that BARE mode does not say 'no actors' when actors exist but are degraded."""
+
+    def test_right_rail_no_stale_no_actors_message(self):
+        """Right rail source must not have the old blanket 'no actors' message for BARE."""
+        import gui.panels.right_rail
+
+        source = Path(gui.panels.right_rail.__file__).read_text()
+        # The old message was: "Backend reachable — no actors or retrieval active."
+        # This should be replaced with nuanced wording
+        assert "no actors or retrieval active" not in source, (
+            "Right rail should not say 'no actors or retrieval active' in BARE mode — "
+            "it should differentiate between 'no actors', 'actors degraded', and 'actors active'"
+        )
+
+    def test_right_rail_has_degraded_actors_wording(self):
+        """Right rail must have wording for degraded actors in BARE mode."""
+        import gui.panels.right_rail
+
+        source = Path(gui.panels.right_rail.__file__).read_text()
+        assert "actors degraded" in source, "Right rail must say 'actors degraded' when actors exist but are degraded"
+
+    def test_settings_page_no_stale_no_actors_message(self):
+        """Settings page must not say 'no actors or retrieval' in BARE mode."""
+        import gui.pages.settings
+
+        source = Path(gui.pages.settings.__file__).read_text()
+        assert "no actors or retrieval" not in source

@@ -88,6 +88,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import random
 import re
 import threading
@@ -108,6 +109,10 @@ except ImportError:
     asyncio = None  # type: ignore[assignment]
 
 logger = get_logger(__name__)
+
+
+class _AlertDispatchCancelled(Exception):
+    """Internal signal that an owning AlertManager is shutting down."""
 
 
 # ---------------------------------------------------------------------------
@@ -6538,6 +6543,9 @@ class AlertManager:
         self._total_email_status_updates: int = 0
         # Lock for thread-safe mutation of shared state
         self._lock = threading.Lock()
+        self._dispatch_threads: set[threading.Thread] = set()
+        self._is_shutting_down = False
+        self._shutdown_event = threading.Event()
 
         # Sprint 5.63: Start background prediction tracking
         self._prediction_mgr.start_bg_tracking()
@@ -6652,6 +6660,11 @@ class AlertManager:
         alert type is disabled, returns an empty string. If rate-limited,
         returns the string "rate_limited".
         """
+        with self._lock:
+            if self._is_shutting_down:
+                logger.debug("alert_skipped_shutdown", alert_type=alert.alert_type)
+                return ""
+
         # Check master switch
         if not self._config.enabled:
             logger.debug(
@@ -6791,27 +6804,26 @@ class AlertManager:
         # Sprint 5.32: Use per-type digest overrides if configured
         # Sprint 5.61: Delegates buffering and flush decision to DigestManager
         if self._config.digest_enabled and alert.severity == "info" and not escalated:
-            with self._lock:
-                self._digest_mgr.buffer_alert(alert_dict)
-                # Check if we should flush the digest
-                if self._digest_mgr.should_flush(alert.alert_type):
-                    buffered = self._digest_mgr.flush_digest()
-                    self._handle_digest_flush(buffered)
-                # Record delivery status as "buffered" for digest
-                status_dict = {
-                    "status": "buffered_for_digest",
-                    "correlation_id": correlation_id,
-                    "alert_type": alert.alert_type,
-                    "severity": alert.severity,
-                    "subject": alert.subject,
-                    "transports": transports,
-                    "transport_results": {},
-                    "dispatched_at": datetime.now(timezone.utc).isoformat(),
-                }
-                # Sprint 5.62: Store delivery status via AlertLifecycleManager
-                self._lifecycle_mgr.set_delivery_status(correlation_id, status_dict)
-                # Sprint 5.32: Persist delivery status to SQLite
-                self._persist_delivery_status(status_dict)
+            # DigestManager owns its buffer lock. Do not hold AlertManager's
+            # lock while running a flush callback: it starts a dispatch worker
+            # and therefore needs to acquire manager state itself.
+            self._digest_mgr.buffer_alert(alert_dict)
+            buffered = self._digest_mgr.flush_digest() if self._digest_mgr.should_flush(alert.alert_type) else []
+            # Record delivery status as "buffered" for digest.
+            status_dict = {
+                "status": "buffered_for_digest",
+                "correlation_id": correlation_id,
+                "alert_type": alert.alert_type,
+                "severity": alert.severity,
+                "subject": alert.subject,
+                "transports": transports,
+                "transport_results": {},
+                "dispatched_at": datetime.now(timezone.utc).isoformat(),
+            }
+            # Sprint 5.62: Store delivery status via AlertLifecycleManager
+            self._lifecycle_mgr.set_delivery_status(correlation_id, status_dict)
+            # Sprint 5.32: Persist delivery status to SQLite
+            self._persist_delivery_status(status_dict)
             # Notify SSE/WebSocket subscribers about the buffered alert
             self._realtime_bus.notify_realtime_subscribers(
                 {
@@ -6822,19 +6834,63 @@ class AlertManager:
                     "subject": alert.subject,
                 }
             )
+            if buffered:
+                self._handle_digest_flush(buffered)
             return correlation_id
 
         # Sprint 5.30: Dispatch to transports in a background thread
         # This makes send_alert() non-blocking
-        dispatch_thread = threading.Thread(
-            target=self._dispatch_to_transports,
-            args=(alert, transports, correlation_id),
-            daemon=True,
-            name=f"alert-dispatch-{correlation_id}",
-        )
-        dispatch_thread.start()
+        self._start_dispatch_thread(alert, transports, correlation_id, f"alert-dispatch-{correlation_id}")
 
         return correlation_id
+
+    def _start_dispatch_thread(
+        self,
+        alert: Alert,
+        transports: list[str],
+        correlation_id: str,
+        name: str,
+    ) -> None:
+        """Start a delivery worker tracked by this manager's lifecycle."""
+
+        def _run() -> None:
+            try:
+                self._dispatch_to_transports(alert, transports, correlation_id)
+            finally:
+                with self._lock:
+                    self._dispatch_threads.discard(threading.current_thread())
+
+        dispatch_thread = threading.Thread(target=_run, daemon=True, name=name)
+        with self._lock:
+            if self._is_shutting_down:
+                return
+            self._dispatch_threads.add(dispatch_thread)
+        dispatch_thread.start()
+
+    def close(self, timeout: float = 5.0) -> None:
+        """Stop owned workers before their dependent stores are closed."""
+        with self._lock:
+            if self._is_shutting_down:
+                return
+            self._is_shutting_down = True
+            self._shutdown_event.set()
+            dispatch_threads = list(self._dispatch_threads)
+
+        self._prediction_mgr.stop_bg_tracking()
+        self.stop_receipt_polling()
+        self.stop_prune_scheduler()
+        self.stop_ab_promotion_checker()
+        self.stop_ab_cleanup_checker()
+        self.stop_snapshot_gc()
+
+        deadline = time.monotonic() + timeout
+        for dispatch_thread in dispatch_threads:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            dispatch_thread.join(timeout=remaining)
+
+        logger.info("alert_manager_closed", pending_dispatches=sum(t.is_alive() for t in dispatch_threads))
 
     def _dispatch_to_transports(
         self,
@@ -6879,6 +6935,8 @@ class AlertManager:
                     "status": "delivered",
                     "retries": 0,
                 }
+            except _AlertDispatchCancelled:
+                transport_results["webhook"] = {"status": "cancelled", "retries": 0}
             except Exception as exc:
                 all_succeeded = False
                 self._delivery_mgr.increment_send_failure()
@@ -7226,14 +7284,10 @@ class AlertManager:
             except Exception:
                 pass
 
-        # Dispatch in background thread
-        dispatch_thread = threading.Thread(
-            target=self._dispatch_to_transports,
-            args=(digest_alert, transports, digest_correlation_id),
-            daemon=True,
-            name=f"alert-digest-{digest_correlation_id}",
+        # Dispatch in a worker owned by this manager.
+        self._start_dispatch_thread(
+            digest_alert, transports, digest_correlation_id, f"alert-digest-{digest_correlation_id}"
         )
-        dispatch_thread.start()
 
         logger.info(
             "alert_digest_flushed",
@@ -8490,6 +8544,8 @@ class AlertManager:
         last_error: Exception | None = None
 
         for attempt in range(max_retries + 1):
+            if self._shutdown_event.is_set():
+                raise _AlertDispatchCancelled()
             try:
                 self._send_webhook_once(alert)
                 # Success — return immediately
@@ -8500,6 +8556,8 @@ class AlertManager:
                         attempt=attempt,
                     )
                 return
+            except _AlertDispatchCancelled:
+                raise
             except Exception as exc:
                 last_error = exc
                 if attempt < max_retries:
@@ -8524,7 +8582,8 @@ class AlertManager:
                         delay_seconds=delay,
                         error=str(exc),
                     )
-                    time.sleep(delay)
+                    if self._shutdown_event.wait(delay):
+                        raise _AlertDispatchCancelled()
 
         # All retries exhausted — raise the last error
         raise last_error or RuntimeError("Webhook delivery failed after all retries")
@@ -8535,6 +8594,9 @@ class AlertManager:
         Uses stdlib urllib to avoid adding requests/aiohttp dependency.
         Timeout is 10 seconds — alerts must not block the caller.
         """
+        if os.getenv("CI", "").lower() == "true":
+            raise RuntimeError("Webhook delivery is disabled in CI")
+
         payload = json.dumps(
             {
                 "source": "aip-brain",
@@ -9190,6 +9252,10 @@ class AlertManager:
         Called from app.py on startup.
         """
         self._ab_experiment_mgr.start_snapshot_gc()
+
+    def stop_snapshot_gc(self) -> None:
+        """Stop the snapshot garbage collector before shutdown."""
+        self._ab_experiment_mgr.stop_snapshot_gc()
 
     def check_calibration_drift(self) -> list[dict]:
         """Check for confidence calibration drift.

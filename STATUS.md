@@ -1,14 +1,36 @@
 # AIP Status
 
-**Version:** 0.1.0-alpha
-**Architecture Revision:** 6.4
-**Last Updated:** 2026-06-12
-**Release:** Alpha Test Release
-**Project Mode:** MAINTENANCE — active development phase complete; see docs/Maintenance_Protocol.md
+**Version:** 1.0.0
+**Architecture Revision:** 6.5
+**Last Updated:** 2026-07-30
+**Release:** 1.0 Release + ADR-017 Web Source Acquisition
+**Project Mode:** 1.0 READY + D2 web grounding delivered — see RELEASE_NOTES_1_0.md + ADR-017
 
-> This document reflects the state after UI Cycle 12 (Maintenance Center v1) and Chunk 5 (retrieval honesty).
-> The project has entered maintenance mode. No further feature sprints are planned.
-> See ROADMAP.md for the maintenance mode section and docs/Maintenance_Protocol.md for operational procedures.
+> This document reflects the state after the Fusion pipeline upgrade (Phases 1-3 + 4.1),
+> the ADR-008 Multi-Corpus Chunks 1-9, the ADR-014 Phase 0 Extension Platform,
+> the 2026-07-23 tech-debt assessment quick-win pass, and the 2026-07-30 ADR-017
+> Web Source Acquisition delivery (D2.0–D2.5).
+>
+> **ADR-017 Web Source Acquisition (D2.0–D2.5)** — shipped 2026-07-30 on
+> `feat/multi-corpus`. Tavily search provider, bounded HTTP fetcher with SSRF
+> defense, HTML/PDF extractors with paywall detection, prompt-injection
+> boundary (BEGIN_WEB_SOURCE / END_WEB_SOURCE markers), explicit corpus
+> promotion with dedup, web-grounding evaluation suite (5 validators, 16 cases).
+> 5 API routes + Ask web_grounding toggle + sources kind=corpus|web discriminator.
+> ~490 tests added. See `docs/decisions/ADR-017-web-source-acquisition.md`.
+>
+> **Multi-Cast retrieval telemetry + corpus selection persistence** — shipped
+> 2026-07-30. ModelCouncilResponse now carries retrieval_attempted,
+> context_assembled, active_corpus_ids, source_count, augmented_sources,
+> retrieval_warnings. GuiState.active_corpus_ids survives reset_session().
+> FTS5 sanitize fix for file paths with '/'. Backend retrieval gate fixed
+> (session_id, not fake turn_id).
+>
+> **Test count:** ~4,870+ tests (4,384 pre-ADR-017 + ~490 web source acquisition).
+> All passing. 0 warnings.
+>
+> See `PLANNED_FEATURES.md` for the canonical tracker of what's built / planned / deferred.
+> See `ROADMAP.md` for the phase plan. See `TECH_DEBT.md` for the debt register.
 
 ## Production Safety Status
 
@@ -40,14 +62,15 @@ Production configuration is **enforced programmatically**. Unsafe configs fail a
 
 ## Module Status
 
-- **Tests:** 1090+ passing (incl. 46 Chunk 5 tests, 42 Cycle 4.1 sovereignty tests, 48 Cycle 6 tests, 38 Cycle 6.1 tests), 23 skipped (sqlite_vss extension + pre-existing governance), 2 pre-existing failures
+- **Tests:** ~4,870+ passing (incl. ~490 ADR-017 web source acquisition, 292 Fusion pipeline tests, 46 Chunk 5 tests, 42 Cycle 4.1 sovereignty tests, 48 Cycle 6 tests, 38 Cycle 6.1 tests), 23 skipped (sqlite_vss extension + pre-existing governance), 1 pre-existing failure (/graph nav route — unrelated)
 - **Architecture:** Three-layer (foundation → orchestration → adapter)
 - **Default DB path:** `db/state.db` (SQLite, laptop profile)
 - **Scaffolding:** ~5-8% overall (MCP dispatch, adaptive router, ScriptNode sandbox)
 - **Docker:** Laptop and production profiles with programmatic config validation
 - **Lint:** ruff format + ruff check (E, F, W, I) — all passing, blocking in CI
 - **Retrieval:** Hybrid (FTS5 + Vector + Corpus) with RRF fusion; configurable channel weights in `aip.config.toml` (`[retrieval.channel_weights]`)
-- **Eval harness:** `aip eval retrieval` with --mode flag (hybrid / fts-only / all); baseline comparator available via `--save-baseline`
+- **Web Source Acquisition:** ADR-017 D2.0–D2.5 delivered. Tavily provider + bounded HTTP fetcher (SSRF defense, DNS-rebinding defense, max_bytes truncation) + HTML/PDF/plain-text extractors + prompt-injection boundary + explicit corpus promotion + evaluation suite. Config: `[web]` section in `aip.config.toml` + `AIP_WEB_SEARCH_API_KEY` env var.
+- **Eval harness:** `aip eval retrieval` with --mode flag (hybrid / fts-only / all); baseline comparator available via `--save-baseline`. Web-grounding evaluation suite (5 validators, 16 cases) at `tests/acceptance/web_grounding_suite.yaml`.
 
 ## UI Cycle 2 — Operator Console Shell (2026-06-11)
 
@@ -253,6 +276,56 @@ UI Cycle 6.1 adds explicit model slot selection to the Model Council panel, allo
 
 **Blockers or dependencies affecting Wiki/CODEX or Crosslinks**: None.
 
+## Fusion Pipeline (2026-06-17) — Feature-Complete
+
+The Fusion pipeline (Panel → Judge-Beast → Synth-Beast) is feature-complete across all 3 phases + Phase 4.1:
+
+### Phase 1 — Retrieval Bridge + Fusion Pipeline
+- ✅ Shared `_augmented_context.py` helper — both chat.py and model_council.py call the same retrieval pipeline (fixes the AIP-acronym bug)
+- ✅ Two-stage Fusion pipeline (Judge-Beast reads panel outputs → Synth-Beast reads Judge JSON only)
+- ✅ Per-call timeouts (panel 30s, Judge 60s, Synth 60s)
+- ✅ Engine fallback (`_pick_fusion_engine` picks from successful panel models)
+- ✅ Model Label Contract in Judge prompt
+- ✅ Multi-select dropdown (models NOT tied to actor slots/roles)
+- ✅ `skip_default_slots` flag (panel built ONLY from user's dropdown picks)
+- ✅ `assemble_augmented_context` flag (GUI sends when augmented mode is on)
+- ✅ Panel dispatch remediation (Bug 1: behavioral system prompt + Bug 2: [PANEL] log markers + DISPATCH_ERROR stubs)
+
+### Phase 2 — Judge/Synth Split + Compression
+- ✅ `blind_spots[]` mandatory Judge field
+- ✅ `partial_coverage[{models[], point}]` (2 to N-1 models — explicit boundary)
+- ✅ `unique_insights[{model, insight}]` with per-model attribution
+- ✅ Per-model compression pass (`compress_panel_outputs` flag + `_compress_panel_outputs` helper)
+- ✅ Phase 2 test suite (PDF Part IX — 9 net-new tests)
+
+### Phase 3 — Polish
+- ✅ Per-model attribution badges on `unique_insights[]` (deterministic 8-color palette)
+- ✅ Per-model stance color-coding on `contradictions[]`
+- ✅ Dedicated `[models.judge]` TOML slot (preference 0 in `_pick_fusion_engine`)
+- ✅ GUI toggle for `compress_panel_outputs` (Compress checkbox in Ask page header)
+
+### Phase 4.1 — UX Features
+- ✅ Real-time provenance feedback widget (inline collapsible source strip on answer cards)
+- ✅ Context Preparer visualizer (4-step fusion flow diagram in trace panel)
+- ✅ Automated consistency-checker (Vigil 5th evaluation pass — cross-turn contradiction detection)
+
+### Test Inventory (13 files, 292+ tests)
+| File | Tests | Coverage |
+|------|-------|----------|
+| `test_model_council_fusion.py` | 22+ | Phase 1 Fusion pipeline |
+| `test_model_council_fusion_phase2.py` | 9 | PDF Part IX Phase 2 |
+| `test_compress_panel_outputs.py` | 9 | Compression pass |
+| `test_phase3_polish.py` | 24 | Badges + judge slot + compress toggle |
+| `test_phase4_features.py` | 22 | Provenance + visualizer + consistency |
+| `test_panel_dispatch_remediation.py` | 19 | Bug 1 + Bug 2 + acceptance criteria |
+| `test_augmented_context_helper.py` | 21 | Retrieval bridge helper |
+| `test_send_multicast_retrieval_bridge.py` | 13 | GUI wiring Step 2-B |
+| `test_ask_multiselect_dropdown.py` | 37 | Multi-select dropdown |
+| `test_coverage_gradient_fix.py` | 10 | Judge prompt boundary + PLANNED_FEATURES |
+| `test_model_council_cycle6.py` | 48 | Cycle 6 baseline |
+| `test_model_council_cycle6_1.py` | 38 | Cycle 6.1 extensions |
+| `test_model_council_library_ids.py` | 11 | OpenRouter library bridge |
+
 ## Actor Status (post ADR-011 refactor, post Sprint 6.4)
 
 ADR-011 (2026-06-06) redefined actor role boundaries. All three actors are built and wired.
@@ -353,7 +426,7 @@ continuous operation.
 | Surface | What's Real | What's Scaffold |
 |---|---|---|
 | MCP tool dispatch | Tool listing, autonomy gate enforcement, layering discipline, real dispatch via Protocols | MCP server not wired into runtime; autonomy_gate=None fail-open risk for write/admin tools |
-| Adaptive router | Budget enforcement, route existence | update_weights() is no-op; exploration/exploitation is random |
+| Adaptive router | Budget enforcement, route existence | update_weights() is fully implemented but never called (dead code); exploration/exploitation is random |
 | ScriptNode | Type declaration, fixture mode, YAML parsing | Production execution disabled (returns DISABLED) |
 | MCP start/stop | _running flag | No stdio/SSE transport implementation |
 
@@ -397,7 +470,7 @@ for deployment with real user data. Known limitations that alpha testers should 
    FTS5 search works well; hybrid retrieval improvement will be measurable after full embedding.
    Sexton actor is wired and will process embeddings automatically when the provider is available.
 2. **MCP tool dispatch is built but not runtime-wired** — real search and approval dispatch exists but is not reachable via API/CLI; autonomy_gate=None fail-open risk must be hardened before wiring
-3. **Adaptive router does not adapt** — exploration/exploitation is random
+3. **Adaptive router is dead code (update_weights() implemented but never called); exploration/exploitation is random
 4. **No sandbox for ScriptNode execution** — production mode returns DISABLED
 5. **No review queue web UI for MANUAL mode** — CLI review works (`aip review list/approve/reject`)
 6. **Per-component performance metrics are estimated**, not measured
